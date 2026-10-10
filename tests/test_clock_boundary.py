@@ -9,6 +9,13 @@ FORBIDDEN_ATTRS = {"now", "today", "utcnow", "utcfromtimestamp", "fromtimestamp"
 FORBIDDEN_TIME_FUNCS = {"time", "time_ns", "monotonic", "localtime", "gmtime", "ctime"}
 
 
+def _is_our_clock(value: ast.expr) -> bool:
+    """`clock.now()` / `app.utils.clock.today(tz)` are the sanctioned API, not a clock read."""
+    return (isinstance(value, ast.Name) and value.id == "clock") or (
+        isinstance(value, ast.Attribute) and value.attr == "clock"
+    )
+
+
 def violations(source: str) -> list[str]:
     found: list[str] = []
     for node in ast.walk(ast.parse(source)):
@@ -17,6 +24,8 @@ def violations(source: str) -> list[str]:
         elif isinstance(node, ast.ImportFrom) and node.module == "time":
             found.append("from time import ...")
         elif isinstance(node, ast.Attribute):
+            if _is_our_clock(node.value):
+                continue
             if node.attr in FORBIDDEN_ATTRS or (
                 isinstance(node.value, ast.Name)
                 and node.value.id == "time"
@@ -41,3 +50,4 @@ def test_the_check_catches_violations():
     assert violations("from time import time")
     assert violations("import datetime\nd = datetime.date.today()")
     assert not violations("from datetime import UTC\nx = 1")
+    assert not violations("from app.utils import clock\nx = clock.now()")

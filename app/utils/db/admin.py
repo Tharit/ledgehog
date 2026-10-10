@@ -72,9 +72,7 @@ def create_database(cfg: Config, name: str, *, template: str | None = None) -> N
 def drop_database(cfg: Config, name: str) -> None:
     check_name(name)
     with connect(cfg) as conn:
-        conn.execute(
-            sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(sql.Identifier(name))
-        )
+        conn.execute(sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(sql.Identifier(name)))
 
 
 def rename_database(cfg: Config, old: str, new: str) -> None:
@@ -82,9 +80,7 @@ def rename_database(cfg: Config, old: str, new: str) -> None:
     check_name(new)
     with connect(cfg) as conn:
         conn.execute(
-            sql.SQL("ALTER DATABASE {} RENAME TO {}").format(
-                sql.Identifier(old), sql.Identifier(new)
-            )
+            sql.SQL("ALTER DATABASE {} RENAME TO {}").format(sql.Identifier(old), sql.Identifier(new))
         )
 
 
@@ -97,8 +93,7 @@ def list_databases(cfg: Config, prefixes: tuple[str, ...] = PREFIXES) -> list[Da
     """Every database on the server whose name has one of `prefixes`."""
     with connect(cfg) as conn:
         rows = conn.execute(
-            "SELECT d.datname, shobj_description(d.oid, 'pg_database') "
-            "FROM pg_database d ORDER BY d.datname"
+            "SELECT d.datname, shobj_description(d.oid, 'pg_database') FROM pg_database d ORDER BY d.datname"
         ).fetchall()
     out: list[DatabaseInfo] = []
     for name, comment in rows:

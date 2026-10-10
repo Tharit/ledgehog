@@ -112,8 +112,12 @@ def test_unreadable_secret_file_is_named(tmp_path: Path):
 
 def test_indexed_users():
     c = load(
-        USER_1_LOGIN="alice", USER_1_NAME="Alice", USER_1_PASSWORD="pw-a",
-        USER_2_LOGIN="bob", USER_2_NAME="Bob", USER_2_PASSWORD="pw-b",
+        USER_1_LOGIN="alice",
+        USER_1_NAME="Alice",
+        USER_1_PASSWORD="pw-a",
+        USER_2_LOGIN="bob",
+        USER_2_NAME="Bob",
+        USER_2_PASSWORD="pw-b",
     )
     assert [(u.login, u.name, u.password.reveal()) for u in c.users] == [
         ("alice", "Alice", "pw-a"),
@@ -145,8 +149,12 @@ def test_incomplete_or_gapped_user_groups_are_named(env, named):
 def test_duplicate_logins_rejected():
     with pytest.raises(ConfigError, match="USER_2_LOGIN"):
         load(
-            USER_1_LOGIN="a", USER_1_NAME="A", USER_1_PASSWORD="p",
-            USER_2_LOGIN="a", USER_2_NAME="B", USER_2_PASSWORD="q",
+            USER_1_LOGIN="a",
+            USER_1_NAME="A",
+            USER_1_PASSWORD="p",
+            USER_2_LOGIN="a",
+            USER_2_NAME="B",
+            USER_2_PASSWORD="q",
         )
 
 

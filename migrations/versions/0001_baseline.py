@@ -16,7 +16,7 @@ down_revision = None
 branch_labels = None
 depends_on = None
 
-SCHEMA_SQL = r'''
+SCHEMA_SQL = r"""
 -- =====================================================================
 -- Household ledger — v1 baseline schema (PostgreSQL 14+)
 --
@@ -1593,7 +1593,7 @@ SELECT t.id AS tag_id, t.name,
   JOIN ledger_entry_tag et ON et.tag_id = t.id
   JOIN ledger_entry e ON e.id = et.ledger_entry_id
  GROUP BY t.id, t.name;
-'''
+"""
 
 
 def upgrade() -> None:

@@ -54,9 +54,7 @@ def make_engine(cfg: Config, *, pool_size: int = 5, max_overflow: int = 5) -> En
         previous = dbapi_conn.autocommit
         dbapi_conn.autocommit = True
         try:
-            dbapi_conn.execute(
-                "SELECT set_config('ledger.max_rate_age', %s, false)", (max_rate_age,)
-            )
+            dbapi_conn.execute("SELECT set_config('ledger.max_rate_age', %s, false)", (max_rate_age,))
         finally:
             dbapi_conn.autocommit = previous
 

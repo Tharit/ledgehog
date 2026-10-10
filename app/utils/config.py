@@ -144,9 +144,7 @@ class _Reader:
         return None
 
     def users(self) -> tuple[UserConfig, ...]:
-        indexes = sorted(
-            {int(m.group(1)) for k in self.env if (m := _USER_VAR.match(k))}
-        )
+        indexes = sorted({int(m.group(1)) for k in self.env if (m := _USER_VAR.match(k))})
         if indexes != list(range(1, len(indexes) + 1)):
             expected = next(i for i in range(1, len(indexes) + 2) if i not in indexes)
             raise ConfigError(f"USER_{expected}", "user groups must be numbered from 1 without gaps")

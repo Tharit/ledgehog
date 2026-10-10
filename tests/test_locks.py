@@ -9,7 +9,6 @@ import pytest
 from sqlalchemy import Engine, text
 
 from app.utils.db import locks
-from app.utils.db.engine import make_engine
 
 
 def _try_lock_timeout(engine: Engine, fn: Callable) -> bool:

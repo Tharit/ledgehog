@@ -13,9 +13,7 @@ RUN = "from importlinter.cli import lint_imports_command; lint_imports_command()
 
 
 def lint(cwd: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [sys.executable, "-c", RUN], cwd=cwd, capture_output=True, text=True, timeout=120
-    )
+    return subprocess.run([sys.executable, "-c", RUN], cwd=cwd, capture_output=True, text=True, timeout=120)
 
 
 def test_contracts_pass_on_the_real_tree():

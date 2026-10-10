@@ -10,13 +10,10 @@ protect and are released by its commit or rollback.
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from typing import TypeVar
 
 import psycopg.errors
 from sqlalchemy import Connection, text
 from sqlalchemy.exc import DBAPIError
-
-T = TypeVar("T")
 
 _NS_SHIFT = 56
 _SETTLE_KEY = 1 << _NS_SHIFT
@@ -53,9 +50,7 @@ def lock_accounts(conn: Connection, ids: Iterable[int]) -> list[int]:
         if not 0 < account_id <= _MAX_ID:
             raise ValueError(f"invalid account id: {account_id}")
     for account_id in ordered:
-        conn.execute(
-            text("SELECT pg_advisory_xact_lock(:k)"), {"k": _ACCOUNT_NS | account_id}
-        )
+        conn.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": _ACCOUNT_NS | account_id})
     return ordered
 
 
@@ -79,7 +74,7 @@ def _is_deadlock(exc: BaseException) -> bool:
     return isinstance(exc, DBAPIError) and isinstance(exc.orig, psycopg.errors.DeadlockDetected)
 
 
-def retry_on_deadlock(fn: Callable[[], T]) -> T:
+def retry_on_deadlock[T](fn: Callable[[], T]) -> T:
     """Run a whole write transaction; if PostgreSQL aborts it as a deadlock victim, run it once
     more, holding the same payload. A second deadlock is a named `WriteConflict`."""
     try:

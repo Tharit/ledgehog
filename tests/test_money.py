@@ -45,7 +45,7 @@ def test_cross_currency_arithmetic_raises():
 
 def test_cross_currency_comparison_raises_but_equality_is_false():
     with pytest.raises(CurrencyMismatch):
-        Money(1, "EUR") < Money(2, "USD")
+        Money(1, "EUR") < Money(2, "USD")  # noqa: B015
     assert Money(1, "EUR") != Money(1, "USD")
 
 
@@ -85,8 +85,15 @@ def test_parse_rejects_text_with_excess_or_bad_precision(text, exp):
 
 @pytest.mark.parametrize(
     ("minor", "exp", "text"),
-    [(1234, 2, "12.34"), (-1234, 2, "-12.34"), (5, 2, "0.05"), (-5, 2, "-0.05"),
-     (500, 0, "500"), (-1, 3, "-0.001"), (0, 2, "0.00")],
+    [
+        (1234, 2, "12.34"),
+        (-1234, 2, "-12.34"),
+        (5, 2, "0.05"),
+        (-5, 2, "-0.05"),
+        (500, 0, "500"),
+        (-1, 3, "-0.001"),
+        (0, 2, "0.00"),
+    ],
 )
 def test_format_round_trips_with_parse(minor, exp, text):
     m = Money(minor, "EUR")
