@@ -1,8 +1,9 @@
 samples
-settings.env
 .venv/
 __pycache__/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
 .uv-cache/
+test.env
+.claude/

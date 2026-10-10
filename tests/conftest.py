@@ -1,7 +1,7 @@
 """Test harness (architecture §8, §9).
 
 Real PostgreSQL only. The connection settings come from the POSTGRES_*
-environment (`. ./settings.env`); the database name never does: every run makes
+environment (`. ./test.env`); the database name never does: every run makes
 its own `test_<uuid>` database, cloned from a template built once from the
 migration chain, and drops it in a finalizer that also runs on failure.
 
@@ -45,7 +45,7 @@ def _test_config(database: str) -> Config:
         if needed not in env and f"{needed}_FILE" not in env:
             pytest.fail(
                 f"{needed} is not set: run the DB tests with the settings sourced "
-                "(`. ./settings.env && uv run pytest`)",
+                "(`. ./test.env && uv run pytest`)",
                 pytrace=False,
             )
     return Config.from_env(env)

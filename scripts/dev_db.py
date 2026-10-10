@@ -1,8 +1,8 @@
 """Per-context development database `dev_<worktree>` (architecture §9).
 
-    . ./settings.env && uv run python scripts/dev_db.py name     # prints dev_<worktree>
-    . ./settings.env && uv run python scripts/dev_db.py create   # creates it and runs migrations
-    . ./settings.env && uv run python scripts/dev_db.py drop
+    . ./test.env && uv run python scripts/dev_db.py name     # prints dev_<worktree>
+    . ./test.env && uv run python scripts/dev_db.py create   # creates it and runs migrations
+    . ./test.env && uv run python scripts/dev_db.py drop
 
 Then point the app at it: POSTGRES_DB=$(uv run python scripts/dev_db.py name).
 """

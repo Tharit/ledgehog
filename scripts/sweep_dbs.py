@@ -1,6 +1,6 @@
 """Drop leaked disposable databases (`test_*`, `tpl_*`, `dev_*`) older than a day.
 
-    . ./settings.env && uv run python scripts/sweep_dbs.py [--hours 24] [--dry-run]
+    . ./test.env && uv run python scripts/sweep_dbs.py [--hours 24] [--dry-run]
 
 Reads POSTGRES_* from the environment; connects to POSTGRES_ADMIN_DB (default `postgres`).
 """
