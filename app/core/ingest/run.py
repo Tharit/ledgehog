@@ -13,6 +13,7 @@ Pure `core`: no framework imports; the engine is handed in.
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
@@ -26,6 +27,8 @@ from app.core.ingest.identity import ContentHash, SourceId, assign_ordinals, can
 from app.core.plugins.importer import IncomingRow
 from app.core.settle.settle import SettleResult, settle
 from app.utils.db.locks import lock_accounts, lock_settle_shared, retry_on_deadlock
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -93,6 +96,14 @@ def recompute_derived(conn: Connection, account_id: int) -> None:
     """Step 4 hook: derived entries and balance records of the account are recomputed here."""
 
 
+def _fail_run_quietly(engine: Engine, run_id: int, error: str) -> None:
+    """`fail_run` that never raises: the caller is about to re-raise the original error."""
+    try:
+        fail_run(engine, run_id, error)
+    except Exception:
+        log.exception("could not mark run %s failed", run_id)
+
+
 def ingest_delivery(
     engine: Engine,
     run_id: int,
@@ -116,8 +127,8 @@ def ingest_delivery(
         if filtered < 0:
             raise ValueError(f"filtered must not be negative, got {filtered}")
         counts = retry_on_deadlock(lambda: _write_delivery(engine, run_id, rows, covered_through, filtered))
-    except Exception as exc:
-        fail_run(engine, run_id, f"{type(exc).__name__}: {exc}")
+    except BaseException as exc:  # cancellation and interrupts too: the run must not stay `running`
+        _fail_run_quietly(engine, run_id, f"{type(exc).__name__}: {exc}")
         raise
     settled = settle(engine)  # never raises: a failure comes back on the result (architecture §5.2)
     return RunResult(

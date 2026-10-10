@@ -177,3 +177,32 @@ def test_two_concurrent_deliveries_for_one_run_let_exactly_one_win(env: Env) -> 
     assert stored.status == "ok" and stored.covered_through == THROUGH and stored.error_text is None
     assert stored.stats["filtered"] == wins[0].filtered and stored.stats["inserted"] == 1
     assert env.count("source_transaction") == 1
+
+
+def test_a_failing_fail_run_does_not_mask_the_original_error(
+    env: Env, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    def broken(engine: Any, run_id: int, error: str) -> None:
+        raise RuntimeError("cannot record the failure")
+
+    monkeypatch.setattr(run_module, "fail_run", broken)
+    run_id = start_run(env.engine, env.account, "transactions", importer="csv")
+    with pytest.raises(ContractViolation):
+        ingest_delivery(env.engine, run_id, [row(source_id="a"), row(source_id="a")], covered_through=THROUGH)
+    assert "cannot record the failure" in caplog.text
+    assert env.count("source_transaction") == 0
+
+
+def test_an_interrupt_during_the_write_rolls_back_marks_the_run_failed_and_propagates(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def interrupted(conn: Any, source_id: int) -> int:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(run_module, "insert_entry", interrupted)
+    run_id = start_run(env.engine, env.account, "transactions", importer="csv")
+    with pytest.raises(KeyboardInterrupt):
+        ingest_delivery(env.engine, run_id, [row(-1, source_id="a")], covered_through=THROUGH)
+    assert env.count("source_transaction") == 0
+    r = env.run_row(run_id)
+    assert r.status == "failed" and r.finished_at is not None and "KeyboardInterrupt" in r.error_text
