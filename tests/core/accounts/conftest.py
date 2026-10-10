@@ -30,7 +30,9 @@ class Db:
     def assert_checks_clean(self) -> None:
         views = [
             r[0]
-            for r in self.q("SELECT table_name FROM information_schema.views WHERE table_name LIKE 'v_check_%'")
+            for r in self.q(
+                "SELECT table_name FROM information_schema.views WHERE table_name LIKE 'v_check_%'"
+            )
         ]
         assert views, "no integrity views found"
         for v in views:

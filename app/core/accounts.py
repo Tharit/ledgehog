@@ -186,11 +186,15 @@ def update_account(
                 return
             assignments = ", ".join(f"{col} = :{col}" for col in sets)
             try:
-                conn.execute(text(f"UPDATE account SET {assignments} WHERE id = :id"), {**sets, "id": account_id})  # noqa: S608
+                conn.execute(
+                    text(f"UPDATE account SET {assignments} WHERE id = :id"), {**sets, "id": account_id}
+                )  # noqa: S608
             except DBAPIError as exc:
                 if _constraint(exc) == "ux_account_external_ref":
                     raise DuplicateExternalRef(str(sets["external_ref"])) from exc
-                if isinstance(exc.orig, psycopg.errors.RaiseException) and "investment account" in str(exc.orig):
+                if isinstance(exc.orig, psycopg.errors.RaiseException) and "investment account" in str(
+                    exc.orig
+                ):
                     raise KindClassChange(account_id, str(kind)) from exc
                 raise
 
@@ -206,7 +210,9 @@ def delete_account(engine: Engine, account_id: int) -> SettleResult:
             _begin(conn, account_id)
             held = {
                 label: int(
-                    conn.execute(text(f"SELECT count(*) FROM {table} WHERE account_id = :i"), {"i": account_id}).scalar_one()  # noqa: S608
+                    conn.execute(
+                        text(f"SELECT count(*) FROM {table} WHERE account_id = :i"), {"i": account_id}
+                    ).scalar_one()  # noqa: S608
                 )
                 for label, table in (
                     ("entries", "ledger_entry"),
@@ -229,7 +235,9 @@ def _set_closed(engine: Engine, account_id: int, closed_on: date | None) -> Sett
     def run() -> None:
         with engine.begin() as conn:
             _begin(conn, account_id)
-            conn.execute(text("UPDATE account SET closed_on = :d WHERE id = :i"), {"d": closed_on, "i": account_id})
+            conn.execute(
+                text("UPDATE account SET closed_on = :d WHERE id = :i"), {"d": closed_on, "i": account_id}
+            )
 
     retry_on_deadlock(run)
     return settle(engine)

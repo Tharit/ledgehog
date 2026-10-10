@@ -30,7 +30,6 @@ from app.utils.db.locks import lock_accounts, lock_settle_exclusive
 from tests.core.accounts.conftest import Db
 from tests.invariants.helpers import make_entry, make_run, make_source
 
-
 # ---- create ---------------------------------------------------------------------------------
 
 
@@ -214,7 +213,9 @@ def test_delete_refused_names_a_duplicate_only_source_row(db: Db) -> None:
         original = make_source(c, aid, run_id=run)
         make_entry(c, original)
         dup = make_source(c, aid, run_id=run)
-        c.execute(text("UPDATE source_transaction SET duplicate_of = :o WHERE id = :d"), {"o": original, "d": dup})
+        c.execute(
+            text("UPDATE source_transaction SET duplicate_of = :o WHERE id = :d"), {"o": original, "d": dup}
+        )
     with pytest.raises(AccountNotEmpty):
         delete_account(db.engine, aid)
 
@@ -275,7 +276,13 @@ def test_list_accounts_reports_the_facts(db: Db) -> None:
         order = [v.id for v in list_accounts(conn)]
     assert order == [open_, closed]  # open first, closed after
     v = views[open_]
-    assert (v.name, v.kind, v.currency, v.external_ref, v.closed_on) == ("Giro", "checking", "EUR", "de1", None)
+    assert (v.name, v.kind, v.currency, v.external_ref, v.closed_on) == (
+        "Giro",
+        "checking",
+        "EUR",
+        "de1",
+        None,
+    )
     assert v.synced is True and v.synced_through == date(2026, 3, 5) and v.last_data_on == date(2026, 3, 5)
     assert v.unexplained_difference is None
     assert v.anchored is False  # entries, but no counting balance record
@@ -303,14 +310,16 @@ def test_list_accounts_unexplained_difference(db: Db) -> None:
         for run, on, bal in ((r1, "2026-03-01", 100), (r2, "2026-03-02", 150)):
             rec = c.execute(
                 text(
-                    "INSERT INTO balance_record (account_id, kind, import_run_id, balance, currency, balance_on)"
+                    "INSERT INTO balance_record"
+                    " (account_id, kind, import_run_id, balance, currency, balance_on)"
                     " VALUES (:a, 'reported', :r, :b, 'EUR', :o) RETURNING id"
                 ),
                 {"a": aid, "r": run, "b": bal, "o": on},
             ).scalar_one()
             c.execute(
                 text(
-                    "INSERT INTO ledger_entry (account_id, currency, booked_on, amount, type, balance_record_id)"
+                    "INSERT INTO ledger_entry"
+                    " (account_id, currency, booked_on, amount, type, balance_record_id)"
                     " VALUES (:a, 'EUR', :o, :amt, 'reconciliation', :rec)"
                 ),
                 {"a": aid, "o": on, "amt": 20 if bal == 100 else 30, "rec": rec},
@@ -324,16 +333,20 @@ def test_list_accounts_unexplained_difference(db: Db) -> None:
 
 _SETTLE_CLASS = 1 << 24
 _ACCOUNT_CLASS = 2 << 24
+# pg_locks spans the cluster: other databases' locks (concurrent test runs) must not count
+_HERE = "database = (SELECT oid FROM pg_database WHERE datname = current_database())"
 
 
 def _waiters(db: Db) -> int:
-    return int(db.one("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted")[0])
+    return int(
+        db.one(f"SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted AND {_HERE}")[0]
+    )
 
 
 def _held_by_others(db: Db, holder_pid: int, klass: int, mode: str) -> int:
     return int(
         db.one(
-            "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND granted AND pid <> :p"
+            f"SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND granted AND pid <> :p AND {_HERE}"
             " AND classid = :c AND mode = :m",
             p=holder_pid,
             c=klass,
@@ -350,7 +363,9 @@ def _until(cond: Callable[[], bool], what: str, timeout: float = 8.0) -> None:
         time.sleep(0.02)
 
 
-def _hold_and_run(db: Db, take: Callable[[Any], None], act: Callable[[], Any], then: Callable[[int], None]) -> None:
+def _hold_and_run(
+    db: Db, take: Callable[[Any], None], act: Callable[[], Any], then: Callable[[int], None]
+) -> None:
     done: list[Any] = []
     with db.engine.connect() as holder:
         with holder.begin():
