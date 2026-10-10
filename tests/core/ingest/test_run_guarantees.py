@@ -10,8 +10,9 @@ from typing import Any
 import pytest
 from sqlalchemy import text
 
+from app.core.domain.errors import ContractViolation
 from app.core.ingest import run as run_module
-from app.core.ingest.run import DuplicateSourceIdError, ingest_delivery, start_run
+from app.core.ingest.run import ingest_delivery, start_run
 from app.core.settle.settle import SettleResult
 from app.utils.db.locks import lock_accounts
 from tests.core.ingest.conftest import THROUGH, Env, row
@@ -35,7 +36,7 @@ def test_late_row_failure_leaves_nothing_and_run_failed(env: Env) -> None:
 
 def test_duplicate_source_id_in_one_delivery_fails_the_run(env: Env) -> None:
     run_id = start_run(env.engine, env.account, "transactions", importer="csv")
-    with pytest.raises(DuplicateSourceIdError):
+    with pytest.raises(ContractViolation):
         ingest_delivery(
             env.engine, run_id, [row(-1, source_id="a"), row(-2, source_id="a")], covered_through=THROUGH
         )
@@ -138,6 +139,6 @@ def test_failed_delivery_does_not_settle(env: Env, monkeypatch: pytest.MonkeyPat
     called: list[int] = []
     monkeypatch.setattr(run_module, "settle", lambda engine: called.append(1) or SettleResult())
     run_id = start_run(env.engine, env.account, "transactions", importer="csv")
-    with pytest.raises(DuplicateSourceIdError):
+    with pytest.raises(ContractViolation):
         ingest_delivery(env.engine, run_id, [row(source_id="a"), row(source_id="a")], covered_through=THROUGH)
     assert called == []

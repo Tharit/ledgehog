@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 
+from app.core.domain.errors import ContractViolation
 from app.core.ingest.run import fail_run, ingest_delivery, start_run
+from app.core.plugins.importer import IncomingRow
 from tests.core.ingest.conftest import THROUGH, Env, row
 
 
@@ -48,18 +52,70 @@ def test_content_hash_stored_when_no_source_id(env: Env) -> None:
     assert rows[1].source_id == "s1" and rows[1].content_hash is None
 
 
-def test_currency_mismatch_refused_counted_run_still_ok(env: Env) -> None:
-    res = env.deliver([row(-500, currency="USD", source_id="u")])
-    assert (res.refused_currency, res.inserted) == (1, 0)
-    assert env.count("source_transaction") == 0
-    r = env.run_row(res.run_id)
-    assert r.status == "ok" and r.stats["refused_currency"] == 1
+def _violates(env: Env, rows: list[IncomingRow], rule: str, *, covered_through: date | None = THROUGH) -> str:
+    """Deliver `rows`: the run fails naming `rule`, and nothing is written."""
+    run_id = start_run(env.engine, env.account, "transactions", importer="csv")
+    with pytest.raises(ContractViolation) as caught:
+        ingest_delivery(env.engine, run_id, rows, covered_through=covered_through)
+    assert caught.value.rule == rule
+    r = env.run_row(run_id)
+    assert r.status == "failed" and r.covered_through is None and r.finished_at is not None
+    assert rule in r.error_text
+    for table in ("source_transaction", "ledger_entry"):
+        assert env.count(table) == 0
+    return str(caught.value)
 
 
-def test_zero_amount_counted_and_skipped(env: Env) -> None:
-    res = env.deliver([row(0, source_id="z"), row(-5, source_id="y")])
-    assert (res.zero_amount, res.inserted) == (1, 1)
-    assert env.count("source_transaction") == 1
+def test_currency_mismatch_fails_the_run(env: Env) -> None:
+    msg = _violates(
+        env, [row(-5, source_id="ok"), row(-500, currency="USD", source_id="u")], "currency_mismatch"
+    )
+    assert "row 1" in msg and "USD" in msg and "EUR" in msg
+
+
+def test_zero_amount_fails_the_run(env: Env) -> None:
+    msg = _violates(env, [row(-5, source_id="y"), row(0, source_id="z")], "zero_amount")
+    assert "row 1" in msg
+
+
+def test_repeated_source_id_fails_the_run(env: Env) -> None:
+    msg = _violates(env, [row(-1, source_id="a"), row(-2, source_id="a")], "repeated_source_id")
+    assert "row 1" in msg and "row 0" in msg  # the repeat and its first occurrence; the value is not echoed
+    assert "'a'" not in msg and '"a"' not in msg
+
+
+def test_no_coverage_fails_the_run(env: Env) -> None:
+    _violates(env, [row(source_id="a")], "no_coverage", covered_through=None)
+
+
+def test_a_violating_row_at_the_end_leaves_nothing(env: Env) -> None:
+    rows = [row(-i, source_id=f"s{i}") for i in range(1, 30)] + [row(0, source_id="last")]
+    _violates(env, rows, "zero_amount")
+
+
+def test_violation_row_index_counts_the_whole_delivery(env: Env) -> None:
+    msg = _violates(env, [row(-1, source_id="a"), row(-2), row(-3, currency="GBP")], "currency_mismatch")
+    assert "row 2" in msg
+
+
+def test_filtered_is_stored_and_returned(env: Env) -> None:
+    res = env.deliver([row(-5, source_id="y")], filtered=3)
+    assert res.filtered == 3
+    assert env.run_row(res.run_id).stats["filtered"] == 3
+    assert "refused_currency" not in env.run_row(res.run_id).stats
+    assert "zero_amount" not in env.run_row(res.run_id).stats
+
+
+def test_filtered_defaults_to_zero(env: Env) -> None:
+    res = env.deliver([row(-5, source_id="y")])
+    assert res.filtered == 0 and env.run_row(res.run_id).stats["filtered"] == 0
+
+
+def test_negative_filtered_is_rejected(env: Env) -> None:
+    run_id = start_run(env.engine, env.account, "transactions", importer="csv")
+    with pytest.raises(ValueError, match="filtered"):
+        ingest_delivery(env.engine, run_id, [row(source_id="a")], covered_through=THROUGH, filtered=-1)
+    assert env.run_row(run_id).status == "failed" and env.count("source_transaction") == 0
 
 
 def test_missing_covered_through_fails_the_run(env: Env) -> None:

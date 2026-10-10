@@ -14,6 +14,23 @@ class VersionConflict(Exception):
         super().__init__(f"entries changed since they were read: {list(entry_ids)}")
 
 
+class IngestError(Exception):
+    """A delivery or removal that cannot be written; nothing is kept (a run ends `failed`)."""
+
+
+class ContractViolation(IngestError):
+    """The importer delivered what its contract forbids (spec §5.1); the run fails.
+
+    Ingest never repairs, skips or counts such a record. `rule` is a stable identifier
+    (`currency_mismatch`, `zero_amount`, `repeated_source_id`, `no_coverage`); the message
+    names the row index and field, and quotes only amounts and currency codes.
+    """
+
+    def __init__(self, rule: str, message: str) -> None:
+        self.rule = rule
+        super().__init__(f"contract violation [{rule}]: {message}")
+
+
 class DuplicateError(Exception):
     """Marking or clearing a duplicate was refused; the message states the rule. Nothing was written."""
 

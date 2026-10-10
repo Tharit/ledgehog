@@ -43,10 +43,11 @@ class Env:
         importer: str = "csv",
         account: int | None = None,
         covered_through: date | None = THROUGH,
+        filtered: int = 0,
     ) -> RunResult:
         acct = self.account if account is None else account
         run_id = start_run(self.engine, acct, "transactions", importer=importer)
-        return ingest_delivery(self.engine, run_id, rows, covered_through=covered_through)
+        return ingest_delivery(self.engine, run_id, rows, covered_through=covered_through, filtered=filtered)
 
     def q(self, sql: str, **params: Any) -> list[Any]:
         with self.engine.connect() as conn:

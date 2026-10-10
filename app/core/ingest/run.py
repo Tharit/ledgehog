@@ -20,19 +20,12 @@ from typing import Any
 
 from sqlalchemy import Connection, Engine, text
 
+from app.core.domain.errors import ContractViolation, IngestError
 from app.core.ingest.entries import insert_entry
 from app.core.ingest.identity import ContentHash, SourceId, assign_ordinals, canonical_text, identity_of
 from app.core.plugins.importer import IncomingRow
 from app.core.settle.settle import SettleResult, settle
 from app.utils.db.locks import lock_accounts, lock_settle_shared, retry_on_deadlock
-
-
-class IngestError(Exception):
-    """A delivery that cannot be written; the run ends `failed` and nothing is kept."""
-
-
-class DuplicateSourceIdError(IngestError):
-    """Two rows of one delivery carry the same `source_id` (they would be one identity)."""
 
 
 @dataclass(frozen=True)
@@ -42,8 +35,7 @@ class RunResult:
     # (new source_transaction id, id of the existing row it duplicates), delivery order
     duplicates: tuple[tuple[int, int], ...]
     skipped_by_identity: int
-    refused_currency: int
-    zero_amount: int
+    filtered: int  # rows the importer dropped before delivery (e.g. zero bookings), as reported
     settle: SettleResult
 
 
@@ -52,8 +44,6 @@ class _Counts:
     inserted: int
     duplicates: tuple[tuple[int, int], ...]
     skipped_by_identity: int
-    refused_currency: int
-    zero_amount: int
 
 
 def start_run(
@@ -110,15 +100,22 @@ def ingest_delivery(
     *,
     reported_balance: int | None = None,
     covered_through: date | None = None,
+    filtered: int = 0,
 ) -> RunResult:
     """Write one delivery for the run's account, atomically, then settle.
 
     On any failure everything the delivery wrote is rolled back, the run ends
-    `failed` and the error is re-raised. `reported_balance` is step 4 and ignored.
+    `failed` and the error is re-raised. A record that breaks the importer's contract
+    (wrong currency, zero amount, a repeated `source_id`, no coverage) is never repaired,
+    skipped or counted: it raises `ContractViolation` naming the rule. `filtered` is the
+    importer's own count of rows it dropped before delivery; it is stored in the run's
+    statistics and returned. `reported_balance` is step 4 and ignored.
     """
     del reported_balance  # balance records and reconciliation are step 4
     try:
-        counts = retry_on_deadlock(lambda: _write_delivery(engine, run_id, rows, covered_through))
+        if filtered < 0:
+            raise ValueError(f"filtered must not be negative, got {filtered}")
+        counts = retry_on_deadlock(lambda: _write_delivery(engine, run_id, rows, covered_through, filtered))
     except Exception as exc:
         fail_run(engine, run_id, f"{type(exc).__name__}: {exc}")
         raise
@@ -131,14 +128,13 @@ def ingest_delivery(
         inserted=counts.inserted,
         duplicates=counts.duplicates,
         skipped_by_identity=counts.skipped_by_identity,
-        refused_currency=counts.refused_currency,
-        zero_amount=counts.zero_amount,
+        filtered=filtered,
         settle=settled,
     )
 
 
 def _write_delivery(
-    engine: Engine, run_id: int, rows: Sequence[IncomingRow], covered_through: date | None
+    engine: Engine, run_id: int, rows: Sequence[IncomingRow], covered_through: date | None, filtered: int
 ) -> _Counts:
     with engine.begin() as conn:
         lock_settle_shared(conn)
@@ -155,32 +151,26 @@ def _write_delivery(
         if run.status != "running":
             raise IngestError(f"run {run_id} is {run.status}, not running")
         if covered_through is None:
-            raise IngestError("covered_through is required: a successful run says how far it covers")
+            raise ContractViolation(
+                "no_coverage", "covered_through is required: a successful run says how far it covers"
+            )
         currency: str = conn.execute(
             text("SELECT currency FROM account WHERE id = :i"), {"i": account_id}
         ).scalar_one()
 
-        source_ids = [r.source_id for r in rows if r.source_id is not None]
-        if len(set(source_ids)) != len(source_ids):
-            raise DuplicateSourceIdError("a source_id occurs twice in one delivery")
+        _check_contract(rows, currency)
 
         # Ordinals over the WHOLE delivery, before any filtering (spec §5.2).
         ordinals = assign_ordinals(rows)
-        refused = zero = 0
         # (row, identity column, identity value) of every row that takes part
         live: list[tuple[IncomingRow, str, str]] = []
         for row, ordinal in zip(rows, ordinals, strict=True):
-            if row.currency != currency:
-                refused += 1
-            elif row.amount_minor == 0:
-                zero += 1
+            ident = identity_of(row, ordinal)
+            if isinstance(ident, SourceId):
+                live.append((row, "source_id", ident.value))
             else:
-                ident = identity_of(row, ordinal)
-                if isinstance(ident, SourceId):
-                    live.append((row, "source_id", ident.value))
-                else:
-                    assert isinstance(ident, ContentHash)
-                    live.append((row, "content_hash", ident.hex()))
+                assert isinstance(ident, ContentHash)
+                live.append((row, "content_hash", ident.hex()))
 
         used, skipped, remaining = _identity_step(conn, account_id, live)
         pairing = _amount_step(conn, account_id, remaining, used)
@@ -202,8 +192,7 @@ def _write_delivery(
             "inserted": inserted,
             "skipped_by_identity": skipped,
             "inserted_as_duplicates": [{"id": n, "duplicate_of": o} for n, o in duplicates],
-            "refused_currency": refused,
-            "zero_amount": zero,
+            "filtered": filtered,
         }
         conn.execute(
             text(
@@ -212,7 +201,26 @@ def _write_delivery(
             ),
             {"id": run_id, "through": covered_through, "stats": json.dumps(stats)},
         )
-        return _Counts(inserted, tuple(duplicates), skipped, refused, zero)
+        return _Counts(inserted, tuple(duplicates), skipped)
+
+
+def _check_contract(rows: Sequence[IncomingRow], currency: str) -> None:
+    """The importer's contract (spec §5.1), checked for every row before anything is written."""
+    first_seen: dict[str, int] = {}
+    for i, row in enumerate(rows):
+        if row.currency != currency:
+            raise ContractViolation(
+                "currency_mismatch", f"row {i} is in {row.currency}, the account is in {currency}"
+            )
+        if row.amount_minor == 0:
+            raise ContractViolation("zero_amount", f"row {i} has amount 0: a zero booking is not emitted")
+        if row.source_id is not None:
+            if row.source_id in first_seen:
+                raise ContractViolation(
+                    "repeated_source_id",
+                    f"row {i} repeats the source_id of row {first_seen[row.source_id]}",
+                )
+            first_seen[row.source_id] = i
 
 
 Live = tuple[IncomingRow, str, str]
@@ -328,4 +336,3 @@ def _insert_source(
         ),
         params,
     ).scalar_one_or_none()
-
