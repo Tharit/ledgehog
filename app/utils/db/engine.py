@@ -8,7 +8,6 @@ bug (architecture §5.6).
 
 from __future__ import annotations
 
-from datetime import timedelta
 from typing import Any
 
 import psycopg
@@ -36,7 +35,7 @@ def database_url(cfg: Config) -> URL:
 
 
 def max_rate_age_setting(cfg: Config) -> str:
-    return f"{timedelta(days=cfg.max_rate_age_days).days} days"
+    return f"{cfg.max_rate_age_days} days"
 
 
 def make_engine(cfg: Config, *, pool_size: int = 5, max_overflow: int = 5) -> Engine:
