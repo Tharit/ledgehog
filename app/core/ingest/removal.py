@@ -59,18 +59,26 @@ def entry_scope(conn: Connection, entry_ids: Sequence[int]) -> tuple[list[int], 
     return removed, [int(p) for p in partners]
 
 
-def remove_entries(conn: Connection, entry_ids: Sequence[int]) -> Affected:
+def remove_entries(
+    conn: Connection, entry_ids: Sequence[int], *, scope: tuple[list[int], list[int]] | None = None
+) -> Affected:
     """Apply the removal routine to `entry_ids` and delete them, in the caller's transaction.
+
+    `scope` is an `entry_scope` result the caller already computed for these ids; passing it
+    means the caller has also locked those ledger_entry rows (ascending), so neither is repeated.
 
     Preconditions: settle lock shared and the affected accounts' locks are held. The caller
     must also leave every source row it emptied a duplicate or deleted before it commits (see
     the module docstring). Raises `IngestError` for unknown or derived entry ids.
     """
-    removed, partners = entry_scope(conn, entry_ids)
+    if scope is None:
+        removed, partners = entry_scope(conn, entry_ids)
+        # Row locks in ascending id order, removed and partners together.
+        lock_rows(conn, "ledger_entry", [*removed, *partners])
+    else:
+        removed, partners = scope
     if not removed:
         return Affected()
-    # Row locks in ascending id order, removed and partners together.
-    lock_rows(conn, "ledger_entry", [*removed, *partners])
     rows = conn.execute(
         text(
             "SELECT id, account_id, document_id, source_transaction_id FROM ledger_entry"

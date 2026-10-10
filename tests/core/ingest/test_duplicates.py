@@ -23,7 +23,7 @@ from app.core.domain.errors import (
 from app.core.ingest import duplicates
 from app.core.ingest.duplicates import clear_duplicate, mark_duplicate
 from app.core.settle.settle import SettleResult
-from app.utils.db.locks import lock_accounts, lock_settle_exclusive
+from app.utils.db.locks import WriteConflict, lock_accounts, lock_settle_exclusive
 from tests.core.ingest.conftest import Env, row
 from tests.core.ingest.dup_helpers import DAY, Ledger, pair_key
 from tests.invariants.helpers import make_entry, make_source, pair
@@ -395,3 +395,58 @@ def test_lock_order_settle_shared_then_account(ledger: Ledger, op: str) -> None:
             assert _held_by_others(ledger, pid, _ACCOUNT_CLASS, "ExclusiveLock") == 0
     thread.join(timeout=15)
     assert not thread.is_alive() and len(done) == 1
+
+
+# ---- partner accounts ----------------------------------------------------------------------
+
+
+def _blocked_until_released(ledger: Ledger, account: int, act: Callable[[], Any]) -> Any:
+    """Run `act` while another connection holds `account`'s lock: it must wait, then finish."""
+    done: list[Any] = []
+    with ledger.engine.connect() as holder:
+        with holder.begin():
+            lock_accounts(holder, [account])
+            thread = threading.Thread(target=lambda: done.append(act()))
+            thread.start()
+            _until(lambda: _waiters(ledger) >= 1 or bool(done), "the write to wait for the account lock")
+            assert thread.is_alive() and not done, "the write did not wait for the partner's account lock"
+    thread.join(timeout=15)
+    assert not thread.is_alive() and len(done) == 1
+    return done[0]
+
+
+def test_mark_waits_for_the_lock_of_a_transfer_partners_account(ledger: Ledger) -> None:
+    a_src, _, b_src_unused, c_src = _pair_to_mark(ledger)
+    result = _blocked_until_released(
+        ledger, ledger.savings, lambda: mark_duplicate(ledger.engine, a_src, c_src)
+    )
+    assert ledger.dup_of(a_src) == c_src and result.affected.partner_entry_ids == (b_src_unused,)
+    ledger.assert_checks_clean()
+
+
+def test_a_partner_account_found_only_under_the_locks_extends_the_lock_set_and_retries(
+    ledger: Ledger, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    a_src, _, _, c_src = _pair_to_mark(ledger)
+    real = duplicates._accounts_of_entries
+    calls: list[int] = []
+
+    def stale_first(conn: Any, entry_ids: Any) -> set[int]:
+        calls.append(1)
+        return set() if len(calls) == 1 else real(conn, entry_ids)
+
+    monkeypatch.setattr(duplicates, "_accounts_of_entries", stale_first)
+    _blocked_until_released(ledger, ledger.savings, lambda: mark_duplicate(ledger.engine, a_src, c_src))
+    assert ledger.dup_of(a_src) == c_src and len(calls) >= 3
+
+
+def test_an_ever_moving_partner_set_ends_in_write_conflict_and_writes_nothing(
+    ledger: Ledger, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    a_src, _, _, c_src = _pair_to_mark(ledger)
+    n = iter(range(100_000, 200_000))
+    monkeypatch.setattr(duplicates, "_accounts_of_entries", lambda conn, ids: {next(n)})
+    before = _snapshot(ledger)
+    with pytest.raises(WriteConflict):
+        mark_duplicate(ledger.engine, a_src, c_src)
+    _nothing_written(ledger, before)

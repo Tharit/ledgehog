@@ -8,7 +8,7 @@ failure is reported on the result, never raised into the committed write.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -28,7 +28,7 @@ from app.core.ingest.entries import insert_entry
 from app.core.ingest.removal import Affected, entry_scope, remove_entries
 from app.core.ingest.run import recompute_derived
 from app.core.settle.settle import SettleResult, settle
-from app.utils.db.locks import lock_accounts, lock_rows, lock_settle_shared, retry_on_deadlock
+from app.utils.db.locks import WriteConflict, lock_accounts, lock_rows, lock_settle_shared, retry_on_deadlock
 
 
 @dataclass(frozen=True)
@@ -76,15 +76,34 @@ def _settle(engine: Engine) -> SettleResult:
         return SettleResult(error=f"{type(exc).__name__}: {exc}")
 
 
-def _begin(conn: Connection, *row_ids: int) -> dict[int, Any]:
-    """Lock in the fixed order and load the rows: settle shared, the account, the rows ascending."""
+class _AccountsMissing(Exception):
+    """The partner set involved accounts that were not locked; retry with them added."""
+
+    def __init__(self, accounts: set[int]) -> None:
+        super().__init__("accounts to lock: " + ", ".join(map(str, sorted(accounts))))
+        self.accounts = accounts
+
+
+_LOCK_ROUNDS = 3
+
+
+def _begin(
+    conn: Connection, *row_ids: int, extra_accounts: Iterable[int] = (), partners_of: int | None = None
+) -> tuple[dict[int, Any], set[int]]:
+    """Lock in the fixed order and load the rows (with the accounts locked): settle shared, the accounts ascending (the
+    first row's, `extra_accounts`, and the accounts of the transfer partners of `partners_of`'s
+    entries, read before locking), the rows ascending."""
     lock_settle_shared(conn)
     account = conn.execute(
         text("SELECT account_id FROM source_transaction WHERE id = :i"), {"i": row_ids[0]}
     ).scalar_one_or_none()
     if account is None:
         raise DuplicateRowMissing(row_ids[0])
-    lock_accounts(conn, [int(account)])
+    accounts = {int(account), *extra_accounts}
+    if partners_of is not None:
+        _, partners = entry_scope(conn, _entry_ids(conn, partners_of))
+        accounts |= _accounts_of_entries(conn, partners)
+    lock_accounts(conn, accounts)
     lock_rows(conn, "source_transaction", row_ids)
     rows = {
         r.id: r
@@ -98,12 +117,48 @@ def _begin(conn: Connection, *row_ids: int) -> dict[int, Any]:
     for rid in row_ids:
         if rid not in rows:
             raise DuplicateRowMissing(rid)
-    return rows
+    return rows, accounts
+
+
+def _entry_ids(conn: Connection, row_id: int) -> list[int]:
+    return [
+        int(i)
+        for i in conn.execute(
+            text("SELECT id FROM ledger_entry WHERE source_transaction_id = :s ORDER BY id"), {"s": row_id}
+        ).scalars()
+    ]
+
+
+def _accounts_of_entries(conn: Connection, entry_ids: Sequence[int]) -> set[int]:
+    if not entry_ids:
+        return set()
+    return {
+        int(a)
+        for a in conn.execute(
+            text("SELECT DISTINCT account_id FROM ledger_entry WHERE id = ANY(:ids)"),
+            {"ids": list(entry_ids)},
+        ).scalars()
+    }
 
 
 def _mark(engine: Engine, row_id: int, of_row_id: int, expected: Mapping[int, int] | None) -> Affected:
+    """Removal rewrites transfer partners that may sit on other accounts, so those are locked
+    too (architecture §5.2). They are read before the locks, and read again under them; a
+    change in between extends the lock set and the transaction runs again."""
+    extra: set[int] = set()
+    for _ in range(_LOCK_ROUNDS):
+        try:
+            return _mark_once(engine, row_id, of_row_id, expected, extra)
+        except _AccountsMissing as missing:
+            extra |= missing.accounts
+    raise WriteConflict()
+
+
+def _mark_once(
+    engine: Engine, row_id: int, of_row_id: int, expected: Mapping[int, int] | None, extra: set[int]
+) -> Affected:
     with engine.begin() as conn:
-        rows = _begin(conn, row_id, of_row_id)
+        rows, locked = _begin(conn, row_id, of_row_id, extra_accounts=extra, partners_of=row_id)
         row, of = rows[row_id], rows[of_row_id]
         if row.account_id != of.account_id:
             raise DuplicateCrossAccount(row_id, of_row_id)
@@ -115,16 +170,15 @@ def _mark(engine: Engine, row_id: int, of_row_id: int, expected: Mapping[int, in
             raise AlreadyDuplicate(row_id)
         if of.duplicate_of is not None:
             raise DuplicateChain(row_id, of_row_id)
-        entry_ids = [
-            int(i)
-            for i in conn.execute(
-                text("SELECT id FROM ledger_entry WHERE source_transaction_id = :s ORDER BY id"),
-                {"s": row_id},
-            ).scalars()
-        ]
+        scope = entry_scope(conn, _entry_ids(conn, row_id))
+        removed, partners = scope
+        involved = _accounts_of_entries(conn, partners)
+        if not involved <= locked:
+            raise _AccountsMissing(involved)
         if expected is not None:
-            removed, partners = entry_scope(conn, entry_ids)
             _check_versions(conn, expected, written=[*removed, *partners])
+        else:
+            lock_rows(conn, "ledger_entry", [*removed, *partners])
         # rows that pointed at the marked row follow it to its original (no chains)
         conn.execute(
             text("UPDATE source_transaction SET duplicate_of = :o WHERE duplicate_of = :r"),
@@ -134,7 +188,7 @@ def _mark(engine: Engine, row_id: int, of_row_id: int, expected: Mapping[int, in
             text("UPDATE source_transaction SET duplicate_of = :o WHERE id = :r"),
             {"o": of_row_id, "r": row_id},
         )
-        return remove_entries(conn, entry_ids)
+        return remove_entries(conn, removed, scope=scope)
 
 
 def _check_versions(conn: Connection, expected: Mapping[int, int], *, written: Sequence[int]) -> None:
@@ -156,7 +210,7 @@ def _check_versions(conn: Connection, expected: Mapping[int, int], *, written: S
 
 def _clear(engine: Engine, row_id: int) -> int:
     with engine.begin() as conn:
-        rows = _begin(conn, row_id)
+        rows, _ = _begin(conn, row_id)
         row = rows[row_id]
         if row.duplicate_of is None:
             raise NotADuplicate(row_id)
