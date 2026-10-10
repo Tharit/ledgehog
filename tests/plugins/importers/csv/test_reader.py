@@ -79,7 +79,7 @@ def test_decoy_row_with_some_markers_is_not_the_header() -> None:
 
 
 def test_header_cells_are_trimmed_with_trailing_space() -> None:
-    f = rd("Buchung ;Valuta;Betrag\n".encode(), markers=("Buchung", "Betrag"))
+    f = rd(b"Buchung ;Valuta;Betrag\n", markers=("Buchung", "Betrag"))
     assert f.header == ["Buchung", "Valuta", "Betrag"]
 
 
