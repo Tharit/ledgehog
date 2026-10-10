@@ -33,9 +33,16 @@ SENSITIVE_KEYS = frozenset(
 )
 REDACTED = "[redacted]"
 
-_KEYS = "|".join(re.escape(k) for k in sorted(SENSITIVE_KEYS, key=len, reverse=True))
+# `api_key` also matches `api-key`: header and field spellings differ.
+_KEYS = "|".join(
+    re.escape(k).replace("_", "[-_]").replace(r"\-", "[-_]")
+    for k in sorted(SENSITIVE_KEYS, key=len, reverse=True)
+)
+# No letter or digit before the key: `pin` must not match inside `spin`, `tan` inside `Sultan`.
+# `_` and `-` do not count, so `x_token`, `x-api-key` and `db_password` still match.
 _PAIR = re.compile(
-    r"""(?P<key>["']?(?:""" + _KEYS + r""")["']?)(?P<sep>\s*[:=]\s*)(?P<val>"[^"]*"|'[^']*'|[^\s,;&}]+)""",
+    r"""(?<![A-Za-z0-9])(?P<key>["']?(?:""" + _KEYS + r""")["']?)(?P<sep>\s*[:=]\s*)"""
+    r"""(?P<val>(?:(?:bearer|basic)\s+)?(?:"[^"]*"|'[^']*'|[^\s,;&}]+))""",
     re.IGNORECASE,
 )
 _STANDARD = set(logging.LogRecord("", 0, "", 0, "", (), None).__dict__) | {"message", "asctime", "taskName"}

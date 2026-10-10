@@ -67,3 +67,29 @@ def test_install_is_idempotent_and_attaches_to_root_handlers():
         assert sum(isinstance(f, RedactionFilter) for f in handler.filters) == 1
     finally:
         root.removeHandler(handler)
+
+
+@pytest.mark.parametrize("text", ["spin: 3 workers", "Sultan=ok", "retain=1"])
+def test_sensitive_keys_inside_ordinary_words_are_not_redacted(logger_and_stream, text):
+    logger, stream = logger_and_stream
+    logger.info(text)
+    assert text in stream.getvalue() and REDACTED not in stream.getvalue()
+
+
+@pytest.mark.parametrize(
+    ("text", "secret"),
+    [
+        ("pin=1234", "1234"),
+        ("token: abc", "abc"),
+        ("x_token=abc", "abc"),
+        ("x-api-key: k3y", "k3y"),
+        ("db_password=abc", "abc"),
+        ("password=abc", "abc"),
+        ("Authorization: Bearer abc", "abc"),
+        ('{"pin": "4321"}', "4321"),
+    ],
+)
+def test_prefixed_and_standalone_sensitive_keys_are_still_redacted(logger_and_stream, text, secret):
+    logger, stream = logger_and_stream
+    logger.info(text)
+    assert secret not in stream.getvalue() and REDACTED in stream.getvalue()
