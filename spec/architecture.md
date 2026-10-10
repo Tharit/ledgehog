@@ -348,9 +348,10 @@ DELETE /api/importers/instances/{id}/links/{account_id}
 POST   /api/importers/instances/{id}/upload    a CSV file → one run per
                                                account, then settling, like a
                                                sync; with a dry-run flag it
-                                               parses and reports the rows, the
-                                               coverage and the balance it
-                                               would write, and writes nothing
+                                               runs the real path in a
+                                               transaction that is rolled back
+                                               and returns the run summary and
+                                               the importer's parse report
 GET    /api/importers/runs                     the import log
 POST   /api/importers/runs/{id}/revert         delete what the run produced;
                                                only the account's latest
@@ -1020,8 +1021,8 @@ Beyond the records, the protocol has an importer report:
 
 - its **coverage** for every run — *through*, by the rules of `spec.md` §5.1
   and nothing later, including for a fetch that returned no rows — where
-  its data starts, for the import log, and the count of zero bookings it
-  filtered out, which the run's statistics record;
+  its data starts, for the import log, and its own counts (zero bookings it
+  filtered out, say) as named integers, which the run's statistics record;
 - its **balance date** consistent with the core rule and never after the
   run's coverage (`spec.md` §5.1), and for statement formats the
   per-statement consistency check, failing with `ParseFailed` on a mismatch;
@@ -1032,6 +1033,14 @@ Beyond the records, the protocol has an importer report:
   for, declared in code rather than configured (`spec.md` §5.5);
 - for any token it would store: the documented scopes, and the introspection
   check where the provider has one (`spec.md` §7).
+
+A **file importer** has no session to open and nothing to fetch: it is a pure
+parse of the uploaded bytes, given the profile, the account's currency, a lookup
+from currency to its minor-unit exponent and today's date, and returns the rows, the reported
+balance and its date, the coverage, where the data starts and its counts. A
+problem on the importer's side — undecodable bytes, a missing header row, a
+configured label it cannot find — raises `ParseFailed`; ingest's
+`ContractViolation` checks stay as the backstop.
 
 Errors are exception classes, not strings, because the queue's behaviour
 depends on the distinction:

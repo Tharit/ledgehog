@@ -976,25 +976,31 @@ end of the **last day before the fetch** — a day the bank has closed — so th
 bookings still arriving for the fetch day fall after the record rather than
 inside it. Its date must be consistent with the rule that the balance equals
 the sum of entries booked on or before that date, and it is never after the
-run's coverage (I36):
+run's coverage (I36).
 
-- From a statement format, the importer takes the closing balance of the last
-  statement dated before the fetch date. Where that statement includes lines
-  booked after its balance date — a bank that dates weekend payments forward
-  but includes them in the balance — the record would have to be dated on the
-  latest of those lines; where that falls after the run's coverage, the run
-  reports no balance, and the next sync delivers one.
-- A CSV profile takes it from the running balance ("Saldo") column of the last
-  row dated before the export date, where the profile can read one, and
-  before the upload date otherwise. It may instead take a figure the file
-  states outside its rows — a balance with its date, in a header or a footer.
-  The record is dated at the figure's date where that is no later than the last
-  closed day, the day before the export date (the upload date where the file
-  states none). Where the figure is dated later — an export made during the day
-  states the balance of that day — the importer rolls it back to the last
-  closed day by the booked rows dated after it: the figure less their sum. The
-  figure is taken to be the booked balance; a source whose figure may include
-  pending items reports none, as below.
+What the source states is the **figure**: a balance together with the date the
+source gives it. The record is dated at the earliest of the figure's own date,
+the last closed day (the day before the export date, or before the fetch; the
+upload date where the file states none) and the run's coverage. Where that date
+is earlier than the figure's date, the amounts of the booked, unfiltered rows
+dated after it, up to the figure's date, are subtracted from the figure. An
+export made during the day, which states the balance of that day, is thus dated
+at the closed day, and a quiet account, whose last booking is earlier than the
+closed day, reports its balance dated at its coverage. The figure is taken to be
+the booked balance; a source whose figure may include pending items reports
+none, as below. Where the figure comes from:
+
+- A statement format: the closing balance of the last statement dated before
+  the fetch date. Its own date is the statement's balance date — or, where the
+  statement includes lines booked after that date (a bank that dates weekend
+  payments forward but includes them in the balance), the latest of those
+  lines, since the figure must equal the sum of the entries booked on or before
+  the date it carries.
+- A CSV profile: the running balance ("Saldo") column of the last row dated
+  before the export date, where the profile can read one, and before the upload
+  date otherwise, dated at that row's booking date. It may instead take a
+  figure the file states outside its rows — a balance with its date, in a
+  header or a footer.
 - Where the source reports only a current balance, which may include pending
   items, the run reports none; the account reconciles against balances entered
   by hand (§5.10).

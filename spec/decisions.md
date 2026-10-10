@@ -3204,3 +3204,70 @@ side effect — a transfer partner unpaired by a removal — is one. Rejected:
 *checking only the entries the user acted on* — a removal could then overwrite
 a partner another tab had just changed, which is the lost update the per-entity
 check exists to refuse.
+
+## D187 The CSV profile's rules, settled against real exports
+
+`plugins/importers/csv.md` §2–§5, spec §5.1. Three real exports (a giro, two
+cards) fixed what the profile must say.
+
+- **A configured label that is not found, or a value that does not parse, fails
+  the run** (`ParseFailed`). Rejected: *reporting no balance* — a wrong profile
+  would pass unnoticed and the account would drift to manual reconciliation;
+  the dry run is where it is fixed.
+- **A label matches a whole trimmed cell first, then a cell containing it; first
+  match in file order, whole file searched.** In the giro export the label also
+  occurs inside another cell of its row. Rejected: *contains-first* — it picks
+  that cell. The offset is a profile number (cells right, rows below) because
+  the card's value sits six cells right of its label.
+- **The export date is a profile setting read like a balance date**, falling
+  back to the upload date passed in (a plugin never reads the clock). The giro
+  figure is dated the export day, so the roll-back needs it. Rejected:
+  *coverage = upload date* — it is wrong for a file saved earlier (spec §5.1).
+- **Roll-back:** the record is dated at the last closed day and equals the
+  figure minus the booked, unfiltered rows after it; a figure on or before that
+  day is used as dated.
+- **Filters read the cell before parsing**, so a pending row's text in a date
+  column is filtered, not a parse error; two operators, `equals` and `matches`.
+- **`invert amounts` also inverts the instructed amount**, one convention per
+  profile. Rows after a stated period end are kept and coverage stays that end:
+  a later fetch overlaps them and ingest deduplicates. Credit and debit is
+  `credit − debit`, empty as 0. Text is trimmed and collapsed in normalised
+  columns, `raw` keeps the original. Decoding is BOM, UTF-8, then `cp1252`.
+- **`filtered` stays zero bookings only**; pending and filtered rows appear in
+  the dry run, not in stored statistics. Rejected: *storing them* — the
+  figures would vary with the profile, not with the data.
+
+## D188 A file importer is a pure parse; counts are named; the dry run is the real path rolled back
+
+Architecture §4.1, §5.5, spec §5.1. The fetch protocol (authenticate, discover,
+fetch from a date) does not fit a file.
+
+- **A file importer parses bytes given the profile, the account's currency,
+  minor-unit exponent and today's date**, and returns rows, reported balance
+  and date, coverage, data start and its counts. Its own problems raise
+  `ParseFailed`; ingest's `ContractViolation` remains the backstop.
+- **The importer's counts are a mapping of named integers** stored under the
+  run's statistics (`filtered`, `synthetic_skipped`). Rejected: *one ingest
+  parameter per counter* — each new count would change the interface.
+- **The upload's dry run is the real path in a transaction that is rolled
+  back**, returning the run summary and the parse report. Rejected: *a separate
+  preview path* — it would drift from the real one, which the §4.1 convention
+  exists to prevent.
+
+## D189 The balance record is dated at the earliest of the figure's date, the last closed day and the coverage
+
+Spec §5.1, I36, `plugins/importers/csv.md` §5. The old rule dated a figure at its
+own date or, if dated after the last closed day, rolled it back to that day; where
+that day fell after the run's coverage the run reported no balance. A quiet
+account, whose last booking is earlier than the closed day, therefore lost its
+balance on every sync.
+
+- **One rule:** the record is dated at the earliest of the figure's own date, the
+  last closed day and the coverage; where that is earlier than the figure's
+  date, the amounts of the booked, unfiltered rows after it, up to the figure's
+  date, are subtracted from the figure. I36 holds by construction and a quiet
+  account reports its balance dated at its coverage.
+- Rejected: *reporting no balance, falling back to manual records* — the account
+  would drift to manual reconciliation for no fault of the data.
+- Rejected: *dating the record after the coverage and relaxing I36* — the record
+  would then claim a day the run has not seen.
