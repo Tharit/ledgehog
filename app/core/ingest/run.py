@@ -37,7 +37,7 @@ log = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class RunResult:
-    run_id: int
+    run_id: int | None  # None for a preview: its run row never existed outside the rolled-back transaction
     inserted: int  # rows written with an entry
     # (new source_transaction id, id of the existing row it duplicates), delivery order
     duplicates: tuple[tuple[int, int], ...]
@@ -46,7 +46,8 @@ class RunResult:
     balance_record_id: int | None  # the run's reported record, when it reported a balance
     unexplained_difference_before: int | None  # the account's, before the delivery wrote anything
     unexplained_difference_after: int | None
-    settle: SettleResult
+    settle: SettleResult | None  # None for a preview: it never settles
+    stats: Mapping[str, Any] = MappingProxyType({})  # the run summary as stored (spec §5.10)
 
 
 @dataclass(frozen=True)
@@ -57,6 +58,7 @@ class _Counts:
     balance_record_id: int | None
     difference_before: int | None
     difference_after: int | None
+    stats: Mapping[str, Any]
 
 
 def start_run(
@@ -72,22 +74,22 @@ def start_run(
     if kind != "transactions":
         raise ValueError(f"ingest_delivery writes transaction runs only, not {kind!r}")
     with engine.begin() as conn:
-        return int(
-            conn.execute(
-                text(
-                    "INSERT INTO import_run (importer, importer_instance_id, emits, account_id,"
-                    " status, started_by) VALUES (:importer, :inst, :emits, :account, 'running', :by)"
-                    " RETURNING id"
-                ),
-                {
-                    "importer": importer,
-                    "inst": importer_instance_id,
-                    "emits": kind,
-                    "account": account_id,
-                    "by": started_by,
-                },
-            ).scalar_one()
-        )
+        return _insert_running(conn, account_id, importer, importer_instance_id, started_by)
+
+
+def _insert_running(
+    conn: Connection, account_id: int, importer: str, importer_instance_id: int | None, started_by: int | None
+) -> int:
+    return int(
+        conn.execute(
+            text(
+                "INSERT INTO import_run (importer, importer_instance_id, emits, account_id,"
+                " status, started_by) VALUES (:importer, :inst, 'transactions', :account, 'running', :by)"
+                " RETURNING id"
+            ),
+            {"importer": importer, "inst": importer_instance_id, "account": account_id, "by": started_by},
+        ).scalar_one()
+    )
 
 
 def fail_run(engine: Engine, run_id: int, error: str) -> None:
@@ -135,18 +137,21 @@ def ingest_delivery(
     """
     try:
         given = _checked_stats(importer_stats)
-        counts = retry_on_deadlock(
-            lambda: _write_delivery(
-                engine,
-                run_id,
-                rows,
-                reported_balance,
-                reported_balance_on,
-                covered_from,
-                covered_through,
-                given,
-            )
-        )
+
+        def attempt() -> _Counts:
+            with engine.begin() as conn:
+                return _write_delivery(
+                    conn,
+                    run_id,
+                    rows,
+                    reported_balance,
+                    reported_balance_on,
+                    covered_from,
+                    covered_through,
+                    given,
+                )
+
+        counts = retry_on_deadlock(attempt)
     except BaseException as exc:  # cancellation and interrupts too: the run must not stay `running`
         _fail_run_quietly(engine, run_id, f"{type(exc).__name__}: {exc}")
         raise
@@ -161,6 +166,69 @@ def ingest_delivery(
         unexplained_difference_before=counts.difference_before,
         unexplained_difference_after=counts.difference_after,
         settle=settled,
+        stats=MappingProxyType(counts.stats),
+    )
+
+
+class _Rollback(Exception):
+    """Carries a preview's counts out of the transaction, which it rolls back."""
+
+    def __init__(self, counts: _Counts) -> None:
+        super().__init__("preview")
+        self.counts = counts
+
+
+def preview_delivery(
+    engine: Engine,
+    *,
+    account_id: int,
+    instance_id: int | None,
+    importer: str,
+    rows: Sequence[IncomingRow],
+    reported_balance: int | None = None,
+    reported_balance_on: date | None = None,
+    covered_from: date | None = None,
+    covered_through: date | None = None,
+    importer_stats: Mapping[str, int] | None = None,
+) -> RunResult:
+    """What `ingest_delivery` would write, by running the same write path in one transaction
+    that is rolled back (architecture §4.1 'Previewed'): a temporary run row, the shared
+    `_write_delivery`, then a rollback. Nothing persists and nothing settles. Failures are the
+    real ones: `ContractViolation` and the rest are raised, for the caller to present.
+    """
+    given = _checked_stats(importer_stats)
+
+    def attempt() -> _Counts:
+        try:
+            with engine.begin() as conn:
+                lock_settle_shared(conn)  # first, as for every write (the body takes it again: it stacks)
+                run_id = _insert_running(conn, account_id, importer, instance_id, None)
+                counts = _write_delivery(
+                    conn,
+                    run_id,
+                    rows,
+                    reported_balance,
+                    reported_balance_on,
+                    covered_from,
+                    covered_through,
+                    given,
+                )
+                raise _Rollback(counts)
+        except _Rollback as done:
+            return done.counts
+
+    counts = retry_on_deadlock(attempt)
+    return RunResult(
+        run_id=None,
+        inserted=counts.inserted,
+        duplicates=counts.duplicates,
+        skipped_by_identity=counts.skipped_by_identity,
+        importer_stats=MappingProxyType(dict(given)),
+        balance_record_id=counts.balance_record_id,
+        unexplained_difference_before=counts.difference_before,
+        unexplained_difference_after=counts.difference_after,
+        settle=None,
+        stats=MappingProxyType(counts.stats),
     )
 
 
@@ -174,7 +242,7 @@ def _checked_stats(importer_stats: Mapping[str, int] | None) -> dict[str, int]:
 
 
 def _write_delivery(
-    engine: Engine,
+    conn: Connection,
     run_id: int,
     rows: Sequence[IncomingRow],
     reported_balance: int | None,
@@ -183,107 +251,114 @@ def _write_delivery(
     covered_through: date | None,
     importer_stats: dict[str, int],
 ) -> _Counts:
-    with engine.begin() as conn:
-        lock_settle_shared(conn)
-        run = conn.execute(
-            text(
-                "SELECT id, account_id, importer, importer_instance_id, status FROM import_run WHERE id = :i"
-            ),
-            {"i": run_id},
-        ).one_or_none()
-        if run is None:
-            raise IngestError(f"no such run: {run_id}")
-        account_id: int = run.account_id
-        lock_accounts(conn, [account_id])
-        # The first look was before the lock wait: judge the status as it is now, row-locked.
-        status: str = conn.execute(
-            text("SELECT status FROM import_run WHERE id = :i FOR UPDATE"), {"i": run_id}
-        ).scalar_one()
-        if status != "running":
-            raise IngestError(f"run {run_id} is {status}, not running")
-        if covered_through is None:
-            raise ContractViolation(
-                "no_coverage", "covered_through is required: a successful run says how far it covers"
-            )
-        if (reported_balance is None) != (reported_balance_on is None):
-            missing = "reported_balance_on" if reported_balance_on is None else "reported_balance"
-            raise ContractViolation(
-                "balance_without_date", f"{missing} is missing: a reported balance comes with its date"
-            )
-        if reported_balance_on is not None and reported_balance_on > covered_through:
-            raise ContractViolation(
-                "balance_after_coverage",
-                f"the balance is dated {reported_balance_on}, after the coverage end {covered_through}",
-            )
-        currency: str = conn.execute(
-            text("SELECT currency FROM account WHERE id = :i"), {"i": account_id}
-        ).scalar_one()
-
-        _check_contract(rows, currency)
-        difference_before = unexplained_difference(conn, account_id)
-
-        # Ordinals over the WHOLE delivery, before any filtering (spec §5.2).
-        ordinals = assign_ordinals(rows)
-        # (row, identity column, identity value) of every row that takes part
-        live: list[tuple[IncomingRow, str, str]] = []
-        for row, ordinal in zip(rows, ordinals, strict=True):
-            ident = identity_of(row, ordinal)
-            if isinstance(ident, SourceId):
-                live.append((row, "source_id", ident.value))
-            else:
-                assert isinstance(ident, ContentHash)
-                live.append((row, "content_hash", ident.hex()))
-
-        used, skipped, remaining = _identity_step(conn, account_id, live)
-        pairing = _amount_step(conn, account_id, remaining, used)
-
-        inserted = 0
-        duplicates: list[tuple[int, int]] = []
-        for start in range(0, len(remaining), _CHUNK):
-            chunk = remaining[start : start + _CHUNK]
-            ids = _insert_sources(conn, run, account_id, chunk, pairing[start : start + _CHUNK])
-            to_entry: list[int] = []
-            for (_, col, value), original in zip(chunk, pairing[start : start + _CHUNK], strict=True):
-                new_id = ids.get((col, value))
-                if new_id is None:  # identity taken by a concurrent insert: skipped (I4)
-                    skipped += 1
-                elif original is not None:
-                    duplicates.append((new_id, original))
-                else:
-                    to_entry.append(new_id)
-            insert_entries(conn, to_entry)
-            inserted += len(to_entry)
-
-        record_id: int | None = None
-        if reported_balance is not None and reported_balance_on is not None:
-            record_id = insert_reported_record(
-                conn,
-                account_id=account_id,
-                import_run_id=run_id,
-                balance_on=reported_balance_on,
-                balance=reported_balance,
-            )
-        recompute_derived(conn, account_id)
-        difference_after = unexplained_difference(conn, account_id)
-        stats: dict[str, Any] = {
-            "inserted": inserted,
-            "skipped_by_identity": skipped,
-            "inserted_as_duplicates": [{"id": n, "duplicate_of": o} for n, o in duplicates],
-            "importer": importer_stats,
-            "unexplained_difference": {"before": difference_before, "after": difference_after},
-            "since_zero": records_since_zero(conn, account_id),
-        }
-        if reported_balance is not None and reported_balance_on is not None:
-            stats["balance"] = {"balance_on": reported_balance_on.isoformat(), "balance": reported_balance}
-        conn.execute(
-            text(
-                "UPDATE import_run SET status = 'ok', finished_at = clock_timestamp(),"
-                " covered_from = :from, covered_through = :through, stats = CAST(:stats AS jsonb)"
-                " WHERE id = :id"
-            ),
-            {"id": run_id, "from": covered_from, "through": covered_through, "stats": json.dumps(stats)},
+    """The one write body, run by `ingest_delivery` (committed) and `preview_delivery` (rolled
+    back) inside the caller's transaction."""
+    lock_settle_shared(conn)
+    run = conn.execute(
+        text("SELECT id, account_id, importer, importer_instance_id, status FROM import_run WHERE id = :i"),
+        {"i": run_id},
+    ).one_or_none()
+    if run is None:
+        raise IngestError(f"no such run: {run_id}")
+    account_id: int = run.account_id
+    lock_accounts(conn, [account_id])
+    # The first look was before the lock wait: judge the status as it is now, row-locked.
+    status: str = conn.execute(
+        text("SELECT status FROM import_run WHERE id = :i FOR UPDATE"), {"i": run_id}
+    ).scalar_one()
+    if status != "running":
+        raise IngestError(f"run {run_id} is {status}, not running")
+    if covered_through is None:
+        raise ContractViolation(
+            "no_coverage", "covered_through is required: a successful run says how far it covers"
         )
-        return _Counts(inserted, tuple(duplicates), skipped, record_id, difference_before, difference_after)
+    if (reported_balance is None) != (reported_balance_on is None):
+        missing = "reported_balance_on" if reported_balance_on is None else "reported_balance"
+        raise ContractViolation(
+            "balance_without_date", f"{missing} is missing: a reported balance comes with its date"
+        )
+    if reported_balance_on is not None and reported_balance_on > covered_through:
+        raise ContractViolation(
+            "balance_after_coverage",
+            f"the balance is dated {reported_balance_on}, after the coverage end {covered_through}",
+        )
+    currency: str = conn.execute(
+        text("SELECT currency FROM account WHERE id = :i"), {"i": account_id}
+    ).scalar_one()
+
+    _check_contract(rows, currency)
+    difference_before = unexplained_difference(conn, account_id)
+
+    # Ordinals over the WHOLE delivery, before any filtering (spec §5.2).
+    ordinals = assign_ordinals(rows)
+    # (row, identity column, identity value) of every row that takes part
+    live: list[tuple[IncomingRow, str, str]] = []
+    for row, ordinal in zip(rows, ordinals, strict=True):
+        ident = identity_of(row, ordinal)
+        if isinstance(ident, SourceId):
+            live.append((row, "source_id", ident.value))
+        else:
+            assert isinstance(ident, ContentHash)
+            live.append((row, "content_hash", ident.hex()))
+
+    used, skipped, remaining = _identity_step(conn, account_id, live)
+    pairing = _amount_step(conn, account_id, remaining, used)
+
+    inserted = 0
+    duplicates: list[tuple[int, int]] = []
+    for start in range(0, len(remaining), _CHUNK):
+        chunk = remaining[start : start + _CHUNK]
+        ids = _insert_sources(conn, run, account_id, chunk, pairing[start : start + _CHUNK])
+        to_entry: list[int] = []
+        for (_, col, value), original in zip(chunk, pairing[start : start + _CHUNK], strict=True):
+            new_id = ids.get((col, value))
+            if new_id is None:  # identity taken by a concurrent insert: skipped (I4)
+                skipped += 1
+            elif original is not None:
+                duplicates.append((new_id, original))
+            else:
+                to_entry.append(new_id)
+        insert_entries(conn, to_entry)
+        inserted += len(to_entry)
+
+    record_id: int | None = None
+    if reported_balance is not None and reported_balance_on is not None:
+        record_id = insert_reported_record(
+            conn,
+            account_id=account_id,
+            import_run_id=run_id,
+            balance_on=reported_balance_on,
+            balance=reported_balance,
+        )
+    recompute_derived(conn, account_id)
+    difference_after = unexplained_difference(conn, account_id)
+    stats: dict[str, Any] = {
+        "inserted": inserted,
+        "skipped_by_identity": skipped,
+        "inserted_as_duplicates": [{"id": n, "duplicate_of": o} for n, o in duplicates],
+        "importer": importer_stats,
+        "unexplained_difference": {"before": difference_before, "after": difference_after},
+        "since_zero": records_since_zero(conn, account_id),
+    }
+    if reported_balance is not None and reported_balance_on is not None:
+        stats["balance"] = {"balance_on": reported_balance_on.isoformat(), "balance": reported_balance}
+    conn.execute(
+        text(
+            "UPDATE import_run SET status = 'ok', finished_at = clock_timestamp(),"
+            " covered_from = :from, covered_through = :through, stats = CAST(:stats AS jsonb)"
+            " WHERE id = :id"
+        ),
+        {"id": run_id, "from": covered_from, "through": covered_through, "stats": json.dumps(stats)},
+    )
+    return _Counts(
+        inserted,
+        tuple(duplicates),
+        skipped,
+        record_id,
+        difference_before,
+        difference_after,
+        json.loads(json.dumps(stats)),
+    )
 
 
 def _check_contract(rows: Sequence[IncomingRow], currency: str) -> None:
