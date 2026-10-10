@@ -9,100 +9,20 @@ fails the run, and the report records the mismatch so the dry run shows it (csv.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
 from app.core.plugins.errors import ParseFailed
-from app.core.plugins.importer import (
-    Category,
-    DryRunReport,
-    Example,
-    IncomingRow,
-    MappedColumn,
-    ParsedFile,
-    SampleRow,
-)
+from app.core.plugins.importer import IncomingRow, MappedColumn, ParsedFile, SampleRow
 from app.plugins.importers.csv.amounts import parse_amount
+from app.plugins.importers.csv.balance import read_date, reported_balance
 from app.plugins.importers.csv.dates import parse_date
 from app.plugins.importers.csv.filters import CompiledFilter, compile_filter, first_hit
 from app.plugins.importers.csv.profile import ColRef, Profile
-from app.plugins.importers.csv.reader import ReadFile, Record, read_file, resolve_column
+from app.plugins.importers.csv.reader import ReadFile, read_file, resolve_column
+from app.plugins.importers.csv.report import Kept, ReportBuilder
 
 CELL_DISPLAY = 24
-
-
-@dataclass(slots=True)
-class _Counter:
-    count: int = 0
-    examples: list[Example] = field(default_factory=list)
-
-    def add(self, row: int, reason: str, limit: int) -> None:
-        self.count += 1
-        if len(self.examples) < limit:
-            self.examples.append(Example(row, reason))
-
-    def freeze(self) -> Category:
-        return Category(self.count, tuple(self.examples))
-
-
-@dataclass(slots=True)
-class ReportBuilder:
-    """Collects what the parse did; `build` is safe at any point, including after a failure."""
-
-    limit: int
-    header_line: int | None = None
-    encoding: str | None = None
-    delimiter: str | None = None
-    columns: list[MappedColumn] = field(default_factory=list)
-    rows_read: int = 0
-    emitted: int = 0
-    skipped: _Counter = field(default_factory=_Counter)
-    filtered: _Counter = field(default_factory=_Counter)
-    zero_dropped: _Counter = field(default_factory=_Counter)
-    currency_mismatch: _Counter = field(default_factory=_Counter)
-    sample: list[SampleRow] = field(default_factory=list)
-    coverage: date | None = None
-    coverage_source: str | None = None
-    export_date: date | None = None
-    export_date_source: str | None = None
-    balance: Any = None
-    synthetic: Any = None
-    warnings: list[str] = field(default_factory=list)
-
-    def build(self, failure: str | None = None) -> DryRunReport:
-        return DryRunReport(
-            header_line=self.header_line,
-            encoding=self.encoding,
-            delimiter=self.delimiter,
-            columns=tuple(self.columns),
-            rows_read=self.rows_read,
-            emitted=self.emitted,
-            skipped=self.skipped.freeze(),
-            filtered=self.filtered.freeze(),
-            zero_dropped=self.zero_dropped.freeze(),
-            currency_mismatch=self.currency_mismatch.freeze(),
-            sample=tuple(self.sample),
-            coverage=self.coverage,
-            coverage_source=self.coverage_source,
-            export_date=self.export_date,
-            export_date_source=self.export_date_source,
-            balance=self.balance,
-            synthetic=self.synthetic,
-            warnings=tuple(self.warnings),
-            failure=failure,
-        )
-
-
-@dataclass(slots=True)
-class Kept:
-    """A transaction row that passed the row filters (a zero booking included, `row` None)."""
-
-    record: Record
-    cells: list[str]
-    booked_on: date
-    amount: int
-    row: IncomingRow | None
 
 
 def _collapse(text: str) -> str:
@@ -155,11 +75,13 @@ def _parse(
             f"{rep.currency_mismatch.count} row(s) have a currency other than the account's: "
             "the run would fail"
         )
+    export_date = _export_date(prof, rf, today, rep)
     coverage = _coverage(prof, rf, emitted, rep)
+    balance = reported_balance(prof, rf, kept, export_date, coverage, rep, currency, minor_units)
     return ParsedFile(
         rows=tuple(emitted),
-        reported_balance=None,
-        balance_on=None,
+        reported_balance=None if balance is None else balance[0],
+        balance_on=None if balance is None else balance[1],
         covered_through=coverage,
         data_start=min((r.booked_on for r in emitted), default=None),
         importer_stats={"filtered": rep.zero_dropped.count, "synthetic_skipped": 0},
@@ -167,11 +89,24 @@ def _parse(
     )
 
 
+def _export_date(prof: Profile, rf: ReadFile, today: date, rep: ReportBuilder) -> date:
+    if prof.export_date is None:
+        rep.export_date, rep.export_date_source = today, "upload date (the profile reads no export date)"
+    else:
+        rep.export_date, found = read_date(rf.records, prof.export_date, "export_date")
+        rep.export_date_source = f"read from the file at {found}"
+    return rep.export_date
+
+
 def _coverage(prof: Profile, rf: ReadFile, emitted: Sequence[IncomingRow], rep: ReportBuilder) -> date:
+    if prof.coverage_end is not None:
+        rep.coverage, found = read_date(rf.records, prof.coverage_end, "coverage_end")
+        rep.coverage_source = f"stated period end, {found}"
+        return rep.coverage
     last = max((r.booked_on for r in emitted), default=None)
     if last is None:
         raise ParseFailed("no coverage: the file has no booking rows and no stated period end")
-    rep.coverage, rep.coverage_source = last, "last booking date"
+    rep.coverage, rep.coverage_source = last, "last booking date (the profile states no period end)"
     return last
 
 
