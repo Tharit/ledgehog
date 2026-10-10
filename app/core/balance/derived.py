@@ -69,14 +69,11 @@ def _desired(conn: Connection, account_id: int, *, investment: bool) -> dict[int
     desired: dict[int, Desired] = {}
     prev_balance = 0
     prev_date: date | None = None
-    for i, r in enumerate(records):
+    for r in records:
         if prev_date is None:
             amount = r.balance - through(r.balance_on)
-            entry = Desired(
-                "opening",
-                min(days[0], r.balance_on) - timedelta(days=1) if days else r.balance_on - timedelta(days=1),
-                amount,
-            )
+            earliest = min(days[0], r.balance_on) if days else r.balance_on
+            entry = Desired("opening", earliest - timedelta(days=1), amount)
         else:
             amount = (r.balance - prev_balance) - (through(r.balance_on) - through(prev_date))
             entry = Desired("valuation" if investment else "reconciliation", r.balance_on, amount)
@@ -106,7 +103,8 @@ def _reconcile(conn: Connection, account_id: int, currency: str, desired: dict[i
         if have is None or have.id in gone:
             conn.execute(
                 text(
-                    "INSERT INTO ledger_entry (account_id, balance_record_id, type, amount, currency, booked_on) "
+                    "INSERT INTO ledger_entry "
+                    "(account_id, balance_record_id, type, amount, currency, booked_on) "
                     "VALUES (:a, :r, :t, :amt, :c, :d)"
                 ),
                 {
