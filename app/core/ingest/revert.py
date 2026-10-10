@@ -18,7 +18,7 @@ Order inside the transaction:
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
@@ -187,6 +187,22 @@ def _check_revertible(conn: Connection, run_id: int, *, locked: bool) -> Any:
     return run
 
 
+def latest_ok_runs(conn: Connection, account_ids: Sequence[int]) -> dict[int, int]:
+    """Per account, the id of its latest successful transaction run: the only one revertible.
+
+    Latest is by `finished_at`, then id (architecture §5.2). Accounts without one are absent.
+    """
+    rows = conn.execute(
+        text(
+            "SELECT DISTINCT ON (account_id) account_id, id FROM import_run"
+            " WHERE account_id = ANY(:a) AND emits = 'transactions' AND status = 'ok'"
+            " ORDER BY account_id, finished_at DESC NULLS LAST, id DESC"
+        ),
+        {"a": list(account_ids)},
+    )
+    return {int(r.account_id): int(r.id) for r in rows}
+
+
 def _reassign_duplicates(
     conn: Connection, run_id: int, row_ids: list[int]
 ) -> tuple[tuple[int, ...], tuple[tuple[int, int], ...]]:
@@ -256,15 +272,9 @@ def _revert_once(
         locked = set(lock_accounts(conn, accounts))
         # The first look was before the lock wait: judge the run as it is now, row-locked.
         _check_revertible(conn, run_id, locked=True)
-        newer = conn.execute(
-            text(
-                "SELECT id FROM import_run WHERE account_id = :a AND emits = 'transactions' AND status = 'ok'"
-                " ORDER BY finished_at DESC NULLS LAST, id DESC LIMIT 1"
-            ),
-            {"a": account_id},
-        ).scalar_one()
-        if int(newer) != run_id:
-            raise NotLatestRun(run_id, int(newer))
+        newer = latest_ok_runs(conn, [account_id])[account_id]
+        if newer != run_id:
+            raise NotLatestRun(run_id, newer)
 
         row_ids, entry_ids = _run_ids(conn, run_id)
         scope = entry_scope(conn, entry_ids)
