@@ -12,6 +12,8 @@ from sqlalchemy import Engine, text
 
 from app.core.ingest.run import RunResult, ingest_delivery, start_run
 from app.core.plugins.importer import IncomingRow
+from tests.core.ingest.dup_helpers import Ledger
+from tests.invariants.helpers import make_run
 
 DAY = date(2026, 3, 10)
 THROUGH = date(2026, 3, 14)
@@ -62,3 +64,13 @@ def env(isolated_engine: Engine, make_account: Callable[..., int]) -> Env:
     with isolated_engine.begin() as conn:
         account = make_account(conn)
     return Env(isolated_engine, account)
+
+
+@pytest.fixture
+def ledger(isolated_engine: Engine, make_account: Callable[..., int]) -> Ledger:
+    """Checking (unsynced, with one ok run) and Savings, committed, for the duplicate tests."""
+    with isolated_engine.begin() as conn:
+        checking = make_account(conn, name="Checking")
+        savings = make_account(conn, name="Savings", kind="savings")
+        run = make_run(conn, checking)
+    return Ledger(isolated_engine, checking, savings, run)
