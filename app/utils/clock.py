@@ -6,6 +6,7 @@ deliberately no zero-argument form. Tests freeze time with `frozen()`.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, date, datetime, timedelta, tzinfo
@@ -33,6 +34,12 @@ def now() -> datetime:
     if _override is not None:
         return _override.now()
     return datetime.now(UTC)
+
+
+def sleep(seconds: float) -> None:
+    """Wait for something outside the process. Real time passes even under `frozen()`:
+    a frozen clock fixes what the ledger believes the date is, not how long a retry waits."""
+    time.sleep(seconds)
 
 
 def today(tz: tzinfo) -> date:

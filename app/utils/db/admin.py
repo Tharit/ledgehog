@@ -69,10 +69,25 @@ def create_database(cfg: Config, name: str, *, template: str | None = None) -> N
     stamp(cfg, name, clock.now())
 
 
+# FORCE terminates every other session on the database. A role without superuser may not
+# terminate a Postgres background process (autovacuum, say) attached at that instant, and
+# the statement fails with InsufficientPrivilege until it detaches: transient, so retry.
+_DROP_ATTEMPTS = 8
+_DROP_RETRY_DELAY = 0.25
+
+
 def drop_database(cfg: Config, name: str) -> None:
     check_name(name)
-    with connect(cfg) as conn:
-        conn.execute(sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(sql.Identifier(name)))
+    query = sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(sql.Identifier(name))
+    for attempt in range(1, _DROP_ATTEMPTS + 1):
+        try:
+            with connect(cfg) as conn:
+                conn.execute(query)
+            return
+        except psycopg.errors.InsufficientPrivilege:
+            if attempt == _DROP_ATTEMPTS:
+                raise
+            clock.sleep(_DROP_RETRY_DELAY)
 
 
 def rename_database(cfg: Config, old: str, new: str) -> None:
