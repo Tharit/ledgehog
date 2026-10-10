@@ -20,6 +20,7 @@ from typing import Any
 
 from sqlalchemy import Connection, Engine, text
 
+from app.core.ingest.entries import insert_entry
 from app.core.ingest.identity import ContentHash, SourceId, assign_ordinals, canonical_text, identity_of
 from app.core.plugins.importer import IncomingRow
 from app.core.settle.settle import SettleResult, settle
@@ -193,7 +194,7 @@ def _write_delivery(
             elif original is not None:
                 duplicates.append((new_id, original))
             else:
-                _insert_entry(conn, new_id)
+                insert_entry(conn, new_id)
                 inserted += 1
 
         recompute_derived(conn, account_id)
@@ -328,15 +329,3 @@ def _insert_source(
         params,
     ).scalar_one_or_none()
 
-
-def _insert_entry(conn: Connection, source_id: int) -> None:
-    """The one entry of a source row (I3): amount, account, currency and dates copied; type,
-    category and derivation left to settling."""
-    conn.execute(
-        text(
-            "INSERT INTO ledger_entry (source_transaction_id, account_id, amount, currency,"
-            " booked_on, value_on) SELECT id, account_id, amount, currency, booked_on, value_on"
-            " FROM source_transaction WHERE id = :id"
-        ),
-        {"id": source_id},
-    )
