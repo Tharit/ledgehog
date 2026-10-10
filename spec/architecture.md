@@ -37,8 +37,10 @@ architecture.
 | Migrations | Alembic, explicit SQL only, autogenerate never used |
 | Bank access | python-fints, in process |
 | Frontend | Svelte 5 + SvelteKit **in SPA mode** — no SSR, no prerendering |
+| UI components | shadcn-svelte, **copied into the repository**, on Bits UI primitives; Tailwind CSS, compiled at build time |
 | Database | PostgreSQL, external to the container |
 | Packaging | One container; local development in a venv against a separate external development database |
+| Tooling | uv with a hash-pinned lockfile; pytest and hypothesis; ruff; mypy in strict mode; import-linter for the module boundaries (§5.1); httpx for API tests; argon2-cffi for password hashing |
 
 ### Why pure Python
 
@@ -87,12 +89,42 @@ that does not exist in this setup. Vite + Svelte + a standalone router would
 be less framework for the same result; SvelteKit is chosen because that is
 where the maintenance and the ecosystem are.
 
+### Why shadcn-svelte for components
+
+The screens that carry the app — the ledger list, the review queue, the unit
+panel — are its own components whatever library is chosen. What a library has
+to supply is the generic widgets that are hard to make accessible and
+keyboard-correct: dialogs, the searchable pickers for categories, payees and
+accounts (comboboxes, the most used control in review), menus, tooltips,
+toasts and a date picker. Bits UI's headless primitives get focus management,
+keyboard handling and ARIA right; shadcn-svelte is a set of styled components
+on top of them that is **copied into the repository** rather than installed,
+so the dense, keyboard-driven look the ledger needs is code this project
+owns, not a theme to override.
+
+The runtime dependency is Bits UI alone. Tailwind runs at build time and ships
+only the stylesheet it generates. Copied components are this project's code:
+they are edited freely, and an upstream update is taken deliberately, by
+copying again and reviewing the diff, never by a version bump. That keeps
+the frontend's share of the dependency surface (above) small and visible.
+
 ### Rejected
 
 - **Go + Python bridge.** See above. Smaller dependency tree, but two
   toolchains, an IPC contract to maintain, and serialised credential state.
 - **Server-rendered with HTMX.** Avoids `node_modules` entirely and suits the
   ledger list well, but fights both interaction-heavy screens.
+- **Flowbite-Svelte.** The largest catalogue of finished components, but an
+  opinionated look that resists the density the ledger needs, uneven keyboard
+  and focus behaviour, and a large installed surface; its tables are not data
+  grids, so the important screens would be custom anyway.
+- **Skeleton.** A coherent Tailwind design system, aimed at application and
+  marketing look rather than dense data, with weaker primitives for pickers.
+- **Bits UI alone, with hand-written CSS.** The same primitives and an even
+  smaller surface, but every style written from scratch; shadcn-svelte is that
+  plus a starting point, and adds no runtime dependency.
+- **No component library.** Accessible comboboxes, dialogs and menus are
+  real work and easy to get subtly wrong.
 - **ORM.** The schema depends on deferred constraint triggers, partial
   indexes, and explicit transaction boundaries; the query load is reporting
   aggregates, not object graphs. An ORM would obscure the first and add
@@ -459,6 +491,12 @@ transaction, and partial application would be worse than refusal. The conflict
 response **names which entities moved**, so the client refetches those rows
 rather than reloading the list and losing its position (§6.5).
 
+The versions an operation carries cover **every entry it writes**, including a
+partner it unpairs or a leg it leaves behind. The preview lists them, and a
+write that finds an entry it would write but was given no version for is
+refused as stale, naming that entry: the client's view of the unit was
+incomplete.
+
 A rejected write means "someone changed this" — refetch and show it, never
 overwrite a decision. Same conflict handling as the correlation ids in §4.3,
 applied to entities instead of prompts.
@@ -561,8 +599,8 @@ Stated once here; enforcement is in §5 and §6.
 
 **Session model.** A session references a user and records the authentication
 method used. It is never coupled to a password, so adding OIDC later is a new
-method rather than a rewrite. Transport is an `HttpOnly`, `Secure`,
-`SameSite=Lax` cookie.
+method rather than a rewrite. Transport is an `HttpOnly`, `SameSite=Lax`
+cookie, `Secure` except to localhost (§5.6).
 
 **Secret redaction.** No PIN, TAN or session token ever reaches a log, a
 traceback or an error response. This is the credential policy of `spec.md` §7
@@ -644,6 +682,12 @@ api  ──►  core  ──►  utils
              ▲
 plugins ─────┘        (plugins implement core/plugins protocols)
 ```
+
+This direction is enforced mechanically: import-linter contracts in
+`.importlinter` cover the layering, both rules below, `core/domain` importing
+nothing, `core` never importing `utils/config.py`, and web frameworks being
+imported by `api` and the composition root only. The one rule it cannot
+express — only `utils/clock.py` touches the system clock — is an AST test.
 
 Two rules carry the weight:
 
@@ -791,8 +835,9 @@ Transaction boundaries:
   in ascending id order: a commit locks the accounts of every row its preview
   showed, then the rows. Settling takes no account lock at all — it creates no
   rows and recomputes no derived entries; the writes do that in their own
-  transaction. Settling runs in its own transaction after the write it
-  follows. Should PostgreSQL still abort a write on a deadlock, the server
+  transaction. `settle(engine)` opens its own transaction after the write it
+  follows, and sets the transaction-local `ledger.settling` so that its
+  rewrites do not bump versions (§4.1). Should PostgreSQL still abort a write on a deadlock, the server
   retries it once, holding its whole payload; if the retry fails too, the
   write answers with a named "try again" conflict and writes nothing.
 - **The order of a settle.** One settle runs, over the units it covers:
@@ -815,9 +860,13 @@ Transaction boundaries:
   nothing new. It terminates, because settling never unconfirms a unit —
   the "none" it records keeps a document source added later from doing so
   (`spec.md` I20) — so the confirmed set only grows; two rounds are the
-  ordinary case. That is what makes settling idempotent (`spec.md` I37).
+  ordinary case, and a maximum round count turns a step that never converges
+  into a reported failure. The five steps are an ordered list that later work
+  registers into; steps 1–4 are no-ops until it does. That is what makes settling idempotent (`spec.md` I37).
 - **A settle that fails** after the write it follows committed leaves the
-  write standing and reports the failure in the operation's response;
+  write standing and reports the failure in the operation's response —
+  `settle` never raises for its own failure, it returns it as
+  `SettleResult.error`;
   derived state is then stale until the next write, or start, settles —
   settling is idempotent, so nothing is lost.
 - **Unique indexes are not deferrable.** A write that moves a unique value —
@@ -970,8 +1019,9 @@ and a `raw` payload containing the original unparsed data.
 Beyond the records, the protocol has an importer report:
 
 - its **coverage** for every run — *through*, by the rules of `spec.md` §5.1
-  and nothing later, including for a fetch that returned no rows — and where
-  its data starts, for the import log;
+  and nothing later, including for a fetch that returned no rows — where
+  its data starts, for the import log, and the count of zero bookings it
+  filtered out, which the run's statistics record;
 - its **balance date** consistent with the core rule and never after the
   run's coverage (`spec.md` §5.1), and for statement formats the
   per-statement consistency check, failing with `ParseFailed` on a mismatch;
@@ -993,11 +1043,13 @@ depends on the distinction:
 | `ChallengeAbandoned` | yes | user cancelled |
 | `SourceUnavailable` | yes | bank unreachable or timed out |
 | `ParseFailed` | no | format changed; needs a code fix |
+| `ContractViolation` | no | the importer delivered what its contract forbids (wrong currency, zero amount, repeated `source_id`, no coverage); needs a fix in the importer or its profile |
 | `NotRegistered` | no | FinTS product registration missing (`spec.md` §7.1) |
 
-Outcomes that ingest decides — a record refused for its currency, rows
-inserted as duplicates (`spec.md` §5.2) — are not importer exceptions.
-They are recorded on the run and surfaced with it.
+Outcomes that ingest decides — rows inserted as duplicates (`spec.md` §5.2) —
+are not importer exceptions; they are recorded on the run and surfaced with it.
+A breach of the importer's contract is a failure of the run (`ContractViolation`,
+above).
 
 ### 5.6 Enforcing the cross-cutting constraints
 
@@ -1005,7 +1057,11 @@ They are recorded on the run and surfaced with it.
 (`password` today, `oidc` later). Cookie holds an opaque id, not a JWT, so
 revocation is a delete. Passwords hashed with argon2id. The OIDC seam is the
 method column plus a single "establish session for this verified identity"
-function.
+function. The cookie is `ledgehog_session`, `HttpOnly`, `SameSite=Lax`, and
+`Secure` whenever the request is not to localhost; expiry slides, 30 days from
+last use. There is no CSRF token, because the API accepts only JSON and
+`SameSite=Lax` keeps the cookie off cross-site requests. There is no login rate
+limiting in v1: two users, self-hosted — a conscious omission.
 
 **Redaction.** Secrets live only in local variables inside the importer and
 in the FinTS dialog object; neither is ever placed on the task, the event
@@ -1036,17 +1092,18 @@ parses and validates everything once at start, fails fast with the variable's
 name on a bad or missing value, and exposes one immutable, typed object that is
 passed to what needs it — `core` never reads the environment itself. Nothing at
 run time writes configuration: changing a value means changing the variable and
-restarting. Each variable that holds a secret also accepts a `_FILE` variant
+restarting. Each variable that holds a secret (`POSTGRES_PASSWORD`,
+`USER_<n>_PASSWORD`, `MODEL_API_KEY`) also accepts a `_FILE` variant
 naming a file (Docker and Compose secrets), and no secret is ever logged or
 returned by `GET /api/config`.
 
 | Group | Variables |
 |---|---|
-| Database | host, port, name, user, password (or a single URL); the name stays a variable so each context has its own database (§9) |
-| Ledger | `BASE_CURRENCY` (required); `MAX_RATE_AGE_DAYS`, `MATCHING_WINDOW_DAYS`, `DOCUMENT_WINDOW_DAYS` (7 each) — `spec.md` §3.8 |
-| Household | time zone (`spec.md` §5.4), default locale |
-| Users | indexed groups `USER_<n>_LOGIN`, `USER_<n>_NAME`, `USER_<n>_PASSWORD`, `n` from 1 |
-| Model | endpoint, model name, optional key; absent means pass 3 does not run (§5.4) |
+| Database | `POSTGRES_HOST` (`localhost`), `POSTGRES_PORT` (`5432`), `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` (the last three required); no single database URL; the name stays a variable so each context has its own database (§9) |
+| Ledger | `BASE_CURRENCY` (required, a three-letter code); `MAX_RATE_AGE_DAYS`, `MATCHING_WINDOW_DAYS`, `DOCUMENT_WINDOW_DAYS` (7 each, at least 0) — `spec.md` §3.8 |
+| Household | `TIMEZONE` (required, an IANA zone; `spec.md` §5.4), `LOCALE` (`en`) |
+| Users | indexed groups `USER_<n>_LOGIN`, `USER_<n>_NAME`, `USER_<n>_PASSWORD`, `n` contiguous from 1, logins unique; none is allowed |
+| Model | `MODEL_ENDPOINT` and `MODEL_NAME` (both or neither), optional `MODEL_API_KEY`; absent means pass 3 does not run (§5.4) |
 
 **Start is a fixed sequence, and the app binds only after it succeeds:**
 
@@ -1118,7 +1175,12 @@ src/
                        store for the active sync task.
     components/        Presentational and reusable. Props in, events out;
                        no direct api/ imports.
-      common/          buttons, modals, tables, empty and error states
+      ui/              shadcn-svelte components, copied in: dialog,
+                       combobox, menu, tooltip, toast, date picker, button.
+                       Generic, no domain knowledge; the only place Bits UI
+                       is imported
+      common/          composites of ui/: tables, money and date displays,
+                       empty and error states
       ledger/          entry row, provenance widget
       units/           the unit panel — draft, preview, commit, split
                        editor — and queue rows ordered by shape, flag
@@ -1128,13 +1190,15 @@ src/
     types/             shared types, generated from OpenAPI where possible
 ```
 
-Three rules:
+Four rules:
 
 - **`routes/` holds no logic.** A page assembles components and calls
   `lib/api`. Anything more moves into a component or a store.
 - **`components/` never calls the API.** A component that fetches cannot be
   reused or previewed, and it hides a network call inside a render tree.
   Data arrives as props.
+- **`components/ui/` knows nothing of the domain.** It is the shared kit;
+  anything that knows what an entry, a unit or an amount is lives outside it.
 - **`lib/api/` is the only module that knows URLs exist.** The rest of the
   frontend calls functions. When an operation's path or shape changes, one
   directory changes.
@@ -1265,7 +1329,8 @@ precisely why it lives in one module.
 
 ### 6.7 Build and serving
 
-Vite builds to a static bundle baked into the image. FastAPI mounts it with a
+Vite builds to a static bundle baked into the image; Tailwind is compiled by
+its Vite plugin in the same build, so nothing CSS-related runs at run time. FastAPI mounts it with a
 catch-all that returns `index.html` for unknown paths, ordered so `/api` is
 never shadowed. In development, the Vite dev server proxies `/api` to a
 locally running uvicorn.
@@ -1303,7 +1368,10 @@ Layers:
   before payee rules before category rules, then priority, ties broken by id, a counter-account rule refused by the currency
   rule. No database.
 - **Ingest tests** — a run failing at a late row leaving no rows, no balance
-  record and no coverage; zero-amount bookings not emitted and counted;
+  record and no coverage; each breach of the importer's contract — a wrong
+  currency, a zero amount, a repeated `source_id`, no coverage — failing the
+  run and leaving nothing behind (the importer's own test asserts that it
+  filters and counts zero bookings);
   two syncs of one account serialised over a whole delivery; deduplication of
   `spec.md` §5.2 exhaustively: identity
   matches including duplicates; identical rows with and without a
@@ -1313,7 +1381,7 @@ Layers:
   counter-legs among them, derived entries, rows of the same delivery or rows identity already matched; the
   purpose as tie-breaker; a shared account whose two credentials hash
   differently, with a late same-amount booking delivered first by the second
-  credential; the currency refusal; marking and clearing duplicates, never
+  credential; marking and clearing duplicates, never
   chained, and the removal routine, including deleting a user-authored
   transaction; a user-authored row entered twice with one id, edited so its
   residual absorbs the change or its split collapses, and resolved afresh; the
@@ -1410,7 +1478,11 @@ Layers:
   document on two, a derived entry of type `flow`, a change of an account
   between investment and other, a change of the base currency, a payee on an
   untyped entry, deleting a category a rule references, a source transaction
-  or an entry of amount zero.
+  or an entry of amount zero. A test that must seed a state the schema
+  forbids, to show an integrity view or a re-check catches it, disables the
+  relevant user triggers inside its own transaction as table owner (`ALTER
+  TABLE … DISABLE TRIGGER USER`, rolled back with the transaction), never
+  through a privileged setting.
 - **Reporting tests** — `base_value()` rounding, a missing or too-old rate
   yielding unvalued rather than zero, and the net-worth identity: FX
   translation computed per account and zero for base-currency accounts, and
@@ -1458,7 +1530,8 @@ deliberate: a connection string either points at the production host or it
 does not, which is checkable. A naming convention is not. It also means the
 role used for development can hold `CREATEDB` — necessary for everything
 below, and exactly the privilege that must never exist alongside production
-access.
+access. The test role needs `CREATEDB` and nothing else: never superuser, no
+parameter privileges.
 
 ### Databases are ephemeral and per-context
 
@@ -1477,7 +1550,11 @@ Test databases are seeded by **cloning a template** (`CREATE DATABASE …
 TEMPLATE …`) built once from the migration chain, rather than by replaying
 migrations per run, which is far faster. Templating requires no other
 connection to the template database, so under parallel runs the template must
-be built before the workers start and left untouched while they run.
+be built before the workers start and left untouched while they run. The template
+is `tpl_<hash of the migration chain>`: built once under a temporary name and
+renamed into place, so a crashed build is never mistaken for a usable one, and
+kept across runs, so it is rebuilt only when a migration changes. Each run
+clones it as `test_<uuid>`.
 
 ### Cleanup is not optional
 
@@ -1485,11 +1562,14 @@ Ephemeral databases leak: an interrupted run, a killed container, a failed CI
 job. Without a discipline the development server accumulates orphans until
 someone drops one by hand and picks the wrong one.
 
-- **Deterministic prefixes** — `test_<uuid>`, `dev_<worktree>` — so anything
-  matching is known to be disposable.
+- **Deterministic prefixes** — `test_<uuid>`, `tpl_<hash>`, `dev_<worktree>` —
+  so anything matching is known to be disposable.
 - **Teardown in a fixture that also runs on failure**, not at the end of a
   happy path.
-- **A sweeper** that drops anything matching the prefix older than a day.
+- **A sweeper** (`scripts/sweep_dbs.py`) that drops `test_` and `tpl_`
+  databases older than a day. Each database carries its creation time as a
+  comment; an unstamped one counts as old. A `dev_` database is never swept: it
+  is long-lived and may hold real data (below), so it is dropped by hand.
 
 ### Development data is real data
 

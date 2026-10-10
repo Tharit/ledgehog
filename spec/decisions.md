@@ -3096,3 +3096,111 @@ D179 and D180 as far as they concern automatic counter-legs.
   sign change through the entry form breaks any pair. The plan gains login and
   sessions, tags, and category and payee management with payee merge, and
   watches mixed payees.
+
+## D182 UI components: shadcn-svelte on Bits UI
+
+The stack named Svelte 5 and SvelteKit but no component layer (architecture
+§2). The app's important screens are custom in any case; what a library must
+supply is the accessible, keyboard-correct generic widgets — dialogs, the
+searchable pickers used constantly in review, menus, tooltips, toasts, a date
+picker. shadcn-svelte supplies them as components copied into the repository,
+on Bits UI's headless primitives: the code is owned and adapted to the dense
+look of `ux/patterns.md`, the runtime dependency is Bits UI alone, and
+Tailwind runs at build time. Copied components are updated deliberately, by
+copying again and reviewing the diff. `components/ui/` holds them and is the
+only importer of Bits UI (architecture §6.2).
+
+Rejected: Flowbite-Svelte (many finished components, but an opinionated look,
+uneven keyboard behaviour and a large installed surface, with tables that are
+not data grids); Skeleton (a design system aimed at a different look, weaker
+pickers); Bits UI with hand-written CSS (the same primitives, everything styled
+from scratch); no library (accessible pickers and dialogs are easy to get
+subtly wrong).
+
+## D183 One generic CSV importer; a card's payment is synthesised
+
+Three real exports — a giro with a preamble, a pending flag and a balance in the
+header; a card with a footer balance, two columns named alike and no payments;
+a card with inverted signs, multi-line cells and no balance — differ in layout
+and parsing, never in what they deliver. So the importer is one, configured by
+a profile held as data (`plugins/importers/csv.md`), and a bank is a preset
+file, not code. A model may later propose a profile from a sample, which is
+judged by the dry run like any other; it is never in the import path.
+
+- **A balance may be a labelled figure** (spec §5.1). None of the three has a
+  running-balance column, and two state the balance elsewhere. A figure dated
+  the export day is rolled back by the booked rows of that day to the last
+  closed day, so the record obeys the rule that the balance equals the sum of
+  entries up to its date. Rejected: dating the record at the export day, which
+  breaks I36 and would be corrected by a reconciliation on every sync.
+- **A card that lists no payments gets one synthetic movement per file**
+  (spec §5.1, §5.7): the negated net sum, `counterparty_ref` set to the paying
+  account so that pass 0 types it, dated coverage plus *N* days, marked
+  `csv:synthetic`. A statement is one month and no other range can be exported,
+  so each file is self-contained. It must be dated after the balance record,
+  or every reported balance reconciles by the statement itself.
+  Rejected: *a flag making the account unsynced for transfers*, with I40
+  relaxed — a state on the link and a rule with an exception, for what one row
+  expresses; *leaving the card unlinked* — it loses runs, coverage and
+  reported balances; *accepting the reconciliation as the payment* — the
+  unexplained difference becomes permanent noise and the paying account's leg
+  never pairs; *deriving the payment from consecutive balances* — needs both
+  statements and invents a date.
+- **The amount is the net sum of the rows, not the balance.** It needs no
+  balance and no earlier statement. It assumes payment in full; where the debit
+  differs, the offers and the reconciliation say so (spec §5.7, §5.10).
+- **Goal 1.1 has one exception**, the movement the source implies; it is
+  marked, and its `raw` records what it was derived from.
+
+## D184 The content hash: SHA-256 over named, length-prefixed fields of canonical text
+
+Spec §5.2, I4. Every stored `content_hash` is a function of these rules, so
+they are in the spec: changing one means rehashing from `raw`.
+
+- **SHA-256 over each field written as its name and its value, both
+  length-prefixed.** No value can imitate another field's text. Rejected: *a
+  concatenation joined by a separator* — values containing the separator move
+  the boundary between fields, and two different rows collide.
+- **Text is canonicalised before hashing: NFKC, case-folded, letters and digits
+  only.** Absent equals empty. Rejected: *hashing the raw text* — two exports of
+  one booking differ in spacing, punctuation and line-joining, so the same
+  payment would stop deduplicating against its own history.
+- **The ordinal groups rows by their canonical text.** Rejected: *grouping by
+  the raw values* — rows that differ only in spacing would fall into different
+  groups and take the same ordinal, so identical payments would collide or
+  split depending on formatting.
+- **The spec states properties; the exact byte layout is fixed by the
+  implementation and frozen by a known-answer test** with a few digests. The
+  spec cannot cite code, and tests that assert properties alone would pass an
+  accidental change of layout that silently stops deduplicating against stored
+  hashes.
+
+D46's statement that a `source_id` is also a hash input no longer holds: D103
+made identity the `source_id` where there is one and the hash otherwise, and
+the spec's ordinal is absent for a row with a `source_id`.
+
+## D185 A breach of the importer's contract fails the run
+
+Spec §5.1, §5.2, I29. The importer is told what to emit: the account's
+currency, no zero bookings, one record per `source_id`, a coverage. A record
+that breaks this is a fault in the importer or its profile, and one rule
+handles every case: the run fails, writes nothing, and names the rule.
+
+- **The importer drops zero bookings and reports how many**, which the run's
+  statistics record, so the import log stays useful. Rejected: *showing the
+  count only in the importer's dry run* — the log would lose it.
+- **A new error kind, `ContractViolation`**, because a wrong currency on a
+  profile is fixable by the user, unlike `ParseFailed`, which needs a code fix.
+  Rejected: *reusing `ParseFailed`* — no taxonomy change, but a misleading
+  label.
+- Rejected: *skipping and counting each case* — the cases would be handled
+  inconsistently, and a profile linked to an account in another currency would
+  refuse every row yet report a successful run.
+
+## D186 A commit's version check covers every entry it writes
+
+Architecture §4.1. Granularity is per entity (§4.1), and an entry written as a
+side effect — a transfer partner unpaired by a removal — is one. Rejected:
+*checking only the entries the user acted on* — a removal could then overwrite
+a partner another tab had just changed, which is the lost update the per-entity
+check exists to refuse.

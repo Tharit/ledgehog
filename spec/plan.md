@@ -55,6 +55,10 @@ categorisation from another tool: its history arrives as source transactions
 through a CSV importer, and a handful of rules confirms the bulk of it
 (`spec.md` §5.9).
 
+A model-assisted *suggest a profile from a sample* for the CSV importer
+(`plugins/importers/csv.md` §9): the profile is data judged by the dry run, so
+it can follow the profile form without touching the importer.
+
 The multi-currency *model* is in v1: currencies, one currency per account,
 instructed amounts, `base_value()` and the reporting rules (`spec.md` §3.8).
 
@@ -123,6 +127,9 @@ Rough sequence:
    (`architecture.md` §6.3), built and tested before any panel UI; then the
    entry form for user-authored transactions — amount and purpose, with
    date, account and sign prefilled — creating, editing and deleting them;
+   review flags (`unconfirmed`) computed over the unit's closure, as `spec.md`
+   §6 defines, not per entry as the step-3 settling skeleton does (steps 7 and
+   8: splits and pairing are what make the two differ);
    the panel with splits and re-resolving, the queue ordered by shape with
    one-keystroke commit, the affected-set patching contract; the units of a
    rule's preview opening in the panel.

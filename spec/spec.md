@@ -27,7 +27,8 @@ one desktop, one deployment, no tenancy, no mobile, no i18n.
 - Pluggable importers with reliable deduplication.
 - Category and payee suggestions that improve as they are corrected.
 - Every imported movement kept exactly as the source reported it, whether it
-  is interpreted or kept as a duplicate.
+  is interpreted or kept as a duplicate. The one exception is a movement the
+  source implies but does not list, which is marked as such (§5.1).
 - Net worth across checking, savings, cards and cash, and across depots and
   other assets valued by hand — held in any currency and reported in one.
 
@@ -882,8 +883,22 @@ account's own balance, in the account's currency.** Events that do not change
 that balance — a payment PayPal passed straight through to a card, the
 sub-balance events of a conversion that nets to zero — are documents or
 nothing. So is a booking of amount zero (a bank's notice, a verification
-charge): it moves nothing, is not emitted, and is counted in the run's
-statistics.
+charge): it moves nothing, so the importer drops it and reports how many it
+dropped, which the run's statistics record.
+
+**A movement the source implies but does not list** may be emitted as a
+**synthetic** source transaction: a card statement that shows purchases and
+never the payment that settles them, whose payment is the statement's net
+sum. It is a movement of the account's balance like any other and goes through
+ingest like any other row. It differs in three ways: its `source_format` marks
+it synthetic; its `raw` records what it was derived from — the statement's row
+count, sum and date — in place of a source line; and it is dated after the
+run's coverage, so that the balance record the run reports, dated at the
+coverage, does not include it and the interval's derived entry (§3.10) stays
+zero. It has no `source_id`, so its identity is the content hash, and the same
+file delivers the same row again, which is skipped (§5.2). The importer
+decides whether and when a statement implies one; an importer that does not
+list a movement and does not imply it leaves the account to reconcile (§5.10).
 
 **Importers emit only final, booked records.** Pending states — card
 pre-authorisations, PayPal holds — are never imported; waiting for them to
@@ -913,6 +928,12 @@ was asked for either fails, or succeeds with the part it delivered and a
 coverage that claims no more than that part; a fetch from the new sync
 position then picks up the rest.
 
+**Ingest does not repair, skip or count a record that breaks the importer's
+contract.** The run fails, writes nothing, and names the rule that was broken.
+The cases: a record whose currency differs from its account's; a record of
+amount zero; the same `source_id` twice in one delivery; a successful
+transaction run that reports no coverage.
+
 For each transaction record the importer delivers:
 
 - the normalised columns — amount, currency, booking and value date,
@@ -940,7 +961,8 @@ nothing else:
 - a fetch covers through the day before the fetch, whether or not it
   returned any rows;
 - a file covers through its stated period end, else its last booking date —
-  but never through the day it was exported or uploaded;
+  but never through the day it was exported or uploaded. A file with neither a
+  stated period end nor a row has no coverage, and the run fails;
 - a document run covers through the provider's date up to which its documents
   are complete (§5.5).
 
@@ -964,7 +986,15 @@ run's coverage (I36):
   reports no balance, and the next sync delivers one.
 - A CSV profile takes it from the running balance ("Saldo") column of the last
   row dated before the export date, where the profile can read one, and
-  before the upload date otherwise.
+  before the upload date otherwise. It may instead take a figure the file
+  states outside its rows — a balance with its date, in a header or a footer.
+  The record is dated at the figure's date where that is no later than the last
+  closed day, the day before the export date (the upload date where the file
+  states none). Where the figure is dated later — an export made during the day
+  states the balance of that day — the importer rolls it back to the last
+  closed day by the booked rows dated after it: the figure less their sum. The
+  figure is taken to be the booked balance; a source whose figure may include
+  pending items reports none, as below.
 - Where the source reports only a current balance, which may include pending
   items, the run reports none; the account reconciles against balances entered
   by hand (§5.10).
@@ -1020,10 +1050,29 @@ Excluded from the hash, though stored, displayed and searchable:
 - `value_on`, which a bank may adjust;
 - `source_format`, which is provenance.
 
+**The content hash** is SHA-256 over these fields, each written as its name and
+its value, both length-prefixed so that no value can imitate another field's
+text: `amount` (integer minor units), `currency`, `booked_on` (ISO date),
+`counterparty_ref` and `purpose` (both as canonical text), and `ordinal`. It is
+stored as the lowercase hex of the digest.
+
+**Canonical text** is Unicode NFKC, then case-folded, then reduced to letters
+and digits: spacing, punctuation and line-joining cannot move the hash, an IBAN
+hashes the same with or without spaces, and an absent value equals an empty
+one. A character that is neither a letter nor a digit after NFKC — a combining
+mark that does not compose, a symbol — is dropped.
+
+**The ordinal** is the row's 0-based position among the rows of one delivery
+that are equal in every other hashed field (compared as canonical text), in
+delivery order. A row with a `source_id` has none.
+
+Changing any of this changes every stored hash and needs a rehash migration
+from `raw` (§5.1).
+
 #### What ingest does with an incoming row
 
-A record whose currency differs from its account's is **refused**, never
-converted. For pocket providers, a balance in a new currency surfaces through
+A record whose currency differs from its account's breaks the importer's
+contract (§5.1): the run fails. Nothing is converted. For pocket providers, a balance in a new currency surfaces through
 account discovery instead (§5.4).
 
 Every other row is checked against what the account already holds, **per
@@ -1378,6 +1427,11 @@ the next fetch would re-import them. That is what marking a duplicate is for.
 
 A transfer between two synced accounts produces two source transactions, days
 apart. Legs may exist unpaired — a normal state, not an error.
+
+A leg an importer synthesises (§5.1) is an ordinary leg: pass 0 types it from
+its counterparty reference and it pairs like any other. It is what lets a card
+whose statements list no payments pair with the payoff on the account that
+pays it.
 
 **A counter-account must be in the currency the money arrived in.** Where a
 transfer leg has an instructed amount (§3.8), its counter-account is in the

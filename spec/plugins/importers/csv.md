@@ -1,0 +1,184 @@
+# Importer: csv
+
+Status: **written ahead, in v1.** One generic importer for statement exports,
+configured by a profile; there is no importer per bank. `spec.md` §5.1 owns
+what any importer delivers — columns, sign convention, coverage, closing
+balance, synthetic movements — and §5.2 what ingest does with it;
+`architecture.md` owns the upload operation and its dry run. This document
+covers only how a file becomes those records.
+
+---
+
+## 1. The profile
+
+A profile is plain data, kept in the settings of an `importer_instance`: one
+profile per file format. Accounts of the same format link to the one instance
+(`spec.md` §5.4), and a file is uploaded against one of them — the file's own
+account number is often masked and is never relied on. The importer never reads
+the database: it receives the file, the profile and the account's currency, and
+returns records.
+
+Because a profile is data, it can be written in a settings form, loaded from a
+preset (§8) or proposed by an assistant (§9), and in every case it is checked
+the same way: by the dry run (§7), which parses a file and writes nothing.
+
+## 2. Reading the file
+
+| Setting | Notes |
+|---|---|
+| encoding | UTF-8 with or without a byte-order mark, or a configured legacy encoding. Detected, overridable. |
+| delimiter, quote | Detected, overridable. A quoted cell may span lines. |
+| header marker | The column names that identify the header row: the first row containing all of them. Everything above it is the preamble (§5); rows before it are never transactions. Not a fixed line number, so a preamble that grows does not break the profile. |
+
+Header names are trimmed. A name that occurs twice is addressed by its
+occurrence (`Betrag#2`); any column may also be addressed by position.
+
+**A row is a transaction if its booking date parses, and is skipped otherwise.**
+That drops footers (a `Saldo:` row), blank lines and section titles without
+a rule per bank. Skipped rows are counted and listed in the dry run, so a
+column mapped wrongly shows as "every row skipped", not as an empty import.
+
+## 3. Mapping the columns
+
+| Field | From |
+|---|---|
+| `booked_on` | a date column; the format is a profile setting (`dd.MM.yyyy`, `d.M.yyyy`, `dd/MM/yyyy`; unpadded days and months parse under either) |
+| `value_on` | a date column, optional |
+| `amount` | one signed column, or a credit and a debit column (`credit − debit`); decimal and thousands separators are settings |
+| `counterparty_name`, `counterparty_ref`, `bic`, `end_to_end_id`, `mandate_ref`, `booking_text` | one column each, all optional |
+| `purpose` | a list of columns, joined with a space; empty cells dropped |
+| instructed amount and currency | two columns, optional; ignored on a row whose currency equals the account's |
+| `source_format` | `csv:<profile label>` |
+| `raw` | the row as read, unparsed (`spec.md` §5.1) |
+
+**Sign.** The profile has an *invert amounts* setting and, separately, an
+*invert balance* setting (`spec.md` §5.1). A source that shows purchases as
+positive inverts both.
+
+**Placeholder cells** such as `n/a` or `-` are treated as empty; the placeholder
+list is a setting. A currency column, where there is one, must equal the
+account's currency, or the row is refused (`spec.md` §5.2).
+
+## 4. Row filters
+
+A filter skips a row when a column equals, or matches, a value. It is the one
+mechanism behind two needs: **pending rows** (a column that reads `vorgemerkt`,
+which `spec.md` §5.1 excludes) and **mixed-currency files** (one currency per
+run). Filtered rows are counted in the dry run like skipped ones.
+
+## 5. Balance and coverage
+
+The preamble and footer are searched for a figure with a **label**: find the
+cell containing the label text, then read the value at an offset — to its right
+(`Saldo:;;;-842,01`) or below it (a label row above a value row). A **date** is
+read the same way, or extracted by a pattern from the text of a cell
+(`Abrechnungsdatum: 3.8.2026`).
+
+A profile's balance is one of:
+
+1. **a running-balance column** — read from the last row before the export date;
+2. **a labelled figure** with its date, as above;
+3. **none** — the account reconciles against balances entered by hand
+   (`spec.md` §5.10).
+
+`spec.md` §5.1 decides the date of the record and the roll-back of a figure
+dated on the export day. The importer applies the profile's *invert balance*
+setting, then rolls back by the booked rows only, with filtered rows excluded.
+A figure that may include pending items is not a booked balance: mode 3.
+
+**Coverage** is the file's stated period end where the profile reads one (a
+statement date), otherwise its last booking date after filtering; never the
+export or upload date (`spec.md` §5.1). A file with neither a stated period end
+nor a row has no coverage, and the run fails.
+
+## 6. Statement payment
+
+Some cards export only what was bought with them, and the payments that settle
+them reach the account that pays, never the card's own export. Without help the
+card's balance would never fall, and each reported balance would be reconciled
+by an amount equal to the payment. A profile can therefore declare that its
+statements list no payment, and the importer emits one synthetic movement per
+file (`spec.md` §5.1).
+
+| Setting | Meaning |
+|---|---|
+| enabled | off by default; off for a card that lists its payments |
+| counter-account reference | becomes `counterparty_ref`, so pass 0 types the row a transfer to the account that pays (`spec.md` §5.9); it equals that account's `external_ref` |
+| purpose | a text template; `{statement_date}` is the coverage date |
+| date offset *N* | days after the run's coverage, at least 1 |
+
+- **Amount.** The negated net sum of all transaction rows of the file —
+  every row after filtering, including rows ingest then skips or marks as
+  duplicates — so that the statement nets to zero. It assumes the card is paid
+  in full each month. Where the account's debit differs, the transfer's offers
+  and the reconciliation show the difference (`spec.md` §5.7, §5.10). A net sum
+  of zero or more emits nothing, and the run's statistics count it.
+- **Date.** Coverage plus *N* days. It must fall after the balance record,
+  which is dated at the coverage, or the record would include the payment and
+  the interval's derived entry would be the statement itself; and within the
+  matching window of the leg on the paying account. Choose *N* from when the
+  debit is observed to arrive: a statement on the 3rd whose payment lands
+  between the 6th and the 9th takes *N* = 4, the 7th, which the default
+  window of seven days covers.
+- **Provenance.** `source_format` is `csv:synthetic`; `raw` holds the profile
+  settings used, the row count, the sum and the statement date. The dry run and
+  the ledger show the row as derived from the statement, not as reported.
+- **Re-uploading** the same file gives the same row, which ingest skips. A
+  changed purpose gives a new hash, which the amount step pairs with the
+  existing row as a duplicate (`spec.md` §5.2).
+- **Another source later.** Should the card gain a source that lists its real
+  payments, the setting is turned off. Real and synthetic rows deduplicate only
+  where their dates and amounts coincide (`spec.md` §5.3).
+
+## 7. Dry run
+
+The dry run of an upload parses and writes nothing. It reports, so that a
+profile can be judged before it is used:
+
+- the header row found and the columns it mapped, the first rows as parsed;
+- the count of rows read, skipped as not transactions, and filtered, with
+  examples of each;
+- the coverage and the balance record that would be written, with the figure's
+  place in the file and the roll-back applied;
+- the synthetic payment, if any, with its amount, date and the sum it is made
+  of.
+
+## 8. Presets
+
+A preset is a profile without account details, shipped as a data file. A new
+bank is a new file, not code. The first three — a giro with a preamble, a
+pending flag and a header figure; a card with a footer balance, two `Betrag`
+columns and no payments; a card with inverted signs, multi-line cells and no
+balance — are the importer's tests. Their fixtures are written for the
+purpose: real exports carry names and account numbers and are not committed.
+
+## 9. Not in this importer
+
+MT940 and camt statements, which have their own parsers and checks
+(`spec.md` §5.1). Spreadsheets. Files holding several tables or accounts.
+Extracting a counterparty from free text: the text stays in `purpose`, and
+rules and history read it (`spec.md` §5.9).
+
+A model-assisted *suggest a profile from a sample* is a separate, later
+function: it proposes the semantic settings a heuristic cannot — which column
+is the purpose, the sign convention, where the balance sits, what marks a row
+pending — and its result is a profile like any other, judged by the dry run.
+It is never part of an import.
+
+## Appendix: the first three profiles
+
+| | Giro, UTF-8, `;` | Card A, `;` | Card B, `,` |
+|---|---|---|---|
+| header marker | `Buchung`, `Valuta`, `Betrag` | `Belegdatum`, `Eingangstag`, `Verwendungszweck` | `Datum`, `Beschreibung`, `Betrag` |
+| `booked_on` | `Buchung` | `Eingangstag` | `Datum` |
+| `value_on` | `Valuta` | `Belegdatum` | — |
+| date format | `dd.MM.yyyy` | `d.M.yyyy` | `dd/MM/yyyy` |
+| amount | `Betrag`, `.` thousands, `,` decimal | `Betrag#2` | `Betrag`, inverted |
+| purpose | `Buchungstext`, `Verwendungszweck` | `Verwendungszweck` | `Beschreibung` |
+| counterparty | `Sender / Empfänger`, `IBAN` | — | — |
+| instructed | — | `Fremdwährung`, `Betrag#1` | — |
+| filter | skip `Valuta = vorgemerkt` | — | — |
+| placeholders | `n/a` | — | — |
+| balance | labelled figure `Saldo`, value below, date `Datum` below, rolled back | labelled figure `Saldo:`, value in the row, date by pattern from `Abrechnungsdatum:` | none |
+| coverage | last booking date | the statement date | last booking date |
+| statement payment | off | on | off |
