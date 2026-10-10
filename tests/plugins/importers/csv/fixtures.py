@@ -61,7 +61,8 @@ def card_b_bytes() -> bytes:
     lines = [
         "Datum,Beschreibung,Betrag,Weitere Details,Erscheint auf Ihrer Abrechnung als,Adresse,Stadt,PLZ,"
         "Land,Betreff,Kategorie",
-        '05/08/2026,BEISPIEL SHOP,"12,50",Details,SHOP*1,"Musterstr. 1\n12345 Musterstadt",Musterstadt,12345,DE,,Einkauf',
+        '05/08/2026,BEISPIEL SHOP,"12,50",Details,SHOP*1,"Musterstr. 1\n12345 Musterstadt",'
+        "Musterstadt,12345,DE,,Einkauf",
         '06/08/2026,ZAHLUNG ERHALTEN,"-100,00"',
         '07/08/2026,BEISPIEL ABO,"1.234,56",Jahresabo,ABO*2,,,,,',
     ]
