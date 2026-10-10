@@ -21,6 +21,7 @@ from app.plugins.importers.csv.filters import CompiledFilter, compile_filter, fi
 from app.plugins.importers.csv.profile import ColRef, Profile
 from app.plugins.importers.csv.reader import ReadFile, read_file, resolve_column
 from app.plugins.importers.csv.report import Kept, ReportBuilder
+from app.plugins.importers.csv.statement_payment import statement_payment
 
 CELL_DISPLAY = 24
 
@@ -78,13 +79,15 @@ def _parse(
     export_date = _export_date(prof, rf, today, rep)
     coverage = _coverage(prof, rf, emitted, rep)
     balance = reported_balance(prof, rf, kept, export_date, coverage, rep, currency, minor_units)
+    synthetic = statement_payment(prof, emitted, coverage, currency, rep)
+    skipped = prof.statement_payment is not None and synthetic is None
     return ParsedFile(
-        rows=tuple(emitted),
+        rows=(*emitted, synthetic) if synthetic is not None else tuple(emitted),
         reported_balance=None if balance is None else balance[0],
         balance_on=None if balance is None else balance[1],
         covered_through=coverage,
         data_start=min((r.booked_on for r in emitted), default=None),
-        importer_stats={"filtered": rep.zero_dropped.count, "synthetic_skipped": 0},
+        importer_stats={"filtered": rep.zero_dropped.count, "synthetic_skipped": int(skipped)},
         report=rep.build(),
     )
 

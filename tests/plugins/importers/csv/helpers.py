@@ -43,3 +43,44 @@ def run(
 
 
 HEADER = "Datum;Betrag;Zweck\n"
+
+
+CARD = (
+    "Titel\n"
+    "Abrechnungsdatum: 3.8.2026\n"
+    "\n"
+    "Belegdatum;Eingangstag;Zweck;Betrag\n"
+    "1.8.2026;2.8.2026;Shop;-12,00\n"
+    "2.8.2026;3.8.2026;Shop;-30,01\n"
+    "Saldo:;;;-42,01;EUR\n"
+)
+
+
+def card_profile(**over: Any) -> dict[str, Any]:
+    p: dict[str, Any] = {
+        "label": "card",
+        "delimiter": ";",
+        "header_marker": ["Belegdatum", "Eingangstag"],
+        "booked_on": "Eingangstag",
+        "value_on": "Belegdatum",
+        "date_format": "d.M.yyyy",
+        "amount": {"column": "Betrag"},
+        "purpose": ["Zweck"],
+        "balance": {
+            "mode": "labelled",
+            "label": "Saldo:",
+            "right": 3,
+            "date": {
+                "format": "d.M.yyyy",
+                "label": "Abrechnungsdatum",
+                "pattern": r"(\d{1,2}\.\d{1,2}\.\d{4})",
+            },
+        },
+        "coverage_end": {
+            "format": "d.M.yyyy",
+            "label": "Abrechnungsdatum",
+            "pattern": r"(\d{1,2}\.\d{1,2}\.\d{4})",
+        },
+    }
+    p.update(over)
+    return p
