@@ -119,10 +119,7 @@ def ingest_delivery(
     except Exception as exc:
         fail_run(engine, run_id, f"{type(exc).__name__}: {exc}")
         raise
-    try:
-        settled = settle(engine)
-    except Exception as exc:  # the write stands (architecture §5.2)
-        settled = SettleResult(error=f"{type(exc).__name__}: {exc}")
+    settled = settle(engine)  # never raises: a failure comes back on the result (architecture §5.2)
     return RunResult(
         run_id=run_id,
         inserted=counts.inserted,

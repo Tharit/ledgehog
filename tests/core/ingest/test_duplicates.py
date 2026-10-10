@@ -301,7 +301,7 @@ def test_settle_runs_once_after_commit_and_a_failure_keeps_the_write(
 
     def spy(engine: Engine) -> SettleResult:
         seen.append(ledger.dup_of(a_src))  # a separate connection: committed state only
-        raise RuntimeError("settle down")
+        return SettleResult(error="RuntimeError: settle down")
 
     monkeypatch.setattr(duplicates, "settle", spy)
     result = mark_duplicate(ledger.engine, a_src, c_src)

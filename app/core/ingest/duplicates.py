@@ -60,20 +60,13 @@ def mark_duplicate(
     if row_id == of_row_id:
         raise DuplicateOfSelf(row_id)
     affected = retry_on_deadlock(lambda: _mark(engine, row_id, of_row_id, expected_versions))
-    return OpResult(settle=_settle(engine), affected=affected)
+    return OpResult(settle=settle(engine), affected=affected)
 
 
 def clear_duplicate(engine: Engine, row_id: int) -> OpResult:
     """'Not a duplicate': clear `duplicate_of` and give the row its one entry, as ingest would."""
     entry_id = retry_on_deadlock(lambda: _clear(engine, row_id))
-    return OpResult(settle=_settle(engine), created_entry_id=entry_id)
-
-
-def _settle(engine: Engine) -> SettleResult:
-    try:
-        return settle(engine)
-    except Exception as exc:  # the write stands (architecture §5.2)
-        return SettleResult(error=f"{type(exc).__name__}: {exc}")
+    return OpResult(settle=settle(engine), created_entry_id=entry_id)
 
 
 class _AccountsMissing(Exception):
@@ -90,9 +83,9 @@ _LOCK_ROUNDS = 3
 def _begin(
     conn: Connection, *row_ids: int, extra_accounts: Iterable[int] = (), partners_of: int | None = None
 ) -> tuple[dict[int, Any], set[int]]:
-    """Lock in the fixed order and load the rows (with the accounts locked): settle shared, the accounts ascending (the
-    first row's, `extra_accounts`, and the accounts of the transfer partners of `partners_of`'s
-    entries, read before locking), the rows ascending."""
+    """Lock in the fixed order and load the rows (with the accounts locked): settle shared,
+    the accounts ascending (the first row's, `extra_accounts`, and the accounts of the transfer
+    partners of `partners_of`'s entries, read before locking), the rows ascending."""
     lock_settle_shared(conn)
     account = conn.execute(
         text("SELECT account_id FROM source_transaction WHERE id = :i"), {"i": row_ids[0]}

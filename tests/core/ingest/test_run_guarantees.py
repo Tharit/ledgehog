@@ -120,7 +120,7 @@ def test_settle_runs_once_after_commit_and_a_failure_keeps_the_write(
     assert res.settle.touched_entry_ids == (7,)
 
     def boom(engine: Any) -> SettleResult:
-        raise RuntimeError("settle exploded")
+        return SettleResult(error="RuntimeError: settle exploded")
 
     monkeypatch.setattr(run_module, "settle", boom)
     res = env.deliver([row(-3, source_id="c")])
