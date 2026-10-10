@@ -6,6 +6,7 @@ Written with direct SQL so they do not depend on the ingest signature. Every run
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
@@ -14,7 +15,7 @@ from typing import Any
 from sqlalchemy import Connection, Engine, text
 
 from app.core.balance.derived import recompute_derived
-from tests.invariants.helpers import make_balance_record, make_entry, make_source
+from tests.invariants.helpers import make_balance_record, make_entry, make_source, pair
 
 BASE = datetime(2026, 3, 2, 12, 0, tzinfo=UTC)
 D = date(2026, 3, 10)
@@ -110,6 +111,9 @@ class World:
             )
         ]
 
+    def count(self, table: str) -> int:
+        return int(self.q(f"SELECT count(*) FROM {table}")[0][0])  # noqa: S608
+
     def status(self, run_id: int) -> str:
         return str(self.one("SELECT status FROM import_run WHERE id = :i", i=run_id).status)
 
@@ -136,3 +140,53 @@ class World:
         for v in views:
             bad = self.q(f"SELECT * FROM {v}")  # noqa: S608
             assert not bad, f"{v} reports {bad}"
+
+
+def pair_key(pass_: str = "matcher_decision") -> str:
+    """A counter-account derivation as a pair sets it (spec §5.7)."""
+    return json.dumps({"counter_account": {"pass": pass_, "basis": {"from": "counterpart"}}})
+
+
+def add_duplicate(world: World, run: Run, of_source: int, *, amount: int, booked_on: date) -> int:
+    """A row of `run` that duplicates `of_source` (marked by hand): no entry."""
+
+    def make(c: Connection) -> int:
+        account = c.execute(
+            text("SELECT account_id FROM source_transaction WHERE id = :i"), {"i": of_source}
+        ).scalar_one()
+        src = make_source(
+            c, account, run_id=run.id, amount=amount, booked_on=booked_on, duplicate_of=of_source
+        )
+        run.sources.append(src)
+        return src
+
+    return int(world.tx(make))
+
+
+def transfer_to_savings(world: World, source: int, entry: int) -> int:
+    """Pair imported `entry` (on checking) with a user-authored leg on savings; returns that leg's entry.
+    Both counter-accounts were set by the pair, so unpairing clears them."""
+
+    def make(c: Connection) -> int:
+        amount = c.execute(text("SELECT amount FROM ledger_entry WHERE id = :e"), {"e": entry}).scalar_one()
+        c.execute(
+            text(
+                "UPDATE ledger_entry SET type = 'transfer', counter_account_id = :s,"
+                " derivation = CAST(:d AS jsonb), note = 'keep a' WHERE id = :e"
+            ),
+            {"s": world.savings, "d": pair_key(), "e": entry},
+        )
+        b_src = make_source(c, world.savings, importer=None, amount=-amount, booked_on=D)
+        b = make_entry(
+            c,
+            b_src,
+            type="transfer",
+            counter_account_id=world.checking,
+            derivation=pair_key("user"),
+            description="in",
+            note="keep b",
+        )
+        pair(c, entry, b)
+        return b
+
+    return int(world.tx(make))

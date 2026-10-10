@@ -26,6 +26,7 @@ from typing import Any
 from sqlalchemy import Connection, Engine, text
 
 from app.core.balance.derived import recompute_derived
+from app.core.ingest.entries import insert_entry
 from app.core.ingest.removal import entry_scope, remove_entries
 from app.core.settle.settle import SettleResult, settle
 from app.utils import clock
@@ -185,6 +186,35 @@ def _check_revertible(conn: Connection, run_id: int, *, locked: bool) -> Any:
     return run
 
 
+def _reassign_duplicates(
+    conn: Connection, run_id: int, row_ids: list[int]
+) -> tuple[tuple[int, ...], tuple[tuple[int, int], ...]]:
+    """For each deleted row that rows of other runs duplicate: the lowest id of those stops being a
+    duplicate and gets its entry (as 'not a duplicate' does), the others now duplicate it."""
+    groups = conn.execute(
+        text(
+            "SELECT duplicate_of AS original, array_agg(id ORDER BY id) AS dups FROM source_transaction"
+            " WHERE duplicate_of = ANY(:rows) AND import_run_id IS DISTINCT FROM :run"
+            " GROUP BY duplicate_of ORDER BY duplicate_of"
+        ),
+        {"rows": row_ids, "run": run_id},
+    ).all()
+    cleared: list[int] = []
+    repointed: list[tuple[int, int]] = []
+    for group in groups:
+        first, *rest = (int(i) for i in group.dups)
+        conn.execute(text("UPDATE source_transaction SET duplicate_of = NULL WHERE id = :i"), {"i": first})
+        insert_entry(conn, first)
+        if rest:
+            conn.execute(
+                text("UPDATE source_transaction SET duplicate_of = :o WHERE id = ANY(:ids)"),
+                {"o": first, "ids": rest},
+            )
+        cleared.append(first)
+        repointed.extend((i, first) for i in rest)
+    return tuple(sorted(cleared)), tuple(sorted(repointed))
+
+
 def _derived(conn: Connection, accounts: list[int]) -> dict[int, tuple[DerivedEntry, ...]]:
     out: dict[int, tuple[DerivedEntry, ...]] = {a: () for a in accounts}
     for r in conn.execute(
@@ -244,6 +274,8 @@ def _revert_once(
             ),
             {"at": clock.now(), "by": user_id, "i": run_id},
         )
+        # 1. rows of other runs that duplicate a row of this run get a new original
+        cleared, repointed = _reassign_duplicates(conn, run_id, row_ids)
         # 2. entries (the removal routine), 3. rows, 4. derived entries
         affected = remove_entries(conn, removed, scope=scope)
         if row_ids:
@@ -256,6 +288,8 @@ def _revert_once(
             removed_entry_ids=affected.removed_entry_ids,
             partner_entry_ids=affected.partner_entry_ids,
             freed_document_ids=affected.freed_document_ids,
+            repointed_source_ids=repointed,
+            cleared_duplicate_ids=cleared,
             derived_changes=tuple(
                 DerivedChange(a, before[a], after[a]) for a in affected_accounts if before[a] != after[a]
             ),
