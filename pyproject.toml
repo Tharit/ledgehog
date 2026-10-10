@@ -1,0 +1,49 @@
+[project]
+name = "ledgehog"
+version = "0.1.0"
+description = "Household ledger"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "alembic>=1.13",
+    "fastapi>=0.115",
+    "psycopg[binary]>=3.2",
+    "sqlalchemy>=2.0",
+    "uvicorn>=0.30",
+]
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.100",
+    "import-linter>=2.0",
+    "mypy>=1.10",
+    "pytest>=8.0",
+    "ruff>=0.5",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "DTZ"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["DTZ"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["app"]
+mypy_path = "."
+explicit_package_bases = true
