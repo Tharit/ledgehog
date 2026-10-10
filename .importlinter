@@ -1,0 +1,88 @@
+# Module boundaries of architecture §5.1, enforced. Run: uv run lint-imports
+#
+#   api  ──►  core  ──►  utils
+#                ▲
+#   plugins ─────┘   (plugins implement the protocols in core/plugins)
+
+[importlinter]
+root_packages =
+    app
+    fastapi
+    starlette
+    uvicorn
+include_external_packages = True
+
+[importlinter:contract:direction]
+name = Dependency direction: main, then api and plugins, then core, then utils
+type = layers
+layers =
+    app.main
+    app.api | app.plugins
+    app.core
+    app.utils
+# api and plugins are siblings and must not see each other; plugins reach core only
+# through core.plugins (the protocols), which is part of core.
+
+[importlinter:contract:core-no-concrete-plugins-or-http]
+name = core never imports api, concrete plugins or a web framework
+type = forbidden
+source_modules =
+    app.core
+forbidden_modules =
+    app.api
+    app.plugins
+    fastapi
+    starlette
+    uvicorn
+
+[importlinter:contract:core-never-reads-config]
+name = core receives configuration; it never imports utils.config
+type = forbidden
+source_modules =
+    app.core
+forbidden_modules =
+    app.utils.config
+
+[importlinter:contract:domain-imports-nothing]
+name = core.domain imports nothing of the application
+type = forbidden
+source_modules =
+    app.core.domain
+forbidden_modules =
+    app.api
+    app.plugins
+    app.utils
+    app.core.ingest
+    app.core.balance
+    app.core.resolution
+    app.core.matching
+    app.core.units
+    app.core.settle
+    app.core.reporting
+    app.core.tasks
+    app.core.plugins
+
+[importlinter:contract:plugins-isolated-from-api-and-db]
+name = Plugins never import api or utils.db
+type = forbidden
+source_modules =
+    app.plugins
+forbidden_modules =
+    app.api
+    app.utils.db
+
+[importlinter:contract:frameworks-only-in-api]
+name = Web frameworks are imported by api and the composition root only
+type = forbidden
+source_modules =
+    app.core
+    app.plugins
+    app.utils
+forbidden_modules =
+    fastapi
+    starlette
+    uvicorn
+
+# The clock rule (only utils/clock.py touches the system clock) cannot be expressed here:
+# `time` is a module, not a package, so import-linter cannot track it. It is enforced by the
+# AST check in tests/test_clock_boundary.py instead.
