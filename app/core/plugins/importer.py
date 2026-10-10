@@ -1,15 +1,16 @@
 """Importer-facing record types (architecture §5.5, spec §5.1).
 
-Only what ingest needs so far; the protocol itself and the error taxonomy are
-added by the importer tasks. Importers never dedup or hash: they emit
+The record type ingest consumes, and the file-importer protocol with its result and
+dry-run report (architecture §5.5). Importers never dedup or hash: they emit
 `IncomingRow`s and ingest derives identity from them (spec §5.2).
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from datetime import date
-from typing import Any
+from typing import Any, Protocol
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,3 +39,124 @@ class IncomingRow:
     booking_text: str | None = None
     # The id the SOURCE assigns, None when it does not (spec §5.2).
     source_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Example:
+    """One row picked out for the report: its line number and why. Never cell content."""
+
+    row: int
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class Category:
+    """A count with up to N examples."""
+
+    count: int = 0
+    examples: tuple[Example, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class MappedColumn:
+    field: str
+    name: str
+    index: int
+
+
+@dataclass(frozen=True, slots=True)
+class SampleRow:
+    """A parsed row: cells AFTER the header only, each truncated for display."""
+
+    row: int
+    booked_on: date
+    amount_minor: int
+    cells: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class BalanceReport:
+    """The balance record that would be written and how it was found."""
+
+    amount_minor: int
+    dated_on: date
+    source: str
+    figure_minor: int
+    figure_on: date
+    rolled_back_by_minor: int = 0
+    rolled_back_rows: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class SyntheticReport:
+    amount_minor: int
+    booked_on: date
+    row_count: int
+    sum_minor: int
+
+
+@dataclass(frozen=True, slots=True)
+class DryRunReport:
+    """What a parse did, safe to show: counts, mapped columns, examples, never the preamble."""
+
+    header_line: int | None = None
+    encoding: str | None = None
+    delimiter: str | None = None
+    columns: tuple[MappedColumn, ...] = ()
+    rows_read: int = 0
+    emitted: int = 0
+    skipped: Category = field(default_factory=Category)
+    filtered: Category = field(default_factory=Category)
+    zero_dropped: Category = field(default_factory=Category)
+    currency_mismatch: Category = field(default_factory=Category)
+    sample: tuple[SampleRow, ...] = ()
+    coverage: date | None = None
+    coverage_source: str | None = None
+    export_date: date | None = None
+    export_date_source: str | None = None
+    balance: BalanceReport | None = None
+    synthetic: SyntheticReport | None = None
+    warnings: tuple[str, ...] = ()
+    failure: str | None = None
+
+    @classmethod
+    def empty(cls) -> DryRunReport:
+        return cls()
+
+
+@dataclass(frozen=True, slots=True)
+class ParsedFile:
+    """A file importer's result (architecture §5.5).
+
+    `importer_stats` holds named integers the run's statistics store: `filtered` (zero
+    bookings dropped, only those) and `synthetic_skipped`.
+    """
+
+    rows: tuple[IncomingRow, ...]
+    reported_balance: int | None
+    balance_on: date | None
+    covered_through: date
+    data_start: date | None
+    importer_stats: Mapping[str, int]
+    report: DryRunReport
+
+
+class FileImporter(Protocol):
+    """A pure parse of uploaded bytes. Reads neither the database nor the clock."""
+
+    def validate_settings(self, settings: Mapping[str, Any]) -> None:
+        """Raise `InvalidProfile` naming the setting that is wrong."""
+        ...
+
+    def parse(
+        self,
+        data: bytes,
+        profile: Mapping[str, Any],
+        *,
+        account_currency: str,
+        minor_units: int,
+        today: date,
+        dry_run_samples: int = 5,
+    ) -> ParsedFile:
+        """Raise `ParseFailed` (carrying the report) for any problem on the importer's side."""
+        ...
