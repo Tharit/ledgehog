@@ -23,7 +23,9 @@ def test_fail_run_sets_failed_and_finished(env: Env) -> None:
 
 
 def test_insert_creates_source_and_exactly_one_entry(env: Env) -> None:
-    res = env.deliver([row(-500, purpose="coffee", source_id="a"), row(1200, purpose="refund", source_id="b")])
+    res = env.deliver(
+        [row(-500, purpose="coffee", source_id="a"), row(1200, purpose="refund", source_id="b")]
+    )
     assert res.inserted == 2 and res.duplicates == () and res.skipped_by_identity == 0
     entries = env.q(
         "SELECT e.amount, e.currency, e.booked_on, e.type, e.category_id, e.derivation, e.review_flags,"

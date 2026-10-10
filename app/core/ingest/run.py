@@ -142,7 +142,9 @@ def _write_delivery(
     with engine.begin() as conn:
         lock_settle_shared(conn)
         run = conn.execute(
-            text("SELECT id, account_id, importer, importer_instance_id, status FROM import_run WHERE id = :i"),
+            text(
+                "SELECT id, account_id, importer, importer_instance_id, status FROM import_run WHERE id = :i"
+            ),
             {"i": run_id},
         ).one_or_none()
         if run is None:
@@ -215,9 +217,7 @@ def _write_delivery(
 Live = tuple[IncomingRow, str, str]
 
 
-def _identity_step(
-    conn: Connection, account_id: int, live: list[Live]
-) -> tuple[set[int], int, list[Live]]:
+def _identity_step(conn: Connection, account_id: int, live: list[Live]) -> tuple[set[int], int, list[Live]]:
     """Step 1. Returns (existing rows used up, rows skipped, rows still to place)."""
     sids = [v for _, c, v in live if c == "source_id"]
     hashes = [v for _, c, v in live if c == "content_hash"]
