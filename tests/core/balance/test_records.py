@@ -14,6 +14,7 @@ from sqlalchemy import Engine, text
 from sqlalchemy.exc import IntegrityError
 
 from app.core.balance import records
+from app.core.balance.derived import recompute_derived
 from app.core.balance.records import (
     AccountNotFound,
     RecordDateTaken,
@@ -206,7 +207,7 @@ def test_deleting_a_reported_record_keeps_its_runs_coverage_and_drops_its_entry(
         )
     set_manual_record(env.engine, env.account, day(1, 1), 1_000, user_id=USER)
     with env.engine.begin() as conn:
-        records.recompute_derived(conn, env.account)
+        recompute_derived(conn, env.account)
     assert len(env.derived()) == 2
     delete_record(env.engine, rid)
     assert env.derived() == [("opening", date(2025, 12, 31), 1_000)]
@@ -251,7 +252,12 @@ def test_a_settle_error_does_not_undo_the_write(env: Env, monkeypatch: pytest.Mo
 
 def test_a_refused_write_does_not_settle(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[int] = []
-    monkeypatch.setattr(records, "settle", lambda e: calls.append(1) or SettleResult())
+
+    def fake(engine: Engine) -> SettleResult:
+        calls.append(1)
+        return SettleResult()
+
+    monkeypatch.setattr(records, "settle", fake)
     with pytest.raises(RecordNotFound):
         delete_record(env.engine, 999)
     assert calls == []
