@@ -14,3 +14,13 @@ the pass to a dirty set (architecture §5.2) before raising the number.
 """
 
 BUDGET_SECONDS = 1.0
+
+INGEST_BUDGET_SECONDS = 1.0
+"""The write transaction of a ~5,000-row delivery (`tests/perf/test_ingest_budget.py`).
+
+Derivation: the transaction holds the settle lock (shared) and the account lock, timed with
+settle patched out. Measured on the dev machine (Postgres 18, localhost), median of 3: 2.28 s
+with one INSERT per source row, entry and removal; 0.45 s batched (chunks of 1,000 rows, one
+set-based entry INSERT per chunk), max 0.56 s. Budget = 2 x the batched median, rounded up to
+a clean number, never below 1.0 s.
+"""

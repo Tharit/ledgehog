@@ -106,9 +106,8 @@ def remove_entries(
         ),
         {"ids": partners, "basis": _PAIR_BASIS},
     ).all()
-    # Delete in ascending id order (the rows are locked in that order already).
-    for entry_id in removed:
-        conn.execute(text("DELETE FROM ledger_entry WHERE id = :i"), {"i": entry_id})
+    # One statement; the rows are locked in ascending id order already.
+    conn.execute(text("DELETE FROM ledger_entry WHERE id = ANY(:ids)"), {"ids": removed})
 
     accounts = sorted({r.account_id for r in rows} | {r.account_id for r in partner_rows})
     for account_id in accounts:

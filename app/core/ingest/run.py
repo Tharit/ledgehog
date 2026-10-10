@@ -23,7 +23,7 @@ from sqlalchemy import Connection, Engine, text
 
 from app.core.balance.derived import recompute_derived
 from app.core.domain.errors import ContractViolation, IngestError
-from app.core.ingest.entries import insert_entry
+from app.core.ingest.entries import insert_entries
 from app.core.ingest.identity import ContentHash, SourceId, assign_ordinals, canonical_text, identity_of
 from app.core.plugins.importer import IncomingRow
 from app.core.settle.settle import SettleResult, settle
@@ -186,15 +186,20 @@ def _write_delivery(
 
         inserted = 0
         duplicates: list[tuple[int, int]] = []
-        for (row, col, value), original in zip(remaining, pairing, strict=True):
-            new_id = _insert_source(conn, run, account_id, row, col, value, original)
-            if new_id is None:  # identity taken by a concurrent insert: skipped (I4)
-                skipped += 1
-            elif original is not None:
-                duplicates.append((new_id, original))
-            else:
-                insert_entry(conn, new_id)
-                inserted += 1
+        for start in range(0, len(remaining), _CHUNK):
+            chunk = remaining[start : start + _CHUNK]
+            ids = _insert_sources(conn, run, account_id, chunk, pairing[start : start + _CHUNK])
+            to_entry: list[int] = []
+            for (_, col, value), original in zip(chunk, pairing[start : start + _CHUNK], strict=True):
+                new_id = ids.get((col, value))
+                if new_id is None:  # identity taken by a concurrent insert: skipped (I4)
+                    skipped += 1
+                elif original is not None:
+                    duplicates.append((new_id, original))
+                else:
+                    to_entry.append(new_id)
+            insert_entries(conn, to_entry)
+            inserted += len(to_entry)
 
         recompute_derived(conn, account_id)
         stats = {
@@ -233,6 +238,7 @@ def _check_contract(rows: Sequence[IncomingRow], currency: str) -> None:
 
 
 Live = tuple[IncomingRow, str, str]
+_CHUNK = 1_000  # source rows per INSERT statement
 
 
 def _identity_step(conn: Connection, account_id: int, live: list[Live]) -> tuple[set[int], int, list[Live]]:
@@ -299,49 +305,67 @@ def _amount_step(
     return out
 
 
-def _insert_source(
+def _insert_sources(
     conn: Connection,
     run: Any,
     account_id: int,
-    row: IncomingRow,
-    col: str,
-    value: str,
-    duplicate_of: int | None,
-) -> int | None:
-    params: dict[str, Any] = {
-        "importer": run.importer,
-        "inst": run.importer_instance_id,
-        "run_id": run.id,
-        "account": account_id,
-        "source_id": value if col == "source_id" else None,
-        "content_hash": value if col == "content_hash" else None,
-        "source_format": row.source_format,
-        "amount": row.amount_minor,
-        "currency": row.currency,
-        "booked_on": row.booked_on,
-        "value_on": row.value_on,
-        "instr_amount": row.instructed_amount_minor,
-        "instr_currency": row.instructed_currency,
-        "cp_ref": row.counterparty_ref,
-        "cp_bic": row.counterparty_bic,
-        "cp_name": row.counterparty_name,
-        "purpose": row.purpose,
-        "e2e": row.end_to_end_id,
-        "mandate": row.mandate_ref,
-        "booking_text": row.booking_text,
-        "raw": json.dumps(row.raw, default=str),
-        "dup": duplicate_of,
-    }
-    return conn.execute(
+    chunk: list[Live],
+    duplicates_of: list[int | None],
+) -> dict[tuple[str, str], int]:
+    """Insert one chunk of source rows in ONE statement, in delivery order. Returns the new id
+    by (identity column, identity value); a row whose identity a concurrent insert took is
+    absent (ON CONFLICT DO NOTHING)."""
+    records = [
+        {
+            "ord": n,
+            "source_id": value if col == "source_id" else None,
+            "content_hash": value if col == "content_hash" else None,
+            "source_format": row.source_format,
+            "amount": row.amount_minor,
+            "currency": row.currency,
+            "booked_on": row.booked_on,
+            "value_on": row.value_on,
+            "instructed_amount": row.instructed_amount_minor,
+            "instructed_currency": row.instructed_currency,
+            "counterparty_ref": row.counterparty_ref,
+            "counterparty_bic": row.counterparty_bic,
+            "counterparty_name": row.counterparty_name,
+            "purpose": row.purpose,
+            "end_to_end_id": row.end_to_end_id,
+            "mandate_ref": row.mandate_ref,
+            "booking_text": row.booking_text,
+            "raw": row.raw,
+            "duplicate_of": dup,
+        }
+        for n, ((row, col, value), dup) in enumerate(zip(chunk, duplicates_of, strict=True))
+    ]
+    result = conn.execute(
         text(
             "INSERT INTO source_transaction (importer, importer_instance_id, import_run_id,"
             " account_id, source_id, content_hash, source_format, amount, currency, booked_on,"
             " value_on, instructed_amount, instructed_currency, counterparty_ref, counterparty_bic,"
             " counterparty_name, purpose, end_to_end_id, mandate_ref, booking_text, raw, duplicate_of)"
-            " VALUES (:importer, :inst, :run_id, :account, :source_id, :content_hash, :source_format,"
-            " :amount, :currency, :booked_on, :value_on, :instr_amount, :instr_currency, :cp_ref,"
-            " :cp_bic, :cp_name, :purpose, :e2e, :mandate, :booking_text, CAST(:raw AS jsonb), :dup)"
-            " ON CONFLICT DO NOTHING RETURNING id"
+            " SELECT :importer, :inst, :run_id, :account, t.source_id, t.content_hash, t.source_format,"
+            " t.amount, t.currency, t.booked_on, t.value_on, t.instructed_amount, t.instructed_currency,"
+            " t.counterparty_ref, t.counterparty_bic, t.counterparty_name, t.purpose, t.end_to_end_id,"
+            " t.mandate_ref, t.booking_text, t.raw, t.duplicate_of"
+            " FROM jsonb_to_recordset(CAST(:records AS jsonb)) AS t(ord int, source_id text,"
+            " content_hash text, source_format text, amount bigint, currency text, booked_on date,"
+            " value_on date, instructed_amount bigint, instructed_currency text, counterparty_ref text,"
+            " counterparty_bic text, counterparty_name text, purpose text, end_to_end_id text,"
+            " mandate_ref text, booking_text text, raw jsonb, duplicate_of bigint)"
+            " ORDER BY t.ord ON CONFLICT DO NOTHING RETURNING id, source_id, content_hash"
         ),
-        params,
-    ).scalar_one_or_none()
+        {
+            "importer": run.importer,
+            "inst": run.importer_instance_id,
+            "run_id": run.id,
+            "account": account_id,
+            "records": json.dumps(records, default=str),
+        },
+    )
+    out: dict[tuple[str, str], int] = {}
+    for r in result:
+        key = ("source_id", r.source_id) if r.source_id is not None else ("content_hash", r.content_hash)
+        out[key] = r.id
+    return out

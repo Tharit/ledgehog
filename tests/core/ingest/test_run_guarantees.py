@@ -196,10 +196,10 @@ def test_a_failing_fail_run_does_not_mask_the_original_error(
 def test_an_interrupt_during_the_write_rolls_back_marks_the_run_failed_and_propagates(
     env: Env, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    def interrupted(conn: Any, source_id: int) -> int:
+    def interrupted(conn: Any, source_ids: Any) -> list[int]:
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(run_module, "insert_entry", interrupted)
+    monkeypatch.setattr(run_module, "insert_entries", interrupted)
     run_id = start_run(env.engine, env.account, "transactions", importer="csv")
     with pytest.raises(KeyboardInterrupt):
         ingest_delivery(env.engine, run_id, [row(-1, source_id="a")], covered_through=THROUGH)
