@@ -14,6 +14,7 @@ from typing import Any
 
 from sqlalchemy import Connection, Engine, text
 
+from app.core.balance.derived import recompute_derived
 from app.core.domain.errors import (
     AlreadyDuplicate,
     DuplicateChain,
@@ -26,7 +27,6 @@ from app.core.domain.errors import (
 )
 from app.core.ingest.entries import insert_entry
 from app.core.ingest.removal import Affected, entry_scope, remove_entries
-from app.core.ingest.run import recompute_derived
 from app.core.settle.settle import SettleResult, settle
 from app.utils.db.locks import WriteConflict, lock_accounts, lock_rows, lock_settle_shared, retry_on_deadlock
 

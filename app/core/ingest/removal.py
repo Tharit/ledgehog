@@ -26,8 +26,8 @@ from dataclasses import dataclass
 
 from sqlalchemy import Connection, text
 
+from app.core.balance.derived import recompute_derived
 from app.core.domain.errors import IngestError
-from app.core.ingest.run import recompute_derived
 from app.utils.db.locks import lock_rows
 
 _PAIR_BASIS = '{"from": "counterpart"}'

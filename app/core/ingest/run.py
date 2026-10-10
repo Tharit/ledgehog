@@ -21,6 +21,7 @@ from typing import Any
 
 from sqlalchemy import Connection, Engine, text
 
+from app.core.balance.derived import recompute_derived
 from app.core.domain.errors import ContractViolation, IngestError
 from app.core.ingest.entries import insert_entry
 from app.core.ingest.identity import ContentHash, SourceId, assign_ordinals, canonical_text, identity_of
@@ -90,10 +91,6 @@ def fail_run(engine: Engine, run_id: int, error: str) -> None:
             ),
             {"id": run_id, "err": error},
         )
-
-
-def recompute_derived(conn: Connection, account_id: int) -> None:
-    """Step 4 hook: derived entries and balance records of the account are recomputed here."""
 
 
 def _fail_run_quietly(engine: Engine, run_id: int, error: str) -> None:
