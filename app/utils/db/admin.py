@@ -19,6 +19,9 @@ from app.utils import clock
 from app.utils.config import Config
 
 PREFIXES = ("test_", "tpl_", "dev_")
+# What the sweeper drops by default. A `dev_` database is long-lived and may hold real
+# data (architecture §9), so it is dropped by hand, never by age.
+SWEPT_PREFIXES = ("test_", "tpl_")
 _NAME = re.compile(r"^(test|tpl|dev)_[a-z0-9_]{1,50}$")
 _STAMP = "ledgehog-created:"
 
@@ -126,13 +129,14 @@ def sweep(
     *,
     older_than: timedelta,
     dry_run: bool = False,
-    prefixes: tuple[str, ...] = PREFIXES,
+    prefixes: tuple[str, ...] = SWEPT_PREFIXES,
 ) -> list[str]:
     """Drop disposable databases older than `older_than`; returns the names.
 
-    A `test_`/`tpl_` database without a stamp is an orphan from a crash between
-    create and stamp and counts as old. A `dev_` one without a stamp is left
-    alone: someone may have made it by hand.
+    By default only `test_` and `tpl_` databases: `dev_` ones are never swept unless
+    asked for in `prefixes`. A `test_`/`tpl_` database without a stamp is an orphan
+    from a crash between create and stamp and counts as old; an unstamped `dev_` one
+    is left alone even then, since someone may have made it by hand.
     """
     cutoff = clock.now() - older_than
     dropped: list[str] = []

@@ -86,6 +86,23 @@ def test_sweep_drops_old_disposable_databases_only(admin_cfg: Config, scratch):
     assert fresh in names and dev in names
 
 
+def test_sweep_never_touches_dev_databases_by_default(admin_cfg: Config, scratch):
+    """A dev database is long-lived (architecture §9: development data is real data)."""
+    dev = scratch("dev_")
+    admin.stamp(admin_cfg, dev, clock.now() - timedelta(days=30))
+    assert dev not in admin.sweep(admin_cfg, older_than=timedelta(days=1))
+    assert dev not in admin.sweep(admin_cfg, older_than=timedelta(days=-1), dry_run=True)
+    assert dev in _names(admin_cfg)
+
+
+def test_sweep_can_be_asked_for_dev_databases_explicitly(admin_cfg: Config, scratch):
+    dev = scratch("dev_")
+    admin.stamp(admin_cfg, dev, clock.now() - timedelta(days=30))
+    dropped = admin.sweep(admin_cfg, older_than=timedelta(days=1), prefixes=("dev_",))
+    assert dev in dropped
+    assert dev not in _names(admin_cfg)
+
+
 def test_sweep_dry_run_drops_nothing_and_skips_unprefixed(admin_cfg: Config, scratch):
     name = scratch()
     would = admin.sweep(admin_cfg, older_than=timedelta(days=-1), dry_run=True)
