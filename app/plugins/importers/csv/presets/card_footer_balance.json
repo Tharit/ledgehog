@@ -1,0 +1,53 @@
+{
+  "label": "card_footer",
+  "encoding": null,
+  "delimiter": null,
+  "quote": "\"",
+  "header_marker": ["Belegdatum", "Eingangstag", "Verwendungszweck"],
+  "booked_on": "Eingangstag",
+  "value_on": "Belegdatum",
+  "date_format": "d.M.yyyy",
+  "amount": {"column": "Betrag#2", "credit": null, "debit": null},
+  "decimal_sep": ",",
+  "thousands_sep": ".",
+  "invert_amounts": false,
+  "invert_balance": false,
+  "counterparty_name": null,
+  "counterparty_ref": null,
+  "counterparty_bic": null,
+  "end_to_end_id": null,
+  "mandate_ref": null,
+  "booking_text": null,
+  "purpose": ["Verwendungszweck"],
+  "instructed": {"amount": "Betrag#1", "currency": "Fremdwährung"},
+  "currency": "Währung",
+  "placeholders": [],
+  "filters": [],
+  "balance": {
+    "mode": "labelled",
+    "column": null,
+    "label": "Saldo:",
+    "right": 6,
+    "below": 0,
+    "date": {
+      "format": "d.M.yyyy",
+      "label": "Abrechnungsdatum",
+      "right": 0,
+      "below": 0,
+      "pattern": "(\\d{1,2}\\.\\d{1,2}\\.\\d{4})"
+    }
+  },
+  "export_date": null,
+  "coverage_end": {
+    "format": "d.M.yyyy",
+    "label": "Abrechnungsdatum",
+    "right": 0,
+    "below": 0,
+    "pattern": "(\\d{1,2}\\.\\d{1,2}\\.\\d{4})"
+  },
+  "statement_payment": {
+    "counter_account_ref": "SET-THE-PAYING-ACCOUNTS-EXTERNAL-REF",
+    "purpose": "Card statement {statement_date}",
+    "date_offset_days": 4
+  }
+}

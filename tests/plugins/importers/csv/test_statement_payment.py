@@ -61,7 +61,10 @@ def test_net_positive_emits_nothing_and_counts_skipped() -> None:
 
 
 def test_net_exactly_zero() -> None:
-    text = "Abrechnungsdatum: 3.8.2026\nBelegdatum;Eingangstag;Zweck;Betrag\n1.8.2026;1.8.2026;a;-5,00\n2.8.2026;2.8.2026;b;5,00\n"
+    text = (
+        "Abrechnungsdatum: 3.8.2026\nBelegdatum;Eingangstag;Zweck;Betrag\n"
+        "1.8.2026;1.8.2026;a;-5,00\n2.8.2026;2.8.2026;b;5,00\n"
+    )
     pf = run(text, profile=card_profile(statement_payment=PAY, balance=None))
     assert len(pf.rows) == 2 and pf.importer_stats["synthetic_skipped"] == 1
 
