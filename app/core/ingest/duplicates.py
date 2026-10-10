@@ -8,7 +8,7 @@ failure is reported on the result, never raised into the committed write.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -25,7 +25,7 @@ from app.core.domain.errors import (
     VersionConflict,
 )
 from app.core.ingest.entries import insert_entry
-from app.core.ingest.removal import Affected, remove_entries
+from app.core.ingest.removal import Affected, entry_scope, remove_entries
 from app.core.ingest.run import recompute_derived
 from app.core.settle.settle import SettleResult, settle
 from app.utils.db.locks import lock_accounts, lock_rows, lock_settle_shared, retry_on_deadlock
@@ -49,14 +49,17 @@ def mark_duplicate(
 ) -> OpResult:
     """Mark imported row `row_id` as a duplicate of `of_row_id` (same account, not a duplicate).
 
-    `expected_versions` maps entry id -> the version the caller saw; if any has moved (or the
-    entry is gone) `VersionConflict` names them and nothing is written. The marked row's
-    entries are removed through `remove_entries` in the same transaction that sets
-    `duplicate_of`, and rows that pointed at it are repointed to `of_row_id`.
+    `expected_versions` maps entry id -> the version the caller saw. `None` means "no check".
+    A map, even an empty one, must cover EVERY entry the operation writes: the marked row's
+    entries and the transfer partners the removal unpairs (architecture §4.1). If a covered
+    entry has moved (or is gone), or an entry the operation would write has no version in the
+    map (the caller's view was incomplete), `VersionConflict` names them all and nothing is
+    written. The marked row's entries are removed through `remove_entries` in the same
+    transaction that sets `duplicate_of`, and rows that pointed at it are repointed to `of_row_id`.
     """
     if row_id == of_row_id:
         raise DuplicateOfSelf(row_id)
-    affected = retry_on_deadlock(lambda: _mark(engine, row_id, of_row_id, expected_versions or {}))
+    affected = retry_on_deadlock(lambda: _mark(engine, row_id, of_row_id, expected_versions))
     return OpResult(settle=_settle(engine), affected=affected)
 
 
@@ -98,7 +101,7 @@ def _begin(conn: Connection, *row_ids: int) -> dict[int, Any]:
     return rows
 
 
-def _mark(engine: Engine, row_id: int, of_row_id: int, expected: Mapping[int, int]) -> Affected:
+def _mark(engine: Engine, row_id: int, of_row_id: int, expected: Mapping[int, int] | None) -> Affected:
     with engine.begin() as conn:
         rows = _begin(conn, row_id, of_row_id)
         row, of = rows[row_id], rows[of_row_id]
@@ -112,7 +115,6 @@ def _mark(engine: Engine, row_id: int, of_row_id: int, expected: Mapping[int, in
             raise AlreadyDuplicate(row_id)
         if of.duplicate_of is not None:
             raise DuplicateChain(row_id, of_row_id)
-        _check_versions(conn, expected)
         entry_ids = [
             int(i)
             for i in conn.execute(
@@ -120,6 +122,9 @@ def _mark(engine: Engine, row_id: int, of_row_id: int, expected: Mapping[int, in
                 {"s": row_id},
             ).scalars()
         ]
+        if expected is not None:
+            removed, partners = entry_scope(conn, entry_ids)
+            _check_versions(conn, expected, written=[*removed, *partners])
         # rows that pointed at the marked row follow it to its original (no chains)
         conn.execute(
             text("UPDATE source_transaction SET duplicate_of = :o WHERE duplicate_of = :r"),
@@ -132,20 +137,21 @@ def _mark(engine: Engine, row_id: int, of_row_id: int, expected: Mapping[int, in
         return remove_entries(conn, entry_ids)
 
 
-def _check_versions(conn: Connection, expected: Mapping[int, int]) -> None:
-    """Lock the entries the caller carries versions for (ascending) and compare, before any write."""
-    if not expected:
-        return
-    lock_rows(conn, "ledger_entry", expected)
+def _check_versions(conn: Connection, expected: Mapping[int, int], *, written: Sequence[int]) -> None:
+    """Lock the entries the operation writes and those the caller carries versions for (one
+    ascending statement) and compare, before any write. Refuses entries whose version moved
+    and written entries the caller supplied no version for."""
+    lock_rows(conn, "ledger_entry", [*written, *expected])
+    ids = sorted({*written, *expected})
     current = {
         int(r.id): int(r.version)
-        for r in conn.execute(
-            text("SELECT id, version FROM ledger_entry WHERE id = ANY(:ids)"), {"ids": sorted(expected)}
-        )
+        for r in conn.execute(text("SELECT id, version FROM ledger_entry WHERE id = ANY(:ids)"), {"ids": ids})
     }
-    moved = tuple(sorted(i for i, v in expected.items() if current.get(i) != v))
-    if moved:
-        raise VersionConflict(moved)
+    moved = {i for i, v in expected.items() if current.get(i) != v}
+    unsupplied = {i for i in written if i not in expected}
+    stale = tuple(sorted(moved | unsupplied))
+    if stale:
+        raise VersionConflict(stale)
 
 
 def _clear(engine: Engine, row_id: int) -> int:

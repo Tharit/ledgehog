@@ -170,6 +170,81 @@ def test_a_moved_entry_version_refuses_the_mark_and_writes_nothing(ledger: Ledge
     assert ledger.dup_of(a_src) == c_src
 
 
+def _version(ledger: Ledger, entry: int) -> int:
+    return int(ledger.one("SELECT version FROM ledger_entry WHERE id = :i", i=entry).version)
+
+
+def _pair_to_mark(ledger: Ledger) -> tuple[int, int, int, int]:
+    """(row to mark, its entry, the partner's entry, the row it duplicates)."""
+    a_src, a, _, b = ledger.transfer_pair()
+    c_src, _ = ledger.movement(amount=-500)
+    return a_src, a, b, c_src
+
+
+def test_a_moved_partner_version_refuses_the_mark_and_writes_nothing(ledger: Ledger) -> None:
+    a_src, a, b, c_src = _pair_to_mark(ledger)
+    seen = {a: _version(ledger, a), b: _version(ledger, b)}
+    ledger.tx(lambda c: c.execute(text("UPDATE ledger_entry SET note = 'moved' WHERE id = :i"), {"i": b}))
+    assert _version(ledger, b) != seen[b]
+    before = _snapshot(ledger)
+    with pytest.raises(VersionConflict) as caught:
+        mark_duplicate(ledger.engine, a_src, c_src, expected_versions=seen)
+    assert caught.value.entry_ids == (b,)
+    _nothing_written(ledger, before)
+    assert ledger.entries_of(a_src) == [a]
+    partner = ledger.one("SELECT counterpart_entry_id, note FROM ledger_entry WHERE id = :i", i=b)
+    assert partner.counterpart_entry_id == a and partner.note == "moved"
+
+
+def test_a_partner_missing_from_the_supplied_versions_is_refused_by_name(ledger: Ledger) -> None:
+    a_src, a, b, c_src = _pair_to_mark(ledger)
+    before = _snapshot(ledger)
+    with pytest.raises(VersionConflict) as caught:
+        mark_duplicate(ledger.engine, a_src, c_src, expected_versions={a: _version(ledger, a)})
+    assert caught.value.entry_ids == (b,)
+    _nothing_written(ledger, before)
+    assert ledger.entries_of(a_src) == [a]
+
+
+def test_an_empty_version_map_names_every_entry_the_mark_would_write(ledger: Ledger) -> None:
+    a_src, a, b, c_src = _pair_to_mark(ledger)
+    with pytest.raises(VersionConflict) as caught:
+        mark_duplicate(ledger.engine, a_src, c_src, expected_versions={})
+    assert caught.value.entry_ids == (a, b)
+
+
+def test_moved_and_unsupplied_entries_are_reported_together(ledger: Ledger) -> None:
+    a_src, a, b, c_src = _pair_to_mark(ledger)
+    with pytest.raises(VersionConflict) as caught:
+        mark_duplicate(ledger.engine, a_src, c_src, expected_versions={a: _version(ledger, a) + 1})
+    assert caught.value.entry_ids == (a, b)
+
+
+def test_a_complete_correct_version_map_succeeds_with_the_partner(ledger: Ledger) -> None:
+    a_src, a, b, c_src = _pair_to_mark(ledger)
+    result = mark_duplicate(
+        ledger.engine, a_src, c_src, expected_versions={a: _version(ledger, a), b: _version(ledger, b)}
+    )
+    assert ledger.dup_of(a_src) == c_src and result.affected.partner_entry_ids == (b,)
+    ledger.assert_checks_clean()
+
+
+def test_no_version_map_means_no_check(ledger: Ledger) -> None:
+    a_src, _, b, c_src = _pair_to_mark(ledger)
+    ledger.tx(lambda c: c.execute(text("UPDATE ledger_entry SET note = 'moved' WHERE id = :i"), {"i": b}))
+    mark_duplicate(ledger.engine, a_src, c_src, expected_versions=None)
+    assert ledger.dup_of(a_src) == c_src
+
+
+def test_a_version_refused_mark_does_not_settle(ledger: Ledger, monkeypatch: pytest.MonkeyPatch) -> None:
+    a_src, a, _, c_src = _pair_to_mark(ledger)
+    calls: list[int] = []
+    monkeypatch.setattr(duplicates, "settle", lambda e: calls.append(1) or SettleResult())
+    with pytest.raises(VersionConflict):
+        mark_duplicate(ledger.engine, a_src, c_src, expected_versions={a: _version(ledger, a)})
+    assert calls == []
+
+
 # ---- clearing ------------------------------------------------------------------------------
 
 
