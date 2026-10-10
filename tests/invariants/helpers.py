@@ -64,6 +64,38 @@ def rejects(
         pytest.fail(f"expected a rejection (SQLSTATE {sqlstate}, {constraint or message}), got none")
 
 
+@contextmanager
+def triggers_disabled(conn: Connection, *tables: str) -> Iterator[None]:
+    """Switch off the user triggers of exactly these tables (a table owner may; no privilege needed).
+
+    Used to seed a state the schema forbids, so a test can show a check view or
+    a re-check catches it. DDL is transactional: the disabling rolls back with the
+    enclosing transaction, and the block re-enables the triggers on exit. Foreign keys
+    are system triggers and stay on.
+    """
+    for table in tables:
+        conn.execute(text(f"ALTER TABLE {table} DISABLE TRIGGER USER"))  # noqa: S608
+    try:
+        yield
+    finally:
+        for table in tables:
+            conn.execute(text(f"ALTER TABLE {table} ENABLE TRIGGER USER"))  # noqa: S608
+
+
+def disabled_user_triggers(conn: Connection) -> list[str]:
+    """Names of user triggers in the public schema that are not enabled (empty when all are on)."""
+    return [
+        r[0]
+        for r in conn.execute(
+            text(
+                "SELECT c.relname || '.' || t.tgname FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid "
+                "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                "WHERE n.nspname = 'public' AND NOT t.tgisinternal AND t.tgenabled <> 'O' ORDER BY 1"
+            )
+        )
+    ]
+
+
 def fire_deferred(conn: Connection) -> None:
     """Run every queued deferred constraint trigger now, as COMMIT would."""
     conn.execute(text("SET CONSTRAINTS ALL IMMEDIATE"))

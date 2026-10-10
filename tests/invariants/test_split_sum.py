@@ -23,6 +23,7 @@ from tests.invariants.helpers import (
     make_source,
     rejects,
     scalar,
+    triggers_disabled,
 )
 
 MakeAccount = Callable[..., int]
@@ -167,9 +168,8 @@ def test_updating_an_unwatched_column_queues_nothing(db_conn: Connection, make_a
     acct = make_account(db_conn)
     src, e1, _ = _committed_split(db_conn, acct)
     # corrupt the split with the triggers off, then go back to normal
-    db_conn.execute(text("SET LOCAL session_replication_role = replica"))
-    db_conn.execute(text("UPDATE ledger_entry SET amount = amount - 1 WHERE id = :i"), {"i": e1})
-    db_conn.execute(text("SET LOCAL session_replication_role = origin"))
+    with triggers_disabled(db_conn, "ledger_entry"):
+        db_conn.execute(text("UPDATE ledger_entry SET amount = amount - 1 WHERE id = :i"), {"i": e1})
 
     db_conn.execute(
         text(
