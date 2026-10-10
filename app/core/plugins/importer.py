@@ -17,7 +17,8 @@ class IncomingRow:
     """One final, booked transaction record in ledger sign convention.
 
     Field names follow `source_transaction`. `amount_minor` is signed integer
-    minor units and never zero (ingest counts and skips zero amounts).
+    minor units and never zero: the importer drops zero
+    bookings and reports their count (`filtered`); ingest fails the run on one (`zero_amount`).
     """
 
     amount_minor: int
