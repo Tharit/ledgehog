@@ -50,7 +50,7 @@ def current_user(request: Request, response: Response, engine: EngineDep) -> Aut
     session_id = request.cookies.get(COOKIE_NAME)
     if not session_id:
         raise ApiError(401, "unauthenticated", "Not signed in.")
-    now = request.app.state.now()
+    now = request.app.state.instant()
     with engine.begin() as conn:
         user = session_user(conn, session_id, now=now)
         touched = touch_session(conn, session_id, now=now) if user else None

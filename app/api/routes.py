@@ -45,7 +45,7 @@ def login(body: LoginBody, request: Request, response: Response, engine: EngineD
         if user_id is None:
             # one shape for an unknown login, a wrong password and a disabled user
             raise ApiError(401, "invalid_credentials", "Wrong login or password.")
-        session_id = establish_session(conn, user_id, "password", now=request.app.state.now())
+        session_id = establish_session(conn, user_id, "password", now=request.app.state.instant())
         row = conn.execute(
             text("SELECT id, login, display_name FROM app_user WHERE id = :id"), {"id": user_id}
         ).one()
