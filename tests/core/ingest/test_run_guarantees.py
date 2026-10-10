@@ -155,7 +155,11 @@ def test_two_concurrent_deliveries_for_one_run_let_exactly_one_win(env: Env) -> 
         try:
             outcomes.append(
                 ingest_delivery(
-                    env.engine, run_id, [row(-100, source_id=tag)], covered_through=THROUGH, filtered=len(tag)
+                    env.engine,
+                    run_id,
+                    [row(-100, source_id=tag)],
+                    covered_through=THROUGH,
+                    importer_stats={"filtered": len(tag)},
                 )
             )
         except BaseException as exc:  # noqa: BLE001
@@ -176,7 +180,7 @@ def test_two_concurrent_deliveries_for_one_run_let_exactly_one_win(env: Env) -> 
     assert isinstance(losses[0], IngestError) and "not running" in str(losses[0])
     stored = env.run_row(run_id)
     assert stored.status == "ok" and stored.covered_through == THROUGH and stored.error_text is None
-    assert stored.stats["filtered"] == wins[0].filtered and stored.stats["inserted"] == 1
+    assert stored.stats["importer"] == dict(wins[0].importer_stats) and stored.stats["inserted"] == 1
     assert env.count("source_transaction") == 1
 
 

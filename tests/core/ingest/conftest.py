@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date
 from typing import Any
@@ -42,12 +42,24 @@ class Env:
         *,
         importer: str = "csv",
         account: int | None = None,
+        covered_from: date | None = None,
         covered_through: date | None = THROUGH,
-        filtered: int = 0,
+        reported_balance: int | None = None,
+        reported_balance_on: date | None = None,
+        importer_stats: Mapping[str, int] | None = None,
     ) -> RunResult:
         acct = self.account if account is None else account
         run_id = start_run(self.engine, acct, "transactions", importer=importer)
-        return ingest_delivery(self.engine, run_id, rows, covered_through=covered_through, filtered=filtered)
+        return ingest_delivery(
+            self.engine,
+            run_id,
+            rows,
+            reported_balance=reported_balance,
+            reported_balance_on=reported_balance_on,
+            covered_from=covered_from,
+            covered_through=covered_through,
+            importer_stats=importer_stats,
+        )
 
     def q(self, sql: str, **params: Any) -> list[Any]:
         with self.engine.connect() as conn:

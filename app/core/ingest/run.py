@@ -14,14 +14,17 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
+from types import MappingProxyType
 from typing import Any
 
 from sqlalchemy import Connection, Engine, text
 
 from app.core.balance.derived import recompute_derived
+from app.core.balance.difference import records_since_zero, unexplained_difference
+from app.core.balance.records import insert_reported_record
 from app.core.domain.errors import ContractViolation, IngestError
 from app.core.ingest.entries import insert_entries
 from app.core.ingest.identity import ContentHash, SourceId, assign_ordinals, canonical_text, identity_of
@@ -39,7 +42,10 @@ class RunResult:
     # (new source_transaction id, id of the existing row it duplicates), delivery order
     duplicates: tuple[tuple[int, int], ...]
     skipped_by_identity: int
-    filtered: int  # rows the importer dropped before delivery (e.g. zero bookings), as reported
+    importer_stats: Mapping[str, int]  # the importer's own counts (filtered, ...), as reported
+    balance_record_id: int | None  # the run's reported record, when it reported a balance
+    unexplained_difference_before: int | None  # the account's, before the delivery wrote anything
+    unexplained_difference_after: int | None
     settle: SettleResult
 
 
@@ -48,6 +54,9 @@ class _Counts:
     inserted: int
     duplicates: tuple[tuple[int, int], ...]
     skipped_by_identity: int
+    balance_record_id: int | None
+    difference_before: int | None
+    difference_after: int | None
 
 
 def start_run(
@@ -107,23 +116,37 @@ def ingest_delivery(
     rows: Sequence[IncomingRow],
     *,
     reported_balance: int | None = None,
+    reported_balance_on: date | None = None,
+    covered_from: date | None = None,
     covered_through: date | None = None,
-    filtered: int = 0,
+    importer_stats: Mapping[str, int] | None = None,
 ) -> RunResult:
     """Write one delivery for the run's account, atomically, then settle.
 
     On any failure everything the delivery wrote is rolled back, the run ends
     `failed` and the error is re-raised. A record that breaks the importer's contract
-    (wrong currency, zero amount, a repeated `source_id`, no coverage) is never repaired,
-    skipped or counted: it raises `ContractViolation` naming the rule. `filtered` is the
-    importer's own count of rows it dropped before delivery; it is stored in the run's
-    statistics and returned. `reported_balance` is step 4 and ignored.
+    (wrong currency, zero amount, a repeated `source_id`, no coverage, a balance without
+    its date or dated after the coverage) is never repaired, skipped or counted: it raises
+    `ContractViolation` naming the rule. `importer_stats` are the importer's own counts
+    (rows it dropped before delivery, ...); they are stored under `stats["importer"]` and
+    returned. A reported balance is written as the run's balance record before the derived
+    entries are recomputed; the run summary (`stats`) carries it, the unexplained difference
+    before and after, and the records since the running sum was last zero (spec §5.10).
     """
-    del reported_balance  # balance records and reconciliation are step 4
     try:
-        if filtered < 0:
-            raise ValueError(f"filtered must not be negative, got {filtered}")
-        counts = retry_on_deadlock(lambda: _write_delivery(engine, run_id, rows, covered_through, filtered))
+        given = _checked_stats(importer_stats)
+        counts = retry_on_deadlock(
+            lambda: _write_delivery(
+                engine,
+                run_id,
+                rows,
+                reported_balance,
+                reported_balance_on,
+                covered_from,
+                covered_through,
+                given,
+            )
+        )
     except BaseException as exc:  # cancellation and interrupts too: the run must not stay `running`
         _fail_run_quietly(engine, run_id, f"{type(exc).__name__}: {exc}")
         raise
@@ -133,13 +156,32 @@ def ingest_delivery(
         inserted=counts.inserted,
         duplicates=counts.duplicates,
         skipped_by_identity=counts.skipped_by_identity,
-        filtered=filtered,
+        importer_stats=MappingProxyType(dict(given)),
+        balance_record_id=counts.balance_record_id,
+        unexplained_difference_before=counts.difference_before,
+        unexplained_difference_after=counts.difference_after,
         settle=settled,
     )
 
 
+def _checked_stats(importer_stats: Mapping[str, int] | None) -> dict[str, int]:
+    """A copy of the importer's counts; each must be a non-negative int."""
+    out = dict(importer_stats or {})
+    for key, value in out.items():
+        if type(value) is not int or value < 0:
+            raise ValueError(f"importer_stats[{key!r}] must be a non-negative int, got {value!r}")
+    return out
+
+
 def _write_delivery(
-    engine: Engine, run_id: int, rows: Sequence[IncomingRow], covered_through: date | None, filtered: int
+    engine: Engine,
+    run_id: int,
+    rows: Sequence[IncomingRow],
+    reported_balance: int | None,
+    reported_balance_on: date | None,
+    covered_from: date | None,
+    covered_through: date | None,
+    importer_stats: dict[str, int],
 ) -> _Counts:
     with engine.begin() as conn:
         lock_settle_shared(conn)
@@ -163,11 +205,22 @@ def _write_delivery(
             raise ContractViolation(
                 "no_coverage", "covered_through is required: a successful run says how far it covers"
             )
+        if (reported_balance is None) != (reported_balance_on is None):
+            missing = "reported_balance_on" if reported_balance_on is None else "reported_balance"
+            raise ContractViolation(
+                "balance_without_date", f"{missing} is missing: a reported balance comes with its date"
+            )
+        if reported_balance_on is not None and reported_balance_on > covered_through:
+            raise ContractViolation(
+                "balance_after_coverage",
+                f"the balance is dated {reported_balance_on}, after the coverage end {covered_through}",
+            )
         currency: str = conn.execute(
             text("SELECT currency FROM account WHERE id = :i"), {"i": account_id}
         ).scalar_one()
 
         _check_contract(rows, currency)
+        difference_before = unexplained_difference(conn, account_id)
 
         # Ordinals over the WHOLE delivery, before any filtering (spec §5.2).
         ordinals = assign_ordinals(rows)
@@ -201,21 +254,36 @@ def _write_delivery(
             insert_entries(conn, to_entry)
             inserted += len(to_entry)
 
+        record_id: int | None = None
+        if reported_balance is not None and reported_balance_on is not None:
+            record_id = insert_reported_record(
+                conn,
+                account_id=account_id,
+                import_run_id=run_id,
+                balance_on=reported_balance_on,
+                balance=reported_balance,
+            )
         recompute_derived(conn, account_id)
-        stats = {
+        difference_after = unexplained_difference(conn, account_id)
+        stats: dict[str, Any] = {
             "inserted": inserted,
             "skipped_by_identity": skipped,
             "inserted_as_duplicates": [{"id": n, "duplicate_of": o} for n, o in duplicates],
-            "filtered": filtered,
+            "importer": importer_stats,
+            "unexplained_difference": {"before": difference_before, "after": difference_after},
+            "since_zero": records_since_zero(conn, account_id),
         }
+        if reported_balance is not None and reported_balance_on is not None:
+            stats["balance"] = {"balance_on": reported_balance_on.isoformat(), "balance": reported_balance}
         conn.execute(
             text(
                 "UPDATE import_run SET status = 'ok', finished_at = clock_timestamp(),"
-                " covered_through = :through, stats = CAST(:stats AS jsonb) WHERE id = :id"
+                " covered_from = :from, covered_through = :through, stats = CAST(:stats AS jsonb)"
+                " WHERE id = :id"
             ),
-            {"id": run_id, "through": covered_through, "stats": json.dumps(stats)},
+            {"id": run_id, "from": covered_from, "through": covered_through, "stats": json.dumps(stats)},
         )
-        return _Counts(inserted, tuple(duplicates), skipped)
+        return _Counts(inserted, tuple(duplicates), skipped, record_id, difference_before, difference_after)
 
 
 def _check_contract(rows: Sequence[IncomingRow], currency: str) -> None:

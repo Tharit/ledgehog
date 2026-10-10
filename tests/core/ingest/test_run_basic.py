@@ -98,23 +98,39 @@ def test_violation_row_index_counts_the_whole_delivery(env: Env) -> None:
     assert "row 2" in msg
 
 
-def test_filtered_is_stored_and_returned(env: Env) -> None:
-    res = env.deliver([row(-5, source_id="y")], filtered=3)
-    assert res.filtered == 3
-    assert env.run_row(res.run_id).stats["filtered"] == 3
-    assert "refused_currency" not in env.run_row(res.run_id).stats
-    assert "zero_amount" not in env.run_row(res.run_id).stats
+def test_importer_stats_are_stored_and_returned(env: Env) -> None:
+    res = env.deliver([row(-5, source_id="y")], importer_stats={"filtered": 3, "synthetic_skipped": 0})
+    assert dict(res.importer_stats) == {"filtered": 3, "synthetic_skipped": 0}
+    stats = env.run_row(res.run_id).stats
+    assert stats["importer"] == {"filtered": 3, "synthetic_skipped": 0}
+    assert "filtered" not in stats and "refused_currency" not in stats and "zero_amount" not in stats
 
 
-def test_filtered_defaults_to_zero(env: Env) -> None:
+def test_importer_stats_default_to_empty(env: Env) -> None:
     res = env.deliver([row(-5, source_id="y")])
-    assert res.filtered == 0 and env.run_row(res.run_id).stats["filtered"] == 0
+    assert dict(res.importer_stats) == {} and env.run_row(res.run_id).stats["importer"] == {}
 
 
-def test_negative_filtered_is_rejected(env: Env) -> None:
+def test_importer_stats_result_is_a_copy_and_frozen(env: Env) -> None:
+    given = {"filtered": 1}
+    res = env.deliver([row(-5, source_id="y")], importer_stats=given)
+    given["filtered"] = 99
+    assert res.importer_stats["filtered"] == 1
+    with pytest.raises(TypeError):
+        res.importer_stats["filtered"] = 2  # type: ignore[index]
+
+
+@pytest.mark.parametrize("bad", [{"filtered": -1}, {"filtered": 1.5}, {"filtered": "3"}, {"filtered": True}])
+def test_invalid_importer_stats_are_rejected(env: Env, bad: dict[str, object]) -> None:
     run_id = start_run(env.engine, env.account, "transactions", importer="csv")
-    with pytest.raises(ValueError, match="filtered"):
-        ingest_delivery(env.engine, run_id, [row(source_id="a")], covered_through=THROUGH, filtered=-1)
+    with pytest.raises(ValueError, match="importer_stats"):
+        ingest_delivery(
+            env.engine,
+            run_id,
+            [row(source_id="a")],
+            covered_through=THROUGH,
+            importer_stats=bad,  # type: ignore[arg-type]
+        )
     assert env.run_row(run_id).status == "failed" and env.count("source_transaction") == 0
 
 
