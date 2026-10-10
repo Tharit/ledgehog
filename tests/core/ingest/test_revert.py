@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import dataclasses
+import threading
+import time
 from collections.abc import Callable
+from typing import Any
 
 import pytest
 from sqlalchemy import Engine, text
 
 from app.core.balance.derived import recompute_derived
+from app.core.domain.errors import VersionConflict
+from app.core.ingest import revert
 from app.core.ingest.revert import (
     DerivedChange,
     DerivedEntry,
@@ -16,7 +22,10 @@ from app.core.ingest.revert import (
     RunMissing,
     revert_run,
 )
-from tests.core.ingest.revert_helpers import BASE, World, add_duplicate, day, transfer_to_savings
+from app.core.settle.settle import SettleResult
+from app.utils.db.locks import WriteConflict, lock_accounts, lock_settle_exclusive
+from tests import lockwatch
+from tests.core.ingest.revert_helpers import BASE, Run, World, add_duplicate, day, transfer_to_savings
 from tests.invariants.helpers import make_balance_record, make_movement
 
 
@@ -118,7 +127,8 @@ def test_the_revert_records_who_reverted(world: World) -> None:
     user = world.tx(
         lambda c: c.execute(
             text(
-                "INSERT INTO app_user (login, pw_hash, display_name) VALUES ('anna', 'x', 'Anna') RETURNING id"
+                "INSERT INTO app_user (login, pw_hash, display_name)"
+                " VALUES ('anna', 'x', 'Anna') RETURNING id"
             )
         ).scalar_one()
     )
@@ -154,7 +164,7 @@ def test_a_run_without_rows_reverts(world: World) -> None:
 
 
 def test_the_reverted_runs_record_stops_counting_and_derived_entries_follow(world: World) -> None:
-    r1 = world.run([(-1000, day(10)), (-500, day(11))], balance=(day(12), 8000))
+    world.run([(-1000, day(10)), (-500, day(11))], balance=(day(12), 8000))
     r2 = world.run([(-300, day(13))], balance=(day(14), 7000))
     # opening = 8000 - (-1500) = 9500, the day before the first movement; reconciliation of r2 =
     # (7000 - 8000) - (-300) = -700
@@ -310,3 +320,244 @@ def test_each_deleted_row_with_duplicates_gets_its_own_original(world: World) ->
     result = revert_run(world.engine, r2.id, user_id=None)
     assert result.cleared_duplicate_ids == (a1, b1) and result.repointed_source_ids == ((b2, b1),)
     world.assert_checks_clean()
+
+
+# ---- versions (spec P5, architecture §4.1) -------------------------------------------------
+
+
+def _version(world: World, entry: int) -> int:
+    return int(world.one("SELECT version FROM ledger_entry WHERE id = :i", i=entry).version)
+
+
+def _transfer_run(world: World) -> tuple[Run, int, int]:
+    run = world.run([(-500, day(10)), (-70, day(11))])
+    return run, run.entries[0], transfer_to_savings(world, run.sources[0], run.entries[0])
+
+
+def _bump(world: World, entry: int) -> None:
+    world.tx(lambda c: c.execute(text("UPDATE ledger_entry SET note = 'moved' WHERE id = :i"), {"i": entry}))
+
+
+def test_a_partner_whose_version_moved_is_named_and_nothing_is_written(world: World) -> None:
+    run, a, b = _transfer_run(world)
+    seen = {i: _version(world, i) for i in (*run.entries, b)}
+    _bump(world, b)
+    before = world.state()
+    with pytest.raises(VersionConflict) as exc:
+        revert_run(world.engine, run.id, user_id=None, expected_versions=seen)
+    assert exc.value.entry_ids == (b,)
+    assert world.state() == before
+
+
+def test_an_entry_the_revert_writes_without_a_version_is_named(world: World) -> None:
+    run, a, b = _transfer_run(world)
+    before = world.state()
+    with pytest.raises(VersionConflict) as exc:
+        revert_run(world.engine, run.id, user_id=None, expected_versions={a: _version(world, a)})
+    assert exc.value.entry_ids == tuple(sorted({b, run.entries[1]}))  # the partner and the run's other entry
+    with pytest.raises(VersionConflict) as exc:
+        revert_run(world.engine, run.id, user_id=None, expected_versions={})
+    assert exc.value.entry_ids == tuple(sorted({a, b, run.entries[1]}))
+    assert world.state() == before
+
+
+def test_a_complete_version_map_reverts_and_none_means_no_check(world: World) -> None:
+    run, a, b = _transfer_run(world)
+    seen = {i: _version(world, i) for i in (*run.entries, b)}
+    revert_run(world.engine, run.id, user_id=None, expected_versions=seen)
+    assert world.status(run.id) == "reverted"
+
+    run2, a2, b2 = _transfer_run(world)
+    _bump(world, b2)
+    revert_run(world.engine, run2.id, user_id=None, expected_versions=None)
+    assert world.status(run2.id) == "reverted"
+    world.assert_checks_clean()
+
+
+def test_the_previews_versions_are_what_the_confirming_request_sends(world: World) -> None:
+    run, a, b = _transfer_run(world)
+    preview = revert_run(world.engine, run.id, user_id=None, dry_run=True)
+    assert preview.versions == {i: _version(world, i) for i in (*run.entries, b)}
+    _bump(world, b)
+    with pytest.raises(VersionConflict) as exc:
+        revert_run(world.engine, run.id, user_id=None, expected_versions=preview.versions)
+    assert exc.value.entry_ids == (b,)
+    fresh = revert_run(world.engine, run.id, user_id=None, dry_run=True)
+    revert_run(world.engine, run.id, user_id=None, expected_versions=fresh.versions)
+
+
+# ---- preview -------------------------------------------------------------------------------
+
+
+def test_a_preview_writes_nothing_and_names_what_the_revert_then_does(world: World) -> None:
+    r1 = world.run([(-100, day(9))])
+    r2 = world.run([(-500, day(10)), (-70, day(11))], balance=(day(12), 5000))
+    b = transfer_to_savings(world, r2.sources[0], r2.entries[0])
+    d1 = add_duplicate(world, r1, r2.sources[1], amount=-70, booked_on=day(11))
+    d2 = add_duplicate(world, r1, r2.sources[1], amount=-70, booked_on=day(11))
+    before = world.state()
+    preview = revert_run(world.engine, r2.id, user_id=None, dry_run=True)
+    assert world.state() == before and preview.settle is None
+    assert (preview.removed_entry_ids, preview.partner_entry_ids) == (tuple(r2.entries), (b,))
+    assert preview.cleared_duplicate_ids == (d1,) and preview.repointed_source_ids == ((d2, d1),)
+    assert preview.derived_changes and preview.versions
+
+    real = revert_run(world.engine, r2.id, user_id=None)
+    assert dataclasses.replace(real, settle=None) == preview
+    assert real.settle is not None
+    assert world.q("SELECT id FROM ledger_entry WHERE id = ANY(:i)", i=list(preview.removed_entry_ids)) == []
+
+
+def test_a_refused_preview_raises_the_same_refusal(world: World) -> None:
+    r1 = world.run([(-100, day(10))])
+    world.run([(-200, day(11))])
+    with pytest.raises(NotLatestRun):
+        revert_run(world.engine, r1.id, user_id=None, dry_run=True)
+    with pytest.raises(RunMissing):
+        revert_run(world.engine, 987654, user_id=None, dry_run=True)
+
+
+# ---- settle after commit -------------------------------------------------------------------
+
+
+def test_settle_runs_once_after_commit_and_a_failure_keeps_the_write(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = world.run([(-500, day(10))])
+    seen: list[str] = []
+
+    def spy(engine: Engine) -> SettleResult:
+        seen.append(world.status(run.id))  # a separate connection: committed state only
+        return SettleResult(error="RuntimeError: settle down")
+
+    monkeypatch.setattr(revert, "settle", spy)
+    result = revert_run(world.engine, run.id, user_id=None)
+    assert seen == ["reverted"]
+    assert (
+        result.settle is not None and result.settle.error is not None and "settle down" in result.settle.error
+    )
+    assert world.q("SELECT id FROM source_transaction") == []
+
+
+def test_refused_and_previewed_reverts_do_not_settle(world: World, monkeypatch: pytest.MonkeyPatch) -> None:
+    r1 = world.run([(-100, day(10))])
+    world.run([(-200, day(11))])
+    calls: list[int] = []
+    monkeypatch.setattr(revert, "settle", lambda e: calls.append(1) or SettleResult())
+    with pytest.raises(NotLatestRun):
+        revert_run(world.engine, r1.id, user_id=None)
+    with pytest.raises(VersionConflict):
+        revert_run(world.engine, world.run([(-1, day(12))]).id, user_id=None, expected_versions={})
+    revert_run(world.engine, world.one("SELECT max(id) AS i FROM import_run").i, user_id=None, dry_run=True)
+    assert calls == []
+
+
+# ---- locks ---------------------------------------------------------------------------------
+
+_SETTLE_CLASS = 1 << 24  # advisory key (1 << 56) as pg_locks shows it: high 32 bits
+_ACCOUNT_CLASS = 2 << 24
+
+
+def _until(cond: Callable[[], bool], what: str, timeout: float = 8.0) -> None:
+    deadline = time.monotonic() + timeout
+    while not cond():
+        if time.monotonic() > deadline:
+            pytest.fail(f"timed out waiting for {what}")
+        time.sleep(0.02)
+
+
+def _blocked_until_released(world: World, account: int, act: Callable[[], Any]) -> Any:
+    """Run `act` while another connection holds `account`'s lock: it must wait, then finish."""
+    done: list[Any] = []
+    with world.engine.connect() as holder:
+        with holder.begin():
+            lock_accounts(holder, [account])
+            thread = threading.Thread(target=lambda: done.append(act()))
+            thread.start()
+            _until(lambda: lockwatch.advisory_waiters(world.engine) >= 1 or bool(done), "the revert to wait")
+            assert thread.is_alive() and not done, f"the revert did not wait for account {account}'s lock"
+    thread.join(timeout=15)
+    assert not thread.is_alive() and len(done) == 1
+    return done[0]
+
+
+def test_lock_order_settle_shared_then_account(world: World) -> None:
+    run = world.run([(-500, day(10))])
+    done: list[Any] = []
+
+    # 1. someone holds the ACCOUNT lock: the writer already holds settle shared and waits here
+    with world.engine.connect() as holder:
+        with holder.begin():
+            pid = int(holder.execute(text("SELECT pg_backend_pid()")).scalar_one())
+            lock_accounts(holder, [world.checking])
+            thread = threading.Thread(
+                target=lambda: done.append(revert_run(world.engine, run.id, user_id=None))
+            )
+            thread.start()
+            _until(
+                lambda: lockwatch.advisory_waiters(world.engine) >= 1, "the revert to wait for the account"
+            )
+            shared = lockwatch.advisory_held(
+                world.engine, exclude_pid=pid, classid=_SETTLE_CLASS, mode="ShareLock"
+            )
+            assert shared == 1
+    thread.join(timeout=15)
+    assert not thread.is_alive() and len(done) == 1
+
+    # 2. someone holds settle EXCLUSIVE: the writer waits for it before taking any account lock
+    run2 = world.run([(-500, day(10))])
+    done.clear()
+    with world.engine.connect() as holder:
+        with holder.begin():
+            pid = int(holder.execute(text("SELECT pg_backend_pid()")).scalar_one())
+            lock_settle_exclusive(holder)
+            thread = threading.Thread(
+                target=lambda: done.append(revert_run(world.engine, run2.id, user_id=None))
+            )
+            thread.start()
+            _until(lambda: lockwatch.advisory_waiters(world.engine) >= 1, "the revert to wait for settle")
+            assert (
+                lockwatch.advisory_held(
+                    world.engine, exclude_pid=pid, classid=_ACCOUNT_CLASS, mode="ExclusiveLock"
+                )
+                == 0
+            )
+    thread.join(timeout=15)
+    assert not thread.is_alive() and len(done) == 1
+
+
+def test_a_revert_waits_for_the_lock_of_a_transfer_partners_account(world: World) -> None:
+    run, a, b = _transfer_run(world)
+    result = _blocked_until_released(
+        world, world.savings, lambda: revert_run(world.engine, run.id, user_id=None)
+    )
+    assert result.partner_entry_ids == (b,) and world.status(run.id) == "reverted"
+    world.assert_checks_clean()
+
+
+def test_a_partner_account_found_only_under_the_locks_extends_the_lock_set_and_retries(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, a, b = _transfer_run(world)
+    real = revert._accounts_of_entries
+    calls: list[int] = []
+
+    def stale_first(conn: Any, entry_ids: Any) -> set[int]:
+        calls.append(1)
+        return set() if len(calls) == 1 else real(conn, entry_ids)
+
+    monkeypatch.setattr(revert, "_accounts_of_entries", stale_first)
+    _blocked_until_released(world, world.savings, lambda: revert_run(world.engine, run.id, user_id=None))
+    assert world.status(run.id) == "reverted" and len(calls) >= 3
+
+
+def test_an_ever_moving_partner_set_ends_in_write_conflict_and_writes_nothing(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run, _, _ = _transfer_run(world)
+    n = iter(range(100_000, 200_000))
+    monkeypatch.setattr(revert, "_accounts_of_entries", lambda conn, ids: {next(n)})
+    before = world.state()
+    with pytest.raises(WriteConflict):
+        revert_run(world.engine, run.id, user_id=None)
+    assert world.state() == before

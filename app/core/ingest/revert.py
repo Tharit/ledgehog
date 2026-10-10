@@ -26,6 +26,7 @@ from typing import Any
 from sqlalchemy import Connection, Engine, text
 
 from app.core.balance.derived import recompute_derived
+from app.core.ingest.duplicates import _check_versions
 from app.core.ingest.entries import insert_entry
 from app.core.ingest.removal import entry_scope, remove_entries
 from app.core.settle.settle import SettleResult, settle
@@ -215,6 +216,15 @@ def _reassign_duplicates(
     return tuple(sorted(cleared)), tuple(sorted(repointed))
 
 
+def _versions(conn: Connection, entry_ids: list[int]) -> dict[int, int]:
+    return {
+        int(r.id): int(r.version)
+        for r in conn.execute(
+            text("SELECT id, version FROM ledger_entry WHERE id = ANY(:ids) ORDER BY id"), {"ids": entry_ids}
+        )
+    }
+
+
 def _derived(conn: Connection, accounts: list[int]) -> dict[int, tuple[DerivedEntry, ...]]:
     out: dict[int, tuple[DerivedEntry, ...]] = {a: () for a in accounts}
     for r in conn.execute(
@@ -262,7 +272,12 @@ def _revert_once(
         involved = _accounts_of_entries(conn, partners)
         if not involved <= locked:
             raise _AccountsMissing(involved)
-        lock_rows(conn, "ledger_entry", [*removed, *partners])
+        written = [*removed, *partners]
+        if expected is not None:
+            _check_versions(conn, expected, written=written)  # locks, compares, before any write
+        else:
+            lock_rows(conn, "ledger_entry", written)
+        versions = _versions(conn, written)
         affected_accounts = sorted({account_id} | involved)
         before = _derived(conn, affected_accounts)
 
@@ -290,6 +305,7 @@ def _revert_once(
             freed_document_ids=affected.freed_document_ids,
             repointed_source_ids=repointed,
             cleared_duplicate_ids=cleared,
+            versions=versions,
             derived_changes=tuple(
                 DerivedChange(a, before[a], after[a]) for a in affected_accounts if before[a] != after[a]
             ),
