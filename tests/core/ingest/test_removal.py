@@ -56,21 +56,13 @@ def test_a_carried_document_is_freed_and_tags_go(ledger: Ledger) -> None:
             ),
             {"d": ledger.one("SELECT booked_on FROM source_transaction WHERE id = :s", s=src).booked_on},
         ).scalar_one()
-        tag = conn.execute(
-            text("INSERT INTO tag (name) VALUES ('t') RETURNING id")
-        ).scalar_one()
-        conn.execute(
-            text("UPDATE ledger_entry SET document_id = :d WHERE id = :e"), {"d": doc, "e": e}
-        )
-        conn.execute(
-            text("INSERT INTO ledger_entry_tag VALUES (:e, :t)"), {"e": e, "t": tag}
-        )
+        tag = conn.execute(text("INSERT INTO tag (name) VALUES ('t') RETURNING id")).scalar_one()
+        conn.execute(text("UPDATE ledger_entry SET document_id = :d WHERE id = :e"), {"d": doc, "e": e})
+        conn.execute(text("INSERT INTO ledger_entry_tag VALUES (:e, :t)"), {"e": e, "t": tag})
     with ledger.engine.begin() as conn:
         # the routine leaves the source row's fate to the caller: here the row goes too (a revert)
         affected = remove_entries(conn, [e])
-        conn.execute(
-            text("DELETE FROM source_transaction WHERE id = :s"), {"s": src}
-        )
+        conn.execute(text("DELETE FROM source_transaction WHERE id = :s"), {"s": src})
     assert affected.freed_document_ids == (doc,)
     assert ledger.q("SELECT * FROM v_document_link WHERE document_id = :d", d=doc)[0].ledger_entry_id is None
     assert ledger.q("SELECT * FROM ledger_entry_tag") == []

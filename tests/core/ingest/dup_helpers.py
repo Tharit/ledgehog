@@ -10,7 +10,7 @@ from typing import Any
 
 from sqlalchemy import Connection, Engine, text
 
-from tests.invariants.helpers import make_entry, make_run, make_source, pair
+from tests.invariants.helpers import make_entry, make_source, pair
 
 DAY = date(2026, 3, 10)
 
@@ -78,13 +78,23 @@ class Ledger:
         return int(of)
 
     def entries_of(self, source_id: int) -> list[int]:
-        return [r.id for r in self.q("SELECT id FROM ledger_entry WHERE source_transaction_id = :s ORDER BY id", s=source_id)]
+        return [
+            r.id
+            for r in self.q(
+                "SELECT id FROM ledger_entry WHERE source_transaction_id = :s ORDER BY id", s=source_id
+            )
+        ]
 
     def dup_of(self, source_id: int) -> int | None:
         return self.one("SELECT duplicate_of FROM source_transaction WHERE id = :i", i=source_id).duplicate_of
 
     def assert_checks_clean(self) -> None:
-        views = [r[0] for r in self.q("SELECT table_name FROM information_schema.views WHERE table_name LIKE 'v_check_%'")]
+        views = [
+            r[0]
+            for r in self.q(
+                "SELECT table_name FROM information_schema.views WHERE table_name LIKE 'v_check_%'"
+            )
+        ]
         assert views, "no integrity views found"
         for v in views:
             bad = self.q(f"SELECT * FROM {v}")  # noqa: S608
@@ -98,16 +108,25 @@ class Ledger:
         def make(c: Connection) -> tuple[int, int, int, int]:
             a_src = make_source(c, self.checking, run_id=self.run, amount=-500, booked_on=DAY)
             a = make_entry(
-                c, a_src, type="transfer", counter_account_id=self.savings,
-                derivation=pair_key(), description="out", note="keep a",
+                c,
+                a_src,
+                type="transfer",
+                counter_account_id=self.savings,
+                derivation=pair_key(),
+                description="out",
+                note="keep a",
             )
             b_src = make_source(c, self.savings, importer=None, amount=500, booked_on=DAY)
             b = make_entry(
-                c, b_src, type="transfer", counter_account_id=self.checking,
-                derivation=pair_key("user"), description="in", note="keep b",
+                c,
+                b_src,
+                type="transfer",
+                counter_account_id=self.checking,
+                derivation=pair_key("user"),
+                description="in",
+                note="keep b",
             )
             pair(c, a, b)
             return a_src, a, b_src, b
 
         return self.tx(make)  # type: ignore[no-any-return]
-
