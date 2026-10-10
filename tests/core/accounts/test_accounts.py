@@ -27,6 +27,7 @@ from app.core.accounts import (
 )
 from app.core.settle.settle import SettleResult
 from app.utils.db.locks import lock_accounts, lock_settle_exclusive
+from tests import lockwatch
 from tests.core.accounts.conftest import Db
 from tests.invariants.helpers import make_entry, make_run, make_source
 
@@ -333,26 +334,14 @@ def test_list_accounts_unexplained_difference(db: Db) -> None:
 
 _SETTLE_CLASS = 1 << 24
 _ACCOUNT_CLASS = 2 << 24
-# pg_locks spans the cluster: other databases' locks (concurrent test runs) must not count
-_HERE = "database = (SELECT oid FROM pg_database WHERE datname = current_database())"
 
 
 def _waiters(db: Db) -> int:
-    return int(
-        db.one(f"SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted AND {_HERE}")[0]
-    )
+    return lockwatch.advisory_waiters(db.engine)
 
 
-def _held_by_others(db: Db, holder_pid: int, klass: int, mode: str) -> int:
-    return int(
-        db.one(
-            f"SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND granted AND pid <> :p AND {_HERE}"
-            " AND classid = :c AND mode = :m",
-            p=holder_pid,
-            c=klass,
-            m=mode,
-        )[0]
-    )
+def _held_by_others(db: Db, pid: int, klass: int, mode: str) -> int:
+    return lockwatch.advisory_held(db.engine, exclude_pid=pid, classid=klass, mode=mode)
 
 
 def _until(cond: Callable[[], bool], what: str, timeout: float = 8.0) -> None:

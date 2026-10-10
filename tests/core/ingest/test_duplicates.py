@@ -24,6 +24,7 @@ from app.core.ingest import duplicates
 from app.core.ingest.duplicates import clear_duplicate, mark_duplicate
 from app.core.settle.settle import SettleResult
 from app.utils.db.locks import WriteConflict, lock_accounts, lock_settle_exclusive
+from tests import lockwatch
 from tests.core.ingest.conftest import Env, row
 from tests.core.ingest.dup_helpers import DAY, Ledger, pair_key
 from tests.invariants.helpers import make_entry, make_source, pair
@@ -331,19 +332,11 @@ _ACCOUNT_CLASS = 2 << 24
 
 
 def _waiters(ledger: Ledger) -> int:
-    return int(ledger.one("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted")[0])
+    return lockwatch.advisory_waiters(ledger.engine)
 
 
 def _held_by_others(ledger: Ledger, holder_pid: int, klass: int, mode: str) -> int:
-    return int(
-        ledger.one(
-            "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND granted AND pid <> :p"
-            " AND classid = :c AND mode = :m",
-            p=holder_pid,
-            c=klass,
-            m=mode,
-        )[0]
-    )
+    return lockwatch.advisory_held(ledger.engine, exclude_pid=holder_pid, classid=klass, mode=mode)
 
 
 def _until(cond: Callable[[], bool], what: str, timeout: float = 8.0) -> None:

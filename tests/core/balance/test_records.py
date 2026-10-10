@@ -27,6 +27,7 @@ from app.core.balance.records import (
 )
 from app.core.settle.settle import SettleResult
 from app.utils.db.locks import lock_accounts, lock_settle_exclusive
+from tests import lockwatch
 from tests.core.balance.scene import assert_checks_clean, day
 from tests.invariants.helpers import (
     link_account,
@@ -270,19 +271,11 @@ _ACCOUNT_CLASS = 2 << 24
 
 
 def _waiters(env: Env) -> int:
-    return int(env.q("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted")[0][0])
+    return lockwatch.advisory_waiters(env.engine)
 
 
 def _held_by_others(env: Env, pid: int, klass: int, mode: str) -> int:
-    return int(
-        env.q(
-            "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND granted AND pid <> :p"
-            " AND classid = :c AND mode = :m",
-            p=pid,
-            c=klass,
-            m=mode,
-        )[0][0]
-    )
+    return lockwatch.advisory_held(env.engine, exclude_pid=pid, classid=klass, mode=mode)
 
 
 def _until(cond: Callable[[], bool], what: str, timeout: float = 8.0) -> None:

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import importlib
 import threading
-import time
 from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 
@@ -14,6 +13,7 @@ from sqlalchemy import Connection, Engine, text
 from app.core.settle import SettleResult, registered_steps, settle
 from app.core.settle.settle import StepOutcome, register_step
 from app.utils.db.locks import lock_settle_exclusive, lock_settle_shared
+from tests import lockwatch
 from tests.invariants.helpers import make_category, make_entry, make_movement, make_source
 
 # the package re-exports the function `settle`, which shadows the module of that name
@@ -49,17 +49,7 @@ def _row(engine: Engine, entry: int) -> tuple[list[str], int]:
 
 
 def _wait_for_ungranted_advisory_lock(engine: Engine, timeout: float = 10.0) -> None:
-    deadline = time.monotonic() + timeout
-    with engine.connect() as probe:
-        while time.monotonic() < deadline:
-            waiting = probe.execute(
-                text("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted")
-            ).scalar_one()
-            probe.rollback()
-            if waiting:
-                return
-            time.sleep(0.01)
-    pytest.fail("no backend ever waited on the settle lock")
+    lockwatch.wait_until_waiting(engine, "a backend to wait on the settle lock", timeout=timeout)
 
 
 def test_steps_are_declared_in_spec_order() -> None:
@@ -126,13 +116,7 @@ def test_settle_holds_the_exclusive_lock_and_no_account_lock(isolated_engine: En
     held: list[tuple[str, bool]] = []
 
     def spy(conn: Connection) -> StepOutcome:
-        rows = conn.execute(
-            text(
-                "SELECT mode, (classid::bigint << 32 | objid::bigint) >> 56 AS ns FROM pg_locks "
-                "WHERE locktype = 'advisory' AND pid = pg_backend_pid() AND granted"
-            )
-        ).all()
-        held.extend((r.mode, r.ns == 1) for r in rows)
+        held.extend((mode, ns == 1) for mode, ns in lockwatch.own_advisory_locks(conn))
         return StepOutcome()
 
     register_step("resolve", spy)

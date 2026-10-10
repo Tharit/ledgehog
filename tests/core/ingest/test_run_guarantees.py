@@ -15,6 +15,7 @@ from app.core.ingest import run as run_module
 from app.core.ingest.run import ingest_delivery, start_run
 from app.core.settle.settle import SettleResult
 from app.utils.db.locks import lock_accounts
+from tests import lockwatch
 from tests.core.ingest.conftest import THROUGH, Env, row
 
 
@@ -45,7 +46,7 @@ def test_duplicate_source_id_in_one_delivery_fails_the_run(env: Env) -> None:
 
 
 def _advisory_waiters(env: Env) -> int:
-    return int(env.q("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted")[0][0])
+    return lockwatch.advisory_waiters(env.engine)
 
 
 def _until(cond: Callable[[], bool], what: str, timeout: float = 15.0) -> None:

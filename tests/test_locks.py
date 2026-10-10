@@ -1,7 +1,6 @@
 """Lock helpers (architecture §5.2 'Lock order'). Real connections, real commits."""
 
 import threading
-import time
 from collections.abc import Callable
 
 import psycopg
@@ -9,6 +8,7 @@ import pytest
 from sqlalchemy import Engine, text
 
 from app.utils.db import locks
+from tests import lockwatch
 
 
 def _try_lock_timeout(engine: Engine, fn: Callable) -> bool:
@@ -95,17 +95,9 @@ def test_account_locks_are_taken_in_ascending_id_order(isolated_engine: Engine):
         t = threading.Thread(target=b)
         t.start()
         try:
-            deadline = time.monotonic() + 5
-            waiting = 0
-            with isolated_engine.connect() as probe:
-                while time.monotonic() < deadline and not waiting:
-                    waiting = probe.execute(
-                        text("SELECT count(*) FROM pg_locks WHERE locktype='advisory' AND NOT granted")
-                    ).scalar_one()
-                    time.sleep(0.02)
-                granted = probe.execute(
-                    text("SELECT count(*) FROM pg_locks WHERE locktype='advisory' AND granted")
-                ).scalar_one()
+            lockwatch.wait_until_waiting(isolated_engine, "B to wait on lock 2", timeout=5)
+            waiting = lockwatch.advisory_waiters(isolated_engine)
+            granted = lockwatch.advisory_held(isolated_engine)
             assert waiting == 1
             assert granted == 2  # A's lock on 2, B's lock on 1 (taken first), B waits on 2
             assert result == []
