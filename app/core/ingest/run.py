@@ -148,8 +148,12 @@ def _write_delivery(
             raise IngestError(f"no such run: {run_id}")
         account_id: int = run.account_id
         lock_accounts(conn, [account_id])
-        if run.status != "running":
-            raise IngestError(f"run {run_id} is {run.status}, not running")
+        # The first look was before the lock wait: judge the status as it is now, row-locked.
+        status: str = conn.execute(
+            text("SELECT status FROM import_run WHERE id = :i FOR UPDATE"), {"i": run_id}
+        ).scalar_one()
+        if status != "running":
+            raise IngestError(f"run {run_id} is {status}, not running")
         if covered_through is None:
             raise ContractViolation(
                 "no_coverage", "covered_through is required: a successful run says how far it covers"

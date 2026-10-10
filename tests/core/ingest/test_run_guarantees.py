@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 from sqlalchemy import text
 
-from app.core.domain.errors import ContractViolation
+from app.core.domain.errors import ContractViolation, IngestError
 from app.core.ingest import run as run_module
 from app.core.ingest.run import ingest_delivery, start_run
 from app.core.settle.settle import SettleResult
@@ -142,3 +142,38 @@ def test_failed_delivery_does_not_settle(env: Env, monkeypatch: pytest.MonkeyPat
     with pytest.raises(ContractViolation):
         ingest_delivery(env.engine, run_id, [row(source_id="a"), row(source_id="a")], covered_through=THROUGH)
     assert called == []
+
+
+def test_two_concurrent_deliveries_for_one_run_let_exactly_one_win(env: Env) -> None:
+    """Both pass the (unlocked) look at the run while the account lock is held elsewhere; the
+    loser must see the winner's `ok` once it gets the lock, not its own stale `running`."""
+    run_id = start_run(env.engine, env.account, "transactions", importer="csv")
+    outcomes: list[Any] = []
+
+    def deliver(tag: str) -> None:
+        try:
+            outcomes.append(
+                ingest_delivery(
+                    env.engine, run_id, [row(-100, source_id=tag)], covered_through=THROUGH, filtered=len(tag)
+                )
+            )
+        except BaseException as exc:  # noqa: BLE001
+            outcomes.append(exc)
+
+    threads = [threading.Thread(target=deliver, args=(tag,)) for tag in ("a", "bb")]
+    with env.engine.connect() as holder:
+        with holder.begin():
+            lock_accounts(holder, [env.account])
+            for t in threads:
+                t.start()
+            _until(lambda: _advisory_waiters(env) >= 2, "both deliveries to wait for the account lock")
+    for t in threads:
+        t.join(timeout=30)
+    wins = [o for o in outcomes if not isinstance(o, BaseException)]
+    losses = [o for o in outcomes if isinstance(o, BaseException)]
+    assert len(wins) == 1 and len(losses) == 1, outcomes
+    assert isinstance(losses[0], IngestError) and "not running" in str(losses[0])
+    stored = env.run_row(run_id)
+    assert stored.status == "ok" and stored.covered_through == THROUGH and stored.error_text is None
+    assert stored.stats["filtered"] == wins[0].filtered and stored.stats["inserted"] == 1
+    assert env.count("source_transaction") == 1
