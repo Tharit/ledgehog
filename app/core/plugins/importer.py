@@ -7,7 +7,7 @@ dry-run report (architecture §5.5). Importers never dedup or hash: they emit
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Protocol
@@ -154,9 +154,15 @@ class FileImporter(Protocol):
         profile: Mapping[str, Any],
         *,
         account_currency: str,
-        minor_units: int,
+        minor_units_of: Callable[[str], int],
         today: date,
         dry_run_samples: int = 5,
     ) -> ParsedFile:
-        """Raise `ParseFailed` (carrying the report) for any problem on the importer's side."""
+        """Raise `ParseFailed` (carrying the report) for any problem on the importer's side.
+
+        `minor_units_of` maps a currency code to its minor-unit exponent (the caller supplies it
+        from the `currency` table); it raises `KeyError` for a code it does not know, which the
+        importer reports as `ParseFailed`. It serves the account's amounts and any other
+        currency an amount is stated in (an instructed amount).
+        """
         ...

@@ -8,6 +8,9 @@ columns, the detected encoding and delimiter, the coverage and export date with 
 from, the balance record, the synthetic payment and a few parsed rows whose cells are cut to 24
 characters. It never prints the file's preamble, so it is safe to paste.
 
+Amounts are read with the minor-unit exponent of their currency: a small built-in table (JPY 0,
+KWD 3, BHD 3, every other currency 2), changed per run with `--exponent CUR=N`.
+
 `--set` overrides one setting of the preset; the key may be dotted (`balance.label=Saldo`), the
 value is JSON where it parses (`statement_payment.date_offset_days=6`) and text otherwise.
 """
@@ -26,6 +29,18 @@ from app.core.domain.money import Money
 from app.core.plugins.errors import InvalidProfile, ParseFailed
 from app.core.plugins.importer import Category, DryRunReport
 from app.plugins.importers.csv import CsvImporter, load_presets
+
+DEFAULT_EXPONENTS = {"JPY": 0, "KWD": 3, "BHD": 3}
+
+
+def _exponents(assignments: Sequence[str]) -> dict[str, int]:
+    table = dict(DEFAULT_EXPONENTS)
+    for a in assignments:
+        cur, sep, n = a.partition("=")
+        if not sep or not cur or not n.isdigit():
+            raise SystemExit(f"--exponent expects CUR=N, got {a!r}")
+        table[cur.strip()] = int(n)
+    return table
 
 
 def _apply(settings: dict[str, Any], assignment: str) -> None:
@@ -107,7 +122,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--preset", required=True)
     parser.add_argument("--file", required=True, type=Path)
     parser.add_argument("--currency", required=True)
-    parser.add_argument("--minor-units", type=int, default=2)
+    parser.add_argument(
+        "--exponent", action="append", default=[], metavar="CUR=N", help="minor-unit exponent of a currency"
+    )
     parser.add_argument("--today", type=date.fromisoformat, default=None, help="upload date, default: today")
     parser.add_argument("--set", action="append", default=[], dest="overrides", metavar="key=value")
     args = parser.parse_args(argv)
@@ -118,13 +135,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     settings = presets[args.preset]
     for assignment in args.overrides:
         _apply(settings, assignment)
+    table = _exponents(args.exponent)
+
+    def exponent_of(currency: str) -> int:
+        return table.get(currency, 2)
+
+    minor_units = exponent_of(args.currency)
     today = args.today or date.today()  # noqa: DTZ011 - a local helper script, the user's own day
     try:
         parsed = CsvImporter().parse(
             args.file.read_bytes(),
             settings,
             account_currency=args.currency,
-            minor_units=args.minor_units,
+            minor_units_of=exponent_of,
             today=today,
         )
     except InvalidProfile as exc:
@@ -132,9 +155,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
     except ParseFailed as exc:
         report = exc.report if exc.report is not None else DryRunReport(failure=str(exc))
-        print(format_report(report, minor_units=args.minor_units, currency=args.currency))
+        print(format_report(report, minor_units=minor_units, currency=args.currency))
         return 1
-    print(format_report(parsed.report, minor_units=args.minor_units, currency=args.currency))
+    print(format_report(parsed.report, minor_units=minor_units, currency=args.currency))
     return 0
 
 

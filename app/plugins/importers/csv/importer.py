@@ -8,7 +8,7 @@ fails the run, and the report records the mismatch so the dry run shows it (csv.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import date
 from typing import Any
 
@@ -40,7 +40,7 @@ class CsvImporter:
         profile: Mapping[str, Any],
         *,
         account_currency: str,
-        minor_units: int,
+        minor_units_of: Callable[[str], int],
         today: date,
         dry_run_samples: int = 5,
     ) -> ParsedFile:
@@ -48,22 +48,35 @@ class CsvImporter:
         prof.validate()
         report = ReportBuilder(limit=dry_run_samples)
         try:
-            return _parse(data, prof, report, account_currency, minor_units, today)
+            return _parse(data, prof, report, account_currency, _known(minor_units_of), today)
         except ParseFailed as exc:
             if exc.report is not None:
                 raise
             raise ParseFailed(str(exc), report=report.build(failure=str(exc))) from None
 
 
+def _known(lookup: Callable[[str], int]) -> Callable[[str], int]:
+    """The caller's exponent lookup, an unknown currency turned into a ParseFailed naming it."""
+
+    def exponent(currency: str) -> int:
+        try:
+            return lookup(currency)
+        except KeyError:
+            raise ParseFailed(f"unknown currency {currency!r}: no minor-unit exponent known") from None
+
+    return exponent
+
+
 def _parse(
-    data: bytes, prof: Profile, rep: ReportBuilder, currency: str, minor_units: int, today: date
+    data: bytes, prof: Profile, rep: ReportBuilder, currency: str, exponent: Callable[[str], int], today: date
 ) -> ParsedFile:
+    minor_units = exponent(currency)
     rf = read_file(
         data, encoding=prof.encoding, delimiter=prof.delimiter, quote=prof.quote, markers=prof.header_marker
     )
     rep.encoding, rep.delimiter = rf.encoding, rf.delimiter
     rep.header_line = rf.records[rf.header_index].line
-    kept = _read_rows(rf, prof, rep, currency, minor_units)
+    kept = _read_rows(rf, prof, rep, currency, exponent)
     emitted = [k.row for k in kept if k.row is not None]
     if rep.rows_read and rep.skipped.count == rep.rows_read:
         rep.warnings.append(
@@ -114,7 +127,7 @@ def _coverage(prof: Profile, rf: ReadFile, emitted: Sequence[IncomingRow], rep: 
 
 
 def _read_rows(
-    rf: ReadFile, prof: Profile, rep: ReportBuilder, currency: str, minor_units: int
+    rf: ReadFile, prof: Profile, rep: ReportBuilder, currency: str, exponent: Callable[[str], int]
 ) -> list[Kept]:
     header = rf.header
 
@@ -163,12 +176,12 @@ def _read_rows(
     def cell(cells: Sequence[str], i: int | None) -> str:
         return cells[i] if i is not None and i < len(cells) else ""
 
-    def amount_of(text: str, row_no: int, setting: str) -> int:
+    def amount_of(text: str, row_no: int, setting: str, in_currency: str = currency) -> int:
         try:
             return parse_amount(
                 text,
-                currency=currency,
-                minor_units=minor_units,
+                currency=in_currency,
+                minor_units=exponent(in_currency),
                 decimal_sep=prof.decimal_sep,
                 thousands_sep=prof.thousands_sep,
             )
@@ -218,7 +231,7 @@ def _read_rows(
         if instr_amount_i is not None:
             ic, ia = cell(cells, instr_cur_i), cell(cells, instr_amount_i)
             if ia and ic and ic != currency:
-                instr_amount = amount_of(ia, rec.line, "instructed.amount")
+                instr_amount = amount_of(ia, rec.line, "instructed.amount", ic)
                 instr_currency = ic
                 if prof.invert_amounts:
                     instr_amount = -instr_amount

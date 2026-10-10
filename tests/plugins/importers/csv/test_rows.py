@@ -4,7 +4,7 @@ from datetime import date
 
 import pytest
 
-from app.core.plugins.errors import ParseFailed
+from app.core.plugins.errors import InvalidProfile, ParseFailed
 from tests.plugins.importers.csv.helpers import HEADER, run
 
 
@@ -243,6 +243,33 @@ def test_instructed_follows_invert_amounts() -> None:
     assert (r.amount_minor, r.instructed_amount_minor) == (-909, -1000)
 
 
+def test_instructed_amount_uses_the_instructed_currencys_exponent() -> None:
+    header = "Datum;Fremd;Betrag;Kurs;Betrag\n"
+    pf = run(header + "03.08.2026;JPY;-1.500;0,0065;-9,75\n", profile=instr_profile(thousands_sep="."))
+    assert (pf.rows[0].amount_minor, pf.rows[0].instructed_amount_minor) == (-975, -1500)
+    pf = run(header + "03.08.2026;KWD;-1,234;3,0;-3,70\n", profile=instr_profile())
+    assert (pf.rows[0].amount_minor, pf.rows[0].instructed_amount_minor) == (-370, -1234)
+
+
+def test_instructed_decimals_beyond_the_instructed_exponent_fail() -> None:
+    header = "Datum;Fremd;Betrag;Kurs;Betrag\n"
+    with pytest.raises(ParseFailed, match="instructed.amount"):
+        run(header + "03.08.2026;JPY;-15,5;1;-9,75\n", profile=instr_profile())
+
+
+def test_unknown_currency_in_the_lookup_fails_naming_it() -> None:
+    header = "Datum;Fremd;Betrag;Kurs;Betrag\n"
+    with pytest.raises(ParseFailed, match="XYZ"):
+        run(header + "03.08.2026;XYZ;-10,00;1;-9,09\n", profile=instr_profile())
+    with pytest.raises(ParseFailed, match="SEK"):
+        run(HEADER + "03.08.2026;1,00;a\n", currency="SEK")
+
+
+def test_account_amounts_use_the_account_currencys_exponent() -> None:
+    pf = run(HEADER + "03.08.2026;1.500;a\n", currency="JPY", thousands_sep=".")
+    assert pf.rows[0].amount_minor == 1500
+
+
 # -- row filters and currency --------------------------------------------------------------------
 
 FH = "Datum;Valuta;Betrag;Whrg\n"
@@ -332,3 +359,26 @@ def test_report_mapped_columns_and_header_line() -> None:
         and ("amount", "Betrag", 1) in cols
         and ("purpose", "Zweck", 2) in cols
     )
+
+
+def test_column_positions_are_one_based() -> None:
+    pf = run(HEADER + "03.08.2026;-1,00;a\n", booked_on=1, amount={"column": 2}, purpose=[3])
+    assert (pf.rows[0].booked_on, pf.rows[0].amount_minor, pf.rows[0].purpose) == (
+        date(2026, 8, 3),
+        -100,
+        "a",
+    )
+    with pytest.raises(InvalidProfile, match="counts from 1"):
+        run(HEADER + "03.08.2026;-1,00;a\n", booked_on=0)
+
+
+def test_a_file_of_only_blank_lines_below_the_header_has_no_transactions() -> None:
+    from tests.plugins.importers.csv.helpers import base_profile
+
+    p = base_profile(
+        coverage_end={"label": "Bis", "right": 1, "format": "dd.MM.yyyy"}, balance=None, purpose=[]
+    )
+    pf = run("Bis;19.08.2026\n" + HEADER + "\n \n;;\n", profile=p)
+    assert pf.report.rows_read == 0 and pf.report.skipped.count == 0
+    assert any("no rows" in w for w in pf.report.warnings)
+    assert not any("every row" in w for w in pf.report.warnings)

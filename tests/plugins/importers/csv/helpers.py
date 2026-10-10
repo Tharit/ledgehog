@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import date
 from typing import Any
 
@@ -9,6 +10,12 @@ from app.core.plugins.importer import ParsedFile
 from app.plugins.importers.csv import CsvImporter
 
 TODAY = date(2026, 8, 20)
+
+EXPONENTS = {"EUR": 2, "USD": 2, "GBP": 2, "JPY": 0, "KWD": 3}
+
+
+def exponent_of(currency: str) -> int:
+    return EXPONENTS[currency]  # KeyError for a currency the table lacks, like core's lookup
 
 
 def base_profile(**over: Any) -> dict[str, Any]:
@@ -31,14 +38,19 @@ def run(
     profile: dict[str, Any] | None = None,
     today: date = TODAY,
     currency: str = "EUR",
-    minor_units: int = 2,
+    minor_units_of: Callable[[str], int] = exponent_of,
     samples: int = 5,
     **over: Any,
 ) -> ParsedFile:
     data = text if isinstance(text, bytes) else text.encode()
     prof = profile if profile is not None else base_profile(**over)
     return CsvImporter().parse(
-        data, prof, account_currency=currency, minor_units=minor_units, today=today, dry_run_samples=samples
+        data,
+        prof,
+        account_currency=currency,
+        minor_units_of=minor_units_of,
+        today=today,
+        dry_run_samples=samples,
     )
 
 
