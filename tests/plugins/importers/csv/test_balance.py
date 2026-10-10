@@ -188,15 +188,52 @@ def test_stated_end_label_missing_fails() -> None:
         run(CARD.replace("Abrechnungsdatum", "Stichtag"), profile=card_profile(balance=None))
 
 
-def test_balance_date_never_later_than_coverage() -> None:
-    # export 22.08 -> closed 21.08; the figure is dated 20.08 (<= closed) but the last booking is 18.08
+END = {"label": "Bis", "right": 1, "format": "dd.MM.yyyy"}
+
+
+def with_end(text: str, end: str) -> str:
+    return f"Bis;{end}\n" + text
+
+
+def test_quiet_account_still_reports_its_balance_dated_at_the_coverage() -> None:
+    # export 22.08 -> closed 21.08; the figure is dated 20.08 but the last booking is 19.08
     text = file(figure_date="20.08.2026").replace("20.08.2026;-10,00;a\n", "")
     p = prof()
     del p["export_date"]
     pf = run(text, profile=p, today=D(2026, 8, 22))
-    assert pf.reported_balance is None and pf.balance_on is None
+    assert (pf.reported_balance, pf.balance_on) == (100000, D(2026, 8, 19))
     assert pf.covered_through == D(2026, 8, 19)
-    assert any("balance" in w for w in pf.report.warnings)
+    b = pf.report.balance
+    assert b is not None and (b.figure_on, b.rolled_back_rows) == (D(2026, 8, 20), 0)
+    assert not any("balance" in w for w in pf.report.warnings)
+
+
+def test_quiet_account_subtracts_rows_between_coverage_and_figure_date() -> None:
+    p = prof(coverage_end=END)
+    text = with_end(file(figure_date="20.08.2026"), "19.08.2026")
+    # rows after the figure date are not subtracted; (19.08, 20.08] holds the -10,00
+    text = text + "21.08.2026;-7,00;later\n"
+    pf = run(text, profile=p, today=D(2026, 8, 25))
+    assert (pf.reported_balance, pf.balance_on) == (101000, D(2026, 8, 19))
+    b = pf.report.balance
+    assert b is not None and (b.rolled_back_by_minor, b.rolled_back_rows) == (-1000, 1)
+
+
+def test_figure_before_closed_day_and_coverage_keeps_its_date_without_roll_back() -> None:
+    pf = run(file(figure_date="17.08.2026"), profile=prof(), today=D(2026, 8, 25))
+    assert (pf.reported_balance, pf.balance_on) == (100000, D(2026, 8, 17))
+    b = pf.report.balance
+    assert b is not None and (b.rolled_back_by_minor, b.rolled_back_rows) == (0, 0)
+
+
+def test_figure_after_a_stated_end_is_clamped_to_that_end() -> None:
+    text = with_end(file(figure_date="20.08.2026"), "18.08.2026")
+    pf = run(text, profile=prof(coverage_end=END), today=D(2026, 8, 20))
+    # (18.08, 20.08]: -10,00 and -5,00
+    assert (pf.reported_balance, pf.balance_on) == (101500, D(2026, 8, 18))
+    b = pf.report.balance
+    assert b is not None and (b.rolled_back_by_minor, b.rolled_back_rows) == (-1500, 2)
+    assert (b.figure_minor, b.figure_on) == (100000, D(2026, 8, 20))
 
 
 RUNNING = "Datum;Betrag;Saldo\n{rows}"
@@ -267,3 +304,19 @@ def test_no_balance_profile_reports_none() -> None:
 
     pf = run("Datum;Betrag\n18.08.2026;3,00\n", profile=base_profile(purpose=[]))
     assert pf.reported_balance is None and pf.balance_on is None and pf.report.balance is None
+
+
+def test_running_balance_is_clamped_to_a_stated_end_newest_first() -> None:
+    text = with_end(RUNNING.format(rows=DESC), "18.08.2026")
+    pf = run(text, profile=running_profile(coverage_end=END), today=D(2026, 8, 25))
+    # the figure is 890,00 after the row dated 20.08; rows in (18.08, 20.08] are -10,00 and -5,00
+    assert (pf.reported_balance, pf.balance_on) == (90500, D(2026, 8, 18))
+    b = pf.report.balance
+    assert b is not None and (b.figure_minor, b.figure_on, b.rolled_back_rows) == (89000, D(2026, 8, 20), 2)
+
+
+def test_running_balance_is_clamped_to_a_stated_end_oldest_first() -> None:
+    asc = "".join(reversed(DESC.splitlines(keepends=True)))
+    text = with_end(RUNNING.format(rows=asc), "18.08.2026")
+    pf = run(text, profile=running_profile(coverage_end=END), today=D(2026, 8, 25))
+    assert (pf.reported_balance, pf.balance_on) == (90500, D(2026, 8, 18))

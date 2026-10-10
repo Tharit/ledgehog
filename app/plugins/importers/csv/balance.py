@@ -125,9 +125,7 @@ def reported_balance(
         if found is None:
             rep.warnings.append("no row dated on or before the last closed day: no balance reported")
             return None
-        amount, on, source = found
-        figure, rolled_by, rolled_rows = amount, 0, 0
-        figure_on = on
+        figure, figure_on, source = found
     else:
         assert spec.label is not None
         anchor = locate(rf.records, spec.label, "balance")
@@ -147,18 +145,14 @@ def reported_balance(
             f"labelled figure: label {spec.label!r} at {where(rf.records, anchor)}, value at "
             f"{where(rf.records, got[0])}; dated by {date_src}"
         )
-        rolled_by = rolled_rows = 0
-        amount, on = figure, figure_on
-        if figure_on > closed:
-            after = [k.amount for k in kept if k.row is not None and k.booked_on > closed]
-            rolled_by, rolled_rows = sum(after), len(after)
-            amount, on = figure - rolled_by, closed
-    if on > coverage:
-        rep.warnings.append(
-            f"the balance would be dated {on.isoformat()}, after the file's coverage "
-            f"{coverage.isoformat()}: no balance reported"
-        )
-        return None
+    # One rule: dated at the earliest of the figure's date, the last closed day and the coverage;
+    # a figure moved back loses the booked rows in (record date, figure date].
+    on = min(figure_on, closed, coverage)
+    rolled_by = rolled_rows = 0
+    if on < figure_on:
+        undone = [k.amount for k in kept if k.row is not None and on < k.booked_on <= figure_on]
+        rolled_by, rolled_rows = sum(undone), len(undone)
+    amount = figure - rolled_by
     rep.balance = BalanceReport(amount, on, source, figure, figure_on, rolled_by, rolled_rows)
     return amount, on
 
