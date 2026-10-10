@@ -19,10 +19,7 @@ from app.utils.auth import (
 @pytest.fixture
 def user_id(db_conn):
     return db_conn.execute(
-        text(
-            "INSERT INTO app_user (login, pw_hash, display_name) "
-            "VALUES ('anna', :h, 'Anna') RETURNING id"
-        ),
+        text("INSERT INTO app_user (login, pw_hash, display_name) VALUES ('anna', :h, 'Anna') RETURNING id"),
         {"h": hash_password("pw-anna")},
     ).scalar_one()
 
