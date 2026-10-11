@@ -21,7 +21,7 @@ from typing import Any
 from sqlalchemy import Engine, text
 
 from app.core.accounts import AccountMissing
-from app.core.domain.errors import ContractViolation
+from app.core.domain.errors import ContractViolation, RunRefused
 from app.core.importers.instances import InstanceDisabled, InstanceMissing
 from app.core.ingest.run import (
     fail_run,
@@ -60,8 +60,10 @@ class AccountNotLinked(UploadError):
 class Failure:
     """What a dry run shows when the real run would have ended in an error.
 
-    `kind` is `parse_failed`, `invalid_profile`, `importer_error` or `contract_violation`;
-    `rule` names the contract rule (e.g. `currency_mismatch`) for the last, else None.
+    `kind` is `parse_failed`, `invalid_profile`, `importer_error`, `contract_violation` or, when
+    the instance, account or link changed after the checks, the refusal (`instance_disabled`,
+    `account_closed`, `account_not_linked`, ...); `rule` names the contract rule
+    (e.g. `currency_mismatch`) for a contract violation, else None.
     """
 
     kind: str
@@ -126,16 +128,19 @@ def upload(
 
     if run_id is None:
         return _dry_run(engine, instance_id, instance_name, account_id, parsed)
-    done = ingest_delivery(
-        engine,
-        run_id,
-        parsed.rows,
-        reported_balance=parsed.reported_balance,
-        reported_balance_on=parsed.balance_on,
-        covered_from=parsed.data_start,
-        covered_through=parsed.covered_through,
-        importer_stats=parsed.importer_stats,
-    )
+    try:
+        done = ingest_delivery(
+            engine,
+            run_id,
+            parsed.rows,
+            reported_balance=parsed.reported_balance,
+            reported_balance_on=parsed.balance_on,
+            covered_from=parsed.data_start,
+            covered_through=parsed.covered_through,
+            importer_stats=parsed.importer_stats,
+        )
+    except RunRefused as refused:  # lost a race after the checks: the same refusal as before
+        raise _refusal(refused, instance_id, account_id) from refused
     return UploadResult(
         run_id=run_id,
         dry_run=False,
@@ -161,6 +166,15 @@ def _dry_run(
             covered_from=parsed.data_start,
             covered_through=parsed.covered_through,
             importer_stats=parsed.importer_stats,
+        )
+    except RunRefused as refused:
+        return UploadResult(
+            run_id=None,
+            dry_run=True,
+            summary={},
+            report=parsed.report,
+            settle=None,
+            failure=Failure(refused.reason, None, str(refused)),
         )
     except ContractViolation as exc:
         return UploadResult(
@@ -196,6 +210,24 @@ def _failed_dry_run(exc: ImporterError | InvalidProfile) -> UploadResult:
         settle=None,
         failure=Failure(kind, None, str(exc)),
     )
+
+
+def _refusal(refused: RunRefused, instance_id: int, account_id: int) -> Exception:
+    """The `UploadError` (or the instance/account error) a refusal inside the write maps onto."""
+    match refused.reason:
+        case "instance_missing":
+            return InstanceMissing(instance_id)
+        case "not_a_file_source":
+            return NotAFileSource(instance_id)
+        case "instance_disabled":
+            return InstanceDisabled(instance_id)
+        case "account_missing":
+            return AccountMissing(account_id)
+        case "account_closed":
+            return AccountClosed(account_id)
+        case "account_not_linked":
+            return AccountNotLinked(instance_id, account_id)
+    return refused
 
 
 def _fail(engine: Engine, run_id: int, message: str) -> None:

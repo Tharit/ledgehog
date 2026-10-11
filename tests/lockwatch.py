@@ -78,3 +78,27 @@ def wait_until_waiting(src: Source, what: str, *, at_least: int = 1, timeout: fl
         if isinstance(src, Connection):
             src.rollback()  # a fresh snapshot of pg_locks each poll
         time.sleep(0.01)
+
+
+def row_lock_waiters(src: Source) -> int:
+    """Backends in this database currently waiting for a row lock (a wait on another transaction).
+
+    Row-lock waits show in `pg_locks` as a `transactionid` lock without a database, so the
+    database filter is applied on `pg_stat_activity` instead.
+    """
+    sql = (
+        "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database()"
+        " AND wait_event_type = 'Lock' AND wait_event = 'transactionid'"
+    )
+    return int(_run(src, sql, {})[0][0])
+
+
+def wait_until_row_waiting(src: Source, what: str, *, at_least: int = 1, timeout: float = 8.0) -> None:
+    """Poll until at least `at_least` backends wait for a row lock; fail on timeout."""
+    deadline = time.monotonic() + timeout
+    while row_lock_waiters(src) < at_least:
+        if time.monotonic() > deadline:
+            pytest.fail(f"timed out waiting for {what}")
+        if isinstance(src, Connection):
+            src.rollback()
+        time.sleep(0.01)

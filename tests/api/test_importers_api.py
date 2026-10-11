@@ -12,7 +12,7 @@ from app.core.importers.instances import create_instance
 from app.core.settle.settle import SettleResult
 from app.plugins.importers.csv import load_presets
 from tests.api import importers_helpers as h
-from tests.api.importers_helpers import Api, error_of
+from tests.api.importers_helpers import Api, SpyCsv, error_of
 from tests.invariants.helpers import make_entry, make_source
 
 BASE = "/api/importers/instances"
@@ -206,11 +206,45 @@ def test_link_defaults_the_external_ref_and_returns_what_it_did(api: Api, monkey
     assert calls == [1]  # one settle per write
 
 
-def test_link_takes_an_explicit_external_ref(api: Api):
+def test_a_file_importer_refuses_a_given_external_ref(api: Api):
     inst, acct = api.instance(), api.account()
+    for dry_run in (False, True):
+        r = api.client.post(
+            f"{BASE}/{inst}/links", json={"account_id": acct, "external_ref": "DE00-main", "dry_run": dry_run}
+        )
+        err = error_of(r, 422, "validation_error")
+        assert err["details"] == [
+            {
+                "location": ["body", "external_ref"],
+                "message": "a file importer takes no reference",
+                "type": "value_error",
+            }
+        ]
+    assert api.client.get(BASE).json()[0]["accounts"] == []
+
+
+class _FetchStub:
+    """A registered importer that is not a file importer: it has no `parse`."""
+
+    def validate_settings(self, settings) -> None:
+        return None
+
+
+def _fetch_api(make_api) -> tuple[Api, int]:
+    api = make_api({"csv": SpyCsv(), "bank": _FetchStub()})
+    r = api.client.post(BASE, json={"importer": "bank", "label": "Bank", "settings": {}})
+    assert r.status_code == 201, r.text
+    return api, int(r.json()["id"])
+
+
+def test_a_fetch_importer_requires_an_external_ref(make_api):
+    api, inst = _fetch_api(make_api)
+    acct = api.account()
+    r = api.client.post(f"{BASE}/{inst}/links", json={"account_id": acct})
+    err = error_of(r, 422, "validation_error")
+    assert err["details"][0]["location"] == ["body", "external_ref"]
     r = api.client.post(f"{BASE}/{inst}/links", json={"account_id": acct, "external_ref": "DE00-main"})
-    assert r.json()["external_ref"] == "DE00-main"
-    assert api.client.get(BASE).json()[0]["accounts"] == [{"account_id": acct, "external_ref": "DE00-main"}]
+    assert r.status_code == 200 and r.json()["external_ref"] == "DE00-main"
 
 
 def test_link_dry_run_changes_nothing_and_equals_the_real_result(api: Api, monkeypatch):
@@ -252,9 +286,6 @@ def test_link_refusals(api: Api, dry_run: bool):
     closed = api.account("Old")
     close_account(api.engine, closed, date(2026, 8, 1))
     error_of(api.client.post(url, json={"account_id": closed, **body}), 409, "account_closed")
-    error_of(
-        api.client.post(url, json={"account_id": acct, "external_ref": " ", **body}), 422, "invalid_instance"
-    )
     docs = create_instance(
         api.engine, importer="csv", label="docs", settings={}, emits=["documents"], access="shared"
     )
@@ -267,9 +298,9 @@ def test_link_refusals(api: Api, dry_run: bool):
     error_of(api.client.post(url, json={"account_id": acct, **body}), 409, "instance_disabled")
 
 
-def test_link_conflicts(api: Api):
-    inst, acct = api.instance(), api.account()
-    other = api.account("Other")
+def test_link_conflicts(make_api):
+    api, inst = _fetch_api(make_api)
+    acct, other = api.account(), api.account("Other")
     api.link(inst, acct, external_ref="same")
     url = f"{BASE}/{inst}/links"
     error_of(
@@ -278,6 +309,13 @@ def test_link_conflicts(api: Api):
     error_of(
         api.client.post(url, json={"account_id": other, "external_ref": "same"}), 409, "external_ref_taken"
     )
+    error_of(api.client.post(url, json={"account_id": other, "external_ref": " "}), 422, "invalid_instance")
+
+
+def test_a_file_importer_link_twice_is_already_linked(api: Api):
+    inst, acct = api.instance(), api.account()
+    api.link(inst, acct)
+    error_of(api.client.post(f"{BASE}/{inst}/links", json={"account_id": acct}), 409, "already_linked")
 
 
 def test_link_bodies_are_strict(api: Api):

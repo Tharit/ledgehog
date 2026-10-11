@@ -25,7 +25,7 @@ from sqlalchemy import Connection, Engine, text
 from app.core.balance.derived import recompute_derived
 from app.core.balance.difference import records_since_zero, unexplained_difference
 from app.core.balance.records import insert_reported_record
-from app.core.domain.errors import ContractViolation, IngestError
+from app.core.domain.errors import ContractViolation, IngestError, RunRefused
 from app.core.ingest.entries import insert_entries
 from app.core.ingest.identity import ContentHash, SourceId, assign_ordinals, canonical_text, identity_of
 from app.core.plugins.errors import ImporterError, InvalidProfile
@@ -281,6 +281,7 @@ def _write_delivery(
     ).scalar_one()
     if status != "running":
         raise IngestError(f"run {run_id} is {status}, not running")
+    _recheck_refusals(conn, account_id, run.importer_instance_id)
     if covered_through is None:
         raise ContractViolation(
             "no_coverage", "covered_through is required: a successful run says how far it covers"
@@ -372,6 +373,45 @@ def _write_delivery(
         difference_after,
         json.loads(json.dumps(stats)),
     )
+
+
+def _recheck_refusals(conn: Connection, account_id: int, instance_id: int | None) -> None:
+    """The refusals the caller made before any lock, made again now that the account lock is held.
+
+    Unlinking and closing take the account lock, so what is read here cannot change until this
+    transaction ends. Disabling an instance takes no account lock, so the instance row is read
+    `FOR SHARE`: the disabling UPDATE waits for this transaction. A run without an instance (a
+    delivery not made by a file upload) skips the instance and link checks.
+    """
+    if instance_id is not None:
+        inst = conn.execute(
+            text("SELECT emits, disabled FROM importer_instance WHERE id = :i FOR SHARE"), {"i": instance_id}
+        ).one_or_none()
+        if inst is None:
+            raise RunRefused("instance_missing", f"importer instance {instance_id} does not exist")
+        if "transactions" not in inst.emits:
+            raise RunRefused(
+                "not_a_file_source", f"importer instance {instance_id} does not emit transactions"
+            )
+        if inst.disabled:
+            raise RunRefused("instance_disabled", f"importer instance {instance_id} is disabled")
+    closed = conn.execute(
+        text("SELECT closed_on FROM account WHERE id = :a"), {"a": account_id}
+    ).one_or_none()
+    if closed is None:
+        raise RunRefused("account_missing", f"account {account_id} does not exist")
+    if closed.closed_on is not None:
+        raise RunRefused("account_closed", f"account {account_id} is closed")
+    if (
+        instance_id is not None
+        and not conn.execute(
+            text("SELECT 1 FROM account_source WHERE account_id = :a AND importer_instance_id = :i"),
+            {"a": account_id, "i": instance_id},
+        ).first()
+    ):
+        raise RunRefused(
+            "account_not_linked", f"account {account_id} is not linked to importer instance {instance_id}"
+        )
 
 
 def _check_contract(rows: Sequence[IncomingRow], currency: str) -> None:
