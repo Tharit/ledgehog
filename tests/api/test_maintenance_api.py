@@ -22,9 +22,7 @@ def test_check_is_ok_on_a_clean_ledger_and_lists_every_view(client: TestClient, 
     with api_engine.connect() as conn:
         views = {
             x[0]
-            for x in conn.execute(
-                text("SELECT viewname FROM pg_views WHERE viewname LIKE 'v\\_check\\_%'")
-            )
+            for x in conn.execute(text("SELECT viewname FROM pg_views WHERE viewname LIKE 'v\\_check\\_%'"))
         }
     assert set(body["checks"]) == views and len(views) >= 10
     assert all(v == {"rows": [], "truncated": False} for v in body["checks"].values())
@@ -63,6 +61,8 @@ def test_a_settle_failure_is_a_notice_not_an_http_error(
     assert r.status_code == 200 and r.json() == {"touched_entry_ids": [], "error": "settling failed"}
 
 
-@pytest.mark.parametrize(("method", "path"), [("get", "/api/maintenance/check"), ("post", "/api/maintenance/settle")])
+@pytest.mark.parametrize(
+    ("method", "path"), [("get", "/api/maintenance/check"), ("post", "/api/maintenance/settle")]
+)
 def test_maintenance_requires_a_session(client: TestClient, method: str, path: str) -> None:
     assert_envelope(getattr(client, method)(path), 401, "unauthenticated")

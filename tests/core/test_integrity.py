@@ -14,7 +14,9 @@ def _views(conn: Connection) -> set[str]:
     return {
         r[0]
         for r in conn.execute(
-            text("SELECT viewname FROM pg_views WHERE schemaname = 'public' AND viewname LIKE 'v\\_check\\_%'")
+            text(
+                "SELECT viewname FROM pg_views WHERE schemaname = 'public' AND viewname LIKE 'v\\_check\\_%'"
+            )
         )
     }
 
