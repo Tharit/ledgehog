@@ -36,3 +36,66 @@ export type Account = {
 	anchored: boolean;
 	records_since_zero: number[] | null;
 };
+
+// Generated from OpenAPI (src/lib/types/api.d.ts): the entries list.
+type Schemas = import('../types/api.js').components['schemas'];
+
+export type Entry = Schemas['EntryOut'];
+export type EntryPage = Schemas['EntryPageOut'];
+export type EntryType = NonNullable<Entry['type']>;
+export type ReviewFlag = Entry['review_flags'][number];
+
+// TEMPORARY, hand-written from app/api/routers/lookups.py until the generated types contain
+// GET /api/ledger/categories|payees|tags; then replace these with `Schemas[...]`.
+export type Category = {
+	id: number;
+	parent_id: number | null;
+	name: string;
+	kind: 'income' | 'expense' | string;
+	sort_order: number;
+	icon: string | null;
+	color: string | null;
+};
+
+export type Payee = {
+	id: number;
+	name: string;
+	icon: string | null;
+	color: string | null;
+	note: string | null;
+};
+
+export type Tag = {
+	id: number;
+	name: string;
+	color: string | null;
+	starts_on: IsoDate | null;
+	ends_on: IsoDate | null;
+	entry_count: number;
+};
+
+/**
+ * The ledger filter, in the API's own parameter names (so a URL is also an API query).
+ * Within a dimension the values are OR, across dimensions AND. Amounts are magnitudes in minor
+ * units of `currency` (which an amount bound requires).
+ */
+export type EntryFilter = {
+	/** inclusive */
+	from?: IsoDate;
+	/** inclusive */
+	to?: IsoDate;
+	account_id: number[];
+	category_id: number[];
+	/** a category includes its descendants unless this is false */
+	category_descendants: boolean;
+	uncategorised: boolean;
+	payee_id: number[];
+	tag_id: number[];
+	amount_min?: number;
+	amount_max?: number;
+	currency?: string;
+	direction?: 'in' | 'out';
+	q: string;
+	type: string[];
+	flag: string[];
+};
