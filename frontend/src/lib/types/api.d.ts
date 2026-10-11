@@ -290,6 +290,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ledger/categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Categories
+         * @description Every category as a flat list (`parent_id` links the tree): roots first, then `sort_order`, name.
+         */
+        get: operations["list_categories"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ledger/entries": {
         parameters: {
             query?: never;
@@ -301,6 +321,103 @@ export interface paths {
         get: operations["list_entries_view"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ledger/entries/{entry_id}/tags/{tag_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Tag Ledger Entry */
+        put: operations["tag_ledger_entry"];
+        post?: never;
+        /** Untag Ledger Entry */
+        delete: operations["untag_ledger_entry"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ledger/payees": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Payees
+         * @description Every payee by name: identity and presentation only.
+         */
+        get: operations["list_payees"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ledger/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Ledger Tags
+         * @description Every tag by name with its derived span; a tag no entry uses has a null span and a count of 0.
+         */
+        get: operations["list_ledger_tags"];
+        put?: never;
+        /** Create Ledger Tag */
+        post: operations["create_ledger_tag"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ledger/tags/{tag_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Ledger Tag */
+        put: operations["update_ledger_tag"];
+        post?: never;
+        /** Delete Ledger Tag */
+        delete: operations["delete_ledger_tag"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ledger/tags/{tag_id}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Ledger Tag
+         * @description Tag every entry the filter selects (derived entries are skipped). `dry_run` previews it.
+         */
+        post: operations["apply_ledger_tag"];
         delete?: never;
         options?: never;
         head?: never;
@@ -370,6 +487,13 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AccountCountOut */
+        AccountCountOut: {
+            /** Account Id */
+            account_id: number;
+            /** Newly Tagged */
+            newly_tagged: number;
+        };
         /** AccountOut */
         AccountOut: {
             /** Anchored */
@@ -413,6 +537,28 @@ export interface components {
         AccountsOut: {
             /** Accounts */
             accounts: components["schemas"]["AccountOut"][];
+        };
+        /** CategoriesOut */
+        CategoriesOut: {
+            /** Categories */
+            categories: components["schemas"]["CategoryOut"][];
+        };
+        /** CategoryOut */
+        CategoryOut: {
+            /** Color */
+            color: string | null;
+            /** Icon */
+            icon: string | null;
+            /** Id */
+            id: number;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Parent Id */
+            parent_id: number | null;
+            /** Sort Order */
+            sort_order: number;
         };
         /** CheckOut */
         CheckOut: {
@@ -477,6 +623,76 @@ export interface components {
         DeleteOut: {
             settle: components["schemas"]["SettleOut"];
         };
+        /** EntryOut */
+        EntryOut: {
+            /** Account Id */
+            account_id: number;
+            amount: components["schemas"]["Money"];
+            /**
+             * Booked On
+             * Format: date
+             */
+            booked_on: string;
+            /** Category Id */
+            category_id: number | null;
+            /** Counter Account Id */
+            counter_account_id: number | null;
+            /** Counterpart Entry Id */
+            counterpart_entry_id: number | null;
+            /** Counterparty Name */
+            counterparty_name: string | null;
+            /** Description */
+            description: string | null;
+            /** Display Text */
+            display_text: string | null;
+            /** Document Id */
+            document_id: number | null;
+            /** Id */
+            id: number;
+            /** Note */
+            note: string | null;
+            /** Payee Id */
+            payee_id: number | null;
+            /** Purpose */
+            purpose: string | null;
+            /** Review Flags */
+            review_flags: ("unconfirmed" | "unclassified" | "document_suggested" | "waiting" | "unmatched_transfer")[];
+            /** Source Transaction Id */
+            source_transaction_id: number | null;
+            /** Tag Ids */
+            tag_ids: number[];
+            /** Type */
+            type: ("flow" | "transfer" | "opening" | "valuation" | "reconciliation") | null;
+            /** Value On */
+            value_on: string | null;
+            /** Version */
+            version: number;
+        };
+        /** EntryPageOut */
+        EntryPageOut: {
+            /** Entries */
+            entries: components["schemas"]["EntryOut"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** EntryTagIdsOut */
+        EntryTagIdsOut: {
+            /** Id */
+            id: number;
+            /** Tag Ids */
+            tag_ids: number[];
+        };
+        /** EntryTagsOut */
+        EntryTagsOut: {
+            /** Changed */
+            changed: boolean;
+            entry: components["schemas"]["EntryTagIdsOut"];
+            settle: components["schemas"]["SettleOut"];
+        };
         /**
          * ErrorBody
          * @description The `error` object: the frontend routes on `code`, never on `message`.
@@ -521,6 +737,24 @@ export interface components {
             amount: number;
             /** Currency */
             currency: string;
+        };
+        /** PayeeOut */
+        PayeeOut: {
+            /** Color */
+            color: string | null;
+            /** Icon */
+            icon: string | null;
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Note */
+            note: string | null;
+        };
+        /** PayeesOut */
+        PayeesOut: {
+            /** Payees */
+            payees: components["schemas"]["PayeeOut"][];
         };
         /** RecordDeleteOut */
         RecordDeleteOut: {
@@ -576,6 +810,155 @@ export interface components {
             error: string | null;
             /** Touched Entry Ids */
             touched_entry_ids: number[];
+        };
+        /** SpanOut */
+        SpanOut: {
+            /** Ends On */
+            ends_on: string | null;
+            /** Entry Count */
+            entry_count: number;
+            /** Starts On */
+            starts_on: string | null;
+        };
+        /**
+         * TagApplyBody
+         * @description The list's filter vocabulary (`GET /api/ledger/entries`) as JSON, plus the apply controls.
+         */
+        TagApplyBody: {
+            /**
+             * Account Id
+             * @default []
+             */
+            account_id: number[];
+            /**
+             * All
+             * @default false
+             */
+            all: boolean;
+            /** Amount Max */
+            amount_max?: number | null;
+            /** Amount Min */
+            amount_min?: number | null;
+            /**
+             * Category Descendants
+             * @default true
+             */
+            category_descendants: boolean;
+            /**
+             * Category Id
+             * @default []
+             */
+            category_id: number[];
+            /** Currency */
+            currency?: string | null;
+            /** Direction */
+            direction?: ("in" | "out") | null;
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+            /** Expected Count */
+            expected_count?: number | null;
+            /**
+             * Flag
+             * @default []
+             */
+            flag: ("unconfirmed" | "unclassified" | "document_suggested" | "waiting" | "unmatched_transfer")[];
+            /** From */
+            from?: string | null;
+            /**
+             * Payee Id
+             * @default []
+             */
+            payee_id: number[];
+            /** Q */
+            q?: string | null;
+            /**
+             * Tag Id
+             * @default []
+             */
+            tag_id: number[];
+            /** To */
+            to?: string | null;
+            /**
+             * Type
+             * @default []
+             */
+            type: ("flow" | "transfer" | "opening" | "valuation" | "reconciliation")[];
+            /**
+             * Uncategorised
+             * @default false
+             */
+            uncategorised: boolean;
+        };
+        /** TagApplyOut */
+        TagApplyOut: {
+            /** Already Tagged */
+            already_tagged: number;
+            /** Dry Run */
+            dry_run: boolean;
+            /** Entries */
+            entries: components["schemas"]["EntryTagIdsOut"][];
+            /** Newly Tagged */
+            newly_tagged: number;
+            /** Per Account */
+            per_account: components["schemas"]["AccountCountOut"][];
+            /** Selected */
+            selected: number;
+            settle: components["schemas"]["SettleOut"] | null;
+            /** Skipped Derived */
+            skipped_derived: number;
+            span_after: components["schemas"]["SpanOut"];
+            span_before: components["schemas"]["SpanOut"];
+        };
+        /** TagCreateBody */
+        TagCreateBody: {
+            /** Color */
+            color?: string | null;
+            /** Name */
+            name: string;
+        };
+        /** TagDeleteOut */
+        TagDeleteOut: {
+            /** Removed Memberships */
+            removed_memberships: number;
+            settle: components["schemas"]["SettleOut"];
+        };
+        /** TagOut */
+        TagOut: {
+            /** Color */
+            color: string | null;
+            /** Ends On */
+            ends_on: string | null;
+            /** Entry Count */
+            entry_count: number;
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Starts On */
+            starts_on: string | null;
+        };
+        /**
+         * TagUpdateBody
+         * @description Absent fields stay; `color: null` clears the colour.
+         */
+        TagUpdateBody: {
+            /** Color */
+            color?: string | null;
+            /** Name */
+            name?: string | null;
+        };
+        /** TagWriteOut */
+        TagWriteOut: {
+            settle: components["schemas"]["SettleOut"];
+            tag: components["schemas"]["TagOut"];
+        };
+        /** TagsOut */
+        TagsOut: {
+            /** Tags */
+            tags: components["schemas"]["TagOut"][];
         };
         /**
          * UpdateBody
@@ -1809,6 +2192,44 @@ export interface operations {
             };
         };
     };
+    list_categories: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoriesOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     list_entries_view: {
         parameters: {
             query?: {
@@ -1842,11 +2263,438 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["EntryPageOut"];
                 };
             };
             /** @description Not signed in (or wrong login or password). */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    tag_ledger_entry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: number;
+                tag_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntryTagsOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    untag_ledger_entry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: number;
+                tag_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntryTagsOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_payees: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayeesOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_ledger_tags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagsOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    create_ledger_tag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagCreateBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagWriteOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    update_ledger_tag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tag_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagUpdateBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagWriteOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    delete_ledger_tag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tag_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagDeleteOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    apply_ledger_tag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tag_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagApplyBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagApplyOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflicts with the current state. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
