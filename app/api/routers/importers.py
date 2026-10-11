@@ -9,6 +9,7 @@ envelope by the mappings registered below.
 from __future__ import annotations
 
 import dataclasses
+import re
 from collections.abc import Mapping
 from datetime import date, datetime
 from email.message import Message
@@ -298,11 +299,17 @@ def _form_parts(content_type: str, body: bytes) -> dict[str, tuple[bytes, str | 
     if head.get_content_type() != "multipart/form-data" or not isinstance(boundary, str) or not boundary:
         raise _invalid("body", "send the upload as multipart/form-data", "type_error")
     parts: dict[str, tuple[bytes, str | None]] = {}
-    delimiter = b"--" + boundary.encode()
-    for piece in body.split(delimiter)[1:]:
-        if piece.startswith(b"--"):  # the closing delimiter
+    # RFC 2046: a delimiter is CRLF + "--" + boundary at a line start, followed by the closing
+    # "--" or by (optional blanks and) CRLF; the same text inside a line, or a longer line that
+    # merely starts with it, is content. The first delimiter may open the body (no CRLF before it).
+    delimiter = re.compile(rb"\r\n--" + re.escape(boundary.encode()) + rb"(?=--|[ \t]*\r\n)")
+    pieces = delimiter.split(b"\r\n" + body)
+    closed = False
+    for piece in pieces[1:]:  # pieces[0] is the preamble
+        if piece.startswith(b"--"):  # the closing delimiter; whatever follows is an epilogue
+            closed = True
             break
-        piece = piece.removeprefix(b"\r\n").removesuffix(b"\r\n")
+        piece = piece.lstrip(b" \t").removeprefix(b"\r\n")
         raw_head, sep, content = piece.partition(b"\r\n\r\n")
         if not sep:
             raise _invalid("body", "malformed multipart body", "type_error")
@@ -312,8 +319,9 @@ def _form_parts(content_type: str, body: bytes) -> dict[str, tuple[bytes, str | 
             raise _invalid("body", "a form part has no name", "type_error")
         if name in parts:
             raise _invalid(name, "given twice", "value_error")
-        filename = headers.get_filename()
-        parts[name] = (content, filename)
+        parts[name] = (content, headers.get_filename())
+    if not closed:  # a body cut off before its closing delimiter never completed
+        raise _invalid("body", "malformed multipart body", "type_error")
     return parts
 
 
