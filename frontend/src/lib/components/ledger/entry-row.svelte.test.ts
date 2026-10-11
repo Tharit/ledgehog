@@ -1,0 +1,172 @@
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
+import { describe, expect, it, vi } from 'vitest';
+import { account, category, entry, payee, tag } from '#lib/ledger/fixtures.js';
+import { buildLookups } from '#lib/ledger/lookups.js';
+import EntryRow from './entry-row.svelte';
+
+const lookups = buildLookups({
+	accounts: [
+		account(),
+		account({ id: 2, name: 'Cash', kind: 'cash', color: 'ochre' }),
+		account({ id: 3, name: 'Visa', kind: 'card', color: null })
+	],
+	categories: [category()],
+	payees: [payee()],
+	tags: [
+		tag(),
+		tag({ id: 31, name: 'Tax', color: null }),
+		tag({ id: 32, name: 'Gift', color: 'plum' })
+	]
+});
+
+function row(over = {}, props = {}) {
+	return render(EntryRow, { props: { entry: entry(over), lookups, ...props } });
+}
+
+describe('EntryRow: a flow entry', () => {
+	it('shows date, account, text, payee, category and amount', () => {
+		row({ payee_id: 20, category_id: 10 });
+
+		const cells = within(screen.getByRole('row')).getAllByRole('gridcell');
+		expect(cells[0]).toHaveTextContent('Oct 9, 2026');
+		expect(cells[1]).toHaveTextContent('Giro');
+		expect(cells[2]).toHaveTextContent('REWE Markt');
+		expect(cells[3]).toHaveTextContent('REWE');
+		expect(cells[4]).toHaveTextContent('Groceries');
+		expect(cells.at(-1)).toHaveTextContent('−47.31');
+	});
+
+	it('is a 32px row', () => {
+		row();
+
+		expect(screen.getByRole('row')).toHaveClass('h-8');
+	});
+
+	it('leaves the account column out when told to', () => {
+		row({}, { showAccount: false });
+
+		expect(screen.queryByText('Giro')).not.toBeInTheDocument();
+		expect(within(screen.getByRole('row')).getAllByRole('gridcell')).toHaveLength(7);
+	});
+
+	it('shows a muted placeholder when the entry has no text', () => {
+		row({ display_text: null });
+
+		expect(screen.getByText('No text')).toHaveClass('decoration-dotted');
+	});
+
+	it('shows Unclassified as an absent value, with the badge the server sent', () => {
+		row({ category_id: null, review_flags: ['unclassified', 'unconfirmed'] });
+
+		expect(screen.getByText('Unclassified')).toHaveClass('decoration-dotted');
+		expect(screen.getByTitle('Type or category missing')).toBeInTheDocument();
+		expect(screen.getByTitle('Values are proposals')).toBeInTheDocument();
+	});
+
+	it('shows no badge for a confirmed entry', () => {
+		row({ category_id: 10 });
+
+		expect(screen.queryByRole('img')).toBeNull();
+	});
+
+	it('falls back to a generic name for a category it does not know', () => {
+		row({ category_id: 99 });
+
+		expect(screen.getByText('Category 99')).toBeInTheDocument();
+	});
+
+	it('writes the currency only when asked to', () => {
+		const { container } = row({}, { showCurrency: true });
+
+		expect(container.textContent).toContain('−47.31 EUR');
+	});
+});
+
+describe('EntryRow: tags', () => {
+	it('shows up to two chips', () => {
+		row({ tag_ids: [30, 31] });
+
+		expect(screen.getByText('Lisbon trip')).toBeInTheDocument();
+		expect(screen.getByText('Tax')).toBeInTheDocument();
+		expect(screen.queryByText(/^\+\d/)).toBeNull();
+	});
+
+	it('shows "+N" for the rest, naming them in a tooltip', () => {
+		row({ tag_ids: [30, 31, 32] });
+
+		expect(screen.getByText('Lisbon trip')).toBeInTheDocument();
+		expect(screen.queryByText('Gift')).toBeNull();
+		expect(screen.getByText('+1')).toHaveAttribute('title', 'Gift');
+	});
+
+	it('skips a tag it has no name for', () => {
+		row({ tag_ids: [999] });
+
+		expect(screen.queryByText(/^\+\d/)).toBeNull();
+	});
+});
+
+describe('EntryRow: transfers', () => {
+	it('shows the arrow icon and the counter account', () => {
+		row({ type: 'transfer', counter_account_id: 2, category_id: null });
+
+		const cell = within(screen.getByRole('row')).getAllByRole('gridcell')[4];
+		expect(cell).toHaveTextContent('→');
+		expect(cell).toHaveTextContent('Cash');
+		expect(screen.queryByText('Unclassified')).toBeNull();
+	});
+
+	it('shows an absent counter account as "→ ?"', () => {
+		row({ type: 'transfer', counter_account_id: null });
+
+		expect(screen.getByText('→ ?')).toHaveAttribute('title', expect.stringContaining('counter'));
+	});
+});
+
+describe('EntryRow: derived entries', () => {
+	it.each([
+		['opening', 'Opening'],
+		['valuation', 'Valuation'],
+		['reconciliation', 'Reconciliation']
+	] as const)('%s shows its type in place of a category, no payee, no badges', (type, name) => {
+		row({
+			type,
+			display_text: null,
+			payee_id: 20,
+			review_flags: ['unconfirmed']
+		});
+
+		const cells = within(screen.getByRole('row')).getAllByRole('gridcell');
+		expect(cells[4]).toHaveTextContent(name);
+		expect(cells[3]).toBeEmptyDOMElement();
+		expect(screen.queryByRole('img')).toBeNull();
+		expect(screen.queryByText('No text')).toBeNull();
+	});
+});
+
+describe('EntryRow: the cursor', () => {
+	it('has the accent background and a bar on its left edge', () => {
+		row({}, { cursor: true });
+
+		const element = screen.getByRole('row');
+		expect(element).toHaveAttribute('aria-selected', 'true');
+		expect(element).toHaveClass('bg-accent');
+		expect(element.querySelector('.bg-primary.w-0\\.5')).not.toBeNull();
+	});
+
+	it('is plain without the cursor', () => {
+		row();
+
+		expect(screen.getByRole('row')).toHaveAttribute('aria-selected', 'false');
+		expect(screen.getByRole('row')).not.toHaveClass('bg-accent');
+	});
+
+	it('reports a click', async () => {
+		const onselect = vi.fn();
+		row({}, { onselect });
+
+		await fireEvent.click(screen.getByRole('row'));
+
+		expect(onselect).toHaveBeenCalledOnce();
+	});
+});
