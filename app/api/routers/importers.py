@@ -73,7 +73,7 @@ def to_json(value: Any, *, currency: str | None = None, currencies: Mapping[int,
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
         scope = currency
         owner = getattr(value, "account_id", None)
-        if currencies is not None and owner in currencies:
+        if currencies is not None and isinstance(owner, int) and owner in currencies:
             scope = currencies[owner]
         out = {
             f.name: to_json(getattr(value, f.name), currency=scope, currencies=currencies)
