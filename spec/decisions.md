@@ -3272,27 +3272,36 @@ balance on every sync.
 - Rejected: *dating the record after the coverage and relaxing I36* — the record
   would then claim a day the run has not seen.
 
-## D190 Categories carry an icon and a colour, presentation only; payees carry neither
+## D190 Categories, accounts and payees carry an icon and a colour, presentation only
 
-Spec §3.5, §3.7. Icons and colours make the ledger list, the review queue and
-the report scannable by category, which is how they are read.
+Spec §3.3, §3.5, §3.6, §3.7. Icons and colours make the ledger list, the
+review queue, pickers and the report scannable, which is how they are read.
 
-- **Names, not values.** A category stores an icon name and a colour name from
-  fixed sets the UI defines, and a tag's colour is a name from the same set.
+- **One rule for every curated dimension.** Categories, accounts and payees
+  carry the same two attributes with the same semantics, so the spec states it
+  once and the UI has one picker. Tags carry a colour only: they are short-lived
+  episodes, shown as chips. Rejected: *categories only* — accounts appear in
+  most lists and two of one kind need telling apart, and a second schema change
+  later would cost more than the columns do now.
+- **Names, not values.** Each stores an icon name and a colour name from fixed
+  sets the UI defines; a tag's colour is a name from the same colour set.
   Contrast and a later dark mode are then the design system's to keep, once.
   Rejected: *free hex colours* — every user choice would need a contrast check
   and a dark variant; *the theme's colour tokens* — too few, and with meanings
-  (sign, primary) a category colour must not borrow.
+  (sign, primary) a dimension's colour must not borrow.
+- **Curated per dimension.** Each picker offers the icons that suit it —
+  merchant kinds for payees, account kinds for accounts — not the whole
+  library.
 - **Unchecked in the database.** A name the UI does not know renders as its
   default, so the sets can change without a migration. Rejected: *a CHECK on
   the names* — it ties the schema to the icon library's naming.
-- **Inherited down the tree, resolved when shown.** Colouring the top-level
-  categories colours their subtrees, and nothing is stored twice; a merge keeps
-  the target's own. Rejected: *copying the parent's on creation* — a later
-  change to the parent would leave its children behind.
+- **Defaults are derived, not stored.** A category inherits down the tree, an
+  account's default follows its kind, a payee's is its initial; a merge keeps
+  the target's own. Rejected: *copying the parent's or the kind's on creation*
+  — a later change would leave the copies behind.
 - **The colour set is also the chart palette,** so a category's bar matches its
   icon. One set instead of two.
-- **No payee icons or logos for now.** Most counterparties never become payees
-  (§3.6), so a row cannot rely on one; whether payee lists need them is decided
-  after the first UI. Rejected for then as well: *logos fetched by domain* —
-  they send the household's merchants to a third party.
+- **Custom icons are a later extension of the same column:** a name such as
+  `custom:<id>` naming an uploaded image, which needs the storage attachments
+  need. Rejected for good: *logos fetched by domain* — they send the
+  household's merchants to a third party.

@@ -68,12 +68,13 @@ CSS variable shadcn-svelte uses, so the theme is one stylesheet.
 Text tokens meet WCAG AA (4.5:1) on `background`, `sidebar` and `surface`;
 `amount-positive` and `amount-negative` on `background` and `surface`.
 
-## 3. Category colours
+## 3. Dimension colours
 
 A dedicated set, separate from the theme: the colours a user picks for
-categories and tags (`spec.md` §3.5, §3.7), and the categorical palette of
-every chart, so a category's bar matches its icon. A user picks a name from
-this set, never a free colour, so contrast holds whatever is chosen.
+categories, accounts, payees and tags (`spec.md` §3.3, §3.5–§3.7), and the
+categorical palette of every chart, so a category's bar matches its icon. A
+user picks a name from this set, never a free colour, so contrast holds
+whatever is chosen.
 
 | Name | Foreground | Tint |
 |---|---|---|
@@ -90,10 +91,13 @@ this set, never a free colour, so contrast holds whatever is chosen.
 
 - **An icon is drawn in its foreground on its tint**: a rounded square,
   radius 6px, 24px in compact rows and 32px in comfortable ones.
-- **Resolution:** a category without a colour takes its parent's, up to the
-  top level; with none there, or a name not in this set, `stone`. The same for
-  icons (§6), defaulting to `shapes`. Colouring the top-level categories is
-  therefore enough to colour the tree.
+- **Resolution.** A name not in this set counts as none.
+  - *Category:* without a colour it takes its parent's, up to the top level;
+    with none there, `stone`. The same for icons (§6), defaulting to `shapes`.
+    Colouring the top-level categories is therefore enough to colour the tree.
+  - *Account:* without a colour, `stone`; without an icon, its kind's (§6).
+  - *Payee:* without a colour, `stone`; without an icon, its initial in the
+    icon's place, 600 weight.
 - **No reds.** A red category would read as a negative amount.
 - Foregrounds are at least 4.5:1 on `surface` and 3.5:1 on their own tint;
   tints are the foreground at 14 % over `surface`.
@@ -142,11 +146,13 @@ An 8px grid, with 4px steps inside compact elements.
 ## 6. Icons
 
 Lucide (`@lucide/svelte`, architecture §2), stroke 1.75px, 18px by default and
-16px in compact rows, drawn in `text-muted` unless a category colour applies.
+16px in compact rows, drawn in `text-muted` unless a dimension colour applies.
 No filled, glossy or 3D icons.
 
-**Category icons** come from a curated set — the only names the category
-editor offers:
+Each dimension has its own curated set, the only names its editor offers:
+suitable icons, not the whole library.
+
+**Category icons:**
 
 ```
 shopping-cart  shopping-basket  utensils  coffee  wine  pizza
@@ -159,6 +165,42 @@ briefcase  banknote  piggy-bank  landmark  receipt  credit-card
 hand-coins  wallet  trending-up  percent  shield  building-2
 wrench  hammer  leaf  sparkles  repeat  shapes  circle-ellipsis
 ```
+
+**Account icons**, with the default for each kind:
+
+| Kind | Default |
+|---|---|
+| checking | `landmark` |
+| savings | `piggy-bank` |
+| card | `credit-card` |
+| cash | `wallet` |
+| paypal | `wallet-cards` |
+| depot | `chart-line` |
+| loan | `hand-coins` |
+| asset | `gem` |
+
+```
+landmark  building-2  piggy-bank  vault  credit-card  wallet  wallet-cards
+banknote  coins  hand-coins  chart-line  trending-up  gem
+house  car  briefcase  baby  gift  plane  shield
+```
+
+**Payee icons** — kinds of counterparty, not brands:
+
+```
+store  shopping-cart  shopping-basket  utensils  coffee  fuel  train-front
+plane  pill  heart-pulse  shirt  smartphone  wifi  zap  house  building-2
+landmark  shield  film  music  gamepad-2  book-open  package  truck  gift
+paw-print  scissors  wrench  dumbbell  graduation-cap  user  users
+```
+
+**Where they show.** One icon per compact row, and it is the category's
+(fixed icons below for transfers and derived entries). An account in a
+compact row — the account column, a transfer's "→ Cash" — is its name after
+an 8px dot in its colour. Account icons appear where the account is the
+subject: the account list, the dashboard, pickers, the account view. Payee
+icons likewise only where the payee is the subject: the payee list, pickers,
+the unit panel; never in a ledger row.
 
 **Fixed icons**, not configurable, drawn in `stone`:
 
@@ -230,18 +272,21 @@ and each empty-state illustration are to be redrawn as SVG before they ship.
 - `design_system.png` — mascot, wordmark, app icons, favicons, monochrome
   variants.
 - `design_system_mockup.png` — the canonical reference for tone: surfaces,
-  type, spacing, card style, chart style.
+  type, spacing, card style, chart style. `design_system_mockup.md` is the
+  brief it is regenerated from.
 
 The mockup's **layout and content are illustrative only**; the spec decides
 what each screen shows. In particular, these appear in the mockup and are not
 part of the design: budgets, goals and a savings rate (`spec.md` §1.2); charts
 on the dashboard (`plan.md`); bank logos and payee logos; a greeting, a user
-avatar and the motivational quote; spending shown unsigned. The navigation
+avatar and the motivational quote; spending shown unsigned. Logos are never
+fetched from anywhere; custom icons, when they come, are the user's own
+uploads. The navigation
 follows the routes of architecture §6.2 — Ledger, not "Transactions", and the
 review queue, which the mockup lacks.
 
 ## 11. Open for the first month
 
-- the category colour set and the curated icon list;
+- the colour set and the three curated icon lists;
 - the two densities' exact row heights;
 - the consequence marker of §7 and whether resolved rows fade further.

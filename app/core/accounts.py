@@ -73,6 +73,8 @@ class AccountView:
     closed_on: date | None
     sort_order: int
     note: str | None
+    icon: str | None
+    color: str | None
     synced: bool
     synced_through: date | None
     last_data_on: date | None
@@ -109,6 +111,8 @@ def create_account(
     external_ref: str | None = None,
     sort_order: int = 0,
     note: str | None = None,
+    icon: str | None = None,
+    color: str | None = None,
 ) -> int:
     """`create_account_result`'s id alone, for callers that have no use for the settle result."""
     return create_account_result(
@@ -119,6 +123,8 @@ def create_account(
         external_ref=external_ref,
         sort_order=sort_order,
         note=note,
+        icon=icon,
+        color=color,
     ).account_id
 
 
@@ -131,6 +137,8 @@ def create_account_result(
     external_ref: str | None = None,
     sort_order: int = 0,
     note: str | None = None,
+    icon: str | None = None,
+    color: str | None = None,
 ) -> CreatedAccount:
     """Create an account, and nothing else. The currency must exist and never changes.
 
@@ -148,8 +156,10 @@ def create_account_result(
                 return int(
                     conn.execute(
                         text(
-                            "INSERT INTO account (name, kind, currency, external_ref, sort_order, note)"
-                            " VALUES (:name, :kind, :currency, :ref, :sort, :note) RETURNING id"
+                            "INSERT INTO account"
+                            " (name, kind, currency, external_ref, sort_order, note, icon, color)"
+                            " VALUES (:name, :kind, :currency, :ref, :sort, :note, :icon, :color)"
+                            " RETURNING id"
                         ),
                         {
                             "name": name,
@@ -158,6 +168,8 @@ def create_account_result(
                             "ref": ref,
                             "sort": sort_order,
                             "note": note,
+                            "icon": icon,
+                            "color": color,
                         },
                     ).scalar_one()
                 )
@@ -179,8 +191,10 @@ def update_account(
     note: str | None | EllipsisType = ...,
     external_ref: str | None | EllipsisType = ...,
     kind: str | None = None,
+    icon: str | None | EllipsisType = ...,
+    color: str | None | EllipsisType = ...,
 ) -> SettleResult:
-    """Change what is given (`...` leaves `note` or `external_ref` alone, `None` clears it).
+    """Change what is given (`...` leaves `note`, `external_ref`, `icon` or `color` alone, `None` clears it).
 
     Never the currency. A kind changes only within its class (investment or not). Setting or
     clearing the external reference settles; any other change returns an empty result.
@@ -192,6 +206,10 @@ def update_account(
         sets["sort_order"] = sort_order
     if note is not ...:
         sets["note"] = note
+    if icon is not ...:
+        sets["icon"] = icon
+    if color is not ...:
+        sets["color"] = color
     if kind is not None:
         sets["kind"] = kind
     ref_given = external_ref is not ...
@@ -275,7 +293,7 @@ def reopen_account(engine: Engine, account_id: int) -> SettleResult:
 
 _LIST_SQL = """
 SELECT a.id, a.name, a.kind, a.currency, a.external_ref, a.closed_on, a.sort_order, a.note,
-       s.synced, c.synced_through, d.last_data_on, u.difference,
+       a.icon, a.color, s.synced, c.synced_through, d.last_data_on, u.difference,
        NOT (EXISTS (SELECT 1 FROM ledger_entry e WHERE e.account_id = a.id)
             AND NOT EXISTS (SELECT 1 FROM v_balance_record b WHERE b.account_id = a.id)) AS anchored
   FROM account a
@@ -299,6 +317,8 @@ def list_accounts(conn: Connection) -> list[AccountView]:
             closed_on=r.closed_on,
             sort_order=r.sort_order,
             note=r.note,
+            icon=r.icon,
+            color=r.color,
             synced=r.synced,
             synced_through=r.synced_through,
             last_data_on=r.last_data_on,

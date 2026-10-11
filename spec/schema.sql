@@ -155,7 +155,11 @@ CREATE TABLE account (
     -- so clearing the column reopens it. Spec §3.3.
     closed_on      date,
     sort_order     integer NOT NULL DEFAULT 0,
-    note           text
+    note           text,
+    -- presentation only, as category.icon/color; NULL shows a default the
+    -- UI derives from the kind. Spec §3.3, §3.5.
+    icon           text,
+    color          text
 );
 
 CREATE UNIQUE INDEX ux_account_external_ref
@@ -220,7 +224,11 @@ CREATE TABLE payee (
     -- charges ('paypal', 'amazon'). Drives document matching and waiting for
     -- a document (spec §5.8).
     document_provider text,
-    note              text
+    note              text,
+    -- presentation only, as category.icon/color; NULL shows a default the
+    -- UI derives from the name. Spec §3.5, §3.6.
+    icon              text,
+    color             text
 );
 
 CREATE UNIQUE INDEX ux_payee_name ON payee (lower(name));

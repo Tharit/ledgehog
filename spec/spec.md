@@ -220,6 +220,8 @@ sets it for an account it offers (§5.4), and a user may set it on any
 account, hand-kept ones included, so that pass 0 recognises transfers to it
 (§5.9).
 
+An account may carry an icon and a colour, presentation only (§3.5).
+
 **Closing.** An account is closed with a `closed_on` date, which may lie in
 the future, and is open on dates up to and including it. The date matters only
 where an entry's date is judged (rules and history, §5.9); the account's state
@@ -297,11 +299,14 @@ two roots at the top of the tree.
 Drill-downs then show the parent's own entries as a line of their own beside
 its children.
 
-**A category may carry an icon and a colour**, each a name from a fixed set
-the UI defines; one without its own takes its parent's, so colouring the
-top-level categories colours the tree. Both are presentation only: nothing in
-classification, review or reporting reads them, and a name the UI does not
-know renders as its default.
+**Icons and colours.** A category, an account (§3.3) and a payee (§3.6) may
+each carry an icon and a colour, each a name from a fixed set the UI defines
+for that dimension. A category without its own takes its parent's, so
+colouring the top-level categories colours the tree; an account or a payee
+without one shows a default the UI derives, from the account's kind
+(checking, card, cash, …) or the payee's name. They are presentation only: nothing in classification, review,
+matching or reporting reads them, and a name the UI does not know renders as
+its default.
 
 A category with no entries, no rules referencing it and no children can be
 deleted. One
@@ -333,11 +338,13 @@ one payee.
 
 A payee may name a `document_provider` — the provider of the external
 documents that describe its charges (PayPal, Amazon). That one attribute drives
-document matching and waiting for a document (§5.8).
+document matching and waiting for a document (§5.8). It may also carry an
+icon and a colour, presentation only (§3.5).
 
 Merging two payees repoints their entries and rules, then deletes the merged
-one; as for categories (§3.5), the repointed values keep their keys, and
-nothing is derived again or returned to review. A payee no entry references can be deleted, together with its rules —
+one; as for categories (§3.5), the repointed values keep their keys, the
+target keeps its own icon and colour, and nothing is derived again or
+returned to review. A payee no entry references can be deleted, together with its rules —
 those setting it and those naming it as a condition; one in use is merged
 instead, which repoints both.
 

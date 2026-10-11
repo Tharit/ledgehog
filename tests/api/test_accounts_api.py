@@ -47,6 +47,8 @@ def test_list_is_empty_then_carries_the_facts_of_each_account(anna: TestClient, 
             "closed_on": None,
             "sort_order": 2,
             "note": "main",
+            "icon": None,
+            "color": None,
             "synced": False,
             "synced_through": None,
             "last_data_on": None,
@@ -139,6 +141,23 @@ def test_update_clears_the_note_with_null_and_keeps_it_when_absent(
     cleared = anna.put(f"/api/ledger/accounts/{aid}", json={"note": None})
     assert cleared.status_code == 200 and cleared.json()["account"]["note"] is None
     assert q(api_engine, "SELECT note FROM account")[0].note is None
+
+
+def test_icon_and_color_are_stored_as_given_kept_when_absent_and_cleared_with_null(
+    anna: TestClient, api_engine: Engine
+) -> None:
+    created = anna.post("/api/ledger/accounts", json={**NEW, "icon": "landmark", "color": "forest"})
+    acc = created.json()["account"]
+    assert (acc["icon"], acc["color"]) == ("landmark", "forest")
+    aid = acc["id"]
+    # a name the UI does not know is not refused: it renders as the default (spec §3.5)
+    changed = anna.put(f"/api/ledger/accounts/{aid}", json={"icon": "no-such-icon"})
+    acc = changed.json()["account"]
+    assert (acc["icon"], acc["color"]) == ("no-such-icon", "forest")
+    assert changed.json()["settle"] == {"touched_entry_ids": [], "error": None}
+    cleared = anna.put(f"/api/ledger/accounts/{aid}", json={"icon": None, "color": None})
+    assert (cleared.json()["account"]["icon"], cleared.json()["account"]["color"]) == (None, None)
+    assert q(api_engine, "SELECT icon, color FROM account")[0] == (None, None)
 
 
 def test_a_whitespace_only_name_is_a_validation_error(anna: TestClient, api_engine: Engine) -> None:

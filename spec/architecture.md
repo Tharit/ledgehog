@@ -265,8 +265,10 @@ POST   /api/ledger/categories
 PUT    /api/ledger/categories/{id}             rename, move under another parent
                                                of its kind (never under its own
                                                descendant), sort order, icon,
-                                               colour (stored as given; the
-                                               client resolves inheritance)
+                                               colour (stored as given, as on
+                                               accounts and payees; the client
+                                               resolves inheritance and
+                                               defaults)
 DELETE /api/ledger/categories/{id}             only while no entry or rule
                                                references it and it has no
                                                children; otherwise merge
@@ -278,9 +280,10 @@ POST   /api/ledger/categories/{id}/merge       into another category of the
                                                keys kept; previewed (spec §3.5)
 GET    /api/ledger/payees
 POST   /api/ledger/payees
-PUT    /api/ledger/payees/{id}                 name, note, document_provider (a
-                                               write: matching and waiting read
-                                               it, so it settles)
+PUT    /api/ledger/payees/{id}                 name, note, icon, colour,
+                                               document_provider (a write:
+                                               matching and waiting read it, so
+                                               it settles)
 DELETE /api/ledger/payees/{id}                 only while no entry references
                                                it, taking its rules; otherwise
                                                merge
@@ -305,8 +308,8 @@ DELETE /api/ledger/rules/{id}                  likewise
 GET    /api/ledger/accounts
 POST   /api/ledger/accounts                    create an account; creates
                                                nothing else (spec §5.7)
-PUT    /api/ledger/accounts/{id}               name, sort order, note,
-                                               external_ref (a write: pass 0
+PUT    /api/ledger/accounts/{id}               name, sort order, note, icon,
+                                               colour, external_ref (a write: pass 0
                                                reads it, so it settles); the
                                                kind only within its class
                                                (spec I38), never the currency

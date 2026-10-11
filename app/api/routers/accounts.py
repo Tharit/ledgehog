@@ -84,6 +84,8 @@ class AccountOut(BaseModel):
     closed_on: date | None
     sort_order: int
     note: str | None
+    icon: str | None
+    color: str | None
     synced: bool
     synced_through: date | None
     last_data_on: date | None
@@ -112,6 +114,8 @@ def facts(conn: Connection, view: AccountView) -> AccountOut:
         closed_on=view.closed_on,
         sort_order=view.sort_order,
         note=view.note,
+        icon=view.icon,
+        color=view.color,
         synced=view.synced,
         synced_through=view.synced_through,
         last_data_on=view.last_data_on,
@@ -147,10 +151,15 @@ class CreateBody(BaseModel):
     external_ref: str | None = None
     sort_order: StrictInt = 0
     note: str | None = None
+    icon: str | None = None
+    color: str | None = None
 
 
 class UpdateBody(BaseModel):
-    """Absent fields stay; `external_ref: null` and `note: null` clear them. No currency: it never changes."""
+    """Absent fields stay; `null` clears `external_ref`, `note`, `icon` and `color`.
+
+    No currency: it never changes.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -159,6 +168,8 @@ class UpdateBody(BaseModel):
     note: str | None = None
     external_ref: str | None = None
     kind: Kind | None = None
+    icon: str | None = None
+    color: str | None = None
 
 
 class CloseBody(BaseModel):
@@ -183,6 +194,8 @@ def create(body: CreateBody, user: CurrentUser, engine: EngineDep) -> AccountWri
         external_ref=body.external_ref,
         sort_order=body.sort_order,
         note=body.note,
+        icon=body.icon,
+        color=body.color,
     )
     return written(engine, created.account_id, created.settle)
 
@@ -197,6 +210,8 @@ def update(account_id: PathId, body: UpdateBody, user: CurrentUser, engine: Engi
         note=body.note if "note" in body.model_fields_set else ...,
         external_ref=body.external_ref if "external_ref" in body.model_fields_set else ...,
         kind=body.kind,
+        icon=body.icon if "icon" in body.model_fields_set else ...,
+        color=body.color if "color" in body.model_fields_set else ...,
     )
     return written(engine, account_id, result)
 
