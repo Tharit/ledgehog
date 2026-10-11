@@ -14,7 +14,7 @@ from datetime import date
 from typing import Annotated, Literal
 
 from fastapi import APIRouter
-from pydantic import BaseModel, ConfigDict, Field, StrictInt
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StrictInt
 from sqlalchemy import Connection, Engine
 
 from app.api.errors import map_error
@@ -57,6 +57,15 @@ map_error(AccountError, 409, "conflict", details=lambda e: {"reason": "account_r
 
 Kind = Literal["checking", "savings", "card", "cash", "paypal", "depot", "loan", "asset"]
 CurrencyCode = Annotated[str, Field(pattern=r"^[A-Z]{3}$")]
+
+
+def _not_blank(value: str) -> str:
+    if not value.strip():
+        raise ValueError("must not be blank")
+    return value
+
+
+Name = Annotated[str, Field(min_length=1), AfterValidator(_not_blank)]
 
 
 class Money(BaseModel):
@@ -132,7 +141,7 @@ class DeleteOut(BaseModel):
 class CreateBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    name: str = Field(min_length=1)
+    name: Name
     kind: Kind
     currency: CurrencyCode
     external_ref: str | None = None
@@ -141,11 +150,11 @@ class CreateBody(BaseModel):
 
 
 class UpdateBody(BaseModel):
-    """Absent fields stay; `external_ref: null` clears it. No currency: it never changes."""
+    """Absent fields stay; `external_ref: null` and `note: null` clear them. No currency: it never changes."""
 
     model_config = ConfigDict(extra="forbid")
 
-    name: str | None = Field(default=None, min_length=1)
+    name: Name | None = None
     sort_order: StrictInt | None = None
     note: str | None = None
     external_ref: str | None = None
@@ -185,7 +194,7 @@ def update(account_id: PathId, body: UpdateBody, user: CurrentUser, engine: Engi
         account_id,
         name=body.name,
         sort_order=body.sort_order,
-        note=body.note,
+        note=body.note if "note" in body.model_fields_set else ...,
         external_ref=body.external_ref if "external_ref" in body.model_fields_set else ...,
         kind=body.kind,
     )

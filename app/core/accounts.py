@@ -182,11 +182,11 @@ def update_account(
     *,
     name: str | None = None,
     sort_order: int | None = None,
-    note: str | None = None,
+    note: str | None | EllipsisType = ...,
     external_ref: str | None | EllipsisType = ...,
     kind: str | None = None,
 ) -> SettleResult:
-    """Change what is given (`...` leaves `external_ref` alone, `None` clears it).
+    """Change what is given (`...` leaves `note` or `external_ref` alone, `None` clears it).
 
     Never the currency. A kind changes only within its class (investment or not). Setting or
     clearing the external reference settles; any other change returns an empty result.
@@ -196,7 +196,7 @@ def update_account(
         sets["name"] = name
     if sort_order is not None:
         sets["sort_order"] = sort_order
-    if note is not None:
+    if note is not ...:
         sets["note"] = note
     if kind is not None:
         sets["kind"] = kind

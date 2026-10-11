@@ -130,6 +130,29 @@ def test_create_validation_is_a_422_envelope_that_does_not_echo_input(anna: Test
 # ---- update ---------------------------------------------------------------------------------
 
 
+def test_update_clears_the_note_with_null_and_keeps_it_when_absent(
+    anna: TestClient, api_engine: Engine
+) -> None:
+    aid = seed_account(api_engine, note="main")
+    kept = anna.put(f"/api/ledger/accounts/{aid}", json={"name": "Other"})
+    assert kept.json()["account"]["note"] == "main"
+    cleared = anna.put(f"/api/ledger/accounts/{aid}", json={"note": None})
+    assert cleared.status_code == 200 and cleared.json()["account"]["note"] is None
+    assert q(api_engine, "SELECT note FROM account")[0].note is None
+
+
+def test_a_whitespace_only_name_is_a_validation_error(anna: TestClient, api_engine: Engine) -> None:
+    aid = seed_account(api_engine)
+    for blank in ("", " ", "\t \n"):
+        assert_envelope(
+            anna.post("/api/ledger/accounts", json={**NEW, "name": blank}), 422, "validation_error"
+        )
+        assert_envelope(
+            anna.put(f"/api/ledger/accounts/{aid}", json={"name": blank}), 422, "validation_error"
+        )
+    assert q(api_engine, "SELECT name FROM account")[0].name == "Giro"
+
+
 def test_update_changes_what_is_given_and_returns_the_account(anna: TestClient, api_engine: Engine) -> None:
     aid = seed_account(api_engine)
     r = anna.put(
