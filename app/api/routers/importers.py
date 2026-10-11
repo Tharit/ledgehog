@@ -17,6 +17,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import Engine, text
 
 from app.api.errors import ApiError, map_error
 from app.api.ids import MAX_ID, EntityId, PathId
@@ -44,19 +45,63 @@ router = APIRouter(prefix="/api/importers")
 # ---- serialisation -------------------------------------------------------------------------
 
 
-def to_json(value: Any) -> Any:
+_AMOUNT_KEYS = frozenset({"amount", "balance", "before", "after"})
+
+
+def _holds_amount(obj: Mapping[str, Any]) -> bool:
+    # a before/after pair counts even when both are null (no difference), so its shape is stable
+    if {"before", "after"} <= obj.keys() and all(
+        obj[k] is None or isinstance(obj[k], int) for k in ("before", "after")
+    ):
+        return True
+    return any(
+        (k.endswith("_minor") or k in _AMOUNT_KEYS) and isinstance(v, int) and not isinstance(v, bool)
+        for k, v in obj.items()
+    )
+
+
+def to_json(
+    value: Any, *, currency: str | None = None, currencies: Mapping[int, str] | None = None
+) -> Any:
     """A JSON-ready copy of a result tree: dataclasses become objects (field names as keys),
-    dates ISO strings, tuples lists, integer-keyed mappings string-keyed. Amounts stay the
-    integer minor units the core holds (their currency is a field next to them)."""
+    dates ISO strings, tuples lists, integer-keyed mappings string-keyed.
+
+    Money rule (architecture §4.5, an amount never travels without its currency): amounts keep
+    their integer minor units and their names, and every object that holds one (`amount`,
+    `balance`, `before`, `after` as an integer, or any `*_minor` field) gets a `currency` field
+    next to it. The currency is `currency`, or, below an object with an `account_id`, that
+    account's from `currencies`; an object that already has its own `currency` keeps it.
+    """
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
-        return {f.name: to_json(getattr(value, f.name)) for f in dataclasses.fields(value)}
+        scope = currency
+        owner = getattr(value, "account_id", None)
+        if currencies is not None and owner in currencies:
+            scope = currencies[owner]
+        out = {
+            f.name: to_json(getattr(value, f.name), currency=scope, currencies=currencies)
+            for f in dataclasses.fields(value)
+        }
+        return _stamped(out, scope)
     if isinstance(value, datetime | date):
         return value.isoformat()
     if isinstance(value, Mapping):
-        return {str(k): to_json(v) for k, v in value.items()}
+        out = {str(k): to_json(v, currency=currency, currencies=currencies) for k, v in value.items()}
+        return _stamped(out, currency)
     if isinstance(value, list | tuple | set | frozenset):
-        return [to_json(v) for v in value]
+        return [to_json(v, currency=currency, currencies=currencies) for v in value]
     return value
+
+
+def _stamped(obj: dict[str, Any], currency: str | None) -> dict[str, Any]:
+    if currency is not None and "currency" not in obj and _holds_amount(obj):
+        obj["currency"] = currency
+    return obj
+
+
+def account_currencies(engine: Engine) -> dict[int, str]:
+    """Every account's currency (household scale: one small query), to stamp amounts with."""
+    with engine.connect() as conn:
+        return {int(r.id): str(r.currency) for r in conn.execute(text("SELECT id, currency FROM account"))}
 
 
 # ---- error mapping -------------------------------------------------------------------------
@@ -312,14 +357,19 @@ def upload_file(
     dry_run = _flag(parts["dry_run"][0].decode("ascii", "replace")) if "dry_run" in parts else False
 
     importer = importer_for(request, _view(engine, instance_id).importer)
-    result = up.upload(
-        engine,
-        instance_id=instance_id,
-        account_id=account_id,
-        data=data,
-        importer=importer,
-        user_id=user.id,
-        today=clock.today(request.app.state.config.timezone),
-        dry_run=dry_run,
-    )
-    return to_json(result)
+    currency = account_currencies(engine).get(account_id)
+    try:
+        result = up.upload(
+            engine,
+            instance_id=instance_id,
+            account_id=account_id,
+            data=data,
+            importer=importer,
+            user_id=user.id,
+            today=clock.today(request.app.state.config.timezone),
+            dry_run=dry_run,
+        )
+    except ParseFailed as exc:  # its report holds amounts: they leave with the account's currency
+        details = {"retryable": exc.retryable, "report": to_json(exc.report, currency=currency)}
+        raise ApiError(422, "parse_failed", str(exc), details) from exc
+    return to_json(result, currency=currency)

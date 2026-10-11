@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app.api.errors import map_error
 from app.api.ids import EntityId, EntityVersion, PathId, QueryId
-from app.api.routers.importers import to_json
+from app.api.routers.importers import account_currencies, to_json
 from app.api.session import CurrentUser, EngineDep
 from app.core.domain.errors import VersionConflict
 from app.core.importers.runs import get_run, list_runs
@@ -48,7 +48,7 @@ def runs(
 ) -> Any:
     with engine.connect() as conn:
         found = list_runs(conn, account_id=account_id, instance_id=instance_id, status=status, limit=limit)
-    return to_json(found)
+    return to_json(found, currencies=account_currencies(engine))
 
 
 @router.get("/{run_id}")
@@ -57,18 +57,17 @@ def run(run_id: PathId, user: CurrentUser, engine: EngineDep) -> Any:
         found = get_run(conn, run_id)
     if found is None:
         raise RunMissing(run_id)
-    return to_json(found)
+    return to_json(found, currencies=account_currencies(engine))
 
 
 @router.post("/{run_id}/revert")
 def revert(run_id: PathId, user: CurrentUser, engine: EngineDep, body: RevertBody | None = None) -> Any:
     body = body or RevertBody()
-    return to_json(
-        revert_run(
-            engine,
-            run_id,
-            user_id=user.id,
-            expected_versions=body.expected_versions,
-            dry_run=body.dry_run,
-        )
+    result = revert_run(
+        engine,
+        run_id,
+        user_id=user.id,
+        expected_versions=body.expected_versions,
+        dry_run=body.dry_run,
     )
+    return to_json(result, currencies=account_currencies(engine))

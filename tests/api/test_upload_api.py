@@ -93,6 +93,7 @@ def test_a_dry_run_answers_200_with_the_summary_and_the_report_and_writes_nothin
         "figure_on": "2026-08-20",
         "rolled_back_by_minor": report["balance"]["rolled_back_by_minor"],
         "rolled_back_rows": report["balance"]["rolled_back_rows"],
+        "currency": "EUR",
     }
     assert {"count", "examples"} <= set(report["skipped"])
     assert all({"row", "booked_on", "amount_minor", "cells"} <= set(s) for s in report["sample"])
