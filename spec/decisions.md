@@ -3272,7 +3272,7 @@ balance on every sync.
 - Rejected: *dating the record after the coverage and relaxing I36* — the record
   would then claim a day the run has not seen.
 
-## D190 Categories, accounts and payees carry an icon and a colour, presentation only
+## D191 Categories, accounts and payees carry an icon and a colour, presentation only
 
 Spec §3.3, §3.5, §3.6, §3.7. Icons and colours make the ledger list, the
 review queue, pickers and the report scannable, which is how they are read.
