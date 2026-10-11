@@ -134,8 +134,8 @@ Deciding what to work on: `plan.md`. It holds no design decisions — where a
 plan item implies one, the decision lives in the spec or the architecture and
 the plan references it.
 
-Implementing a screen: `ux/patterns.md` → the relevant `ux/views/*.md` →
-`architecture.md` §4 for the contracts.
+Implementing a screen: `ux/patterns.md` → `ux/design.md` → the relevant
+`ux/views/*.md` → `architecture.md` §4 for the contracts.
 
 Adding a plugin: `spec.md` §5 → the relevant interface in `architecture.md`
 §5 → an existing spec of the same type as a template.

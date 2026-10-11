@@ -187,6 +187,11 @@ CREATE TABLE category (
     kind       text NOT NULL CHECK (kind IN ('income','expense')),
     parent_id  bigint,
     sort_order integer NOT NULL DEFAULT 0,
+    -- PRESENTATION ONLY: names from fixed sets the UI defines, unchecked here
+    -- so the sets can change without a migration; NULL takes the parent's,
+    -- an unknown name renders as the UI's default. Spec §3.5.
+    icon       text,
+    color      text,
     CONSTRAINT uq_category_id_kind UNIQUE (id, kind),
     CHECK (parent_id IS NULL OR parent_id <> id)
 );
@@ -282,6 +287,7 @@ CREATE TABLE rule (
 CREATE TABLE tag (
     id         bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     name       text NOT NULL,
+    -- a colour name from the categories' set, presentation only. Spec §3.7.
     color      text
 );
 

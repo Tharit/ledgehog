@@ -297,6 +297,12 @@ two roots at the top of the tree.
 Drill-downs then show the parent's own entries as a line of their own beside
 its children.
 
+**A category may carry an icon and a colour**, each a name from a fixed set
+the UI defines; one without its own takes its parent's, so colouring the
+top-level categories colours the tree. Both are presentation only: nothing in
+classification, review or reporting reads them, and a name the UI does not
+know renders as its default.
+
 A category with no entries, no rules referencing it and no children can be
 deleted. One
 that is in use is merged instead, like a payee (§3.6), into another category
@@ -309,7 +315,7 @@ category under one of its own descendants is refused: the tree has no cycles
 would not be obvious: the user merges the descendants upwards instead, and
 renames. A merge repoints values without deciding them anew: entries and
 rules keep their keys, nothing is derived again, and nothing returns to
-review. There is no archived state. Pickers rank
+review. The target keeps its own icon and colour. There is no archived state. Pickers rank
 categories by recent use, so dormant ones sink without being hidden.
 
 ### 3.6 Payees
@@ -341,7 +347,8 @@ User-authored, flat, many-to-many, on entries other than derived ones (never on
 source transactions). A tag's span is **derived** — the minimum and maximum
 `booked_on` over its entries — never stored: it self-maintains as the trip's
 real extent becomes known. Membership stays explicit so the one non-holiday
-expense can be removed.
+expense can be removed. A tag may carry a colour from the same set as
+categories (§3.5), presentation only.
 
 Tagging every entry the ledger list's current filter selects is one action —
 a date range, perhaps narrowed to some accounts, is the usual filter — and it

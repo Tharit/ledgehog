@@ -1,3 +1,5 @@
+from alembic.script import ScriptDirectory
+
 from app.utils.config import Config
 from app.utils.db import admin, migrate
 
@@ -6,8 +8,10 @@ def test_upgrade_is_idempotent_and_records_head(isolated_db: Config):
     # isolated_db is a clone of the migrated template: already at head
     migrate.upgrade(isolated_db)
     migrate.upgrade(isolated_db)
+    head = ScriptDirectory.from_config(migrate.alembic_config()).get_heads()
+    assert len(head) == 1
     with admin.connect(isolated_db) as conn:
-        assert conn.execute("SELECT version_num FROM alembic_version").fetchall() == [("0001",)]
+        assert conn.execute("SELECT version_num FROM alembic_version").fetchall() == [(head[0],)]
 
 
 def test_every_migration_is_hand_written_sql():

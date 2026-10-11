@@ -102,7 +102,9 @@ on top of them that is **copied into the repository** rather than installed,
 so the dense, keyboard-driven look the ledger needs is code this project
 owns, not a theme to override.
 
-The runtime dependency is Bits UI alone. Tailwind runs at build time and ships
+The runtime dependencies are Bits UI and `@lucide/svelte`, the icon set
+shadcn-svelte is built on, whose icons are imported one by one so only those
+used are bundled. Tailwind runs at build time and ships
 only the stylesheet it generates. Copied components are this project's code:
 they are edited freely, and an upstream update is taken deliberately, by
 copying again and reviewing the diff, never by a version bump. That keeps
@@ -262,7 +264,9 @@ GET    /api/ledger/categories
 POST   /api/ledger/categories
 PUT    /api/ledger/categories/{id}             rename, move under another parent
                                                of its kind (never under its own
-                                               descendant), sort order
+                                               descendant), sort order, icon,
+                                               colour (stored as given; the
+                                               client resolves inheritance)
 DELETE /api/ledger/categories/{id}             only while no entry or rule
                                                references it and it has no
                                                children; otherwise merge
@@ -1339,7 +1343,9 @@ precisely why it lives in one module.
 ### 6.7 Build and serving
 
 Vite builds to a static bundle baked into the image; Tailwind is compiled by
-its Vite plugin in the same build, so nothing CSS-related runs at run time. FastAPI mounts it with a
+its Vite plugin in the same build, so nothing CSS-related runs at run time.
+Fonts and the mascot artwork are files in the bundle; the app loads nothing
+from a third-party host. FastAPI mounts it with a
 catch-all that returns `index.html` for unknown paths, ordered so `/api` is
 never shadowed. In development, the Vite dev server proxies `/api` to a
 locally running uvicorn.
