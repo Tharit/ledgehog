@@ -94,7 +94,7 @@ def list_entries(conn: Connection, flt: LedgerFilter, *, limit: int, offset: int
         .limit(limit)
         .offset(offset)
     ).all()
-    tags = _tag_ids(conn, [r.id for r in rows])
+    tags = tag_ids_of(conn, [r.id for r in rows])
     entries = tuple(
         EntryRow(
             id=r.id,
@@ -137,7 +137,7 @@ _TAGS = text(
 )
 
 
-def _tag_ids(conn: Connection, entry_ids: list[int]) -> Mapping[int, tuple[int, ...]]:
+def tag_ids_of(conn: Connection, entry_ids: list[int]) -> Mapping[int, tuple[int, ...]]:
     if not entry_ids:
         return {}
     found: Any = conn.execute(_TAGS, {"ids": entry_ids})
