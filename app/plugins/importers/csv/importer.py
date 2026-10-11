@@ -204,8 +204,6 @@ def _read_rows(
         row_currency = currency
         if cur_i is not None and cell(cells, cur_i):
             row_currency = cell(cells, cur_i)
-            if row_currency != currency:
-                rep.currency_mismatch.add(rec.line, "currency differs from the account's", lim)
         value_on = None
         if value_i is not None and cell(cells, value_i):
             value_on = parse_date(cell(cells, value_i), prof.date_format)
@@ -227,6 +225,8 @@ def _read_rows(
             rep.zero_dropped.add(rec.line, "amount is zero", lim)
             kept.append(Kept(rec, cells, booked_on, 0, None))
             continue
+        if row_currency != currency:  # only a row that goes on to ingest can break the contract
+            rep.currency_mismatch.add(rec.line, "currency differs from the account's", lim)
         instr_amount = instr_currency = None
         if instr_amount_i is not None:
             ic, ia = cell(cells, instr_cur_i), cell(cells, instr_amount_i)

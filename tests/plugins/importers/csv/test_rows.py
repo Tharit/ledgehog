@@ -318,6 +318,22 @@ def test_currency_column_mismatch_is_reported_and_rows_unchanged() -> None:
     assert any("currency" in w for w in pf.report.warnings)
 
 
+def test_a_zero_row_in_a_foreign_currency_is_dropped_not_a_mismatch() -> None:
+    text = FH + "03.08.2026;03.08.2026;1,00;EUR\n04.08.2026;04.08.2026;0,00;USD\n"
+    pf = run(text, profile=fprofile(currency="Whrg"))
+    assert [r.currency for r in pf.rows] == ["EUR"]
+    assert pf.report.zero_dropped.count == 1
+    assert pf.report.currency_mismatch.count == 0
+    assert not any("currency" in w or "would fail" in w for w in pf.report.warnings)
+
+
+def test_a_non_zero_foreign_currency_row_next_to_a_zero_one_still_counts() -> None:
+    text = FH + "03.08.2026;03.08.2026;0,00;USD\n04.08.2026;04.08.2026;2,00;USD\n"
+    pf = run(text, profile=fprofile(currency="Whrg"))
+    assert pf.report.currency_mismatch.count == 1
+    assert pf.report.currency_mismatch.examples[0].row == 3
+
+
 def test_filtered_foreign_currency_rows_do_not_mismatch() -> None:
     text = FH + "03.08.2026;03.08.2026;1,00;EUR\n04.08.2026;04.08.2026;2,00;USD\n"
     pf = run(text, profile=fprofile(currency="Whrg", filters=[{"column": "Whrg", "equals": "USD"}]))
