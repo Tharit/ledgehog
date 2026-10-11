@@ -1,6 +1,24 @@
 {
   "components": {
     "schemas": {
+      "AccountCountOut": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "integer"
+          },
+          "newly_tagged": {
+            "title": "Newly Tagged",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "account_id",
+          "newly_tagged"
+        ],
+        "title": "AccountCountOut",
+        "type": "object"
+      },
       "AccountOut": {
         "properties": {
           "anchored": {
@@ -187,6 +205,86 @@
           "accounts"
         ],
         "title": "AccountsOut",
+        "type": "object"
+      },
+      "CategoriesOut": {
+        "properties": {
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/CategoryOut"
+            },
+            "title": "Categories",
+            "type": "array"
+          }
+        },
+        "required": [
+          "categories"
+        ],
+        "title": "CategoriesOut",
+        "type": "object"
+      },
+      "CategoryOut": {
+        "properties": {
+          "color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "parent_id",
+          "name",
+          "kind",
+          "sort_order",
+          "icon",
+          "color"
+        ],
+        "title": "CategoryOut",
         "type": "object"
       },
       "CheckOut": {
@@ -624,6 +722,48 @@
         "title": "EntryPageOut",
         "type": "object"
       },
+      "EntryTagIdsOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "tag_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Tag Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "tag_ids"
+        ],
+        "title": "EntryTagIdsOut",
+        "type": "object"
+      },
+      "EntryTagsOut": {
+        "properties": {
+          "changed": {
+            "title": "Changed",
+            "type": "boolean"
+          },
+          "entry": {
+            "$ref": "#/components/schemas/EntryTagIdsOut"
+          },
+          "settle": {
+            "$ref": "#/components/schemas/SettleOut"
+          }
+        },
+        "required": [
+          "entry",
+          "changed",
+          "settle"
+        ],
+        "title": "EntryTagsOut",
+        "type": "object"
+      },
       "ErrorBody": {
         "description": "The `error` object: the frontend routes on `code`, never on `message`.",
         "properties": {
@@ -729,6 +869,76 @@
           "currency"
         ],
         "title": "Money",
+        "type": "object"
+      },
+      "PayeeOut": {
+        "properties": {
+          "color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "icon",
+          "color",
+          "note"
+        ],
+        "title": "PayeeOut",
+        "type": "object"
+      },
+      "PayeesOut": {
+        "properties": {
+          "payees": {
+            "items": {
+              "$ref": "#/components/schemas/PayeeOut"
+            },
+            "title": "Payees",
+            "type": "array"
+          }
+        },
+        "required": [
+          "payees"
+        ],
+        "title": "PayeesOut",
         "type": "object"
       },
       "RecordDeleteOut": {
@@ -877,6 +1087,487 @@
           "error"
         ],
         "title": "SettleOut",
+        "type": "object"
+      },
+      "SpanOut": {
+        "properties": {
+          "ends_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends On"
+          },
+          "entry_count": {
+            "title": "Entry Count",
+            "type": "integer"
+          },
+          "starts_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts On"
+          }
+        },
+        "required": [
+          "starts_on",
+          "ends_on",
+          "entry_count"
+        ],
+        "title": "SpanOut",
+        "type": "object"
+      },
+      "TagApplyBody": {
+        "additionalProperties": false,
+        "description": "The list's filter vocabulary (`GET /api/ledger/entries`) as JSON, plus the apply controls.",
+        "properties": {
+          "account_id": {
+            "default": [],
+            "items": {
+              "exclusiveMinimum": 0.0,
+              "maximum": 9007199254740992.0,
+              "type": "integer"
+            },
+            "title": "Account Id",
+            "type": "array"
+          },
+          "all": {
+            "default": false,
+            "title": "All",
+            "type": "boolean"
+          },
+          "amount_max": {
+            "anyOf": [
+              {
+                "maximum": 9.223372036854776e+18,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Max"
+          },
+          "amount_min": {
+            "anyOf": [
+              {
+                "maximum": 9.223372036854776e+18,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Min"
+          },
+          "category_descendants": {
+            "default": true,
+            "title": "Category Descendants",
+            "type": "boolean"
+          },
+          "category_id": {
+            "default": [],
+            "items": {
+              "exclusiveMinimum": 0.0,
+              "maximum": 9007199254740992.0,
+              "type": "integer"
+            },
+            "title": "Category Id",
+            "type": "array"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z]{3}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "direction": {
+            "anyOf": [
+              {
+                "enum": [
+                  "in",
+                  "out"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direction"
+          },
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "expected_count": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740992.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Count"
+          },
+          "flag": {
+            "default": [],
+            "items": {
+              "enum": [
+                "unconfirmed",
+                "unclassified",
+                "document_suggested",
+                "waiting",
+                "unmatched_transfer"
+              ],
+              "type": "string"
+            },
+            "title": "Flag",
+            "type": "array"
+          },
+          "from": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From"
+          },
+          "payee_id": {
+            "default": [],
+            "items": {
+              "exclusiveMinimum": 0.0,
+              "maximum": 9007199254740992.0,
+              "type": "integer"
+            },
+            "title": "Payee Id",
+            "type": "array"
+          },
+          "q": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Q"
+          },
+          "tag_id": {
+            "default": [],
+            "items": {
+              "exclusiveMinimum": 0.0,
+              "maximum": 9007199254740992.0,
+              "type": "integer"
+            },
+            "title": "Tag Id",
+            "type": "array"
+          },
+          "to": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To"
+          },
+          "type": {
+            "default": [],
+            "items": {
+              "enum": [
+                "flow",
+                "transfer",
+                "opening",
+                "valuation",
+                "reconciliation"
+              ],
+              "type": "string"
+            },
+            "title": "Type",
+            "type": "array"
+          },
+          "uncategorised": {
+            "default": false,
+            "title": "Uncategorised",
+            "type": "boolean"
+          }
+        },
+        "title": "TagApplyBody",
+        "type": "object"
+      },
+      "TagApplyOut": {
+        "properties": {
+          "already_tagged": {
+            "title": "Already Tagged",
+            "type": "integer"
+          },
+          "dry_run": {
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/EntryTagIdsOut"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "newly_tagged": {
+            "title": "Newly Tagged",
+            "type": "integer"
+          },
+          "per_account": {
+            "items": {
+              "$ref": "#/components/schemas/AccountCountOut"
+            },
+            "title": "Per Account",
+            "type": "array"
+          },
+          "selected": {
+            "title": "Selected",
+            "type": "integer"
+          },
+          "settle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SettleOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "skipped_derived": {
+            "title": "Skipped Derived",
+            "type": "integer"
+          },
+          "span_after": {
+            "$ref": "#/components/schemas/SpanOut"
+          },
+          "span_before": {
+            "$ref": "#/components/schemas/SpanOut"
+          }
+        },
+        "required": [
+          "dry_run",
+          "selected",
+          "newly_tagged",
+          "already_tagged",
+          "skipped_derived",
+          "per_account",
+          "span_before",
+          "span_after",
+          "entries",
+          "settle"
+        ],
+        "title": "TagApplyOut",
+        "type": "object"
+      },
+      "TagCreateBody": {
+        "additionalProperties": false,
+        "properties": {
+          "color": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "TagCreateBody",
+        "type": "object"
+      },
+      "TagDeleteOut": {
+        "properties": {
+          "removed_memberships": {
+            "title": "Removed Memberships",
+            "type": "integer"
+          },
+          "settle": {
+            "$ref": "#/components/schemas/SettleOut"
+          }
+        },
+        "required": [
+          "removed_memberships",
+          "settle"
+        ],
+        "title": "TagDeleteOut",
+        "type": "object"
+      },
+      "TagOut": {
+        "properties": {
+          "color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "ends_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends On"
+          },
+          "entry_count": {
+            "title": "Entry Count",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "starts_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts On"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "color",
+          "starts_on",
+          "ends_on",
+          "entry_count"
+        ],
+        "title": "TagOut",
+        "type": "object"
+      },
+      "TagUpdateBody": {
+        "additionalProperties": false,
+        "description": "Absent fields stay; `color: null` clears the colour.",
+        "properties": {
+          "color": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "title": "TagUpdateBody",
+        "type": "object"
+      },
+      "TagWriteOut": {
+        "properties": {
+          "settle": {
+            "$ref": "#/components/schemas/SettleOut"
+          },
+          "tag": {
+            "$ref": "#/components/schemas/TagOut"
+          }
+        },
+        "required": [
+          "tag",
+          "settle"
+        ],
+        "title": "TagWriteOut",
+        "type": "object"
+      },
+      "TagsOut": {
+        "properties": {
+          "tags": {
+            "items": {
+              "$ref": "#/components/schemas/TagOut"
+            },
+            "title": "Tags",
+            "type": "array"
+          }
+        },
+        "required": [
+          "tags"
+        ],
+        "title": "TagsOut",
         "type": "object"
       },
       "UpdateBody": {
@@ -2603,6 +3294,48 @@
         ]
       }
     },
+    "/api/ledger/categories": {
+      "get": {
+        "description": "Every category as a flat list (`parent_id` links the tree): roots first, then `sort_order`, name.",
+        "operationId": "list_categories",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoriesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "List Categories",
+        "tags": [
+          "lookups"
+        ]
+      }
+    },
     "/api/ledger/entries": {
       "get": {
         "operationId": "list_entries_view",
@@ -2934,6 +3667,558 @@
         "summary": "List Entries View",
         "tags": [
           "entries"
+        ]
+      }
+    },
+    "/api/ledger/entries/{entry_id}/tags/{tag_id}": {
+      "delete": {
+        "operationId": "untag_ledger_entry",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entry_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740992,
+              "title": "Entry Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tag_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740992,
+              "title": "Tag Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryTagsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflicts with the current state."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Untag Ledger Entry",
+        "tags": [
+          "tags"
+        ]
+      },
+      "put": {
+        "operationId": "tag_ledger_entry",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entry_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740992,
+              "title": "Entry Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tag_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740992,
+              "title": "Tag Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryTagsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflicts with the current state."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Tag Ledger Entry",
+        "tags": [
+          "tags"
+        ]
+      }
+    },
+    "/api/ledger/payees": {
+      "get": {
+        "description": "Every payee by name: identity and presentation only.",
+        "operationId": "list_payees",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayeesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "List Payees",
+        "tags": [
+          "lookups"
+        ]
+      }
+    },
+    "/api/ledger/tags": {
+      "get": {
+        "description": "Every tag by name with its derived span; a tag no entry uses has a null span and a count of 0.",
+        "operationId": "list_ledger_tags",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "List Ledger Tags",
+        "tags": [
+          "tags"
+        ]
+      },
+      "post": {
+        "operationId": "create_ledger_tag",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TagCreateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagWriteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflicts with the current state."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Create Ledger Tag",
+        "tags": [
+          "tags"
+        ]
+      }
+    },
+    "/api/ledger/tags/{tag_id}": {
+      "delete": {
+        "operationId": "delete_ledger_tag",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tag_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740992,
+              "title": "Tag Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagDeleteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflicts with the current state."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Delete Ledger Tag",
+        "tags": [
+          "tags"
+        ]
+      },
+      "put": {
+        "operationId": "update_ledger_tag",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tag_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740992,
+              "title": "Tag Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TagUpdateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagWriteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflicts with the current state."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Update Ledger Tag",
+        "tags": [
+          "tags"
+        ]
+      }
+    },
+    "/api/ledger/tags/{tag_id}/apply": {
+      "post": {
+        "description": "Tag every entry the filter selects (derived entries are skipped). `dry_run` previews it.",
+        "operationId": "apply_ledger_tag",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tag_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740992,
+              "title": "Tag Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TagApplyBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagApplyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflicts with the current state."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Apply Ledger Tag",
+        "tags": [
+          "tags"
         ]
       }
     },
