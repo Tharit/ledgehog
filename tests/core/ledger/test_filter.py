@@ -81,10 +81,13 @@ def test_text_is_trimmed_non_empty_and_bounded_and_never_echoed():
 
 def test_ids_are_positive_and_bounded():
     for field in ("account_ids", "category_ids", "payee_ids", "tag_ids"):
-        assert bad(**{field: (0,)}).parameter == {
-            "account_ids": "account_id",
-            "category_ids": "category_id",
-            "payee_ids": "payee_id",
-            "tag_ids": "tag_id",
-        }[field]
+        assert (
+            bad(**{field: (0,)}).parameter
+            == {
+                "account_ids": "account_id",
+                "category_ids": "category_id",
+                "payee_ids": "payee_id",
+                "tag_ids": "tag_id",
+            }[field]
+        )
         bad(**{field: (2**63,)})

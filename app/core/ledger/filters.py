@@ -52,11 +52,11 @@ class LedgerFilter:
     flags: tuple[str, ...] = ()  # a review token; any of them
 
     def __post_init__(self) -> None:
-        for name, param, ids in (
-            ("account_ids", "account_id", self.account_ids),
-            ("category_ids", "category_id", self.category_ids),
-            ("payee_ids", "payee_id", self.payee_ids),
-            ("tag_ids", "tag_id", self.tag_ids),
+        for param, ids in (
+            ("account_id", self.account_ids),
+            ("category_id", self.category_ids),
+            ("payee_id", self.payee_ids),
+            ("tag_id", self.tag_ids),
         ):
             if any(not 0 < i <= MAX_ID for i in ids):
                 raise InvalidFilter(param, f"{param} must be a positive id")
