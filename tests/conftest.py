@@ -77,14 +77,14 @@ def _migration_hash() -> str:
     return digest.hexdigest()[:16]
 
 
-@pytest.fixture(scope="session")
-def template_db(admin_cfg: Config) -> str:
-    """The template database for this migration chain; built once, reused across runs.
+def ensure_template(admin_cfg: Config) -> str:
+    """Build the template for this migration chain if it is missing, and mark it in use.
 
     Built under a temporary name and renamed into place, so a crashed build is never
     mistaken for a usable template; an advisory lock serialises concurrent sessions.
-    Named `tpl_<hash>`, not `test_<uuid>`: it is meant to outlive a run (the sweeper
-    removes stale ones).
+    Named `tpl_<hash>`, not `test_<uuid>`: it is meant to outlive a run. The sweeper drops
+    `tpl_` databases older than a day, so every session re-stamps the template it is about
+    to use: one in use is never old enough to be swept.
     """
     name = f"tpl_{_migration_hash()}"
     with admin.connect(admin_cfg) as lock_conn:
@@ -101,7 +101,14 @@ def template_db(admin_cfg: Config) -> str:
             finally:
                 admin.drop_database(admin_cfg, building)
                 _created.discard(building)
+        admin.stamp(admin_cfg, name, clock_module.now())
     return name
+
+
+@pytest.fixture(scope="session")
+def template_db(admin_cfg: Config) -> str:
+    """The template database for this migration chain; built once, reused across runs."""
+    return ensure_template(admin_cfg)
 
 
 @pytest.fixture(scope="session")
