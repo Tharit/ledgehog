@@ -149,6 +149,14 @@ def bad(**changes: Any) -> dict[str, Any]:
             "statement_payment",
         ),
         (
+            {"statement_payment": {"counter_account_ref": "X", "purpose": "p", "date_offset_days": 367}},
+            "statement_payment",
+        ),
+        (
+            {"statement_payment": {"counter_account_ref": "X", "purpose": "p", "date_offset_days": 10**9}},
+            "statement_payment",
+        ),
+        (
             {"statement_payment": {"counter_account_ref": "", "purpose": "p", "date_offset_days": 3}},
             "statement_payment",
         ),

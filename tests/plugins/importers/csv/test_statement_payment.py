@@ -4,8 +4,12 @@ from datetime import date
 
 import pytest
 
-from app.core.plugins.errors import InvalidProfile
+from app.core.plugins.errors import InvalidProfile, ParseFailed
+from app.core.plugins.importer import IncomingRow
 from app.plugins.importers.csv import CsvImporter
+from app.plugins.importers.csv.profile import Profile
+from app.plugins.importers.csv.report import ReportBuilder
+from app.plugins.importers.csv.statement_payment import statement_payment
 from tests.plugins.importers.csv.helpers import CARD, card_profile, run
 
 PAY = {
@@ -100,3 +104,16 @@ def test_offset_below_one_is_rejected_when_the_profile_is_loaded() -> None:
     bad = card_profile(statement_payment={**PAY, "date_offset_days": 0})
     with pytest.raises(InvalidProfile, match="date_offset_days"):
         CsvImporter().validate_settings(bad)
+
+
+def test_the_longest_offset_is_a_year_and_a_day() -> None:
+    CsvImporter().validate_settings(card_profile(statement_payment={**PAY, "date_offset_days": 366}))
+
+
+def test_a_date_beyond_the_calendar_is_a_parse_failure_not_an_overflow() -> None:
+    prof = Profile.from_dict(card_profile(statement_payment=PAY))
+    row = IncomingRow(
+        amount_minor=-100, currency="EUR", booked_on=date(9999, 12, 30), source_format="x", raw={}
+    )
+    with pytest.raises(ParseFailed, match="statement_payment"):
+        statement_payment(prof, [row], date(9999, 12, 31), "EUR", ReportBuilder(limit=3))

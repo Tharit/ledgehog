@@ -296,8 +296,8 @@ class StatementPaymentSpec:
     def validate(self) -> None:
         if not self.counter_account_ref.strip():
             raise _fail("statement_payment", "counter_account_ref must not be empty")
-        if self.date_offset_days < 1:
-            raise _fail("statement_payment", "date_offset_days must be at least 1")
+        if not 1 <= self.date_offset_days <= 366:
+            raise _fail("statement_payment", "date_offset_days must be between 1 and 366")
 
 
 _OPTIONAL_COLUMNS = (

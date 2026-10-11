@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import date, timedelta
 
+from app.core.plugins.errors import ParseFailed
 from app.core.plugins.importer import IncomingRow, SyntheticReport
 from app.plugins.importers.csv.profile import Profile
 from app.plugins.importers.csv.report import ReportBuilder
@@ -27,7 +28,10 @@ def statement_payment(
     net = sum(r.amount_minor for r in rows)
     if net >= 0:
         return None
-    booked_on = coverage + timedelta(days=spec.date_offset_days)
+    try:
+        booked_on = coverage + timedelta(days=spec.date_offset_days)
+    except OverflowError:
+        raise ParseFailed("statement_payment: the payment date is beyond the calendar") from None
     statement_date = coverage.isoformat()
     rep.synthetic = SyntheticReport(-net, booked_on, len(rows), net)
     return IncomingRow(
