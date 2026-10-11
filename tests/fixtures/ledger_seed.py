@@ -74,7 +74,14 @@ def entry(
         ).scalar_one()
     if source_id is None:
         source_id = make_source(
-            conn, account_id, amount=amount, currency=currency, booked_on=on, importer=None, purpose=purpose
+            conn,
+            account_id,
+            amount=amount,
+            currency=currency,
+            booked_on=on,
+            value_on=value_on,
+            importer=None,
+            purpose=purpose,
         )
         conn.execute(
             text(
