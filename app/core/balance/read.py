@@ -28,11 +28,3 @@ def get_record(conn: Connection, record_id: int) -> RecordView:
     if row is None:
         raise RecordNotFound(record_id)
     return RecordView(row.id, row.account_id, row.kind, row.balance_on, int(row.balance), row.currency)
-
-
-def manual_record_id_on(conn: Connection, account_id: int, balance_on: date) -> int | None:
-    value = conn.execute(
-        text("SELECT id FROM balance_record WHERE account_id = :a AND kind = 'manual' AND balance_on = :d"),
-        {"a": account_id, "d": balance_on},
-    ).scalar_one_or_none()
-    return None if value is None else int(value)

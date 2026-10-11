@@ -115,6 +115,14 @@ def test_a_run_has_at_most_one_reported_record(env: Env) -> None:
 # ---- set / edit / delete --------------------------------------------------------------------
 
 
+def test_set_manual_record_reports_whether_it_created_or_edited(env: Env) -> None:
+    first = set_manual_record(env.engine, env.account, day(1, 1), 10_000, user_id=USER)
+    again = set_manual_record(env.engine, env.account, day(1, 1), 12_000, user_id=USER)
+    other = set_manual_record(env.engine, env.account, day(1, 2), 12_000, user_id=USER)
+    assert (first.created, again.created, other.created) == (True, False, True)
+    assert again.record_id == first.record_id
+
+
 def test_set_manual_record_creates_the_record_and_its_opening_then_settles(env: Env) -> None:
     result = set_manual_record(env.engine, env.account, day(1, 1), 10_000, user_id=USER)
     (row,) = env.q("SELECT * FROM balance_record WHERE id = :i", i=result.record_id)

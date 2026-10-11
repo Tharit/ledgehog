@@ -69,6 +69,26 @@ def test_set_creates_a_manual_record_with_201_and_refreshed_account_facts(
     assert_checks_ok(anna)
 
 
+def test_the_status_follows_the_upsert_when_a_competitor_creates_the_record_first(
+    anna: TestClient, api_engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    aid = seed_account(api_engine)
+    real = core_records._set
+
+    def competitor_first(engine, account_id, balance_on, balance):
+        # another request creates the record after this one decided what it would do
+        if not q(api_engine, "SELECT 1 FROM balance_record"):
+            real(engine, account_id, balance_on, 999)
+        return real(engine, account_id, balance_on, balance)
+
+    monkeypatch.setattr(core_records, "_set", competitor_first)
+    r = anna.post(
+        f"/api/ledger/accounts/{aid}/balance-records", json={"balance_on": "2026-03-01", "balance": money(5)}
+    )
+    assert r.status_code == 200, r.text  # it edited what the competitor created
+    assert r.json()["record"]["balance"] == money(5)
+
+
 def test_the_same_date_edits_the_record_and_answers_200(anna: TestClient, api_engine: Engine) -> None:
     aid = seed_account(api_engine)
     url = f"/api/ledger/accounts/{aid}/balance-records"

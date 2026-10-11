@@ -53,6 +53,7 @@ class RecordDateTaken(RecordError):
 class RecordResult:
     record_id: int
     settle: SettleResult
+    created: bool = False  # set_manual_record: True when the upsert inserted, False when it edited
 
 
 def insert_reported_record(
@@ -81,8 +82,8 @@ def set_manual_record(
 
     `user_id` is accepted for the caller's audit trail; records carry no author (spec §3.2).
     """
-    record_id = retry_on_deadlock(lambda: _set(engine, account_id, balance_on, balance))
-    return RecordResult(record_id, settle(engine))
+    record_id, created = retry_on_deadlock(lambda: _set(engine, account_id, balance_on, balance))
+    return RecordResult(record_id, settle(engine), created)
 
 
 def update_manual_record(
@@ -112,25 +113,24 @@ def _locked_record_account(conn: Connection, record_id: int) -> int:
     return int(account)
 
 
-def _set(engine: Engine, account_id: int, balance_on: date, balance: int) -> int:
+def _set(engine: Engine, account_id: int, balance_on: date, balance: int) -> tuple[int, bool]:
     with engine.begin() as conn:
         lock_settle_shared(conn)
         lock_accounts(conn, [account_id])
         if conn.execute(text("SELECT 1 FROM account WHERE id = :a"), {"a": account_id}).first() is None:
             raise AccountNotFound(account_id)
-        record_id = int(
-            conn.execute(
-                text(
-                    "INSERT INTO balance_record (account_id, kind, balance, currency, balance_on) "
-                    "SELECT id, 'manual', :bal, currency, :on FROM account WHERE id = :a "
-                    "ON CONFLICT (account_id, balance_on) WHERE kind = 'manual' "
-                    "DO UPDATE SET balance = EXCLUDED.balance RETURNING id"
-                ),
-                {"a": account_id, "bal": balance, "on": balance_on},
-            ).scalar_one()
-        )
+        # xmax is 0 on a row this statement inserted, not on one it updated
+        row = conn.execute(
+            text(
+                "INSERT INTO balance_record (account_id, kind, balance, currency, balance_on) "
+                "SELECT id, 'manual', :bal, currency, :on FROM account WHERE id = :a "
+                "ON CONFLICT (account_id, balance_on) WHERE kind = 'manual' "
+                "DO UPDATE SET balance = EXCLUDED.balance RETURNING id, (xmax = 0) AS created"
+            ),
+            {"a": account_id, "bal": balance, "on": balance_on},
+        ).one()
         recompute_derived(conn, account_id)
-        return record_id
+        return int(row.id), bool(row.created)
 
 
 def _update(engine: Engine, record_id: int, balance: int, balance_on: date | None) -> None:

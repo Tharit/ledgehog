@@ -18,7 +18,7 @@ from app.api.ids import PathId
 from app.api.routers.accounts import AccountOut, Money, account_facts
 from app.api.routers.maintenance import SettleOut
 from app.api.session import CurrentUser, EngineDep
-from app.core.balance.read import RecordView, get_record, manual_record_id_on
+from app.core.balance.read import RecordView, get_record
 from app.core.balance.records import (
     AccountNotFound,
     RecordDateTaken,
@@ -114,10 +114,8 @@ def set_balance(
 ) -> RecordWriteOut:
     """A manual record; a date that already has one edits it (200 instead of 201)."""
     _same_currency(body.balance, account_facts(engine, account_id).currency)
-    with engine.connect() as conn:
-        existed = manual_record_id_on(conn, account_id, body.balance_on) is not None
     result = set_manual_record(engine, account_id, body.balance_on, body.balance.amount, user_id=user.id)
-    if existed:
+    if not result.created:  # taken from the upsert itself, not from a read before it
         response.status_code = 200
     return _written(engine, result.record_id, result)
 
