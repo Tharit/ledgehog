@@ -29,6 +29,9 @@ ROUTES = [
     ("POST", f"{BASE}/1/links"),
     ("DELETE", f"{BASE}/1/links/1"),
     ("POST", f"{BASE}/1/upload"),
+    ("GET", "/api/importers/runs"),
+    ("GET", "/api/importers/runs/1"),
+    ("POST", "/api/importers/runs/1/revert"),
 ]
 
 
