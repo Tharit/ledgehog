@@ -341,7 +341,10 @@ POST   /api/importers/instances/{id}/links     link an account to the credential
                                                (create-or-link from discovery);
                                                previewed, listing the
                                                user-authored rows the account
-                                               holds (spec §5.4); settles
+                                               holds (spec §5.4); settles; for
+                                               a file importer the reference
+                                               is not asked for: it is `acct-`
+                                               and the account's id
 DELETE /api/importers/instances/{id}/links/{account_id}
                                                unlink; the account's coverage
                                                stays as history; settles
@@ -351,12 +354,22 @@ POST   /api/importers/instances/{id}/upload    a CSV file → one run per
                                                runs the real path in a
                                                transaction that is rolled back
                                                and returns the run summary and
-                                               the importer's parse report
+                                               the importer's parse report. A
+                                               dry run's summary is exact; the
+                                               ids of what the run itself would
+                                               write — the run, its rows, its
+                                               balance record — name rows that
+                                               were rolled back, and a client
+                                               does not link them. Ids of rows
+                                               that already existed are real.
 GET    /api/importers/runs                     the import log
 POST   /api/importers/runs/{id}/revert         delete what the run produced;
                                                only the account's latest
                                                successful, non-reverted
-                                               transaction run; previewed
+                                               transaction run; previewed;
+                                               carries the version of every
+                                               entry it removes or unpairs,
+                                               which its preview returns
 
   sync — one long-running task over several importer instances
 POST   /api/sync                               start        → {task_id}
@@ -772,7 +785,8 @@ Transaction boundaries:
   lock — read with `clock_timestamp()` after the lock is taken, since `now()`
   is the transaction's start — so `finished_at` orders an account's runs as
   ingest wrote them —
-  the order revert follows (`spec.md` I30). A run that rolls back is set
+  the order revert follows (`spec.md` I30). Runs finishing in the same clock
+  tick are ordered by their id. A run that rolls back is set
   `failed` afterwards, in a transaction of its own.
 - **A commit is one transaction**: values, splits, link decisions, a
   counter-leg, an adjusted user-authored amount, and the removal routine for a partner left behind. It carries the
@@ -798,8 +812,9 @@ Transaction boundaries:
   the rows that pointed at the marked row, delete its entries, apply the
   removal routine — because the deferred trigger `trg_duplicate_state`
   checks that a duplicate has no entries and that no chain remains.
-- **Reverting a run is one transaction**, in this order, which the
-  constraints force: (1) for each of the run's rows that rows of *other* runs
+- **Reverting a run is one transaction**, in this order: (0) the run is set
+  `reverted`, so that its balance record stops counting before anything is
+  recomputed; then, in the order the constraints force, (1) for each of the run's rows that rows of *other* runs
   duplicate, the lowest-id of those is cleared and given its entry and the
   rest are repointed to it; (2) the run's entries are deleted through the
   removal routine (`source_transaction_id` is `RESTRICT`); (3) the run's
@@ -1051,7 +1066,7 @@ depends on the distinction:
 | `ChallengeExpired` | yes | TAN timed out, retry the instance |
 | `ChallengeAbandoned` | yes | user cancelled |
 | `SourceUnavailable` | yes | bank unreachable or timed out |
-| `ParseFailed` | no | format changed; needs a code fix |
+| `ParseFailed` | no | the file does not fit: the format changed, or the profile no longer finds its header or label; fix the importer or the profile |
 | `ContractViolation` | no | the importer delivered what its contract forbids (wrong currency, zero amount, repeated `source_id`, no coverage); needs a fix in the importer or its profile |
 | `NotRegistered` | no | FinTS product registration missing (`spec.md` §7.1) |
 

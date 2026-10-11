@@ -3271,3 +3271,13 @@ balance on every sync.
   would drift to manual reconciliation for no fault of the data.
 - Rejected: *dating the record after the coverage and relaxing I36* — the record
   would then claim a day the run has not seen.
+
+## D190 `ParseFailed` covers a profile that no longer fits
+
+Architecture §5.5, D185, D187. A missing header row or label is fixed in the
+profile, not in code. The two non-retryable kinds stay separate by *cause*, not
+by who fixes them: `ParseFailed` — the importer could not read the file as
+configured; `ContractViolation` — the importer read it and delivered what its
+contract forbids, and the error names the rule. Rejected: *merging them* — the
+queue would behave the same (both are not retried), but the user would lose
+which side failed and, for a breach, which rule.
