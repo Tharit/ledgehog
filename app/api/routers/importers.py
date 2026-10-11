@@ -244,8 +244,20 @@ class LinkAccount(_Body):
 
 
 @router.post("/instances/{instance_id}/links")
-def link_account(instance_id: PathId, body: LinkAccount, user: CurrentUser, engine: EngineDep) -> Any:
-    ref = body.external_ref if body.external_ref is not None else f"acct-{body.account_id}"
+def link_account(
+    instance_id: PathId, body: LinkAccount, request: Request, user: CurrentUser, engine: EngineDep
+) -> Any:
+    # A file importer has no login: the reference is `acct-<account id>`, read by nothing, so a
+    # client does not give one. A fetch importer's reference is its account at the login: required.
+    importer = request.app.state.importers.get(_view(engine, instance_id).importer)
+    if isinstance(importer, FileImporter):
+        if body.external_ref is not None:
+            raise _invalid("external_ref", "a file importer takes no reference")
+        ref = f"acct-{body.account_id}"
+    elif body.external_ref is None:
+        raise _invalid("external_ref", "required", "missing")
+    else:
+        ref = body.external_ref
     return to_json(inst.link_account(engine, instance_id, body.account_id, ref, dry_run=body.dry_run))
 
 
