@@ -9,7 +9,6 @@ envelope by the mappings registered below.
 from __future__ import annotations
 
 import dataclasses
-import re
 from collections.abc import Mapping
 from datetime import date, datetime
 from email.message import Message
@@ -18,6 +17,8 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict, Field
+from python_multipart import MultipartParser
+from python_multipart.exceptions import MultipartParseError
 from sqlalchemy import Engine, text
 
 from app.api.errors import ApiError, map_error
@@ -279,62 +280,106 @@ def _too_large() -> ApiError:
     )
 
 
-async def _read_body(request: Request) -> bytes:
-    """The request body, read with a cap: an oversized upload is refused as it streams in."""
-    cap = MAX_FILE_BYTES + _FORM_SLACK
-    declared = request.headers.get("content-length", "")
-    if declared.isdigit() and int(declared) > cap:
-        raise _too_large()
-    chunks: list[bytes] = []
-    total = 0
-    async for chunk in request.stream():
-        total += len(chunk)
-        if total > cap:
-            raise _too_large()
-        chunks.append(chunk)
-    return b"".join(chunks)
-
-
 def _invalid(field: str, message: str, kind: str = "value_error") -> ApiError:
     detail = [{"location": ["body", field], "message": message, "type": kind}]
     return ApiError(422, "validation_error", "The request is not valid.", detail)
 
 
-def _form_parts(content_type: str, body: bytes) -> dict[str, tuple[bytes, str | None]]:
-    """The parts of a multipart/form-data body: field name -> (bytes, filename).
+class _Form:
+    """Collects the parts of a multipart/form-data body as the library's parser streams them."""
 
-    The standard library only: no form-parsing dependency is needed for three fields.
-    """
+    def __init__(self) -> None:
+        self.parts: dict[str, tuple[bytearray, str | None]] = {}
+        self.closed = False
+        self._head = bytearray()
+        self._field = bytearray()
+        self._value = bytearray()
+        self._data: bytearray | None = None
+
+    # the parser's callbacks, in the order it calls them for each part
+    def on_part_begin(self) -> None:
+        self._head.clear()
+
+    def on_header_field(self, data: bytes, start: int, end: int) -> None:
+        self._field += data[start:end]
+
+    def on_header_value(self, data: bytes, start: int, end: int) -> None:
+        self._value += data[start:end]
+
+    def on_header_end(self) -> None:
+        self._head += bytes(self._field) + b": " + bytes(self._value) + b"\r\n"
+        self._field.clear()
+        self._value.clear()
+
+    def on_headers_finished(self) -> None:
+        headers = BytesHeaderParser().parsebytes(bytes(self._head))
+        name = headers.get_param("name", header="content-disposition")
+        if not isinstance(name, str) or not name:
+            raise _invalid("body", "a form part has no name", "type_error")
+        if name in self.parts:
+            raise _invalid(name, "given twice", "value_error")
+        self._data = bytearray()
+        self.parts[name] = (self._data, headers.get_filename())
+
+    def on_part_data(self, data: bytes, start: int, end: int) -> None:
+        assert self._data is not None
+        self._data += data[start:end]
+        if len(self._data) > MAX_FILE_BYTES:  # no field is larger than the file may be
+            raise _too_large()
+
+    def on_end(self) -> None:
+        self.closed = True
+
+
+def _boundary(content_type: str) -> str:
     head = Message()
     head["content-type"] = content_type
     boundary = head.get_param("boundary")
     if head.get_content_type() != "multipart/form-data" or not isinstance(boundary, str) or not boundary:
         raise _invalid("body", "send the upload as multipart/form-data", "type_error")
-    parts: dict[str, tuple[bytes, str | None]] = {}
-    # RFC 2046: a delimiter is CRLF + "--" + boundary at a line start, followed by the closing
-    # "--" or by (optional blanks and) CRLF; the same text inside a line, or a longer line that
-    # merely starts with it, is content. The first delimiter may open the body (no CRLF before it).
-    delimiter = re.compile(rb"\r\n--" + re.escape(boundary.encode()) + rb"(?=--|[ \t]*\r\n)")
-    pieces = delimiter.split(b"\r\n" + body)
-    closed = False
-    for piece in pieces[1:]:  # pieces[0] is the preamble
-        if piece.startswith(b"--"):  # the closing delimiter; whatever follows is an epilogue
-            closed = True
-            break
-        piece = piece.lstrip(b" \t").removeprefix(b"\r\n")
-        raw_head, sep, content = piece.partition(b"\r\n\r\n")
-        if not sep:
-            raise _invalid("body", "malformed multipart body", "type_error")
-        headers = BytesHeaderParser().parsebytes(raw_head)
-        name = headers.get_param("name", header="content-disposition")
-        if not isinstance(name, str) or not name:
-            raise _invalid("body", "a form part has no name", "type_error")
-        if name in parts:
-            raise _invalid(name, "given twice", "value_error")
-        parts[name] = (content, headers.get_filename())
-    if not closed:  # a body cut off before its closing delimiter never completed
+    return boundary
+
+
+async def _read_form(request: Request) -> dict[str, tuple[bytes, str | None]]:
+    """The parts of the upload, parsed as the body streams in (RFC 2046, `python-multipart`).
+
+    An oversized upload is refused as it streams in: by its Content-Length at once, otherwise
+    when the bytes received pass the cap. Nothing is spooled past it.
+    """
+    try:
+        boundary = _boundary(request.headers.get("content-type", ""))
+    except ApiError:
+        return {}  # the route answers it, after the path was validated
+    cap = MAX_FILE_BYTES + _FORM_SLACK
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > cap:
+        raise _too_large()
+    form = _Form()
+    parser = MultipartParser(
+        boundary,
+        {
+            "on_part_begin": form.on_part_begin,
+            "on_header_field": form.on_header_field,
+            "on_header_value": form.on_header_value,
+            "on_header_end": form.on_header_end,
+            "on_headers_finished": form.on_headers_finished,
+            "on_part_data": form.on_part_data,
+            "on_end": form.on_end,
+        },
+    )
+    total = 0
+    try:
+        async for chunk in request.stream():
+            total += len(chunk)
+            if total > cap:
+                raise _too_large()
+            parser.write(chunk)
+        parser.finalize()
+    except MultipartParseError:
+        raise _invalid("body", "malformed multipart body", "type_error") from None
+    if not form.closed:  # a body cut off before its closing delimiter never completed
         raise _invalid("body", "malformed multipart body", "type_error")
-    return parts
+    return {name: (bytes(data), filename) for name, (data, filename) in form.parts.items()}
 
 
 def _flag(value: str) -> bool:
@@ -352,10 +397,10 @@ def upload_file(
     request: Request,
     user: CurrentUser,
     engine: EngineDep,
-    raw: Annotated[bytes, Depends(_read_body)],
+    parts: Annotated[dict[str, tuple[bytes, str | None]], Depends(_read_form)],
 ) -> Any:
     """Upload one export for one linked account. `dry_run` parses and previews, writes nothing."""
-    parts = _form_parts(request.headers.get("content-type", ""), raw)
+    _boundary(request.headers.get("content-type", ""))  # not multipart: refused (`parts` is empty)
     for name in parts:
         if name not in _FIELDS:
             raise _invalid(name, "unknown field", "extra_forbidden")
