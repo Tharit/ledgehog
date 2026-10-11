@@ -34,6 +34,20 @@ class ContractViolation(IngestError):
         super().__init__(f"contract violation [{rule}]: {message}")
 
 
+class RunRefused(IngestError):
+    """The write transaction found that the run may no longer write (architecture §4.1).
+
+    The checks before the locks can lose a race against an unlink, a close or a disable, so the
+    shared write body repeats them inside the transaction. `reason` is one of `instance_missing`,
+    `not_a_file_source`, `instance_disabled`, `account_missing`, `account_closed`,
+    `account_not_linked`. Nothing was written; a real run ends `failed`, a preview reports it.
+    """
+
+    def __init__(self, reason: str, message: str) -> None:
+        self.reason = reason
+        super().__init__(message)
+
+
 class DuplicateError(Exception):
     """Marking or clearing a duplicate was refused; the message states the rule. Nothing was written."""
 
