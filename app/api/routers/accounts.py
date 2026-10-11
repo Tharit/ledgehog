@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictInt
 from sqlalchemy import Connection, Engine
 
 from app.api.errors import map_error
+from app.api.ids import PathId
 from app.api.routers.maintenance import SettleOut
 from app.api.session import CurrentUser, EngineDep
 from app.core.accounts import (
@@ -175,7 +176,7 @@ def create(body: CreateBody, user: CurrentUser, engine: EngineDep) -> AccountWri
 
 
 @router.put("/{account_id}")
-def update(account_id: int, body: UpdateBody, user: CurrentUser, engine: EngineDep) -> AccountWriteOut:
+def update(account_id: PathId, body: UpdateBody, user: CurrentUser, engine: EngineDep) -> AccountWriteOut:
     result = update_account(
         engine,
         account_id,
@@ -189,16 +190,16 @@ def update(account_id: int, body: UpdateBody, user: CurrentUser, engine: EngineD
 
 
 @router.delete("/{account_id}", status_code=204)
-def delete(account_id: int, user: CurrentUser, engine: EngineDep) -> Response:
+def delete(account_id: PathId, user: CurrentUser, engine: EngineDep) -> Response:
     delete_account(engine, account_id)
     return Response(status_code=204)
 
 
 @router.post("/{account_id}/close")
-def close(account_id: int, body: CloseBody, user: CurrentUser, engine: EngineDep) -> AccountWriteOut:
+def close(account_id: PathId, body: CloseBody, user: CurrentUser, engine: EngineDep) -> AccountWriteOut:
     return written(engine, account_id, close_account(engine, account_id, body.closed_on))
 
 
 @router.post("/{account_id}/reopen")
-def reopen(account_id: int, user: CurrentUser, engine: EngineDep) -> AccountWriteOut:
+def reopen(account_id: PathId, user: CurrentUser, engine: EngineDep) -> AccountWriteOut:
     return written(engine, account_id, reopen_account(engine, account_id))

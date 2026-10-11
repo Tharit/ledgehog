@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.errors import ApiError, map_error
+from app.api.ids import MAX_ID, EntityId, PathId
 from app.api.session import CurrentUser, EngineDep
 from app.core.accounts import AccountMissing
 from app.core.domain.errors import ContractViolation
@@ -161,7 +162,7 @@ def create_instance(body: CreateInstance, request: Request, user: CurrentUser, e
 
 @router.put("/instances/{instance_id}")
 def update_instance(
-    instance_id: int, body: UpdateInstance, request: Request, user: CurrentUser, engine: EngineDep
+    instance_id: PathId, body: UpdateInstance, request: Request, user: CurrentUser, engine: EngineDep
 ) -> Any:
     validate = None
     if body.settings is not None:
@@ -179,13 +180,13 @@ def update_instance(
 
 
 @router.post("/instances/{instance_id}/reset")
-def reset_instance(instance_id: int, user: CurrentUser, engine: EngineDep) -> Any:
+def reset_instance(instance_id: PathId, user: CurrentUser, engine: EngineDep) -> Any:
     inst.reset_instance(engine, instance_id)
     return to_json(_view(engine, instance_id))
 
 
 @router.delete("/instances/{instance_id}")
-def delete_instance(instance_id: int, user: CurrentUser, engine: EngineDep) -> Any:
+def delete_instance(instance_id: PathId, user: CurrentUser, engine: EngineDep) -> Any:
     return {"settle": to_json(inst.delete_instance(engine, instance_id))}
 
 
@@ -193,19 +194,19 @@ def delete_instance(instance_id: int, user: CurrentUser, engine: EngineDep) -> A
 
 
 class LinkAccount(_Body):
-    account_id: int
+    account_id: EntityId
     external_ref: str | None = None
     dry_run: bool = False
 
 
 @router.post("/instances/{instance_id}/links")
-def link_account(instance_id: int, body: LinkAccount, user: CurrentUser, engine: EngineDep) -> Any:
+def link_account(instance_id: PathId, body: LinkAccount, user: CurrentUser, engine: EngineDep) -> Any:
     ref = body.external_ref if body.external_ref is not None else f"acct-{body.account_id}"
     return to_json(inst.link_account(engine, instance_id, body.account_id, ref, dry_run=body.dry_run))
 
 
 @router.delete("/instances/{instance_id}/links/{account_id}")
-def unlink_account(instance_id: int, account_id: int, user: CurrentUser, engine: EngineDep) -> Any:
+def unlink_account(instance_id: PathId, account_id: PathId, user: CurrentUser, engine: EngineDep) -> Any:
     return {"settle": to_json(inst.unlink_account(engine, instance_id, account_id))}
 
 
@@ -284,7 +285,7 @@ def _flag(value: str) -> bool:
 
 @router.post("/instances/{instance_id}/upload")
 def upload_file(
-    instance_id: int,
+    instance_id: PathId,
     request: Request,
     user: CurrentUser,
     engine: EngineDep,
@@ -306,6 +307,8 @@ def upload_file(
         account_id = int(parts["account_id"][0].decode("ascii"))
     except (UnicodeDecodeError, ValueError):
         raise _invalid("account_id", "must be an integer", "int_parsing") from None
+    if not 0 < account_id <= MAX_ID:
+        raise _invalid("account_id", f"must be between 1 and {MAX_ID}", "value_error")
     dry_run = _flag(parts["dry_run"][0].decode("ascii", "replace")) if "dry_run" in parts else False
 
     importer = importer_for(request, _view(engine, instance_id).importer)

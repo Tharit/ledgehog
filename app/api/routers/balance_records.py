@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import Engine
 
 from app.api.errors import ApiError, map_error
+from app.api.ids import PathId
 from app.api.routers.accounts import AccountOut, Money, account_facts
 from app.api.routers.maintenance import SettleOut
 from app.api.session import CurrentUser, EngineDep
@@ -109,7 +110,7 @@ def _written(engine: Engine, record_id: int, result: RecordResult | SettleResult
 
 @router.post("/accounts/{account_id}/balance-records", status_code=201)
 def set_balance(
-    account_id: int, body: SetBody, response: Response, user: CurrentUser, engine: EngineDep
+    account_id: PathId, body: SetBody, response: Response, user: CurrentUser, engine: EngineDep
 ) -> RecordWriteOut:
     """A manual record; a date that already has one edits it (200 instead of 201)."""
     _same_currency(body.balance, account_facts(engine, account_id).currency)
@@ -123,7 +124,7 @@ def set_balance(
 
 @router.put("/balance-records/{record_id}")
 def correct_balance(
-    record_id: int, body: CorrectBody, user: CurrentUser, engine: EngineDep
+    record_id: PathId, body: CorrectBody, user: CurrentUser, engine: EngineDep
 ) -> RecordWriteOut:
     with engine.connect() as conn:
         record = get_record(conn, record_id)
@@ -133,7 +134,7 @@ def correct_balance(
 
 
 @router.delete("/balance-records/{record_id}")
-def remove_balance(record_id: int, user: CurrentUser, engine: EngineDep) -> RecordDeleteOut:
+def remove_balance(record_id: PathId, user: CurrentUser, engine: EngineDep) -> RecordDeleteOut:
     with engine.connect() as conn:
         record = get_record(conn, record_id)
     result = delete_record(engine, record_id)

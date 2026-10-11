@@ -12,6 +12,7 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel, ConfigDict
 
 from app.api.errors import map_error
+from app.api.ids import EntityId, EntityVersion, PathId, QueryId
 from app.api.routers.importers import to_json
 from app.api.session import CurrentUser, EngineDep
 from app.core.domain.errors import VersionConflict
@@ -33,15 +34,15 @@ class RevertBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     dry_run: bool = False
-    expected_versions: dict[int, int] | None = None
+    expected_versions: dict[EntityId, EntityVersion] | None = None
 
 
 @router.get("")
 def runs(
     user: CurrentUser,
     engine: EngineDep,
-    account_id: int | None = None,
-    instance_id: int | None = None,
+    account_id: QueryId | None = None,
+    instance_id: QueryId | None = None,
     status: Literal["running", "ok", "failed", "reverted"] | None = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> Any:
@@ -51,7 +52,7 @@ def runs(
 
 
 @router.get("/{run_id}")
-def run(run_id: int, user: CurrentUser, engine: EngineDep) -> Any:
+def run(run_id: PathId, user: CurrentUser, engine: EngineDep) -> Any:
     with engine.connect() as conn:
         found = get_run(conn, run_id)
     if found is None:
@@ -60,7 +61,7 @@ def run(run_id: int, user: CurrentUser, engine: EngineDep) -> Any:
 
 
 @router.post("/{run_id}/revert")
-def revert(run_id: int, user: CurrentUser, engine: EngineDep, body: RevertBody | None = None) -> Any:
+def revert(run_id: PathId, user: CurrentUser, engine: EngineDep, body: RevertBody | None = None) -> Any:
     body = body or RevertBody()
     return to_json(
         revert_run(
