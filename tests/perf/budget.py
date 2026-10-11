@@ -36,3 +36,13 @@ one account, tag and amount range; 8-9 ms all combined; text search (an unindexe
 the slowest filter) 19-29 ms; a deep page 10-33 ms. Budget = 2 x the largest measured value
 (66 ms), rounded up to a clean number, never below 0.5 s. No index is needed.
 """
+
+TAG_APPLY_BUDGET_SECONDS = 0.5
+"""Applying a tag to a whole year (`tests/perf/test_tag_apply_budget.py`): the preview and the real run.
+
+Derivation: on the backfill fixture (8000 entries over 6 accounts) the filter `1 Jan .. 31 Dec`
+selects all 8000 taggable entries; `apply_tag` is timed as a dry run and for real (settle patched
+out: that is `test_settle_budget`), 5 samples each, memberships removed after each. Measured on the
+dev machine (Postgres 18, localhost), two sessions: median 108-126 ms, max 140 ms for both. Budget =
+2 x the largest measured value (0.28 s), rounded up, never below 0.5 s. No index is needed.
+"""
