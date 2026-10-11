@@ -24,7 +24,7 @@ from itertools import accumulate
 
 from sqlalchemy import Connection, text
 
-INVESTMENT_KINDS = ("depot", "asset")
+from app.core.domain.kinds import INVESTMENT_KINDS
 
 
 @dataclass(frozen=True)

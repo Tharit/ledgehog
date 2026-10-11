@@ -19,7 +19,7 @@ Order inside the transaction:
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from typing import Any
 
@@ -106,7 +106,7 @@ def revert_run(
 
 
 def _with_settle(result: RevertResult, settled: SettleResult) -> RevertResult:
-    return RevertResult(**{**result.__dict__, "settle": settled})
+    return replace(result, settle=settled)
 
 
 class _AccountsMissing(Exception):

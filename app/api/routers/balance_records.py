@@ -20,7 +20,6 @@ from app.api.routers.maintenance import SettleOut
 from app.api.session import CurrentUser, EngineDep
 from app.core.balance.read import RecordView, get_record
 from app.core.balance.records import (
-    AccountNotFound,
     RecordDateTaken,
     RecordError,
     RecordNotFound,
@@ -34,7 +33,6 @@ from app.core.settle.settle import SettleResult
 
 router = APIRouter(prefix="/api/ledger", tags=["balance records"])
 
-map_error(AccountNotFound, 404, "not_found")
 map_error(RecordNotFound, 404, "not_found")
 map_error(RecordDateTaken, 409, "conflict", details=lambda e: {"reason": "record_date_taken"})
 map_error(

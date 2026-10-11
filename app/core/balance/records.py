@@ -15,6 +15,7 @@ from datetime import date
 
 from sqlalchemy import Connection, Engine, text
 
+from app.core.accounts import AccountMissing
 from app.core.balance.derived import recompute_derived
 from app.core.settle.settle import SettleResult, settle
 from app.utils.db.locks import lock_accounts, lock_settle_shared, retry_on_deadlock
@@ -24,10 +25,7 @@ class RecordError(Exception):
     """A balance record operation was refused; the message states the rule. Nothing was written."""
 
 
-class AccountNotFound(RecordError):
-    def __init__(self, account_id: int) -> None:
-        self.account_id = account_id
-        super().__init__(f"account {account_id} does not exist")
+AccountNotFound = AccountMissing  # the one account-missing error lives in core.accounts
 
 
 class RecordNotFound(RecordError):
@@ -118,7 +116,7 @@ def _set(engine: Engine, account_id: int, balance_on: date, balance: int) -> tup
         lock_settle_shared(conn)
         lock_accounts(conn, [account_id])
         if conn.execute(text("SELECT 1 FROM account WHERE id = :a"), {"a": account_id}).first() is None:
-            raise AccountNotFound(account_id)
+            raise AccountMissing(account_id)
         # xmax is 0 on a row this statement inserted, not on one it updated
         row = conn.execute(
             text(

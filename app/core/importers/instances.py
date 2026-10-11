@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from typing import Any
 
@@ -22,6 +22,7 @@ from sqlalchemy.exc import DBAPIError
 
 from app.core.accounts import AccountMissing
 from app.core.settle.settle import SettleResult, settle
+from app.utils.db.errors import constraint_name
 from app.utils.db.locks import lock_accounts, lock_settle_shared, retry_on_deadlock
 
 Validate = Callable[[Mapping[str, Any]], None]
@@ -127,10 +128,6 @@ class LinkResult:
 
 def _json(value: Mapping[str, Any]) -> str:
     return json.dumps(dict(value))
-
-
-def _constraint(exc: DBAPIError) -> str | None:
-    return getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
 
 
 def _need_instance(conn: Connection, instance_id: int) -> Any:
@@ -343,9 +340,9 @@ def _link(
                 {"a": account_id, "i": instance_id, "r": external_ref},
             )
     except DBAPIError as exc:
-        if _constraint(exc) == "ux_account_source_ref":
+        if constraint_name(exc) == "ux_account_source_ref":
             raise ExternalRefTaken(instance_id, external_ref) from exc
-        if _constraint(exc) == "account_source_pkey":
+        if constraint_name(exc) == "account_source_pkey":
             raise AlreadyLinked(instance_id, account_id) from exc
         raise
     becomes_synced = account.links == 0
@@ -406,7 +403,7 @@ def link_account(
     result = retry_on_deadlock(run)
     if dry_run:
         return result
-    return LinkResult(**{**result.__dict__, "settle": settle(engine)})
+    return replace(result, settle=settle(engine))
 
 
 def unlink_account(engine: Engine, instance_id: int, account_id: int) -> SettleResult:

@@ -18,9 +18,8 @@ from sqlalchemy.exc import DBAPIError
 
 from app.core.ingest.identity import canonical_text
 from app.core.settle.settle import SettleResult, settle
+from app.utils.db.errors import constraint_name
 from app.utils.db.locks import lock_accounts, lock_settle_shared, retry_on_deadlock
-
-INVESTMENT_KINDS = frozenset({"depot", "asset"})
 
 
 class AccountError(Exception):
@@ -83,11 +82,6 @@ class AccountView:
 
 def _canonical_ref(external_ref: str | None) -> str | None:
     return canonical_text(external_ref) or None
-
-
-def _constraint(exc: DBAPIError) -> str | None:
-    orig = exc.orig
-    return getattr(getattr(orig, "diag", None), "constraint_name", None) if orig is not None else None
 
 
 def _begin(conn: Connection, account_id: int | None = None) -> None:
@@ -168,7 +162,7 @@ def create_account_result(
                     ).scalar_one()
                 )
             except DBAPIError as exc:
-                if _constraint(exc) == "ux_account_external_ref":
+                if constraint_name(exc) == "ux_account_external_ref":
                     raise DuplicateExternalRef(str(ref)) from exc
                 raise
 
@@ -216,7 +210,7 @@ def update_account(
                     text(f"UPDATE account SET {assignments} WHERE id = :id"), {**sets, "id": account_id}
                 )  # noqa: S608
             except DBAPIError as exc:
-                if _constraint(exc) == "ux_account_external_ref":
+                if constraint_name(exc) == "ux_account_external_ref":
                     raise DuplicateExternalRef(str(sets["external_ref"])) from exc
                 if isinstance(exc.orig, psycopg.errors.RaiseException) and "investment account" in str(
                     exc.orig
