@@ -9,7 +9,7 @@ registry all assume one process (architecture §5.2, §5.7).
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -17,7 +17,9 @@ from sqlalchemy import Engine
 
 from app.api.errors import install_error_handlers
 from app.api.redaction import install_redaction
+from app.api.routers import include_routers
 from app.api.routes import router
+from app.core.plugins.importer import FileImporter
 from app.utils import clock
 from app.utils.config import Config
 
@@ -27,8 +29,13 @@ def create_app(
     engine: Engine,
     *,
     owns_engine: bool = False,
+    importers: Mapping[str, FileImporter] | None = None,
 ) -> FastAPI:
-    """Build the API. Time comes from `app.utils.clock` only (tests freeze it with `clock.frozen`)."""
+    """Build the API. Time comes from `app.utils.clock` only (tests freeze it with `clock.frozen`).
+
+    `importers` maps an importer name (`importer_instance.importer`) to its implementation;
+    the composition root supplies it, because the API never imports a concrete plugin.
+    """
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -43,6 +50,8 @@ def create_app(
     app.state.config = config
     app.state.engine = engine
     app.state.instant = clock.now
-    install_error_handlers(app)
+    app.state.importers = dict(importers or {})
     app.include_router(router)
+    include_routers(app)  # registers each module's domain error mappings as it is imported...
+    install_error_handlers(app)  # ...so the handlers are installed after
     return app

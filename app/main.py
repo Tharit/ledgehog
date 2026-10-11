@@ -21,6 +21,7 @@ from typing import Any
 from anyio import to_thread
 from fastapi import FastAPI
 
+from app.plugins.importers.csv import CsvImporter
 from app.startup import start
 from app.utils.config import Config
 
@@ -32,8 +33,11 @@ Send = Callable[[MutableMapping[str, Any]], Awaitable[None]]
 
 
 def build() -> FastAPI:
-    """Read the configuration, run the start sequence and return the API."""
-    return start(Config.from_env()).app
+    """Read the configuration, run the start sequence and return the API.
+
+    This is where concrete plugins are registered: core and the API only see the protocols.
+    """
+    return start(Config.from_env(), importers={"csv": CsvImporter()}).app
 
 
 class LazyApp:

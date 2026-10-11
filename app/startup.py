@@ -8,12 +8,13 @@ after every step succeeded. Nothing here logs a secret; users are named by login
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
 from fastapi import FastAPI
 from sqlalchemy import Connection, Engine, text
 
+from app.core.plugins.importer import FileImporter
 from app.core.settle import SettleResult, settle
 from app.utils import clock
 from app.utils.auth import hash_password, revoke_sessions, verify_password
@@ -157,10 +158,16 @@ def run_settle(engine: Engine) -> SettleResult:
     return result
 
 
-def start(config: Config, engine: Engine | None = None) -> StartedApp:
+def start(
+    config: Config,
+    engine: Engine | None = None,
+    *,
+    importers: Mapping[str, FileImporter] | None = None,
+) -> StartedApp:
     """Run the start sequence (1: `config` is already validated) and build the app.
 
-    With no `engine` one is made and owned by the app (disposed at shutdown).
+    With no `engine` one is made and owned by the app (disposed at shutdown). `importers`
+    is the plugin registry the composition root supplies (name -> implementation).
     """
     from app.api import create_app  # step 8 builds the API; imported late to keep this module light
 
@@ -186,7 +193,7 @@ def start(config: Config, engine: Engine | None = None) -> StartedApp:
                 log.info("users %s: %s", verb, ", ".join(logins))
         assert_pool_settings(engine, config)  # 6
         result = run_settle(engine)  # 7
-        app = create_app(config, engine, owns_engine=owns_engine)  # 8
+        app = create_app(config, engine, owns_engine=owns_engine, importers=importers)  # 8
     except BaseException:
         if owns_engine:
             engine.dispose()
