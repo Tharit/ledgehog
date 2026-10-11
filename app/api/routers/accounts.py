@@ -13,7 +13,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Response
+from fastapi import APIRouter
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 from sqlalchemy import Connection, Engine
 
@@ -30,7 +30,7 @@ from app.core.accounts import (
     KindClassChange,
     UnknownCurrency,
     close_account,
-    create_account,
+    create_account_result,
     delete_account,
     list_accounts,
     reopen_account,
@@ -125,6 +125,10 @@ def written(engine: Engine, account_id: int, result: SettleResult) -> AccountWri
     return AccountWriteOut(account=account_facts(engine, account_id), settle=SettleOut.of(result))
 
 
+class DeleteOut(BaseModel):
+    settle: SettleOut
+
+
 class CreateBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -162,7 +166,7 @@ def list_all(user: CurrentUser, engine: EngineDep) -> AccountsOut:
 
 @router.post("", status_code=201)
 def create(body: CreateBody, user: CurrentUser, engine: EngineDep) -> AccountWriteOut:
-    account_id = create_account(
+    created = create_account_result(
         engine,
         name=body.name,
         kind=body.kind,
@@ -171,8 +175,7 @@ def create(body: CreateBody, user: CurrentUser, engine: EngineDep) -> AccountWri
         sort_order=body.sort_order,
         note=body.note,
     )
-    # the core settles inside a create that sets an external_ref and reports nothing back
-    return written(engine, account_id, SettleResult())
+    return written(engine, created.account_id, created.settle)
 
 
 @router.put("/{account_id}")
@@ -189,10 +192,9 @@ def update(account_id: PathId, body: UpdateBody, user: CurrentUser, engine: Engi
     return written(engine, account_id, result)
 
 
-@router.delete("/{account_id}", status_code=204)
-def delete(account_id: PathId, user: CurrentUser, engine: EngineDep) -> Response:
-    delete_account(engine, account_id)
-    return Response(status_code=204)
+@router.delete("/{account_id}")
+def delete(account_id: PathId, user: CurrentUser, engine: EngineDep) -> DeleteOut:
+    return DeleteOut(settle=SettleOut.of(delete_account(engine, account_id)))
 
 
 @router.post("/{account_id}/close")

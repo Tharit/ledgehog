@@ -100,6 +100,12 @@ def _begin(conn: Connection, account_id: int | None = None) -> None:
         raise AccountMissing(account_id)
 
 
+@dataclass(frozen=True)
+class CreatedAccount:
+    account_id: int
+    settle: SettleResult  # empty unless an external_ref was set
+
+
 def create_account(
     engine: Engine,
     *,
@@ -110,10 +116,32 @@ def create_account(
     sort_order: int = 0,
     note: str | None = None,
 ) -> int:
+    """`create_account_result`'s id alone, for callers that have no use for the settle result."""
+    return create_account_result(
+        engine,
+        name=name,
+        kind=kind,
+        currency=currency,
+        external_ref=external_ref,
+        sort_order=sort_order,
+        note=note,
+    ).account_id
+
+
+def create_account_result(
+    engine: Engine,
+    *,
+    name: str,
+    kind: str,
+    currency: str,
+    external_ref: str | None = None,
+    sort_order: int = 0,
+    note: str | None = None,
+) -> CreatedAccount:
     """Create an account, and nothing else. The currency must exist and never changes.
 
     `external_ref` is stored canonicalised (blank means none); setting one settles, because
-    pass 0 compares it.
+    pass 0 compares it, and the settle result is returned.
     """
     ref = _canonical_ref(external_ref)
 
@@ -145,9 +173,7 @@ def create_account(
                 raise
 
     account_id = retry_on_deadlock(run)
-    if ref is not None:
-        settle(engine)
-    return account_id
+    return CreatedAccount(account_id, settle(engine) if ref is not None else SettleResult())
 
 
 def update_account(

@@ -186,10 +186,10 @@ def test_update_rejects_currency_and_unknown_fields_at_validation(
 # ---- delete ---------------------------------------------------------------------------------
 
 
-def test_delete_an_empty_account_is_204(anna: TestClient, api_engine: Engine) -> None:
+def test_delete_an_empty_account_is_200_with_the_settle_result(anna: TestClient, api_engine: Engine) -> None:
     aid = seed_account(api_engine)
     r = anna.delete(f"/api/ledger/accounts/{aid}")
-    assert r.status_code == 204 and r.content == b""
+    assert r.status_code == 200 and r.json() == {"settle": {"touched_entry_ids": [], "error": None}}
     assert q(api_engine, "SELECT 1 FROM account") == []
 
 
@@ -287,6 +287,35 @@ def test_a_settle_failure_is_a_notice_in_a_200_response(
     assert r.status_code == 200
     assert r.json()["settle"]["error"] == "settling failed"
     assert r.json()["account"]["closed_on"] == "2026-02-01"  # the write stood
+
+
+def test_a_settle_failure_after_a_delete_is_in_the_body(
+    anna: TestClient, api_engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(core_accounts, "settle", lambda engine: SettleResult((), "settling failed"))
+    aid = seed_account(api_engine)
+    r = anna.delete(f"/api/ledger/accounts/{aid}")
+    assert r.status_code == 200 and r.json()["settle"]["error"] == "settling failed"
+    assert q(api_engine, "SELECT 1 FROM account") == []
+
+
+def test_a_settle_result_after_a_create_with_an_external_ref_is_in_the_body(
+    anna: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(core_accounts, "settle", lambda engine: SettleResult((3,), "settling failed"))
+    r = anna.post("/api/ledger/accounts", json={**NEW, "external_ref": "ref-1"})
+    assert r.status_code == 201
+    assert r.json()["settle"] == {"touched_entry_ids": [3], "error": "settling failed"}
+
+
+def test_a_create_without_an_external_ref_does_not_settle(
+    anna: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[int] = []
+    monkeypatch.setattr(core_accounts, "settle", lambda engine: calls.append(1) or SettleResult())
+    r = anna.post("/api/ledger/accounts", json=NEW)
+    assert r.status_code == 201 and calls == []
+    assert r.json()["settle"] == {"touched_entry_ids": [], "error": None}
 
 
 # ---- session --------------------------------------------------------------------------------
