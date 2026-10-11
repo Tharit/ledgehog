@@ -16,6 +16,7 @@ from fastapi import FastAPI
 from sqlalchemy import Engine
 
 from app.api.errors import install_error_handlers
+from app.api.openapi import install_openapi, operation_id
 from app.api.redaction import install_redaction
 from app.api.routers import include_routers
 from app.api.routes import router
@@ -46,7 +47,16 @@ def create_app(
             if owns_engine:
                 engine.dispose()
 
-    app = FastAPI(title="Ledgehog", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+    # the schema is served in development only (EXPOSE_OPENAPI); the docs pages load scripts from a
+    # CDN, which architecture §6.7 forbids, so they never exist
+    app = FastAPI(
+        title="Ledgehog",
+        lifespan=lifespan,
+        docs_url=None,
+        redoc_url=None,
+        openapi_url="/api/openapi.json" if config.expose_openapi else None,
+        generate_unique_id_function=operation_id,
+    )
     app.state.config = config
     app.state.engine = engine
     app.state.instant = clock.now
@@ -54,4 +64,5 @@ def create_app(
     app.include_router(router)
     include_routers(app)  # registers each module's domain error mappings as it is imported...
     install_error_handlers(app)  # ...so the handlers are installed after
+    install_openapi(app)
     return app

@@ -23,6 +23,7 @@ from sqlalchemy import Engine, text
 
 from app.api.errors import ApiError, map_error
 from app.api.ids import MAX_ID, EntityId, PathId
+from app.api.openapi import ErrorEnvelope
 from app.api.session import CurrentUser, EngineDep
 from app.core.accounts import AccountMissing
 from app.core.domain.errors import ContractViolation
@@ -391,7 +392,44 @@ def _flag(value: str) -> bool:
     raise _invalid("dry_run", "must be true or false", "bool_parsing")
 
 
-@router.post("/instances/{instance_id}/upload")
+# The body is parsed by hand (`_read_form`), so FastAPI sees none: the schema is declared here.
+_UPLOAD_BODY: dict[str, Any] = {
+    "required": True,
+    "content": {
+        "multipart/form-data": {
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "file": {"type": "string", "format": "binary"},
+                    "account_id": {"type": "integer"},
+                    "dry_run": {"type": "boolean", "default": False},
+                },
+                "required": ["file", "account_id"],
+                "additionalProperties": False,
+            }
+        }
+    },
+}
+_UPLOAD_RESPONSES: dict[int | str, dict[str, Any]] = {
+    # the result tree is serialised dynamically (`to_json`), so it is described as an object
+    200: {
+        "description": "The upload result (a dry run previews, a real upload also reports the run).",
+        "content": {"application/json": {"schema": {"type": "object", "additionalProperties": True}}},
+    },
+    401: {"model": ErrorEnvelope, "description": "Not signed in."},
+    404: {"model": ErrorEnvelope, "description": "No such instance or account."},
+    409: {"model": ErrorEnvelope, "description": "Not a file source, account closed or not linked."},
+    413: {"model": ErrorEnvelope, "description": "The file is larger than 10 MiB (`file_too_large`)."},
+    422: {"model": ErrorEnvelope, "description": "The request or the file is not valid."},
+    502: {"model": ErrorEnvelope, "description": "The source is unavailable."},
+}
+
+
+@router.post(
+    "/instances/{instance_id}/upload",
+    openapi_extra={"requestBody": _UPLOAD_BODY},
+    responses=_UPLOAD_RESPONSES,
+)
 def upload_file(
     instance_id: PathId,
     request: Request,

@@ -179,13 +179,13 @@ class CloseBody(BaseModel):
 
 
 @router.get("")
-def list_all(user: CurrentUser, engine: EngineDep) -> AccountsOut:
+def list_ledger_accounts(user: CurrentUser, engine: EngineDep) -> AccountsOut:
     with engine.connect() as conn:
         return AccountsOut(accounts=[facts(conn, v) for v in list_accounts(conn)])
 
 
 @router.post("", status_code=201)
-def create(body: CreateBody, user: CurrentUser, engine: EngineDep) -> AccountWriteOut:
+def create_ledger_account(body: CreateBody, user: CurrentUser, engine: EngineDep) -> AccountWriteOut:
     created = create_account_result(
         engine,
         name=body.name,
@@ -201,7 +201,9 @@ def create(body: CreateBody, user: CurrentUser, engine: EngineDep) -> AccountWri
 
 
 @router.put("/{account_id}")
-def update(account_id: PathId, body: UpdateBody, user: CurrentUser, engine: EngineDep) -> AccountWriteOut:
+def update_ledger_account(
+    account_id: PathId, body: UpdateBody, user: CurrentUser, engine: EngineDep
+) -> AccountWriteOut:
     result = update_account(
         engine,
         account_id,
@@ -217,15 +219,17 @@ def update(account_id: PathId, body: UpdateBody, user: CurrentUser, engine: Engi
 
 
 @router.delete("/{account_id}")
-def delete(account_id: PathId, user: CurrentUser, engine: EngineDep) -> DeleteOut:
+def delete_ledger_account(account_id: PathId, user: CurrentUser, engine: EngineDep) -> DeleteOut:
     return DeleteOut(settle=SettleOut.of(delete_account(engine, account_id)))
 
 
 @router.post("/{account_id}/close")
-def close(account_id: PathId, body: CloseBody, user: CurrentUser, engine: EngineDep) -> AccountWriteOut:
+def close_ledger_account(
+    account_id: PathId, body: CloseBody, user: CurrentUser, engine: EngineDep
+) -> AccountWriteOut:
     return written(engine, account_id, close_account(engine, account_id, body.closed_on))
 
 
 @router.post("/{account_id}/reopen")
-def reopen(account_id: PathId, user: CurrentUser, engine: EngineDep) -> AccountWriteOut:
+def reopen_ledger_account(account_id: PathId, user: CurrentUser, engine: EngineDep) -> AccountWriteOut:
     return written(engine, account_id, reopen_account(engine, account_id))

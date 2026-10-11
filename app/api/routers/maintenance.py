@@ -34,7 +34,7 @@ class SettleOut(BaseModel):
 
 
 @router.get("/check")
-def check(user: CurrentUser, engine: EngineDep) -> CheckOut:
+def integrity_check(user: CurrentUser, engine: EngineDep) -> CheckOut:
     """Every integrity view; each should be empty (at most 50 rows each are listed)."""
     with engine.connect() as conn:
         report = check_integrity(conn)

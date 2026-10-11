@@ -38,7 +38,7 @@ class RevertBody(BaseModel):
 
 
 @router.get("")
-def runs(
+def list_import_runs(
     user: CurrentUser,
     engine: EngineDep,
     account_id: QueryId | None = None,
@@ -52,7 +52,7 @@ def runs(
 
 
 @router.get("/{run_id}")
-def run(run_id: PathId, user: CurrentUser, engine: EngineDep) -> Any:
+def get_import_run(run_id: PathId, user: CurrentUser, engine: EngineDep) -> Any:
     with engine.connect() as conn:
         found = get_run(conn, run_id)
     if found is None:
@@ -61,7 +61,9 @@ def run(run_id: PathId, user: CurrentUser, engine: EngineDep) -> Any:
 
 
 @router.post("/{run_id}/revert")
-def revert(run_id: PathId, user: CurrentUser, engine: EngineDep, body: RevertBody | None = None) -> Any:
+def revert_import_run(
+    run_id: PathId, user: CurrentUser, engine: EngineDep, body: RevertBody | None = None
+) -> Any:
     body = body or RevertBody()
     result = revert_run(
         engine,
