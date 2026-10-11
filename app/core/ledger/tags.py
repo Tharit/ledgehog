@@ -9,7 +9,7 @@ check. A derived entry (one with a `balance_record_id`) takes no tags (I13).
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from types import EllipsisType
 from typing import Any
@@ -17,7 +17,8 @@ from typing import Any
 from sqlalchemy import Connection, Engine, text
 from sqlalchemy.exc import DBAPIError
 
-from app.core.ledger.entries import tag_ids_of
+from app.core.ledger.entries import matching_entry_ids, tag_ids_of
+from app.core.ledger.filters import LedgerFilter
 from app.core.settle.settle import SettleResult, settle
 from app.utils.db.errors import constraint_name
 from app.utils.db.locks import lock_settle_shared, retry_on_deadlock
@@ -285,3 +286,104 @@ def untag_entry(engine: Engine, entry_id: int, tag_id: int) -> EntryTagged:
 
     changed, tag_ids = retry_on_deadlock(run)
     return EntryTagged(entry_id, tag_ids, changed, settle(engine))
+
+
+def _span(conn: Connection, tag_id: int) -> Span:
+    row = conn.execute(
+        text("SELECT starts_on, ends_on, entry_count FROM v_tag_span WHERE tag_id = :i"), {"i": tag_id}
+    ).one_or_none()
+    return Span(None, None, 0) if row is None else Span(row.starts_on, row.ends_on, int(row.entry_count))
+
+
+_INSERT_SELECTED = text(
+    "INSERT INTO ledger_entry_tag (ledger_entry_id, tag_id)"
+    " SELECT id, :t FROM ledger_entry WHERE id = ANY(:ids) AND balance_record_id IS NULL"
+    " ORDER BY id ON CONFLICT DO NOTHING RETURNING ledger_entry_id"
+)
+
+
+def apply_tag(
+    engine: Engine,
+    tag_id: int,
+    flt: LedgerFilter,
+    *,
+    dry_run: bool,
+    expected_count: int | None,
+    all_: bool,
+) -> ApplyResult:
+    """Tag every taggable entry (`balance_record_id IS NULL`) the filter selects.
+
+    One transaction, all-or-nothing, idempotent (an existing membership is left alone). A filter with
+    no dimension selects the whole ledger and is refused unless `all_`. Versions do not move on tag
+    writes, so the set a preview counted cannot be protected by a version check; the confirming
+    request passes the preview's `newly_tagged` as `expected_count`, and a different number inserted
+    rolls everything back with `FilterResultChanged`. `dry_run` runs the same code and rolls it back
+    (so `expected_count` is not checked) and settles nothing.
+    """
+    if flt.is_empty and not all_:
+        raise EmptyFilter()
+    result = retry_on_deadlock(lambda: _apply(engine, tag_id, flt, dry_run, expected_count))
+    return result if dry_run else replace(result, settle=settle(engine))
+
+
+def _apply(
+    engine: Engine, tag_id: int, flt: LedgerFilter, dry_run: bool, expected_count: int | None
+) -> ApplyResult:
+    with engine.connect() as conn:
+        trans = conn.begin()
+        try:
+            lock_settle_shared(conn)
+            if (
+                conn.execute(text("SELECT 1 FROM tag WHERE id = :i FOR KEY SHARE"), {"i": tag_id}).first()
+                is None
+            ):
+                raise TagMissing(tag_id)
+            before = _span(conn, tag_id)
+            selected = matching_entry_ids(conn, flt)
+            inserted = [
+                int(i) for i in conn.execute(_INSERT_SELECTED, {"t": tag_id, "ids": selected}).scalars()
+            ]
+            taggable = int(
+                conn.execute(
+                    text(
+                        "SELECT count(*) FROM ledger_entry WHERE id = ANY(:ids) AND balance_record_id IS NULL"
+                    ),
+                    {"ids": selected},
+                ).scalar_one()
+            )
+            if not dry_run and expected_count is not None and expected_count != len(inserted):
+                raise FilterResultChanged(expected_count, len(inserted))
+            per_account = _per_account(conn, inserted)
+            after = _span(conn, tag_id)
+            tags = tag_ids_of(conn, inserted)
+            result = ApplyResult(
+                selected=len(selected),
+                newly_tagged=len(inserted),
+                already_tagged=taggable - len(inserted),
+                skipped_derived=len(selected) - taggable,
+                per_account=per_account,
+                span_before=before,
+                span_after=after,
+                entries=() if dry_run else tuple((i, tags.get(i, ())) for i in sorted(inserted)),
+            )
+        except BaseException:
+            trans.rollback()
+            raise
+        if dry_run:
+            trans.rollback()
+        else:
+            trans.commit()
+        return result
+
+
+def _per_account(conn: Connection, entry_ids: list[int]) -> dict[int, int]:
+    if not entry_ids:
+        return {}
+    rows = conn.execute(
+        text(
+            "SELECT account_id, count(*) AS n FROM ledger_entry WHERE id = ANY(:ids)"
+            " GROUP BY account_id ORDER BY account_id"
+        ),
+        {"ids": entry_ids},
+    )
+    return {int(r.account_id): int(r.n) for r in rows}
