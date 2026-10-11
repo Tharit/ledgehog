@@ -373,6 +373,257 @@
         "title": "DeleteOut",
         "type": "object"
       },
+      "EntryOut": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "integer"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "booked_on": {
+            "format": "date",
+            "title": "Booked On",
+            "type": "string"
+          },
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "counter_account_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Counter Account Id"
+          },
+          "counterpart_entry_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Counterpart Entry Id"
+          },
+          "counterparty_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Counterparty Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "display_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Text"
+          },
+          "document_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "payee_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payee Id"
+          },
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          },
+          "review_flags": {
+            "items": {
+              "enum": [
+                "unconfirmed",
+                "unclassified",
+                "document_suggested",
+                "waiting",
+                "unmatched_transfer"
+              ],
+              "type": "string"
+            },
+            "title": "Review Flags",
+            "type": "array"
+          },
+          "source_transaction_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Transaction Id"
+          },
+          "tag_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Tag Ids",
+            "type": "array"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "enum": [
+                  "flow",
+                  "transfer",
+                  "opening",
+                  "valuation",
+                  "reconciliation"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "value_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value On"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "account_id",
+          "booked_on",
+          "value_on",
+          "amount",
+          "type",
+          "description",
+          "note",
+          "counterparty_name",
+          "purpose",
+          "display_text",
+          "payee_id",
+          "category_id",
+          "counter_account_id",
+          "counterpart_entry_id",
+          "source_transaction_id",
+          "document_id",
+          "review_flags",
+          "tag_ids"
+        ],
+        "title": "EntryOut",
+        "type": "object"
+      },
+      "EntryPageOut": {
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/EntryOut"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "entries",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "EntryPageOut",
+        "type": "object"
+      },
       "ErrorBody": {
         "description": "The `error` object: the frontend routes on `code`, never on `message`.",
         "properties": {
@@ -2653,7 +2904,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "title": "Response List Entries View"
+                  "$ref": "#/components/schemas/EntryPageOut"
                 }
               }
             },
