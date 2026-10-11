@@ -60,9 +60,7 @@ def _holds_amount(obj: Mapping[str, Any]) -> bool:
     )
 
 
-def to_json(
-    value: Any, *, currency: str | None = None, currencies: Mapping[int, str] | None = None
-) -> Any:
+def to_json(value: Any, *, currency: str | None = None, currencies: Mapping[int, str] | None = None) -> Any:
     """A JSON-ready copy of a result tree: dataclasses become objects (field names as keys),
     dates ISO strings, tuples lists, integer-keyed mappings string-keyed.
 

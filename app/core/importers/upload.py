@@ -23,7 +23,13 @@ from sqlalchemy import Engine, text
 from app.core.accounts import AccountMissing
 from app.core.domain.errors import ContractViolation
 from app.core.importers.instances import InstanceDisabled, InstanceMissing
-from app.core.ingest.run import fail_run, ingest_delivery, preview_delivery, start_run
+from app.core.ingest.run import (
+    fail_run,
+    ingest_delivery,
+    preview_delivery,
+    run_error_text,
+    start_run,
+)
 from app.core.plugins.errors import ImporterError, InvalidProfile, ParseFailed
 from app.core.plugins.importer import DryRunReport, FileImporter, ParsedFile
 from app.core.settle.settle import SettleResult
@@ -111,7 +117,7 @@ def upload(
     except (ImporterError, InvalidProfile) as exc:
         if run_id is None:
             return _failed_dry_run(exc)
-        _fail(engine, run_id, f"{type(exc).__name__}: {exc}")
+        _fail(engine, run_id, run_error_text(exc))
         raise
     except BaseException as exc:  # the run must not stay `running`; no message: it may quote the file
         if run_id is not None:
@@ -195,8 +201,8 @@ def _failed_dry_run(exc: ImporterError | InvalidProfile) -> UploadResult:
 def _fail(engine: Engine, run_id: int, message: str) -> None:
     try:
         fail_run(engine, run_id, message)
-    except Exception:
-        log.exception("could not mark run %s failed", run_id)
+    except Exception as exc:  # the type only: a database error's message quotes statement content
+        log.error("could not mark run %s failed: %s", run_id, type(exc).__name__)
 
 
 def _checked(

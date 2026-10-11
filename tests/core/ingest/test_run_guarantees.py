@@ -32,7 +32,8 @@ def test_late_row_failure_leaves_nothing_and_run_failed(env: Env) -> None:
     assert env.count("source_transaction") == 0 and env.count("ledger_entry") == 0
     r = env.run_row(run_id)
     assert r.status == "failed" and r.covered_through is None and r.finished_at is not None
-    assert "ZZZ" in r.error_text or "instructed" in r.error_text
+    # a database error's message quotes the failing value: only its type is stored
+    assert r.error_text == "IntegrityError: unexpected error"
 
 
 def test_duplicate_source_id_in_one_delivery_fails_the_run(env: Env) -> None:
@@ -194,7 +195,7 @@ def test_a_failing_fail_run_does_not_mask_the_original_error(
     run_id = start_run(env.engine, env.account, "transactions", importer="csv")
     with pytest.raises(ContractViolation):
         ingest_delivery(env.engine, run_id, [row(source_id="a"), row(source_id="a")], covered_through=THROUGH)
-    assert "cannot record the failure" in caplog.text
+    assert "RuntimeError" in caplog.text and "cannot record the failure" not in caplog.text
     assert env.count("source_transaction") == 0
 
 

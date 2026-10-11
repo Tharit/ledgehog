@@ -36,9 +36,7 @@ def bare_amounts(node: Any, path: str = "$") -> list[str]:
             node[k] is None or isinstance(node[k], int) for k in ("before", "after")
         )
         holds = pair or any(
-            (k.endswith("_minor") or k in _AMOUNT_KEYS)
-            and isinstance(v, int)
-            and not isinstance(v, bool)
+            (k.endswith("_minor") or k in _AMOUNT_KEYS) and isinstance(v, int) and not isinstance(v, bool)
             for k, v in node.items()
         )
         if holds and "currency" not in node:

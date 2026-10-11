@@ -28,6 +28,7 @@ from app.core.balance.records import insert_reported_record
 from app.core.domain.errors import ContractViolation, IngestError
 from app.core.ingest.entries import insert_entries
 from app.core.ingest.identity import ContentHash, SourceId, assign_ordinals, canonical_text, identity_of
+from app.core.plugins.errors import ImporterError, InvalidProfile
 from app.core.plugins.importer import IncomingRow
 from app.core.settle.settle import SettleResult, settle
 from app.utils.db.locks import lock_accounts, lock_settle_shared, retry_on_deadlock
@@ -104,12 +105,24 @@ def fail_run(engine: Engine, run_id: int, error: str) -> None:
         )
 
 
+def run_error_text(exc: BaseException) -> str:
+    """What a run stores and the API shows when `exc` ended it.
+
+    The domain errors (the ingest errors, the importer taxonomy) state a rule and never quote
+    file content, so their message is kept. Anything else (a database error embeds the failing
+    statement's parameters and the offending key) is stored as its type and a fixed message.
+    """
+    if isinstance(exc, IngestError | ImporterError | InvalidProfile):
+        return f"{type(exc).__name__}: {exc}"
+    return f"{type(exc).__name__}: unexpected error"
+
+
 def _fail_run_quietly(engine: Engine, run_id: int, error: str) -> None:
     """`fail_run` that never raises: the caller is about to re-raise the original error."""
     try:
         fail_run(engine, run_id, error)
-    except Exception:
-        log.exception("could not mark run %s failed", run_id)
+    except Exception as exc:  # the type only: a database error's message quotes statement content
+        log.error("could not mark run %s failed: %s", run_id, type(exc).__name__)
 
 
 def ingest_delivery(
@@ -153,7 +166,7 @@ def ingest_delivery(
 
         counts = retry_on_deadlock(attempt)
     except BaseException as exc:  # cancellation and interrupts too: the run must not stay `running`
-        _fail_run_quietly(engine, run_id, f"{type(exc).__name__}: {exc}")
+        _fail_run_quietly(engine, run_id, run_error_text(exc))
         raise
     settled = settle(engine)  # never raises: a failure comes back on the result (architecture §5.2)
     return RunResult(
