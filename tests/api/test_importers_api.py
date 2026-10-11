@@ -28,6 +28,7 @@ ROUTES = [
     ("DELETE", f"{BASE}/1"),
     ("POST", f"{BASE}/1/links"),
     ("DELETE", f"{BASE}/1/links/1"),
+    ("POST", f"{BASE}/1/upload"),
 ]
 
 

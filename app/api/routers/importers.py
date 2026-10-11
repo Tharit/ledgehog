@@ -11,15 +11,19 @@ from __future__ import annotations
 import dataclasses
 from collections.abc import Mapping
 from datetime import date, datetime
-from typing import Any
+from email.message import Message
+from email.parser import BytesHeaderParser
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.errors import ApiError, map_error
 from app.api.session import CurrentUser, EngineDep
 from app.core.accounts import AccountMissing
+from app.core.domain.errors import ContractViolation
 from app.core.importers import instances as inst
+from app.core.importers import upload as up
 from app.core.importers.instances import InstanceView
 from app.core.plugins.errors import (
     AuthRejected,
@@ -32,6 +36,7 @@ from app.core.plugins.errors import (
     SourceUnavailable,
 )
 from app.core.plugins.importer import FileImporter
+from app.utils import clock
 
 router = APIRouter(prefix="/api/importers")
 
@@ -79,6 +84,10 @@ map_error(inst.NotAnAccountSource, 409, "not_an_account_source")
 map_error(inst.AccountClosed, 409, "account_closed")
 map_error(inst.ExternalRefTaken, 409, "external_ref_taken")
 map_error(inst.AlreadyLinked, 409, "already_linked")
+map_error(up.NotAFileSource, 409, "not_a_file_source")
+map_error(up.AccountClosed, 409, "account_closed")
+map_error(up.AccountNotLinked, 409, "account_not_linked")
+map_error(ContractViolation, 422, "contract_violation", details=lambda exc: {"rule": exc.rule})
 map_error(InvalidProfile, 422, "invalid_profile", details=_setting_of)
 # the importer taxonomy (§5.5): the code names the class, `details.retryable` drives the UI
 map_error(ImporterError, 422, "importer_error", details=_importer_details)
@@ -198,3 +207,116 @@ def link_account(instance_id: int, body: LinkAccount, user: CurrentUser, engine:
 @router.delete("/instances/{instance_id}/links/{account_id}")
 def unlink_account(instance_id: int, account_id: int, user: CurrentUser, engine: EngineDep) -> Any:
     return {"settle": to_json(inst.unlink_account(engine, instance_id, account_id))}
+
+
+# ---- upload --------------------------------------------------------------------------------
+
+MAX_FILE_BYTES = 10 * 1024 * 1024
+_FORM_SLACK = 64 * 1024  # what the other form fields and the multipart framing may add
+_FIELDS = frozenset({"file", "account_id", "dry_run"})
+
+
+def _too_large() -> ApiError:
+    return ApiError(
+        413, "file_too_large", f"the file is larger than the limit of {MAX_FILE_BYTES} bytes (10 MiB)"
+    )
+
+
+async def _read_body(request: Request) -> bytes:
+    """The request body, read with a cap: an oversized upload is refused as it streams in."""
+    cap = MAX_FILE_BYTES + _FORM_SLACK
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > cap:
+        raise _too_large()
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > cap:
+            raise _too_large()
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+def _invalid(field: str, message: str, kind: str = "value_error") -> ApiError:
+    detail = [{"location": ["body", field], "message": message, "type": kind}]
+    return ApiError(422, "validation_error", "The request is not valid.", detail)
+
+
+def _form_parts(content_type: str, body: bytes) -> dict[str, tuple[bytes, str | None]]:
+    """The parts of a multipart/form-data body: field name -> (bytes, filename).
+
+    The standard library only: no form-parsing dependency is needed for three fields.
+    """
+    head = Message()
+    head["content-type"] = content_type
+    boundary = head.get_param("boundary")
+    if head.get_content_type() != "multipart/form-data" or not isinstance(boundary, str) or not boundary:
+        raise _invalid("body", "send the upload as multipart/form-data", "type_error")
+    parts: dict[str, tuple[bytes, str | None]] = {}
+    delimiter = b"--" + boundary.encode()
+    for piece in body.split(delimiter)[1:]:
+        if piece.startswith(b"--"):  # the closing delimiter
+            break
+        piece = piece.removeprefix(b"\r\n").removesuffix(b"\r\n")
+        raw_head, sep, content = piece.partition(b"\r\n\r\n")
+        if not sep:
+            raise _invalid("body", "malformed multipart body", "type_error")
+        headers = BytesHeaderParser().parsebytes(raw_head)
+        name = headers.get_param("name", header="content-disposition")
+        if not isinstance(name, str) or not name:
+            raise _invalid("body", "a form part has no name", "type_error")
+        if name in parts:
+            raise _invalid(name, "given twice", "value_error")
+        filename = headers.get_filename()
+        parts[name] = (content, filename)
+    return parts
+
+
+def _flag(value: str) -> bool:
+    low = value.strip().lower()
+    if low in ("true", "1"):
+        return True
+    if low in ("false", "0", ""):
+        return False
+    raise _invalid("dry_run", "must be true or false", "bool_parsing")
+
+
+@router.post("/instances/{instance_id}/upload")
+def upload_file(
+    instance_id: int,
+    request: Request,
+    user: CurrentUser,
+    engine: EngineDep,
+    raw: Annotated[bytes, Depends(_read_body)],
+) -> Any:
+    """Upload one export for one linked account. `dry_run` parses and previews, writes nothing."""
+    parts = _form_parts(request.headers.get("content-type", ""), raw)
+    for name in parts:
+        if name not in _FIELDS:
+            raise _invalid(name, "unknown field", "extra_forbidden")
+    if "file" not in parts:
+        raise _invalid("file", "the export file is required", "missing")
+    if "account_id" not in parts:
+        raise _invalid("account_id", "required", "missing")
+    data = parts["file"][0]
+    if len(data) > MAX_FILE_BYTES:
+        raise _too_large()
+    try:
+        account_id = int(parts["account_id"][0].decode("ascii"))
+    except (UnicodeDecodeError, ValueError):
+        raise _invalid("account_id", "must be an integer", "int_parsing") from None
+    dry_run = _flag(parts["dry_run"][0].decode("ascii", "replace")) if "dry_run" in parts else False
+
+    importer = importer_for(request, _view(engine, instance_id).importer)
+    result = up.upload(
+        engine,
+        instance_id=instance_id,
+        account_id=account_id,
+        data=data,
+        importer=importer,
+        user_id=user.id,
+        today=clock.today(request.app.state.config.timezone),
+        dry_run=dry_run,
+    )
+    return to_json(result)
