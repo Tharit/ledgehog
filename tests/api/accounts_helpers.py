@@ -35,11 +35,14 @@ def seed_difference(engine: Engine, account_id: int) -> int:
     seed_manual(engine, account_id, date(2026, 1, 31), 10_000)
     with engine.begin() as conn:
         run = make_run(conn, account_id, covered_through=date(2026, 3, 1))
-        make_entry(conn, make_source(conn, account_id, run_id=run, amount=-1_000, booked_on=date(2026, 2, 10)))
+        make_entry(
+            conn, make_source(conn, account_id, run_id=run, amount=-1_000, booked_on=date(2026, 2, 10))
+        )
         record = int(
             conn.execute(
                 text(
-                    "INSERT INTO balance_record (account_id, kind, import_run_id, balance, currency, balance_on)"
+                    "INSERT INTO balance_record"
+                    " (account_id, kind, import_run_id, balance, currency, balance_on)"
                     " VALUES (:a, 'reported', :r, 8_000, 'EUR', DATE '2026-03-01') RETURNING id"
                 ),
                 {"a": account_id, "r": run},

@@ -99,9 +99,13 @@ def test_create_answers_201_with_the_account_and_creates_nothing_else(
 
 def test_create_refusals(anna: TestClient, api_engine: Engine) -> None:
     seed_account(api_engine, external_ref="dup")
-    e = assert_envelope(anna.post("/api/ledger/accounts", json={**NEW, "external_ref": "DUP"}), 409, "conflict")
+    e = assert_envelope(
+        anna.post("/api/ledger/accounts", json={**NEW, "external_ref": "DUP"}), 409, "conflict"
+    )
     assert e["details"]["reason"] == "duplicate_external_ref"
-    e = assert_envelope(anna.post("/api/ledger/accounts", json={**NEW, "currency": "ZZZ"}), 422, "validation_error")
+    e = assert_envelope(
+        anna.post("/api/ledger/accounts", json={**NEW, "currency": "ZZZ"}), 422, "validation_error"
+    )
     assert e["details"]["reason"] == "unknown_currency"
     assert len(q(api_engine, "SELECT 1 FROM account")) == 1
 
@@ -135,7 +139,11 @@ def test_update_changes_what_is_given_and_returns_the_account(anna: TestClient, 
     assert r.status_code == 200
     acc = r.json()["account"]
     assert (acc["name"], acc["sort_order"], acc["note"], acc["external_ref"], acc["kind"]) == (
-        "Main", 9, "x", "ab12", "savings",
+        "Main",
+        9,
+        "x",
+        "ab12",
+        "savings",
     )
     assert r.json()["settle"]["error"] is None
 
@@ -144,10 +152,14 @@ def test_update_can_clear_the_external_ref_and_leaves_it_alone_when_absent(
     anna: TestClient, api_engine: Engine
 ) -> None:
     aid = seed_account(api_engine, external_ref="keep")
-    assert anna.put(f"/api/ledger/accounts/{aid}", json={"name": "N"}).json()["account"]["external_ref"] == "keep"
-    assert anna.put(f"/api/ledger/accounts/{aid}", json={"external_ref": None}).json()["account"][
-        "external_ref"
-    ] is None
+    assert (
+        anna.put(f"/api/ledger/accounts/{aid}", json={"name": "N"}).json()["account"]["external_ref"]
+        == "keep"
+    )
+    assert (
+        anna.put(f"/api/ledger/accounts/{aid}", json={"external_ref": None}).json()["account"]["external_ref"]
+        is None
+    )
 
 
 def test_update_refusals(anna: TestClient, api_engine: Engine) -> None:
@@ -160,7 +172,9 @@ def test_update_refusals(anna: TestClient, api_engine: Engine) -> None:
     assert_envelope(anna.put("/api/ledger/accounts/99999", json={"name": "x"}), 404, "not_found")
 
 
-@pytest.mark.parametrize("body", [{"currency": "USD"}, {"closed_on": "2026-01-01"}, {"sort_order": "x"}, {"kind": "nope"}])
+@pytest.mark.parametrize(
+    "body", [{"currency": "USD"}, {"closed_on": "2026-01-01"}, {"sort_order": "x"}, {"kind": "nope"}]
+)
 def test_update_rejects_currency_and_unknown_fields_at_validation(
     anna: TestClient, api_engine: Engine, body: dict
 ) -> None:
@@ -204,9 +218,7 @@ def _with_link(engine: Engine, aid: int) -> None:
         link_account(conn, aid, make_instance(conn))
 
 
-@pytest.mark.parametrize(
-    "dependent", [_with_balance_record, _with_source_and_entry, _with_run, _with_link]
-)
+@pytest.mark.parametrize("dependent", [_with_balance_record, _with_source_and_entry, _with_run, _with_link])
 def test_delete_is_refused_for_each_kind_of_dependent_and_suggests_closing(
     anna: TestClient, api_engine: Engine, dependent
 ) -> None:
@@ -227,7 +239,7 @@ def test_close_and_reopen_toggle_the_account_and_synced(anna: TestClient, api_en
         from tests.invariants.helpers import link_account
 
         link_account(conn, aid, make_instance(conn))
-    assert anna.post("/api/ledger/accounts/%d/reopen" % aid).json()["account"]["synced"] is True
+    assert anna.post(f"/api/ledger/accounts/{aid}/reopen").json()["account"]["synced"] is True
     r = anna.post(f"/api/ledger/accounts/{aid}/close", json={"closed_on": "2026-02-01"})
     assert r.status_code == 200
     assert r.json()["account"]["closed_on"] == "2026-02-01" and r.json()["account"]["synced"] is False
@@ -237,9 +249,16 @@ def test_close_and_reopen_toggle_the_account_and_synced(anna: TestClient, api_en
 
 def test_close_and_reopen_refusals(anna: TestClient, api_engine: Engine) -> None:
     aid = seed_account(api_engine)
-    assert_envelope(anna.post("/api/ledger/accounts/9999/close", json={"closed_on": "2026-02-01"}), 404, "not_found")
+    assert_envelope(
+        anna.post("/api/ledger/accounts/9999/close", json={"closed_on": "2026-02-01"}), 404, "not_found"
+    )
     assert_envelope(anna.post("/api/ledger/accounts/9999/reopen"), 404, "not_found")
-    for body in ({}, {"closed_on": "2026-13-45"}, {"closed_on": "yesterday"}, {"closed_on": "2026-02-01", "x": 1}):
+    for body in (
+        {},
+        {"closed_on": "2026-13-45"},
+        {"closed_on": "yesterday"},
+        {"closed_on": "2026-02-01", "x": 1},
+    ):
         assert_envelope(anna.post(f"/api/ledger/accounts/{aid}/close", json=body), 422, "validation_error")
 
 
@@ -250,9 +269,7 @@ def test_each_write_settles_once_and_the_result_is_in_the_body(
     anna: TestClient, api_engine: Engine, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     calls: list[int] = []
-    monkeypatch.setattr(
-        core_accounts, "settle", lambda engine: calls.append(1) or SettleResult((7, 8), None)
-    )
+    monkeypatch.setattr(core_accounts, "settle", lambda engine: calls.append(1) or SettleResult((7, 8), None))
     aid = seed_account(api_engine)
     r = anna.put(f"/api/ledger/accounts/{aid}", json={"external_ref": "zz"})
     assert r.json()["settle"] == {"touched_entry_ids": [7, 8], "error": None} and len(calls) == 1
@@ -286,7 +303,9 @@ ROUTES = [
 
 @pytest.mark.parametrize(("method", "path", "body"), ROUTES)
 def test_every_account_endpoint_requires_a_session(client: TestClient, method: str, path: str, body) -> None:
-    assert_envelope(getattr(client, method)(path, **({"json": body} if body is not None else {})), 401, "unauthenticated")
+    assert_envelope(
+        getattr(client, method)(path, **({"json": body} if body is not None else {})), 401, "unauthenticated"
+    )
 
 
 def test_the_ledger_stays_clean_through_these_operations(anna: TestClient, api_engine: Engine) -> None:
