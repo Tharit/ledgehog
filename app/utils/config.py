@@ -80,6 +80,7 @@ class Config:
     document_window_days: int
     users: tuple[UserConfig, ...]
     model: ModelConfig | None
+    expose_openapi: bool = False  # development only: serve /api/openapi.json
 
     def with_database(self, name: str) -> Config:
         """A copy pointing at another database (test and dev contexts, architecture §9)."""
@@ -120,6 +121,15 @@ class _Reader:
             bound = f"between {lo} and {hi}" if hi is not None else f"at least {lo}"
             raise ConfigError(var, f"must be {bound}")
         return n
+
+    def boolean(self, var: str, default: bool) -> bool:
+        raw = self.env.get(var)
+        if raw is None:
+            return default
+        low = raw.lower()
+        if low not in ("true", "false"):
+            raise ConfigError(var, "must be true or false")
+        return low == "true"
 
     def secret(self, var: str, *, required: bool = True) -> Secret | None:
         plain, file_var = self.env.get(var), f"{var}_FILE"
@@ -199,4 +209,5 @@ class _Reader:
             document_window_days=self.integer("DOCUMENT_WINDOW_DAYS", 7, 0),
             users=self.users(),
             model=self.model(),
+            expose_openapi=self.boolean("EXPOSE_OPENAPI", False),
         )

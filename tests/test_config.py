@@ -201,3 +201,23 @@ def test_only_config_module_reads_the_environment():
             if isinstance(n, ast.Attribute) and n.attr in {"environ", "getenv", "environb"}:
                 offenders.append(str(p.relative_to(app)))
     assert offenders == []
+
+
+def test_expose_openapi_defaults_off():
+    assert load().expose_openapi is False
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [("true", True), ("TRUE", True), ("True", True), ("false", False), ("False", False), ("FALSE", False)],
+)
+def test_expose_openapi_reads_a_strict_boolean(raw, expected):
+    assert load(EXPOSE_OPENAPI=raw).expose_openapi is expected
+
+
+@pytest.mark.parametrize("raw", ["1", "0", "yes", "no", "on", "", " true", "tru"])
+def test_expose_openapi_rejects_anything_else_naming_the_variable(raw):
+    with pytest.raises(ConfigError) as err:
+        load(EXPOSE_OPENAPI=raw)
+    assert err.value.variable == "EXPOSE_OPENAPI"
+    assert "EXPOSE_OPENAPI" in str(err.value)
