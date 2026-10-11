@@ -367,7 +367,7 @@ CREATE UNIQUE INDEX ux_importer_instance_ext
 CREATE TABLE account_source (
     account_id           bigint NOT NULL REFERENCES account(id) ON DELETE CASCADE,
     importer_instance_id bigint NOT NULL REFERENCES importer_instance(id) ON DELETE CASCADE,
-    external_ref         text   NOT NULL,   -- this account's id at that login
+    external_ref         text   NOT NULL,   -- this account's id at that login; for a file importer, which has no login, acct-<account id>, read by nothing
     -- No resume cursor: where a fetch starts is derived when the run starts —
     -- from synced_through minus the overlap, or, without coverage, after the
     -- account's latest entry (spec §5.4).
@@ -414,11 +414,13 @@ CREATE TABLE import_run (
     -- reads it.
     covered_from         date,
     covered_through      date,
-    -- ingest-reported facts about the run: counts (inserted, skipped by
-    -- identity, inserted as duplicates), refused currencies, and the
-    -- unexplained differences the run caused or changed, for the run summary.
-    -- Reported balances are NOT here: they are balance_record rows. Spec
-    -- §5.2, §5.3, §5.10.
+    -- ingest-reported facts about the run, for the run summary: counts (inserted,
+    -- skipped by identity, inserted as duplicates), the importer's own counts
+    -- (`importer`: zero bookings it dropped, a statement payment it did not emit),
+    -- the balance record the run wrote, and the unexplained difference before and
+    -- after it, with the reported records since the sum was last zero. A breach
+    -- of the importer's contract is not a statistic: the run fails (spec §5.1).
+    -- Reported balances themselves are balance_record rows. Spec §5.2, §5.3, §5.10.
     stats                jsonb NOT NULL DEFAULT '{}'::jsonb,
     started_by           bigint REFERENCES app_user(id) ON DELETE SET NULL,
     reverted_at          timestamptz,
