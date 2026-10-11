@@ -13,7 +13,12 @@
 		"lint": "prettier --check . && eslint .",
 		"format": "prettier --write .",
 		"test:unit": "vitest",
-		"test": "npm run test:unit -- --run"
+		"test": "npm run test:unit -- --run",
+		"gen:api": "openapi-typescript openapi.json -o src/lib/types/api.d.ts",
+		"gen:api:check": "openapi-typescript openapi.json -o src/lib/types/api.d.ts && git diff --exit-code src/lib/types/api.d.ts"
+	},
+	"engines": {
+		"node": ">=22"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
