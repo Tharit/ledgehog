@@ -5,6 +5,7 @@
 	import Notice from '#lib/components/common/notice.svelte';
 	import FilterBar from '#lib/components/ledger/filter-bar.svelte';
 	import LedgerTable from '#lib/components/ledger/ledger-table.svelte';
+	import TagAll from '#lib/components/ledger/tag-all.svelte';
 	import {
 		emptyFilter,
 		fromSearchParams,
@@ -57,14 +58,30 @@
 		bind:searchEl
 		ondown={() => table?.enterList()}
 		onchange={show}
-	/>
+	>
+		{#snippet trailing()}
+			<TagAll
+				flow={ledger.tagAll}
+				lookups={ledger.lookups}
+				locale={ledger.locale}
+				total={ledger.total}
+				reason={ledger.tagAllReason}
+			/>
+		{/snippet}
+	</FilterBar>
 
-	{#if ledger.lookupsFailed.length > 0}
-		<Notice>
-			Some lists could not be loaded ({ledger.lookupsFailed.join(', ')}); their names may be missing
-			below.
-		</Notice>
-	{/if}
+	<!-- one reserved line, so a notice appearing never moves the rows (patterns §7) -->
+	<div class="flex min-h-5 flex-col gap-1">
+		{#if ledger.notice}
+			<Notice role={ledger.notice.error ? 'alert' : 'status'}>{ledger.notice.text}</Notice>
+		{/if}
+		{#if ledger.lookupsFailed.length > 0}
+			<Notice>
+				Some lists could not be loaded ({ledger.lookupsFailed.join(', ')}); their names may be
+				missing below.
+			</Notice>
+		{/if}
+	</div>
 
 	<LedgerTable
 		bind:this={table}
@@ -81,5 +98,9 @@
 		onretry={() => ledger.reload()}
 		onloadmore={() => ledger.loadMore()}
 		onsearch={focusSearch}
+		changedIds={ledger.changedIds}
+		ontoggletag={(entryId, tagId, tagged) => ledger.setEntryTag(entryId, tagId, tagged)}
+		oncreatetag={(entryId, name) => ledger.createTagFor(entryId, name)}
+		onnotice={(text) => ledger.notify(text)}
 	/>
 </div>

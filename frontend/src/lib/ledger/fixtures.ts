@@ -1,5 +1,5 @@
 // Test fixtures for the ledger: whole API objects with sensible defaults.
-import type { Account, Category, Entry, Payee, Tag } from '#lib/types/domain.js';
+import type { Account, Category, Entry, Payee, Tag, TagApplyOut } from '#lib/types/domain.js';
 
 export function entry(over: Partial<Entry> = {}): Entry {
 	return {
@@ -74,6 +74,23 @@ export function tag(over: Partial<Tag> = {}): Tag {
 		starts_on: null,
 		ends_on: null,
 		entry_count: 0,
+		...over
+	};
+}
+
+/** A tag preview (dry run) by default: 3 newly tagged, 2 already carry it. */
+export function applyOut(over: Partial<TagApplyOut> = {}): TagApplyOut {
+	return {
+		dry_run: true,
+		selected: 5,
+		newly_tagged: 3,
+		already_tagged: 2,
+		skipped_derived: 0,
+		per_account: [{ account_id: 1, newly_tagged: 3 }],
+		span_before: { starts_on: null, ends_on: null, entry_count: 0 },
+		span_after: { starts_on: '2026-10-01', ends_on: '2026-10-09', entry_count: 3 },
+		entries: [],
+		settle: null,
 		...over
 	};
 }

@@ -1,7 +1,4 @@
 <script lang="ts" module>
-	// Derived entries (spec §3.9) take a fixed icon and their type's name in place of a category.
-	const DERIVED = new Set(['opening', 'valuation', 'reconciliation']);
-
 	/** The tags a row shows before it says "+N". */
 	export const VISIBLE_TAGS = 2;
 </script>
@@ -15,7 +12,7 @@
 	import ReviewBadge from '#lib/components/common/review-badge.svelte';
 	import TagChip from '#lib/components/common/tag-chip.svelte';
 	import type { Lookups } from '#lib/ledger/lookups.js';
-	import { ENTRY_TYPE_INFO } from '#lib/ledger/types.js';
+	import { ENTRY_TYPE_INFO, isDerivedType } from '#lib/ledger/types.js';
 	import { resolveAccount, resolveCategory, resolveTag } from '#lib/theme/resolve.js';
 	import type { Entry } from '#lib/types/domain.js';
 	import { cn } from '#lib/utils.js';
@@ -29,6 +26,7 @@
 		locale = 'en',
 		showCurrency = false,
 		cursor = false,
+		changed = false,
 		onselect
 	}: {
 		entry: Entry;
@@ -36,12 +34,13 @@
 		locale?: string;
 		showCurrency?: boolean;
 		cursor?: boolean;
+		/** the user's last action took this row out of the filter; it stays until a refresh (§7) */
+		changed?: boolean;
 		onselect?: () => void;
 	} = $props();
 
-	const fixed = $derived(
-		entry.type && DERIVED.has(entry.type) ? ENTRY_TYPE_INFO[entry.type] : undefined
-	);
+	// Derived entries (spec §3.9) take a fixed icon and their type's name in place of a category.
+	const fixed = $derived(isDerivedType(entry.type) ? ENTRY_TYPE_INFO[entry.type!] : undefined);
 	const account = $derived(lookups.accounts.get(entry.account_id));
 	const counterAccount = $derived(
 		entry.counter_account_id === null ? undefined : lookups.accounts.get(entry.counter_account_id)
@@ -68,6 +67,8 @@
 	data-entry-id={entry.id}
 	aria-selected={cursor}
 	data-cursor={cursor || undefined}
+	data-changed={changed || undefined}
+	title={changed ? 'changed by your last action' : undefined}
 	class={cn(
 		ROW_GRID,
 		'relative h-8 scroll-mt-10 border-b border-border px-3 text-[13px]',
@@ -76,8 +77,14 @@
 	style:grid-template-columns={GRID_TEMPLATE}
 	onclick={onselect}
 >
+	{#if changed}
+		<span class="absolute inset-y-0 left-0 w-0.5 bg-dim-ochre" aria-hidden="true"></span>
+	{/if}
 	{#if cursor}
-		<span class="absolute inset-y-0 left-0 w-0.5 bg-primary" aria-hidden="true"></span>
+		<span
+			class={cn('absolute inset-y-0 w-0.5 bg-primary', changed ? 'left-0.5' : 'left-0')}
+			aria-hidden="true"
+		></span>
 	{/if}
 
 	{#each COLUMNS as column (column.id)}

@@ -1,11 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
 	ApiError,
+	createTag,
 	listAccounts,
 	listCategories,
 	listEntries,
 	listPayees,
-	listTags
+	listTags,
+	tagEntry,
+	untagEntry
 } from '#lib/api/index.js';
 import { account, category, entry, tag } from '#lib/ledger/fixtures.js';
 import { emptyFilter } from '#lib/ledger/filter.js';
@@ -18,7 +21,10 @@ vi.mock('#lib/api/index.js', async (importOriginal) => ({
 	listAccounts: vi.fn(),
 	listCategories: vi.fn(),
 	listPayees: vi.fn(),
-	listTags: vi.fn()
+	listTags: vi.fn(),
+	createTag: vi.fn(),
+	tagEntry: vi.fn(),
+	untagEntry: vi.fn()
 }));
 
 function page(ids: number[], total: number, offset = 0) {
@@ -267,5 +273,159 @@ describe('LedgerStore: the session', () => {
 		expect(store.locale).toBe('de');
 		expect(store.baseCurrency).toBe('CHF');
 		expect(store.today).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+	});
+});
+
+describe('LedgerStore: tagging one entry', () => {
+	async function loaded(tagFilter: number[] = []) {
+		vi.mocked(listEntries).mockResolvedValue({
+			entries: [entry({ id: 3 }), entry({ id: 2, tag_ids: [7] }), entry({ id: 1 })],
+			total: 3,
+			limit: 100,
+			offset: 0
+		});
+		const store = new LedgerStore();
+		store.applyFilter({ ...emptyFilter(), tag_id: tagFilter });
+		await flush();
+		return store;
+	}
+	const answer = (id: number, tag_ids: number[], error: string | null = null) => ({
+		entry: { id, tag_ids },
+		changed: true,
+		settle: { error, touched_entry_ids: [] }
+	});
+
+	it('adds a tag with PUT and patches the row in place from the answer', async () => {
+		const store = await loaded();
+		vi.mocked(tagEntry).mockResolvedValue(answer(3, [7, 8]));
+
+		expect(await store.setEntryTag(3, 8, true)).toBe(true);
+
+		expect(tagEntry).toHaveBeenCalledWith(3, 8);
+		expect(store.entries.map((e) => e.id)).toEqual([3, 2, 1]);
+		expect(store.entries[0].tag_ids).toEqual([7, 8]);
+		expect(store.notice).toBeNull();
+	});
+
+	it('removes a tag with DELETE', async () => {
+		const store = await loaded();
+		vi.mocked(untagEntry).mockResolvedValue(answer(2, []));
+
+		await store.setEntryTag(2, 7, false);
+
+		expect(untagEntry).toHaveBeenCalledWith(2, 7);
+		expect(store.entries[1].tag_ids).toEqual([]);
+	});
+
+	it('keeps a row that an active tag filter no longer matches, and marks it', async () => {
+		const store = await loaded([7]);
+		vi.mocked(untagEntry).mockResolvedValue(answer(2, []));
+
+		await store.setEntryTag(2, 7, false);
+
+		expect(store.entries.map((e) => e.id)).toEqual([3, 2, 1]);
+		expect([...store.changedIds]).toEqual([2]);
+		expect(store.total).toBe(3);
+	});
+
+	it('marks nothing without a tag filter, and the marks end with a reload', async () => {
+		const store = await loaded();
+		vi.mocked(untagEntry).mockResolvedValue(answer(2, []));
+		await store.setEntryTag(2, 7, false);
+		expect(store.changedIds.size).toBe(0);
+
+		const tagged = await loaded([7]);
+		await tagged.setEntryTag(2, 7, false);
+		await tagged.reload();
+		await flush();
+		expect(tagged.changedIds.size).toBe(0);
+	});
+
+	it('says in a quiet notice when derived figures could not be recomputed', async () => {
+		const store = await loaded();
+		vi.mocked(tagEntry).mockResolvedValue(answer(3, [8], 'boom'));
+
+		await store.setEntryTag(3, 8, true);
+
+		expect(store.entries[0].tag_ids).toEqual([8]);
+		expect(store.notice).toMatchObject({ error: false });
+		expect(store.notice?.text).toMatch(/stale/);
+	});
+
+	it('answers a derived entry, a vanished entry and a network failure in a notice, rows untouched', async () => {
+		const store = await loaded();
+		const before = store.entries;
+
+		vi.mocked(tagEntry).mockRejectedValueOnce(
+			new ApiError(409, 'conflict', 'x', { reason: 'derived_entry' })
+		);
+		expect(await store.setEntryTag(3, 8, true)).toBe(false);
+		expect(store.notice).toEqual({ text: 'Derived entries cannot be tagged', error: true });
+
+		vi.mocked(tagEntry).mockRejectedValueOnce(new ApiError(404, 'not_found', 'x'));
+		await store.setEntryTag(3, 8, true);
+		expect(store.notice?.text).toMatch(/no longer exists.*Refresh/);
+
+		vi.mocked(tagEntry).mockRejectedValueOnce(new Error('offline'));
+		await store.setEntryTag(3, 8, true);
+		expect(store.notice?.text).toMatch(/could not be reached/);
+		expect(store.entries).toBe(before);
+	});
+
+	it('creates a tag, adds it to the lookups without a reload, and tags the entry', async () => {
+		const store = await loaded();
+		vi.mocked(createTag).mockResolvedValue({
+			tag: tag({ id: 40, name: 'Holiday', color: null }),
+			settle: { error: null, touched_entry_ids: [] }
+		});
+		vi.mocked(tagEntry).mockResolvedValue(answer(3, [40]));
+
+		expect(await store.createTagFor(3, 'Holiday')).toBe(true);
+
+		expect(createTag).toHaveBeenCalledWith('Holiday');
+		expect(store.lookups.tags.get(40)?.name).toBe('Holiday');
+		expect(store.entries[0].tag_ids).toEqual([40]);
+		expect(listTags).not.toHaveBeenCalled();
+	});
+
+	it('does not tag when the tag could not be created', async () => {
+		const store = await loaded();
+		vi.mocked(createTag).mockRejectedValue(
+			new ApiError(409, 'conflict', 'x', { reason: 'duplicate_name' })
+		);
+
+		expect(await store.createTagFor(3, 'Holiday')).toBe(false);
+
+		expect(tagEntry).not.toHaveBeenCalled();
+		expect(store.notice?.text).toMatch(/already exists/);
+	});
+});
+
+describe('LedgerStore: Tag all', () => {
+	it('is available only for a loaded list with a filter that matches something', async () => {
+		vi.mocked(listEntries).mockResolvedValue(page([2, 1], 2));
+		const store = new LedgerStore();
+		expect(store.tagAllReason).toMatch(/loading/);
+
+		store.applyFilter(emptyFilter());
+		await flush();
+		expect(store.tagAllReason).toBe('Narrow the filter first');
+
+		store.applyFilter({ ...emptyFilter(), q: '   ' });
+		expect(store.tagAllReason).toMatch(/loading|Narrow/);
+
+		store.applyFilter({ ...emptyFilter(), account_id: [1] });
+		await flush();
+		expect(store.tagAllReason).toBeNull();
+	});
+
+	it('is not available when nothing matches', async () => {
+		vi.mocked(listEntries).mockResolvedValue(page([], 0));
+		const store = new LedgerStore();
+
+		store.applyFilter({ ...emptyFilter(), account_id: [1] });
+		await flush();
+
+		expect(store.tagAllReason).toBe('No entries to tag');
 	});
 });

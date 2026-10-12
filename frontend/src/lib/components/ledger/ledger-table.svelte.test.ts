@@ -1,12 +1,15 @@
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { describe, expect, it, vi } from 'vitest';
-import { account, entry } from '#lib/ledger/fixtures.js';
+import { account, entry, tag } from '#lib/ledger/fixtures.js';
 import { buildLookups } from '#lib/ledger/lookups.js';
 import { COLUMNS, GRID_TEMPLATE } from './columns.js';
 import LedgerTable from './ledger-table.svelte';
 
-const lookups = buildLookups({ accounts: [account(), account({ id: 2, name: 'Cash' })] });
+const lookups = buildLookups({
+	accounts: [account(), account({ id: 2, name: 'Cash' })],
+	tags: [tag({ id: 30, name: 'Lisbon' }), tag({ id: 31, name: 'Tax' })]
+});
 const three = [
 	entry({ id: 3, display_text: 'Third' }),
 	entry({ id: 2, display_text: 'Second' }),
@@ -354,6 +357,16 @@ describe('LedgerTable: the keyboard', () => {
 		expect(cursorTexts()).toHaveLength(0);
 	});
 
+	it('lists the t key in the help', async () => {
+		table();
+
+		await key('?');
+
+		const help = screen.getByRole('region', { name: 'Keyboard shortcuts' });
+		expect(help).toHaveTextContent('t');
+		expect(help).toHaveTextContent('Tag the row');
+	});
+
 	it('Esc leaves a focused control', async () => {
 		table({ total: 10, onloadmore: vi.fn() });
 		const button = screen.getByRole('button', { name: 'Load more' });
@@ -371,5 +384,201 @@ describe('LedgerTable: the keyboard', () => {
 		await key('j', { ctrlKey: true });
 
 		expect(cursorTexts()).toHaveLength(0);
+	});
+});
+
+describe('LedgerTable: the tag picker (t)', () => {
+	const toggle = () => vi.fn(async () => true);
+
+	async function picker(props = {}) {
+		const result = table({
+			ontoggletag: toggle(),
+			oncreatetag: toggle(),
+			onnotice: vi.fn(),
+			...props
+		});
+		await key('j');
+		await key('t');
+		return result;
+	}
+
+	const search = () => screen.queryByLabelText('Search tags');
+
+	it('opens on t for the row under the cursor, listing the tags', async () => {
+		await picker();
+
+		expect(await screen.findByLabelText('Search tags')).toBeInTheDocument();
+		expect(screen.getByRole('option', { name: /Lisbon/ })).toBeInTheDocument();
+		expect(screen.getByRole('option', { name: /Tax/ })).toBeInTheDocument();
+	});
+
+	it('does nothing without a cursor row', async () => {
+		table({ ontoggletag: toggle() });
+
+		await key('t');
+
+		expect(search()).toBeNull();
+	});
+
+	it('marks the tags the row already carries', async () => {
+		await picker({ entries: [entry({ id: 3, tag_ids: [31] }), entry({ id: 2 })], total: 2 });
+
+		const options = await screen.findAllByRole('option');
+		const carried = options.filter((o) => o.getAttribute('data-checked') === 'true');
+		expect(carried).toHaveLength(1);
+		expect(carried[0]).toHaveTextContent('Tax');
+		expect(carried[0]).toHaveTextContent('(tagged)');
+	});
+
+	it('adds a tag the row lacks, and removes one it carries', async () => {
+		const ontoggletag = toggle();
+		await picker({
+			entries: [entry({ id: 3, tag_ids: [31] }), entry({ id: 2 })],
+			total: 2,
+			ontoggletag
+		});
+
+		await fireEvent.click(await screen.findByRole('option', { name: /Lisbon/ }));
+		expect(ontoggletag).toHaveBeenLastCalledWith(3, 30, true);
+
+		await fireEvent.click(screen.getByRole('option', { name: /Tax/ }));
+		expect(ontoggletag).toHaveBeenLastCalledWith(3, 31, false);
+	});
+
+	it('follows the patched row: the check appears without closing', async () => {
+		const first = [entry({ id: 3 }), entry({ id: 2 })];
+		const { rerender } = await picker({ entries: first, total: 2 });
+		await screen.findByRole('option', { name: /Lisbon/ });
+
+		await rerender({ entries: [entry({ id: 3, tag_ids: [30] }), entry({ id: 2 })] });
+
+		expect(screen.getByRole('option', { name: /Lisbon/ })).toHaveAttribute('data-checked', 'true');
+		expect(search()).not.toBeNull();
+		expect(cursorTexts()).toHaveLength(1);
+	});
+
+	it('Enter toggles the highlighted tag', async () => {
+		const ontoggletag = toggle();
+		await picker({ ontoggletag });
+		const input = await screen.findByLabelText('Search tags');
+
+		await fireEvent.keyDown(input, { key: 'ArrowDown' });
+		await fireEvent.keyDown(input, { key: 'Enter' });
+
+		expect(ontoggletag).toHaveBeenCalledWith(3, 31, true);
+	});
+
+	it('narrows the list as one types', async () => {
+		await picker();
+		const input = await screen.findByLabelText('Search tags');
+
+		await fireEvent.input(input, { target: { value: 'tax' } });
+
+		expect(screen.queryByRole('option', { name: /Lisbon/ })).toBeNull();
+		expect(screen.getByRole('option', { name: /Tax/ })).toBeInTheDocument();
+	});
+
+	it('offers to create a name no tag has, and creates and tags in one step', async () => {
+		const oncreatetag = toggle();
+		await picker({ oncreatetag });
+		const input = await screen.findByLabelText('Search tags');
+
+		await fireEvent.input(input, { target: { value: '  Holiday ' } });
+		await fireEvent.click(await screen.findByRole('option', { name: 'Create tag "Holiday"' }));
+
+		expect(oncreatetag).toHaveBeenCalledWith(3, 'Holiday');
+	});
+
+	it('does not offer to create a name that exists (any case); it picks the tag instead', async () => {
+		await picker();
+		const input = await screen.findByLabelText('Search tags');
+
+		await fireEvent.input(input, { target: { value: 'tax' } });
+
+		expect(screen.queryByRole('option', { name: /Create tag/ })).toBeNull();
+	});
+
+	it('closes on Esc, leaving the cursor where it was', async () => {
+		await picker();
+		const input = await screen.findByLabelText('Search tags');
+
+		await fireEvent.keyDown(input, { key: 'Escape' });
+
+		await waitFor(() => expect(search()).toBeNull());
+		expect(cursorTexts()[0]).toContain('Third');
+	});
+
+	it('closes when the write failed, so the notice can be read', async () => {
+		await picker({ ontoggletag: vi.fn(async () => false) });
+
+		await fireEvent.click(await screen.findByRole('option', { name: /Lisbon/ }));
+
+		await waitFor(() => expect(search()).toBeNull());
+	});
+
+	it('refuses a derived entry with a quiet notice and opens nothing', async () => {
+		const onnotice = vi.fn();
+		table({
+			entries: [entry({ id: 3, type: 'opening' })],
+			total: 1,
+			ontoggletag: toggle(),
+			onnotice
+		});
+		await key('j');
+
+		await key('t');
+
+		expect(onnotice).toHaveBeenCalledWith('Derived entries cannot be tagged');
+		expect(search()).toBeNull();
+	});
+
+	it('ignores t typed into a field', async () => {
+		table({ ontoggletag: toggle() });
+		await key('j');
+		const field = document.createElement('input');
+		document.body.append(field);
+
+		await fireEvent.keyDown(field, { key: 't' });
+
+		expect(search()).toBeNull();
+		field.remove();
+	});
+
+	it('ignores t inside a dialog', async () => {
+		table({ ontoggletag: toggle() });
+		await key('j');
+		const dialog = document.createElement('div');
+		dialog.setAttribute('role', 'dialog');
+		document.body.append(dialog);
+
+		await fireEvent.keyDown(dialog, { key: 't' });
+
+		expect(search()).toBeNull();
+		dialog.remove();
+	});
+
+	it('ignores t typed into the open picker', async () => {
+		const ontoggletag = toggle();
+		await picker({ ontoggletag });
+		const input = await screen.findByLabelText('Search tags');
+
+		await fireEvent.keyDown(input, { key: 't' });
+
+		expect(ontoggletag).not.toHaveBeenCalled();
+		expect(screen.getAllByLabelText('Search tags')).toHaveLength(1);
+	});
+});
+
+describe('LedgerTable: rows changed by the last action', () => {
+	it('marks them, and keeps every row where it is', () => {
+		table({ changedIds: new Set([2]) });
+
+		const rows = screen.getAllByRole('row').slice(1);
+		expect(rows).toHaveLength(3);
+		expect(rows.map((r) => r.getAttribute('data-entry-id'))).toEqual(['3', '2', '1']);
+		const changed = rows.filter((r) => r.hasAttribute('data-changed'));
+		expect(changed).toHaveLength(1);
+		expect(changed[0]).toHaveAttribute('data-entry-id', '2');
+		expect(changed[0]).toHaveAttribute('title', 'changed by your last action');
 	});
 });

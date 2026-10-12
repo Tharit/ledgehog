@@ -45,7 +45,7 @@
 		onchange: (next: EntryFilter) => void;
 		/** `↓` in the text box: the keyboard moves to the list */
 		ondown?: () => void;
-		/** where wave 3 puts the "Tag all N…" action; nothing is rendered in it yet */
+		/** the "Tag all N…" action, at the end of the bar */
 		trailing?: Snippet;
 	} = $props();
 
@@ -282,6 +282,5 @@
 	{#if !isEmpty(filter)}
 		<Button variant="ghost" size="sm" onclick={clearAll}>Clear</Button>
 	{/if}
-	<!-- TODO(wave 3): the "Tag all N…" action goes here, through `trailing`; no behaviour yet -->
 	{@render trailing?.()}
 </div>

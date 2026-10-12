@@ -5,26 +5,36 @@
 
 import {
 	ApiError,
+	createTag,
 	DEFAULT_PAGE_SIZE,
 	listAccounts,
 	listCategories,
 	listEntries,
 	listPayees,
-	listTags
+	listTags,
+	tagEntry,
+	untagEntry
 } from '#lib/api/index.js';
 import { todayIso } from '#lib/format/index.js';
 import { describeFilter } from '#lib/ledger/describe.js';
+import { describeTagError, SETTLE_STALE } from '#lib/ledger/errors.js';
 import {
 	emptyFilter,
 	filterKey,
+	isEmpty,
 	normalizeFilter,
 	type LedgerFilterState
 } from '#lib/ledger/filter.js';
-import { buildLookups, emptyLookups, type Lookups } from '#lib/ledger/lookups.js';
-import type { Entry } from '#lib/types/domain.js';
+import { NO_IDS, patchTagIds, rowsOutOfTagFilter, withIds } from '#lib/ledger/patch.js';
+import { buildLookups, emptyLookups, withTag, type Lookups } from '#lib/ledger/lookups.js';
+import type { Entry, EntryTagIds, Tag } from '#lib/types/domain.js';
 import { session } from './session.svelte.js';
+import { TagAllFlow } from './tag-all.svelte.js';
 
 export type LedgerStatus = 'loading' | 'ready' | 'error';
+
+/** A quiet one-line message about what the last action did (patterns §8). */
+export type LedgerNotice = { text: string; error: boolean };
 
 function asApiError(error: unknown): ApiError {
 	return error instanceof ApiError
@@ -56,6 +66,37 @@ export class LedgerStore {
 		describeFilter(this.filter, { lookups: this.lookups, locale: this.locale }).map((p) => p.label)
 	);
 
+	/** what the last tag action said; cleared by the next one and by a reload */
+	notice = $state.raw<LedgerNotice | null>(null);
+	/** entries whose tags were changed here since the list was fetched */
+	touchedIds = $state.raw<ReadonlySet<number>>(NO_IDS);
+
+	/**
+	 * Rows the user's tag action took out of an active tag filter. They stay where they are,
+	 * marked "changed by your last action", until the list is refreshed (decision C10).
+	 */
+	readonly changedIds = $derived(
+		rowsOutOfTagFilter(this.entries, this.touchedIds, this.filter.tag_id)
+	);
+
+	/** Why "Tag all N…" is not available, or null when it is. */
+	readonly tagAllReason = $derived.by(() => {
+		if (this.status !== 'ready') return 'The list is still loading';
+		if (isEmpty(this.filter)) return 'Narrow the filter first';
+		if (this.total === 0) return 'No entries to tag';
+		return null;
+	});
+
+	readonly tagAll = new TagAllFlow({
+		filter: () => this.filter,
+		locale: () => this.locale,
+		addTag: (tag) => this.addTag(tag),
+		applied: (updates, text) => {
+			this.patchTags(updates);
+			this.notify(text);
+		}
+	});
+
 	#controller: AbortController | null = null;
 	#generation = 0;
 	#key: string | null = null;
@@ -83,6 +124,8 @@ export class LedgerStore {
 		this.loadingMore = false;
 		this.entries = [];
 		this.total = 0;
+		this.touchedIds = NO_IDS;
+		this.notice = null;
 		try {
 			const page = await listEntries(this.filter, {
 				limit: DEFAULT_PAGE_SIZE,
@@ -147,10 +190,58 @@ export class LedgerStore {
 		this.lookupsFailed = names.filter((_, i) => results[i].status === 'rejected');
 	}
 
+	notify(text: string, error = false): void {
+		this.notice = { text, error };
+	}
+
+	/** A tag created here joins the list the rows and pickers resolve against. */
+	addTag(tag: Tag): void {
+		this.lookups = withTag(this.lookups, tag);
+	}
+
+	/** Patch tag ids into the rows held, in place: never added, removed or reordered (§7). */
+	patchTags(updates: readonly EntryTagIds[]): void {
+		if (updates.length === 0) return;
+		this.entries = patchTagIds(this.entries, updates);
+		this.touchedIds = withIds(
+			this.touchedIds,
+			updates.map((u) => u.id)
+		);
+	}
+
+	/** Tag (`tagged`) or untag one entry; the row follows the answer. True when it worked. */
+	async setEntryTag(entryId: number, tagId: number, tagged: boolean): Promise<boolean> {
+		this.notice = null;
+		try {
+			const out = tagged ? await tagEntry(entryId, tagId) : await untagEntry(entryId, tagId);
+			this.patchTags([out.entry]);
+			if (out.settle.error) this.notify(`Saved. ${SETTLE_STALE}`);
+			return true;
+		} catch (error) {
+			this.notify(describeTagError(asApiError(error)), true);
+			return false;
+		}
+	}
+
+	/** Create a tag and put it on one entry. True when both worked. */
+	async createTagFor(entryId: number, name: string): Promise<boolean> {
+		this.notice = null;
+		let tag: Tag;
+		try {
+			tag = (await createTag(name)).tag;
+		} catch (error) {
+			this.notify(describeTagError(asApiError(error)), true);
+			return false;
+		}
+		this.addTag(tag);
+		return this.setEntryTag(entryId, tag.id, true);
+	}
+
 	/** The page is going away: nothing more may land in the store. */
 	dispose(): void {
 		this.#generation++;
 		this.#controller?.abort();
 		this.#controller = null;
+		this.tagAll.close();
 	}
 }

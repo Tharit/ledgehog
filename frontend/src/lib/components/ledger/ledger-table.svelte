@@ -4,12 +4,15 @@
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { formatCount } from '#lib/format/index.js';
 	import { describeLoadError } from '#lib/ledger/errors.js';
+	import { DERIVED_NOT_TAGGABLE } from '#lib/ledger/errors.js';
 	import { ledgerKey, moveCursor } from '#lib/ledger/keys.js';
 	import type { Lookups } from '#lib/ledger/lookups.js';
-	import type { Entry } from '#lib/types/domain.js';
+	import { isDerivedType } from '#lib/ledger/types.js';
+	import type { Entry, Tag } from '#lib/types/domain.js';
 	import { cn } from '#lib/utils.js';
 	import { COLUMNS, GRID_TEMPLATE, ROW_GRID } from './columns.js';
 	import EntryRow from './entry-row.svelte';
+	import TagPicker from './tag-picker.svelte';
 
 	// The list of entries with its cursor and keyboard model (patterns §5). The list is a snapshot
 	// (patterns §7): it shows what it was given and never changes under the cursor.
@@ -23,10 +26,14 @@
 		lookups,
 		locale = 'en',
 		activeFilters = [],
+		changedIds = new Set<number>(),
 		onclearfilters,
 		onretry,
 		onloadmore,
-		onsearch
+		onsearch,
+		ontoggletag,
+		oncreatetag,
+		onnotice
 	}: {
 		entries: readonly Entry[];
 		total: number;
@@ -43,6 +50,14 @@
 		onloadmore?: () => void;
 		/** `/` was pressed: focus the filter bar's text box */
 		onsearch?: () => void;
+		/** rows the user's tag action took out of the filter: marked, never removed */
+		changedIds?: ReadonlySet<number>;
+		/** tag (`tagged`) or untag one entry; true when it worked */
+		ontoggletag?: (entryId: number, tagId: number, tagged: boolean) => Promise<boolean>;
+		/** create a tag and put it on one entry; true when it worked */
+		oncreatetag?: (entryId: number, name: string) => Promise<boolean>;
+		/** a quiet one-line message for the page to show */
+		onnotice?: (text: string) => void;
 	} = $props();
 
 	let cursorId = $state<number | null>(null);
@@ -54,6 +69,45 @@
 	);
 	// the currency is written where amounts of several currencies are listed together (patterns §2)
 	const showCurrency = $derived(new Set(entries.map((e) => e.amount.currency)).size > 1);
+
+	// the tag picker (`t`): tags the ONE entry under the cursor, never the filter's result
+	let pickerOpen = $state(false);
+	let pickerEntryId = $state<number | null>(null);
+	let pickerAnchor = $state<HTMLElement | null>(null);
+	let pickerBusy = $state(false);
+	const pickerEntry = $derived(
+		pickerEntryId === null ? undefined : entries.find((e) => e.id === pickerEntryId)
+	);
+	const pickerChecked = $derived(new Set(pickerEntry?.tag_ids ?? []));
+	const tagList = $derived<Tag[]>([...lookups.tags.values()]);
+
+	function openPicker() {
+		if (cursorIndex < 0) return;
+		const entry = entries[cursorIndex];
+		if (isDerivedType(entry.type)) {
+			onnotice?.(DERIVED_NOT_TAGGABLE);
+			return;
+		}
+		pickerEntryId = entry.id;
+		pickerAnchor = container?.querySelector<HTMLElement>(`[data-entry-id="${entry.id}"]`) ?? null;
+		pickerOpen = true;
+	}
+
+	/** Run one tag write; a failure closes the picker so its quiet notice can be read. */
+	async function write(run: (entryId: number) => Promise<boolean> | undefined) {
+		if (pickerBusy || pickerEntryId === null) return;
+		pickerBusy = true;
+		try {
+			if (!(await run(pickerEntryId))) pickerOpen = false;
+		} finally {
+			pickerBusy = false;
+		}
+	}
+
+	// the entry the picker belongs to is gone (the list reloaded)
+	$effect(() => {
+		if (pickerOpen && !pickerEntry) pickerOpen = false;
+	});
 
 	function moveBy(delta: number) {
 		const next = moveCursor(cursorIndex, delta, entries.length);
@@ -95,6 +149,11 @@
 				event.preventDefault();
 				helpOpen = !helpOpen;
 				break;
+			case 'tag':
+				// prevented, so the key is not typed into the picker's search box that opens
+				event.preventDefault();
+				openPicker();
+				break;
 		}
 	}
 
@@ -112,6 +171,7 @@
 	const KEYS: [string, string][] = [
 		['↑ ↓ / k j', 'Move the cursor'],
 		['Enter', 'Open the entry (not built yet)'],
+		['t', 'Tag the row'],
 		['/', 'Filter text'],
 		['Esc', 'Close this help, leave a field'],
 		['?', 'Show or hide this help']
@@ -201,6 +261,7 @@
 						{locale}
 						{showCurrency}
 						cursor={entry.id === cursorId}
+						changed={changedIds.has(entry.id)}
 						onselect={() => (cursorId = entry.id)}
 					/>
 				{/each}
@@ -236,6 +297,20 @@
 			</div>
 		{/if}
 	{/if}
+
+	<TagPicker
+		bind:open={pickerOpen}
+		anchor={pickerAnchor}
+		tags={tagList}
+		checked={pickerChecked}
+		busy={pickerBusy}
+		onselect={(tag) => write((id) => ontoggletag?.(id, tag.id, !pickerChecked.has(tag.id)))}
+		oncreate={(name) => write((id) => oncreatetag?.(id, name))}
+		onclosefocus={(event) => {
+			event.preventDefault();
+			container?.focus({ preventScroll: true });
+		}}
+	/>
 
 	{#if helpOpen}
 		<div
