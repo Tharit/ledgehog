@@ -92,7 +92,9 @@ while true; do
   echo "-- watching for changes (Ctrl-C to stop)"
   while true; do
     sleep 2
-    if [ -n "$(find "${watched[@]}" -type f -newer "$out/.stamp" 2>/dev/null | head -n 1)" ]; then
+    # api.d.ts is OUTPUT of a run (`--gen` rewrites it every time): counting it as a change would
+    # make every run trigger the next, and Vite's dev server would reload on each rewrite.
+    if [ -n "$(find "${watched[@]}" -type f ! -path 'src/lib/types/api.d.ts' -newer "$out/.stamp" 2>/dev/null | head -n 1)" ]; then
       break
     fi
   done
