@@ -22,7 +22,15 @@ _MAX_ID = (1 << _NS_SHIFT) - 1
 
 # Tables whose rows a write may lock; a whitelist because the name is interpolated.
 LOCKABLE_TABLES = frozenset(
-    {"account", "balance_record", "external_document", "ledger_entry", "source_transaction"}
+    {
+        "account",
+        "balance_record",
+        "category",
+        "external_document",
+        "ledger_entry",
+        "payee",
+        "source_transaction",
+    }
 )
 
 

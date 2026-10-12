@@ -8,21 +8,26 @@ Contract shared by every caller:
 * A failure after the caller's write committed does not raise: the settle transaction
   rolls back, the write stands, and the failure is reported in ``SettleResult.error``.
 
-One round is the five ordered steps of architecture §5.2. Steps 1-4 are named no-op
-hooks for now; later work replaces them with ``register_step(name, fn)``. Step 5 is
-the review flags. The settle baseline is a pass over every unconfirmed unit; narrowing
+One round is the five ordered steps of architecture §5.2. Step 1 resolves every
+unconfirmed entry (core/settle/resolution.py) and step 5 is the review flags, which also
+report what the round newly confirmed; steps 2-4 are named no-op hooks that later work
+replaces with ``register_step(name, fn)``. The steps of one settle share a `SettleRun`
+(core/settle/run.py). The settle baseline is a pass over every unconfirmed unit; narrowing
 to a dirty set is an optimisation to take only if the time budget is missed.
 """
 
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from sqlalchemy import Connection, Engine, text
 
-from app.core.settle.flags import recompute_review_flags
+from app.core.resolution.confirmed import load_confirmed_ids
+from app.core.settle.flags import review_flags_step
+from app.core.settle.resolution import resolve_step
+from app.core.settle.run import StepOutcome, settle_run
 from app.utils.db.locks import lock_settle_exclusive
 
 log = logging.getLogger(__name__)
@@ -40,14 +45,6 @@ class SettleResult:
     error: str | None = None
 
 
-@dataclass(frozen=True)
-class StepOutcome:
-    """What one step did: the entry ids it changed and how many units it newly confirmed."""
-
-    touched: Iterable[int] = ()
-    newly_confirmed: int = 0
-
-
 Step = Callable[[Connection], StepOutcome]
 
 
@@ -55,18 +52,12 @@ def _noop(conn: Connection) -> StepOutcome:
     return StepOutcome()
 
 
-def _review_flags_step(conn: Connection) -> StepOutcome:
-    # Confirmation is not derived yet (no unit can be confirmed before steps 6-9),
-    # so the flags never confirm anything new.
-    return StepOutcome(touched=recompute_review_flags(conn))
-
-
 _STEPS: list[tuple[str, Step]] = [
-    ("resolve", _noop),
+    ("resolve", resolve_step),
     ("match_documents", _noop),
     ("resolve_after_link", _noop),
     ("pair_transfers", _noop),
-    ("review_flags", _review_flags_step),
+    ("review_flags", review_flags_step),
 ]
 
 
@@ -86,14 +77,16 @@ def register_step(name: str, fn: Step) -> None:
 
 def _run_rounds(conn: Connection) -> set[int]:
     touched: set[int] = set()
-    for _ in range(MAX_ROUNDS):
-        confirmed = 0
-        for _name, step in list(_STEPS):
-            outcome = step(conn)
-            touched.update(outcome.touched)
-            confirmed += outcome.newly_confirmed
-        if confirmed == 0:
-            return touched
+    with settle_run() as run:
+        run.confirmed = load_confirmed_ids(conn)
+        for _ in range(MAX_ROUNDS):
+            confirmed = 0
+            for _name, step in list(_STEPS):
+                outcome = step(conn)
+                touched.update(outcome.touched)
+                confirmed += outcome.newly_confirmed
+            if confirmed == 0:
+                return touched
     raise RuntimeError(f"settling did not converge within {MAX_ROUNDS} rounds")
 
 

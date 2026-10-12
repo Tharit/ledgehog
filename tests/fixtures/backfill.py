@@ -7,9 +7,14 @@ run, its source transactions (bulk `executemany`) and then one entry per source 
 `app.core.ingest.identity`, exactly as ingest would assign it: checking and card rows
 carry a source-assigned id, the others a content hash with its ordinal.
 
-Nothing is classified: every entry is a plain movement with no type, category or
-derivation, i.e. `unclassified` once settled. The text vocabulary is small and repeats,
-so a history key has something to group.
+By default nothing is classified: every entry is a plain movement with no type, category or
+derivation, i.e. `unclassified` once settled (no voters for history, no rules). The text
+vocabulary is small and repeats, so a history key has something to group.
+
+`confirmed_share > 0` is the settled-ledger variant: that share of the entries (chosen by the
+seeded stream) is a confirmed flow of its merchant's category and payee with `user` keys, so
+history has voters; the rest stay unconfirmed, and a few merchants also get rules (a payee and a
+category rule each), so settling has standing decisions to make too.
 """
 
 from __future__ import annotations
@@ -111,6 +116,43 @@ def _rows_for(
     return rows
 
 
+RULE_MERCHANTS = ("REWE Markt", "Netflix", "Deutsche Bahn", "Arbeitgeber GmbH")
+
+
+def _seed_dimensions(conn: Any) -> tuple[dict[str, int], dict[str, int]]:
+    """A category and a payee per merchant, and a payee and category rule for `RULE_MERCHANTS`."""
+    category: dict[str, int] = {}
+    payee: dict[str, int] = {}
+    for names, kind in ((_MERCHANTS, "expense"), (_INCOME, "income")):
+        for name, *_ in names:
+            category[name] = conn.execute(
+                text("INSERT INTO category (name, kind) VALUES (:n, :k) RETURNING id"),
+                {"n": f"Cat {name}", "k": kind},
+            ).scalar_one()
+            payee[name] = conn.execute(
+                text("INSERT INTO payee (name) VALUES (:n) RETURNING id"), {"n": name}
+            ).scalar_one()
+    for name in RULE_MERCHANTS:
+        conn.execute(
+            text("INSERT INTO rule (name, sets, payee_id, name_exact) VALUES (:n, 'payee', :p, :m)"),
+            {"n": f"{name} payee", "p": payee[name], "m": name},
+        )
+        conn.execute(
+            text("INSERT INTO rule (name, sets, category_id, name_exact) VALUES (:n, 'category', :c, :m)"),
+            {"n": f"{name} category", "c": category[name], "m": name},
+        )
+    return category, payee
+
+
+_CONFIRM = text(
+    "UPDATE ledger_entry AS e SET type = 'flow', category_id = v.c, payee_id = v.p,"
+    " derivation = CAST(v.d AS jsonb)"
+    " FROM unnest(CAST(:ids AS bigint[]), CAST(:cats AS bigint[]), CAST(:payees AS bigint[]),"
+    " CAST(:ds AS text[])) AS v(id, c, p, d) WHERE e.id = v.id"
+)
+_USER_KEYS = json.dumps({k: {"pass": "user"} for k in ("type", "payee", "category")})
+
+
 _INSERT_SOURCE = text(
     "INSERT INTO source_transaction (importer, import_run_id, account_id, source_id, content_hash,"
     " source_format, amount, currency, booked_on, counterparty_ref, counterparty_name, purpose, raw)"
@@ -126,6 +168,7 @@ def build_backfill(
     accounts: int = 4,
     months: int = 12,
     rows_per_account: int = 2000,
+    confirmed_share: float = 0.0,
 ) -> BackfillSummary:
     """Load the fixture into an empty ledger in one transaction and return what was built."""
     if not 1 <= accounts <= len(ACCOUNT_PLAN):
@@ -138,6 +181,7 @@ def build_backfill(
     currencies: list[str] = []
     total = 0
     with engine.begin() as conn:
+        category, payee = _seed_dimensions(conn) if confirmed_share > 0 else ({}, {})
         for name, kind, currency, by in ACCOUNT_PLAN[:accounts]:
             account = conn.execute(
                 text("INSERT INTO account (name, kind, currency) VALUES (:n, :k, :c) RETURNING id"),
@@ -180,6 +224,28 @@ def build_backfill(
                 ),
                 {"a": account},
             )
+            if confirmed_share > 0:
+                picked = [
+                    (r.id, r.counterparty_name)
+                    for r in conn.execute(
+                        text(
+                            "SELECT e.id, s.counterparty_name FROM ledger_entry e"
+                            " JOIN source_transaction s ON s.id = e.source_transaction_id"
+                            " WHERE e.account_id = :a ORDER BY e.id"
+                        ),
+                        {"a": account},
+                    )
+                    if rng.random() < confirmed_share
+                ]
+                conn.execute(
+                    _CONFIRM,
+                    {
+                        "ids": [i for i, _ in picked],
+                        "cats": [category[n] for _, n in picked],
+                        "payees": [payee[n] for _, n in picked],
+                        "ds": [_USER_KEYS] * len(picked),
+                    },
+                )
             account_ids.append(account)
             run_ids.append(run)
             currencies.append(currency)

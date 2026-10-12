@@ -16,7 +16,10 @@ from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import DBAPIError
 from starlette.exceptions import HTTPException as StarletteHTTPException
+
+from app.core.stale import StaleReference, stale_from_integrity
 
 log = logging.getLogger("ledgehog.api")
 
@@ -65,6 +68,14 @@ def map_error(
     _DOMAIN_ERRORS[exc_type] = _Mapping(status, code, details)
 
 
+def _stale_details(exc: StaleReference) -> dict[str, Any]:
+    return {"field": exc.field, "entity": exc.entity, "id": exc.entity_id}
+
+
+# a write naming a category, payee or account that no longer exists (architecture §4.1, D200)
+map_error(StaleReference, 409, "stale_reference", details=_stale_details)
+
+
 def envelope(code: str, message: str, details: Any = None) -> dict[str, Any]:
     return {"error": {"code": code, "message": message, "details": details}}
 
@@ -104,6 +115,14 @@ def install_error_handlers(app: FastAPI) -> None:
 
     for exc_type, mapping in _DOMAIN_ERRORS.items():
         app.add_exception_handler(exc_type, _domain(mapping))
+
+    @app.exception_handler(DBAPIError)
+    async def _database_error(_: Request, exc: DBAPIError) -> JSONResponse:
+        # the net under every write: a foreign key whose target a merge or delete removed
+        stale = stale_from_integrity(exc)
+        if stale is not None:
+            return _respond(409, "stale_reference", str(stale), _stale_details(stale))
+        raise exc  # anything else stays unexpected: the server-error handler below answers it
 
     @app.exception_handler(Exception)
     async def _unexpected(_: Request, exc: Exception) -> JSONResponse:

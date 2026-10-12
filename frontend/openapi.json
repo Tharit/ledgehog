@@ -223,6 +223,231 @@
         "title": "CategoriesOut",
         "type": "object"
       },
+      "CategoryCreateBody": {
+        "additionalProperties": false,
+        "description": "A top-level category takes `kind`; a child (`parent_id`) takes its parent's.",
+        "properties": {
+          "color": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "income",
+                  "expense"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 9007199254740992.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "sort_order": {
+            "default": 0,
+            "maximum": 2147483647.0,
+            "minimum": -2147483648.0,
+            "title": "Sort Order",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CategoryCreateBody",
+        "type": "object"
+      },
+      "CategoryDeleteOut": {
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/CategoryOut"
+          },
+          "deletable": {
+            "title": "Deletable",
+            "type": "boolean"
+          },
+          "deleted": {
+            "title": "Deleted",
+            "type": "boolean"
+          },
+          "dry_run": {
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "held": {
+            "$ref": "#/components/schemas/HeldOut"
+          },
+          "settle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SettleOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "dry_run",
+          "category",
+          "deletable",
+          "held",
+          "deleted",
+          "settle"
+        ],
+        "title": "CategoryDeleteOut",
+        "type": "object"
+      },
+      "CategoryMergeBody": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "expected_count": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740992.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Count"
+          },
+          "into": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 9007199254740992.0,
+            "title": "Into",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "into"
+        ],
+        "title": "CategoryMergeBody",
+        "type": "object"
+      },
+      "CategoryMergeOut": {
+        "properties": {
+          "dry_run": {
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "entry_count": {
+            "title": "Entry Count",
+            "type": "integer"
+          },
+          "entry_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Entry Ids",
+            "type": "array"
+          },
+          "moved_children": {
+            "items": {
+              "$ref": "#/components/schemas/MovedChildOut"
+            },
+            "title": "Moved Children",
+            "type": "array"
+          },
+          "pairs": {
+            "items": {
+              "$ref": "#/components/schemas/MergedPairOut"
+            },
+            "title": "Pairs",
+            "type": "array"
+          },
+          "rule_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Rule Ids",
+            "type": "array"
+          },
+          "settle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SettleOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "integer"
+          },
+          "target_id": {
+            "title": "Target Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "dry_run",
+          "source_id",
+          "target_id",
+          "pairs",
+          "moved_children",
+          "entry_count",
+          "entry_ids",
+          "rule_ids",
+          "settle"
+        ],
+        "title": "CategoryMergeOut",
+        "type": "object"
+      },
       "CategoryOut": {
         "properties": {
           "color": {
@@ -285,6 +510,95 @@
           "color"
         ],
         "title": "CategoryOut",
+        "type": "object"
+      },
+      "CategoryUpdateBody": {
+        "additionalProperties": false,
+        "description": "Absent fields stay; `null` clears `icon` and `color`, and `parent_id: null` makes it top-level.\n\nNo `kind`: it is fixed at creation.",
+        "properties": {
+          "color": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 9007199254740992.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "sort_order": {
+            "anyOf": [
+              {
+                "maximum": 2147483647.0,
+                "minimum": -2147483648.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sort Order"
+          }
+        },
+        "title": "CategoryUpdateBody",
+        "type": "object"
+      },
+      "CategoryWriteOut": {
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/CategoryOut"
+          },
+          "settle": {
+            "$ref": "#/components/schemas/SettleOut"
+          }
+        },
+        "required": [
+          "category",
+          "settle"
+        ],
+        "title": "CategoryWriteOut",
         "type": "object"
       },
       "CheckOut": {
@@ -800,6 +1114,29 @@
         "title": "ErrorEnvelope",
         "type": "object"
       },
+      "HeldOut": {
+        "properties": {
+          "children": {
+            "title": "Children",
+            "type": "integer"
+          },
+          "entries": {
+            "title": "Entries",
+            "type": "integer"
+          },
+          "rules": {
+            "title": "Rules",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "entries",
+          "rules",
+          "children"
+        ],
+        "title": "HeldOut",
+        "type": "object"
+      },
       "LinkAccount": {
         "additionalProperties": false,
         "properties": {
@@ -851,6 +1188,44 @@
         "title": "LoginBody",
         "type": "object"
       },
+      "MergedPairOut": {
+        "properties": {
+          "entries": {
+            "title": "Entries",
+            "type": "integer"
+          },
+          "rules": {
+            "title": "Rules",
+            "type": "integer"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "integer"
+          },
+          "source_name": {
+            "title": "Source Name",
+            "type": "string"
+          },
+          "target_id": {
+            "title": "Target Id",
+            "type": "integer"
+          },
+          "target_name": {
+            "title": "Target Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "source_name",
+          "target_id",
+          "target_name",
+          "entries",
+          "rules"
+        ],
+        "title": "MergedPairOut",
+        "type": "object"
+      },
       "Money": {
         "additionalProperties": false,
         "properties": {
@@ -871,6 +1246,282 @@
         "title": "Money",
         "type": "object"
       },
+      "MovedChildOut": {
+        "properties": {
+          "from_id": {
+            "title": "From Id",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "to_id": {
+            "title": "To Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "from_id",
+          "to_id"
+        ],
+        "title": "MovedChildOut",
+        "type": "object"
+      },
+      "PayeeCreateBody": {
+        "additionalProperties": false,
+        "properties": {
+          "color": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "document_provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Provider"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "PayeeCreateBody",
+        "type": "object"
+      },
+      "PayeeDeleteOut": {
+        "properties": {
+          "deletable": {
+            "title": "Deletable",
+            "type": "boolean"
+          },
+          "deleted": {
+            "title": "Deleted",
+            "type": "boolean"
+          },
+          "deleted_rule_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Deleted Rule Ids",
+            "type": "array"
+          },
+          "dry_run": {
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "held": {
+            "$ref": "#/components/schemas/PayeeHeldOut"
+          },
+          "payee": {
+            "$ref": "#/components/schemas/PayeeOut"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/RuleRefOut"
+            },
+            "title": "Rules",
+            "type": "array"
+          },
+          "settle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SettleOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "dry_run",
+          "payee",
+          "deletable",
+          "held",
+          "rules",
+          "deleted_rule_ids",
+          "deleted",
+          "settle"
+        ],
+        "title": "PayeeDeleteOut",
+        "type": "object"
+      },
+      "PayeeHeldOut": {
+        "properties": {
+          "entries": {
+            "title": "Entries",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "entries"
+        ],
+        "title": "PayeeHeldOut",
+        "type": "object"
+      },
+      "PayeeMergeBody": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "expected_count": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740992.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Count"
+          },
+          "into": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 9007199254740992.0,
+            "title": "Into",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "into"
+        ],
+        "title": "PayeeMergeBody",
+        "type": "object"
+      },
+      "PayeeMergeOut": {
+        "properties": {
+          "condition_rule_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Condition Rule Ids",
+            "type": "array"
+          },
+          "document_provider_lost": {
+            "title": "Document Provider Lost",
+            "type": "boolean"
+          },
+          "dry_run": {
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "entry_count": {
+            "title": "Entry Count",
+            "type": "integer"
+          },
+          "entry_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Entry Ids",
+            "type": "array"
+          },
+          "setting_rule_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Setting Rule Ids",
+            "type": "array"
+          },
+          "settle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SettleOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source_document_provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Document Provider"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "integer"
+          },
+          "target": {
+            "$ref": "#/components/schemas/PayeeOut"
+          }
+        },
+        "required": [
+          "dry_run",
+          "source_id",
+          "target",
+          "entry_count",
+          "entry_ids",
+          "setting_rule_ids",
+          "condition_rule_ids",
+          "source_document_provider",
+          "document_provider_lost",
+          "settle"
+        ],
+        "title": "PayeeMergeOut",
+        "type": "object"
+      },
       "PayeeOut": {
         "properties": {
           "color": {
@@ -883,6 +1534,17 @@
               }
             ],
             "title": "Color"
+          },
+          "document_provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Provider"
           },
           "icon": {
             "anyOf": [
@@ -920,9 +1582,95 @@
           "name",
           "icon",
           "color",
-          "note"
+          "note",
+          "document_provider"
         ],
         "title": "PayeeOut",
+        "type": "object"
+      },
+      "PayeeUpdateBody": {
+        "additionalProperties": false,
+        "description": "Absent fields stay; `null` clears `note`, `icon`, `color` and `document_provider`.",
+        "properties": {
+          "color": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "document_provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Provider"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "title": "PayeeUpdateBody",
+        "type": "object"
+      },
+      "PayeeWriteOut": {
+        "properties": {
+          "payee": {
+            "$ref": "#/components/schemas/PayeeOut"
+          },
+          "settle": {
+            "$ref": "#/components/schemas/SettleOut"
+          }
+        },
+        "required": [
+          "payee",
+          "settle"
+        ],
+        "title": "PayeeWriteOut",
         "type": "object"
       },
       "PayeesOut": {
@@ -1040,6 +1788,34 @@
           }
         },
         "title": "RevertBody",
+        "type": "object"
+      },
+      "RuleRefOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "sets": {
+            "title": "Sets",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "sets",
+          "role"
+        ],
+        "title": "RuleRefOut",
         "type": "object"
       },
       "SetBody": {
@@ -3334,6 +4110,317 @@
         "tags": [
           "lookups"
         ]
+      },
+      "post": {
+        "operationId": "create_ledger_category",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryCreateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryWriteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflicts with the current state."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Create Ledger Category",
+        "tags": [
+          "categories"
+        ]
+      }
+    },
+    "/api/ledger/categories/{category_id}": {
+      "delete": {
+        "description": "Delete a category nothing references and without children (else 409 `category_in_use`).\n\n`dry_run=true` reports what stands in the way and writes nothing.",
+        "operationId": "delete_ledger_category",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "category_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740992,
+              "title": "Category Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Dry Run",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryDeleteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflicts with the current state."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Delete Ledger Category",
+        "tags": [
+          "categories"
+        ]
+      },
+      "put": {
+        "operationId": "update_ledger_category",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "category_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740992,
+              "title": "Category Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryUpdateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryWriteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflicts with the current state."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Update Ledger Category",
+        "tags": [
+          "categories"
+        ]
+      }
+    },
+    "/api/ledger/categories/{category_id}/merge": {
+      "post": {
+        "description": "Merge into another category of the same kind (never into its own descendant); `dry_run` previews.",
+        "operationId": "merge_ledger_category",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "category_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740992,
+              "title": "Category Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryMergeBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryMergeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflicts with the current state."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Merge Ledger Category",
+        "tags": [
+          "categories"
+        ]
       }
     },
     "/api/ledger/entries": {
@@ -3840,7 +4927,7 @@
     },
     "/api/ledger/payees": {
       "get": {
-        "description": "Every payee by name: identity and presentation only.",
+        "description": "Every payee by name: identity, presentation and `document_provider`.",
         "operationId": "list_payees",
         "responses": {
           "200": {
@@ -3877,6 +4964,317 @@
         "summary": "List Payees",
         "tags": [
           "lookups"
+        ]
+      },
+      "post": {
+        "operationId": "create_ledger_payee",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PayeeCreateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayeeWriteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflicts with the current state."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Create Ledger Payee",
+        "tags": [
+          "payees"
+        ]
+      }
+    },
+    "/api/ledger/payees/{payee_id}": {
+      "delete": {
+        "description": "Delete a payee no entry references, with its rules (else 409 `payee_in_use`).\n\n`dry_run=true` lists the rules it would take and writes nothing.",
+        "operationId": "delete_ledger_payee",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "payee_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740992,
+              "title": "Payee Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Dry Run",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayeeDeleteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflicts with the current state."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Delete Ledger Payee",
+        "tags": [
+          "payees"
+        ]
+      },
+      "put": {
+        "operationId": "update_ledger_payee",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "payee_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740992,
+              "title": "Payee Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PayeeUpdateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayeeWriteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflicts with the current state."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Update Ledger Payee",
+        "tags": [
+          "payees"
+        ]
+      }
+    },
+    "/api/ledger/payees/{payee_id}/merge": {
+      "post": {
+        "description": "Merge into another payee, whose attributes win; `dry_run` previews and warns about the provider.",
+        "operationId": "merge_ledger_payee",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "payee_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740992,
+              "title": "Payee Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PayeeMergeBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayeeMergeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflicts with the current state."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Merge Ledger Payee",
+        "tags": [
+          "payees"
         ]
       }
     },

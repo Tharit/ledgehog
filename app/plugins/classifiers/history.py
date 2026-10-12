@@ -104,10 +104,17 @@ class HistoryClassifier:
             payee_id=resolved_payee if key == "payee" else None,
             exclude_entry_ids=ctx.exclude_entry_ids,
         )
+        # an entry without the refining code keeps every candidate: the entry side is read once
         if key == "counterparty_ref":
-            return [v for v in candidates if not _other_code(entry.mandate_ref, v.mandate_ref)]
+            mandate = canonical_text(entry.mandate_ref)
+            if not mandate:
+                return list(candidates)
+            return [v for v in candidates if not _other_code(mandate, v.mandate_ref)]
         if key == "counterparty_name":
-            return [v for v in candidates if not _other_code(entry.booking_text, v.booking_text)]
+            booking = canonical_text(entry.booking_text)
+            if not booking:
+                return list(candidates)
+            return [v for v in candidates if not _other_code(booking, v.booking_text)]
         if key == "booking_text":
             return [v for v in candidates if v.account_id == entry.account_id]
         if key == "tokens":

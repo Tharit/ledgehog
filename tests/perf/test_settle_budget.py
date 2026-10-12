@@ -146,3 +146,34 @@ def test_settle_after_mark_duplicate_within_budget(
     stats = Stats.of(samples)
     print(f"[perf] settle after mark_duplicate: {stats}")
     assert stats.max <= BUDGET_SECONDS, f"{stats} exceeds the budget of {BUDGET_SECONDS} s"
+
+
+def test_settle_with_resolution_over_a_mostly_confirmed_ledger_within_budget(
+    backfill_settled: Backfill,
+):
+    """~70% confirmed (5,600 voters), ~2,400 unconfirmed entries to resolve by rules and history."""
+    engine = backfill_settled.engine
+    started = time.perf_counter()
+    first = settle(engine)
+    elapsed = time.perf_counter() - started
+    assert first.error is None
+    with engine.connect() as conn:
+        flow_by = dict(
+            conn.execute(
+                text(
+                    "SELECT derivation -> 'category' ->> 'pass', count(*) FROM ledger_entry"
+                    " WHERE derivation ? 'category' GROUP BY 1"
+                )
+            ).all()
+        )
+        unresolved = conn.execute(text("SELECT count(*) FROM ledger_entry WHERE type IS NULL")).scalar_one()
+    print(f"[perf] resolving settle, 70% confirmed: {elapsed * 1000:.0f} ms, budget {BUDGET_SECONDS} s")
+    print(f"[perf]   categories by pass {flow_by}, untyped after: {unresolved}")
+    assert flow_by.get("history", 0) > 0 and flow_by.get("rule", 0) > 0  # real work was done
+    assert elapsed <= BUDGET_SECONDS, f"resolving settle took {elapsed:.2f} s, budget {BUDGET_SECONDS} s"
+    started = time.perf_counter()
+    again = settle(engine)
+    idle = time.perf_counter() - started
+    print(f"[perf] second settle (nothing to do): {idle * 1000:.0f} ms")
+    assert again.error is None and again.touched_entry_ids == ()
+    assert idle <= BUDGET_SECONDS

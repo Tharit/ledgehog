@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections.abc import Collection
+from functools import lru_cache
 
 _WHITESPACE = re.compile(r"\s+")
 _NON_ALNUM = re.compile(r"[\W_]+")
@@ -22,6 +23,7 @@ def normalise_name(s: str | None) -> str:
     return _WHITESPACE.sub(" ", unicodedata.normalize("NFKC", s).casefold()).strip()
 
 
+@lru_cache(maxsize=1 << 16)
 def tokens(name: str | None, purpose: str | None) -> frozenset[str]:
     """History key 5 tokens of counterparty name and purpose together (history.md §2).
 

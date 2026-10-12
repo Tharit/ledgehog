@@ -7,10 +7,17 @@ pass over all units. Measured on the dev machine (Postgres 18, localhost), stead
 three runs: post-commit settle max 17 ms, baseline pass over all 8000 units max 113 ms.
 Budget = 2 x the largest measured value, rounded up to a clean number, never below 1.0 s.
 
-Caveat: measured with the step-3 settle, which runs the review flags only. That is a
-LOWER BOUND. Re-measure and re-derive when resolution (step 6), transfer pairing (step 8)
-and document matching (step 9) register their steps; if the budget is then missed, narrow
-the pass to a dirty set (architecture §5.2) before raising the number.
+Since step 6 the settle includes resolution (pass 0, rules, history over a snapshot loaded once).
+Every settle starts with a full pass over all unconfirmed entries, so even a 5-row commit now costs a
+pass. Measured on the dev machine (Postgres 18, localhost, a busy laptop), over two sessions:
+baseline pass over 8000 unclassified entries (no voters) 330-410 ms; post-commit settle 245-340 ms;
+`confirmed_share=0.7` variant (5,600 voters, 2,400 unconfirmed entries, 413 of them resolved by
+rules, 2,014 by history, two rounds) 470-680 ms; its second, idle settle 450 ms. The budget stays at
+the floor of 1.0 s (2 x the largest, 0.68 s, would be 1.4 s: the stricter number is kept while it is met).
+
+Caveat: transfer pairing (step 8) and document matching (step 9) will register their steps; re-measure
+then. If the budget is missed, narrow the first round to a dirty set (architecture §5.2); rounds after
+the first are already narrowed to the entries the newly confirmed votes can reach.
 """
 
 BUDGET_SECONDS = 1.0

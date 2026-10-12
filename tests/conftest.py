@@ -12,6 +12,7 @@ Fixtures
   db_conn        a Connection in an outer transaction that is rolled back after the test
   isolated_db    a fresh per-test `test_<uuid>` clone, for tests that must commit
   clock          the clock frozen at CLOCK_START
+  _classifiers   (autouse) the classifier factory of the composition root
   make_account   insert an account, returns its id
 """
 
@@ -166,6 +167,29 @@ def isolated_engine(isolated_db: Config) -> Iterator[Engine]:
         yield engine
     finally:
         engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def _classifiers() -> Iterator[None]:
+    """Configure the classifiers as the composition root does, for every test.
+
+    Core refuses to settle without a factory (`ClassifiersNotConfigured`, reported in
+    `SettleResult.error`), and hundreds of tests settle through the operations they exercise, so the
+    real factory is installed for all of them and the previous state restored afterwards. A test
+    of the unconfigured state calls `unconfigure_classifiers()` itself.
+    """
+    from app.core.resolution.registry import configure_classifiers, current_factory, unconfigure_classifiers
+    from app.plugins.classifiers import default_classifiers
+
+    previous = current_factory()
+    configure_classifiers(default_classifiers)
+    try:
+        yield
+    finally:
+        if previous is None:
+            unconfigure_classifiers()
+        else:
+            configure_classifiers(previous)
 
 
 @pytest.fixture

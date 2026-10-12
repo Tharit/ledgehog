@@ -61,22 +61,27 @@ def rederive(
     """The values of an unconfirmed entry now, given what is stored (`current`)."""
     fixed: dict[Field, Decided] = {}
     changed = False
+    # The last afresh resolution. Resolving around values it decided itself gives the same answer,
+    # so the next field reads it instead of resolving the entry again (one resolve, not one per field).
+    last: Resolved | None = None
 
     def step(field: Field) -> Decided | None:
-        nonlocal changed
+        nonlocal changed, last
         cur = current.get(field)
         own = field == "counter_account" and cur is not None and cur.value == entry.account_id
         if cur is not None and cur.pass_name in STANDING_PASSES and not changed and not own:
             new: Decided | None = cur
         else:
-            new = resolve(
-                entry,
-                accounts=accounts,
-                classifiers=classifiers,
-                history=history,
-                fixed=fixed,
-                exclude_entry_ids=exclude_entry_ids,
-            ).get(field)
+            if last is None or any(last.get(f) != d for f, d in fixed.items()):
+                last = resolve(
+                    entry,
+                    accounts=accounts,
+                    classifiers=classifiers,
+                    history=history,
+                    fixed=fixed,
+                    exclude_entry_ids=exclude_entry_ids,
+                )
+            new = last.get(field)
             changed = changed or (new.value if new else None) != (cur.value if cur else None)
         if new is not None:
             fixed[field] = new

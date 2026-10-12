@@ -9,11 +9,24 @@ carry flags.
 Produced so far: `unclassified` and `unconfirmed`. `document_suggested`,
 `waiting` and `unmatched_transfer` belong to the closed set but need the
 matcher and pairing steps, which do not exist yet.
+
+Confirmed (spec §6, I22), until units exist: an entry is confirmed iff it carries
+no `unconfirmed` and no `unclassified` flag, its type is set and, for a transfer,
+it is paired - which no entry is before step 8, so a transfer decided by pass 0 or
+a rule is never confirmed and, since `unmatched_transfer` needs pairing's notion of
+waiting, carries no flag yet either (step 8 adds it). The unit is the entries of one
+source transaction, confirmed together. `core/resolution/confirmed.py` computes this
+from columns and keys, not from the stored flags, which lag a resolution inside a
+settle; `review_flags_step` reports the entries that became confirmed since the last
+round (what history learns from, and what keeps the rounds going).
 """
 
 from __future__ import annotations
 
 from sqlalchemy import Connection, text
+
+from app.core.resolution.confirmed import load_confirmed_ids
+from app.core.settle.run import StepOutcome, current_run
 
 # Derivation keys of these passes are standing (schema comment on ledger_entry.derivation);
 # any other key - including a malformed one without a pass - awaits a human.
@@ -55,3 +68,16 @@ def recompute_review_flags(conn: Connection) -> list[int]:
     """Rewrite every entry's flags; returns the ids whose stored value changed, ascending."""
     result = conn.execute(_RECOMPUTE, {"standing": list(STANDING_PASSES)})
     return sorted(int(i) for i in result.scalars())
+
+
+def review_flags_step(conn: Connection) -> StepOutcome:
+    """Step 5: rewrite the flags, and count the entries confirmed since the previous round."""
+    touched = recompute_review_flags(conn)
+    run = current_run()
+    if run.confirmed is None:  # outside a settle there is no previous round to compare with
+        return StepOutcome(touched=touched)
+    now = load_confirmed_ids(conn)
+    new = sorted(now - run.confirmed)
+    run.confirmed = now
+    run.to_teach.extend(new)
+    return StepOutcome(touched=touched, newly_confirmed=len(new))

@@ -18,6 +18,17 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "perf: timing-budget tests on the backfill fixture")
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _session_classifiers() -> Iterator[None]:
+    """The session-scoped fixtures below settle, before the per-test autouse fixture has run."""
+    from app.core.resolution.registry import configure_classifiers, unconfigure_classifiers
+    from app.plugins.classifiers import default_classifiers
+
+    configure_classifiers(default_classifiers)
+    yield
+    unconfigure_classifiers()
+
+
 @dataclass(frozen=True)
 class Backfill:
     engine: Engine
@@ -25,16 +36,27 @@ class Backfill:
     build_seconds: float
 
 
-@pytest.fixture(scope="session")
-def backfill(admin_cfg: Config, template_db: str) -> Iterator[Backfill]:
+def _backfill(admin_cfg: Config, template_db: str, **kwargs: float) -> Iterator[Backfill]:
     from app.utils.db.engine import make_engine
 
     name = _new_database(admin_cfg, template_db)
     engine = make_engine(admin_cfg.with_database(name))
     try:
         started = time.perf_counter()
-        summary = build_backfill(engine)
+        summary = build_backfill(engine, **kwargs)  # type: ignore[arg-type]
         yield Backfill(engine, summary, time.perf_counter() - started)
     finally:
         engine.dispose()
         _drop(admin_cfg, name)
+
+
+@pytest.fixture(scope="session")
+def backfill(admin_cfg: Config, template_db: str) -> Iterator[Backfill]:
+    """8,000 unconfirmed entries, nothing classified: no voters for history, no rules."""
+    yield from _backfill(admin_cfg, template_db)
+
+
+@pytest.fixture(scope="session")
+def backfill_settled(admin_cfg: Config, template_db: str) -> Iterator[Backfill]:
+    """The same ledger with ~70% confirmed entries (history voters) and rules for a few merchants."""
+    yield from _backfill(admin_cfg, template_db, confirmed_share=0.7)

@@ -65,7 +65,10 @@ def test_payees_are_ordered_by_name_with_presentation_only(anna: TestClient, api
         )
     assert anna.get("/api/ledger/payees").json() == {
         "payees": [
-            {"id": a, "name": "Aldi", "icon": "cart", "color": "blue", "note": "n"},
-            {"id": b, "name": "Bakery", "icon": None, "color": None, "note": None},
+            {
+                "id": a, "name": "Aldi", "icon": "cart", "color": "blue", "note": "n",
+                "document_provider": "amazon",
+            },
+            {"id": b, "name": "Bakery", "icon": None, "color": None, "note": None, "document_provider": None},
         ]
     }  # fmt: skip

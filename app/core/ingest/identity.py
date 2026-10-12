@@ -12,10 +12,12 @@ import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
+from functools import lru_cache
 
 from app.core.plugins.importer import IncomingRow
 
 
+@lru_cache(maxsize=1 << 16)
 def canonical_text(s: str | None) -> str:
     """Unicode NFKC, then casefold, then keep alphanumerics only (spec §5.2).
 
