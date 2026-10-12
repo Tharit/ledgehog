@@ -34,3 +34,8 @@ export function emptyLookups(): Lookups {
 export function withTag(lookups: Lookups, tag: Tag): Lookups {
 	return { ...lookups, tags: new Map([...lookups.tags, [tag.id, tag]]) };
 }
+
+/** The lookups with the tag list replaced by a fresh one, the rest untouched. */
+export function withTags(lookups: Lookups, tags: readonly Tag[]): Lookups {
+	return { ...lookups, tags: byId(tags) };
+}

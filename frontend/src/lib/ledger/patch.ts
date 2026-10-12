@@ -34,3 +34,45 @@ export function rowsOutOfTagFilter(
 			.map((e) => e.id)
 	);
 }
+
+/** Tooltip of a row marked after the user's own tag action took it out of the tag filter. */
+export const CHANGED_BY_YOU = 'changed by your last action';
+/** Tooltip of a row a refresh in place did not return. */
+export const CHANGED_ELSEWHERE = 'no longer matches, or changed elsewhere';
+
+/** The ids of these entries. */
+export function idsOf(entries: readonly Entry[]): ReadonlySet<number> {
+	return new Set(entries.map((e) => e.id));
+}
+
+/** The moved marks after a refresh: rows the answer returned are cleared, `missing` ones added. */
+export function nextMoved(
+	moved: ReadonlySet<number>,
+	fresh: readonly Entry[],
+	missing: ReadonlySet<number>
+): ReadonlySet<number> {
+	const returned = idsOf(fresh);
+	return new Set([...[...moved].filter((id) => !returned.has(id)), ...missing]);
+}
+
+/**
+ * Merge a refetched window into the rows held, by id: held rows the answer contains are replaced
+ * by the fresh row; held rows it does not contain are kept, and named in `missing`. Rows only in
+ * the answer are not added. Same rows, same order (§7). Only `held` ids count as missing, so rows
+ * that arrived after the request was made are left alone.
+ */
+export function mergeRefreshed(
+	entries: readonly Entry[],
+	fresh: readonly Entry[],
+	held: ReadonlySet<number>
+): { entries: Entry[]; missing: ReadonlySet<number> } {
+	const byId = new Map(fresh.map((e) => [e.id, e]));
+	const missing = new Set<number>();
+	const merged = entries.map((entry) => {
+		const next = byId.get(entry.id);
+		if (next) return next;
+		if (held.has(entry.id)) missing.add(entry.id);
+		return entry;
+	});
+	return { entries: merged, missing };
+}

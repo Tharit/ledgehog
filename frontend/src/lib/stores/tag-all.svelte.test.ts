@@ -22,7 +22,8 @@ function make(current: () => LedgerFilterState = () => filter, marked: Entry[] =
 		addTag: vi.fn(),
 		markedRows: () => marked,
 		patch: vi.fn(),
-		applied: vi.fn()
+		applied: vi.fn(),
+		recover: vi.fn()
 	};
 	return { flow: new TagAllFlow(host), host };
 }
@@ -147,15 +148,52 @@ describe('TagAllFlow', () => {
 	});
 
 	it('shows a failure by its code and keeps the dialog open', async () => {
-		vi.mocked(applyTag).mockRejectedValue(new ApiError(404, 'not_found', 'x'));
-		const { flow } = make();
+		vi.mocked(applyTag).mockRejectedValue(new ApiError(0, 'network_error', 'x'));
+		const { flow, host } = make();
 		flow.start();
 		await flow.choose(tag());
 
-		expect(flow.error).toMatch(/no longer exists/);
+		expect(flow.error).toMatch(/could not be reached/);
+		expect(flow.tag).not.toBeNull();
 		expect(flow.preview).toBeNull();
 		expect(flow.canConfirm).toBe(false);
 		expect(flow.open).toBe(true);
+		expect(host.recover).toHaveBeenCalledWith(
+			expect.objectContaining({ code: 'network_error' }),
+			'bulk'
+		);
+	});
+
+	it('reopens the chooser and asks for a tag refresh when the tag is gone', async () => {
+		vi.mocked(applyTag).mockRejectedValue(new ApiError(404, 'not_found', 'x'));
+		const { flow, host } = make();
+		flow.start();
+		await flow.choose(tag());
+
+		expect(flow.tag).toBeNull();
+		expect(flow.error).toBe('This tag no longer exists — the tag list was refreshed.');
+		expect(flow.open).toBe(true);
+		expect(host.recover).toHaveBeenCalledWith(
+			expect.objectContaining({ code: 'not_found' }),
+			'bulk'
+		);
+	});
+
+	it('says a duplicate name and asks for a tag refresh, without choosing a tag', async () => {
+		vi.mocked(createTag).mockRejectedValue(
+			new ApiError(409, 'conflict', 'x', { reason: 'duplicate_name' })
+		);
+		const { flow, host } = make();
+		flow.start();
+		await flow.create('Trip');
+
+		expect(flow.error).toBe('A tag named "Trip" already exists — the tag list was refreshed.');
+		expect(flow.tag).toBeNull();
+		expect(applyTag).not.toHaveBeenCalled();
+		expect(host.recover).toHaveBeenCalledWith(
+			expect.objectContaining({ code: 'conflict' }),
+			'bulk'
+		);
 	});
 
 	it('creates a tag in place, hands it to the host and previews it', async () => {

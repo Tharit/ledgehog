@@ -13,6 +13,7 @@ import {
 } from '#lib/api/index.js';
 import { account, applyOut, category, entry, tag } from '#lib/ledger/fixtures.js';
 import { emptyFilter } from '#lib/ledger/filter.js';
+import { ROWS_REFRESHED } from '#lib/ledger/errors.js';
 import { LedgerStore } from './ledger.svelte.js';
 import { session } from './session.svelte.js';
 
@@ -364,14 +365,16 @@ describe('LedgerStore: tagging one entry', () => {
 		expect(await store.setEntryTag(3, 8, true)).toBe(false);
 		expect(store.notice).toEqual({ text: 'Derived entries cannot be tagged', error: true });
 
+		vi.mocked(listEntries).mockResolvedValue(page([3, 2, 1], 3));
+		vi.mocked(listTags).mockResolvedValue([]);
 		vi.mocked(tagEntry).mockRejectedValueOnce(new ApiError(404, 'not_found', 'x'));
 		await store.setEntryTag(3, 8, true);
-		expect(store.notice?.text).toMatch(/no longer exists.*Refresh/);
+		expect(store.notice?.text).toMatch(/no longer exists.*refreshed in place/);
 
 		vi.mocked(tagEntry).mockRejectedValueOnce(new Error('offline'));
 		await store.setEntryTag(3, 8, true);
 		expect(store.notice?.text).toMatch(/could not be reached/);
-		expect(store.entries).toBe(before);
+		expect(store.entries.map((e) => e.id)).toEqual(before.map((e) => e.id));
 	});
 
 	it('creates a tag, adds it to the lookups without a reload, and tags the entry', async () => {
@@ -399,7 +402,71 @@ describe('LedgerStore: tagging one entry', () => {
 		expect(await store.createTagFor(3, 'Holiday')).toBe(false);
 
 		expect(tagEntry).not.toHaveBeenCalled();
-		expect(store.notice?.text).toMatch(/already exists/);
+		expect(store.notice?.text).toBe(
+			'A tag named "Holiday" already exists — the tag list was refreshed.'
+		);
+	});
+
+	it('reloads the tag list on a duplicate name so the tag appears, and does not tag', async () => {
+		const store = await loaded();
+		vi.mocked(createTag).mockRejectedValue(
+			new ApiError(409, 'conflict', 'x', { reason: 'duplicate_name' })
+		);
+		vi.mocked(listTags).mockResolvedValue([tag({ id: 40, name: 'Holiday' })]);
+
+		await store.createTagFor(3, 'Holiday');
+
+		expect(listTags).toHaveBeenCalledTimes(1);
+		expect(store.lookups.tags.get(40)?.name).toBe('Holiday');
+		expect(tagEntry).not.toHaveBeenCalled();
+		expect(listEntries).toHaveBeenCalledTimes(1);
+	});
+
+	it('a vanished entry refreshes the rows in place and reloads the tags, with a notice', async () => {
+		const store = await loaded();
+		vi.mocked(untagEntry).mockRejectedValue(new ApiError(404, 'not_found', 'x'));
+		vi.mocked(listTags).mockResolvedValue([tag({ id: 7, name: 'Fresh' })]);
+		vi.mocked(listEntries).mockResolvedValue({
+			entries: [entry({ id: 3 }), entry({ id: 1 })],
+			total: 2,
+			limit: 3,
+			offset: 0
+		});
+
+		expect(await store.setEntryTag(2, 7, false)).toBe(false);
+
+		expect(store.notice).toEqual({
+			text: 'This entry or tag no longer exists — the list and the tag list were refreshed in place.',
+			error: true
+		});
+		expect(listTags).toHaveBeenCalledTimes(1);
+		expect(store.lookups.tags.get(7)?.name).toBe('Fresh');
+		expect(store.entries.map((e) => e.id)).toEqual([3, 2, 1]);
+		expect([...store.movedIds]).toEqual([2]);
+		expect(store.total).toBe(2);
+	});
+
+	it('a derived entry only gets a notice: nothing is refetched', async () => {
+		const store = await loaded();
+		vi.mocked(tagEntry).mockRejectedValue(
+			new ApiError(409, 'conflict', 'x', { reason: 'derived_entry' })
+		);
+
+		await store.setEntryTag(3, 8, true);
+
+		expect(listEntries).toHaveBeenCalledTimes(1);
+		expect(listTags).not.toHaveBeenCalled();
+	});
+
+	it('another conflict refreshes the rows in place and says so, never retrying the write', async () => {
+		const store = await loaded();
+		vi.mocked(tagEntry).mockRejectedValue(new ApiError(409, 'conflict', 'x'));
+
+		await store.setEntryTag(3, 8, true);
+
+		expect(store.notice).toEqual({ text: ROWS_REFRESHED, error: true });
+		expect(listEntries).toHaveBeenCalledTimes(2);
+		expect(tagEntry).toHaveBeenCalledTimes(1);
 	});
 });
 
@@ -464,5 +531,148 @@ describe('LedgerStore: Tag all', () => {
 		expect(store.entries.find((e) => e.id === 1)?.tag_ids).toEqual([30]);
 		expect(store.changedIds.has(1)).toBe(false);
 		expect(store.notice?.text).toBe('Tagged 1 row you changed with "Lisbon trip"');
+	});
+});
+
+describe('LedgerStore: refreshInPlace', () => {
+	async function loaded(ids = [3, 2, 1], total = ids.length) {
+		vi.mocked(listEntries).mockResolvedValue(page(ids, total));
+		const store = new LedgerStore();
+		store.applyFilter({ ...emptyFilter(), account_id: [1] });
+		await flush();
+		vi.mocked(listEntries).mockReset();
+		return store;
+	}
+
+	it('keeps order and ids, takes fresh fields and tag ids, does not add rows, updates total', async () => {
+		const store = await loaded();
+		vi.mocked(listEntries).mockResolvedValue({
+			entries: [
+				entry({ id: 1, version: 4, tag_ids: [9], description: 'new' }),
+				entry({ id: 3 }),
+				entry({ id: 2 }),
+				entry({ id: 99 })
+			],
+			total: 7,
+			limit: 3,
+			offset: 0
+		});
+
+		await store.refreshInPlace();
+
+		expect(store.entries.map((e) => e.id)).toEqual([3, 2, 1]);
+		expect(store.entries[2]).toMatchObject({ version: 4, tag_ids: [9], description: 'new' });
+		expect(store.total).toBe(7);
+		expect(store.movedIds.size).toBe(0);
+		expect(vi.mocked(listEntries).mock.calls[0][0]).toMatchObject({ account_id: [1] });
+		expect(vi.mocked(listEntries).mock.calls[0][1]).toMatchObject({ limit: 3, offset: 0 });
+	});
+
+	it('keeps rows missing from the answer and marks them as moved', async () => {
+		const store = await loaded();
+		vi.mocked(listEntries).mockResolvedValue(page([3, 1], 2));
+
+		await store.refreshInPlace();
+
+		expect(store.entries.map((e) => e.id)).toEqual([3, 2, 1]);
+		expect([...store.movedIds]).toEqual([2]);
+
+		vi.mocked(listEntries).mockResolvedValue(page([3, 2, 1], 3));
+		await store.refreshInPlace();
+		expect(store.movedIds.size).toBe(0);
+	});
+
+	it("unmarks the user's own mark when the fresh row matches the tag filter again", async () => {
+		vi.mocked(listEntries).mockResolvedValue({
+			entries: [entry({ id: 3, tag_ids: [7] }), entry({ id: 2, tag_ids: [7] })],
+			total: 2,
+			limit: 100,
+			offset: 0
+		});
+		const store = new LedgerStore();
+		store.applyFilter({ ...emptyFilter(), tag_id: [7] });
+		await flush();
+		store.patchTags([{ id: 2, tag_ids: [] }]);
+		expect([...store.changedIds]).toEqual([2]);
+
+		vi.mocked(listEntries).mockResolvedValue({
+			entries: [entry({ id: 3, tag_ids: [7] }), entry({ id: 2, tag_ids: [7] })],
+			total: 2,
+			limit: 2,
+			offset: 0
+		});
+		await store.refreshInPlace();
+
+		expect(store.changedIds.size).toBe(0);
+	});
+
+	it('pages through more than 500 loaded rows', async () => {
+		const ids = Array.from({ length: 1200 }, (_, i) => 2000 - i);
+		const store = await loaded(ids, 1500);
+		vi.mocked(listEntries).mockImplementation(async (_filter, options) => ({
+			entries: ids
+				.slice(options?.offset ?? 0, (options?.offset ?? 0) + (options?.limit ?? 0))
+				.map((id) => entry({ id, version: 2 })),
+			total: 1500,
+			limit: options?.limit ?? 0,
+			offset: options?.offset ?? 0
+		}));
+
+		await store.refreshInPlace();
+
+		const calls = vi.mocked(listEntries).mock.calls.map((c) => [c[1]?.offset ?? 0, c[1]?.limit]);
+		expect(calls).toEqual([
+			[0, 500],
+			[500, 500],
+			[1000, 200]
+		]);
+		expect(store.entries).toHaveLength(1200);
+		expect(store.entries.every((e) => e.version === 2)).toBe(true);
+		expect(store.movedIds.size).toBe(0);
+	});
+
+	it('ignores an answer that arrives after the filter changed', async () => {
+		const store = await loaded();
+		const late = deferred<ReturnType<typeof page>>();
+		vi.mocked(listEntries).mockReturnValueOnce(late.promise);
+		const refreshing = store.refreshInPlace();
+
+		vi.mocked(listEntries).mockResolvedValue(page([8], 1));
+		store.applyFilter({ ...emptyFilter(), account_id: [2] });
+		await flush();
+		late.resolve(page([3], 1));
+		await refreshing;
+
+		expect(store.entries.map((e) => e.id)).toEqual([8]);
+		expect(store.total).toBe(1);
+		expect(store.movedIds.size).toBe(0);
+	});
+
+	it('is abortable: a reload and dispose abort the request', async () => {
+		const store = await loaded();
+		const seen: AbortSignal[] = [];
+		vi.mocked(listEntries).mockImplementation((_filter, options) => {
+			if (options?.signal) seen.push(options.signal);
+			return new Promise(() => {});
+		});
+
+		void store.refreshInPlace();
+		void store.refreshInPlace();
+		expect(seen[0].aborted).toBe(true);
+		expect(seen[1].aborted).toBe(false);
+
+		store.dispose();
+		expect(seen[1].aborted).toBe(true);
+	});
+
+	it('says so when the refresh fails, and keeps the rows', async () => {
+		const store = await loaded();
+		const before = store.entries;
+		vi.mocked(listEntries).mockRejectedValue(new ApiError(0, 'network_error', 'x'));
+
+		await store.refreshInPlace();
+
+		expect(store.entries).toBe(before);
+		expect(store.notice?.error).toBe(true);
 	});
 });

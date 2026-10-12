@@ -30,7 +30,8 @@ function setup(props: { reason?: string | null; marked?: Entry[] } = {}) {
 		addTag: vi.fn(),
 		markedRows: () => marked,
 		patch: vi.fn(),
-		applied: vi.fn()
+		applied: vi.fn(),
+		recover: vi.fn()
 	};
 	const flow = new TagAllFlow(host);
 	render(TagAll, { props: { flow, lookups, reason: null, ...rest } });
@@ -185,18 +186,21 @@ describe('TagAll: the dialog', () => {
 		await waitFor(() => expect(confirm()).toBeEnabled());
 	});
 
-	it('shows a failed preview inside the dialog, by its code, with a retry', async () => {
+	it('reopens the chooser with a notice when the tag no longer exists', async () => {
 		vi.mocked(applyTag)
 			.mockRejectedValueOnce(new ApiError(404, 'not_found', 'x'))
 			.mockResolvedValueOnce(applyOut());
-		setup();
+		const { host } = setup();
 
 		await openAndChoose();
 
-		expect(await screen.findByRole('alert')).toHaveTextContent(/no longer exists/);
+		expect(await screen.findByRole('alert')).toHaveTextContent(
+			'This tag no longer exists — the tag list was refreshed.'
+		);
+		expect(host.recover).toHaveBeenCalled();
 		expect(confirm()).toBeDisabled();
-		await fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
-		expect(await screen.findByText(/entries will be tagged/)).toBeInTheDocument();
+		expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+		expect(screen.getByLabelText('Search tags')).toBeInTheDocument();
 	});
 
 	it('shows a network failure of the write inside the dialog and stays open', async () => {
@@ -398,7 +402,7 @@ describe('TagAll: rows the user changed', () => {
 		const report = await screen.findByRole('alert');
 		expect(report).toHaveTextContent('Tagged 3 entries with "Lisbon trip"');
 		expect(report).toHaveTextContent(
-			'Tagged 1 of 2 of the rows you changed; 1 failed (That entry or tag no longer exists.'
+			'Tagged 1 of 2 of the rows you changed; 1 failed (This entry or tag no longer exists'
 		);
 		expect(screen.getByRole('dialog')).toBeInTheDocument();
 		expect(host.applied).not.toHaveBeenCalled();

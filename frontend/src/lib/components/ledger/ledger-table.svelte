@@ -7,6 +7,7 @@
 	import { DERIVED_NOT_TAGGABLE } from '#lib/ledger/errors.js';
 	import { ledgerKey, moveCursor } from '#lib/ledger/keys.js';
 	import type { Lookups } from '#lib/ledger/lookups.js';
+	import { CHANGED_BY_YOU, CHANGED_ELSEWHERE } from '#lib/ledger/patch.js';
 	import { isDerivedType } from '#lib/ledger/types.js';
 	import type { Entry, Tag } from '#lib/types/domain.js';
 	import { cn } from '#lib/utils.js';
@@ -27,6 +28,7 @@
 		locale = 'en',
 		activeFilters = [],
 		changedIds = new Set<number>(),
+		movedIds = new Set<number>(),
 		onclearfilters,
 		onretry,
 		onloadmore,
@@ -52,6 +54,8 @@
 		onsearch?: () => void;
 		/** rows the user's tag action took out of the filter: marked, never removed */
 		changedIds?: ReadonlySet<number>;
+		/** rows a refresh in place did not return: marked too, with another tooltip */
+		movedIds?: ReadonlySet<number>;
 		/** tag (`tagged`) or untag one entry; true when it worked */
 		ontoggletag?: (entryId: number, tagId: number, tagged: boolean) => Promise<boolean>;
 		/** create a tag and put it on one entry; true when it worked */
@@ -261,7 +265,8 @@
 						{locale}
 						{showCurrency}
 						cursor={entry.id === cursorId}
-						changed={changedIds.has(entry.id)}
+						changed={changedIds.has(entry.id) || movedIds.has(entry.id)}
+						changedTitle={changedIds.has(entry.id) ? CHANGED_BY_YOU : CHANGED_ELSEWHERE}
 						onselect={() => (cursorId = entry.id)}
 					/>
 				{/each}

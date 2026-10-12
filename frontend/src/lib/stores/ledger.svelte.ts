@@ -17,7 +17,12 @@ import {
 } from '#lib/api/index.js';
 import { todayIso } from '#lib/format/index.js';
 import { describeFilter } from '#lib/ledger/describe.js';
-import { describeTagError, SETTLE_STALE } from '#lib/ledger/errors.js';
+import {
+	describeTagError,
+	SETTLE_STALE,
+	tagErrorEffects,
+	type TagErrorScope
+} from '#lib/ledger/errors.js';
 import {
 	emptyFilter,
 	filterKey,
@@ -25,11 +30,28 @@ import {
 	normalizeFilter,
 	type LedgerFilterState
 } from '#lib/ledger/filter.js';
-import { NO_IDS, patchTagIds, rowsOutOfTagFilter, withIds } from '#lib/ledger/patch.js';
-import { buildLookups, emptyLookups, withTag, type Lookups } from '#lib/ledger/lookups.js';
+import {
+	idsOf,
+	mergeRefreshed,
+	NO_IDS,
+	nextMoved,
+	patchTagIds,
+	rowsOutOfTagFilter,
+	withIds
+} from '#lib/ledger/patch.js';
+import {
+	buildLookups,
+	emptyLookups,
+	withTag,
+	withTags,
+	type Lookups
+} from '#lib/ledger/lookups.js';
 import type { Entry, EntryTagIds, Tag } from '#lib/types/domain.js';
 import { session } from './session.svelte.js';
 import { TagAllFlow } from './tag-all.svelte.js';
+
+/** the most rows one list request may ask for */
+const REFRESH_PAGE = 500;
 
 export type LedgerStatus = 'loading' | 'ready' | 'error';
 
@@ -71,6 +93,9 @@ export class LedgerStore {
 	/** entries whose tags were changed here since the list was fetched */
 	touchedIds = $state.raw<ReadonlySet<number>>(NO_IDS);
 
+	/** rows a refresh in place did not return: kept and marked, never removed (patterns §7, §8) */
+	movedIds = $state.raw<ReadonlySet<number>>(NO_IDS);
+
 	/**
 	 * Rows the user's tag action took out of an active tag filter. They stay where they are,
 	 * marked "changed by your last action", until the list is refreshed (decision C10).
@@ -92,6 +117,7 @@ export class LedgerStore {
 		locale: () => this.locale,
 		addTag: (tag) => this.addTag(tag),
 		markedRows: () => this.entries.filter((e) => this.changedIds.has(e.id)),
+		recover: (error, scope) => this.recover(error, scope),
 		patch: (updates) => this.patchTags(updates),
 		applied: (updates, text) => {
 			this.patchTags(updates);
@@ -100,6 +126,7 @@ export class LedgerStore {
 	});
 
 	#controller: AbortController | null = null;
+	#refreshController: AbortController | null = null;
 	#generation = 0;
 	#key: string | null = null;
 	#lookupsRequested = false;
@@ -117,6 +144,7 @@ export class LedgerStore {
 	/** Fetch the first page again for the current filter. */
 	async reload(): Promise<void> {
 		this.#controller?.abort();
+		this.#refreshController?.abort();
 		const controller = new AbortController();
 		this.#controller = controller;
 		const generation = ++this.#generation;
@@ -127,6 +155,7 @@ export class LedgerStore {
 		this.entries = [];
 		this.total = 0;
 		this.touchedIds = NO_IDS;
+		this.movedIds = NO_IDS;
 		this.notice = null;
 		try {
 			const page = await listEntries(this.filter, {
@@ -168,6 +197,63 @@ export class LedgerStore {
 		} finally {
 			if (generation === this.#generation) this.loadingMore = false;
 		}
+	}
+
+	/**
+	 * Refetch the window already loaded for the current filter and merge it into the rows held, in
+	 * place (patterns §7, §8): fresh rows replace held ones by id, held rows the answer lacks stay
+	 * and are marked, rows not held are not added, the order never changes.
+	 */
+	async refreshInPlace(): Promise<void> {
+		if (this.status !== 'ready' || this.entries.length === 0) return;
+		this.#refreshController?.abort();
+		const controller = new AbortController();
+		this.#refreshController = controller;
+		const generation = this.#generation;
+		const filter = this.filter;
+		const held = idsOf(this.entries);
+		const wanted = this.entries.length;
+		try {
+			const fresh: Entry[] = [];
+			let total = this.total;
+			while (fresh.length < wanted) {
+				const limit = Math.min(REFRESH_PAGE, wanted - fresh.length);
+				const page = await listEntries(filter, {
+					limit,
+					offset: fresh.length,
+					signal: controller.signal
+				});
+				if (generation !== this.#generation || controller.signal.aborted) return;
+				fresh.push(...page.entries);
+				total = page.total;
+				if (page.entries.length < limit) break;
+			}
+			const merged = mergeRefreshed(this.entries, fresh, held);
+			this.entries = merged.entries;
+			this.total = total;
+			this.movedIds = nextMoved(this.movedIds, fresh, merged.missing);
+		} catch {
+			if (generation !== this.#generation || controller.signal.aborted) return;
+			this.notify('The list could not be refreshed in place; its rows may be out of date.', true);
+		}
+	}
+
+	/** Load the tag list again (a tag was created or deleted elsewhere). */
+	async reloadTags(): Promise<void> {
+		try {
+			this.lookups = withTags(this.lookups, await listTags());
+		} catch {
+			// the lookups held stay; the notice already said what happened
+		}
+	}
+
+	/** After a failed tag write: refetch what moved, as `tagErrorEffects` says. Never a retry. */
+	async recover(error: ApiError, scope: TagErrorScope): Promise<void> {
+		const effects = tagErrorEffects(error, scope);
+		await Promise.all([
+			effects.rows ? this.refreshInPlace() : undefined,
+			effects.tags ? this.reloadTags() : undefined
+		]);
 	}
 
 	/** Load the lists rows resolve ids against, once. A list that fails is simply empty. */
@@ -220,7 +306,9 @@ export class LedgerStore {
 			if (out.settle.error) this.notify(`Saved. ${SETTLE_STALE}`);
 			return true;
 		} catch (error) {
-			this.notify(describeTagError(asApiError(error)), true);
+			const failure = asApiError(error);
+			this.notify(describeTagError(failure), true);
+			await this.recover(failure, 'entry');
 			return false;
 		}
 	}
@@ -232,7 +320,9 @@ export class LedgerStore {
 		try {
 			tag = (await createTag(name)).tag;
 		} catch (error) {
-			this.notify(describeTagError(asApiError(error)), true);
+			const failure = asApiError(error);
+			this.notify(describeTagError(failure, 'entry', name), true);
+			await this.recover(failure, 'entry');
 			return false;
 		}
 		this.addTag(tag);
@@ -244,6 +334,8 @@ export class LedgerStore {
 		this.#generation++;
 		this.#controller?.abort();
 		this.#controller = null;
+		this.#refreshController?.abort();
+		this.#refreshController = null;
 		this.tagAll.close();
 	}
 }

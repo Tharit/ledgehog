@@ -98,6 +98,7 @@
 		onloadmore={() => ledger.loadMore()}
 		onsearch={focusSearch}
 		changedIds={ledger.changedIds}
+		movedIds={ledger.movedIds}
 		ontoggletag={(entryId, tagId, tagged) => ledger.setEntryTag(entryId, tagId, tagged)}
 		oncreatetag={(entryId, name) => ledger.createTagFor(entryId, name)}
 		onnotice={(text) => ledger.notify(text)}

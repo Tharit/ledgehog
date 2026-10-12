@@ -12,6 +12,7 @@
 	import ReviewBadge from '#lib/components/common/review-badge.svelte';
 	import TagChip from '#lib/components/common/tag-chip.svelte';
 	import type { Lookups } from '#lib/ledger/lookups.js';
+	import { CHANGED_BY_YOU } from '#lib/ledger/patch.js';
 	import { ENTRY_TYPE_INFO, isDerivedType } from '#lib/ledger/types.js';
 	import { resolveAccount, resolveCategory, resolveTag } from '#lib/theme/resolve.js';
 	import type { Entry } from '#lib/types/domain.js';
@@ -27,6 +28,7 @@
 		showCurrency = false,
 		cursor = false,
 		changed = false,
+		changedTitle = CHANGED_BY_YOU,
 		onselect
 	}: {
 		entry: Entry;
@@ -36,6 +38,8 @@
 		cursor?: boolean;
 		/** the user's last action took this row out of the filter; it stays until a refresh (§7) */
 		changed?: boolean;
+		/** why the row is marked (tooltip) */
+		changedTitle?: string;
 		onselect?: () => void;
 	} = $props();
 
@@ -68,7 +72,7 @@
 	aria-selected={cursor}
 	data-cursor={cursor || undefined}
 	data-changed={changed || undefined}
-	title={changed ? 'changed by your last action' : undefined}
+	title={changed ? changedTitle : undefined}
 	class={cn(
 		ROW_GRID,
 		'relative h-8 scroll-mt-10 border-b border-border px-3 text-[13px]',

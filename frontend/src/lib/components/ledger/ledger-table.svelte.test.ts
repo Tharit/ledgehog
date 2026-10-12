@@ -581,4 +581,15 @@ describe('LedgerTable: rows changed by the last action', () => {
 		expect(changed[0]).toHaveAttribute('data-entry-id', '2');
 		expect(changed[0]).toHaveAttribute('title', 'changed by your last action');
 	});
+
+	it('marks rows a refresh did not return, with their own tooltip', () => {
+		table({ changedIds: new Set([2]), movedIds: new Set([1]) });
+
+		const rows = screen.getAllByRole('row').slice(1);
+		const title = (id: string) =>
+			rows.find((r) => r.getAttribute('data-entry-id') === id)?.getAttribute('title');
+		expect(title('2')).toBe('changed by your last action');
+		expect(title('1')).toBe('no longer matches, or changed elsewhere');
+		expect(title('3')).toBeNull();
+	});
 });

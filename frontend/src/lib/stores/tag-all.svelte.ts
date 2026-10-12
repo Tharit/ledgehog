@@ -5,7 +5,12 @@
 
 import { ApiError, applyBody, applyTag, createTag, tagEntry } from '#lib/api/index.js';
 import { formatCount } from '#lib/format/index.js';
-import { describeTagError, SETTLE_STALE } from '#lib/ledger/errors.js';
+import {
+	describeTagError,
+	distinctTagErrors,
+	SETTLE_STALE,
+	type TagErrorScope
+} from '#lib/ledger/errors.js';
 import type { LedgerFilterState } from '#lib/ledger/filter.js';
 import {
 	eligibleMarkedRows,
@@ -22,6 +27,8 @@ export type TagAllHost = {
 	addTag: (tag: Tag) => void;
 	/** the rows the user changed that the tag filter no longer matches (marked in the list) */
 	markedRows: () => readonly Entry[];
+	/** a write failed: refetch what moved (rows in place, the tag list), as its error calls for */
+	recover: (error: ApiError, scope: TagErrorScope) => void | Promise<void>;
 	/** patch these entries into the list, quietly (a write that left the dialog open) */
 	patch: (updates: readonly EntryTagIds[]) => void;
 	/** the write succeeded: patch these entries and say it */
@@ -119,8 +126,10 @@ export class TagAllFlow {
 			tag = (await createTag(name)).tag;
 		} catch (error) {
 			if (generation !== this.#generation) return;
-			this.error = describeTagError(asApiError(error));
+			const failure = asApiError(error);
+			this.error = describeTagError(failure, 'bulk', name);
 			this.status = 'idle';
+			await this.#host.recover(failure, 'bulk');
 			return;
 		}
 		this.#host.addTag(tag);
@@ -189,7 +198,8 @@ export class TagAllFlow {
 		this.#host.patch(updates);
 		const lines: string[] = [];
 		if (applied > 0) lines.push(taggedSummary(tag.name, applied, 0, locale));
-		const reasons = failures.map((f) => describeTagError(f));
+		const reasons = failures.map((f) => describeTagError(f, 'entry'));
+		for (const f of distinctTagErrors(failures)) void this.#host.recover(f, 'entry');
 		const tagged = extras.length - failures.length;
 		lines.push(partialReport(tagged, extras.length, reasons, locale));
 		if (stale) lines.push(SETTLE_STALE);
@@ -212,8 +222,20 @@ export class TagAllFlow {
 					: `The result changed (was ${formatCount(was, locale)}, now ${formatCount(now, locale)}) — please check and confirm again`;
 			return;
 		}
-		this.error = describeTagError(failure);
+		await this.#failed(failure);
+	}
+
+	/** A failed step: say it by its code, refetch what moved; a vanished tag reopens the chooser. */
+	async #failed(failure: ApiError): Promise<void> {
+		const text = describeTagError(failure, 'bulk');
+		const gone = failure.code === 'not_found';
+		if (gone) {
+			this.#reset();
+			this.#filter = this.#host.filter();
+		}
+		this.error = text;
 		this.status = 'idle';
+		await this.#host.recover(failure, 'bulk');
 	}
 
 	async #preview(): Promise<void> {
@@ -230,7 +252,8 @@ export class TagAllFlow {
 			this.preview = out;
 		} catch (error) {
 			if (generation !== this.#generation) return;
-			this.error = describeTagError(asApiError(error));
+			await this.#failed(asApiError(error));
+			return;
 		}
 		this.status = 'idle';
 	}
