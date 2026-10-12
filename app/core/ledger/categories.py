@@ -4,7 +4,7 @@ Every write is ONE transaction: settle lock shared, then the category rows locke
 (structural writes lock the whole table: it is small, and a tree-shape decision reads all of it);
 it commits, and only then settles (a settling failure is the `error` of the result, never raised
 into the committed write). Delete and merge are previewed: `dry_run` runs the same code and rolls
-it back. A merge repoints entries under the settling flag, so no `ledger_entry.version` moves
+it back. A merge bumps the versions of the entries it repoints, like any user-meaningful change
 (D200), and derives nothing again (I18).
 """
 
@@ -380,7 +380,7 @@ def merge_category(
     """Merge `source_id` into `target_id` (spec §3.5); `dry_run` reports and writes nothing.
 
     Refused: the same category, another kind, or a target below the source; a target above it is
-    fine. Entries and rules are repointed under the settling flag (no version moves, nothing is
+    fine. Entries and rules are repointed (the entries' versions bump, nothing is
     derived again, keys stay). The real run carries the dry run's `entry_count`; another number
     writes nothing (`MergeCountChanged`).
     """
@@ -404,7 +404,6 @@ def merge_category(
                 "a category cannot be merged into one of its own descendants: merge the descendants "
                 "upwards instead",
             )
-        conn.execute(text("SELECT set_config('ledger.settling', 'on', true)"))  # no version bumps (D200)
         pairs: list[MergedPair] = []
         moved: list[MovedChild] = []
         entry_ids: list[int] = []

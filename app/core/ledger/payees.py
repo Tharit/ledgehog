@@ -2,8 +2,8 @@
 
 Same shape as categories: one transaction (settle lock shared, then the payee rows ascending), a
 settle after the commit, and a dry run that runs the real code and rolls it back. A merge repoints
-entries and rules (`payee_id` and `condition_payee_id`) under the settling flag: no version moves,
-nothing is derived again, keys stay. The target's attributes win.
+entries and rules (`payee_id` and `condition_payee_id`); the entries' versions bump (D200), nothing is
+derived again, keys stay. The target's attributes win.
 """
 
 from __future__ import annotations
@@ -244,8 +244,8 @@ def merge_payee(
 ) -> PayeeMergeResult:
     """Merge `source_id` into `target_id` (spec §3.6); `dry_run` reports and writes nothing.
 
-    Entries (`payee_id`) and rules (`payee_id`, `condition_payee_id`) are repointed under the
-    settling flag, then the source is deleted last. The target's attributes win; the result says
+    Entries (`payee_id`) and rules (`payee_id`, `condition_payee_id`) are repointed (the entries'
+    versions bump), then the source is deleted last. The target's attributes win; the result says
     when that loses the source's `document_provider`. The real run carries the dry run's
     `entry_count`; another number writes nothing (`MergeCountChanged`).
     """
@@ -260,7 +260,6 @@ def merge_payee(
         if source_id == target_id:
             raise InvalidValue("into", "a payee cannot be merged into itself")
         source, target = _view(conn, source_id), _view(conn, target_id)
-        conn.execute(text("SELECT set_config('ledger.settling', 'on', true)"))  # no version bumps (D200)
         params = {"s": source_id, "t": target_id}
         entry_ids = [
             int(i)

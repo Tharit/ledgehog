@@ -34,9 +34,7 @@ def acct(api_engine: Engine) -> int:
         return seed.account(conn)
 
 
-ENTRY_STATE = (
-    "SELECT id, version, derivation, review_flags, type, amount, payee_id FROM ledger_entry ORDER BY id"
-)
+ENTRY_STATE = "SELECT id, derivation, review_flags, type, amount, payee_id FROM ledger_entry ORDER BY id"
 
 
 def make(client: TestClient, name: str, parent: int | None = None, kind: str | None = None, **kw: Any) -> int:
@@ -305,7 +303,7 @@ def test_merge_dry_run_lists_every_pair_deepest_first_and_writes_nothing(
         assert counts(conn) == before
 
 
-def test_merge_repoints_moves_children_keeps_keys_and_versions(
+def test_merge_repoints_moves_children_keeps_keys_and_bumps_versions(
     anna: TestClient, api_engine: Engine, forest: dict[str, int]
 ):
     ids = forest
@@ -317,6 +315,7 @@ def test_merge_repoints_moves_children_keeps_keys_and_versions(
             ),
         )  # fmt: skip
         before = conn.execute(text(ENTRY_STATE)).all()
+        versions_before = dict(conn.execute(text("SELECT id, version FROM ledger_entry")).all())
     dry = merge(anna, ids["S"], ids["T"], dry_run=True).json()
     r = merge(anna, ids["S"], ids["T"], expected_count=dry["entry_count"])
     assert r.status_code == 200, r.text
@@ -338,9 +337,13 @@ def test_merge_repoints_moves_children_keeps_keys_and_versions(
         }
         rules = {r.name: r.category_id for r in conn.execute(text("SELECT name, category_id FROM rule"))}
         same = conn.execute(text(ENTRY_STATE)).all()
+        versions_after = dict(conn.execute(text("SELECT id, version FROM ledger_entry")).all())
     assert cats == {ids["T"]: 1, ids["food"]: 2, ids["beer"]: 5, ids["Wine"]: 1}
     assert rules == {"r-food": ids["food"], "r-s": ids["T"]}
-    assert same == before  # versions (no bump), keys, flags, type, amounts: untouched
+    assert same == before  # keys, flags, type, amounts: untouched
+    moved = set(body["entry_ids"])
+    assert {i for i, v in versions_after.items() if v != versions_before[i]} == moved
+    assert all(versions_after[i] == versions_before[i] + 1 for i in moved)  # a merge bumps what it repoints
     assert_checks_ok(anna)
 
 

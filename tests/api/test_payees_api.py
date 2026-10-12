@@ -33,9 +33,7 @@ def acct(api_engine: Engine) -> int:
         return seed.account(conn)
 
 
-ENTRY_STATE = (
-    "SELECT id, version, derivation, review_flags, type, amount, category_id FROM ledger_entry ORDER BY id"
-)
+ENTRY_STATE = "SELECT id, derivation, review_flags, type, amount, category_id FROM ledger_entry ORDER BY id"
 
 
 def make(client: TestClient, name: str, **kw: Any) -> dict[str, Any]:
@@ -243,6 +241,7 @@ def test_merge_repoints_entries_and_rules_under_the_settling_flag(
     with api_engine.begin() as conn:
         conn.execute(text('UPDATE ledger_entry SET derivation = \'{"payee_id": {"pass": "user"}}\'::jsonb'))
         before = conn.execute(text(ENTRY_STATE)).all()
+        versions_before = dict(conn.execute(text("SELECT id, version FROM ledger_entry")).all())
         rules_before = conn.execute(
             text("SELECT id, name, sets, counterparty_ref FROM rule ORDER BY id")
         ).all()
@@ -269,7 +268,10 @@ def test_merge_repoints_entries_and_rules_under_the_settling_flag(
         rules_after = conn.execute(
             text("SELECT id, name, sets, counterparty_ref FROM rule ORDER BY id")
         ).all()
-    assert after == before  # no version bump, keys and flags untouched
+        versions_after = dict(conn.execute(text("SELECT id, version FROM ledger_entry")).all())
+    assert after == before  # keys and flags untouched
+    bumped = {i for i, v in versions_after.items() if v != versions_before[i]}
+    assert bumped == set(d["entry_ids"]) and bumped  # the repointed entries bump, no others
     assert rules_after == rules_before
     assert by_name == {
         "sets-src": (pair["tgt"], None),
