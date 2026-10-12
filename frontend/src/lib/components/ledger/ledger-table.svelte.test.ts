@@ -161,6 +161,44 @@ describe('LedgerTable: rows and the footer', () => {
 	});
 });
 
+describe('LedgerTable: focus and scrolling', () => {
+	it('hands the keyboard to the list without scrolling the page to it', async () => {
+		const focus = vi.spyOn(HTMLElement.prototype, 'focus');
+		const scroll = vi.fn();
+		Element.prototype.scrollIntoView = scroll;
+		const { component } = table();
+
+		component.enterList();
+		await tick();
+
+		const grid = screen.getByRole('grid');
+		const onGrid = focus.mock.calls.filter((_, i) => focus.mock.contexts[i] === grid);
+		expect(onGrid.length).toBeGreaterThan(0);
+		for (const [options] of onGrid) expect(options).toEqual({ preventScroll: true });
+		// only the cursor row is scrolled, and only to where it is visible
+		expect(scroll).toHaveBeenCalledWith({ block: 'nearest' });
+		for (const context of scroll.mock.contexts) {
+			expect(context).not.toBe(grid);
+			expect((context as HTMLElement).dataset.entryId).toBeDefined();
+		}
+		focus.mockRestore();
+	});
+
+	it('moving the cursor scrolls the row only, never the whole grid', async () => {
+		const scroll = vi.fn();
+		Element.prototype.scrollIntoView = scroll;
+		table();
+
+		await key('j');
+		await key('j');
+
+		expect(scroll.mock.calls.length).toBeGreaterThan(0);
+		for (const context of scroll.mock.contexts) {
+			expect((context as HTMLElement).getAttribute('role')).toBe('row');
+		}
+	});
+});
+
 describe('LedgerTable: the keyboard', () => {
 	it('starts without a cursor; down puts it on the first row', async () => {
 		table();

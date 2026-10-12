@@ -32,11 +32,11 @@
 		const typing = document.activeElement === searchEl;
 		await goto(`${page.url.pathname}${query ? `?${query}` : ''}`, { replaceState: true });
 		// a navigation moves focus to the page; typing in the filter box goes on
-		if (typing) searchEl?.focus();
+		if (typing) searchEl?.focus({ preventScroll: true });
 	}
 
 	function focusSearch() {
-		searchEl?.focus();
+		searchEl?.focus({ preventScroll: true });
 		searchEl?.select();
 	}
 </script>

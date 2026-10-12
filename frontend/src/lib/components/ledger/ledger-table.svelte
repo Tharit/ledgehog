@@ -62,11 +62,12 @@
 
 	/**
 	 * Hand the keyboard to the list: leave whatever field has focus, focus the list and put the
-	 * cursor on the first row (from the filter box, `↓`).
+	 * cursor on the first row (from the filter box, `↓`). Focus never scrolls the page: only the
+	 * cursor row is scrolled into view, and only when it is not visible already.
 	 */
 	export function enterList() {
 		if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-		container?.focus();
+		container?.focus({ preventScroll: true });
 		cursorId = entries.length > 0 ? entries[0].id : null;
 	}
 
