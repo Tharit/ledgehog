@@ -11,12 +11,13 @@ describe('ledgerKey', () => {
 		expect(ledgerKey({ key: 'Escape' })).toBe('escape');
 		expect(ledgerKey({ key: '/' })).toBe('search');
 		expect(ledgerKey({ key: '?' })).toBe('help');
+		expect(ledgerKey({ key: 't' })).toBe('tag');
 	});
 
 	it('ignores other keys', () => {
 		expect(ledgerKey({ key: 'a' })).toBeNull();
 		expect(ledgerKey({ key: 'J' })).toBeNull();
-		expect(ledgerKey({ key: 't' })).toBeNull();
+		expect(ledgerKey({ key: 'T' })).toBeNull();
 	});
 
 	it('ignores a key with a modifier (browser and system shortcuts)', () => {

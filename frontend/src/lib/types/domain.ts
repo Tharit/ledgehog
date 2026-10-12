@@ -4,6 +4,7 @@ export type {
 	Account,
 	Category,
 	Entry,
+	EntryTagIds,
 	EntryFilter,
 	EntryPage,
 	EntryType,
@@ -11,5 +12,6 @@ export type {
 	Money,
 	Payee,
 	ReviewFlag,
-	Tag
+	Tag,
+	TagApplyOut
 } from '#lib/api/types.js';

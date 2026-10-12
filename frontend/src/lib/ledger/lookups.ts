@@ -29,3 +29,8 @@ export function buildLookups(lists: {
 export function emptyLookups(): Lookups {
 	return buildLookups({});
 }
+
+/** The lookups with one more tag (just created), the rest untouched. */
+export function withTag(lookups: Lookups, tag: Tag): Lookups {
+	return { ...lookups, tags: new Map([...lookups.tags, [tag.id, tag]]) };
+}

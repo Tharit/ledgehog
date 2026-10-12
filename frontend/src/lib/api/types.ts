@@ -44,6 +44,12 @@ export type Entry = Schemas['EntryOut'];
 export type EntryPage = Schemas['EntryPageOut'];
 export type EntryType = NonNullable<Entry['type']>;
 export type ReviewFlag = Entry['review_flags'][number];
+export type EntryTagIds = Schemas['EntryTagIdsOut'];
+export type EntryTagsOut = Schemas['EntryTagsOut'];
+export type SettleOut = Schemas['SettleOut'];
+export type TagApplyBody = Schemas['TagApplyBody'];
+export type TagApplyOut = Schemas['TagApplyOut'];
+export type TagWriteOut = Schemas['TagWriteOut'];
 
 // TEMPORARY, hand-written from app/api/routers/lookups.py until the generated types contain
 // GET /api/ledger/categories|payees|tags; then replace these with `Schemas[...]`.
