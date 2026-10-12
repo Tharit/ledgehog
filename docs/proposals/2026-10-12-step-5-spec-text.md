@@ -2,15 +2,20 @@
 
 Status: **for review.** Nothing here is applied. This is the exact wording for the decisions accepted in
 `2026-10-11-step-5-plan-and-decisions.md` (B1–B16, C1–C12, D1–D9, "Units in the list") and for option B of
-"without a category" (chosen 2026-10-12), written so that it says what the code does. Every statement was
-checked against the code and `frontend/openapi.json` (the generated schema is the authority for field names).
+"without a category" (chosen 2026-10-12), written so that it says what the code does. Revised 2026-10-12 after the tag UI and the review iterations
+landed: every statement about the frontend and the backend was checked again against the code AS BUILT (HEAD
+`90af91e`) and `frontend/openapi.json` (the generated schema is the authority for field names). Where a
+statement is about something not built yet it carries "[to be built]" and says which step builds it: the
+"N new" count, the transfer partner summary and the joined split (steps 7 and 8), the unit panel, the account
+strip, saved filters, narrow-width handling.
 Each item gives *where* (document, section heading, a quoted anchor), *now*, *becomes*, and the files it
 touches. When you answer "accept all recommended", I apply items 1–9 exactly as written, taking the option
 marked *R* in "Questions for the author"; items marked "no change" apply nothing.
 
 Contents: **1** architecture §4.1 list, lookups, tags · **2** architecture §11 · **3** architecture §2, §6.1,
 §6.2, §6.7, §10 frontend · **4** architecture §5.7 `EXPOSE_OPENAPI` · **5** spec §8 and §3.7 ·
-**6** patterns §4.1, §5, §7, §10 · **7** design.md · **8** plan.md (no change) · **9** decisions D192–D196 ·
+**6** patterns §4.1, §5, §7, §10 (6a rows, 6b units, 6c keys, 6d snapshot and live numbers, 6e open items) ·
+**7** design.md · **8** plan.md (no change) · **9** decisions D192–D197 ·
 **Questions for the author**.
 
 Citation rules held: architecture cites `spec.md` only; patterns cite spec and architecture; decisions are
@@ -116,8 +121,11 @@ answers `removed_memberships`; it has no dry run. Every tag write is one transac
 
 **Tagging one entry** is `PUT` and `DELETE /api/ledger/entries/{id}/tags/{tag_id}`. Both are idempotent: 200
 either way, `changed` says whether anything was written. A derived entry is refused (409, reason
-`derived_entry`). The answer is the entry's `id` and `tag_ids`. Tags are not part of review and move no
-`ledger_entry.version`, so these operations carry no `expected_versions`.
+`derived_entry`). The answer is `entry` (its `id` and `tag_ids` as they now stand), `changed` and `settle`.
+Tags are not part of review and move no `ledger_entry.version`, so these operations carry no
+`expected_versions`. They are also the only way to tag an entry the filter does not select: there is no
+operation over a list of ids, and a client that wants to add some entries to a filter's result calls this
+one for each.
 
 **Tagging a filter's result** is `POST /api/ledger/tags/{id}/apply`. The body is the list's filter as JSON,
 with the same parameter names, repeatable ones as arrays and the same validation, plus `dry_run`,
@@ -138,7 +146,7 @@ as `expected_count`, and if the filter now tags another number nothing is writte
 ## 2. architecture.md §11: delete the pagination bullet
 
 **Rationale.** Decided: offset (D192). The second bullet, whether generated types are worth the build step,
-is settled too (D196); I propose deleting it with the first, your call (2b).
+is settled too (D197); I propose deleting it with the first, your call (2b).
 
 **Files.** `spec/architecture.md` §11.
 
@@ -158,7 +166,7 @@ is settled too (D196); I propose deleting it with the first, your call (2b).
 - **Whether the API models are the OpenAPI source**, or whether generated
   client types are worth the build step for a single frontend.
 ```
-**Becomes.** Deleted (types are generated, D196; §6.7 states the flow). *R: delete both.*
+**Becomes.** Deleted (types are generated, D197; §6.7 states the flow). *R: delete both.*
 
 ---
 
@@ -377,7 +385,7 @@ entries in the selection are skipped and counted. It is previewed — how many
 entries it would tag, how many already carry the tag, how many were skipped —
 and confirmed before it runs, and if the filter's result has changed since
 the preview, nothing is written. A filter that restricts nothing would tag the
-whole ledger, and must say so. Tags are not part of review, so they stay
+whole ledger, and is refused unless the request asks for exactly that. Tags are not part of review, so they stay
 editable on unreviewed entries (§6).
 
 A tag's name is unique, compared without regard to case. A tag comes off one
@@ -392,16 +400,45 @@ never tagged. C8 (a duplicate never appears in the list) is I3, now cited in 5a;
 
 ---
 
-## 6. ux/patterns.md: units, keys, snapshot, open items
+## 6. ux/patterns.md: rows, units, keys, snapshot, open items
 
-**Rationale.** The sentence "In the ledger list, a split shows as one row that expands" is replaced by the
-accepted "Units in the list"; the `t` key, `/`, `↓` and the help are as built or decided; the list is a
-snapshot too; the prototype leaves four things open for the first month. Patterns may cite spec and
-architecture.
+**Rationale.** The row description lists columns in an order the built list does not use; the sentence "In
+the ledger list, a split shows as one row that expands" is replaced by the accepted "Units in the list"; the
+keys `t`, `/`, `↓` and `?` are built and the table says something else for two of them; the list is a snapshot
+too, and an action on a filter's result speaks in the server's numbers; the prototype leaves a few things open
+for the first month. Patterns may cite spec and architecture. **As built at HEAD:** the keys, the tag picker,
+"Tag all…" with its dialog, the marking of rows, the row columns, the quiet notices. **[to be built]:** the
+"N new" count, the transfer partner summary (step 8), the joined split (step 7), the unit panel (`Enter` is a
+stub), the account strip; statements about them carry the marker, so the text is true of the code today.
 
 **Files.** `spec/ux/patterns.md` (§4.1, §5, §7, §10).
 
-### 6a. §4.1, units in the list
+### 6a. §4.1, the columns of a row
+
+**Where.** §4.1 "Rows", first paragraph.
+
+**Now.**
+```
+An entry row shows, in this order: date, account (where several are listed),
+description (the entry's `description`, else the source's counterparty name or
+purpose), payee, category or the transfer's destination ("→ Cash"), tags,
+amount. Derived entries (opening, valuation, reconciliation) render in the same
+row shape with their type in place of a category and no review affordances
+(spec §3.9).
+```
+
+**Becomes.** (The order is the ledger list's, defined once in `columns.ts`; whether it stays is open, §10.)
+```
+An entry row shows, in this order: date, account (always in the ledger list; a
+view of one account may leave it out), category or the transfer's destination
+("→ Cash"), payee, tags, description (the entry's `description`, else the
+source's counterparty name or purpose; the one column that takes the remaining
+width), the review badges (§4.2) and the amount. Derived entries (opening,
+valuation, reconciliation) render in the same row shape with their type in
+place of a category and no review affordances (spec §3.9).
+```
+
+### 6b. §4.1, units in the list
 
 **Where.** §4.1 "Rows", last paragraph.
 
@@ -412,7 +449,7 @@ a split's entries under their source, a pair's two legs side by side. In the
 ledger list, a split shows as one row that expands.
 ```
 
-**Becomes.**
+**Becomes.** (Built: every row an entry, adjacency, no parent row, no expander. Marked: the rest.)
 ```
 The entries of one unit (spec §6) are shown together wherever a unit is shown:
 a split's entries under their source, a pair's two legs side by side.
@@ -420,16 +457,17 @@ a split's entries under their source, a pair's two legs side by side.
 **In the ledger list, every entry is a row, and a unit is never a row of its
 own.** Filtering, counting, paging and tagging all act on entries
 (architecture §4.1); anything grouped is only how rows are drawn. The entries
-of a split are adjacent, because the list's order keeps them together, and
-visually joined, with a marker on the first row whose tooltip gives the unit's
-total. A transfer leg shows its partner — account, date and amount — from a
-read-only summary the row carries, so it works when a filter hides the
-partner; the partner's own row is highlighted when it is in view [to be built
-with splits and pairing]. There is no parent row and no expander. The whole
-unit opens in the panel.
+of a split are adjacent, because the list's order keeps them together. There
+is no parent row and no expander. The whole unit opens in the panel [to be
+built: `Enter` does nothing until the panel exists]. The entries of a split are
+also visually joined, with a marker on the first row whose tooltip gives the
+unit's total [to be built, with splits]. A transfer leg shows its partner —
+account, date and amount — from a read-only summary the row carries, so it
+works when a filter hides the partner; the partner's own row is highlighted
+when it is in view [to be built, with pairing].
 ```
 
-### 6b. §5, keys
+### 6c. §5, keys
 
 **Where.** §5 table rows and the paragraph under it.
 
@@ -450,13 +488,13 @@ because there is no batch confirmation (spec §6). After a commit the cursor
 moves to the next row; a resolved row stays in place, marked (§7).
 ```
 
-**Becomes.**
+**Becomes.** (All built, except that `Enter` in the ledger list is a stub until the panel; its row is not changed.)
 ```
 | `↑` / `↓` (also `k` / `j`) | move the cursor in a list; `↓` in the filter bar's text box moves it to the first row |
 ```
 ```
 | `/` | focus the filter bar's text box |
-| `t` | tag the row under the cursor |
+| `t` | tag the row under the cursor: a searchable list of tags, `Enter` toggles the one under the highlight, a name no tag has can be created in place; a derived entry refuses with a quiet notice |
 ```
 ```
 | `?` | show or hide the bindings (a panel fixed to the corner of the view, not a dialog) |
@@ -465,15 +503,18 @@ moves to the next row; a resolved row stays in place, marked (§7).
 The cursor is the selection; there is no multi-select, for interpretation
 because there is no batch confirmation (spec §6), and for tagging because a
 filter's result is tagged through the filter. That is a visible action of the
-filter bar, "Tag all N…", never a key: it shows the preview of architecture
-§4.1 (how many would be tagged, how many already carry the tag, how many are
-skipped) and asks before it writes (§6). After a commit the cursor moves to
-the next row; a resolved row stays in place, marked (§7).
+filter bar, "Tag all…", never a key: it is unavailable, with its reason as
+tooltip, while the list loads, when the filter restricts nothing and when
+there is nothing to tag. It opens a dialog that shows the preview of
+architecture §4.1 (how many would be tagged, how many already carry the tag,
+how many are skipped, the accounts affected, the tag's span before and after)
+and asks before it writes (§6). After a commit the cursor moves to the next
+row; a resolved row stays in place, marked (§7).
 ```
 
-### 6c. §7, the list is a snapshot too
+### 6d. §7, the list is a snapshot too; a filter's result is the server's
 
-**Where.** §7, the bullet "**Snapshots stay snapshots.**"
+**Where.** §7, the bullet "**Snapshots stay snapshots.**", and a new bullet after it.
 
 **Now.**
 ```
@@ -488,24 +529,40 @@ the next row; a resolved row stays in place, marked (§7).
 - **Snapshots stay snapshots.** A list fetched for a session (the review queue,
   architecture §6.5; the ledger list, whose filter is in its address) does not
   add or reorder rows; new data from another sync appears as a passive count
-  ("12 new — refresh") that refetches only on request. A row that an action
-  takes out of the list's filter (a tag removed under a tag filter) stays,
-  marked, until the refresh.
+  ("12 new — refresh") that refetches only on request [the ledger list does
+  not show the count yet]. An action patches the rows it touched in place and
+  never removes or moves one: a row that the action takes out of the list's
+  filter (a tag removed under a tag filter) stays, marked, until the list is
+  fetched again.
+- **A filter's result is the server's, not the list's.** An action on a
+  filter's result (spec §3.7) states how many entries it will touch from the
+  server's count for the filter as it stands, not from the rows the list holds,
+  which may be a snapshot, and it captures the filter when it opens. If the
+  result has moved when the user confirms, nothing is written and the action
+  shows the new number and asks again. Rows the user changed that the filter no
+  longer matches are not in the result: the action says so, and offers to
+  include those that are still shown as a choice that is off by default.
 ```
 
-### 6d. §10, open for the first month
+### 6e. §10, open for the first month
 
-**Where.** §10, after the third bullet ("whether resolved rows in a snapshot collapse after a while…").
+**Where.** §10, after the third bullet ("whether resolved rows in a snapshot collapse after a while…"); the existing bullet "the key bindings of §5, especially commit and tag" stays.
 
-**Becomes (three new bullets).**
+**Becomes (five new bullets).**
 ```
 - the ledger list's columns: their order (in particular whether the amount
   comes before the description) and which columns give way first at a narrow
-  width;
+  width (the prototype's table simply overflows);
 - how the ledger list counts what is new since it was fetched ("12 new"), and
   how a joined split and a transfer's partner are drawn (§4.1);
 - whether the ledger list shows the account's facts (§4.4) when one account is
-  filtered; the prototype leaves them to the account view.
+  filtered; the prototype leaves them to the account view;
+- where a quiet notice appears (the prototype reserves one line under the
+  filter bar, so that it never moves a row; the alternative is a floating
+  notice) and how a partly failed action is worded and styled (the prototype
+  reports it inside the dialog in plain text);
+- whether the filter-bar action "Tag all…", its dialog and the opt-in to tag
+  the marked rows suit real use.
 ```
 
 ---
@@ -513,8 +570,10 @@ the next row; a resolved row stays in place, marked (§7).
 ## 7. ux/design.md: two small additions
 
 **Rationale.** Only rules the implemented UI relies on and the document lacks. The four fixed icons for
-transfer, opening, valuation and reconciliation are already in §6; the type filter also needs one for a flow,
-and clickable elements need a stated cursor (Tailwind 4 stopped giving buttons the pointer).
+transfer, opening, valuation and reconciliation are already in §6; the type filter (in the category chip) lists
+all five types with the row's icons and so needs one for a flow, and clickable elements need a stated cursor
+(Tailwind 4 stopped giving buttons the pointer). The review filter uses the badge icons of §6, and the marked
+row ("changed by your last action", 2px `ochre` bar) is already in the §7 table: no change for either.
 
 **Files.** `spec/ux/design.md` (§6 "Fixed icons", §7 states table).
 
@@ -522,7 +581,7 @@ and clickable elements need a stated cursor (Tailwind 4 stopped giving buttons t
 
 **Where.** §6 "Fixed icons", after the table, the sentence "An unclassified entry shows no category icon: its category slot is the absent value "Unclassified" (§7)."
 
-**Becomes (a sentence appended to that paragraph).** "The type filter names a flow with `coins`, drawn the same way; a flow in a row shows its category, never this icon."
+**Becomes (a sentence appended to that paragraph).** "The type filter shows the four icons above for their types and names a flow with `coins`, drawn the same way; a flow in a row shows its category, never this icon."
 
 ### 7b. §7, the pointer
 
@@ -533,7 +592,8 @@ and clickable elements need a stated cursor (Tailwind 4 stopped giving buttons t
 | clickable | the pointer cursor on every control that acts on a click; `not-allowed` on a disabled one |
 ```
 
-The help panel's placement is a behaviour and is in patterns §5 (6b), not here.
+The help panel's placement (fixed to the corner of the view) is a behaviour and is in patterns §5 (6c), not here.
+The reserved line for quiet notices is not proposed as a rule: it is open for the first month (6e).
 
 ---
 
@@ -547,10 +607,10 @@ tags, and tagging a filter's result (`spec.md` §3.7)", is still true. I propose
 
 ## 9. decisions.md: new entries
 
-**Rationale.** Rule 5 of the README: reasons and rejected alternatives live in `decisions.md`. Five entries,
-appended after D191 as D192–D196, each citing the sections it explains. The `t` key and the Tag-all action
-(plan C6) add no reasoning beyond patterns §5 and D194; they are folded into D194 and get no number of their
-own. Nothing here is normative.
+**Rationale.** Rule 5 of the README: reasons and rejected alternatives live in `decisions.md`. Six entries,
+appended after D191 as D192–D197, each citing the sections it explains. The `t` key (plan C6) adds no
+reasoning beyond patterns §5 and D194 and is folded into D194; what the "Tag all…" dialog says and does is
+D195. Nothing here is normative.
 
 **Files.** `spec/decisions.md` (appended at the end).
 
@@ -559,7 +619,7 @@ own. Nothing here is normative.
 
 Architecture §4.1, spec §8. The list answers one page of the entries a filter selects, with the count.
 
-- **Offset and limit, with `total`** (limit 1 to 500, default 100). The count is needed anyway: "Tag all N…"
+- **Offset and limit, with `total`** (limit 1 to 500, default 100). The count is needed anyway: "Tag all…"
   confirms a number, and the list says "N of M". Keyset paging is correct under concurrent inserts, but the
   list is a snapshot patched in place (patterns §7), so no row appears or moves under a page, and two users
   rarely write at once. A page of 100 plus the count stayed within its budget on 8,000 entries, a deep page
@@ -572,7 +632,7 @@ Architecture §4.1, spec §8. The list answers one page of the entries a filter 
   would be adjacent only when their ids happen to be, and an entry from another source could fall between
   them; *sorting by `value_on`* — the domain buckets by `booked_on` (spec §8). Changing the order later
   would change what a page holds, so it is part of the contract.
-- A split that straddles a page edge is rare and acceptable (D195).
+- A split that straddles a page edge is rare and acceptable (D196).
 
 ## D193 Filter semantics: OR within a dimension, descendants by default, amounts by magnitude
 
@@ -617,19 +677,54 @@ Spec §3.7, architecture §4.1, D137. Applying a tag to a filter can touch thous
   preview and confirm* — the user may think for a minute; *no guard* — another sync or the other user could
   widen the set after the user looked; *a token for the preview* — more state for the same protection.
 - **An empty filter is refused unless `all` is set.** Otherwise a cleared filter bar and one confirmation
-  would tag the whole ledger. Rejected: *refusing it outright* — tagging everything is occasionally right.
+  would tag the whole ledger. The list's action never sets it: with an empty filter the button is disabled
+  ("Narrow the filter first"). Rejected: *refusing it outright in the API* — tagging everything is
+  occasionally right for another client; *an "everything" button in the list* — nobody needs it in a
+  prototype, and the API keeps the door open.
 - **Tagging moves no version and takes no account lock;** it takes the settle lock shared and settles after
   commit, like every write. Derived entries are skipped and counted, not an error (I13).
-- **The `t` key tags the row under the cursor; "Tag all N…" is a visible action of the filter bar.** The
-  dangerous action is never one keystroke. Rejected: *`t` for both, the second after a confirmation* (the
+- **The `t` key tags the row under the cursor; "Tag all…" is a visible action of the filter bar,** with no
+  count on its label (the dialog states it, D195). The dangerous action is never one keystroke. `t` opens a
+  searchable list of tags for the row (`Enter` toggles through the single-entry operations, a new name is
+  created in place); a derived entry refuses with a quiet notice, as the API does. Rejected: *`t` for both, the second after a confirmation* (the
   earlier patterns text) — the same key meaning two operations of very different reach.
 - **Untagging by filter and merging tags are deferred.** A tag comes off one entry, or goes with the tag
   (the answer counts the memberships removed); neither was needed to try the list. Revisit after the
   prototype.
 
-## D195 The ledger list is a list of entries; units are drawn, never rows
+## D195 "Tag all…" states the server's numbers and leaves the rows you changed to an opt-in
 
-Spec §6, architecture §4.1, patterns §4.1, D192. A split's entries share a date and adjoin in the sort; a
+Patterns §5 and §7, D194, plan C10. A tag action leaves rows in the list that an active tag filter no longer
+matches: they stay, marked, until the list is fetched again (nothing moves under the cursor). The filter-based
+apply works on the server's result, and that result no longer holds those rows, so the dialog has two sets to
+account for.
+
+- **The numbers are live and the filter is captured when the dialog opens.** The preview is a dry run; its
+  headline ("Tag all N entries") is the server's `selected`, not the number of rows held nor the list's
+  `total`, which belong to a snapshot; the button carries no number for the same reason. The confirming
+  request carries the preview's `newly_tagged`; when the result has moved (409 `filter_result_changed`) the
+  dialog previews again, says what the number was and is now, and asks again. Rejected: *the list's total as
+  the headline* — it may be stale, and the user would confirm a number the server will not use; *a count on
+  the button* — it would need a request per filter change or show a stale number; *re-running silently
+  with the new number* — the user would confirm something they have not seen.
+- **Marked rows are explained, and tagging them is an opt-in that is off by default.** When the list holds
+  marked rows the dialog says that the filter does not include them; for those the chosen tag would still
+  change (not derived, not already tagged) it offers "Also tag the N rows you changed that are still shown".
+  They are tagged after the filter-based apply, through the single-entry operation, up to four at a time; a
+  failure for some is reported inside the dialog (what worked, how many failed and why), the preview is
+  taken again, and nothing already written is undone. Confirm is possible when the filter would tag nothing
+  but the opted-in rows would be. There is no new server operation (architecture §4.1: none works on a list
+  of ids). Rejected: *"Tag all" acting on the rows shown (a selection)* — the filter is the selection
+  (patterns §5), "all" would then mean two things, and the rows shown depend on how many pages were loaded;
+  *the explanation alone* — it leaves the user to tag those rows one by one, though they are exactly the
+  rows they just handled; *reloading the list when the dialog opens* — it would drop the marks and move
+  rows under the user (patterns §7) before they decided anything; *including the rows by default* — the
+  action would then do more than the filter says, which is the surprise the preview exists to prevent.
+
+## D196 The ledger list is a list of entries; units are drawn, never rows
+
+Spec §6, architecture §4.1, patterns §4.1, D192. Built: every row an entry and the sort that keeps a split
+adjacent; the joined marker and the partner summary are to be built (steps 7 and 8). A split's entries share a date and adjoin in the sort; a
 transfer's legs may be days apart.
 
 - **Every row is an entry.** Filter, order, count, page, tag and any later sum are defined on entries and
@@ -645,7 +740,7 @@ transfer's legs may be days apart.
   the count and offsets. Where a page edge cuts a split badly, the server may extend a page to the end of the
   unit; the paging stays by entry.
 
-## D196 The OpenAPI document is generated, committed and exposed only in development
+## D197 The OpenAPI document is generated, committed and exposed only in development
 
 Architecture §4.4, §5.7, §6.7. The frontend's types should come from the API, not from a second hand-written
 copy.
@@ -672,16 +767,16 @@ copy.
 
 ## Questions for the author
 
-**Q1. Patterns text that is ahead of the code.** Items 6b, 6c (the marked-row rule) and 6a describe decisions
-that the frontend does not do yet: at HEAD there is no `t` key, no "Tag all N…" action, no "N new" count, no
-tagged-out marking, no partner summary and no joined split (the list has `↑ ↓ / k j`, `Enter` (no panel yet),
-`/`, `Esc`, `?`, `↓` from the box, and "Load more"). CLAUDE.md says the implementation must follow the spec,
-so the build catches up.
-- **A (R).** Apply as written; the partner and split lines carry "[to be built]", the rest is the decided
-  behaviour and the wave 3 work delivers it.
-- B. Apply only what is built (the keys `/`, `↓`, `?`, the pointer, the type icon), and add the tag, snapshot
-  and unit text when wave 3 lands.
-- C. Apply everything with no marker, and let the missing UI be a defect list.
+**Q1. Statements marked "[to be built]" in patterns (reworded; the larger question is settled).** The text
+that ran ahead of the UI is now small. Built and stated plainly: the keys (`t`, `/`, `↓` from the box, `?`),
+the tag picker, "Tag all…" with its dialog, the marked rows, the columns. Marked "[to be built]": the unit
+panel (`Enter`), the joined split (step 7), the transfer partner summary (step 8), the "N new" count in the
+ledger list. CLAUDE.md says the implementation must follow the spec; a marker is how a spec sentence can be
+ahead of the code without being false.
+- **A (R).** Apply with the markers (items 6b and 6d); the build removes a marker when it delivers the part.
+- B. Leave the four statements out until they are built, and add them then; the spec says less, and the text
+  of 6b about "no parent row, no expander" would wait for step 7 too.
+- C. Apply with no markers and let the missing UI be a defect list.
 
 **Q2. The dry run and the "previewed" convention.** §4.1 says a previewed operation "returns everything it
 would change, in the shape of its real response". The apply preview returns counts, `per_account` and the
