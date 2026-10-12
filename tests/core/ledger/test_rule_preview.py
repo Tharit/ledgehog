@@ -78,8 +78,10 @@ def test_matches_are_exact_and_include_confirmed_entries(isolated_engine: Engine
 
 def test_paging_of_the_lists(isolated_engine: Engine, w: dict[str, Any]):
     with isolated_engine.begin() as conn:
-        for day in range(1, 6):
-            rs.new_entry(conn, w["acct"], counterparty_name="REWE", booked_on=date(2026, 3, day))
+        for day in range(1, 6):  # confirmed with another value: settling will leave them, so A lists them
+            rs.confirmed_entry(
+                conn, w["acct"], category=w["fun"], counterparty_name="REWE", booked_on=date(2026, 3, day)
+            )
     full = create_rule(isolated_engine, cat_draft(w), dry_run=True).preview
     page = create_rule(isolated_engine, cat_draft(w), dry_run=True, limit=2, offset=2).preview
     assert page.matches.total == page.different_value.total == 5
@@ -220,7 +222,9 @@ def test_a_history_proposal_is_not_standing(isolated_engine: Engine, w: dict[str
 # ---- (c) list A ------------------------------------------------------------------------------
 
 
-def test_list_a_holds_matched_entries_with_a_different_value(isolated_engine: Engine, w: dict[str, Any]):
+def test_list_a_holds_matched_entries_whose_different_value_settling_keeps(
+    isolated_engine: Engine, w: dict[str, Any]
+):
     with isolated_engine.begin() as conn:
         rid = rs.rule(conn, "rewe", "category", w["food"], name_exact="REWE")
         same = rs.confirmed_entry(
@@ -231,29 +235,37 @@ def test_list_a_holds_matched_entries_with_a_different_value(isolated_engine: En
             counterparty_name="REWE",
         )
         differs = rs.confirmed_entry(conn, w["acct"], category=w["fun"], counterparty_name="REWE")
-        blank = rs.new_entry(conn, w["acct"], counterparty_name="REWE")
+        blank = rs.new_entry(conn, w["acct"], counterparty_name="REWE")  # nothing yet: settling decides it
+        proposal = rs.confirmed_entry(  # a proposal: the settle that follows replaces it
+            conn,
+            w["acct"],
+            category=w["fun"],
+            keys={"type": {"pass": "history"}, "category": {"pass": "history"}},
+            counterparty_name="REWE",
+        )
         rs.confirmed_entry(conn, w["acct"], category=w["fun"], counterparty_name="LIDL")
-    # create (a second rule of the same value): the entries holding another value or none
+    # create (a second rule of the same value): only the entries settling will leave alone
     p = create_rule(isolated_engine, cat_draft(w, name="again"), dry_run=True).preview
-    assert ids(p.different_value.rows) == {differs, blank} and p.different_value.total == 2
+    assert ids(p.different_value.rows) == {differs} and p.different_value.total == 1
+    assert {blank, proposal} <= ids(p.matches.rows)  # matched, but not for checking by hand
     assert all(r.shadowed_by_rule_id is None for r in p.different_value.rows)
     # edit: the target changes, so the entry that held the old value lands in A
     p = update_rule(isolated_engine, rid, cat_draft(w, category_id=w["fun"]), dry_run=True).preview
-    assert ids(p.different_value.rows) == {same, blank}
+    assert ids(p.different_value.rows) == {same}  # the old value under a standing key stays
     row = next(r for r in p.different_value.rows if r.entry_id == same)
     assert row.current_value == w["food"] and row.current_key == rs.key(rid)
     # delete: there is no value to differ from
     p = delete_rule(isolated_engine, rid, dry_run=True).preview
     assert p.different_value.total == 0 and p.would_confirm == 0
-    assert p.matches.total == 3  # what the rule matched
+    assert p.matches.total == 4  # what the rule matched
 
 
 def test_list_a_of_a_counter_account_and_a_payee_rule(isolated_engine: Engine, w: dict[str, Any]):
     with isolated_engine.begin() as conn:
-        a = rs.new_entry(conn, w["acct"], counterparty_name="ATM")
+        rs.new_entry(conn, w["acct"], counterparty_name="ATM")
         b = rs.confirmed_entry(conn, w["acct"], category=w["fun"], payee=w["other"], counterparty_name="ATM")
     p = create_rule(isolated_engine, payee_draft(w, name_exact="ATM"), dry_run=True).preview
-    assert ids(p.different_value.rows) == {a, b}
+    assert ids(p.different_value.rows) == {b}
     assert next(r for r in p.different_value.rows if r.entry_id == b).current_value == w["other"]
 
 

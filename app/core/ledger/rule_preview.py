@@ -10,8 +10,10 @@ whole rule set it belongs to, it answers:
   would end complete with only standing keys once settling applies the rule set (the same
   `rederive` over the same history snapshot settling uses, in memory);
 * (c) list A, `different_value`: matched entries whose stored value of what the rule sets differs
-  from the rule's value, and list B, `lost_key`: entries carrying this rule's standing key that the
-  rule no longer matches (every keyed entry, for a deletion; none for a new rule).
+  from the rule's value and that settling will leave as they are (confirmed, or under a standing
+  key; a mere proposal is replaced by the settle that follows, so it is not listed), and list B,
+  `lost_key`: entries carrying this rule's standing key that the rule no longer matches (every keyed
+  entry, for a deletion; none for a new rule).
 
 The one match function is the rules plugin's (`RuleTools.matches`), the same settling's rules
 classifier calls; core adds the tests it owns for a counter-account rule (currency, open on the
@@ -122,6 +124,21 @@ def _key_of(row: UnconfirmedEntry, sets: str) -> Mapping[str, Any] | None:
 def _value_of(row: UnconfirmedEntry, sets: str) -> int | None:
     value = getattr(row, _TARGET[sets][1])
     return None if value is None else int(value)
+
+
+def _keeps_value(row: UnconfirmedEntry, sets: str) -> bool:
+    """True when settling will leave the entry's value of what the rule sets as it is.
+
+    A confirmed entry, a value under a standing key and a value with no key (hand-seeded or
+    user-authored, treated as standing) stay; a proposal, or no value yet in an unconfirmed entry,
+    is replaced by the settle that follows the write, so the user has nothing to check there.
+    """
+    if row.confirmed:
+        return True
+    key = _key_of(row, sets)
+    if key is None:
+        return _value_of(row, sets) is not None
+    return key.get("pass") in STANDING_PASSES
 
 
 def _row(
@@ -269,7 +286,11 @@ def build_preview(
         would_confirm = sum(1 for r in unconfirmed if confirmed_units[r.source_id])
         stay = len(unconfirmed) - would_confirm
 
-    different = [] if deleted else [r for r in matched if _value_of(r, sets) != subject.target_id]
+    different = (
+        []
+        if deleted
+        else [r for r in matched if _value_of(r, sets) != subject.target_id and _keeps_value(r, sets)]
+    )
     list_a = _page(different, lambda r: _row(r, sets), limit, offset)
 
     lost: list[UnconfirmedEntry] = []

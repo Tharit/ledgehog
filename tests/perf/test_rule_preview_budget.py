@@ -86,7 +86,7 @@ def test_the_preview_of_a_create_an_edit_and_a_delete_within_budget(settled: Bac
     assert unconfirmed > 1_000
     if unconfirmed == entries:  # nothing classified: a category rule completes every flow
         assert e.preview.would_confirm == entries
-    assert e.preview.different_value.total > 0 and len(e.preview.matches.rows) == 100
+    assert len(e.preview.matches.rows) == 100  # list A holds only what settling leaves: may be empty
 
     # a real write, then an edit and a delete of the rule that now holds keys
     written = create_rule(engine, merchant, expected_count=m.preview.matches.total)

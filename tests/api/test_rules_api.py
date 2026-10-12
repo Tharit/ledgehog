@@ -120,7 +120,8 @@ def test_create_returns_the_rule_the_preview_and_the_settle_result(
     }  # fmt: skip
     assert out["settle"] == {"touched_entry_ids": [e], "error": None}  # settling applied it
     # the preview is the one the dry run showed: the rule as written, the entries before settling applied it
-    assert out["preview"]["matches"]["total"] == 1 and out["preview"]["different_value"]["total"] == 1
+    assert out["preview"]["matches"]["total"] == 1 and out["preview"]["would_confirm"] == 1
+    assert out["preview"]["different_value"]["total"] == 0  # settling replaces what it held: nothing to check
     assert q(api_engine, "SELECT category_id FROM ledger_entry WHERE id = :i", i=e)[0][0] == w["food"]
     assert anna.get(f"{RULES}/{out['rule']['id']}").json() == out["rule"]
     assert anna.get(RULES).json() == [out["rule"]]
@@ -327,7 +328,7 @@ def test_delete_previews_then_deletes_and_keys_stay(anna: TestClient, w: dict[st
 def test_the_preview_rows_are_paged(anna: TestClient, w: dict[str, int], api_engine: Engine):
     with api_engine.begin() as conn:
         for _ in range(4):
-            rs.new_entry(conn, w["acct"], counterparty_name="REWE")
+            rs.confirmed_entry(conn, w["acct"], category=w["fun"], counterparty_name="REWE")
     r = anna.post(f"{RULES}?limit=3&offset=2", json=body(w, dry_run=True)).json()["preview"]
     assert r["matches"]["total"] == 4 and len(r["matches"]["rows"]) == 2
     assert r["different_value"]["total"] == 4 and len(r["different_value"]["rows"]) == 2
