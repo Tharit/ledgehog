@@ -90,6 +90,15 @@ class RuleSpec:
     booking_text: str | None = None
 
 
+class RuleInvalid(ValueError):
+    """A rule that cannot be saved (rules.md §3). `field` names the part of the rule at fault; the
+    message states the rule and never quotes a pattern or a value the user typed."""
+
+    def __init__(self, message: str, field: str = "rule") -> None:
+        super().__init__(message)
+        self.field = field
+
+
 @dataclass(frozen=True, slots=True)
 class Proposal:
     """A classifier's answer for one field: the value (an id, or `"flow"`/`"transfer"` for the

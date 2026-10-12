@@ -12,9 +12,10 @@ a working ledger with every entry unclassified.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass
 
-from app.core.plugins.classifier import Classifier, RuleSpec
+from app.core.plugins.classifier import Classifier, EntryInput, RuleSpec
 
 ClassifierFactory = Callable[[Sequence[RuleSpec]], Sequence[Classifier]]
 
@@ -51,3 +52,50 @@ def classifiers_for(rules: Sequence[RuleSpec]) -> Sequence[Classifier]:
     if _factory is None:
         raise ClassifiersNotConfigured
     return _factory(rules)
+
+
+@dataclass(frozen=True, slots=True)
+class RuleTools:
+    """What core needs of the rules plugin to write and preview a rule (spec §5.9, rules.md).
+
+    The same functions the rules classifier settles with, so a preview can never disagree with
+    settling: `validate` raises `RuleInvalid` for a rule that cannot be saved, `matches` is the one
+    match function (conditions only; core adds the currency and closing tests of a counter-account
+    rule) and `precedence_order` the evaluation order.
+    """
+
+    validate: Callable[[RuleSpec], None]
+    matches: Callable[[RuleSpec, EntryInput, int | None], bool]
+    precedence_order: Callable[[Iterable[RuleSpec]], list[RuleSpec]]
+
+
+class RuleToolsNotConfigured(RuntimeError):
+    def __init__(self) -> None:
+        super().__init__("no rule tools configured: the composition root must call configure_rule_tools()")
+
+
+_rule_tools: RuleTools | None = None
+
+
+def configure_rule_tools(tools: RuleTools) -> None:
+    """Install the tools (replacing any earlier ones)."""
+    global _rule_tools
+    _rule_tools = tools
+
+
+def unconfigure_rule_tools() -> None:
+    """Forget the tools (tests of the unconfigured state, and their teardown)."""
+    global _rule_tools
+    _rule_tools = None
+
+
+def current_rule_tools() -> RuleTools | None:
+    """The installed tools, for a test that restores them."""
+    return _rule_tools
+
+
+def rule_tools() -> RuleTools:
+    """The installed tools; raises `RuleToolsNotConfigured`."""
+    if _rule_tools is None:
+        raise RuleToolsNotConfigured
+    return _rule_tools

@@ -55,7 +55,7 @@ def _context(conn: Connection, run: SettleRun) -> ResolutionContext:
     return run.resolution
 
 
-def _stored(row: UnconfirmedEntry) -> dict[Field, Decided | None]:
+def stored_decisions(row: UnconfirmedEntry) -> dict[Field, Decided | None]:
     """The decisions on the entry now. A value without a key is kept as a user's: never destroyed."""
     values: dict[Field, int | str | None] = {
         "type": row.type,
@@ -78,7 +78,7 @@ def _stored(row: UnconfirmedEntry) -> dict[Field, Decided | None]:
     return current
 
 
-def _derivation(old: Mapping[str, Any], new: Resolved) -> dict[str, Any]:
+def new_derivation(old: Mapping[str, Any], new: Resolved) -> dict[str, Any]:
     out = {k: v for k, v in old.items() if k not in _COLUMN}
     for f, d in new.items():
         out[f] = {"pass": d.pass_name, "basis": dict(d.basis)}
@@ -106,7 +106,7 @@ def resolve_step(conn: Connection) -> StepOutcome:
         # do not change within a settle, and a second pass over unchanged inputs writes nothing
         if ctx.grown is not None and not touches(ctx.grown, row.input, row.payee_id):
             continue
-        current = _stored(row)
+        current = stored_decisions(row)
         new = rederive(
             row.input,
             current,
@@ -130,7 +130,7 @@ def resolve_step(conn: Connection) -> StepOutcome:
             (counters, new.get("counter_account")),
         ):
             out.append(int(d.value) if d is not None else None)
-        derivations.append(json.dumps(_derivation(row.derivation, new)))
+        derivations.append(json.dumps(new_derivation(row.derivation, new)))
     if not ids:
         return StepOutcome()
     written = conn.execute(

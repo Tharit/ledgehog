@@ -11,15 +11,23 @@ from collections.abc import Iterable, Sequence
 from functools import lru_cache
 
 from app.core.ingest.identity import canonical_text
-from app.core.plugins.classifier import ClassifierContext, EntryInput, Field, Proposal, RuleSpec
+from app.core.plugins.classifier import (
+    ClassifierContext,
+    EntryInput,
+    Field,
+    Proposal,
+    RuleInvalid,
+    RuleSpec,
+)
 from app.core.plugins.text import normalise_name
+from app.core.resolution.registry import RuleTools
 
 MAX_PATTERN_LENGTH = 200
 
 _GROUP_RANK = {"counter_account": 0, "payee": 1, "category": 2}
 
 
-class RuleError(ValueError):
+class RuleError(RuleInvalid):
     """A rule that cannot be saved."""
 
 
@@ -38,19 +46,23 @@ def validate_rule(rule: RuleSpec) -> None:
     Uniqueness of the name is the database's to check; here only what a rule says of itself.
     """
     if not rule.name.strip():
-        raise RuleError("rule name is blank")
+        raise RuleError("the rule name must not be blank", "name")
     if rule.sets not in _GROUP_RANK:
-        raise RuleError(f"unknown target: {rule.sets!r}")
+        raise RuleError("a rule sets a counter-account, a payee or a category", "sets")
     if rule.condition_payee_id is not None and rule.sets != "category":
-        raise RuleError("a payee condition is only for category rules")
+        raise RuleError("a payee condition is only for category rules", "condition_payee_id")
     if _present(rule.purpose_regex):
         assert rule.purpose_regex is not None
         if len(rule.purpose_regex) > MAX_PATTERN_LENGTH:
-            raise RuleError(f"regex longer than {MAX_PATTERN_LENGTH} characters")
+            raise RuleError(
+                f"the purpose regex must be at most {MAX_PATTERN_LENGTH} characters", "purpose_regex"
+            )
         try:
             _compile(rule.purpose_regex)
         except re.error as exc:
-            raise RuleError(f"regex does not compile: {exc}") from exc
+            # the message of `re` can quote a piece of the pattern: only where it failed is said
+            where = f" (at position {exc.pos})" if exc.pos is not None else ""
+            raise RuleError(f"the purpose regex does not compile{where}", "purpose_regex") from exc
     if not (
         rule.condition_payee_id is not None
         or any(
@@ -65,7 +77,12 @@ def validate_rule(rule: RuleSpec) -> None:
             )
         )
     ):
-        raise RuleError("a rule needs at least one condition")
+        raise RuleError("a rule needs at least one condition", "conditions")
+
+
+def default_rule_tools() -> RuleTools:
+    """What the composition root hands core for rule writes and their preview."""
+    return RuleTools(validate=validate_rule, matches=matches, precedence_order=precedence_order)
 
 
 def precedence_order(rules: Iterable[RuleSpec]) -> list[RuleSpec]:

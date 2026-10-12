@@ -36,10 +36,10 @@ class DuplicateName(DimensionError):
 
 
 class ExpectedCountRequired(DimensionError):
-    """A real merge must carry the entry count its dry run reported."""
+    """A real merge or rule write must carry the entry count its dry run reported."""
 
-    def __init__(self) -> None:
-        super().__init__("a merge needs `expected_count`, the entry count its dry run reported")
+    def __init__(self, subject: str = "a merge") -> None:
+        super().__init__(f"{subject} needs `expected_count`, the entry count its dry run reported")
 
 
 class MergeCountChanged(FilterResultChanged):

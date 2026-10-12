@@ -21,12 +21,19 @@ def pytest_configure(config: pytest.Config) -> None:
 @pytest.fixture(scope="session", autouse=True)
 def _session_classifiers() -> Iterator[None]:
     """The session-scoped fixtures below settle, before the per-test autouse fixture has run."""
-    from app.core.resolution.registry import configure_classifiers, unconfigure_classifiers
-    from app.plugins.classifiers import default_classifiers
+    from app.core.resolution.registry import (
+        configure_classifiers,
+        configure_rule_tools,
+        unconfigure_classifiers,
+        unconfigure_rule_tools,
+    )
+    from app.plugins.classifiers import default_classifiers, default_rule_tools
 
     configure_classifiers(default_classifiers)
+    configure_rule_tools(default_rule_tools())
     yield
     unconfigure_classifiers()
+    unconfigure_rule_tools()
 
 
 @dataclass(frozen=True)

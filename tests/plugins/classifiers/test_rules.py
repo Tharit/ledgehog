@@ -7,7 +7,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from app.core.plugins.classifier import ClassifierContext, Proposal, RuleSpec
+from app.core.plugins.classifier import ClassifierContext, Proposal, RuleInvalid, RuleSpec
 from app.plugins.classifiers.rules import (
     RuleError,
     RulesClassifier,
@@ -226,3 +226,37 @@ def test_rule_order_does_not_change_result(specs: list[tuple[int, str]], rnd: ra
     e = entry(purpose="x")
     for f in ("type", "payee", "category", "counter_account"):
         assert RulesClassifier(rules).propose(f, e, CTX) == RulesClassifier(shuffled).propose(f, e, CTX)
+
+
+# ---- what core's rule writes read of the plugin ----
+
+
+@pytest.mark.parametrize(
+    ("r", "field"),
+    [
+        (rule(name=" "), "name"),
+        (rule(purpose_regex="(SECRET"), "purpose_regex"),
+        (rule(purpose_regex="SECRET" + "a" * 200), "purpose_regex"),
+        (rule(sets="payee", condition_payee_id=3), "condition_payee_id"),
+        (rule(), "conditions"),
+    ],
+)
+def test_validation_errors_name_the_field_and_never_quote_the_pattern(r: RuleSpec, field: str) -> None:
+    with pytest.raises(RuleInvalid) as info:
+        validate_rule(r)
+    assert info.value.field == field
+    assert "SECRET" not in str(info.value)
+
+
+def test_a_regex_that_re_quotes_in_its_message_is_not_echoed() -> None:
+    with pytest.raises(RuleError) as info:
+        validate_rule(rule(purpose_regex=r"\qSECRET"))  # re: "bad escape \q at position 0"
+    assert "SECRET" not in str(info.value) and "\\q" not in str(info.value)
+
+
+def test_default_rule_tools_are_the_functions_settling_uses() -> None:
+    from app.plugins.classifiers import default_rule_tools
+
+    tools = default_rule_tools()
+    assert tools.validate is validate_rule and tools.matches is matches
+    assert tools.precedence_order is precedence_order

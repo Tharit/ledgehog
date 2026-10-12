@@ -53,3 +53,14 @@ out: that is `test_settle_budget`), 5 samples each, memberships removed after ea
 dev machine (Postgres 18, localhost), two sessions: median 108-126 ms, max 140 ms for both. Budget =
 2 x the largest measured value (0.28 s), rounded up, never below 0.5 s. No index is needed.
 """
+
+RULE_PREVIEW_BUDGET_SECONDS = 1.0
+"""The preview of a rule write (`tests/perf/test_rule_preview_budget.py`): the dry run of a create, an
+edit and a delete (matches, would-confirm, lists A and B), as the write transaction computes it.
+
+Derivation: on the backfill fixture (8,000 entries), in two variants: all unconfirmed (the worst case to
+rederive) and ~70% confirmed (5,600 history voters, about 2,400 unconfirmed). Measured on the dev machine
+(Postgres 18, localhost), max of 5 samples over three runs: create a merchant's rule 0.10-0.19 s; create a
+rule matching all 8,000 entries 0.20-0.32 s; edit (narrowing, list B through the GIN index) 0.09-0.14 s;
+delete 0.10-0.21 s. Settle after a real rule write: median 0.28-0.46 s, max 0.48 s (the settle budget
+applies). 2 x the largest (0.32 s) is 0.64 s, so the floor of 1.0 s is the budget."""

@@ -29,6 +29,7 @@ LOCKABLE_TABLES = frozenset(
         "external_document",
         "ledger_entry",
         "payee",
+        "rule",
         "source_transaction",
     }
 )

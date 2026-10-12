@@ -39,9 +39,9 @@ from app.core.balance.records import set_manual_record
 from app.core.importers.instances import create_instance, link_account
 from app.core.importers.upload import upload
 from app.core.integrity import check_integrity
-from app.core.resolution.registry import configure_classifiers
+from app.core.resolution.registry import configure_classifiers, configure_rule_tools
 from app.core.settle.settle import settle
-from app.plugins.classifiers import default_classifiers
+from app.plugins.classifiers import default_classifiers, default_rule_tools
 from app.plugins.importers.csv import CsvImporter, load_presets
 from app.utils import clock
 from app.utils.config import Config
@@ -359,6 +359,7 @@ def main(argv: list[str] | None = None, environ: Mapping[str, str] | None = None
     if not 1 <= args.months <= 36:
         parser.error("--months must be between 1 and 36")
     configure_classifiers(default_classifiers)  # the composition root of this script
+    configure_rule_tools(default_rule_tools())
     cfg = _env_config(environ)  # refuses a database that is not a dev_ one, before connecting
     engine = make_engine(cfg)
     try:

@@ -6,9 +6,9 @@ from collections.abc import Sequence
 
 from app.core.plugins.classifier import Classifier, RuleSpec
 from app.plugins.classifiers.history import HistoryClassifier
-from app.plugins.classifiers.rules import RulesClassifier
+from app.plugins.classifiers.rules import RulesClassifier, default_rule_tools
 
-__all__ = ["HistoryClassifier", "RulesClassifier", "default_classifiers"]
+__all__ = ["HistoryClassifier", "RulesClassifier", "default_classifiers", "default_rule_tools"]
 
 
 def default_classifiers(rules: Sequence[RuleSpec]) -> Sequence[Classifier]:

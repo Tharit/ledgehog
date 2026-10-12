@@ -178,11 +178,20 @@ def _classifiers() -> Iterator[None]:
     real factory is installed for all of them and the previous state restored afterwards. A test
     of the unconfigured state calls `unconfigure_classifiers()` itself.
     """
-    from app.core.resolution.registry import configure_classifiers, current_factory, unconfigure_classifiers
-    from app.plugins.classifiers import default_classifiers
+    from app.core.resolution.registry import (
+        configure_classifiers,
+        configure_rule_tools,
+        current_factory,
+        current_rule_tools,
+        unconfigure_classifiers,
+        unconfigure_rule_tools,
+    )
+    from app.plugins.classifiers import default_classifiers, default_rule_tools
 
     previous = current_factory()
+    previous_tools = current_rule_tools()
     configure_classifiers(default_classifiers)
+    configure_rule_tools(default_rule_tools())
     try:
         yield
     finally:
@@ -190,6 +199,10 @@ def _classifiers() -> Iterator[None]:
             unconfigure_classifiers()
         else:
             configure_classifiers(previous)
+        if previous_tools is None:
+            unconfigure_rule_tools()
+        else:
+            configure_rule_tools(previous_tools)
 
 
 @pytest.fixture

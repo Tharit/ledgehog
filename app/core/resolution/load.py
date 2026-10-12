@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Any, cast
 
 from sqlalchemy import Connection, text
+from sqlalchemy.sql.elements import TextClause
 
 from app.core.plugins.classifier import AccountFact, EntryInput, RuleSpec
 from app.core.resolution.confirmed import STANDING, units_sql
@@ -62,12 +63,18 @@ class UnconfirmedEntry:
     derivation: Mapping[str, Any]
     paired: bool  # a transfer leg with a partner: pairing owns its counter-account (step 8)
     original: bool  # the lowest entry id of its source transaction: the only one that may be a transfer
+    # what the rule preview shows and groups by; settling does not read them
+    confirmed: bool = False  # its unit is confirmed (confirmed.py)
+    source_id: int = 0  # its source transaction: the unit, until step 8
+    description: str | None = None
 
 
-_UNCONFIRMED = text(
-    f"""
+def _movements(where: str) -> TextClause:
+    return text(
+        f"""
     WITH units AS ({units_sql()})
-    SELECT e.id, e.account_id, e.currency, e.booked_on, e.amount,
+    SELECT e.id, e.account_id, e.currency, e.booked_on, e.amount, e.description,
+           u.unit_ok AS confirmed, u.src AS source_id,
            (s.importer IS NULL) AS user_authored,
            s.counterparty_ref, s.counterparty_name, s.purpose, s.booking_text, s.mandate_ref,
            s.instructed_currency,
@@ -76,16 +83,29 @@ _UNCONFIRMED = text(
       FROM units AS u
       JOIN ledger_entry AS e ON e.id = u.id
       JOIN source_transaction AS s ON s.id = e.source_transaction_id
-     WHERE NOT u.unit_ok
+     {where}
      ORDER BY e.booked_on, e.id
     """
-)
+    )
+
+
+_UNCONFIRMED = _movements("WHERE NOT u.unit_ok")
+_ALL_MOVEMENTS = _movements("")
 
 
 def load_unconfirmed(conn: Connection) -> list[UnconfirmedEntry]:
     """The movement entries of every unconfirmed unit (I20: a confirmed unit is never read here)."""
+    return _load(conn, _UNCONFIRMED)
+
+
+def load_movements(conn: Connection) -> list[UnconfirmedEntry]:
+    """Every movement entry, confirmed or not (the rule preview matches both); `confirmed` tells."""
+    return _load(conn, _ALL_MOVEMENTS)
+
+
+def _load(conn: Connection, query: TextClause) -> list[UnconfirmedEntry]:
     out: list[UnconfirmedEntry] = []
-    for r in conn.execute(_UNCONFIRMED, {"standing": STANDING}):
+    for r in conn.execute(query, {"standing": STANDING}):
         out.append(
             UnconfirmedEntry(
                 input=EntryInput(
@@ -109,6 +129,9 @@ def load_unconfirmed(conn: Connection) -> list[UnconfirmedEntry]:
                 derivation=cast(Mapping[str, Any], r.derivation),
                 paired=r.paired,
                 original=r.original,
+                confirmed=r.confirmed,
+                source_id=r.source_id,
+                description=r.description,
             )
         )
     return out

@@ -1,0 +1,341 @@
+"""Rules: list, get, create, update, delete, each write previewed (spec §5.9, architecture §4.1, D198)."""
+
+from __future__ import annotations
+
+from typing import Any
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import Engine
+
+from tests.api.accounts_helpers import assert_envelope, q
+from tests.api.conftest import login
+from tests.api.dimension_helpers import counts
+from tests.fixtures import ledger_seed as seed
+from tests.fixtures import rule_seed as rs
+
+RULES = "/api/ledger/rules"
+BAD_IDS = [0, -1, 2**63, 10**20]
+
+
+@pytest.fixture
+def anna(client: TestClient) -> TestClient:
+    login(client)
+    return client
+
+
+@pytest.fixture
+def w(api_engine: Engine) -> dict[str, int]:
+    with api_engine.begin() as conn:
+        return {
+            "acct": seed.account(conn, "Giro"),
+            "cash": seed.account(conn, "Cash"),
+            "food": seed.category(conn, "Food"),
+            "fun": seed.category(conn, "Fun"),
+            "rewe": rs.payee(conn, "Rewe"),
+        }
+
+
+def body(w: dict[str, int], **kw: Any) -> dict[str, Any]:
+    base: dict[str, Any] = {
+        "name": "Rewe",
+        "sets": "category",
+        "category_id": w["food"],
+        "name_exact": "REWE",
+    }
+    base.update(kw)
+    return {k: v for k, v in base.items() if v is not ...}
+
+
+def create(client: TestClient, w: dict[str, int], count: int = 0, **kw: Any) -> int:
+    r = client.post(RULES, json=body(w, expected_count=count, **kw))
+    assert r.status_code == 201, r.text
+    return int(r.json()["rule"]["id"])
+
+
+def snapshot(engine: Engine) -> dict[str, Any]:
+    with engine.connect() as conn:
+        return counts(conn)
+
+
+# ---- auth and ids ----------------------------------------------------------------------------
+
+ROUTES = [
+    ("get", RULES, None),
+    ("get", f"{RULES}/1", None),
+    ("post", RULES, {"name": "x", "sets": "payee", "payee_id": 1, "name_exact": "x", "dry_run": True}),
+    ("put", f"{RULES}/1", {"name": "x", "payee_id": 1, "name_exact": "x", "dry_run": True}),
+    ("delete", f"{RULES}/1?dry_run=true", None),
+]
+
+
+@pytest.mark.parametrize(("method", "url", "payload"), ROUTES)
+def test_every_route_requires_a_session(client: TestClient, method: str, url: str, payload: Any):
+    assert_envelope(client.request(method, url, json=payload), 401, "unauthenticated")
+
+
+@pytest.mark.parametrize("bad", BAD_IDS)
+def test_ids_are_bounded(anna: TestClient, w: dict[str, int], bad: int):
+    for method, url, payload in (
+        ("get", f"{RULES}/{bad}", None),
+        ("put", f"{RULES}/{bad}", body(w, dry_run=True)),
+        ("delete", f"{RULES}/{bad}?dry_run=true", None),
+        ("post", RULES, body(w, category_id=bad, dry_run=True)),
+        ("post", RULES, body(w, condition_payee_id=bad, dry_run=True)),
+    ):
+        assert_envelope(anna.request(method, url, json=payload), 422, "validation_error")
+
+
+def test_paging_parameters_are_bounded(anna: TestClient, w: dict[str, int]):
+    for query in ("limit=0", "limit=501", "offset=-1", "limit=x"):
+        assert_envelope(anna.post(f"{RULES}?{query}", json=body(w, dry_run=True)), 422, "validation_error")
+        assert_envelope(anna.delete(f"{RULES}/1?dry_run=true&{query}"), 422, "validation_error")
+    assert anna.post(f"{RULES}?limit=500&offset=0", json=body(w, dry_run=True)).status_code == 200
+
+
+# ---- create, read ----------------------------------------------------------------------------
+
+
+def test_create_returns_the_rule_the_preview_and_the_settle_result(
+    anna: TestClient, w: dict[str, int], api_engine: Engine
+):
+    with api_engine.begin() as conn:
+        e = rs.new_entry(conn, w["acct"], counterparty_name="REWE")
+    dry = anna.post(RULES, json=body(w, name="  Rewe  ", priority=7, dry_run=True))
+    assert dry.status_code == 200  # nothing was created
+    assert dry.json()["rule"] is None and dry.json()["settle"] is None and dry.json()["dry_run"] is True
+    preview = dry.json()["preview"]
+    assert preview["matches"]["total"] == 1 and preview["would_confirm"] == 1
+    row = preview["matches"]["rows"][0]
+    assert row["entry_id"] == e and row["amount"] == {"amount": -1000, "currency": "EUR"}
+    assert row["confirmed"] is False and row["current_value"] is None and row["shadowed_by_rule_id"] is None
+    r = anna.post(RULES, json=body(w, name="  Rewe  ", priority=7, expected_count=1))
+    assert r.status_code == 201
+    out = r.json()
+    assert out["rule"] == {
+        "id": out["rule"]["id"], "name": "Rewe", "sets": "category", "counter_account_id": None,
+        "payee_id": None, "category_id": w["food"], "condition_payee_id": None, "counterparty_ref": None,
+        "mandate_ref": None, "name_exact": "REWE", "name_prefix": None, "purpose_regex": None,
+        "booking_text": None, "priority": 7,
+    }  # fmt: skip
+    assert out["settle"] == {"touched_entry_ids": [e], "error": None}  # settling applied it
+    # the preview is the one the dry run showed: the rule as written, the entries before settling applied it
+    assert out["preview"]["matches"]["total"] == 1 and out["preview"]["different_value"]["total"] == 1
+    assert q(api_engine, "SELECT category_id FROM ledger_entry WHERE id = :i", i=e)[0][0] == w["food"]
+    assert anna.get(f"{RULES}/{out['rule']['id']}").json() == out["rule"]
+    assert anna.get(RULES).json() == [out["rule"]]
+
+
+def test_the_target_must_be_the_one_sets_names(anna: TestClient, w: dict[str, int], api_engine: Engine):
+    before = snapshot(api_engine)
+    for payload in (
+        body(w, payee_id=w["rewe"]),  # a second target
+        body(w, category_id=None),  # none
+        body(w, sets="payee"),  # category_id for a payee rule
+        body(w, sets="counter_account", category_id=None, payee_id=w["rewe"]),
+    ):
+        err = assert_envelope(anna.post(RULES, json={**payload, "dry_run": True}), 422, "invalid_rule")
+        assert err["details"][0]["type"] == "invalid_rule"
+    assert snapshot(api_engine) == before
+    assert_envelope(anna.post(RULES, json=body(w, sets="nothing", dry_run=True)), 422, "validation_error")
+    assert_envelope(anna.post(RULES, json=body(w, extra=1, dry_run=True)), 422, "validation_error")
+    assert_envelope(anna.post(RULES, json=body(w, sets=...)), 422, "validation_error")
+
+
+@pytest.mark.parametrize(
+    ("kw", "field"),
+    [
+        ({"purpose_regex": "(SECRETPATTERN"}, "purpose_regex"),
+        ({"purpose_regex": "SECRETPATTERN" + "a" * 200}, "purpose_regex"),
+        ({"name_exact": None}, "conditions"),
+        ({"name_exact": " "}, "conditions"),
+        (
+            {"sets": "payee", "category_id": None, "payee_id": 1, "condition_payee_id": 1},
+            "condition_payee_id",
+        ),
+    ],
+)
+def test_an_invalid_rule_is_422_invalid_rule_and_never_quotes_the_pattern(
+    anna: TestClient, w: dict[str, int], kw: dict[str, Any], field: str
+):
+    r = anna.post(RULES, json=body(w, expected_count=0, **kw))
+    err = assert_envelope(r, 422, "invalid_rule")
+    assert err["details"][0]["location"] == ["body", field]
+    assert "SECRETPATTERN" not in r.text
+
+
+def test_blank_name_and_negative_priority_bounds(anna: TestClient, w: dict[str, int]):
+    for payload in (
+        body(w, name="  "),
+        body(w, name="x" * 201),
+        body(w, priority=2**31),
+        body(w, priority=1.5),
+        body(w, expected_count=-1),
+        body(w, name=...),
+    ):
+        assert_envelope(anna.post(RULES, json={**payload, "dry_run": True}), 422, "validation_error")
+
+
+def test_duplicate_names_are_409_conflict(anna: TestClient, w: dict[str, int]):
+    create(anna, w, name="Rent")
+    err = assert_envelope(anna.post(RULES, json=body(w, name=" rENT ", dry_run=True)), 409, "conflict")
+    assert err["details"] == {"reason": "duplicate_name"}
+
+
+def test_stale_references_are_409_stale_reference_naming_the_field(anna: TestClient, w: dict[str, int]):
+    for kw, field, entity in (
+        ({"category_id": 999_999}, "category_id", "category"),
+        ({"sets": "payee", "category_id": None, "payee_id": 999_999}, "payee_id", "payee"),
+        (
+            {"sets": "counter_account", "category_id": None, "counter_account_id": 999_999},
+            "counter_account_id",
+            "account",
+        ),
+        ({"condition_payee_id": 999_999}, "condition_payee_id", "payee"),
+    ):
+        err = assert_envelope(anna.post(RULES, json=body(w, dry_run=True, **kw)), 409, "stale_reference")
+        assert err["details"] == {"field": field, "entity": entity, "id": 999_999}
+
+
+# ---- expected_count --------------------------------------------------------------------------
+
+
+def test_a_real_write_needs_expected_count_and_a_moved_number_is_409(
+    anna: TestClient, w: dict[str, int], api_engine: Engine
+):
+    with api_engine.begin() as conn:
+        rs.new_entry(conn, w["acct"], counterparty_name="REWE")
+    before = snapshot(api_engine)
+    err = assert_envelope(anna.post(RULES, json=body(w)), 422, "validation_error")
+    assert err["details"][0]["location"] == ["body", "expected_count"]
+    err = assert_envelope(anna.post(RULES, json=body(w, expected_count=5)), 409, "conflict")
+    assert err["details"] == {"reason": "filter_result_changed", "expected": 5, "actual": 1}
+    assert snapshot(api_engine) == before
+    rid = create(anna, w, count=1)
+    assert_envelope(anna.put(f"{RULES}/{rid}", json=body(w, name="x")), 422, "validation_error")
+    err = assert_envelope(
+        anna.put(f"{RULES}/{rid}", json=body(w, name="x", expected_count=0)), 409, "conflict"
+    )
+    assert err["details"]["actual"] == 1
+    assert_envelope(anna.delete(f"{RULES}/{rid}"), 422, "validation_error")
+    err = assert_envelope(anna.delete(f"{RULES}/{rid}?expected_count=3"), 409, "conflict")
+    assert err["details"] == {"reason": "filter_result_changed", "expected": 3, "actual": 1}
+    assert q(api_engine, "SELECT count(*) FROM rule")[0][0] == 1
+
+
+# ---- update ----------------------------------------------------------------------------------
+
+
+def test_update_replaces_the_rule_and_never_changes_what_it_sets(
+    anna: TestClient, w: dict[str, int], api_engine: Engine
+):
+    with api_engine.begin() as conn:
+        done = rs.confirmed_entry(conn, w["acct"], category=w["fun"], counterparty_name="REWE")
+    rid = create(anna, w, count=1)
+    before = snapshot(api_engine)
+    dry = anna.put(
+        f"{RULES}/{rid}", json=body(w, category_id=w["fun"], name_exact=None, name_prefix="REW", dry_run=True)
+    )
+    assert (
+        dry.status_code == 200
+        and dry.json()["rule"]["category_id"] == w["fun"]
+        and dry.json()["settle"] is None
+    )
+    assert dry.json()["preview"]["matches"]["total"] == 1
+    assert snapshot(api_engine) == before
+    other = anna.put(
+        f"{RULES}/{rid}",
+        json=body(w, sets="payee", category_id=None, payee_id=w["rewe"], expected_count=1),
+    )
+    assert_envelope(other, 422, "invalid_rule")
+    r = anna.put(
+        f"{RULES}/{rid}",
+        json=body(
+            w, sets="category", category_id=w["fun"], name_exact=None, name_prefix="REW", expected_count=1
+        ),
+    )
+    assert r.status_code == 200
+    rule = r.json()["rule"]
+    assert (rule["category_id"], rule["name_exact"], rule["name_prefix"], rule["sets"]) == (
+        w["fun"],
+        None,
+        "REW",
+        "category",
+    )
+    assert r.json()["preview"]["different_value"]["total"] == 0  # the confirmed entry holds Fun already
+    assert q(api_engine, "SELECT version FROM ledger_entry WHERE id = :i", i=done)[0][0] == 1
+    assert_envelope(anna.put(f"{RULES}/999", json=body(w, dry_run=True)), 404, "not_found")
+    assert_envelope(anna.get(f"{RULES}/999"), 404, "not_found")
+
+
+def test_update_returns_list_b_of_the_entries_the_edit_stops_matching(
+    anna: TestClient, w: dict[str, int], api_engine: Engine
+):
+    rid = create(anna, w, count=0, name_exact=None, name_prefix="REWE")
+    with api_engine.begin() as conn:
+        lost = rs.confirmed_entry(
+            conn,
+            w["acct"],
+            category=w["food"],
+            keys={"type": rs.key(rid), "category": rs.key(rid)},
+            counterparty_name="REWE CITY",
+        )
+    r = anna.put(
+        f"{RULES}/{rid}",
+        json=body(w, name_exact=None, name_prefix="REWE MARKT", expected_count=0),
+    )
+    assert r.status_code == 200
+    lost_key = r.json()["preview"]["lost_key"]
+    assert lost_key["total"] == 1
+    assert (lost_key["rows"][0]["entry_id"], lost_key["rows"][0]["keyed_fields"]) == (
+        lost,
+        ["type", "category"],
+    )
+    assert lost_key["rows"][0]["current_key"] == rs.key(rid)
+
+
+# ---- delete ----------------------------------------------------------------------------------
+
+
+def test_delete_previews_then_deletes_and_keys_stay(anna: TestClient, w: dict[str, int], api_engine: Engine):
+    with api_engine.begin() as conn:
+        rid = rs.rule(conn, "rewe", "category", w["food"], name_exact="REWE")
+        e = rs.confirmed_entry(
+            conn,
+            w["acct"],
+            category=w["food"],
+            keys={"type": rs.key(rid), "category": rs.key(rid)},
+            counterparty_name="REWE",
+        )
+    before = snapshot(api_engine)
+    dry = anna.delete(f"{RULES}/{rid}?dry_run=true")
+    assert dry.status_code == 200
+    d = dry.json()
+    assert (d["dry_run"], d["deleted"], d["settle"]) == (True, False, None)
+    assert d["rule"]["id"] == rid and d["preview"]["lost_key"]["total"] == 1
+    assert d["preview"]["lost_key"]["rows"][0]["entry_id"] == e
+    assert snapshot(api_engine) == before
+    r = anna.delete(f"{RULES}/{rid}?expected_count={d['preview']['matches']['total']}")
+    assert r.status_code == 200 and r.json()["deleted"] is True and r.json()["settle"]["error"] is None
+    assert q(api_engine, "SELECT count(*) FROM rule")[0][0] == 0
+    assert q(api_engine, "SELECT derivation -> 'category' FROM ledger_entry WHERE id = :i", i=e)[0][
+        0
+    ] == rs.key(rid)
+    assert_envelope(anna.delete(f"{RULES}/{rid}?dry_run=true"), 404, "not_found")
+
+
+def test_the_preview_rows_are_paged(anna: TestClient, w: dict[str, int], api_engine: Engine):
+    with api_engine.begin() as conn:
+        for _ in range(4):
+            rs.new_entry(conn, w["acct"], counterparty_name="REWE")
+    r = anna.post(f"{RULES}?limit=3&offset=2", json=body(w, dry_run=True)).json()["preview"]
+    assert r["matches"]["total"] == 4 and len(r["matches"]["rows"]) == 2
+    assert r["different_value"]["total"] == 4 and len(r["different_value"]["rows"]) == 2
+
+
+def test_a_deleted_payee_takes_its_rule_so_the_rule_is_gone_not_stale(
+    anna: TestClient, w: dict[str, int], api_engine: Engine
+):
+    rid = create(anna, w, count=0, sets="payee", category_id=None, payee_id=w["rewe"], name="payee rule")
+    assert anna.delete(f"/api/ledger/payees/{w['rewe']}").status_code == 200
+    assert_envelope(anna.get(f"{RULES}/{rid}"), 404, "not_found")
