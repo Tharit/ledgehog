@@ -12,12 +12,21 @@ describe('ledgerKey', () => {
 		expect(ledgerKey({ key: '/' })).toBe('search');
 		expect(ledgerKey({ key: '?' })).toBe('help');
 		expect(ledgerKey({ key: 't' })).toBe('tag');
+		expect(ledgerKey({ key: 'r' })).toBe('rule');
 	});
 
 	it('ignores other keys', () => {
 		expect(ledgerKey({ key: 'a' })).toBeNull();
 		expect(ledgerKey({ key: 'J' })).toBeNull();
 		expect(ledgerKey({ key: 'T' })).toBeNull();
+		expect(ledgerKey({ key: 'R' })).toBeNull();
+	});
+
+	it('leaves r typed in a field to the field', () => {
+		const field = document.createElement('input');
+		document.body.append(field);
+		expect(ledgerKey({ key: 'r', target: field })).toBeNull();
+		field.remove();
 	});
 
 	it('ignores a key with a modifier (browser and system shortcuts)', () => {

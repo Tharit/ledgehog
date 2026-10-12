@@ -50,6 +50,16 @@ export type SettleOut = Schemas['SettleOut'];
 export type TagApplyBody = Schemas['TagApplyBody'];
 export type TagApplyOut = Schemas['TagApplyOut'];
 export type TagWriteOut = Schemas['TagWriteOut'];
+export type CategoryCreateBody = Schemas['CategoryCreateBody'];
+export type CategoryUpdateBody = Schemas['CategoryUpdateBody'];
+export type CategoryWriteOut = Schemas['CategoryWriteOut'];
+export type CategoryDeleteOut = Schemas['CategoryDeleteOut'];
+export type CategoryMergeOut = Schemas['CategoryMergeOut'];
+export type PayeeCreateBody = Schemas['PayeeCreateBody'];
+export type PayeeUpdateBody = Schemas['PayeeUpdateBody'];
+export type PayeeWriteOut = Schemas['PayeeWriteOut'];
+export type PayeeDeleteOut = Schemas['PayeeDeleteOut'];
+export type PayeeMergeOut = Schemas['PayeeMergeOut'];
 
 // TEMPORARY, hand-written from app/api/routers/lookups.py until the generated types contain
 // GET /api/ledger/categories|payees|tags; then replace these with `Schemas[...]`.
@@ -69,6 +79,8 @@ export type Payee = {
 	icon: string | null;
 	color: string | null;
 	note: string | null;
+	/** not shown in the UI yet (step 9); the lookup list carries it */
+	document_provider?: string | null;
 };
 
 export type Tag = {

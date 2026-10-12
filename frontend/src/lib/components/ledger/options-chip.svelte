@@ -29,6 +29,7 @@
 		active = selected.length > 0,
 		searchable = options.length > 8,
 		emptyText = 'Nothing to choose from yet',
+		manageHref,
 		onchange,
 		footer
 	}: {
@@ -39,6 +40,8 @@
 		active?: boolean;
 		searchable?: boolean;
 		emptyText?: string;
+		/** where the dimension is managed (categories, payees): a "Manage…" link at the end */
+		manageHref?: string;
 		onchange: (selected: T[]) => void;
 		footer?: Snippet;
 	} = $props();
@@ -103,4 +106,12 @@
 		</ul>
 	{/if}
 	{@render footer?.()}
+	{#if manageHref}
+		<a
+			href={manageHref}
+			class="mt-1 border-t border-border pt-2 text-[13px] text-primary underline-offset-4 hover:underline"
+		>
+			Manage…
+		</a>
+	{/if}
 </FilterChip>

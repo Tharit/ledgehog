@@ -28,7 +28,7 @@ export const ACCOUNT_KIND_ICONS: Readonly<Record<string, string>> = {
 	asset: 'gem'
 };
 
-function isKnownColor(name: string | null | undefined): name is DimensionColor {
+export function isKnownColor(name: string | null | undefined): name is DimensionColor {
 	return (DIMENSION_COLORS as readonly string[]).includes(name ?? '');
 }
 

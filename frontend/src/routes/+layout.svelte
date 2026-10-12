@@ -4,6 +4,7 @@
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import ListIcon from '@lucide/svelte/icons/list';
+	import SettingsIcon from '@lucide/svelte/icons/settings';
 	import favicon from '#lib/assets/favicon.svg';
 	import AppShell, { type NavItem } from '#lib/components/common/app-shell.svelte';
 	import ErrorState from '#lib/components/common/error-state.svelte';
@@ -14,6 +15,10 @@
 
 	// Only routes that exist (design §10).
 	const nav: NavItem[] = [{ href: '/ledger', label: 'Ledger', icon: ListIcon }];
+	// at the bottom of the sidebar, as in the mockup (design §5); /settings opens its first tab
+	const footerNav: NavItem[] = [
+		{ href: '/settings', label: 'Settings', icon: SettingsIcon, match: '/settings' }
+	];
 
 	const onLogin = $derived(page.url.pathname === '/login');
 
@@ -35,6 +40,7 @@
 {#if session.status === 'authenticated' && session.user && !onLogin}
 	<AppShell
 		items={nav}
+		footerItems={footerNav}
 		currentPath={page.url.pathname}
 		userName={session.user.display_name}
 		onlogout={() => session.signOut()}

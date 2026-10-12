@@ -144,6 +144,7 @@ _RULES: tuple[tuple[str, str, str | None], ...] = (
     ("steuerverwaltung", "Income", None),
 )
 
+
 # keyword -> tag names
 _TAG_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("lisboa", ("Lisbon trip",)),
@@ -350,6 +351,46 @@ def _month_end(d: date) -> date:
 
 def _iban(index: int) -> str:
     return f"DE00 {1000 + index:04d} {index:04d} 0000 0000 00"
+
+
+def giro_counterparty_iban(name: str) -> str:
+    """The (invented) IBAN the giro rows of a merchant carry, so that a rule can name it."""
+    return _iban(40 + len(name))
+
+
+@dataclass(frozen=True)
+class SeedRule:
+    """A named rule to click around in (spec §5.9). `target` is an account key (`sets` counter_account),
+    a payee name or a category name; `condition_payee` a payee name (category rules only)."""
+
+    name: str
+    sets: str  # counter_account | payee | category
+    target: str
+    counterparty_ref: str | None = None
+    name_prefix: str | None = None
+    purpose_regex: str | None = None
+    condition_payee: str | None = None
+    priority: int = 100
+
+
+RULES: tuple[SeedRule, ...] = (
+    SeedRule("Cash withdrawals", "counter_account", "cash", name_prefix="Geldautomat"),
+    SeedRule("Hausverwaltung", "payee", "Hausverwaltung Muster GmbH", name_prefix="Hausverwaltung"),
+    SeedRule(
+        "Rent by IBAN",
+        "category",
+        "Rent",
+        counterparty_ref=giro_counterparty_iban("Hausverwaltung Muster GmbH"),
+    ),
+    SeedRule("Fado tickets", "category", "Leisure", purpose_regex="^fado .*tickets?$"),
+    SeedRule(
+        "Frischemarkt groceries",
+        "category",
+        "Groceries",
+        condition_payee="Frischemarkt Lindenhof",
+        priority=50,
+    ),
+)
 
 
 def _everyday(rng: random.Random, channel: str, first: date, last: date, base: int) -> list[Txn]:

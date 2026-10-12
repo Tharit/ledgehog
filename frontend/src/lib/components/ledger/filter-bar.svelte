@@ -182,6 +182,7 @@
 		selected={filter.category_id}
 		active={filter.category_id.length > 0 || filter.uncategorised || filter.type.length > 0}
 		emptyText="No categories yet"
+		manageHref="/settings/categories"
 		onchange={(category_id) => update({ category_id })}
 	>
 		{#snippet footer()}
@@ -240,6 +241,7 @@
 		options={payeeOptions}
 		selected={filter.payee_id}
 		emptyText="No payees yet"
+		manageHref="/settings/payees"
 		onchange={(payee_id) => update({ payee_id })}
 	/>
 	<OptionsChip

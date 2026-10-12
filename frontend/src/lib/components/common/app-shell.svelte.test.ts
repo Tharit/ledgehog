@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import ListIcon from '@lucide/svelte/icons/list';
+import SettingsIcon from '@lucide/svelte/icons/settings';
 import { createRawSnippet } from 'svelte';
 import { describe, expect, it, vi } from 'vitest';
 import AppShell from './app-shell.svelte';
@@ -47,5 +48,55 @@ describe('AppShell', () => {
 		await fireEvent.click(screen.getByRole('button', { name: 'Log out' }));
 
 		expect(onlogout).toHaveBeenCalledOnce();
+	});
+});
+
+describe('AppShell: footer navigation', () => {
+	const footerItems = [
+		{ href: '/settings', label: 'Settings', icon: SettingsIcon, match: '/settings' }
+	];
+
+	function withFooter(currentPath: string) {
+		render(AppShell, {
+			props: {
+				items,
+				footerItems,
+				currentPath,
+				userName: 'Ada',
+				onlogout: vi.fn(),
+				children: content
+			}
+		});
+	}
+
+	it('keeps Settings out of the main navigation, below it', () => {
+		withFooter('/ledger');
+
+		const main = screen.getByRole('navigation', { name: 'Main' });
+		expect(main.querySelectorAll('a')).toHaveLength(1);
+		const secondary = screen.getByRole('navigation', { name: 'Secondary' });
+		expect(secondary).toContainElement(screen.getByRole('link', { name: 'Settings' }));
+		expect(screen.getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/settings');
+		expect(main.compareDocumentPosition(secondary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+	});
+
+	it('marks Settings under any of its screens, and not the ledger', () => {
+		withFooter('/settings/rules/12');
+
+		expect(screen.getByRole('link', { name: 'Settings' })).toHaveAttribute('aria-current', 'page');
+		expect(screen.getByRole('link', { name: 'Ledger' })).not.toHaveAttribute('aria-current');
+	});
+
+	it('leaves Settings unmarked in the ledger, which stays marked', () => {
+		withFooter('/ledger');
+
+		expect(screen.getByRole('link', { name: 'Settings' })).not.toHaveAttribute('aria-current');
+		expect(screen.getByRole('link', { name: 'Ledger' })).toHaveAttribute('aria-current', 'page');
+	});
+
+	it('has no secondary navigation without footer items', () => {
+		shell('/ledger');
+
+		expect(screen.queryByRole('navigation', { name: 'Secondary' })).toBeNull();
 	});
 });

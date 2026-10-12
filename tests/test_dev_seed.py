@@ -233,6 +233,28 @@ def test_the_three_states_exist_side_by_side(seeded: str, dev_engine: Engine):
     assert "flows without a category" in seeded
 
 
+def test_named_rules_exist_for_every_kind_and_the_regex_one(seeded: str, dev_engine: Engine):
+    with dev_engine.connect() as conn:
+        by_sets = {r[0]: r[1] for r in conn.execute(text("SELECT sets, count(*) FROM rule GROUP BY sets"))}
+        assert by_sets.keys() == {"counter_account", "payee", "category"}, by_sets
+        assert (
+            conn.execute(text("SELECT count(*) FROM rule WHERE purpose_regex IS NOT NULL")).scalar_one() >= 1
+        )
+        assert (
+            conn.execute(text("SELECT count(*) FROM rule WHERE counterparty_ref IS NOT NULL")).scalar_one()
+            >= 1
+        )
+        # the cash rule points at the cash account, and its entries are transfers decided by the rule
+        cash = conn.execute(
+            text(
+                "SELECT count(*) FROM ledger_entry e"
+                " JOIN rule r ON r.counter_account_id = e.counter_account_id"
+            )
+        ).scalar_one()
+        assert cash > 0
+    assert "named rules" in seeded
+
+
 def test_tags_span_a_week_and_the_ledger_is_intact(seeded: str, dev_engine: Engine):
     with dev_engine.connect() as conn:
         trip = conn.execute(
@@ -272,6 +294,7 @@ def test_reset_removes_everything_it_created_and_a_reseed_works(
         "payee",
         "tag",
         "ledger_entry_tag",
+        "rule",
     ):
         assert _one(dev_engine, f"SELECT count(*) FROM {table}") == 0, table  # noqa: S608
     out = _run(dev_cfg, "--months", "2", "--seed", "12", "--no-classify")

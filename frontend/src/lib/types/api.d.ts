@@ -303,7 +303,51 @@ export interface paths {
          */
         get: operations["list_categories"];
         put?: never;
+        /** Create Ledger Category */
+        post: operations["create_ledger_category"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ledger/categories/{category_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Ledger Category */
+        put: operations["update_ledger_category"];
         post?: never;
+        /**
+         * Delete Ledger Category
+         * @description Delete a category nothing references and without children (else 409 `category_in_use`).
+         *
+         *     `dry_run=true` reports what stands in the way and writes nothing.
+         */
+        delete: operations["delete_ledger_category"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ledger/categories/{category_id}/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge Ledger Category
+         * @description Merge into another category of the same kind (never into its own descendant); `dry_run` previews.
+         */
+        post: operations["merge_ledger_category"];
         delete?: never;
         options?: never;
         head?: never;
@@ -354,12 +398,107 @@ export interface paths {
         };
         /**
          * List Payees
-         * @description Every payee by name: identity and presentation only.
+         * @description Every payee by name: identity, presentation and `document_provider`.
          */
         get: operations["list_payees"];
         put?: never;
-        post?: never;
+        /** Create Ledger Payee */
+        post: operations["create_ledger_payee"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ledger/payees/{payee_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Ledger Payee */
+        put: operations["update_ledger_payee"];
+        post?: never;
+        /**
+         * Delete Ledger Payee
+         * @description Delete a payee no entry references, with its rules (else 409 `payee_in_use`).
+         *
+         *     `dry_run=true` lists the rules it would take and writes nothing.
+         */
+        delete: operations["delete_ledger_payee"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ledger/payees/{payee_id}/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge Ledger Payee
+         * @description Merge into another payee, whose attributes win; `dry_run` previews and warns about the provider.
+         */
+        post: operations["merge_ledger_payee"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ledger/rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Ledger Rules
+         * @description Every rule in evaluation order: counter-account, payee, category; priority, then id.
+         */
+        get: operations["list_ledger_rules"];
+        put?: never;
+        /**
+         * Create Ledger Rule
+         * @description Create a rule. `dry_run=true` previews it (200, nothing written); a real run needs the
+         *     preview's `matches.total` as `expected_count`. What it sets is fixed from now on.
+         */
+        post: operations["create_ledger_rule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ledger/rules/{rule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Ledger Rule */
+        get: operations["get_ledger_rule"];
+        /**
+         * Update Ledger Rule
+         * @description Replace name, target value, conditions and priority; `dry_run` previews. Never changes `sets`.
+         */
+        put: operations["update_ledger_rule"];
+        post?: never;
+        /**
+         * Delete Ledger Rule
+         * @description Delete a rule; keys naming it stay on the entries. `dry_run` previews; a real run needs
+         *     `expected_count`, the number of entries the rule matched in the preview.
+         */
+        delete: operations["delete_ledger_rule"];
         options?: never;
         head?: never;
         patch?: never;
@@ -543,6 +682,71 @@ export interface components {
             /** Categories */
             categories: components["schemas"]["CategoryOut"][];
         };
+        /**
+         * CategoryCreateBody
+         * @description A top-level category takes `kind`; a child (`parent_id`) takes its parent's.
+         */
+        CategoryCreateBody: {
+            /** Color */
+            color?: string | null;
+            /** Icon */
+            icon?: string | null;
+            /** Kind */
+            kind?: ("income" | "expense") | null;
+            /** Name */
+            name: string;
+            /** Parent Id */
+            parent_id?: number | null;
+            /**
+             * Sort Order
+             * @default 0
+             */
+            sort_order: number;
+        };
+        /** CategoryDeleteOut */
+        CategoryDeleteOut: {
+            category: components["schemas"]["CategoryOut"];
+            /** Deletable */
+            deletable: boolean;
+            /** Deleted */
+            deleted: boolean;
+            /** Dry Run */
+            dry_run: boolean;
+            held: components["schemas"]["HeldOut"];
+            settle: components["schemas"]["SettleOut"] | null;
+        };
+        /** CategoryMergeBody */
+        CategoryMergeBody: {
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+            /** Expected Count */
+            expected_count?: number | null;
+            /** Into */
+            into: number;
+        };
+        /** CategoryMergeOut */
+        CategoryMergeOut: {
+            /** Dry Run */
+            dry_run: boolean;
+            /** Entry Count */
+            entry_count: number;
+            /** Entry Ids */
+            entry_ids: number[];
+            /** Moved Children */
+            moved_children: components["schemas"]["MovedChildOut"][];
+            /** Pairs */
+            pairs: components["schemas"]["MergedPairOut"][];
+            /** Rule Ids */
+            rule_ids: number[];
+            settle: components["schemas"]["SettleOut"] | null;
+            /** Source Id */
+            source_id: number;
+            /** Target Id */
+            target_id: number;
+        };
         /** CategoryOut */
         CategoryOut: {
             /** Color */
@@ -559,6 +763,29 @@ export interface components {
             parent_id: number | null;
             /** Sort Order */
             sort_order: number;
+        };
+        /**
+         * CategoryUpdateBody
+         * @description Absent fields stay; `null` clears `icon` and `color`, and `parent_id: null` makes it top-level.
+         *
+         *     No `kind`: it is fixed at creation.
+         */
+        CategoryUpdateBody: {
+            /** Color */
+            color?: string | null;
+            /** Icon */
+            icon?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Parent Id */
+            parent_id?: number | null;
+            /** Sort Order */
+            sort_order?: number | null;
+        };
+        /** CategoryWriteOut */
+        CategoryWriteOut: {
+            category: components["schemas"]["CategoryOut"];
+            settle: components["schemas"]["SettleOut"];
         };
         /** CheckOut */
         CheckOut: {
@@ -712,6 +939,15 @@ export interface components {
         ErrorEnvelope: {
             error: components["schemas"]["ErrorBody"];
         };
+        /** HeldOut */
+        HeldOut: {
+            /** Children */
+            children: number;
+            /** Entries */
+            entries: number;
+            /** Rules */
+            rules: number;
+        };
         /** LinkAccount */
         LinkAccount: {
             /** Account Id */
@@ -731,6 +967,21 @@ export interface components {
             /** Password */
             password: string;
         };
+        /** MergedPairOut */
+        MergedPairOut: {
+            /** Entries */
+            entries: number;
+            /** Rules */
+            rules: number;
+            /** Source Id */
+            source_id: number;
+            /** Source Name */
+            source_name: string;
+            /** Target Id */
+            target_id: number;
+            /** Target Name */
+            target_name: string;
+        };
         /** Money */
         Money: {
             /** Amount */
@@ -738,10 +989,90 @@ export interface components {
             /** Currency */
             currency: string;
         };
+        /** MovedChildOut */
+        MovedChildOut: {
+            /** From Id */
+            from_id: number;
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** To Id */
+            to_id: number;
+        };
+        /** PayeeCreateBody */
+        PayeeCreateBody: {
+            /** Color */
+            color?: string | null;
+            /** Document Provider */
+            document_provider?: string | null;
+            /** Icon */
+            icon?: string | null;
+            /** Name */
+            name: string;
+            /** Note */
+            note?: string | null;
+        };
+        /** PayeeDeleteOut */
+        PayeeDeleteOut: {
+            /** Deletable */
+            deletable: boolean;
+            /** Deleted */
+            deleted: boolean;
+            /** Deleted Rule Ids */
+            deleted_rule_ids: number[];
+            /** Dry Run */
+            dry_run: boolean;
+            held: components["schemas"]["PayeeHeldOut"];
+            payee: components["schemas"]["PayeeOut"];
+            /** Rules */
+            rules: components["schemas"]["RuleRefOut"][];
+            settle: components["schemas"]["SettleOut"] | null;
+        };
+        /** PayeeHeldOut */
+        PayeeHeldOut: {
+            /** Entries */
+            entries: number;
+        };
+        /** PayeeMergeBody */
+        PayeeMergeBody: {
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+            /** Expected Count */
+            expected_count?: number | null;
+            /** Into */
+            into: number;
+        };
+        /** PayeeMergeOut */
+        PayeeMergeOut: {
+            /** Condition Rule Ids */
+            condition_rule_ids: number[];
+            /** Document Provider Lost */
+            document_provider_lost: boolean;
+            /** Dry Run */
+            dry_run: boolean;
+            /** Entry Count */
+            entry_count: number;
+            /** Entry Ids */
+            entry_ids: number[];
+            /** Setting Rule Ids */
+            setting_rule_ids: number[];
+            settle: components["schemas"]["SettleOut"] | null;
+            /** Source Document Provider */
+            source_document_provider: string | null;
+            /** Source Id */
+            source_id: number;
+            target: components["schemas"]["PayeeOut"];
+        };
         /** PayeeOut */
         PayeeOut: {
             /** Color */
             color: string | null;
+            /** Document Provider */
+            document_provider: string | null;
             /** Icon */
             icon: string | null;
             /** Id */
@@ -751,10 +1082,67 @@ export interface components {
             /** Note */
             note: string | null;
         };
+        /**
+         * PayeeUpdateBody
+         * @description Absent fields stay; `null` clears `note`, `icon`, `color` and `document_provider`.
+         */
+        PayeeUpdateBody: {
+            /** Color */
+            color?: string | null;
+            /** Document Provider */
+            document_provider?: string | null;
+            /** Icon */
+            icon?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Note */
+            note?: string | null;
+        };
+        /** PayeeWriteOut */
+        PayeeWriteOut: {
+            payee: components["schemas"]["PayeeOut"];
+            settle: components["schemas"]["SettleOut"];
+        };
         /** PayeesOut */
         PayeesOut: {
             /** Payees */
             payees: components["schemas"]["PayeeOut"][];
+        };
+        /** PreviewListOut */
+        PreviewListOut: {
+            /** Rows */
+            rows: components["schemas"]["PreviewRowOut"][];
+            /** Total */
+            total: number;
+        };
+        /** PreviewRowOut */
+        PreviewRowOut: {
+            /** Account Id */
+            account_id: number;
+            amount: components["schemas"]["Money"];
+            /**
+             * Booked On
+             * Format: date
+             */
+            booked_on: string;
+            /** Confirmed */
+            confirmed: boolean;
+            /** Counterparty Name */
+            counterparty_name: string | null;
+            /** Current Key */
+            current_key: {
+                [key: string]: unknown;
+            } | null;
+            /** Current Value */
+            current_value: number | null;
+            /** Description */
+            description: string | null;
+            /** Entry Id */
+            entry_id: number;
+            /** Keyed Fields */
+            keyed_fields: string[];
+            /** Shadowed By Rule Id */
+            shadowed_by_rule_id: number | null;
         };
         /** RecordDeleteOut */
         RecordDeleteOut: {
@@ -794,6 +1182,168 @@ export interface components {
             expected_versions?: {
                 [key: string]: number;
             } | null;
+        };
+        /** RuleCreateBody */
+        RuleCreateBody: {
+            /** Booking Text */
+            booking_text?: string | null;
+            /** Category Id */
+            category_id?: number | null;
+            /** Condition Payee Id */
+            condition_payee_id?: number | null;
+            /** Counter Account Id */
+            counter_account_id?: number | null;
+            /** Counterparty Ref */
+            counterparty_ref?: string | null;
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+            /** Expected Count */
+            expected_count?: number | null;
+            /** Mandate Ref */
+            mandate_ref?: string | null;
+            /** Name */
+            name: string;
+            /** Name Exact */
+            name_exact?: string | null;
+            /** Name Prefix */
+            name_prefix?: string | null;
+            /** Payee Id */
+            payee_id?: number | null;
+            /**
+             * Priority
+             * @default 100
+             */
+            priority: number;
+            /** Purpose Regex */
+            purpose_regex?: string | null;
+            /**
+             * Sets
+             * @enum {string}
+             */
+            sets: "counter_account" | "payee" | "category";
+        };
+        /** RuleDeleteOut */
+        RuleDeleteOut: {
+            /** Deleted */
+            deleted: boolean;
+            /** Dry Run */
+            dry_run: boolean;
+            preview: components["schemas"]["RulePreviewOut"];
+            rule: components["schemas"]["RuleOut"];
+            settle: components["schemas"]["SettleOut"] | null;
+        };
+        /**
+         * RuleOut
+         * @description A rule; exactly the target id `sets` names is set.
+         */
+        RuleOut: {
+            /** Booking Text */
+            booking_text: string | null;
+            /** Category Id */
+            category_id: number | null;
+            /** Condition Payee Id */
+            condition_payee_id: number | null;
+            /** Counter Account Id */
+            counter_account_id: number | null;
+            /** Counterparty Ref */
+            counterparty_ref: string | null;
+            /** Id */
+            id: number;
+            /** Mandate Ref */
+            mandate_ref: string | null;
+            /** Name */
+            name: string;
+            /** Name Exact */
+            name_exact: string | null;
+            /** Name Prefix */
+            name_prefix: string | null;
+            /** Payee Id */
+            payee_id: number | null;
+            /** Priority */
+            priority: number;
+            /** Purpose Regex */
+            purpose_regex: string | null;
+            /**
+             * Sets
+             * @enum {string}
+             */
+            sets: "counter_account" | "payee" | "category";
+        };
+        /** RulePreviewOut */
+        RulePreviewOut: {
+            different_value: components["schemas"]["PreviewListOut"];
+            lost_key: components["schemas"]["PreviewListOut"];
+            matches: components["schemas"]["PreviewListOut"];
+            /** Stay In Review */
+            stay_in_review: number;
+            /** Would Confirm */
+            would_confirm: number;
+        };
+        /** RuleRefOut */
+        RuleRefOut: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Role */
+            role: string;
+            /** Sets */
+            sets: string;
+        };
+        /**
+         * RuleUpdateBody
+         * @description The rule as it should be: every condition is stated (absent means none).
+         *
+         *     `sets` may be restated but never changed (422 `invalid_rule`).
+         */
+        RuleUpdateBody: {
+            /** Booking Text */
+            booking_text?: string | null;
+            /** Category Id */
+            category_id?: number | null;
+            /** Condition Payee Id */
+            condition_payee_id?: number | null;
+            /** Counter Account Id */
+            counter_account_id?: number | null;
+            /** Counterparty Ref */
+            counterparty_ref?: string | null;
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+            /** Expected Count */
+            expected_count?: number | null;
+            /** Mandate Ref */
+            mandate_ref?: string | null;
+            /** Name */
+            name: string;
+            /** Name Exact */
+            name_exact?: string | null;
+            /** Name Prefix */
+            name_prefix?: string | null;
+            /** Payee Id */
+            payee_id?: number | null;
+            /**
+             * Priority
+             * @default 100
+             */
+            priority: number;
+            /** Purpose Regex */
+            purpose_regex?: string | null;
+            /** Sets */
+            sets?: ("counter_account" | "payee" | "category") | null;
+        };
+        /** RuleWriteOut */
+        RuleWriteOut: {
+            /** Dry Run */
+            dry_run: boolean;
+            preview: components["schemas"]["RulePreviewOut"];
+            rule: components["schemas"]["RuleOut"] | null;
+            settle: components["schemas"]["SettleOut"] | null;
         };
         /** SetBody */
         SetBody: {
@@ -2230,6 +2780,241 @@ export interface operations {
             };
         };
     };
+    create_ledger_category: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CategoryCreateBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryWriteOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    update_ledger_category: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                category_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CategoryUpdateBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryWriteOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    delete_ledger_category: {
+        parameters: {
+            query?: {
+                dry_run?: boolean;
+            };
+            header?: never;
+            path: {
+                category_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryDeleteOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    merge_ledger_category: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                category_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CategoryMergeBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryMergeOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     list_entries_view: {
         parameters: {
             query?: {
@@ -2424,6 +3209,510 @@ export interface operations {
             };
             /** @description Not signed in (or wrong login or password). */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    create_ledger_payee: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayeeCreateBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayeeWriteOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    update_ledger_payee: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                payee_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayeeUpdateBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayeeWriteOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    delete_ledger_payee: {
+        parameters: {
+            query?: {
+                dry_run?: boolean;
+            };
+            header?: never;
+            path: {
+                payee_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayeeDeleteOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    merge_ledger_payee: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                payee_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayeeMergeBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PayeeMergeOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_ledger_rules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleOut"][];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    create_ledger_rule: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuleCreateBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleWriteOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_ledger_rule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    update_ledger_rule: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                rule_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuleUpdateBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleWriteOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    delete_ledger_rule: {
+        parameters: {
+            query?: {
+                dry_run?: boolean;
+                expected_count?: number | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                rule_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleDeleteOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflicts with the current state. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

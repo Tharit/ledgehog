@@ -12,6 +12,7 @@
 		toSearchParams,
 		type LedgerFilterState
 	} from '#lib/ledger/filter.js';
+	import { newRuleUrl } from '#lib/rules/prefill.js';
 	import { LedgerStore } from '#lib/stores/ledger.svelte.js';
 
 	const ledger = new LedgerStore();
@@ -102,5 +103,6 @@
 		ontoggletag={(entryId, tagId, tagged) => ledger.setEntryTag(entryId, tagId, tagged)}
 		oncreatetag={(entryId, name) => ledger.createTagFor(entryId, name)}
 		onnotice={(text) => ledger.notify(text)}
+		oncreaterule={(entry) => goto(newRuleUrl(entry))}
 	/>
 </div>

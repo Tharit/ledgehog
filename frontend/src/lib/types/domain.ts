@@ -3,6 +3,8 @@
 export type {
 	Account,
 	Category,
+	CategoryDeleteOut,
+	CategoryMergeOut,
 	Entry,
 	EntryTagIds,
 	EntryFilter,
@@ -11,6 +13,8 @@ export type {
 	IsoDate,
 	Money,
 	Payee,
+	PayeeDeleteOut,
+	PayeeMergeOut,
 	ReviewFlag,
 	Tag,
 	TagApplyOut

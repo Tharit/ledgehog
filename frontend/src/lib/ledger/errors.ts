@@ -35,6 +35,9 @@ export function describeLoadError(code: string): LoadErrorPresentation {
 /** What a derived entry's tagging refusal says; also shown when `t` is pressed on one. */
 export const DERIVED_NOT_TAGGABLE = 'Derived entries cannot be tagged';
 
+/** What `r` says on a derived entry: there is no source to start a rule from. */
+export const DERIVED_NO_RULE = 'Derived entries have no source to start a rule from';
+
 /** Said after a write whose derived figures could not be recomputed (patterns §8). */
 export const SETTLE_STALE = 'Derived figures may be stale until the next action.';
 

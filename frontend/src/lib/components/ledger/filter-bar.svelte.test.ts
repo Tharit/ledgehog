@@ -98,6 +98,23 @@ describe('FilterBar: chips', () => {
 		expect(onchange).toHaveBeenCalledWith({ ...emptyFilter(), account_id: [2] });
 	});
 
+	it('links the category and payee chips to where they are managed', async () => {
+		bar();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'All categories' }));
+		expect(await screen.findByRole('link', { name: 'Manage…' })).toHaveAttribute(
+			'href',
+			'/settings/categories'
+		);
+		await fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+		await fireEvent.click(screen.getByRole('button', { name: 'All payees' }));
+
+		const hrefs = screen
+			.getAllByRole('link', { name: 'Manage…' })
+			.map((a) => a.getAttribute('href'));
+		expect(hrefs).toContain('/settings/payees');
+	});
+
 	it('leaves a placeholder for the tag-all action and renders nothing in it', () => {
 		bar();
 

@@ -4,7 +4,7 @@
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { formatCount } from '#lib/format/index.js';
 	import { describeLoadError } from '#lib/ledger/errors.js';
-	import { DERIVED_NOT_TAGGABLE } from '#lib/ledger/errors.js';
+	import { DERIVED_NO_RULE, DERIVED_NOT_TAGGABLE } from '#lib/ledger/errors.js';
 	import { ledgerKey, moveCursor } from '#lib/ledger/keys.js';
 	import type { Lookups } from '#lib/ledger/lookups.js';
 	import { CHANGED_BY_YOU, CHANGED_ELSEWHERE } from '#lib/ledger/patch.js';
@@ -35,7 +35,8 @@
 		onsearch,
 		ontoggletag,
 		oncreatetag,
-		onnotice
+		onnotice,
+		oncreaterule
 	}: {
 		entries: readonly Entry[];
 		total: number;
@@ -62,6 +63,8 @@
 		oncreatetag?: (entryId: number, name: string) => Promise<boolean>;
 		/** a quiet one-line message for the page to show */
 		onnotice?: (text: string) => void;
+		/** start a rule from this entry (`r`, or the row's action) */
+		oncreaterule?: (entry: Entry) => void;
 	} = $props();
 
 	let cursorId = $state<number | null>(null);
@@ -113,6 +116,14 @@
 		if (pickerOpen && !pickerEntry) pickerOpen = false;
 	});
 
+	/** `r`: the rule editor, its conditions to be prefilled from the row under the cursor */
+	function startRule() {
+		if (cursorIndex < 0) return;
+		const entry = entries[cursorIndex];
+		if (isDerivedType(entry.type)) onnotice?.(DERIVED_NO_RULE);
+		else oncreaterule?.(entry);
+	}
+
 	function moveBy(delta: number) {
 		const next = moveCursor(cursorIndex, delta, entries.length);
 		cursorId = next < 0 ? null : entries[next].id;
@@ -158,6 +169,10 @@
 				event.preventDefault();
 				openPicker();
 				break;
+			case 'rule':
+				event.preventDefault();
+				startRule();
+				break;
 		}
 	}
 
@@ -176,6 +191,7 @@
 		['↑ ↓ / k j', 'Move the cursor'],
 		['Enter', 'Open the entry (not built yet)'],
 		['t', 'Tag the row'],
+		['r', 'Create a rule from the row'],
 		['/', 'Filter text'],
 		['Esc', 'Close this help, leave a field'],
 		['?', 'Show or hide this help']
@@ -250,7 +266,7 @@
 									></div>
 								{:else if column.id === 'amount'}
 									<div class="ml-auto h-3 w-14 animate-pulse rounded bg-muted"></div>
-								{:else if column.id !== 'tags' && column.id !== 'review'}
+								{:else if column.id !== 'tags' && column.id !== 'review' && column.id !== 'actions'}
 									<div class="h-3 w-2/3 animate-pulse rounded bg-muted"></div>
 								{/if}
 							</div>
@@ -268,6 +284,7 @@
 						changed={changedIds.has(entry.id) || movedIds.has(entry.id)}
 						changedTitle={changedIds.has(entry.id) ? CHANGED_BY_YOU : CHANGED_ELSEWHERE}
 						onselect={() => (cursorId = entry.id)}
+						oncreaterule={oncreaterule ? () => oncreaterule(entry) : undefined}
 					/>
 				{/each}
 			{/if}

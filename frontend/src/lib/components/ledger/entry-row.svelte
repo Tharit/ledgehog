@@ -4,6 +4,7 @@
 </script>
 
 <script lang="ts">
+	import ListPlusIcon from '@lucide/svelte/icons/list-plus';
 	import AbsentValue from '#lib/components/common/absent-value.svelte';
 	import AccountDot from '#lib/components/common/account-dot.svelte';
 	import DateDisplay from '#lib/components/common/date-display.svelte';
@@ -29,7 +30,8 @@
 		cursor = false,
 		changed = false,
 		changedTitle = CHANGED_BY_YOU,
-		onselect
+		onselect,
+		oncreaterule
 	}: {
 		entry: Entry;
 		lookups: Lookups;
@@ -41,6 +43,8 @@
 		/** why the row is marked (tooltip) */
 		changedTitle?: string;
 		onselect?: () => void;
+		/** "Create rule from this entry…" (also the `r` key on the cursor row) */
+		oncreaterule?: () => void;
 	} = $props();
 
 	// Derived entries (spec §3.9) take a fixed icon and their type's name in place of a category.
@@ -75,7 +79,7 @@
 	title={changed ? changedTitle : undefined}
 	class={cn(
 		ROW_GRID,
-		'relative h-8 scroll-mt-10 border-b border-border px-3 text-[13px]',
+		'group relative h-8 scroll-mt-10 border-b border-border px-3 text-[13px]',
 		cursor ? 'bg-accent' : 'hover:bg-muted'
 	)}
 	style:grid-template-columns={GRID_TEMPLATE}
@@ -160,6 +164,26 @@
 					{#each entry.review_flags as flag (flag)}
 						<ReviewBadge {flag} />
 					{/each}
+				{/if}
+			</div>
+		{:else if column.id === 'actions'}
+			<div role="gridcell" class="flex items-center justify-center">
+				{#if !fixed && oncreaterule}
+					<button
+						type="button"
+						class={cn(
+							'inline-flex size-6 cursor-pointer items-center justify-center rounded-sm text-muted-foreground hover:bg-background hover:text-foreground focus-visible:opacity-100',
+							cursor ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+						)}
+						aria-label="Create rule from this entry…"
+						title="Create rule from this entry… (r)"
+						onclick={(event) => {
+							event.stopPropagation();
+							oncreaterule();
+						}}
+					>
+						<ListPlusIcon size={16} strokeWidth={1.75} aria-hidden="true" />
+					</button>
 				{/if}
 			</div>
 		{:else if column.id === 'amount'}

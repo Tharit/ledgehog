@@ -16,6 +16,10 @@ PROTOTYPE-ONLY: categories, payees and tags have no create/edit API yet (step 6)
 transaction. That part, and the SQL cleanup in `reset`, is dev data plumbing, not a pattern for
 application code; it goes when step 6 lands (use its operations then). `--no-classify` skips it.
 
+Named rules (`dev_seed_data.RULES`: a counter-account rule against the cash account, a payee rule, a
+category rule by counterparty reference, a regex rule, a category rule with a payee condition) are
+written through the real `create_rule`, previewed first, after the classification they name.
+
 `--reset` removes what the seed created (accounts and importer instances carrying the `[seed]`
 marker with everything they hold, and the seed's categories, payees and tags by name) and seeds
 again; `--reset-only` just removes. The removal is a documented SQL cleanup: a revert keeps the
@@ -39,6 +43,7 @@ from app.core.balance.records import set_manual_record
 from app.core.importers.instances import create_instance, link_account
 from app.core.importers.upload import upload
 from app.core.integrity import check_integrity
+from app.core.ledger.rules import RuleDraft, create_rule
 from app.core.resolution.registry import configure_classifiers, configure_rule_tools
 from app.core.settle.settle import settle
 from app.plugins.classifiers import default_classifiers, default_rule_tools
@@ -248,6 +253,43 @@ def classify(engine: Engine, seed: int, out: list[str]) -> None:
     )
 
 
+def make_rules(engine: Engine, out: list[str]) -> None:
+    """The named rules of `dev_seed_data.RULES`, through the real operation: previewed first, then
+    written with the preview's count (spec §5.9). Needs the categories and payees `classify` made."""
+    with engine.connect() as conn:
+        account = {
+            key: int(
+                conn.execute(
+                    text("SELECT id FROM account WHERE name = :n"), {"n": name + data.SUFFIX}
+                ).scalar_one()
+            )
+            for key, name, _kind, _ref in data.ACCOUNTS
+        }
+        payee = {str(n): int(i) for n, i in conn.execute(text("SELECT name, id FROM payee"))}
+        category = {str(n): int(i) for n, i in conn.execute(text("SELECT name, id FROM category"))}
+    made = 0
+    for r in data.RULES:
+        target = {"counter_account": account, "payee": payee, "category": category}[r.sets].get(r.target)
+        if target is None:
+            continue  # the vocabulary it names is not there (--no-classify, or already changed)
+        draft = RuleDraft(
+            name=r.name,
+            sets=r.sets,
+            counter_account_id=target if r.sets == "counter_account" else None,
+            payee_id=target if r.sets == "payee" else None,
+            category_id=target if r.sets == "category" else None,
+            condition_payee_id=payee.get(r.condition_payee) if r.condition_payee else None,
+            counterparty_ref=r.counterparty_ref,
+            name_prefix=r.name_prefix,
+            purpose_regex=r.purpose_regex,
+            priority=r.priority,
+        )
+        preview = create_rule(engine, draft, dry_run=True, limit=1).preview
+        create_rule(engine, draft, expected_count=preview.matches.total, limit=1)
+        made += 1
+    out.append(f"{made} named rules (through the rule operation, previewed first)")
+
+
 def reset(engine: Engine) -> None:
     """Remove everything the seed created. Documented SQL cleanup (see the module docstring)."""
     marker = {"n": len(data.SUFFIX), "m": data.SUFFIX}
@@ -257,6 +299,7 @@ def reset(engine: Engine) -> None:
             int(r)
             for r in conn.execute(text("SELECT id FROM account WHERE right(name, :n) = :m"), marker).scalars()
         ]
+        conn.execute(text("DELETE FROM rule WHERE name = ANY(:n)"), {"n": [r.name for r in data.RULES]})
         if ids:
             for sql in (
                 "DELETE FROM ledger_entry_tag WHERE ledger_entry_id IN"
@@ -332,6 +375,7 @@ def seed(engine: Engine, *, months: int, seed_value: int, do_classify: bool, tod
     run_pipeline(engine, plan, today, out)
     if do_classify:
         classify(engine, seed_value, out)
+        make_rules(engine, out)
     settle(engine)  # review flags recomputed once, at the end
     with engine.connect() as conn:
         report = check_integrity(conn)

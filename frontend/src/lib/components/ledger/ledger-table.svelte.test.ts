@@ -367,6 +367,77 @@ describe('LedgerTable: the keyboard', () => {
 		expect(help).toHaveTextContent('Tag the row');
 	});
 
+	it('lists the r key in the help', async () => {
+		table();
+
+		await key('?');
+
+		const help = screen.getByRole('region', { name: 'Keyboard shortcuts' });
+		expect(help).toHaveTextContent('Create a rule from the row');
+	});
+
+	it('r starts a rule from the row under the cursor', async () => {
+		const oncreaterule = vi.fn();
+		table({ oncreaterule });
+		await key('j');
+		await key('j');
+
+		await key('r');
+
+		expect(oncreaterule).toHaveBeenCalledOnce();
+		expect(oncreaterule.mock.calls[0][0]).toMatchObject({ id: 2 });
+	});
+
+	it('r does nothing without a cursor row', async () => {
+		const oncreaterule = vi.fn();
+		table({ oncreaterule });
+
+		await key('r');
+
+		expect(oncreaterule).not.toHaveBeenCalled();
+	});
+
+	it('r on a derived entry says there is nothing to start from', async () => {
+		const oncreaterule = vi.fn();
+		const onnotice = vi.fn();
+		table({
+			entries: [entry({ id: 5, type: 'opening' })],
+			total: 1,
+			oncreaterule,
+			onnotice
+		});
+		await key('j');
+
+		await key('r');
+
+		expect(oncreaterule).not.toHaveBeenCalled();
+		expect(onnotice).toHaveBeenCalledWith('Derived entries have no source to start a rule from');
+	});
+
+	it('the row action starts a rule for its own row, whatever the cursor', async () => {
+		const oncreaterule = vi.fn();
+		table({ oncreaterule });
+
+		await fireEvent.click(
+			screen.getAllByRole('button', { name: 'Create rule from this entry…' })[2]
+		);
+
+		expect(oncreaterule.mock.calls[0][0]).toMatchObject({ id: 1 });
+	});
+
+	it('r typed into a field is left to the field', async () => {
+		const oncreaterule = vi.fn();
+		table({ oncreaterule });
+		await key('j');
+		const field = document.createElement('input');
+		document.body.append(field);
+
+		await fireEvent.keyDown(field, { key: 'r' });
+
+		expect(oncreaterule).not.toHaveBeenCalled();
+		field.remove();
+	});
+
 	it('Esc leaves a focused control', async () => {
 		table({ total: 10, onloadmore: vi.fn() });
 		const button = screen.getByRole('button', { name: 'Load more' });
