@@ -5,25 +5,23 @@
 	import * as Dialog from '#lib/components/ui/dialog/index.js';
 	import { formatCount, formatDate } from '#lib/format/index.js';
 	import type { Lookups } from '#lib/ledger/lookups.js';
+	import { extrasLabel, markedExplanation, rowsPhrase } from '#lib/ledger/tag-all.js';
 	import type { TagAllFlow } from '#lib/stores/tag-all.svelte.js';
 	import { resolveAccount, resolveTag } from '#lib/theme/resolve.js';
 	import type { TagApplyOut } from '#lib/types/domain.js';
 	import TagChooser from './tag-chooser.svelte';
 
-	// "Tag all N…": a visible button for the filter bar and the dialog it opens (decisions C6, C7).
+	// "Tag all…": a visible button for the filter bar and the dialog it opens (decisions C6, C7).
 	// The dialog previews before it writes; the flow holds the state, this shows it.
 	let {
 		flow,
 		lookups,
 		locale = 'en',
-		total,
 		reason = null
 	}: {
 		flow: TagAllFlow;
 		lookups: Lookups;
 		locale?: string;
-		/** every entry the filter matches (the button's N) */
-		total: number;
 		/** why the action is not available now; null when it is */
 		reason?: string | null;
 	} = $props();
@@ -41,7 +39,7 @@
 
 <span class="ml-auto inline-flex" title={reason ?? undefined}>
 	<Button variant="outline" size="sm" disabled={reason !== null} onclick={() => flow.start()}>
-		Tag all{total > 0 ? ` ${count(total)}` : ''}…
+		Tag all…
 	</Button>
 </span>
 
@@ -53,12 +51,25 @@
 >
 	<Dialog.Content class="sm:max-w-md">
 		<Dialog.Header>
-			<Dialog.Title>Tag all {count(total)} {total === 1 ? 'entry' : 'entries'}</Dialog.Title>
+			<!-- the number is the server's, for what the filter matches now; the list may be a snapshot -->
+			<Dialog.Title>
+				{#if preview}
+					Tag all {count(preview.selected)} {preview.selected === 1 ? 'entry' : 'entries'}
+				{:else}
+					Tag all matching entries
+				{/if}
+			</Dialog.Title>
 			<Dialog.Description>
 				Adds a tag to every entry the current filter matches, on every page. Tags already on them
 				stay.
 			</Dialog.Description>
 		</Dialog.Header>
+
+		{#if flow.marked.length > 0}
+			<p class="text-sm text-muted-foreground" data-slot="marked-explanation">
+				{markedExplanation(flow.marked.length, locale)}
+			</p>
+		{/if}
 
 		{#if flow.tag === null}
 			<TagChooser
@@ -87,8 +98,13 @@
 							{count(preview.newly_tagged)}
 							{preview.newly_tagged === 1 ? 'entry' : 'entries'} will be tagged
 						</p>
-					{:else}
+					{:else if flow.extraCount === 0}
 						<p class="font-medium">Nothing to tag</p>
+					{/if}
+					{#if flow.extraCount > 0}
+						<p class="font-medium">
+							{preview.newly_tagged > 0 ? 'plus ' : ''}{rowsPhrase(flow.extraCount, locale)} you changed
+						</p>
 					{/if}
 					<p class="text-muted-foreground">
 						{count(preview.already_tagged)} already carry{preview.already_tagged === 1 ? 'es' : ''} it
@@ -102,6 +118,12 @@
 					<p class="text-muted-foreground">
 						Span of the tag: {span(preview.span_before)} → {span(preview.span_after)}
 					</p>
+					{#if flow.extraRows.length > 0}
+						<label class="mt-1 flex cursor-pointer items-center gap-2">
+							<input type="checkbox" bind:checked={flow.includeMarked} disabled={busy} />
+							<span>{extrasLabel(flow.extraRows.length, locale)}</span>
+						</label>
+					{/if}
 					{#if preview.per_account.length > 0}
 						<ul class="mt-1 flex flex-col gap-0.5" aria-label="Newly tagged by account">
 							{#each preview.per_account as row (row.account_id)}
@@ -120,6 +142,13 @@
 			{/if}
 		{/if}
 
+		{#if flow.report.length > 0}
+			<div role="alert" class="flex flex-col gap-1 text-sm" data-slot="tag-report">
+				{#each flow.report as line, i (i)}
+					<p>{line}</p>
+				{/each}
+			</div>
+		{/if}
 		{#if flow.conflict}
 			<p role="status" class="text-sm">{flow.conflict}</p>
 		{/if}

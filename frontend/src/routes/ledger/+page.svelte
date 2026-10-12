@@ -64,7 +64,6 @@
 				flow={ledger.tagAll}
 				lookups={ledger.lookups}
 				locale={ledger.locale}
-				total={ledger.total}
 				reason={ledger.tagAllReason}
 			/>
 		{/snippet}

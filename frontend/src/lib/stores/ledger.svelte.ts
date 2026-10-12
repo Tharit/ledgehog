@@ -91,6 +91,8 @@ export class LedgerStore {
 		filter: () => this.filter,
 		locale: () => this.locale,
 		addTag: (tag) => this.addTag(tag),
+		markedRows: () => this.entries.filter((e) => this.changedIds.has(e.id)),
+		patch: (updates) => this.patchTags(updates),
 		applied: (updates, text) => {
 			this.patchTags(updates);
 			this.notify(text);

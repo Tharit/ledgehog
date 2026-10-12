@@ -3,20 +3,33 @@
 // so the preview and the write always speak about the same selection. Page-scoped, like the
 // ledger store; the host patches what comes back into the list.
 
-import { ApiError, applyBody, applyTag, createTag } from '#lib/api/index.js';
+import { ApiError, applyBody, applyTag, createTag, tagEntry } from '#lib/api/index.js';
 import { formatCount } from '#lib/format/index.js';
 import { describeTagError, SETTLE_STALE } from '#lib/ledger/errors.js';
 import type { LedgerFilterState } from '#lib/ledger/filter.js';
-import type { EntryTagIds, Tag, TagApplyOut } from '#lib/types/domain.js';
+import {
+	eligibleMarkedRows,
+	partialReport,
+	taggedNotice,
+	taggedSummary
+} from '#lib/ledger/tag-all.js';
+import type { Entry, EntryTagIds, Tag, TagApplyOut } from '#lib/types/domain.js';
 
 export type TagAllHost = {
 	filter: () => LedgerFilterState;
 	locale: () => string;
 	/** a tag was created in the dialog */
 	addTag: (tag: Tag) => void;
+	/** the rows the user changed that the tag filter no longer matches (marked in the list) */
+	markedRows: () => readonly Entry[];
+	/** patch these entries into the list, quietly (a write that left the dialog open) */
+	patch: (updates: readonly EntryTagIds[]) => void;
 	/** the write succeeded: patch these entries and say it */
 	applied: (updates: readonly EntryTagIds[], notice: string) => void;
 };
+
+/** at most this many single-entry writes in flight at once */
+const EXTRAS_CONCURRENCY = 4;
 
 export type TagAllStatus = 'idle' | 'previewing' | 'applying' | 'creating';
 
@@ -27,6 +40,7 @@ function asApiError(error: unknown): ApiError {
 }
 
 export class TagAllFlow {
+	readonly #host: TagAllHost;
 	open = $state(false);
 	tag = $state.raw<Tag | null>(null);
 	preview = $state.raw<TagApplyOut | null>(null);
@@ -36,12 +50,31 @@ export class TagAllFlow {
 	/** set when the result moved between preview and confirm */
 	conflict = $state<string | null>(null);
 
-	/** Confirm is possible only on a loaded preview that would tag something. */
+	/** the opt-in: also tag the marked rows that are still shown */
+	includeMarked = $state(false);
+	/** what a write that left the dialog open did, in words (partial failure) */
+	report = $state.raw<string[]>([]);
+
+	/** Marked rows in the list now (explained in the dialog). */
+	get marked(): readonly Entry[] {
+		return this.#host.markedRows();
+	}
+	/** The marked rows the chosen tag would still change. */
+	get extraRows(): Entry[] {
+		return this.tag ? eligibleMarkedRows(this.marked, this.tag.id) : [];
+	}
+	/** How many marked rows the confirm would add: 0 unless opted in. */
+	get extraCount(): number {
+		return this.includeMarked ? this.extraRows.length : 0;
+	}
+
+	/** Confirm is possible only on a loaded preview that would tag something (or opted-in rows). */
 	readonly canConfirm = $derived(
-		this.status === 'idle' && this.preview !== null && this.preview.newly_tagged > 0
+		this.status === 'idle' &&
+			this.preview !== null &&
+			(this.preview.newly_tagged > 0 || this.extraCount > 0)
 	);
 
-	readonly #host: TagAllHost;
 	#filter: LedgerFilterState | null = null;
 	#generation = 0;
 
@@ -72,6 +105,7 @@ export class TagAllFlow {
 	async choose(tag: Tag): Promise<void> {
 		this.tag = tag;
 		this.conflict = null;
+		this.report = [];
 		await this.#preview();
 	}
 
@@ -99,42 +133,87 @@ export class TagAllFlow {
 		await this.#preview();
 	}
 
-	/** Write it, with the previewed count as the guard. */
+	/**
+	 * Write it: the filter's entries first (with the previewed count as the guard), then, if opted
+	 * in, the marked rows one by one. A moved result stops everything and previews again.
+	 */
 	async confirm(): Promise<void> {
 		const { tag, preview } = this;
 		const filter = this.#filter;
 		if (!this.canConfirm || !tag || !preview || !filter) return;
+		const locale = this.#host.locale();
 		const expected = preview.newly_tagged;
+		const extras = this.includeMarked ? this.extraRows : [];
 		this.status = 'applying';
 		this.error = null;
 		this.conflict = null;
-		try {
-			const out = await applyTag(tag.id, applyBody(filter, { expectedCount: expected }));
-			const n = out.newly_tagged;
-			const stale = out.settle?.error ? ` ${SETTLE_STALE}` : '';
-			this.#host.applied(
-				out.entries,
-				`Tagged ${formatCount(n, this.#host.locale())} ${n === 1 ? 'entry' : 'entries'} with "${tag.name}"${stale ? `.${stale}` : ''}`
-			);
-			this.close();
-		} catch (error) {
-			const failure = asApiError(error);
-			const reason = (failure.details as { reason?: unknown } | null)?.reason;
-			if (failure.code === 'conflict' && reason === 'filter_result_changed') {
-				const details = failure.details as { expected?: unknown; actual?: unknown };
-				await this.#preview();
-				const now =
-					typeof details.actual === 'number' ? details.actual : this.preview?.newly_tagged;
-				const was = typeof details.expected === 'number' ? details.expected : expected;
-				this.conflict =
-					now === undefined
-						? 'The result changed — please check and confirm again'
-						: `The result changed (was ${formatCount(was, this.#host.locale())}, now ${formatCount(now, this.#host.locale())}) — please check and confirm again`;
+		this.report = [];
+		const updates: EntryTagIds[] = [];
+		let applied = 0;
+		let stale = false;
+		if (expected > 0) {
+			try {
+				const out = await applyTag(tag.id, applyBody(filter, { expectedCount: expected }));
+				applied = out.newly_tagged;
+				updates.push(...out.entries);
+				stale = Boolean(out.settle?.error);
+			} catch (error) {
+				await this.#bulkFailed(asApiError(error), expected);
 				return;
 			}
-			this.error = describeTagError(failure);
-			this.status = 'idle';
 		}
+		if (extras.length === 0) {
+			this.#host.applied(updates, taggedNotice(tag.name, applied, 0, stale, locale));
+			this.close();
+			return;
+		}
+		const failures: ApiError[] = [];
+		const queue = [...extras];
+		const worker = async () => {
+			for (let row = queue.shift(); row; row = queue.shift()) {
+				try {
+					const out = await tagEntry(row.id, tag.id);
+					updates.push({ id: row.id, tag_ids: out.entry.tag_ids });
+					stale ||= Boolean(out.settle.error);
+				} catch (error) {
+					failures.push(asApiError(error));
+				}
+			}
+		};
+		await Promise.all(Array.from({ length: Math.min(EXTRAS_CONCURRENCY, extras.length) }, worker));
+		if (failures.length === 0) {
+			this.#host.applied(updates, taggedNotice(tag.name, applied, extras.length, stale, locale));
+			this.close();
+			return;
+		}
+		this.#host.patch(updates);
+		const lines: string[] = [];
+		if (applied > 0) lines.push(taggedSummary(tag.name, applied, 0, locale));
+		const reasons = failures.map((f) => describeTagError(f));
+		const tagged = extras.length - failures.length;
+		lines.push(partialReport(tagged, extras.length, reasons, locale));
+		if (stale) lines.push(SETTLE_STALE);
+		this.includeMarked = false;
+		await this.#preview();
+		if (this.open) this.report = lines;
+	}
+
+	async #bulkFailed(failure: ApiError, expected: number): Promise<void> {
+		const reason = (failure.details as { reason?: unknown } | null)?.reason;
+		if (failure.code === 'conflict' && reason === 'filter_result_changed') {
+			const details = failure.details as { expected?: unknown; actual?: unknown };
+			await this.#preview();
+			const now = typeof details.actual === 'number' ? details.actual : this.preview?.newly_tagged;
+			const was = typeof details.expected === 'number' ? details.expected : expected;
+			const locale = this.#host.locale();
+			this.conflict =
+				now === undefined
+					? 'The result changed — please check and confirm again'
+					: `The result changed (was ${formatCount(was, locale)}, now ${formatCount(now, locale)}) — please check and confirm again`;
+			return;
+		}
+		this.error = describeTagError(failure);
+		this.status = 'idle';
 	}
 
 	async #preview(): Promise<void> {
@@ -164,5 +243,7 @@ export class TagAllFlow {
 		this.status = 'idle';
 		this.error = null;
 		this.conflict = null;
+		this.includeMarked = false;
+		this.report = [];
 	}
 }

@@ -2,17 +2,19 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 // the test stubs the API at its boundary (the one place a component test may name it)
 // eslint-disable-next-line no-restricted-imports
-import { ApiError, applyTag, createTag } from '#lib/api/index.js';
-import { account, applyOut, tag } from '#lib/ledger/fixtures.js';
+import { ApiError, applyTag, createTag, tagEntry } from '#lib/api/index.js';
+import { account, applyOut, entry, tag } from '#lib/ledger/fixtures.js';
 import { emptyFilter } from '#lib/ledger/filter.js';
 import { buildLookups } from '#lib/ledger/lookups.js';
 import { TagAllFlow } from '#lib/stores/tag-all.svelte.js';
+import type { Entry } from '#lib/types/domain.js';
 import TagAll from './tag-all.svelte';
 
 vi.mock('#lib/api/index.js', async (importOriginal) => ({
 	...(await importOriginal<typeof import('#lib/api/index.js')>()),
 	applyTag: vi.fn(),
-	createTag: vi.fn()
+	createTag: vi.fn(),
+	tagEntry: vi.fn()
 }));
 
 const lookups = buildLookups({
@@ -20,15 +22,18 @@ const lookups = buildLookups({
 	tags: [tag({ id: 30, name: 'Lisbon trip' }), tag({ id: 31, name: 'Tax' })]
 });
 
-function setup(props: { reason?: string | null; total?: number } = {}) {
+function setup(props: { reason?: string | null; marked?: Entry[] } = {}) {
+	const { marked = [], ...rest } = props;
 	const host = {
 		filter: () => ({ ...emptyFilter(), account_id: [1] }),
 		locale: () => 'en',
 		addTag: vi.fn(),
+		markedRows: () => marked,
+		patch: vi.fn(),
 		applied: vi.fn()
 	};
 	const flow = new TagAllFlow(host);
-	render(TagAll, { props: { flow, lookups, total: 12, reason: null, ...props } });
+	render(TagAll, { props: { flow, lookups, reason: null, ...rest } });
 	return { flow, host };
 }
 
@@ -44,10 +49,10 @@ beforeEach(() => {
 });
 
 describe('TagAll: the button', () => {
-	it('says how many entries it would cover', () => {
+	it('shows no count: the list may be a snapshot', () => {
 		setup();
 
-		expect(screen.getByRole('button', { name: 'Tag all 12…' })).toBeEnabled();
+		expect(screen.getByRole('button', { name: 'Tag all…' })).toBeEnabled();
 	});
 
 	it('is disabled with the reason as its tooltip when the filter is empty', () => {
@@ -237,5 +242,166 @@ describe('TagAll: the dialog', () => {
 
 		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 		expect(applyTag).toHaveBeenCalledOnce();
+	});
+});
+
+describe('TagAll: the headline', () => {
+	it('is generic while the preview loads, then uses the number the server previewed', async () => {
+		let resolve!: (value: ReturnType<typeof applyOut>) => void;
+		vi.mocked(applyTag).mockReturnValue(new Promise((res) => (resolve = res)));
+		setup();
+
+		await fireEvent.click(screen.getByRole('button', { name: /Tag all/ }));
+		expect(await screen.findByRole('heading', { name: 'Tag all matching entries' })).toBeVisible();
+		await fireEvent.click(await screen.findByRole('option', { name: /Lisbon trip/ }));
+		expect(screen.getByRole('heading', { name: 'Tag all matching entries' })).toBeVisible();
+
+		resolve(applyOut({ selected: 5, newly_tagged: 0, already_tagged: 5 }));
+
+		expect(await screen.findByRole('heading', { name: 'Tag all 5 entries' })).toBeVisible();
+	});
+});
+
+describe('TagAll: rows the user changed', () => {
+	const marked = [entry({ id: 7, tag_ids: [] }), entry({ id: 8, tag_ids: [31] })];
+	const noneNew = () => vi.mocked(applyTag).mockResolvedValue(applyOut({ newly_tagged: 0 }));
+
+	it('says nothing about them when there are none', async () => {
+		noneNew();
+		setup();
+
+		await openAndChoose();
+		await screen.findByText('Nothing to tag');
+
+		expect(screen.queryByText(/changed by you/)).toBeNull();
+		expect(screen.queryByRole('checkbox')).toBeNull();
+	});
+
+	it('explains how many are shown but not part of the filter result', async () => {
+		noneNew();
+		setup({ marked });
+
+		await fireEvent.click(screen.getByRole('button', { name: /Tag all/ }));
+
+		expect(
+			await screen.findByText(
+				'2 rows still shown were changed by you and no longer match this filter, so the filter does not include them.'
+			)
+		).toBeInTheDocument();
+	});
+
+	it('offers an unchecked box that counts the rows the chosen tag would change', async () => {
+		noneNew();
+		setup({ marked });
+
+		await openAndChoose('Lisbon trip');
+		const box = await screen.findByRole('checkbox', {
+			name: 'Also tag the 2 rows you changed that are still shown'
+		});
+		expect(box).not.toBeChecked();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Change tag' }));
+		await fireEvent.click(await screen.findByRole('option', { name: /Tax/ }));
+
+		expect(
+			await screen.findByRole('checkbox', {
+				name: 'Also tag the 1 row you changed that is still shown'
+			})
+		).not.toBeChecked();
+	});
+
+	it('offers no box when every marked row carries the tag or is derived', async () => {
+		noneNew();
+		setup({ marked: [entry({ id: 8, tag_ids: [30] }), entry({ id: 9, type: 'opening' })] });
+
+		await openAndChoose('Lisbon trip');
+
+		await screen.findByText('Nothing to tag');
+		expect(screen.queryByRole('checkbox')).toBeNull();
+		expect(screen.getByText(/2 rows still shown/)).toBeInTheDocument();
+	});
+
+	it('keeps Confirm off with the box unchecked and Nothing to tag, and enables it when checked', async () => {
+		noneNew();
+		setup({ marked });
+		await openAndChoose('Lisbon trip');
+
+		expect(await screen.findByText('Nothing to tag')).toBeInTheDocument();
+		expect(confirm()).toBeDisabled();
+
+		await fireEvent.click(screen.getByRole('checkbox'));
+
+		expect(screen.queryByText('Nothing to tag')).toBeNull();
+		expect(screen.getByText('2 rows you changed')).toBeInTheDocument();
+		expect(confirm()).toBeEnabled();
+	});
+
+	it('adds "plus N rows you changed" to a filter result that tags something', async () => {
+		vi.mocked(applyTag).mockResolvedValue(applyOut({ newly_tagged: 3 }));
+		setup({ marked });
+		await openAndChoose('Lisbon trip');
+		await screen.findByText(/3 entries will be tagged/);
+		expect(confirm()).toBeEnabled();
+
+		await fireEvent.click(screen.getByRole('checkbox'));
+
+		expect(screen.getByText('plus 2 rows you changed')).toBeInTheDocument();
+	});
+
+	it('tags only the rows, with no apply request, when the filter has nothing new', async () => {
+		noneNew();
+		vi.mocked(tagEntry).mockImplementation(async (id) => ({
+			changed: true,
+			entry: { id, tag_ids: [30] },
+			settle: { error: null, touched_entry_ids: [] }
+		}));
+		const { host } = setup({ marked });
+		await openAndChoose('Lisbon trip');
+		await fireEvent.click(await screen.findByRole('checkbox'));
+
+		await fireEvent.click(confirm());
+
+		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+		expect(applyTag).toHaveBeenCalledOnce();
+		expect(
+			vi
+				.mocked(tagEntry)
+				.mock.calls.map((c) => c[0])
+				.sort()
+		).toEqual([7, 8]);
+		expect(host.applied).toHaveBeenCalledWith(
+			expect.arrayContaining([{ id: 7, tag_ids: [30] }]),
+			'Tagged 2 rows you changed with "Lisbon trip"'
+		);
+	});
+
+	it('keeps the dialog open on a partial failure and says what went through', async () => {
+		vi.mocked(applyTag)
+			.mockResolvedValueOnce(applyOut({ newly_tagged: 3 }))
+			.mockResolvedValueOnce(applyOut({ dry_run: false, newly_tagged: 3 }))
+			.mockResolvedValueOnce(applyOut({ newly_tagged: 0 }));
+		vi.mocked(tagEntry).mockImplementation(async (id) => {
+			if (id === 8) throw new ApiError(404, 'not_found', 'x');
+			return {
+				changed: true,
+				entry: { id, tag_ids: [30] },
+				settle: { error: null, touched_entry_ids: [] }
+			};
+		});
+		const { host } = setup({ marked });
+		await openAndChoose('Lisbon trip');
+		await screen.findByText(/3 entries will be tagged/);
+		await fireEvent.click(screen.getByRole('checkbox'));
+
+		await fireEvent.click(confirm());
+
+		const report = await screen.findByRole('alert');
+		expect(report).toHaveTextContent('Tagged 3 entries with "Lisbon trip"');
+		expect(report).toHaveTextContent(
+			'Tagged 1 of 2 of the rows you changed; 1 failed (That entry or tag no longer exists.'
+		);
+		expect(screen.getByRole('dialog')).toBeInTheDocument();
+		expect(host.applied).not.toHaveBeenCalled();
+		expect(host.patch).toHaveBeenCalledWith(expect.arrayContaining([{ id: 7, tag_ids: [30] }]));
 	});
 });

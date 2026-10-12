@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
 	ApiError,
+	applyTag,
 	createTag,
 	listAccounts,
 	listCategories,
@@ -10,7 +11,7 @@ import {
 	tagEntry,
 	untagEntry
 } from '#lib/api/index.js';
-import { account, category, entry, tag } from '#lib/ledger/fixtures.js';
+import { account, applyOut, category, entry, tag } from '#lib/ledger/fixtures.js';
 import { emptyFilter } from '#lib/ledger/filter.js';
 import { LedgerStore } from './ledger.svelte.js';
 import { session } from './session.svelte.js';
@@ -23,6 +24,7 @@ vi.mock('#lib/api/index.js', async (importOriginal) => ({
 	listPayees: vi.fn(),
 	listTags: vi.fn(),
 	createTag: vi.fn(),
+	applyTag: vi.fn(),
 	tagEntry: vi.fn(),
 	untagEntry: vi.fn()
 }));
@@ -427,5 +429,40 @@ describe('LedgerStore: Tag all', () => {
 		await flush();
 
 		expect(store.tagAllReason).toBe('No entries to tag');
+	});
+
+	it('hands the flow the marked rows, and a row that matches the filter again is unmarked', async () => {
+		vi.mocked(listEntries).mockResolvedValue({
+			entries: [entry({ id: 2, tag_ids: [30] }), entry({ id: 1, tag_ids: [30] })],
+			total: 2,
+			limit: 100,
+			offset: 0
+		});
+		vi.mocked(untagEntry).mockResolvedValue({
+			changed: true,
+			entry: { id: 1, tag_ids: [] },
+			settle: { error: null, touched_entry_ids: [] }
+		});
+		vi.mocked(tagEntry).mockResolvedValue({
+			changed: true,
+			entry: { id: 1, tag_ids: [30] },
+			settle: { error: null, touched_entry_ids: [] }
+		});
+		vi.mocked(applyTag).mockResolvedValue(applyOut({ newly_tagged: 0, selected: 1 }));
+		const store = new LedgerStore();
+		store.applyFilter({ ...emptyFilter(), tag_id: [30] });
+		await flush();
+		await store.setEntryTag(1, 30, false);
+		expect(store.changedIds.has(1)).toBe(true);
+
+		store.tagAll.start();
+		await store.tagAll.choose(tag({ id: 30, name: 'Lisbon trip' }));
+		expect(store.tagAll.marked.map((e) => e.id)).toEqual([1]);
+		store.tagAll.includeMarked = true;
+		await store.tagAll.confirm();
+
+		expect(store.entries.find((e) => e.id === 1)?.tag_ids).toEqual([30]);
+		expect(store.changedIds.has(1)).toBe(false);
+		expect(store.notice?.text).toBe('Tagged 1 row you changed with "Lisbon trip"');
 	});
 });
