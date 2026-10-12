@@ -192,6 +192,45 @@ def test_classification_gives_rows_something_to_render(seeded: str, dev_engine: 
     )
 
 
+def test_the_three_states_exist_side_by_side(seeded: str, dev_engine: Engine):
+    movements = _one(dev_engine, "SELECT count(*) FROM ledger_entry WHERE balance_record_id IS NULL")
+    categorised = _one(
+        dev_engine, "SELECT count(*) FROM ledger_entry WHERE type = 'flow' AND category_id IS NOT NULL"
+    )
+    uncategorised_sql = "SELECT count(*) FROM ledger_entry WHERE type = 'flow' AND category_id IS NULL"
+    uncategorised = _one(dev_engine, uncategorised_sql)
+    untyped = _one(
+        dev_engine, "SELECT count(*) FROM ledger_entry WHERE balance_record_id IS NULL AND type IS NULL"
+    )
+    assert categorised + uncategorised + untyped == movements
+    assert 0.04 <= uncategorised / movements <= 0.14, (uncategorised, movements)
+    assert 0.12 <= untyped / movements <= 0.35, (untyped, movements)
+    assert categorised / movements >= 0.5
+    with dev_engine.connect() as conn:
+        # the API's `uncategorised` predicate: only flows, and some of both payee/confirmation kinds
+        rows = conn.execute(
+            text(
+                "SELECT type, payee_id, review_flags FROM ledger_entry"
+                " WHERE category_id IS NULL AND type = 'flow'"
+            )
+        ).all()
+        assert rows and all(r[0] == "flow" for r in rows)
+        assert any(r[1] is not None for r in rows) and any(r[1] is None for r in rows)
+        assert any("unconfirmed" in r[2] for r in rows) and any("unconfirmed" not in r[2] for r in rows)
+        assert all("unclassified" in r[2] for r in rows)  # settle: untyped OR flow without category
+        assert (
+            conn.execute(
+                text(
+                    "SELECT count(*) FROM ledger_entry WHERE balance_record_id IS NULL"
+                    " AND ('unclassified' = ANY(review_flags))"
+                    " <> (type IS NULL OR (type = 'flow' AND category_id IS NULL))"
+                )
+            ).scalar_one()
+            == 0
+        )
+    assert "flows without a category" in seeded
+
+
 def test_tags_span_a_week_and_the_ledger_is_intact(seeded: str, dev_engine: Engine):
     with dev_engine.connect() as conn:
         trip = conn.execute(

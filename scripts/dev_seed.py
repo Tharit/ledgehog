@@ -48,6 +48,7 @@ from app.utils.db.locks import lock_settle_exclusive
 from scripts import dev_seed_data as data
 
 DEFAULT_SEED = 20261011
+_NO_CATEGORY_SHARE = 0.10  # of the classified movements: flows left without a category
 _ALWAYS = frozenset({"Rent", "Salary", "Insurance"})  # recurring items are never left unclassified
 
 # preset -> (accounts it feeds: (account key, reference at the login))
@@ -141,7 +142,9 @@ def classify(engine: Engine, seed: int, out: list[str]) -> None:
     No create/edit API exists yet (step 6). Entries get `type='flow'` with a category (and a
     payee where a rule names one); each value carries a derivation key, `user` (standing, so the
     unit reads as confirmed) for ~70%, `history` (a proposal, so `unconfirmed`) for the rest.
-    Movements no rule matches, and ~8% that do, stay untyped: the `unclassified` state.
+    About 8% of all movements become flows with NO category (some with a payee); movements no
+    rule matches, and ~8% that do, stay untyped (type NULL, as the importer leaves them). Both
+    carry the `unclassified` flag.
     """
     rng = random.Random(f"{seed}:classify")
     with engine.begin() as conn:
@@ -202,14 +205,20 @@ def classify(engine: Engine, seed: int, out: list[str]) -> None:
             rule = data.classify(name, purpose)
             if rule is not None and (rule.category in _ALWAYS or rng.random() < 0.92):
                 key = "user" if rng.random() < 0.7 else "history"
-                derivation = {"type": {"pass": key}, "category": {"pass": key}}
-                if rule.payee:
+                # ~10% of the classified (~8% of all movements) are flows the user has typed but
+                # not yet categorised: type flow, no category, a payee for about half of them
+                no_category = rule.category not in _ALWAYS and rng.random() < _NO_CATEGORY_SHARE
+                payee = rule.payee if rule.payee and not (no_category and rng.random() < 0.5) else None
+                derivation = {"type": {"pass": key}}
+                if not no_category:
+                    derivation["category"] = {"pass": key}
+                if payee:
                     derivation["payee"] = {"pass": key}
                 updates.append(
                     {
                         "id": entry_id,
-                        "c": category_id[rule.category],
-                        "p": payee_id[rule.payee] if rule.payee else None,
+                        "c": None if no_category else category_id[rule.category],
+                        "p": payee_id[payee] if payee else None,
                         "d": json.dumps(derivation),
                     }
                 )
@@ -228,10 +237,12 @@ def classify(engine: Engine, seed: int, out: list[str]) -> None:
             conn.execute(
                 text("INSERT INTO ledger_entry_tag (ledger_entry_id, tag_id) VALUES (:e, :t)"), tagged
             )
+    uncategorised = sum(1 for u in updates if u["c"] is None)
     out.append(
         f"PROTOTYPE-ONLY dev data (direct SQL, no API yet): {len(category_id)} categories, "
-        f"{len(payee_id)} payees, {len(tag_id)} tags; {len(updates)} of {len(movements)} movements "
-        f"classified, {len(tagged)} tag assignments"
+        f"{len(payee_id)} payees, {len(tag_id)} tags; of {len(movements)} movements "
+        f"{len(updates) - uncategorised} categorised flows, {uncategorised} flows without a category, "
+        f"{len(movements) - len(updates)} without a type; {len(tagged)} tag assignments"
     )
 
 
