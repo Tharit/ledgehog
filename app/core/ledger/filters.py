@@ -40,7 +40,7 @@ class LedgerFilter:
     account_ids: tuple[int, ...] = ()
     category_ids: tuple[int, ...] = ()
     category_descendants: bool = True  # a parent includes its descendants
-    uncategorised: bool = False  # flows with no category; OR-ed with category_ids
+    uncategorised: bool = False  # flows and untyped entries with no category; OR-ed with category_ids
     payee_ids: tuple[int, ...] = ()
     tag_ids: tuple[int, ...] = ()  # any of them
     amount_min: int | None = None  # magnitude, minor units of `currency`

@@ -118,7 +118,9 @@ def _category(flt: LedgerFilter) -> ColumnElement[bool]:
         else:
             options.append(le.c.category_id.in_(flt.category_ids))
     if flt.uncategorised:
-        options.append(and_(le.c.type == "flow", le.c.category_id.is_(None)))
+        # entries that could have a category but have none: flows, and entries with no type yet
+        # (what an import produces before anything classifies it); never transfers or derived entries
+        options.append(and_(or_(le.c.type == "flow", le.c.type.is_(None)), le.c.category_id.is_(None)))
     return or_(*options)
 
 

@@ -113,16 +113,17 @@ def test_category_descendants_default_and_exact(db_conn: Connection, acct: int):
     assert sorted_ids(db_conn, category_ids=(root, other), category_descendants=False) == sorted([er, eo])
 
 
-def test_uncategorised_means_flows_without_category(db_conn: Connection, acct: int):
+def test_uncategorised_means_entries_that_could_have_a_category_but_have_none(db_conn: Connection, acct: int):
+    """Flows without a category AND entries with no type yet; never transfers or derived entries."""
     cat = seed.category(db_conn, "Food")
     plain = seed.entry(db_conn, acct)
     seed.entry(db_conn, acct, category_id=cat)
     seed.entry(db_conn, acct, type="transfer")
-    seed.entry(db_conn, acct, type=None)
+    untyped = seed.entry(db_conn, acct, type=None)
     seed.derived(db_conn, acct)
-    assert sorted_ids(db_conn, uncategorised=True) == [plain]
+    assert sorted_ids(db_conn, uncategorised=True) == sorted([plain, untyped])
     both = sorted_ids(db_conn, uncategorised=True, category_ids=(cat,))
-    assert len(both) == 2 and plain in both
+    assert len(both) == 3 and plain in both and untyped in both
 
 
 def test_tag_any_of(db_conn: Connection, acct: int):
