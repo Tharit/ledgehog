@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { account, category, tag } from '#lib/ledger/fixtures.js';
 import { emptyFilter, type LedgerFilterState } from '#lib/ledger/filter.js';
@@ -105,6 +105,60 @@ describe('FilterBar: chips', () => {
 	});
 });
 
+describe('FilterBar: the type section of the category chip', () => {
+	it('lists the five types with their row icons', async () => {
+		bar();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'All categories' }));
+		const list = await screen.findByRole('list', { name: 'Type' });
+
+		for (const name of ['Flow', 'Transfer', 'Opening', 'Valuation', 'Reconciliation']) {
+			expect(within(list).getByRole('checkbox', { name })).toBeInTheDocument();
+		}
+		expect(list.querySelectorAll('svg')).toHaveLength(5);
+	});
+
+	it('adds and removes a type in the filter', async () => {
+		const { onchange, rerender } = bar();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'All categories' }));
+		await fireEvent.click(await screen.findByRole('checkbox', { name: 'Transfer' }));
+		expect(onchange).toHaveBeenLastCalledWith({ ...emptyFilter(), type: ['transfer'] });
+
+		await rerender({ filter: { ...emptyFilter(), type: ['transfer', 'flow'] } });
+		await fireEvent.click(screen.getByRole('checkbox', { name: 'Transfer' }));
+		expect(onchange).toHaveBeenLastCalledWith({ ...emptyFilter(), type: ['flow'] });
+	});
+
+	it('counts the type in the chip label', () => {
+		bar({ type: ['opening'] });
+		expect(screen.getByRole('button', { name: 'Type: Opening' })).toBeInTheDocument();
+	});
+
+	it('shows the category and the type together', () => {
+		bar({ category_id: [10], type: ['flow', 'transfer'] });
+		expect(
+			screen.getByRole('button', { name: 'Groceries · Type: Flow, Transfer' })
+		).toBeInTheDocument();
+	});
+});
+
+describe('FilterBar: the review state chip', () => {
+	it('shows each option with the badge and the sentence the rows use', async () => {
+		bar();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Review' }));
+		const list = await screen.findByRole('list', { name: 'Review state' });
+
+		expect(list.querySelectorAll('[data-flag]')).toHaveLength(5);
+		expect(list.querySelector('[data-flag="waiting"]')).toHaveAttribute(
+			'title',
+			'Partner or document still expected'
+		);
+		expect(within(list).getByRole('checkbox', { name: 'Waiting' })).toBeInTheDocument();
+	});
+});
+
 describe('FilterBar: the text box', () => {
 	function box() {
 		return screen.getByRole('textbox', { name: 'Filter entries by text' });
@@ -143,6 +197,27 @@ describe('FilterBar: the text box', () => {
 
 		await rerender({ filter: emptyFilter() });
 		expect(box()).toHaveValue('');
+	});
+
+	it('hands the keyboard to the list on ArrowDown, without changing the filter', async () => {
+		const ondown = vi.fn();
+		const { onchange } = bar({}, { ondown });
+		box().focus();
+
+		const notPrevented = await fireEvent.keyDown(box(), { key: 'ArrowDown' });
+
+		expect(ondown).toHaveBeenCalledOnce();
+		expect(notPrevented).toBe(false);
+		expect(onchange).not.toHaveBeenCalled();
+	});
+
+	it('does not leave the box on ArrowUp', async () => {
+		const ondown = vi.fn();
+		bar({}, { ondown });
+
+		await fireEvent.keyDown(box(), { key: 'ArrowUp' });
+
+		expect(ondown).not.toHaveBeenCalled();
 	});
 
 	it('leaves the box on Esc', async () => {

@@ -15,6 +15,7 @@
 
 	const ledger = new LedgerStore();
 	let searchEl = $state<HTMLInputElement | null>(null);
+	let table = $state<ReturnType<typeof LedgerTable> | null>(null);
 
 	// The URL is the filter, so a ledger link can be bookmarked and shared: whatever the query
 	// string says (first visit, Back, a link from elsewhere) is what the list shows.
@@ -54,6 +55,7 @@
 		today={ledger.today}
 		baseCurrency={ledger.baseCurrency}
 		bind:searchEl
+		ondown={() => table?.enterList()}
 		onchange={show}
 	/>
 
@@ -65,6 +67,7 @@
 	{/if}
 
 	<LedgerTable
+		bind:this={table}
 		entries={ledger.entries}
 		total={ledger.total}
 		status={ledger.status}
@@ -73,7 +76,6 @@
 		moreError={ledger.moreError}
 		lookups={ledger.lookups}
 		locale={ledger.locale}
-		showAccount={ledger.showAccount}
 		activeFilters={ledger.activeFilters}
 		onclearfilters={() => show(emptyFilter())}
 		onretry={() => ledger.reload()}

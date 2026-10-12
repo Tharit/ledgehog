@@ -55,10 +55,6 @@ export class LedgerStore {
 	readonly activeFilters = $derived(
 		describeFilter(this.filter, { lookups: this.lookups, locale: this.locale }).map((p) => p.label)
 	);
-	/** more than one account can appear: the account column is shown */
-	readonly showAccount = $derived(
-		this.filter.account_id.length !== 1 && this.lookups.accounts.size !== 1
-	);
 
 	#controller: AbortController | null = null;
 	#generation = 0;

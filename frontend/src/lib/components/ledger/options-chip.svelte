@@ -6,12 +6,15 @@
 		color?: string;
 		/** a longer explanation, as a tooltip */
 		hint?: string;
+		/** a review token: its badge (the one the rows show) is drawn before the label */
+		flag?: string;
 	};
 </script>
 
 <script lang="ts" generics="T extends string | number">
 	import type { Snippet } from 'svelte';
 	import AccountDot from '#lib/components/common/account-dot.svelte';
+	import ReviewBadge from '#lib/components/common/review-badge.svelte';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import FilterChip from './filter-chip.svelte';
@@ -84,6 +87,9 @@
 							checked={selected.includes(option.value)}
 							onchange={(event) => toggle(option.value, event.currentTarget.checked)}
 						/>
+						{#if option.flag}
+							<span aria-hidden="true" class="inline-flex"><ReviewBadge flag={option.flag} /></span>
+						{/if}
 						{#if option.color}
 							<AccountDot name={option.label} color={option.color} />
 						{:else}

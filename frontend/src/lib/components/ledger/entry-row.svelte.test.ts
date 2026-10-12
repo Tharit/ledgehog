@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import { account, category, entry, payee, tag } from '#lib/ledger/fixtures.js';
 import { buildLookups } from '#lib/ledger/lookups.js';
+import { COLUMNS, GRID_TEMPLATE } from './columns.js';
 import EntryRow from './entry-row.svelte';
 
 const lookups = buildLookups({
@@ -19,6 +20,11 @@ const lookups = buildLookups({
 	]
 });
 
+/** the index of a column's cell in a row */
+function cell(id: string): number {
+	return COLUMNS.findIndex((c) => c.id === id);
+}
+
 function row(over = {}, props = {}) {
 	return render(EntryRow, { props: { entry: entry(over), lookups, ...props } });
 }
@@ -29,10 +35,11 @@ describe('EntryRow: a flow entry', () => {
 
 		const cells = within(screen.getByRole('row')).getAllByRole('gridcell');
 		expect(cells[0]).toHaveTextContent('Oct 9, 2026');
-		expect(cells[1]).toHaveTextContent('Giro');
-		expect(cells[2]).toHaveTextContent('REWE Markt');
-		expect(cells[3]).toHaveTextContent('REWE');
-		expect(cells[4]).toHaveTextContent('Groceries');
+		expect(cells).toHaveLength(COLUMNS.length);
+		expect(cells[cell('account')]).toHaveTextContent('Giro');
+		expect(cells[cell('description')]).toHaveTextContent('REWE Markt');
+		expect(cells[cell('payee')]).toHaveTextContent('REWE');
+		expect(cells[cell('category')]).toHaveTextContent('Groceries');
 		expect(cells.at(-1)).toHaveTextContent('−47.31');
 	});
 
@@ -42,11 +49,26 @@ describe('EntryRow: a flow entry', () => {
 		expect(screen.getByRole('row')).toHaveClass('h-8');
 	});
 
-	it('leaves the account column out when told to', () => {
-		row({}, { showAccount: false });
+	it('follows the column definition: one cell per column, in its order', () => {
+		row({ payee_id: 20, category_id: 10 });
 
-		expect(screen.queryByText('Giro')).not.toBeInTheDocument();
-		expect(within(screen.getByRole('row')).getAllByRole('gridcell')).toHaveLength(7);
+		expect(COLUMNS.map((c) => c.id)).toEqual([
+			'date',
+			'account',
+			'category',
+			'payee',
+			'tags',
+			'description',
+			'review',
+			'amount'
+		]);
+		expect(screen.getByRole('row').style.gridTemplateColumns).toBe(GRID_TEMPLATE);
+	});
+
+	it('gives the description its full text as a tooltip', () => {
+		row({ display_text: 'A long purpose text' });
+
+		expect(screen.getByTitle('A long purpose text')).toBeInTheDocument();
 	});
 
 	it('shows a muted placeholder when the entry has no text', () => {
@@ -110,9 +132,9 @@ describe('EntryRow: transfers', () => {
 	it('shows the arrow icon and the counter account', () => {
 		row({ type: 'transfer', counter_account_id: 2, category_id: null });
 
-		const cell = within(screen.getByRole('row')).getAllByRole('gridcell')[4];
-		expect(cell).toHaveTextContent('→');
-		expect(cell).toHaveTextContent('Cash');
+		const categoryCell = within(screen.getByRole('row')).getAllByRole('gridcell')[cell('category')];
+		expect(categoryCell).toHaveTextContent('→');
+		expect(categoryCell).toHaveTextContent('Cash');
 		expect(screen.queryByText('Unclassified')).toBeNull();
 	});
 
@@ -137,8 +159,8 @@ describe('EntryRow: derived entries', () => {
 		});
 
 		const cells = within(screen.getByRole('row')).getAllByRole('gridcell');
-		expect(cells[4]).toHaveTextContent(name);
-		expect(cells[3]).toBeEmptyDOMElement();
+		expect(cells[cell('category')]).toHaveTextContent(name);
+		expect(cells[cell('payee')]).toBeEmptyDOMElement();
 		expect(screen.queryByRole('img')).toBeNull();
 		expect(screen.queryByText('No text')).toBeNull();
 	});

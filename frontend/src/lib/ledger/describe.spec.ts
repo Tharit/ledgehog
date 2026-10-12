@@ -63,7 +63,7 @@ describe('describeFilter', () => {
 	it('names review flags and entry types', () => {
 		expect(describe_({ flag: ['waiting'] })[0]).toEqual({ key: 'flag', label: 'Waiting' });
 		expect(describe_({ flag: ['waiting', 'unconfirmed'] })[0].label).toBe('2 review flags');
-		expect(describe_({ type: ['flow', 'transfer'] })[0].label).toBe('Type: flow, transfer');
+		expect(describe_({ type: ['flow', 'transfer'] })[0].label).toBe('Type: Flow, Transfer');
 	});
 
 	it('quotes the text', () => {

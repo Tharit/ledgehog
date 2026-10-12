@@ -8,7 +8,7 @@
 	import type { Lookups } from '#lib/ledger/lookups.js';
 	import type { Entry } from '#lib/types/domain.js';
 	import { cn } from '#lib/utils.js';
-	import { rowGrid } from './columns.js';
+	import { COLUMNS, GRID_TEMPLATE, ROW_GRID } from './columns.js';
 	import EntryRow from './entry-row.svelte';
 
 	// The list of entries with its cursor and keyboard model (patterns §5). The list is a snapshot
@@ -22,7 +22,6 @@
 		moreError = null,
 		lookups,
 		locale = 'en',
-		showAccount = true,
 		activeFilters = [],
 		onclearfilters,
 		onretry,
@@ -37,8 +36,6 @@
 		moreError?: { code: string; message: string } | null;
 		lookups: Lookups;
 		locale?: string;
-		/** show the account column (several accounts can appear) */
-		showAccount?: boolean;
 		/** labels of the active filters, for the "nothing matches" state */
 		activeFilters?: readonly string[];
 		onclearfilters?: () => void;
@@ -61,6 +58,16 @@
 	function moveBy(delta: number) {
 		const next = moveCursor(cursorIndex, delta, entries.length);
 		cursorId = next < 0 ? null : entries[next].id;
+	}
+
+	/**
+	 * Hand the keyboard to the list: leave whatever field has focus, focus the list and put the
+	 * cursor on the first row (from the filter box, `↓`).
+	 */
+	export function enterList() {
+		if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+		container?.focus();
+		cursorId = entries.length > 0 ? entries[0].id : null;
 	}
 
 	function onkeydown(event: KeyboardEvent) {
@@ -118,9 +125,12 @@
 			title={failure.title}
 			message={failure.message}
 			onretry={failure.retryable ? onretry : undefined}
+			class="max-w-none items-center p-8 text-center"
 		/>
 	{:else if status === 'ready' && entries.length === 0}
-		<div class="flex max-w-xl flex-col items-start gap-3 rounded-xl border bg-card p-5 shadow-card">
+		<div
+			class="flex w-full flex-col items-center gap-3 rounded-xl border bg-card p-8 text-center shadow-card"
+		>
 			{#if activeFilters.length > 0}
 				<h2 class="text-base font-semibold">No entries match these filters</h2>
 				<p class="text-sm text-muted-foreground">{activeFilters.join(' · ')}</p>
@@ -134,48 +144,52 @@
 			{/if}
 		</div>
 	{:else}
-		<div bind:this={container} role="grid" aria-label="Entries" aria-busy={status === 'loading'}>
+		<div
+			bind:this={container}
+			role="grid"
+			tabindex="-1"
+			class="outline-none"
+			aria-label="Entries"
+			aria-busy={status === 'loading'}
+		>
 			<div
 				role="row"
 				class={cn(
-					rowGrid(showAccount),
-					'sticky top-0 z-10 h-8 items-center gap-x-3 border-b border-border bg-muted px-3 text-xs font-medium text-muted-foreground'
+					ROW_GRID,
+					'sticky top-0 z-10 h-8 border-b border-border bg-muted px-3 text-xs font-medium text-muted-foreground'
 				)}
+				style:grid-template-columns={GRID_TEMPLATE}
 			>
-				<div role="columnheader">Date</div>
-				{#if showAccount}<div role="columnheader">Account</div>{/if}
-				<div role="columnheader">Description</div>
-				<div role="columnheader">Payee</div>
-				<div role="columnheader">Category</div>
-				<div role="columnheader">Tags</div>
-				<div role="columnheader"><span class="sr-only">Review</span></div>
-				<div role="columnheader" class="text-right">Amount</div>
+				{#each COLUMNS as column (column.id)}
+					<div role="columnheader" class={column.align === 'right' ? 'text-right' : undefined}>
+						{#if column.hiddenHeader}<span class="sr-only">{column.header}</span
+							>{:else}{column.header}{/if}
+					</div>
+				{/each}
 			</div>
 
 			{#if status === 'loading'}
 				{#each Array.from({ length: 12 }, (_, n) => n) as i (i)}
 					<div
 						role="row"
-						class={cn(rowGrid(showAccount), 'h-8 items-center gap-x-3 border-b border-border px-3')}
+						class={cn(ROW_GRID, 'h-8 border-b border-border px-3')}
+						style:grid-template-columns={GRID_TEMPLATE}
 						data-skeleton
 					>
-						<div role="gridcell"><div class="h-3 w-16 animate-pulse rounded bg-muted"></div></div>
-						{#if showAccount}
-							<div role="gridcell"><div class="h-3 w-14 animate-pulse rounded bg-muted"></div></div>
-						{/if}
-						<div role="gridcell">
-							<div
-								class="h-3 animate-pulse rounded bg-muted"
-								style:width={`${55 + ((i * 17) % 40)}%`}
-							></div>
-						</div>
-						<div role="gridcell"><div class="h-3 w-3/4 animate-pulse rounded bg-muted"></div></div>
-						<div role="gridcell"><div class="h-3 w-2/3 animate-pulse rounded bg-muted"></div></div>
-						<div role="gridcell"></div>
-						<div role="gridcell"></div>
-						<div role="gridcell">
-							<div class="ml-auto h-3 w-14 animate-pulse rounded bg-muted"></div>
-						</div>
+						{#each COLUMNS as column (column.id)}
+							<div role="gridcell">
+								{#if column.id === 'description'}
+									<div
+										class="h-3 animate-pulse rounded bg-muted"
+										style:width={`${55 + ((i * 17) % 40)}%`}
+									></div>
+								{:else if column.id === 'amount'}
+									<div class="ml-auto h-3 w-14 animate-pulse rounded bg-muted"></div>
+								{:else if column.id !== 'tags' && column.id !== 'review'}
+									<div class="h-3 w-2/3 animate-pulse rounded bg-muted"></div>
+								{/if}
+							</div>
+						{/each}
 					</div>
 				{/each}
 			{:else}
@@ -184,7 +198,6 @@
 						{entry}
 						{lookups}
 						{locale}
-						{showAccount}
 						{showCurrency}
 						cursor={entry.id === cursorId}
 						onselect={() => (cursorId = entry.id)}
@@ -227,7 +240,7 @@
 		<div
 			role="region"
 			aria-label="Keyboard shortcuts"
-			class="absolute top-10 right-3 z-20 w-72 rounded-xl border bg-popover p-4 text-sm text-popover-foreground shadow-md"
+			class="fixed right-4 bottom-4 z-50 w-72 max-w-[calc(100vw-2rem)] rounded-xl border bg-popover p-4 text-sm text-popover-foreground shadow-md"
 		>
 			<h2 class="mb-2 text-base font-semibold">Keyboard</h2>
 			<dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">

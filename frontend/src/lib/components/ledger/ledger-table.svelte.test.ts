@@ -1,7 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
+import { tick } from 'svelte';
 import { describe, expect, it, vi } from 'vitest';
 import { account, entry } from '#lib/ledger/fixtures.js';
 import { buildLookups } from '#lib/ledger/lookups.js';
+import { COLUMNS, GRID_TEMPLATE } from './columns.js';
 import LedgerTable from './ledger-table.svelte';
 
 const lookups = buildLookups({ accounts: [account(), account({ id: 2, name: 'Cash' })] });
@@ -53,6 +55,9 @@ describe('LedgerTable: states', () => {
 		table({ entries: [], total: 0, activeFilters: ['Giro', '“rewe”'], onclearfilters });
 
 		expect(screen.getByText('No entries match these filters')).toBeInTheDocument();
+		// the box spans the table's width, its content centred
+		const box = screen.getByText('No entries match these filters').parentElement;
+		expect(box).toHaveClass('w-full', 'items-center', 'text-center');
 		expect(screen.getByText('Giro · “rewe”')).toBeInTheDocument();
 		await fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
 		expect(onclearfilters).toHaveBeenCalledOnce();
@@ -96,10 +101,13 @@ describe('LedgerTable: rows and the footer', () => {
 		expect(screen.getByText('Second')).toBeInTheDocument();
 	});
 
-	it('hides the account column when told to', () => {
-		table({ showAccount: false });
+	it('always shows every column, header cells in the order of the column definition', () => {
+		table({ lookups: buildLookups({ accounts: [account()] }) });
 
-		expect(screen.queryByRole('columnheader', { name: 'Account' })).toBeNull();
+		const headers = screen.getAllByRole('columnheader').map((h) => h.textContent?.trim());
+		expect(headers).toEqual(COLUMNS.map((c) => c.header));
+		expect(headers[1]).toBe('Account');
+		expect(screen.getAllByRole('row')[0].style.gridTemplateColumns).toBe(GRID_TEMPLATE);
 	});
 
 	it('says how many of the matches are shown', () => {
@@ -254,6 +262,58 @@ describe('LedgerTable: the keyboard', () => {
 		await key('?');
 		await key('?');
 		expect(screen.queryByRole('region', { name: 'Keyboard shortcuts' })).toBeNull();
+	});
+
+	it('the help stays in view: fixed to the viewport, not inside the list', async () => {
+		table();
+
+		await key('?');
+
+		const help = screen.getByRole('region', { name: 'Keyboard shortcuts' });
+		expect(help).toHaveClass('fixed');
+		expect(screen.getByRole('grid')).not.toContainElement(help);
+	});
+
+	it('the footer button shows and hides the help, and reports its state', async () => {
+		table();
+		const button = screen.getByRole('button', { name: /Keyboard shortcuts/ });
+		expect(button).toHaveAttribute('aria-expanded', 'false');
+
+		await fireEvent.click(button);
+		expect(button).toHaveAttribute('aria-expanded', 'true');
+		expect(screen.getByRole('region', { name: 'Keyboard shortcuts' })).toBeInTheDocument();
+
+		await fireEvent.click(button);
+		expect(screen.queryByRole('region', { name: 'Keyboard shortcuts' })).toBeNull();
+	});
+
+	it('enterList leaves a field, focuses the list and puts the cursor on the first row', async () => {
+		const { component } = table();
+		const field = document.createElement('input');
+		document.body.append(field);
+		field.focus();
+		await key('j');
+		await key('j');
+
+		component.enterList();
+		await tick();
+
+		expect(document.activeElement).toBe(screen.getByRole('grid'));
+		expect(cursorTexts()).toHaveLength(1);
+		expect(cursorTexts()[0]).toContain('Third');
+		// the list now has the keyboard again
+		await fireEvent.keyDown(screen.getByRole('grid'), { key: 'j' });
+		expect(cursorTexts()[0]).toContain('Second');
+		field.remove();
+	});
+
+	it('enterList in an empty list sets no cursor', async () => {
+		const { component } = table({ entries: [], total: 0, status: 'loading' });
+
+		component.enterList();
+		await tick();
+
+		expect(cursorTexts()).toHaveLength(0);
 	});
 
 	it('Esc leaves a focused control', async () => {

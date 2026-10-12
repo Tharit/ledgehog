@@ -1,10 +1,12 @@
 <script lang="ts">
 	import { onDestroy, untrack, type Snippet } from 'svelte';
+	import DimensionIcon from '#lib/components/common/dimension-icon.svelte';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import { describeFilter, type FilterKey } from '#lib/ledger/describe.js';
-	import { emptyFilter, isEmpty } from '#lib/ledger/filter.js';
+	import { emptyFilter, ENTRY_TYPES, isEmpty } from '#lib/ledger/filter.js';
 	import type { Lookups } from '#lib/ledger/lookups.js';
+	import { ENTRY_TYPE_INFO } from '#lib/ledger/types.js';
 	import { REVIEW_FLAG_INFO, REVIEW_FLAG_ORDER } from '#lib/ledger/review.js';
 	import {
 		categoryPath,
@@ -29,6 +31,7 @@
 		baseCurrency,
 		searchEl = $bindable(null),
 		onchange,
+		ondown,
 		trailing
 	}: {
 		filter: EntryFilter;
@@ -40,6 +43,8 @@
 		/** the text box, so `/` can focus it */
 		searchEl?: HTMLInputElement | null;
 		onchange: (next: EntryFilter) => void;
+		/** `↓` in the text box: the keyboard moves to the list */
+		ondown?: () => void;
 		/** where wave 3 puts the "Tag all N…" action; nothing is rendered in it yet */
 		trailing?: Snippet;
 	} = $props();
@@ -82,8 +87,20 @@
 	const flagOptions: ChipOption<string>[] = REVIEW_FLAG_ORDER.map((flag) => ({
 		value: flag,
 		label: REVIEW_FLAG_INFO[flag].name,
-		hint: REVIEW_FLAG_INFO[flag].sentence
+		hint: REVIEW_FLAG_INFO[flag].sentence,
+		flag
 	}));
+	// the category chip also holds the type: a type is shown in the category column
+	const categoryLabel = $derived.by(() => {
+		const category = parts.find((part) => part.key === 'category')?.label;
+		const type = parts.find((part) => part.key === 'type')?.label;
+		return [category, type].filter(Boolean).join(' · ') || 'All categories';
+	});
+
+	function toggleType(type: string, checked: boolean) {
+		const rest = filter.type.filter((t) => t !== type);
+		update({ type: checked ? [...rest, type] : rest });
+	}
 	const currencies = $derived([...new Set([...lookups.accounts.values()].map((a) => a.currency))]);
 
 	function updateAmount(patch: AmountPatch) {
@@ -125,6 +142,10 @@
 	function onsearchkeydown(event: KeyboardEvent) {
 		if (event.key === 'Enter') send();
 		if (event.key === 'Escape') (event.currentTarget as HTMLElement).blur();
+		if (event.key === 'ArrowDown') {
+			event.preventDefault();
+			ondown?.();
+		}
 	}
 
 	function clearAll() {
@@ -155,15 +176,41 @@
 		onchange={(account_id) => update({ account_id })}
 	/>
 	<OptionsChip
-		label={label('category', 'All categories')}
+		label={categoryLabel}
 		heading="Categories"
 		options={categoryOptions}
 		selected={filter.category_id}
-		active={filter.category_id.length > 0 || filter.uncategorised}
+		active={filter.category_id.length > 0 || filter.uncategorised || filter.type.length > 0}
 		emptyText="No categories yet"
 		onchange={(category_id) => update({ category_id })}
 	>
 		{#snippet footer()}
+			<div class="mt-1 flex flex-col gap-0.5 border-t border-border pt-2">
+				<div class="flex items-center justify-between">
+					<span class="text-xs font-medium text-muted-foreground">Type</span>
+					{#if filter.type.length > 0}
+						<Button variant="ghost" size="xs" onclick={() => update({ type: [] })}>Clear</Button>
+					{/if}
+				</div>
+				<ul class="-mx-1" aria-label="Type">
+					{#each ENTRY_TYPES as type (type)}
+						<li>
+							<label
+								class="flex h-8 cursor-pointer items-center gap-2 rounded-md px-1.5 text-[13px] hover:bg-muted"
+							>
+								<input
+									type="checkbox"
+									class="size-4 shrink-0 accent-primary"
+									checked={filter.type.includes(type)}
+									onchange={(event) => toggleType(type, event.currentTarget.checked)}
+								/>
+								<DimensionIcon icon={ENTRY_TYPE_INFO[type].icon} color="stone" />
+								<span class="truncate">{ENTRY_TYPE_INFO[type].name}</span>
+							</label>
+						</li>
+					{/each}
+				</ul>
+			</div>
 			<div class="mt-1 flex flex-col gap-1 border-t border-border pt-2 text-[13px]">
 				<label class="flex items-center gap-2">
 					<input

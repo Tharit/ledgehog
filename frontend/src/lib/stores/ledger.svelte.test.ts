@@ -250,22 +250,6 @@ describe('LedgerStore: lookups', () => {
 
 		expect(store.activeFilters).toEqual(['Giro', '“rewe”']);
 	});
-
-	it('shows the account column unless exactly one account can appear', async () => {
-		vi.mocked(listEntries).mockResolvedValue(page([], 0));
-		vi.mocked(listAccounts).mockResolvedValue([account(), account({ id: 2, name: 'Cash' })]);
-		vi.mocked(listCategories).mockResolvedValue([]);
-		vi.mocked(listPayees).mockResolvedValue([]);
-		vi.mocked(listTags).mockResolvedValue([]);
-		const store = new LedgerStore();
-		await store.loadLookups();
-
-		expect(store.showAccount).toBe(true);
-		store.applyFilter({ ...emptyFilter(), account_id: [1] });
-		expect(store.showAccount).toBe(false);
-		store.applyFilter({ ...emptyFilter(), account_id: [1, 2] });
-		expect(store.showAccount).toBe(true);
-	});
 });
 
 describe('LedgerStore: the session', () => {

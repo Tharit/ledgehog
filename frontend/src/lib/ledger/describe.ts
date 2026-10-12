@@ -3,6 +3,7 @@ import { formatDate, formatDateRange, formatMoney } from '#lib/format/index.js';
 import type { EntryFilter } from '#lib/types/domain.js';
 import type { Lookups } from './lookups.js';
 import { REVIEW_FLAG_INFO } from './review.js';
+import { ENTRY_TYPE_INFO } from './types.js';
 
 export type FilterKey =
 	'date' | 'account' | 'category' | 'payee' | 'tag' | 'amount' | 'flag' | 'type' | 'text';
@@ -76,7 +77,9 @@ export function describeFilter(
 		);
 	}
 
-	if (filter.type.length) add('type', `Type: ${filter.type.join(', ')}`);
+	if (filter.type.length) {
+		add('type', `Type: ${filter.type.map((t) => ENTRY_TYPE_INFO[t]?.name ?? t).join(', ')}`);
+	}
 	if (filter.q) add('text', `“${filter.q}”`);
 	return parts;
 }

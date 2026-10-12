@@ -45,6 +45,13 @@ describe('ledgerKey', () => {
 		dialog.remove();
 	});
 
+	it('leaves ArrowDown in a text field to the field (the filter box hands over itself)', () => {
+		const field = document.createElement('input');
+		document.body.append(field);
+		expect(ledgerKey({ key: 'ArrowDown', target: field })).toBeNull();
+		field.remove();
+	});
+
 	it('handles keys on the page itself', () => {
 		expect(ledgerKey({ key: 'j', target: document.body })).toBe('down');
 	});
