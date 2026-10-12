@@ -1,0 +1,106 @@
+"""Properties of resolution: deterministic, idempotent, I9-safe, order-independent."""
+
+from __future__ import annotations
+
+from hypothesis import given
+from hypothesis import strategies as st
+
+from app.core.plugins.classifier import NO_PAYEE, Field, Proposal
+from app.core.resolution import Decided, diff, rederive, resolve
+from tests.core.resolution.helpers import Script, account, entry
+
+ACCOUNTS = [
+    account(1),
+    account(2),
+    account(3, "USD"),
+    account(4, ref="de89370400440532013000"),
+]
+PASSES = ["rule", "history", "llm"]
+
+fields: list[Field] = ["type", "payee", "category", "counter_account"]
+answers = st.fixed_dictionaries(
+    {},
+    optional={
+        "type": st.sampled_from(["flow", "transfer"]),
+        "payee": st.one_of(st.integers(1, 3), st.just(NO_PAYEE)),
+        "category": st.integers(1, 3),
+        "counter_account": st.integers(1, 6),
+    },
+)
+scripts = st.lists(answers, max_size=3).map(
+    lambda ans: [Script(PASSES[i], a) for i, a in enumerate(ans)]  # type: ignore[arg-type]
+)
+entries = st.builds(
+    lambda ref, cur, inst, acct: entry(
+        counterparty_ref=ref, currency=cur, instructed_currency=inst, account_id=acct
+    ),
+    st.sampled_from([None, "DE89 3704 0044 0532 0130 00", "x"]),
+    st.sampled_from(["EUR", "USD"]),
+    st.sampled_from([None, "USD", "EUR"]),
+    st.integers(1, 4),
+)
+decideds = st.builds(
+    lambda v, p: Decided(v, p, {}),
+    st.integers(1, 3),
+    st.sampled_from(["user", "rule", "history", "own_account"]),
+)
+currents = st.fixed_dictionaries(
+    {},
+    optional={
+        "type": st.builds(
+            lambda v, p: Decided(v, p, {}),
+            st.sampled_from(["flow", "transfer"]),
+            st.sampled_from(["user", "rule", "history"]),
+        ),
+        "payee": decideds,
+        "category": decideds,
+        "counter_account": decideds,
+    },
+)
+
+
+def check_i9(e, r) -> None:  # type: ignore[no-untyped-def]
+    if r.get("type") is None:
+        assert dict(r) == {}
+        return
+    if r["type"].value == "flow":
+        assert "counter_account" not in r
+    else:
+        assert "payee" not in r and "category" not in r
+        if "counter_account" in r:
+            assert r["counter_account"].value != e.account_id
+
+
+@given(entries, scripts)
+def test_resolve_is_deterministic_and_never_violates_i9(e, cs) -> None:  # type: ignore[no-untyped-def]
+    a = resolve(e, accounts=ACCOUNTS, classifiers=cs)
+    assert a == resolve(e, accounts=ACCOUNTS, classifiers=cs)
+    check_i9(e, a)
+
+
+@given(entries, scripts, currents)
+def test_rederive_is_idempotent_and_never_violates_i9(e, cs, current) -> None:  # type: ignore[no-untyped-def]
+    first = rederive(e, current, accounts=ACCOUNTS, classifiers=cs)
+    check_i9(e, first)
+    second = rederive(e, first, accounts=ACCOUNTS, classifiers=cs)
+    assert second == first
+    assert diff(first, second) == {}
+
+
+@given(entries, scripts)
+def test_account_order_does_not_matter(e, cs) -> None:  # type: ignore[no-untyped-def]
+    a = resolve(e, accounts=ACCOUNTS, classifiers=cs)
+    b = resolve(e, accounts=list(reversed(ACCOUNTS)), classifiers=cs)
+    assert a == b
+
+
+@given(entries, scripts, currents)
+def test_standing_values_before_any_change_are_kept(e, cs, current) -> None:  # type: ignore[no-untyped-def]
+    r = rederive(e, current, accounts=ACCOUNTS, classifiers=cs)
+    t = current.get("type")
+    if t is not None and t.pass_name == "user":
+        assert r["type"] == t
+
+
+def test_proposal_import_is_used() -> None:
+    assert Proposal("type", "flow", {}).value == "flow"
