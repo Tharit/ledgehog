@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from app.core.plugins.classifier import AccountFact, RuleSpec
+from app.core.plugins.classifier import AccountFact, Condition, RuleSpec
 from app.core.resolution import resolve
 from app.plugins.classifiers.history import HistoryClassifier
 from app.plugins.classifiers.rules import RulesClassifier
@@ -28,7 +28,13 @@ def _resolve(e, rules=(), votes=(), accounts=ACCOUNTS):
 
 
 def test_a_payee_rule_sets_flow_and_payee_as_standing_rule_keys() -> None:
-    rule = RuleSpec(id=7, name="Rewe", sets="payee", target_id=11, name_prefix="rewe")
+    rule = RuleSpec(
+        id=7,
+        name="Rewe",
+        sets="payee",
+        target_id=11,
+        conditions=(Condition("counterparty_name", "starts_with", "rewe"),),
+    )
     e = entry(account_id=1, counterparty_name="REWE Markt 123")
     out = _resolve(e, rules=[rule])
     assert out["type"].value == "flow" and out["type"].pass_name == "rule"
@@ -57,7 +63,13 @@ def test_history_proposes_when_no_rule_matches() -> None:
 
 
 def test_pass_zero_beats_rules_and_history() -> None:
-    rule = RuleSpec(id=1, name="x", sets="payee", target_id=3, name_prefix="own")
+    rule = RuleSpec(
+        id=1,
+        name="x",
+        sets="payee",
+        target_id=3,
+        conditions=(Condition("counterparty_name", "starts_with", "own"),),
+    )
     e = entry(account_id=1, counterparty_name="own transfer", counterparty_ref="DE89")
     out = _resolve(e, rules=[rule])
     assert out["type"].value == "transfer" and out["type"].pass_name == "own_account"

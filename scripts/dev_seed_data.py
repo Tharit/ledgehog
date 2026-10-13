@@ -366,23 +366,31 @@ class SeedRule:
     name: str
     sets: str  # counter_account | payee | category
     target: str
-    counterparty_ref: str | None = None
-    name_prefix: str | None = None
-    purpose_regex: str | None = None
+    conditions: tuple[tuple[str, str, str], ...] = ()  # (field, op, value), all must hold
     condition_payee: str | None = None
     priority: int = 100
 
 
 RULES: tuple[SeedRule, ...] = (
-    SeedRule("Cash withdrawals", "counter_account", "cash", name_prefix="Geldautomat"),
-    SeedRule("Hausverwaltung", "payee", "Hausverwaltung Muster GmbH", name_prefix="Hausverwaltung"),
+    SeedRule(
+        "Cash withdrawals",
+        "counter_account",
+        "cash",
+        conditions=(("counterparty_name", "starts_with", "Geldautomat"),),
+    ),
+    SeedRule(
+        "Hausverwaltung",
+        "payee",
+        "Hausverwaltung Muster GmbH",
+        conditions=(("counterparty_name", "starts_with", "Hausverwaltung"),),
+    ),
     SeedRule(
         "Rent by IBAN",
         "category",
         "Rent",
-        counterparty_ref=giro_counterparty_iban("Hausverwaltung Muster GmbH"),
+        conditions=(("counterparty_ref", "equals", giro_counterparty_iban("Hausverwaltung Muster GmbH")),),
     ),
-    SeedRule("Fado tickets", "category", "Leisure", purpose_regex="^fado .*tickets?$"),
+    SeedRule("Fado tickets", "category", "Leisure", conditions=(("purpose", "regex", "^fado .*tickets?$"),)),
     SeedRule(
         "Frischemarkt groceries",
         "category",

@@ -36,12 +36,16 @@ def w(api_engine: Engine) -> dict[str, int]:
         }
 
 
+def c(field: str, op: str, value: str) -> dict[str, str]:
+    return {"field": field, "op": op, "value": value}
+
+
 def body(w: dict[str, int], **kw: Any) -> dict[str, Any]:
     base: dict[str, Any] = {
         "name": "Rewe",
         "sets": "category",
         "category_id": w["food"],
-        "name_exact": "REWE",
+        "conditions": [c("counterparty_name", "equals", "REWE")],
     }
     base.update(kw)
     return {k: v for k, v in base.items() if v is not ...}
@@ -63,8 +67,22 @@ def snapshot(engine: Engine) -> dict[str, Any]:
 ROUTES = [
     ("get", RULES, None),
     ("get", f"{RULES}/1", None),
-    ("post", RULES, {"name": "x", "sets": "payee", "payee_id": 1, "name_exact": "x", "dry_run": True}),
-    ("put", f"{RULES}/1", {"name": "x", "payee_id": 1, "name_exact": "x", "dry_run": True}),
+    (
+        "post",
+        RULES,
+        {
+            "name": "x",
+            "sets": "payee",
+            "payee_id": 1,
+            "conditions": [c("purpose", "contains", "x")],
+            "dry_run": True,
+        },
+    ),
+    (
+        "put",
+        f"{RULES}/1",
+        {"name": "x", "payee_id": 1, "conditions": [c("purpose", "contains", "x")], "dry_run": True},
+    ),
     ("delete", f"{RULES}/1?dry_run=true", None),
 ]
 
@@ -109,14 +127,19 @@ def test_create_returns_the_rule_the_preview_and_the_settle_result(
     row = preview["matches"]["rows"][0]
     assert row["entry_id"] == e and row["amount"] == {"amount": -1000, "currency": "EUR"}
     assert row["confirmed"] is False and row["current_value"] is None and row["shadowed_by_rule_id"] is None
+    assert row["source"] == {
+        "counterparty_name": "REWE", "counterparty_ref": None, "counterparty_bic": None, "purpose": None,
+        "booking_text": None, "end_to_end_id": None, "mandate_ref": None, "instructed_amount": None,
+        "source_format": "csv",
+    }  # fmt: skip
+    assert "counterparty_name" not in row  # no flat copy beside `source`
     r = anna.post(RULES, json=body(w, name="  Rewe  ", priority=7, expected_count=1))
     assert r.status_code == 201
     out = r.json()
     assert out["rule"] == {
         "id": out["rule"]["id"], "name": "Rewe", "sets": "category", "counter_account_id": None,
-        "payee_id": None, "category_id": w["food"], "condition_payee_id": None, "counterparty_ref": None,
-        "mandate_ref": None, "name_exact": "REWE", "name_prefix": None, "purpose_regex": None,
-        "booking_text": None, "priority": 7,
+        "payee_id": None, "category_id": w["food"], "condition_payee_id": None,
+        "conditions": [{"field": "counterparty_name", "op": "equals", "value": "REWE"}], "priority": 7,
     }  # fmt: skip
     assert out["settle"] == {"touched_entry_ids": [e], "error": None}  # settling applied it
     # the preview is the one the dry run showed: the rule as written, the entries before settling applied it
@@ -146,10 +169,17 @@ def test_the_target_must_be_the_one_sets_names(anna: TestClient, w: dict[str, in
 @pytest.mark.parametrize(
     ("kw", "field"),
     [
-        ({"purpose_regex": "(SECRETPATTERN"}, "purpose_regex"),
-        ({"purpose_regex": "SECRETPATTERN" + "a" * 200}, "purpose_regex"),
-        ({"name_exact": None}, "conditions"),
-        ({"name_exact": " "}, "conditions"),
+        ({"conditions": [c("purpose", "regex", "(SECRETPATTERN")]}, "conditions[0].value"),
+        ({"conditions": [c("purpose", "regex", "SECRETPATTERN" + "a" * 200)]}, "conditions[0].value"),
+        (
+            {"conditions": [c("purpose", "contains", "ok"), c("mandate_ref", "regex", "SECRET(")]},
+            "conditions[1].value",
+        ),
+        ({"conditions": []}, "conditions"),
+        ({"conditions": [c("counterparty_name", "equals", " ")]}, "conditions[0].value"),
+        ({"conditions": [c("counterparty_name", "equals", "")]}, "conditions[0].value"),
+        ({"conditions": [c("SECRETFIELD", "equals", "x")]}, "conditions[0].field"),
+        ({"conditions": [c("purpose", "SECRETOP", "x")]}, "conditions[0].op"),
         (
             {"sets": "payee", "category_id": None, "payee_id": 1, "condition_payee_id": 1},
             "condition_payee_id",
@@ -163,6 +193,64 @@ def test_an_invalid_rule_is_422_invalid_rule_and_never_quotes_the_pattern(
     err = assert_envelope(r, 422, "invalid_rule")
     assert err["details"][0]["location"] == ["body", field]
     assert "SECRETPATTERN" not in r.text
+
+
+def test_conditions_round_trip_in_order_with_a_payee_condition_alone_and_with_conditions(
+    anna: TestClient, w: dict[str, int]
+):
+    conds = [
+        c("purpose", "contains", " Miete "),  # stored as typed
+        c("purpose", "regex", "^m.*e$"),
+        c("counterparty_ref", "starts_with", "DE89 3704"),
+    ]
+    rid = create(anna, w, name="both", conditions=conds, condition_payee_id=w["rewe"])
+    assert anna.get(f"{RULES}/{rid}").json()["conditions"] == conds
+    alone = create(anna, w, name="alone", conditions=[], condition_payee_id=w["rewe"])
+    got = anna.get(f"{RULES}/{alone}").json()
+    assert got["conditions"] == [] and got["condition_payee_id"] == w["rewe"]
+    # a PUT replaces the whole list; absent means none, which the payee condition alone allows
+    r = anna.put(
+        f"{RULES}/{rid}",
+        json=body(w, name="both", conditions=..., condition_payee_id=w["rewe"], expected_count=0),
+    )
+    assert r.status_code == 200 and r.json()["rule"]["conditions"] == []
+    # without a payee condition an empty list is refused
+    assert_envelope(
+        anna.put(f"{RULES}/{rid}", json=body(w, name="both", conditions=[], dry_run=True)),
+        422,
+        "invalid_rule",
+    )
+
+
+def test_a_payee_condition_on_a_rule_that_does_not_set_a_category_is_refused(
+    anna: TestClient, w: dict[str, int]
+):
+    r = anna.post(
+        RULES,
+        json=body(
+            w, sets="payee", category_id=None, payee_id=w["rewe"], condition_payee_id=w["rewe"], dry_run=True
+        ),
+    )
+    err = assert_envelope(r, 422, "invalid_rule")
+    assert err["details"][0]["location"] == ["body", "condition_payee_id"]
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"conditions": "x"},
+        {"conditions": [{"field": "purpose", "op": "equals"}]},
+        {"conditions": [{"field": "purpose", "op": "equals", "value": 5}]},
+        {"conditions": [{"field": "purpose", "op": "equals", "value": "x", "extra": 1}]},
+        {"conditions": [c("purpose", "equals", "x" * 2001)]},
+        {"conditions": [c("purpose", "equals", "x")] * 51},
+        {"name_exact": "REWE"},  # the old flat fields are gone
+    ],
+)
+def test_a_malformed_conditions_body_is_a_validation_error(
+    anna: TestClient, w: dict[str, int], bad: dict[str, Any]
+):
+    assert_envelope(anna.post(RULES, json=body(w, dry_run=True, **bad)), 422, "validation_error")
 
 
 def test_blank_name_and_negative_priority_bounds(anna: TestClient, w: dict[str, int]):
@@ -235,7 +323,10 @@ def test_update_replaces_the_rule_and_never_changes_what_it_sets(
     rid = create(anna, w, count=1)
     before = snapshot(api_engine)
     dry = anna.put(
-        f"{RULES}/{rid}", json=body(w, category_id=w["fun"], name_exact=None, name_prefix="REW", dry_run=True)
+        f"{RULES}/{rid}",
+        json=body(
+            w, category_id=w["fun"], conditions=[c("counterparty_name", "starts_with", "REW")], dry_run=True
+        ),
     )
     assert (
         dry.status_code == 200
@@ -252,15 +343,18 @@ def test_update_replaces_the_rule_and_never_changes_what_it_sets(
     r = anna.put(
         f"{RULES}/{rid}",
         json=body(
-            w, sets="category", category_id=w["fun"], name_exact=None, name_prefix="REW", expected_count=1
+            w,
+            sets="category",
+            category_id=w["fun"],
+            conditions=[c("counterparty_name", "starts_with", "REW")],
+            expected_count=1,
         ),
     )
     assert r.status_code == 200
     rule = r.json()["rule"]
-    assert (rule["category_id"], rule["name_exact"], rule["name_prefix"], rule["sets"]) == (
+    assert (rule["category_id"], rule["conditions"], rule["sets"]) == (
         w["fun"],
-        None,
-        "REW",
+        [c("counterparty_name", "starts_with", "REW")],
         "category",
     )
     assert r.json()["preview"]["different_value"]["total"] == 0  # the confirmed entry holds Fun already
@@ -272,7 +366,7 @@ def test_update_replaces_the_rule_and_never_changes_what_it_sets(
 def test_update_returns_list_b_of_the_entries_the_edit_stops_matching(
     anna: TestClient, w: dict[str, int], api_engine: Engine
 ):
-    rid = create(anna, w, count=0, name_exact=None, name_prefix="REWE")
+    rid = create(anna, w, count=0, conditions=[c("counterparty_name", "starts_with", "REWE")])
     with api_engine.begin() as conn:
         lost = rs.confirmed_entry(
             conn,
@@ -283,7 +377,7 @@ def test_update_returns_list_b_of_the_entries_the_edit_stops_matching(
         )
     r = anna.put(
         f"{RULES}/{rid}",
-        json=body(w, name_exact=None, name_prefix="REWE MARKT", expected_count=0),
+        json=body(w, conditions=[c("counterparty_name", "starts_with", "REWE MARKT")], expected_count=0),
     )
     assert r.status_code == 200
     lost_key = r.json()["preview"]["lost_key"]
@@ -300,7 +394,7 @@ def test_update_returns_list_b_of_the_entries_the_edit_stops_matching(
 
 def test_delete_previews_then_deletes_and_keys_stay(anna: TestClient, w: dict[str, int], api_engine: Engine):
     with api_engine.begin() as conn:
-        rid = rs.rule(conn, "rewe", "category", w["food"], name_exact="REWE")
+        rid = rs.rule(conn, "rewe", "category", w["food"], conditions=(rs.name_is("REWE"),))
         e = rs.confirmed_entry(
             conn,
             w["acct"],

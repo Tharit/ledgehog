@@ -119,6 +119,10 @@ def _rows_for(
 RULE_MERCHANTS = ("REWE Markt", "Netflix", "Deutsche Bahn", "Arbeitgeber GmbH")
 
 
+def _equals_name(name: str) -> str:
+    return json.dumps([{"field": "counterparty_name", "op": "equals", "value": name}])
+
+
 def _seed_dimensions(conn: Any) -> tuple[dict[str, int], dict[str, int]]:
     """A category and a payee per merchant, and a payee and category rule for `RULE_MERCHANTS`."""
     category: dict[str, int] = {}
@@ -134,12 +138,18 @@ def _seed_dimensions(conn: Any) -> tuple[dict[str, int], dict[str, int]]:
             ).scalar_one()
     for name in RULE_MERCHANTS:
         conn.execute(
-            text("INSERT INTO rule (name, sets, payee_id, name_exact) VALUES (:n, 'payee', :p, :m)"),
-            {"n": f"{name} payee", "p": payee[name], "m": name},
+            text(
+                "INSERT INTO rule (name, sets, payee_id, conditions)"
+                " VALUES (:n, 'payee', :p, CAST(:m AS jsonb))"
+            ),
+            {"n": f"{name} payee", "p": payee[name], "m": _equals_name(name)},
         )
         conn.execute(
-            text("INSERT INTO rule (name, sets, category_id, name_exact) VALUES (:n, 'category', :c, :m)"),
-            {"n": f"{name} category", "c": category[name], "m": name},
+            text(
+                "INSERT INTO rule (name, sets, category_id, conditions)"
+                " VALUES (:n, 'category', :c, CAST(:m AS jsonb))"
+            ),
+            {"n": f"{name} category", "c": category[name], "m": _equals_name(name)},
         )
     return category, payee
 

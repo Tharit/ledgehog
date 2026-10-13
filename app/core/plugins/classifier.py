@@ -72,9 +72,33 @@ class AccountFact:
     closed_on: date | None = None
 
 
+ConditionField = Literal["counterparty_name", "counterparty_ref", "purpose", "booking_text", "mandate_ref"]
+ConditionOp = Literal["equals", "starts_with", "contains", "regex"]
+CONDITION_FIELDS: tuple[ConditionField, ...] = (
+    "counterparty_name",
+    "counterparty_ref",
+    "purpose",
+    "booking_text",
+    "mandate_ref",
+)
+CONDITION_OPS: tuple[ConditionOp, ...] = ("equals", "starts_with", "contains", "regex")
+
+
+@dataclass(frozen=True, slots=True)
+class Condition:
+    """One `{field, op, value}` of a rule (spec §5.9, classifiers/rules.md §2): as the user typed it."""
+
+    field: ConditionField
+    op: ConditionOp
+    value: str
+
+
 @dataclass(frozen=True, slots=True)
 class RuleSpec:
-    """One row of `rule`. `target_id` is the id of what the rule sets, by `sets`."""
+    """One row of `rule`. `target_id` is the id of what the rule sets, by `sets`.
+
+    All `conditions` must hold, and the payee condition too, for a category rule.
+    """
 
     id: int
     name: str
@@ -82,12 +106,7 @@ class RuleSpec:
     target_id: int
     priority: int = 100
     condition_payee_id: int | None = None  # category rules only
-    counterparty_ref: str | None = None
-    mandate_ref: str | None = None
-    name_exact: str | None = None
-    name_prefix: str | None = None
-    purpose_regex: str | None = None
-    booking_text: str | None = None
+    conditions: tuple[Condition, ...] = ()
 
 
 class RuleInvalid(ValueError):

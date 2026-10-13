@@ -12,7 +12,8 @@ from typing import Any, cast
 from sqlalchemy import Connection, text
 from sqlalchemy.sql.elements import TextClause
 
-from app.core.plugins.classifier import AccountFact, EntryInput, RuleSpec
+from app.core.domain.source import SourceFields
+from app.core.plugins.classifier import AccountFact, Condition, EntryInput, RuleSpec
 from app.core.resolution.confirmed import STANDING, units_sql
 
 
@@ -22,6 +23,11 @@ def load_accounts(conn: Connection) -> list[AccountFact]:
         AccountFact(id=r.id, currency=r.currency, external_ref=r.external_ref, closed_on=r.closed_on)
         for r in conn.execute(text("SELECT id, currency, external_ref, closed_on FROM account ORDER BY id"))
     ]
+
+
+def conditions_of(stored: Any) -> tuple[Condition, ...]:
+    """The `conditions` jsonb of a rule row as `Condition`s (the schema guarantees an array)."""
+    return tuple(Condition(c["field"], c["op"], c["value"]) for c in stored)
 
 
 def load_rules(conn: Connection) -> list[RuleSpec]:
@@ -34,18 +40,12 @@ def load_rules(conn: Connection) -> list[RuleSpec]:
             target_id=r.target_id,
             priority=r.priority,
             condition_payee_id=r.condition_payee_id,
-            counterparty_ref=r.counterparty_ref,
-            mandate_ref=r.mandate_ref,
-            name_exact=r.name_exact,
-            name_prefix=r.name_prefix,
-            purpose_regex=r.purpose_regex,
-            booking_text=r.booking_text,
+            conditions=conditions_of(r.conditions),
         )
         for r in conn.execute(
             text(
                 "SELECT id, name, sets, COALESCE(counter_account_id, payee_id, category_id) AS target_id,"
-                " priority, condition_payee_id, counterparty_ref, mandate_ref, name_exact, name_prefix,"
-                " purpose_regex, booking_text FROM rule ORDER BY id"
+                " priority, condition_payee_id, conditions FROM rule ORDER BY id"
             )
         )
     ]
@@ -67,6 +67,7 @@ class UnconfirmedEntry:
     confirmed: bool = False  # its unit is confirmed (confirmed.py)
     source_id: int = 0  # its source transaction: the unit, until step 8
     description: str | None = None
+    source: SourceFields | None = None  # None for a user-authored row; never the raw record
 
 
 def _movements(where: str) -> TextClause:
@@ -77,7 +78,8 @@ def _movements(where: str) -> TextClause:
            u.unit_ok AS confirmed, u.src AS source_id,
            (s.importer IS NULL) AS user_authored,
            s.counterparty_ref, s.counterparty_name, s.purpose, s.booking_text, s.mandate_ref,
-           s.instructed_currency,
+           s.instructed_currency, s.counterparty_bic, s.end_to_end_id, s.instructed_amount,
+           s.source_format,
            e.type, e.payee_id, e.category_id, e.counter_account_id, e.derivation,
            (e.counterpart_entry_id IS NOT NULL) AS paired, (u.first_id = e.id) AS original
       FROM units AS u
@@ -132,6 +134,20 @@ def _load(conn: Connection, query: TextClause) -> list[UnconfirmedEntry]:
                 confirmed=r.confirmed,
                 source_id=r.source_id,
                 description=r.description,
+                source=None
+                if r.user_authored
+                else SourceFields(
+                    counterparty_name=r.counterparty_name,
+                    counterparty_ref=r.counterparty_ref,
+                    counterparty_bic=r.counterparty_bic,
+                    purpose=r.purpose,
+                    booking_text=r.booking_text,
+                    end_to_end_id=r.end_to_end_id,
+                    mandate_ref=r.mandate_ref,
+                    instructed_amount=r.instructed_amount,
+                    instructed_currency=r.instructed_currency,
+                    source_format=r.source_format,
+                ),
             )
         )
     return out

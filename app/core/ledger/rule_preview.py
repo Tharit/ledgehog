@@ -32,6 +32,7 @@ from typing import Any
 
 from sqlalchemy import Connection, text
 
+from app.core.domain.source import SourceFields
 from app.core.plugins.classifier import STANDING_PASSES, AccountFact, Field, RuleSpec
 from app.core.resolution import counter_account_ok, rederive
 from app.core.resolution.load import UnconfirmedEntry, load_accounts, load_movements
@@ -61,12 +62,12 @@ class PreviewRow:
     amount: int
     currency: str
     description: str | None
-    counterparty_name: str | None
     confirmed: bool
     current_value: int | None
     current_key: Mapping[str, Any] | None
     shadowed_by_rule_id: int | None = None  # matches only
     keyed_fields: tuple[str, ...] = ()  # lost-key list only: the fields carrying the rule's key
+    source: SourceFields | None = None  # the entry's source, as in the ledger list (D206)
 
 
 @dataclass(frozen=True)
@@ -151,12 +152,12 @@ def _row(
         amount=row.input.amount,
         currency=row.input.currency,
         description=row.description,
-        counterparty_name=row.input.counterparty_name,
         confirmed=row.confirmed,
         current_value=_value_of(row, sets),
         current_key=_key_of(row, sets),
         shadowed_by_rule_id=shadow,
         keyed_fields=keyed,
+        source=row.source,
     )
 
 

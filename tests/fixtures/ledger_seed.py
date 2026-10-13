@@ -66,8 +66,14 @@ def entry(
     mandate_ref: str | None = None,
     source_id: int | None = None,
     value_on: date | None = None,
+    imported: bool = False,
+    source_cols: dict[str, Any] | None = None,
 ) -> int:
-    """A movement entry (its own source transaction unless `source_id` makes it a split sibling)."""
+    """A movement entry (its own source transaction unless `source_id` makes it a split sibling).
+
+    The source is user-authored (no import run needed) unless `imported`; `source_cols` sets more of
+    its columns (counterparty_ref, booking_text, ...).
+    """
     if currency is None:
         currency = conn.execute(
             text("SELECT currency FROM account WHERE id = :a"), {"a": account_id}
@@ -80,15 +86,14 @@ def entry(
             currency=currency,
             booked_on=on,
             value_on=value_on,
-            importer=None,
+            importer="test" if imported else None,
             purpose=purpose,
-        )
-        conn.execute(
-            text(
-                "UPDATE source_transaction SET counterparty_name = :c, end_to_end_id = :e,"
-                " mandate_ref = :m WHERE id = :i"
-            ),
-            {"c": counterparty, "e": end_to_end_id, "m": mandate_ref, "i": source_id},
+            columns={
+                "counterparty_name": counterparty,
+                "end_to_end_id": end_to_end_id,
+                "mandate_ref": mandate_ref,
+                **(source_cols or {}),
+            },
         )
     cols: dict[str, Any] = {
         "type": type,

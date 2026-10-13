@@ -14,6 +14,7 @@ and no version (D198): the last write wins.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -29,8 +30,8 @@ from app.core.ledger.dimensions import (
 )
 from app.core.ledger.rule_preview import DEFAULT_LIMIT, RulePreview, build_preview
 from app.core.ledger.tags import FilterResultChanged
-from app.core.plugins.classifier import RuleInvalid, RuleSpec
-from app.core.resolution.load import load_rules
+from app.core.plugins.classifier import Condition, RuleInvalid, RuleSpec
+from app.core.resolution.load import conditions_of, load_rules
 from app.core.resolution.registry import rule_tools
 from app.core.settle.settle import SettleResult, settle
 from app.core.stale import StaleReference
@@ -77,12 +78,7 @@ class RuleDraft:
     payee_id: int | None = None
     category_id: int | None = None
     condition_payee_id: int | None = None
-    counterparty_ref: str | None = None
-    mandate_ref: str | None = None
-    name_exact: str | None = None
-    name_prefix: str | None = None
-    purpose_regex: str | None = None
-    booking_text: str | None = None
+    conditions: tuple[Condition, ...] = ()
     priority: int = 100
 
 
@@ -97,12 +93,7 @@ class RuleRow:
     payee_id: int | None
     category_id: int | None
     condition_payee_id: int | None
-    counterparty_ref: str | None
-    mandate_ref: str | None
-    name_exact: str | None
-    name_prefix: str | None
-    purpose_regex: str | None
-    booking_text: str | None
+    conditions: tuple[Condition, ...]
     priority: int
 
     @property
@@ -119,12 +110,7 @@ class RuleRow:
             target_id=self.target_id,
             priority=self.priority,
             condition_payee_id=self.condition_payee_id,
-            counterparty_ref=self.counterparty_ref,
-            mandate_ref=self.mandate_ref,
-            name_exact=self.name_exact,
-            name_prefix=self.name_prefix,
-            purpose_regex=self.purpose_regex,
-            booking_text=self.booking_text,
+            conditions=self.conditions,
         )
 
 
@@ -140,16 +126,14 @@ class RuleWritten:
 
 
 _COLUMNS = (
-    "id, name, sets, counter_account_id, payee_id, category_id, condition_payee_id, counterparty_ref,"
-    " mandate_ref, name_exact, name_prefix, purpose_regex, booking_text, priority"
+    "id, name, sets, counter_account_id, payee_id, category_id, condition_payee_id, conditions, priority"
 )
 
 
 def _row(r: Any) -> RuleRow:
     return RuleRow(
         r.id, r.name, r.sets, r.counter_account_id, r.payee_id, r.category_id, r.condition_payee_id,
-        r.counterparty_ref, r.mandate_ref, r.name_exact, r.name_prefix, r.purpose_regex, r.booking_text,
-        r.priority,
+        conditions_of(r.conditions), r.priority,
     )  # fmt: skip
 
 
@@ -162,11 +146,6 @@ def list_rules(conn: Connection) -> list[RuleRow]:
     """Every rule in evaluation order: counter-account, payee, category; priority, then id."""
     rows = {r.id: r for r in (_row(x) for x in conn.execute(text(f"SELECT {_COLUMNS} FROM rule")))}  # noqa: S608
     return [rows[s.id] for s in rule_tools().precedence_order(r.spec() for r in rows.values())]
-
-
-def _blank_is_none(value: str | None) -> str | None:
-    """A blank condition is an absent one (matching treats it so); it is not stored as an empty string."""
-    return None if value is None or not value.strip() else value
 
 
 def _checked(draft: RuleDraft, sets: str) -> RuleDraft:
@@ -184,12 +163,6 @@ def _checked(draft: RuleDraft, sets: str) -> RuleDraft:
         draft,
         name=clean_name(draft.name),
         sets=sets,
-        counterparty_ref=_blank_is_none(draft.counterparty_ref),
-        mandate_ref=_blank_is_none(draft.mandate_ref),
-        name_exact=_blank_is_none(draft.name_exact),
-        name_prefix=_blank_is_none(draft.name_prefix),
-        purpose_regex=_blank_is_none(draft.purpose_regex),
-        booking_text=_blank_is_none(draft.booking_text),
     )
     spec = RuleSpec(
         id=0,
@@ -198,12 +171,7 @@ def _checked(draft: RuleDraft, sets: str) -> RuleDraft:
         target_id=given[wanted],
         priority=cleaned.priority,
         condition_payee_id=cleaned.condition_payee_id,
-        counterparty_ref=cleaned.counterparty_ref,
-        mandate_ref=cleaned.mandate_ref,
-        name_exact=cleaned.name_exact,
-        name_prefix=cleaned.name_prefix,
-        purpose_regex=cleaned.purpose_regex,
-        booking_text=cleaned.booking_text,
+        conditions=cleaned.conditions,
     )
     try:
         rule_tools().validate(spec)
@@ -240,12 +208,10 @@ def _params(draft: RuleDraft) -> dict[str, Any]:
         "p": draft.payee_id,
         "c": draft.category_id,
         "cp": draft.condition_payee_id,
-        "cr": draft.counterparty_ref,
-        "mr": draft.mandate_ref,
-        "ne": draft.name_exact,
-        "np": draft.name_prefix,
-        "pr": draft.purpose_regex,
-        "bt": draft.booking_text,
+        "conds": json.dumps(
+            [{"field": c.field, "op": c.op, "value": c.value} for c in draft.conditions],
+            separators=(",", ":"),
+        ),
         "pri": draft.priority,
     }
 
@@ -306,14 +272,13 @@ def create_rule(
 
 _INSERT = (
     "INSERT INTO rule (name, sets, counter_account_id, payee_id, category_id, condition_payee_id,"
-    " counterparty_ref, mandate_ref, name_exact, name_prefix, purpose_regex, booking_text, priority)"
-    " VALUES (:n, :s, :ca, :p, :c, :cp, :cr, :mr, :ne, :np, :pr, :bt, :pri) RETURNING id"
+    " conditions, priority)"
+    " VALUES (:n, :s, :ca, :p, :c, :cp, CAST(:conds AS jsonb), :pri) RETURNING id"
 )
 
 _UPDATE = (
     "UPDATE rule SET name = :n, counter_account_id = :ca, payee_id = :p, category_id = :c,"
-    " condition_payee_id = :cp, counterparty_ref = :cr, mandate_ref = :mr, name_exact = :ne,"
-    " name_prefix = :np, purpose_regex = :pr, booking_text = :bt, priority = :pri WHERE id = :id"
+    " condition_payee_id = :cp, conditions = CAST(:conds AS jsonb), priority = :pri WHERE id = :id"
 )
 
 

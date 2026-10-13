@@ -182,8 +182,9 @@ def make_source(
     content_hash: str | None = None,
     duplicate_of: int | None = None,
     purpose: str | None = None,
+    columns: dict[str, Any] | None = None,
 ) -> int:
-    """A source_transaction. `importer=None` makes a user-authored row."""
+    """A source_transaction. `importer=None` makes a user-authored row; `columns` sets more of its columns."""
     if importer is not None and run_id is None:
         run_id = make_run(conn, account_id, instance_id=instance_id)
     if content_hash is None and source_id is None:
@@ -206,6 +207,7 @@ def make_source(
             "purpose": purpose,
             "raw": "{}",
             "duplicate_of": duplicate_of,
+            **(columns or {}),
         },
     )
 

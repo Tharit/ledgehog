@@ -16,6 +16,7 @@ from app.core.accounts import update_account
 from app.core.ingest.identity import canonical_text
 from app.core.resolution.registry import unconfigure_classifiers
 from app.core.settle import settle
+from tests.fixtures import rule_seed as rs
 from tests.invariants.helpers import make_category, make_entry, make_run
 
 settle_module = importlib.import_module("app.core.settle.settle")
@@ -72,18 +73,6 @@ def _payee(conn: Connection, name: str) -> int:
     )
 
 
-def _rule(conn: Connection, name: str, sets: str, target: int, **cond: Any) -> int:
-    col = {"payee": "payee_id", "category": "category_id", "counter_account": "counter_account_id"}[sets]
-    cols = {"name": name, "sets": sets, col: target, **cond}
-    names, marks = ", ".join(cols), ", ".join(":" + c for c in cols)
-    return int(
-        conn.execute(
-            text(f"INSERT INTO rule ({names}) VALUES ({marks}) RETURNING id"),  # noqa: S608
-            cols,
-        ).scalar_one()
-    )
-
-
 def _row(engine: Engine, entry: int) -> Any:
     with engine.connect() as conn:
         return conn.execute(
@@ -121,8 +110,8 @@ def test_pass0_makes_a_transfer_with_standing_own_account_keys(
 def test_a_rule_resolves_a_confirmed_flow_with_no_flags(isolated_engine: Engine, acct: int) -> None:
     with isolated_engine.begin() as conn:
         p, c = _payee(conn, "Rewe"), make_category(conn, "Food")
-        rp = _rule(conn, "rewe payee", "payee", p, name_exact="REWE")
-        rc = _rule(conn, "rewe cat", "category", c, name_exact="REWE")
+        rp = rs.rule(conn, "rewe payee", "payee", p, conditions=(rs.name_is("REWE"),))
+        rc = rs.rule(conn, "rewe cat", "category", c, conditions=(rs.name_is("REWE"),))
         e = _new(conn, acct, counterparty_name="REWE")
     assert settle(isolated_engine).error is None
     r = _row(isolated_engine, e)
@@ -138,7 +127,7 @@ def test_a_rule_resolves_a_confirmed_flow_with_no_flags(isolated_engine: Engine,
 def test_a_flow_without_a_category_stays_unclassified(isolated_engine: Engine, acct: int) -> None:
     with isolated_engine.begin() as conn:
         p = _payee(conn, "Rewe")
-        _rule(conn, "rewe payee", "payee", p, name_exact="REWE")
+        rs.rule(conn, "rewe payee", "payee", p, conditions=(rs.name_is("REWE"),))
         e = _new(conn, acct, counterparty_name="REWE")
     settle(isolated_engine)
     assert _row(isolated_engine, e).review_flags == ["unclassified"]
@@ -178,7 +167,7 @@ def test_standing_values_survive_a_rule_deleted_and_history_growing(
     with isolated_engine.begin() as conn:
         p, c, e = _history_world(conn, acct)
         other = _payee(conn, "Other")
-        rule = _rule(conn, "edeka payee", "payee", other, name_exact="EDEKA Markt")
+        rule = rs.rule(conn, "edeka payee", "payee", other, conditions=(rs.name_is("EDEKA Markt"),))
     settle(isolated_engine)
     r = _row(isolated_engine, e)
     assert r.payee_id == other and r.derivation["payee"]["pass"] == "rule"
@@ -198,7 +187,7 @@ def test_standing_values_survive_a_rule_deleted_and_history_growing(
 def test_a_confirmed_entry_is_never_touched(isolated_engine: Engine, acct: int) -> None:
     with isolated_engine.begin() as conn:
         c, c2 = make_category(conn, "Food"), make_category(conn, "Other")
-        _rule(conn, "any", "category", c2, name_exact="EDEKA Markt")
+        rs.rule(conn, "any", "category", c2, conditions=(rs.name_is("EDEKA Markt"),))
         reviewed = _confirmed(conn, acct, name="EDEKA Markt", category=c, payee=None)
         keyless = make_entry(conn, _src(conn, acct, counterparty_name="EDEKA Markt"), category_id=c)
     before = [_row(isolated_engine, i) for i in (reviewed, keyless)]
@@ -210,8 +199,8 @@ def test_a_proposal_is_rederived_after_another_entry_confirms(isolated_engine: E
     """A is confirmed by a rule in round 1; its vote gives B a proposal in round 2; round 3 never runs."""
     with isolated_engine.begin() as conn:
         p, c = _payee(conn, "Alpha"), make_category(conn, "Food")
-        _rule(conn, "alpha payee", "payee", p, name_exact="Alpha Shop")
-        _rule(conn, "alpha cat", "category", c, name_exact="Alpha Shop")
+        rs.rule(conn, "alpha payee", "payee", p, conditions=(rs.name_is("Alpha Shop"),))
+        rs.rule(conn, "alpha cat", "category", c, conditions=(rs.name_is("Alpha Shop"),))
         a = _new(conn, acct, counterparty_name="Alpha Shop", counterparty_ref="REF-ALPHA")
         b = _new(conn, acct, counterparty_name="Some other text", counterparty_ref="REF-ALPHA")
     calls: list[int] = []
@@ -240,8 +229,8 @@ def test_history_snapshot_is_loaded_once_per_settle(
 ) -> None:
     with isolated_engine.begin() as conn:
         p, c = _payee(conn, "Alpha"), make_category(conn, "Food")
-        _rule(conn, "alpha payee", "payee", p, name_exact="Alpha Shop")
-        _rule(conn, "alpha cat", "category", c, name_exact="Alpha Shop")
+        rs.rule(conn, "alpha payee", "payee", p, conditions=(rs.name_is("Alpha Shop"),))
+        rs.rule(conn, "alpha cat", "category", c, conditions=(rs.name_is("Alpha Shop"),))
         for i in range(4):
             _new(conn, acct, counterparty_name="Alpha Shop", counterparty_ref=f"R{i}")
         _new(conn, acct, counterparty_name="Beta")
@@ -305,7 +294,7 @@ def test_a_value_without_a_key_is_kept(isolated_engine: Engine, acct: int) -> No
     """A legacy value with no key is treated as a user's: a rule that would say otherwise loses."""
     with isolated_engine.begin() as conn:
         c = make_category(conn, "Food")
-        _rule(conn, "r", "category", make_category(conn, "Other"), name_exact="X")
+        rs.rule(conn, "r", "category", make_category(conn, "Other"), conditions=(rs.name_is("X"),))
         e = make_entry(
             conn,
             _src(conn, acct, counterparty_name="X"),

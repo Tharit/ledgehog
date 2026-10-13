@@ -14,10 +14,11 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel, StringConstraints
 
 from app.api.errors import map_error
-from app.api.ids import MAX_ID, EntityId
+from app.api.ids import MAX_ID, EntityId, PathId
 from app.api.routers.accounts import CurrencyCode, Money
 from app.api.session import CurrentUser, EngineDep
-from app.core.ledger import EntryRow, InvalidFilter, LedgerFilter, list_entries
+from app.core.domain.source import SourceFields
+from app.core.ledger import EntryRow, InvalidFilter, LedgerFilter, get_entry, list_entries
 
 router = APIRouter(prefix="/api/ledger/entries", tags=["entries"])
 
@@ -38,6 +39,41 @@ EntryType = Literal["flow", "transfer", "opening", "valuation", "reconciliation"
 ReviewFlag = Literal["unconfirmed", "unclassified", "document_suggested", "waiting", "unmatched_transfer"]
 
 
+class SourceTransactionOut(BaseModel):
+    """An entry's source transaction as the UI and rules read it; never the raw record or the hash."""
+
+    counterparty_name: str | None
+    counterparty_ref: str | None
+    counterparty_bic: str | None
+    purpose: str | None
+    booking_text: str | None
+    end_to_end_id: str | None
+    mandate_ref: str | None
+    instructed_amount: Money | None  # the instructed amount with its currency, where the source reports one
+    source_format: str | None
+
+    @staticmethod
+    def of(src: SourceFields | None) -> SourceTransactionOut | None:
+        if src is None:
+            return None
+        instructed = (
+            None
+            if src.instructed_amount is None or src.instructed_currency is None
+            else Money(amount=src.instructed_amount, currency=src.instructed_currency)
+        )
+        return SourceTransactionOut(
+            counterparty_name=src.counterparty_name,
+            counterparty_ref=src.counterparty_ref,
+            counterparty_bic=src.counterparty_bic,
+            purpose=src.purpose,
+            booking_text=src.booking_text,
+            end_to_end_id=src.end_to_end_id,
+            mandate_ref=src.mandate_ref,
+            instructed_amount=instructed,
+            source_format=src.source_format,
+        )
+
+
 class EntryOut(BaseModel):
     id: int
     version: int
@@ -48,8 +84,6 @@ class EntryOut(BaseModel):
     type: EntryType | None
     description: str | None
     note: str | None
-    counterparty_name: str | None
-    purpose: str | None
     display_text: str | None
     payee_id: int | None
     category_id: int | None
@@ -59,6 +93,7 @@ class EntryOut(BaseModel):
     document_id: int | None
     review_flags: list[ReviewFlag]
     tag_ids: list[int]
+    source: SourceTransactionOut | None  # null for derived and user-authored entries
 
     @staticmethod
     def of(row: EntryRow) -> EntryOut:
@@ -72,8 +107,6 @@ class EntryOut(BaseModel):
             type=cast(EntryType | None, row.type),
             description=row.description,
             note=row.note,
-            counterparty_name=row.counterparty_name,
-            purpose=row.purpose,
             display_text=row.display_text,
             payee_id=row.payee_id,
             category_id=row.category_id,
@@ -83,6 +116,7 @@ class EntryOut(BaseModel):
             document_id=row.document_id,
             review_flags=cast(list[ReviewFlag], list(row.review_flags)),
             tag_ids=list(row.tag_ids),
+            source=SourceTransactionOut.of(row.source),
         )
 
 
@@ -137,3 +171,22 @@ def list_entries_view(
     return EntryPageOut(
         entries=[EntryOut.of(e) for e in page.entries], total=page.total, limit=page.limit, offset=page.offset
     )
+
+
+class EntryMissing(LookupError):
+    def __init__(self, entry_id: int) -> None:
+        self.entry_id = entry_id
+        super().__init__(f"entry {entry_id} does not exist")
+
+
+map_error(EntryMissing, 404, "not_found")
+
+
+@router.get("/{entry_id}")
+def get_ledger_entry(entry_id: PathId, user: CurrentUser, engine: EngineDep) -> EntryOut:
+    """One entry in the row shape of the list, its `source` included."""
+    with engine.connect() as conn:
+        row = get_entry(conn, entry_id)
+    if row is None:
+        raise EntryMissing(entry_id)
+    return EntryOut.of(row)

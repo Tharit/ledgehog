@@ -20,6 +20,7 @@ from app.core.ledger import rules as rules_mod
 from app.core.ledger.rules import RuleDraft, create_rule, delete_rule, update_rule
 from app.core.settle.settle import settle
 from app.utils.config import Config
+from tests.fixtures import rule_seed as rs
 from tests.perf.budget import BUDGET_SECONDS, RULE_PREVIEW_BUDGET_SECONDS
 from tests.perf.conftest import Backfill, _backfill
 from tests.perf.test_settle_budget import Stats
@@ -64,8 +65,10 @@ def _timed[T](samples: list[float], call: object) -> T:
 def test_the_preview_of_a_create_an_edit_and_a_delete_within_budget(settled: Backfill):
     engine = settled.engine
     shell = _category(settled, "Shell")
-    merchant = RuleDraft(name="Shell", sets="category", category_id=shell, name_exact="Shell")
-    everything = RuleDraft(name="Everything", sets="category", category_id=shell, purpose_regex=".")
+    merchant = RuleDraft(name="Shell", sets="category", category_id=shell, conditions=(rs.name_is("Shell"),))
+    everything = RuleDraft(
+        name="Everything", sets="category", category_id=shell, conditions=(rs.cond("purpose", "regex", "."),)
+    )
     merchant_s: list[float] = []
     everything_s: list[float] = []
     for _ in range(REPEATS):
@@ -95,7 +98,10 @@ def test_the_preview_of_a_create_an_edit_and_a_delete_within_budget(settled: Bac
     edit_s: list[float] = []
     delete_s: list[float] = []
     narrowed = RuleDraft(
-        name="Shell", sets="category", category_id=shell, name_exact="Shell", mandate_ref="x"
+        name="Shell",
+        sets="category",
+        category_id=shell,
+        conditions=(rs.name_is("Shell"), rs.cond("mandate_ref", "equals", "x")),
     )
     for _ in range(REPEATS):
         u = _timed(edit_s, lambda: update_rule(engine, rid, narrowed, dry_run=True))
@@ -136,7 +142,9 @@ def test_settle_after_a_rule_write_within_the_settle_budget(
     category = _category(settled, "Amazon")
     ids: list[int] = []
     for i in range(REPEATS):
-        draft = RuleDraft(name=f"Amazon {i}", sets="category", category_id=category, name_exact="Amazon")
+        draft = RuleDraft(
+            name=f"Amazon {i}", sets="category", category_id=category, conditions=(rs.name_is("Amazon"),)
+        )
         dry = create_rule(engine, draft, dry_run=True)
         written = create_rule(engine, draft, expected_count=dry.preview.matches.total)
         assert written.settle is not None and written.settle.error is None

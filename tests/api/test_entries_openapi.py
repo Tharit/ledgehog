@@ -49,8 +49,6 @@ def test_a_sample_row_validates_against_the_model():
         "type": "flow",
         "description": None,
         "note": None,
-        "counterparty_name": None,
-        "purpose": None,
         "display_text": None,
         "payee_id": None,
         "category_id": None,
@@ -60,6 +58,17 @@ def test_a_sample_row_validates_against_the_model():
         "document_id": None,
         "review_flags": ["unconfirmed"],
         "tag_ids": [3],
+        "source": {
+            "counterparty_name": "CP",
+            "counterparty_ref": None,
+            "counterparty_bic": None,
+            "purpose": None,
+            "booking_text": None,
+            "end_to_end_id": None,
+            "mandate_ref": None,
+            "instructed_amount": {"amount": -7, "currency": "USD"},
+            "source_format": "csv",
+        },
     }
     page = EntryPageOut.model_validate({"entries": [row], "total": 1, "limit": 100, "offset": 0})
     assert page.model_dump(mode="json")["entries"] == [row]
@@ -77,3 +86,24 @@ def test_literals_cover_core_tokens():
 
     assert get_args(EntryType) == ENTRY_TYPES
     assert get_args(ReviewFlag) == REVIEW_FLAGS
+
+
+def test_get_ledger_entry_is_documented(schema):
+    op = schema["paths"]["/api/ledger/entries/{entry_id}"]["get"]
+    assert op["operationId"] == "get_ledger_entry"
+    assert op["responses"]["200"]["content"]["application/json"]["schema"]["$ref"] == (
+        "#/components/schemas/EntryOut"
+    )
+
+
+def test_source_is_nullable_and_shared_with_the_rule_preview(schema):
+    comps = schema["components"]["schemas"]
+    refs = [s.get("$ref") for s in comps["EntryOut"]["properties"]["source"]["anyOf"]]
+    assert "#/components/schemas/SourceTransactionOut" in refs
+    refs = [s.get("$ref") for s in comps["PreviewRowOut"]["properties"]["source"]["anyOf"]]
+    assert "#/components/schemas/SourceTransactionOut" in refs
+    assert set(comps["SourceTransactionOut"]["properties"]) == {
+        "counterparty_name", "counterparty_ref", "counterparty_bic", "purpose", "booking_text",
+        "end_to_end_id", "mandate_ref", "instructed_amount", "source_format",
+    }  # fmt: skip
+    assert "counterparty_name" not in comps["EntryOut"]["properties"]

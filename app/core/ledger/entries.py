@@ -5,13 +5,14 @@ SQLAlchemy Core composes the filter (architecture §5.2). Reads only: no lock, n
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
 from sqlalchemy import Connection, func, select, text
 
+from app.core.domain.source import SourceFields
 from app.core.ledger.filters import LedgerFilter
 from app.core.ledger.sql import compose, le, st
 
@@ -28,8 +29,6 @@ class EntryRow:
     type: str | None
     description: str | None
     note: str | None
-    counterparty_name: str | None
-    purpose: str | None
     display_text: str | None  # description, else counterparty_name, else purpose
     payee_id: int | None
     category_id: int | None
@@ -39,6 +38,7 @@ class EntryRow:
     document_id: int | None
     review_flags: tuple[str, ...]  # sorted
     tag_ids: tuple[int, ...]  # sorted
+    source: SourceFields | None  # None for derived and user-authored entries
 
 
 @dataclass(frozen=True)
@@ -63,27 +63,7 @@ def list_entries(conn: Connection, flt: LedgerFilter, *, limit: int, offset: int
     parts = compose(flt)
     total = conn.execute(select(func.count()).select_from(parts.source).where(*parts.where)).scalar_one()
     rows = conn.execute(
-        select(
-            le.c.id,
-            le.c.version,
-            le.c.account_id,
-            le.c.booked_on,
-            le.c.value_on,
-            le.c.amount,
-            le.c.currency,
-            le.c.type,
-            le.c.description,
-            le.c.note,
-            st.c.counterparty_name,
-            st.c.purpose,
-            le.c.payee_id,
-            le.c.category_id,
-            le.c.counter_account_id,
-            le.c.counterpart_entry_id,
-            le.c.source_transaction_id,
-            le.c.document_id,
-            le.c.review_flags,
-        )
+        select(*_COLUMNS)
         .select_from(parts.source)
         .where(*parts.where)
         .order_by(
@@ -94,8 +74,56 @@ def list_entries(conn: Connection, flt: LedgerFilter, *, limit: int, offset: int
         .limit(limit)
         .offset(offset)
     ).all()
-    tags = tag_ids_of(conn, [r.id for r in rows])
-    entries = tuple(
+    return EntryPage(_build(rows, tag_ids_of(conn, [r.id for r in rows])), int(total), limit, offset)
+
+
+def get_entry(conn: Connection, entry_id: int) -> EntryRow | None:
+    """One entry in the row shape of the list, or None when there is none."""
+    rows = conn.execute(
+        select(*_COLUMNS)
+        .select_from(le.outerjoin(st, st.c.id == le.c.source_transaction_id))
+        .where(le.c.id == entry_id)
+    ).all()
+    if not rows:
+        return None
+    return _build(rows, tag_ids_of(conn, [entry_id]))[0]
+
+
+# the entry's own columns and the source's, from ledger_entry LEFT JOIN source_transaction: one query
+_COLUMNS = (
+    le.c.id,
+    le.c.version,
+    le.c.account_id,
+    le.c.booked_on,
+    le.c.value_on,
+    le.c.amount,
+    le.c.currency,
+    le.c.type,
+    le.c.description,
+    le.c.note,
+    le.c.payee_id,
+    le.c.category_id,
+    le.c.counter_account_id,
+    le.c.counterpart_entry_id,
+    le.c.source_transaction_id,
+    le.c.document_id,
+    le.c.review_flags,
+    st.c.importer,
+    st.c.counterparty_name,
+    st.c.counterparty_ref,
+    st.c.counterparty_bic,
+    st.c.purpose,
+    st.c.booking_text,
+    st.c.end_to_end_id,
+    st.c.mandate_ref,
+    st.c.instructed_amount,
+    st.c.instructed_currency,
+    st.c.source_format,
+)
+
+
+def _build(rows: Sequence[Any], tags: Mapping[int, tuple[int, ...]]) -> tuple[EntryRow, ...]:
+    return tuple(
         EntryRow(
             id=r.id,
             version=r.version,
@@ -107,8 +135,6 @@ def list_entries(conn: Connection, flt: LedgerFilter, *, limit: int, offset: int
             type=r.type,
             description=r.description,
             note=r.note,
-            counterparty_name=r.counterparty_name,
-            purpose=r.purpose,
             display_text=display_text(r.description, r.counterparty_name, r.purpose),
             payee_id=r.payee_id,
             category_id=r.category_id,
@@ -118,10 +144,28 @@ def list_entries(conn: Connection, flt: LedgerFilter, *, limit: int, offset: int
             document_id=r.document_id,
             review_flags=tuple(sorted(r.review_flags)),
             tag_ids=tags.get(r.id, ()),
+            source=_source(r),
         )
         for r in rows
     )
-    return EntryPage(entries, int(total), limit, offset)
+
+
+def _source(r: Any) -> SourceFields | None:
+    """The nested source: none for a derived entry or a user-authored row (no importer)."""
+    if r.source_transaction_id is None or r.importer is None:
+        return None
+    return SourceFields(
+        counterparty_name=r.counterparty_name,
+        counterparty_ref=r.counterparty_ref,
+        counterparty_bic=r.counterparty_bic,
+        purpose=r.purpose,
+        booking_text=r.booking_text,
+        end_to_end_id=r.end_to_end_id,
+        mandate_ref=r.mandate_ref,
+        instructed_amount=r.instructed_amount,
+        instructed_currency=r.instructed_currency,
+        source_format=r.source_format,
+    )
 
 
 def matching_entry_ids(conn: Connection, flt: LedgerFilter) -> list[int]:

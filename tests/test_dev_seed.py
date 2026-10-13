@@ -8,6 +8,7 @@ real CSV importer here) and a full run against a scratch `dev_` database, which 
 from __future__ import annotations
 
 import io
+import json
 import os
 import uuid
 from collections.abc import Iterator
@@ -237,11 +238,22 @@ def test_named_rules_exist_for_every_kind_and_the_regex_one(seeded: str, dev_eng
     with dev_engine.connect() as conn:
         by_sets = {r[0]: r[1] for r in conn.execute(text("SELECT sets, count(*) FROM rule GROUP BY sets"))}
         assert by_sets.keys() == {"counter_account", "payee", "category"}, by_sets
-        assert (
-            conn.execute(text("SELECT count(*) FROM rule WHERE purpose_regex IS NOT NULL")).scalar_one() >= 1
-        )
-        assert (
-            conn.execute(text("SELECT count(*) FROM rule WHERE counterparty_ref IS NOT NULL")).scalar_one()
+        for field, op in (
+            ("purpose", "regex"),
+            ("counterparty_ref", "equals"),
+            ("counterparty_name", "starts_with"),
+        ):
+            probe = json.dumps([{"field": field, "op": op}])
+            assert (
+                conn.execute(
+                    text("SELECT count(*) FROM rule WHERE conditions @> CAST(:p AS jsonb)"), {"p": probe}
+                ).scalar_one()
+                >= 1
+            ), (field, op)
+        assert (  # the payee-conditioned category rule: no condition list at all
+            conn.execute(
+                text("SELECT count(*) FROM rule WHERE condition_payee_id IS NOT NULL AND conditions = '[]'")
+            ).scalar_one()
             >= 1
         )
         # the cash rule points at the cash account, and its entries are transfers decided by the rule

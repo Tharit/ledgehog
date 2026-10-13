@@ -13,7 +13,7 @@ field; a target or payee condition that no longer exists is 409 `stale_reference
 from __future__ import annotations
 
 from datetime import date
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, cast
 
 from fastapi import APIRouter, Query, Response
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
@@ -21,6 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from app.api.errors import map_error
 from app.api.ids import MAX_ID, EntityId, PathId
 from app.api.routers.accounts import Money
+from app.api.routers.entries import SourceTransactionOut
 from app.api.routers.maintenance import SettleOut
 from app.api.session import CurrentUser, EngineDep
 from app.core.ledger.dimensions import DuplicateName, ExpectedCountRequired, InvalidValue
@@ -37,6 +38,7 @@ from app.core.ledger.rules import (
     list_rules,
     update_rule,
 )
+from app.core.plugins.classifier import Condition
 
 router = APIRouter(prefix="/api/ledger/rules", tags=["rules"])
 
@@ -63,12 +65,36 @@ map_error(
 
 Sets = Literal["counter_account", "payee", "category"]
 RuleName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
-# a condition as typed; the plugin judges a regex (422 `invalid_rule`), so only an absurd size stops here
-Condition = Annotated[str, StringConstraints(max_length=2000)]
+# a condition's value as typed; the plugin judges blankness and a regex (422 `invalid_rule`), so only
+# an absurd size stops here
+ConditionValue = Annotated[str, StringConstraints(max_length=2000)]
+ConditionFieldName = Literal[
+    "counterparty_name", "counterparty_ref", "purpose", "booking_text", "mandate_ref"
+]
+ConditionOpName = Literal["equals", "starts_with", "contains", "regex"]
 Priority = Annotated[int, Field(strict=True, ge=-(2**31), le=2**31 - 1)]
 Count = Annotated[int, Field(ge=0, le=MAX_ID)]
 Limit = Annotated[int, Query(ge=1, le=MAX_LIMIT)]
 Offset = Annotated[int, Query(ge=0, le=MAX_ID)]
+
+
+class ConditionOut(BaseModel):
+    """One condition of a rule; all of a rule's conditions must hold."""
+
+    field: ConditionFieldName
+    op: ConditionOpName
+    value: str
+
+
+class ConditionBody(BaseModel):
+    """A condition as written. The field and operator are not narrowed here: an unknown one is the
+    plugin's 422 `invalid_rule`, located at `conditions[i].field`, like a blank value."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    field: str = Field(max_length=100)
+    op: str = Field(max_length=100)
+    value: ConditionValue
 
 
 class RuleOut(BaseModel):
@@ -81,17 +107,22 @@ class RuleOut(BaseModel):
     payee_id: int | None
     category_id: int | None
     condition_payee_id: int | None  # category rules only
-    counterparty_ref: str | None
-    mandate_ref: str | None
-    name_exact: str | None
-    name_prefix: str | None
-    purpose_regex: str | None
-    booking_text: str | None
+    conditions: list[ConditionOut]  # all must hold; may be empty only with a payee condition
     priority: int
 
     @staticmethod
     def of(row: RuleRow) -> RuleOut:
-        return RuleOut(**{**vars(row), "sets": row.sets})
+        return RuleOut(
+            id=row.id,
+            name=row.name,
+            sets=cast(Sets, row.sets),
+            counter_account_id=row.counter_account_id,
+            payee_id=row.payee_id,
+            category_id=row.category_id,
+            condition_payee_id=row.condition_payee_id,
+            conditions=[ConditionOut(field=c.field, op=c.op, value=c.value) for c in row.conditions],
+            priority=row.priority,
+        )
 
 
 class RuleBody(BaseModel):
@@ -104,19 +135,25 @@ class RuleBody(BaseModel):
     payee_id: EntityId | None = None
     category_id: EntityId | None = None
     condition_payee_id: EntityId | None = None  # category rules only
-    counterparty_ref: Condition | None = None
-    mandate_ref: Condition | None = None
-    name_exact: Condition | None = None
-    name_prefix: Condition | None = None
-    purpose_regex: Condition | None = None  # at most 200 characters, must compile
-    booking_text: Condition | None = None
+    conditions: list[ConditionBody] = Field(default_factory=list, max_length=50)  # all must hold
     priority: Priority = 100
     dry_run: bool = False
     expected_count: Count | None = None  # the dry run's `matches.total`; required for a real run
 
     def draft(self, sets: str | None) -> RuleDraft:
-        fields = self.model_dump(exclude={"dry_run", "expected_count", "sets"})
-        return RuleDraft(sets=sets, **fields)
+        return RuleDraft(
+            name=self.name,
+            sets=sets,
+            counter_account_id=self.counter_account_id,
+            payee_id=self.payee_id,
+            category_id=self.category_id,
+            condition_payee_id=self.condition_payee_id,
+            conditions=tuple(
+                Condition(c.field, c.op, c.value)  # type: ignore[arg-type]  # the plugin validates them
+                for c in self.conditions
+            ),
+            priority=self.priority,
+        )
 
 
 class RuleCreateBody(RuleBody):
@@ -138,12 +175,12 @@ class PreviewRowOut(BaseModel):
     booked_on: date
     amount: Money
     description: str | None
-    counterparty_name: str | None
     confirmed: bool
     current_value: int | None  # the id the entry holds for what the rule sets
     current_key: dict[str, Any] | None  # and the key explaining it: {"pass", "basis"}
     shadowed_by_rule_id: int | None  # matches only: the earlier rule that wins this entry
     keyed_fields: list[str]  # lost-key list only: the fields carrying the rule's key
+    source: SourceTransactionOut | None  # as in the ledger list; null for a user-authored row
 
     @staticmethod
     def of(row: PreviewRow) -> PreviewRowOut:
@@ -153,12 +190,12 @@ class PreviewRowOut(BaseModel):
             booked_on=row.booked_on,
             amount=Money(amount=row.amount, currency=row.currency),
             description=row.description,
-            counterparty_name=row.counterparty_name,
             confirmed=row.confirmed,
             current_value=row.current_value,
             current_key=None if row.current_key is None else dict(row.current_key),
             shadowed_by_rule_id=row.shadowed_by_rule_id,
             keyed_fields=list(row.keyed_fields),
+            source=SourceTransactionOut.of(row.source),
         )
 
 

@@ -62,7 +62,7 @@ def draft(world: dict[str, Any], **kw: Any) -> RuleDraft:
         "name": "Rewe",
         "sets": "category",
         "category_id": world["food"],
-        "name_exact": "REWE",
+        "conditions": (rs.name_is("REWE"),),
     }
     base.update(kw)
     return RuleDraft(**base)
@@ -78,9 +78,7 @@ def make(engine: Engine, d: RuleDraft, **kw: Any) -> int:
 
 
 def test_create_update_delete_round_trip(isolated_engine: Engine, world: dict[str, Any], settles: list[int]):
-    created = create_rule(
-        isolated_engine, draft(world, name="  Rewe  ", priority=7, purpose_regex="  "), expected_count=0
-    )
+    created = create_rule(isolated_engine, draft(world, name="  Rewe  ", priority=7), expected_count=0)
     assert created.rule is not None and not created.deleted
     rid = created.rule.id
     assert (created.rule.name, created.rule.sets, created.rule.category_id) == (
@@ -88,7 +86,11 @@ def test_create_update_delete_round_trip(isolated_engine: Engine, world: dict[st
         "category",
         world["food"],
     )
-    assert (created.rule.priority, created.rule.purpose_regex, created.rule.payee_id) == (7, None, None)
+    assert (created.rule.priority, created.rule.conditions, created.rule.payee_id) == (
+        7,
+        (rs.name_is("REWE"),),
+        None,
+    )
     assert created.settle is not None and created.settle.error is None
     with isolated_engine.connect() as conn:
         assert get_rule(conn, rid) == created.rule
@@ -96,20 +98,19 @@ def test_create_update_delete_round_trip(isolated_engine: Engine, world: dict[st
     updated = update_rule(
         isolated_engine,
         rid,
-        draft(world, name="Rewe markt", category_id=world["fun"], name_exact=None, name_prefix="REWE"),
+        draft(
+            world,
+            name="Rewe markt",
+            category_id=world["fun"],
+            conditions=(rs.name_starts("REWE"),),
+        ),
         expected_count=0,
     )
     assert updated.rule is not None
-    assert (
-        updated.rule.name,
-        updated.rule.category_id,
-        updated.rule.name_exact,
-        updated.rule.name_prefix,
-    ) == (
+    assert (updated.rule.name, updated.rule.category_id, updated.rule.conditions) == (
         "Rewe markt",
         world["fun"],
-        None,
-        "REWE",
+        (rs.name_starts("REWE"),),
     )
     deleted = delete_rule(isolated_engine, rid, expected_count=0)
     assert deleted.deleted and deleted.rule is not None and deleted.rule.id == rid
@@ -120,10 +121,10 @@ def test_create_update_delete_round_trip(isolated_engine: Engine, world: dict[st
 
 def test_list_is_in_evaluation_order(isolated_engine: Engine, world: dict[str, Any]):
     with isolated_engine.begin() as conn:
-        c = rs.rule(conn, "c", "category", world["food"], name_exact="a", priority=1)
-        p2 = rs.rule(conn, "p2", "payee", world["rewe"], name_exact="a", priority=20)
-        p1 = rs.rule(conn, "p1", "payee", world["rewe"], name_exact="a", priority=10)
-        t = rs.rule(conn, "t", "counter_account", world["cash"], name_exact="a", priority=99)
+        c = rs.rule(conn, "c", "category", world["food"], conditions=(rs.name_is("a"),), priority=1)
+        p2 = rs.rule(conn, "p2", "payee", world["rewe"], conditions=(rs.name_is("a"),), priority=20)
+        p1 = rs.rule(conn, "p1", "payee", world["rewe"], conditions=(rs.name_is("a"),), priority=10)
+        t = rs.rule(conn, "t", "counter_account", world["cash"], conditions=(rs.name_is("a"),), priority=99)
     with isolated_engine.connect() as conn:
         assert [r.id for r in list_rules(conn)] == [t, p1, p2, c]
 
@@ -185,10 +186,17 @@ def test_names_are_unique_case_insensitively_and_not_blank(isolated_engine: Engi
 @pytest.mark.parametrize(
     ("kw", "field"),
     [
-        ({"purpose_regex": "(SECRETPATTERN"}, "purpose_regex"),
-        ({"purpose_regex": "SECRETPATTERN" + "a" * 200}, "purpose_regex"),
-        ({"name_exact": None}, "conditions"),
-        ({"name_exact": "  "}, "conditions"),
+        ({"conditions": (rs.cond("purpose", "regex", "(SECRETPATTERN"),)}, "conditions[0].value"),
+        ({"conditions": (rs.cond("purpose", "regex", "SECRETPATTERN" + "a" * 200),)}, "conditions[0].value"),
+        (
+            {"conditions": (rs.name_is("ok"), rs.cond("mandate_ref", "regex", "(SECRETPATTERN"))},
+            "conditions[1].value",
+        ),
+        ({"conditions": ()}, "conditions"),
+        ({"conditions": (rs.name_is("  "),)}, "conditions[0].value"),
+        ({"conditions": (rs.name_is(""),)}, "conditions[0].value"),
+        ({"conditions": (rs.cond("amount", "equals", "SECRETPATTERN"),)}, "conditions[0].field"),
+        ({"conditions": (rs.cond("purpose", "matches", "SECRETPATTERN"),)}, "conditions[0].op"),
         (
             {"sets": "payee", "category_id": None, "payee_id": 1, "condition_payee_id": 1},
             "condition_payee_id",
@@ -247,7 +255,7 @@ def test_a_dry_run_writes_nothing_and_does_not_settle(
 ):
     with isolated_engine.begin() as conn:
         rs.new_entry(conn, world["acct"], counterparty_name="REWE")
-        rid = rs.rule(conn, "old", "category", world["fun"], name_exact="REWE")
+        rid = rs.rule(conn, "old", "category", world["fun"], conditions=(rs.name_is("REWE"),))
     before = snap(isolated_engine)
     c = create_rule(isolated_engine, draft(world), dry_run=True)
     u = update_rule(isolated_engine, rid, draft(world, name="renamed"), dry_run=True)
@@ -265,7 +273,7 @@ def test_a_real_write_needs_the_count_its_dry_run_reported(
     with isolated_engine.begin() as conn:
         rs.new_entry(conn, world["acct"], counterparty_name="REWE")
         rs.new_entry(conn, world["acct"], counterparty_name="REWE")
-        rid = rs.rule(conn, "old", "category", world["fun"], name_exact="REWE")
+        rid = rs.rule(conn, "old", "category", world["fun"], conditions=(rs.name_is("REWE"),))
     before = snap(isolated_engine)
     with pytest.raises(ExpectedCountRequired):
         create_rule(isolated_engine, draft(world))
@@ -337,7 +345,7 @@ def test_settling_applies_a_new_rule_to_unconfirmed_entries_only(
 
 def test_deleting_a_rule_leaves_its_keys_on_confirmed_entries(isolated_engine: Engine, world: dict[str, Any]):
     with isolated_engine.begin() as conn:
-        rid = rs.rule(conn, "rewe", "category", world["food"], name_exact="REWE")
+        rid = rs.rule(conn, "rewe", "category", world["food"], conditions=(rs.name_is("REWE"),))
         e = rs.confirmed_entry(
             conn,
             world["acct"],

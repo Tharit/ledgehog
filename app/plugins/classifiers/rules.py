@@ -12,7 +12,10 @@ from functools import lru_cache
 
 from app.core.ingest.identity import canonical_text
 from app.core.plugins.classifier import (
+    CONDITION_FIELDS,
+    CONDITION_OPS,
     ClassifierContext,
+    Condition,
     EntryInput,
     Field,
     Proposal,
@@ -25,14 +28,12 @@ from app.core.resolution.registry import RuleTools
 MAX_PATTERN_LENGTH = 200
 
 _GROUP_RANK = {"counter_account": 0, "payee": 1, "category": 2}
+# fields compared as codes (canonical text) rather than as words (name normalisation)
+_IDENTIFIERS = frozenset({"counterparty_ref", "mandate_ref"})
 
 
 class RuleError(RuleInvalid):
     """A rule that cannot be saved."""
-
-
-def _present(s: str | None) -> bool:
-    return s is not None and s.strip() != ""
 
 
 @lru_cache(maxsize=1024)
@@ -43,7 +44,8 @@ def _compile(pattern: str) -> re.Pattern[str]:
 def validate_rule(rule: RuleSpec) -> None:
     """Raise `RuleError` when the rule would be refused on save (rules.md §3, spec §5.9).
 
-    Uniqueness of the name is the database's to check; here only what a rule says of itself.
+    Uniqueness of the name is the database's to check; here only what a rule says of itself. A
+    message names the part at fault (`conditions[2].value`) and never quotes a value.
     """
     if not rule.name.strip():
         raise RuleError("the rule name must not be blank", "name")
@@ -51,33 +53,27 @@ def validate_rule(rule: RuleSpec) -> None:
         raise RuleError("a rule sets a counter-account, a payee or a category", "sets")
     if rule.condition_payee_id is not None and rule.sets != "category":
         raise RuleError("a payee condition is only for category rules", "condition_payee_id")
-    if _present(rule.purpose_regex):
-        assert rule.purpose_regex is not None
-        if len(rule.purpose_regex) > MAX_PATTERN_LENGTH:
-            raise RuleError(
-                f"the purpose regex must be at most {MAX_PATTERN_LENGTH} characters", "purpose_regex"
-            )
-        try:
-            _compile(rule.purpose_regex)
-        except re.error as exc:
-            # the message of `re` can quote a piece of the pattern: only where it failed is said
-            where = f" (at position {exc.pos})" if exc.pos is not None else ""
-            raise RuleError(f"the purpose regex does not compile{where}", "purpose_regex") from exc
-    if not (
-        rule.condition_payee_id is not None
-        or any(
-            _present(c)
-            for c in (
-                rule.counterparty_ref,
-                rule.mandate_ref,
-                rule.name_exact,
-                rule.name_prefix,
-                rule.purpose_regex,
-                rule.booking_text,
-            )
-        )
-    ):
+    if not rule.conditions and rule.condition_payee_id is None:
         raise RuleError("a rule needs at least one condition", "conditions")
+    for i, cond in enumerate(rule.conditions):
+        at = f"conditions[{i}]"
+        if cond.field not in CONDITION_FIELDS:
+            raise RuleError(f"{at}: the field is not one a rule can read", f"{at}.field")
+        if cond.op not in CONDITION_OPS:
+            raise RuleError(f"{at}: the operator is not one a rule knows", f"{at}.op")
+        if not isinstance(cond.value, str) or not cond.value.strip():
+            raise RuleError(f"{at}: the value must not be blank", f"{at}.value")
+        if cond.op == "regex":
+            if len(cond.value) > MAX_PATTERN_LENGTH:
+                raise RuleError(
+                    f"{at}: a regex must be at most {MAX_PATTERN_LENGTH} characters", f"{at}.value"
+                )
+            try:
+                _compile(cond.value)
+            except re.error as exc:
+                # the message of `re` can quote a piece of the pattern: only where it failed is said
+                where = f" (at position {exc.pos})" if exc.pos is not None else ""
+                raise RuleError(f"{at}: the regex does not compile{where}", f"{at}.value") from exc
 
 
 def default_rule_tools() -> RuleTools:
@@ -91,35 +87,38 @@ def precedence_order(rules: Iterable[RuleSpec]) -> list[RuleSpec]:
     return sorted(rules, key=lambda r: (_GROUP_RANK[r.sets], r.priority, r.id))
 
 
-def matches(rule: RuleSpec, entry: EntryInput, ctx_payee_id: int | None = None) -> bool:
-    """All of the rule's conditions hold; a condition on a field the entry lacks does not.
+def _comparable(field: str, text_: str | None) -> str:
+    return canonical_text(text_) if field in _IDENTIFIERS else normalise_name(text_)
 
-    Cheap conditions first, the regex last. Blank condition strings count as absent.
-    """
+
+@lru_cache(maxsize=4096)
+def _wanted(field: str, value: str) -> str:
+    return _comparable(field, value)
+
+
+def _holds(cond: Condition, entry: EntryInput) -> bool:
+    raw: str | None = getattr(entry, cond.field)
+    if raw is None or not raw.strip():
+        return False  # a condition on a field the entry lacks fails
+    if cond.op == "regex":
+        return _compile(cond.value).search(raw) is not None
+    have = _comparable(cond.field, raw)
+    want = _wanted(cond.field, cond.value)
+    if not have or not want:
+        return False  # nothing comparable on either side (a value of punctuation only, say)
+    if cond.op == "equals":
+        return have == want
+    if cond.op == "starts_with":
+        return have.startswith(want)
+    return want in have
+
+
+def matches(rule: RuleSpec, entry: EntryInput, ctx_payee_id: int | None = None) -> bool:
+    """All of the rule's conditions hold, and the payee condition; a condition on a field the entry
+    lacks does not (rules.md §2)."""
     if rule.condition_payee_id is not None and rule.condition_payee_id != ctx_payee_id:
         return False
-    for cond, value in (
-        (rule.counterparty_ref, entry.counterparty_ref),
-        (rule.mandate_ref, entry.mandate_ref),
-        (rule.booking_text, entry.booking_text),
-    ):
-        if _present(cond):
-            have = canonical_text(value)
-            if not have or have != canonical_text(cond):
-                return False
-    if _present(rule.name_exact) or _present(rule.name_prefix):
-        name = normalise_name(entry.counterparty_name)
-        if not name:
-            return False
-        if _present(rule.name_exact) and name != normalise_name(rule.name_exact):
-            return False
-        if _present(rule.name_prefix) and not name.startswith(normalise_name(rule.name_prefix)):
-            return False
-    if _present(rule.purpose_regex):
-        assert rule.purpose_regex is not None
-        if not entry.purpose or _compile(rule.purpose_regex).search(entry.purpose) is None:
-            return False
-    return True
+    return all(_holds(c, entry) for c in rule.conditions)
 
 
 def _payee_in(ctx: ClassifierContext) -> int | None:

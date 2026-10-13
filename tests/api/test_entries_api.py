@@ -69,6 +69,16 @@ def test_row_json_shape_and_money(anna: TestClient, api_engine: Engine, acct: in
             counterparty="CP",
             purpose="PU",
             flags=("unconfirmed", "unclassified"),
+            imported=True,
+            end_to_end_id="E2E",
+            mandate_ref="M-1",
+            source_cols={
+                "counterparty_ref": "DE00 1",
+                "counterparty_bic": "BIC1",
+                "booking_text": "Kartenzahlung",
+                "instructed_amount": -1400,
+                "instructed_currency": "USD",
+            },
         )
         src = seed.source_of(conn, e)
     body = listed(anna)
@@ -84,8 +94,6 @@ def test_row_json_shape_and_money(anna: TestClient, api_engine: Engine, acct: in
             "type": "flow",
             "description": None,
             "note": "n",
-            "counterparty_name": "CP",
-            "purpose": "PU",
             "display_text": "CP",
             "payee_id": p,
             "category_id": c,
@@ -95,8 +103,23 @@ def test_row_json_shape_and_money(anna: TestClient, api_engine: Engine, acct: in
             "document_id": None,
             "review_flags": ["unclassified", "unconfirmed"],
             "tag_ids": [t],
+            "source": {
+                "counterparty_name": "CP",
+                "counterparty_ref": "DE00 1",
+                "counterparty_bic": "BIC1",
+                "purpose": "PU",
+                "booking_text": "Kartenzahlung",
+                "end_to_end_id": "E2E",
+                "mandate_ref": "M-1",
+                "instructed_amount": {"amount": -1400, "currency": "USD"},
+                "source_format": "camt053",
+            },
         }
     ]
+    # the one-entry read answers with the same row, nothing more and nothing less
+    one = anna.get(f"{URL}/{e}")
+    assert one.status_code == 200 and one.json() == body["entries"][0]
+    assert "raw" not in one.text and "content_hash" not in one.text
 
 
 def test_each_dimension_over_http(anna: TestClient, api_engine: Engine, acct: int):
@@ -250,3 +273,60 @@ def test_it_writes_nothing_and_never_settles(
 def test_operation_ids_are_unique(client: TestClient):
     ids = [op.get("operationId") for item in client.app.openapi()["paths"].values() for op in item.values()]  # type: ignore[attr-defined]
     assert len(ids) == len(set(ids))
+
+
+def test_derived_and_user_authored_entries_have_no_source(anna: TestClient, api_engine: Engine, acct: int):
+    with api_engine.begin() as conn:
+        user = seed.entry(conn, acct, purpose="Hand entered", description=None)  # user-authored
+        derived = seed.derived(conn, acct)
+    rows = {e["id"]: e for e in listed(anna)["entries"]}
+    assert rows[user]["source"] is None and rows[derived]["source"] is None
+    # the purpose still reaches display_text, and the single read agrees
+    assert rows[user]["display_text"] == "Hand entered"
+    assert anna.get(f"{URL}/{user}").json()["source"] is None
+    assert anna.get(f"{URL}/{derived}").json()["source"] is None
+    assert "counterparty_name" not in rows[user] and "purpose" not in rows[user]
+
+
+def test_an_imported_source_without_an_instructed_amount_has_none(
+    anna: TestClient, api_engine: Engine, acct: int
+):
+    e = add(api_engine, acct, counterparty="X", imported=True)
+    src = anna.get(f"{URL}/{e}").json()["source"]
+    assert src["instructed_amount"] is None and src["counterparty_name"] == "X"
+    assert set(src) == {
+        "counterparty_name", "counterparty_ref", "counterparty_bic", "purpose", "booking_text",
+        "end_to_end_id", "mandate_ref", "instructed_amount", "source_format",
+    }  # fmt: skip
+
+
+def test_a_missing_entry_is_a_404_envelope_and_the_id_is_bounded(anna: TestClient):
+    assert_envelope(anna.get(f"{URL}/999999"), 404, "not_found")
+    for bad in (0, -1, 2**53 + 1, 2**70):
+        assert_envelope(anna.get(f"{URL}/{bad}"), 422, "validation_error")
+    assert_envelope(anna.get(f"{URL}/abc"), 422, "validation_error")
+
+
+def test_the_single_read_needs_a_session(client: TestClient):
+    assert_envelope(client.get(f"{URL}/1"), 401, "unauthenticated")
+
+
+def test_the_search_still_reads_the_source_fields(anna: TestClient, api_engine: Engine, acct: int):
+    hit = add(api_engine, acct, counterparty="Findable GmbH", imported=True)
+    add(api_engine, acct, counterparty="Other", imported=True)
+    assert entry_ids(anna, q="findable") == [hit]
+
+
+def test_the_list_reads_sources_in_one_query(anna: TestClient, api_engine: Engine, acct: int):
+    from sqlalchemy import event
+
+    for i in range(6):
+        add(api_engine, acct, counterparty=f"C{i}", imported=True)
+
+    def statements() -> int:
+        seen: list[str] = []
+        event.listen(api_engine, "before_cursor_execute", lambda *a: seen.append(a[2]))
+        listed(anna)
+        return len([s for s in seen if "source_transaction" in s])
+
+    assert statements() <= 2  # the page and its count, however many rows

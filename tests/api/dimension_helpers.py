@@ -20,10 +20,17 @@ def rule(
     return int(
         conn.execute(
             text(
-                "INSERT INTO rule (sets, category_id, payee_id, condition_payee_id, counterparty_ref, name)"
-                " VALUES (:s, :c, :p, :cp, 'ref', :n) RETURNING id"
+                "INSERT INTO rule (sets, category_id, payee_id, condition_payee_id, conditions, name)"
+                " VALUES (:s, :c, :p, :cp, CAST(:conds AS jsonb), :n) RETURNING id"
             ),
-            {"s": sets, "c": category_id, "p": payee_id, "cp": condition_payee_id, "n": name},
+            {
+                "s": sets,
+                "c": category_id,
+                "p": payee_id,
+                "cp": condition_payee_id,
+                "conds": '[{"field": "counterparty_ref", "op": "equals", "value": "ref"}]',
+                "n": name,
+            },
         ).scalar_one()
     )
 

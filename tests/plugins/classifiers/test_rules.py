@@ -7,7 +7,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from app.core.plugins.classifier import ClassifierContext, Proposal, RuleInvalid, RuleSpec
+from app.core.plugins.classifier import ClassifierContext, Condition, Proposal, RuleInvalid, RuleSpec
 from app.plugins.classifiers.rules import (
     RuleError,
     RulesClassifier,
@@ -20,73 +20,137 @@ from tests.plugins.classifiers.fakes import entry
 CTX = ClassifierContext()
 
 
-def rule(id: int = 1, sets: str = "payee", target_id: int = 10, **kw: object) -> RuleSpec:
+def cond(field: str, op: str, value: str) -> Condition:
+    return Condition(field, op, value)  # type: ignore[arg-type]
+
+
+def rule(id: int = 1, sets: str = "payee", target_id: int = 10, *conds: Condition, **kw: object) -> RuleSpec:
     kw.setdefault("name", f"rule {id}")
-    return RuleSpec(id=id, sets=sets, target_id=target_id, **kw)  # type: ignore[arg-type]
+    return RuleSpec(id=id, sets=sets, target_id=target_id, conditions=conds, **kw)  # type: ignore[arg-type]
 
 
-# ---- single conditions ----
+def one(field: str, op: str, value: str) -> RuleSpec:
+    return rule(1, "payee", 10, cond(field, op, value))
 
 
+def rx(pattern: str = "x") -> Condition:
+    return cond("purpose", "regex", pattern)
+
+
+# ---- every operator on every field class ----
+
+IBAN = "DE89 3704 0044 0532 0130 00"
+
+
+@pytest.mark.parametrize("field", ["counterparty_ref", "mandate_ref"])
 @pytest.mark.parametrize(
-    ("r", "e", "expected"),
+    ("op", "value", "have", "expected"),
     [
-        (
-            rule(counterparty_ref="DE89 3704 0044 0532 0130 00"),
-            {"counterparty_ref": "de89370400440532013000"},
-            True,
-        ),
-        (rule(counterparty_ref="DE89"), {"counterparty_ref": "DE90"}, False),
-        (rule(mandate_ref="M-001"), {"mandate_ref": "m 001"}, True),
-        (rule(mandate_ref="M-001"), {"mandate_ref": "M-002"}, False),
-        (rule(booking_text="GA-Auszahlung"), {"booking_text": "ga auszahlung"}, True),
-        (rule(booking_text="GA-Auszahlung"), {"booking_text": "Entgelt"}, False),
-        (rule(name_exact="  Rewe  Markt"), {"counterparty_name": "REWE markt"}, True),
-        (rule(name_exact="Rewe"), {"counterparty_name": "Rewe Markt"}, False),
-        (rule(name_prefix="PAYPAL *"), {"counterparty_name": "PAYPAL *SEEEDDEVELO"}, True),
-        (rule(name_prefix="PAYPAL *"), {"counterparty_name": "PayPal Europe S.a.r.l."}, False),
-        (rule(purpose_regex="miete"), {"purpose": "Monat MIETE Juni"}, True),
-        (rule(purpose_regex="^miete"), {"purpose": "Monat Miete"}, False),
+        # identifiers compare as canonical text on both sides: spaces, case and punctuation vanish
+        ("equals", IBAN, "de89370400440532013000", True),
+        ("equals", "DE89", "DE89 3704", False),
+        ("starts_with", "DE89 3704", "de89370400440532013000", True),
+        ("starts_with", "de89-3704", "DE89 3704 0044", True),
+        ("starts_with", "3704", "DE89 3704 0044", False),
+        ("contains", "3704 0044", "DE89 3704 0044 0532", True),
+        ("contains", "9999", "DE89 3704 0044 0532", False),
+        ("regex", r"^DE89 3704", "DE89 3704 0044", True),
+        ("regex", r"^DE893704", "DE89 3704 0044", False),  # regex runs on the RAW value
+        ("regex", r"0044\s0532", "DE89 3704 0044 0532", True),
     ],
 )
-def test_single_condition(r: RuleSpec, e: dict[str, object], expected: bool) -> None:
-    assert matches(r, entry(**e), None) is expected
+def test_identifier_fields(field: str, op: str, value: str, have: str, expected: bool) -> None:
+    assert matches(one(field, op, value), entry(**{field: have}), None) is expected
+
+
+@pytest.mark.parametrize("field", ["counterparty_name", "purpose", "booking_text"])
+@pytest.mark.parametrize(
+    ("op", "value", "have", "expected"),
+    [
+        # words compare by name normalisation: casefold, whitespace collapsed, punctuation KEPT
+        ("equals", "  Rewe  Markt", "REWE markt", True),
+        ("equals", "Rewe", "Rewe Markt", False),
+        ("equals", "rewe-markt", "Rewe Markt", False),
+        ("starts_with", "PAYPAL *", "PAYPAL *SEEEDDEVELO", True),
+        ("starts_with", "PAYPAL *", "PayPal Europe S.a.r.l.", False),
+        ("starts_with", "paypal", "  PayPal   Europe", True),
+        ("starts_with", "Markt", "Rewe Markt", False),
+        ("contains", "markt  koeln", "REWE Markt Koeln 12", True),
+        ("contains", "markt-koeln", "REWE Markt Koeln 12", False),
+        ("regex", "^miete", "Monat Miete", False),
+        ("regex", "MIETE", "Monat Miete Juni", True),
+        ("regex", r"S\.a\.r\.l", "PayPal Europe S.a.r.l.", True),
+    ],
+)
+def test_word_fields(field: str, op: str, value: str, have: str, expected: bool) -> None:
+    assert matches(one(field, op, value), entry(**{field: have}), None) is expected
+
+
+def test_an_entry_value_without_alphanumerics_never_equals_an_identifier() -> None:
+    assert not matches(one("counterparty_ref", "equals", "-"), entry(counterparty_ref="--"), None)
+    assert not matches(one("counterparty_ref", "starts_with", "--"), entry(counterparty_ref="DE89"), None)
 
 
 def test_payee_condition_equals_resolved_payee() -> None:
-    r = rule(sets="category", condition_payee_id=7)
+    r = rule(1, "category", 10, condition_payee_id=7)
     assert matches(r, entry(), 7)
     assert not matches(r, entry(), 8)
     assert not matches(r, entry(), None)
 
 
-def test_missing_field_fails() -> None:
-    for r in (
-        rule(counterparty_ref="X"),
-        rule(mandate_ref="X"),
-        rule(booking_text="X"),
-        rule(name_exact="X"),
-        rule(name_prefix="X"),
-        rule(purpose_regex="x"),
-    ):
-        assert not matches(r, entry(), None)
+@pytest.mark.parametrize(
+    "field", ["counterparty_name", "counterparty_ref", "purpose", "booking_text", "mandate_ref"]
+)
+@pytest.mark.parametrize("op", ["equals", "starts_with", "contains", "regex"])
+def test_missing_field_fails(field: str, op: str) -> None:
+    assert not matches(one(field, op, "x"), entry(), None)
+    assert not matches(one(field, op, "x"), entry(**{field: "  "}), None)
+
+
+def test_payee_condition_with_conditions_needs_both() -> None:
+    r = rule(1, "category", 10, cond("purpose", "contains", "miete"), condition_payee_id=7)
+    e = entry(purpose="Miete Juni")
+    assert matches(r, e, 7)
+    assert not matches(r, e, 8)
+    assert not matches(r, entry(purpose="other"), 7)
+
+
+def test_payee_condition_alone() -> None:
+    r = rule(1, "category", 10, condition_payee_id=7)
+    assert matches(r, entry(), 7) and not matches(r, entry(), None)
 
 
 def test_conditions_are_anded() -> None:
-    r = rule(name_prefix="paypal", purpose_regex="seeed", booking_text="kartenzahlung")
+    r = rule(
+        1,
+        "payee",
+        10,
+        cond("counterparty_name", "starts_with", "paypal"),
+        cond("purpose", "regex", "seeed"),
+        cond("booking_text", "equals", "kartenzahlung"),
+    )
     e = entry(counterparty_name="PayPal *X", purpose="Seeed order", booking_text="Kartenzahlung")
     assert matches(r, e, None)
     assert not matches(r, dataclasses.replace(e, booking_text="Lastschrift"), None)
     assert not matches(r, dataclasses.replace(e, purpose="other"), None)
 
 
-def test_blank_condition_counts_as_absent() -> None:
-    r = rule(name_exact="  ", purpose_regex="x")
-    assert matches(r, entry(purpose="x"), None)
+def test_the_same_field_may_appear_several_times() -> None:
+    r = rule(
+        1,
+        "payee",
+        10,
+        cond("purpose", "contains", "miete"),
+        cond("purpose", "contains", "juni"),
+        cond("purpose", "regex", "^(?!.*nachzahlung)"),
+    )
+    assert matches(r, entry(purpose="Miete Juni"), None)
+    assert not matches(r, entry(purpose="Miete Mai"), None)
+    assert not matches(r, entry(purpose="Miete Juni Nachzahlung"), None)
 
 
 def test_regex_ignorecase_search() -> None:
-    assert matches(rule(purpose_regex="AbC"), entry(purpose="zzz abc zzz"), None)
+    assert matches(one("purpose", "regex", "AbC"), entry(purpose="zzz abc zzz"), None)
 
 
 # ---- order and proposals ----
@@ -94,11 +158,11 @@ def test_regex_ignorecase_search() -> None:
 
 def test_order_groups_priority_id() -> None:
     rs = [
-        rule(1, "category", priority=1, purpose_regex="x"),
-        rule(2, "payee", priority=5, purpose_regex="x"),
-        rule(3, "payee", priority=5, purpose_regex="x"),
-        rule(4, "payee", priority=1, purpose_regex="x"),
-        rule(5, "counter_account", priority=99, purpose_regex="x"),
+        rule(1, "category", 10, rx(), priority=1),
+        rule(2, "payee", 10, rx(), priority=5),
+        rule(3, "payee", 10, rx(), priority=5),
+        rule(4, "payee", 10, rx(), priority=1),
+        rule(5, "counter_account", 10, rx(), priority=99),
     ]
     assert [r.id for r in precedence_order(rs)] == [5, 4, 2, 3, 1]
 
@@ -106,9 +170,9 @@ def test_order_groups_priority_id() -> None:
 def test_first_match_wins_priority_then_id() -> None:
     c = RulesClassifier(
         [
-            rule(3, target_id=30, priority=1, purpose_regex="x"),
-            rule(2, target_id=20, priority=1, purpose_regex="x"),
-            rule(1, target_id=10, priority=2, purpose_regex="x"),
+            rule(3, "payee", 30, rx(), priority=1),
+            rule(2, "payee", 20, rx(), priority=1),
+            rule(1, "payee", 10, rx(), priority=2),
         ]
     )
     p = c.propose("payee", entry(purpose="x"), CTX)
@@ -116,14 +180,14 @@ def test_first_match_wins_priority_then_id() -> None:
 
 
 def test_no_match_none() -> None:
-    assert RulesClassifier([rule(purpose_regex="x")]).propose("payee", entry(purpose="y"), CTX) is None
+    assert RulesClassifier([rule(1, "payee", 10, rx())]).propose("payee", entry(purpose="y"), CTX) is None
 
 
 def test_counter_account_rule_skipped_when_account_not_ok() -> None:
     c = RulesClassifier(
         [
-            rule(1, "counter_account", 100, priority=1, purpose_regex="x"),  # wrong currency
-            rule(2, "counter_account", 200, priority=2, purpose_regex="x"),
+            rule(1, "counter_account", 100, rx(), priority=1),  # wrong currency
+            rule(2, "counter_account", 200, rx(), priority=2),
         ]
     )
     ctx = ClassifierContext(account_ok=lambda a: a != 100)
@@ -150,9 +214,9 @@ def test_category_rule_with_payee_condition() -> None:
 
 def test_type_proposals() -> None:
     e = entry(purpose="x")
-    payee_rule = rule(1, "payee", purpose_regex="x")
-    cat_rule = rule(2, "category", 5, purpose_regex="x")
-    ca_rule = rule(3, "counter_account", 9, purpose_regex="x")
+    payee_rule = rule(1, "payee", 10, rx())
+    cat_rule = rule(2, "category", 5, rx())
+    ca_rule = rule(3, "counter_account", 9, rx())
     assert RulesClassifier([payee_rule]).propose("type", e, CTX) == Proposal("type", "flow", {"rule_id": 1})
     assert RulesClassifier([cat_rule]).propose("type", e, CTX) == Proposal("type", "flow", {"rule_id": 2})
     assert RulesClassifier([payee_rule, cat_rule, ca_rule]).propose("type", e, CTX) == Proposal(
@@ -166,10 +230,10 @@ def test_type_proposals() -> None:
 
 def test_matching_rules_in_order_filtering_account() -> None:
     rs = [
-        rule(1, "payee", purpose_regex="x"),
-        rule(2, "counter_account", 100, purpose_regex="x"),
-        rule(3, "counter_account", 200, purpose_regex="x"),
-        rule(4, "payee", purpose_regex="nomatch"),
+        rule(1, "payee", 10, rx()),
+        rule(2, "counter_account", 100, rx()),
+        rule(3, "counter_account", 200, rx()),
+        rule(4, "payee", 10, rx("nomatch")),
     ]
     c = RulesClassifier([])
     ctx = ClassifierContext(account_ok=lambda a: a != 100)
@@ -182,13 +246,17 @@ def test_matching_rules_in_order_filtering_account() -> None:
 @pytest.mark.parametrize(
     "r",
     [
-        rule(name="  ", purpose_regex="x"),
+        rule(1, "payee", 10, rx(), name="  "),
         rule(),  # no condition
-        rule(name_exact="  ", purpose_regex=""),  # blanks only
-        rule(purpose_regex="("),
-        rule(purpose_regex="a" * 201),
-        rule(sets="payee", condition_payee_id=3),
-        rule(sets="counter_account", condition_payee_id=3),
+        rule(1, "payee", 10, cond("purpose", "contains", "  ")),  # blank value
+        rule(1, "payee", 10, cond("purpose", "contains", "")),
+        rule(1, "payee", 10, cond("purpose", "regex", "(")),
+        rule(1, "payee", 10, cond("purpose", "regex", "a" * 201)),
+        rule(1, "payee", 10, cond("counterparty_ref", "regex", "(")),  # a regex on any field is checked
+        rule(1, "payee", 10, cond("amount", "equals", "5")),  # unknown field
+        rule(1, "payee", 10, cond("purpose", "ends_with", "5")),  # unknown operator
+        rule(1, "payee", 10, rx(), condition_payee_id=3),
+        rule(1, "counter_account", 10, rx(), condition_payee_id=3),
     ],
 )
 def test_validate_rule_refuses(r: RuleSpec) -> None:
@@ -197,14 +265,18 @@ def test_validate_rule_refuses(r: RuleSpec) -> None:
 
 
 def test_validate_rule_accepts() -> None:
-    validate_rule(rule(purpose_regex="a" * 200))
-    validate_rule(rule(sets="category", condition_payee_id=3))
-    validate_rule(rule(name_prefix="PAYPAL *"))
+    validate_rule(rule(1, "payee", 10, rx("a" * 200)))
+    validate_rule(rule(1, "category", 10, condition_payee_id=3))
+    validate_rule(rule(1, "category", 10, cond("purpose", "contains", "x"), condition_payee_id=3))
+    validate_rule(rule(1, "payee", 10, cond("counterparty_name", "starts_with", "PAYPAL *")))
+    validate_rule(rule(1, "payee", 10, rx(), rx("y"), cond("purpose", "equals", "z")))
+    # a long value is only bounded for a regex
+    validate_rule(rule(1, "payee", 10, cond("purpose", "contains", "a" * 500)))
 
 
 def test_constructor_refuses_invalid_rule() -> None:
     with pytest.raises(RuleError):
-        RulesClassifier([rule(purpose_regex="(")])
+        RulesClassifier([rule(1, "payee", 10, rx("("))])
 
 
 # ---- properties ----
@@ -220,7 +292,7 @@ def test_constructor_refuses_invalid_rule() -> None:
     st.randoms(use_true_random=False),
 )
 def test_rule_order_does_not_change_result(specs: list[tuple[int, str]], rnd: random.Random) -> None:
-    rules = [rule(i + 1, s, 100 + i, priority=p, purpose_regex="x") for i, (p, s) in enumerate(specs)]
+    rules = [rule(i + 1, s, 100 + i, rx(), priority=p) for i, (p, s) in enumerate(specs)]
     shuffled = rules[:]
     rnd.shuffle(shuffled)
     e = entry(purpose="x")
@@ -234,10 +306,16 @@ def test_rule_order_does_not_change_result(specs: list[tuple[int, str]], rnd: ra
 @pytest.mark.parametrize(
     ("r", "field"),
     [
-        (rule(name=" "), "name"),
-        (rule(purpose_regex="(SECRET"), "purpose_regex"),
-        (rule(purpose_regex="SECRET" + "a" * 200), "purpose_regex"),
-        (rule(sets="payee", condition_payee_id=3), "condition_payee_id"),
+        (rule(1, "payee", 10, rx(), name=" "), "name"),
+        (rule(1, "payee", 10, rx(), rx("(SECRET")), "conditions[1].value"),
+        (rule(1, "payee", 10, rx("SECRET" + "a" * 200)), "conditions[0].value"),
+        (
+            rule(1, "payee", 10, cond("purpose", "contains", "ok"), cond("mandate_ref", "equals", "  ")),
+            "conditions[1].value",
+        ),
+        (rule(1, "payee", 10, cond("SECRETFIELD", "equals", "x")), "conditions[0].field"),
+        (rule(1, "payee", 10, cond("purpose", "SECRETOP", "x")), "conditions[0].op"),
+        (rule(1, "payee", 10, rx(), condition_payee_id=3), "condition_payee_id"),
         (rule(), "conditions"),
     ],
 )
@@ -250,7 +328,7 @@ def test_validation_errors_name_the_field_and_never_quote_the_pattern(r: RuleSpe
 
 def test_a_regex_that_re_quotes_in_its_message_is_not_echoed() -> None:
     with pytest.raises(RuleError) as info:
-        validate_rule(rule(purpose_regex=r"\qSECRET"))  # re: "bad escape \q at position 0"
+        validate_rule(rule(1, "payee", 10, rx(r"\qSECRET")))  # re: "bad escape \q at position 0"
     assert "SECRET" not in str(info.value) and "\\q" not in str(info.value)
 
 

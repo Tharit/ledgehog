@@ -43,12 +43,14 @@ def test_row_shape(db_conn: Connection, acct: int):
         counterparty="CP",
         purpose="PU",
         flags=("unconfirmed",),
+        imported=True,
     )
     (row,) = list_entries(db_conn, LedgerFilter(), limit=10, offset=0).entries
     assert row.id == e and row.version == 1 and row.account_id == acct
     assert (row.booked_on, row.value_on) == (D, date(2026, 3, 11))
     assert (row.amount, row.currency, row.type) == (-1250, "EUR", "flow")
-    assert (row.description, row.note, row.counterparty_name, row.purpose) == ("Lunch", "n", "CP", "PU")
+    assert (row.description, row.note) == ("Lunch", "n")
+    assert row.source is not None and (row.source.counterparty_name, row.source.purpose) == ("CP", "PU")
     assert (row.payee_id, row.category_id) == (p, c)
     assert row.counter_account_id is None and row.counterpart_entry_id is None
     assert row.source_transaction_id == seed.source_of(db_conn, e) and row.document_id is None
@@ -78,7 +80,7 @@ def test_unfiltered_includes_derived_entries(db_conn: Connection, acct: int):
     o = seed.derived(db_conn, acct)
     assert sorted_ids(db_conn) == sorted([m, o])
     row = next(e for e in list_entries(db_conn, LedgerFilter(), limit=9, offset=0).entries if e.id == o)
-    assert row.source_transaction_id is None and row.counterparty_name is None and row.display_text is None
+    assert row.source_transaction_id is None and row.source is None and row.display_text is None
 
 
 def test_dates_inclusive(db_conn: Connection, acct: int):

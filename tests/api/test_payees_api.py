@@ -242,9 +242,7 @@ def test_merge_repoints_entries_and_rules_under_the_settling_flag(
         conn.execute(text('UPDATE ledger_entry SET derivation = \'{"payee_id": {"pass": "user"}}\'::jsonb'))
         before = conn.execute(text(ENTRY_STATE)).all()
         versions_before = dict(conn.execute(text("SELECT id, version FROM ledger_entry")).all())
-        rules_before = conn.execute(
-            text("SELECT id, name, sets, counterparty_ref FROM rule ORDER BY id")
-        ).all()
+        rules_before = conn.execute(text("SELECT id, name, sets, conditions FROM rule ORDER BY id")).all()
     r = merge(anna, pair["src"], pair["tgt"], expected_count=3)
     assert r.status_code == 200, r.text
     d = r.json()
@@ -265,9 +263,7 @@ def test_merge_repoints_entries_and_rules_under_the_settling_flag(
             r.name: (r.payee_id, r.condition_payee_id)
             for r in conn.execute(text("SELECT name, payee_id, condition_payee_id FROM rule"))
         }
-        rules_after = conn.execute(
-            text("SELECT id, name, sets, counterparty_ref FROM rule ORDER BY id")
-        ).all()
+        rules_after = conn.execute(text("SELECT id, name, sets, conditions FROM rule ORDER BY id")).all()
         versions_after = dict(conn.execute(text("SELECT id, version FROM ledger_entry")).all())
     assert after == before  # keys and flags untouched
     bumped = {i for i, v in versions_after.items() if v != versions_before[i]}

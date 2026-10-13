@@ -49,10 +49,17 @@ le = table(
 st = table(
     "source_transaction",
     column("id"),
+    column("importer"),
     column("counterparty_name"),
+    column("counterparty_ref"),
+    column("counterparty_bic"),
     column("purpose"),
+    column("booking_text"),
     column("end_to_end_id"),
     column("mandate_ref"),
+    column("instructed_amount"),
+    column("instructed_currency"),
+    column("source_format"),
 )
 payee = table("payee", column("id"), column("name"))
 category = table("category", column("id"), column("name"), column("parent_id"))

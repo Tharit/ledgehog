@@ -7,11 +7,13 @@ from __future__ import annotations
 
 import json
 import uuid
+from collections.abc import Sequence
 from datetime import date
 from typing import Any
 
 from sqlalchemy import Connection, text
 
+from app.core.plugins.classifier import Condition
 from tests.invariants.helpers import make_entry, make_run
 
 DAY = date(2026, 2, 10)
@@ -76,14 +78,34 @@ def payee(conn: Connection, name: str) -> int:
     )
 
 
-def rule(conn: Connection, name: str, sets: str, target: int, **cond: Any) -> int:
+def cond(field: str, op: str, value: str) -> Condition:
+    return Condition(field, op, value)  # type: ignore[arg-type]
+
+
+def name_is(value: str) -> Condition:
+    return cond("counterparty_name", "equals", value)
+
+
+def name_starts(value: str) -> Condition:
+    return cond("counterparty_name", "starts_with", value)
+
+
+def conditions_json(conditions: Sequence[Condition]) -> str:
+    return json.dumps([{"field": c.field, "op": c.op, "value": c.value} for c in conditions])
+
+
+def rule(
+    conn: Connection, name: str, sets: str, target: int, conditions: Sequence[Condition] = (), **cols: Any
+) -> int:
+    """A rule row, written directly (no preview, no settle); `conditions` as `Condition`s."""
     col = {"payee": "payee_id", "category": "category_id", "counter_account": "counter_account_id"}[sets]
-    cols = {"name": name, "sets": sets, col: target, **cond}
-    names, marks = ", ".join(cols), ", ".join(":" + c for c in cols)
+    values = {"name": name, "sets": sets, col: target, **cols, "conditions": conditions_json(conditions)}
+    names = ", ".join(values)
+    marks = ", ".join("CAST(:conditions AS jsonb)" if c == "conditions" else ":" + c for c in values)
     return int(
         conn.execute(
             text(f"INSERT INTO rule ({names}) VALUES ({marks}) RETURNING id"),  # noqa: S608
-            cols,
+            values,
         ).scalar_one()
     )
 

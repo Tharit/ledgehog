@@ -44,6 +44,7 @@ from app.core.importers.instances import create_instance, link_account
 from app.core.importers.upload import upload
 from app.core.integrity import check_integrity
 from app.core.ledger.rules import RuleDraft, create_rule
+from app.core.plugins.classifier import Condition
 from app.core.resolution.registry import configure_classifiers, configure_rule_tools
 from app.core.settle.settle import settle
 from app.plugins.classifiers import default_classifiers, default_rule_tools
@@ -279,9 +280,7 @@ def make_rules(engine: Engine, out: list[str]) -> None:
             payee_id=target if r.sets == "payee" else None,
             category_id=target if r.sets == "category" else None,
             condition_payee_id=payee.get(r.condition_payee) if r.condition_payee else None,
-            counterparty_ref=r.counterparty_ref,
-            name_prefix=r.name_prefix,
-            purpose_regex=r.purpose_regex,
+            conditions=tuple(Condition(f, o, v) for f, o, v in r.conditions),  # type: ignore[arg-type]
             priority=r.priority,
         )
         preview = create_rule(engine, draft, dry_run=True, limit=1).preview

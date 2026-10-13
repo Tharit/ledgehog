@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from datetime import date
 from typing import Any
 
 import pytest
 from sqlalchemy import Engine, text
 
+from app.core.domain.source import SourceFields
 from app.core.ledger.rules import RuleDraft, create_rule, delete_rule, update_rule
 from tests.fixtures import ledger_seed as seed
 from tests.fixtures import rule_seed as rs
@@ -32,7 +34,7 @@ def cat_draft(w: dict[str, Any], **kw: Any) -> RuleDraft:
         "name": "Rewe",
         "sets": "category",
         "category_id": w["food"],
-        "name_exact": "REWE",
+        "conditions": (rs.name_is("REWE"),),
     }
     base.update(kw)
     return RuleDraft(**base)
@@ -43,7 +45,7 @@ def payee_draft(w: dict[str, Any], **kw: Any) -> RuleDraft:
         "name": "Rewe payee",
         "sets": "payee",
         "payee_id": w["rewe"],
-        "name_exact": "REWE",
+        "conditions": (rs.name_is("REWE"),),
     }
     base.update(kw)
     return RuleDraft(**base)
@@ -72,7 +74,8 @@ def test_matches_are_exact_and_include_confirmed_entries(isolated_engine: Engine
     assert by[b].confirmed and not by[a].confirmed
     assert (by[b].current_value, by[a].current_value) == (w["fun"], None)
     assert by[b].current_key == {"pass": "user"} and by[a].current_key is None
-    assert (by[a].amount, by[a].currency, by[a].counterparty_name) == (-1000, "EUR", "REWE")
+    assert (by[a].amount, by[a].currency) == (-1000, "EUR")
+    assert by[a].source is not None and by[a].source.counterparty_name == "REWE"
     assert all(r.shadowed_by_rule_id is None for r in p.matches.rows)
 
 
@@ -92,8 +95,8 @@ def test_paging_of_the_lists(isolated_engine: Engine, w: dict[str, Any]):
 def test_shadowed_by_an_earlier_rule_of_the_same_kind(isolated_engine: Engine, w: dict[str, Any]):
     with isolated_engine.begin() as conn:
         e = rs.new_entry(conn, w["acct"], counterparty_name="REWE")
-        first = rs.rule(conn, "first", "category", w["fun"], name_exact="REWE", priority=10)
-        rs.rule(conn, "unrelated", "category", w["fun"], name_exact="LIDL", priority=1)
+        first = rs.rule(conn, "first", "category", w["fun"], conditions=(rs.name_is("REWE"),), priority=10)
+        rs.rule(conn, "unrelated", "category", w["fun"], conditions=(rs.name_is("LIDL"),), priority=1)
     p = create_rule(isolated_engine, cat_draft(w, priority=50), dry_run=True).preview
     assert [(r.entry_id, r.shadowed_by_rule_id) for r in p.matches.rows] == [(e, first)]
     # a lower priority number goes first: the new rule is not shadowed then
@@ -109,8 +112,12 @@ def test_shadowing_is_per_field_and_a_counter_account_rule_shadows_every_group(
 ):
     with isolated_engine.begin() as conn:
         rs.new_entry(conn, w["acct"], counterparty_name="REWE")
-        payee_rule = rs.rule(conn, "payee first", "payee", w["rewe"], name_exact="REWE", priority=1)
-        transfer = rs.rule(conn, "to cash", "counter_account", w["cash"], name_exact="REWE", priority=500)
+        payee_rule = rs.rule(
+            conn, "payee first", "payee", w["rewe"], conditions=(rs.name_is("REWE"),), priority=1
+        )
+        transfer = rs.rule(
+            conn, "to cash", "counter_account", w["cash"], conditions=(rs.name_is("REWE"),), priority=500
+        )
     # a payee rule does not shadow a category rule: they set different fields
     other = create_rule(isolated_engine, cat_draft(w, name="other cat"), dry_run=True).preview
     assert other.matches.rows[0].shadowed_by_rule_id == transfer
@@ -138,7 +145,9 @@ def test_a_counter_account_rule_must_pass_the_currency_and_closing_tests(
         )
         rs.new_entry(conn, w["cash"], counterparty_name="ATM", booked_on=date(2026, 2, 11))  # its own account
         late = rs.new_entry(conn, w["acct"], counterparty_name="ATM", booked_on=date(2026, 5, 1))
-    d = RuleDraft(name="atm", sets="counter_account", counter_account_id=w["cash"], name_exact="ATM")
+    d = RuleDraft(
+        name="atm", sets="counter_account", counter_account_id=w["cash"], conditions=(rs.name_is("ATM"),)
+    )
     p = create_rule(isolated_engine, d, dry_run=True).preview
     # not the USD one (currency rule), not the cash account's own entry
     assert ids(p.matches.rows) == {ok, late} and p.matches.total == 2
@@ -146,7 +155,9 @@ def test_a_counter_account_rule_must_pass_the_currency_and_closing_tests(
         conn.execute(text("UPDATE account SET closed_on = '2026-03-01' WHERE id = :i"), {"i": w["cash"]})
     p = create_rule(isolated_engine, d, dry_run=True).preview
     assert ids(p.matches.rows) == {ok}
-    d_usd = RuleDraft(name="atm usd", sets="counter_account", counter_account_id=w["usd"], name_exact="ATM")
+    d_usd = RuleDraft(
+        name="atm usd", sets="counter_account", counter_account_id=w["usd"], conditions=(rs.name_is("ATM"),)
+    )
     assert (
         create_rule(isolated_engine, d_usd, dry_run=True).preview.matches.total == 1
     )  # the instructed USD one
@@ -180,7 +191,7 @@ def test_would_confirm_counts_the_units_the_rule_set_completes(isolated_engine: 
     assert (p.matches.total, p.would_confirm, p.stay_in_review) == (3, 2, 0)
     # with the category rule saved, the payee rule's units complete too (the post-change rule set)
     with isolated_engine.begin() as conn:
-        rs.rule(conn, "cat", "category", w["food"], name_exact="REWE")
+        rs.rule(conn, "cat", "category", w["food"], conditions=(rs.name_is("REWE"),))
     p = create_rule(isolated_engine, payee_draft(w), dry_run=True).preview
     assert (p.would_confirm, p.stay_in_review) == (2, 0)
 
@@ -195,12 +206,14 @@ def test_a_transfer_is_not_confirmable_before_pairing_and_a_split_unit_waits_for
         src = rs.source(conn, w["acct"], counterparty_name="REWE", amount=-1000)
         make_entry(conn, src, type=None, amount=-600)
         make_entry(conn, src, type=None, amount=-400)
-    d = RuleDraft(name="atm", sets="counter_account", counter_account_id=w["cash"], name_exact="ATM")
+    d = RuleDraft(
+        name="atm", sets="counter_account", counter_account_id=w["cash"], conditions=(rs.name_is("ATM"),)
+    )
     p = create_rule(isolated_engine, d, dry_run=True).preview
     assert (p.matches.total, p.would_confirm, p.stay_in_review) == (1, 0, 1)
     # both entries of the split match, and both are decided by the rule: the unit is confirmed
     with isolated_engine.begin() as conn:
-        rs.rule(conn, "payee", "payee", w["rewe"], name_exact="REWE")
+        rs.rule(conn, "payee", "payee", w["rewe"], conditions=(rs.name_is("REWE"),))
     p = create_rule(isolated_engine, cat_draft(w), dry_run=True).preview
     assert (p.matches.total, p.would_confirm) == (2, 2)
 
@@ -214,7 +227,9 @@ def test_a_history_proposal_is_not_standing(isolated_engine: Engine, w: dict[str
         rs.new_entry(conn, w["acct"], counterparty_name="REWE", counterparty_ref="DE01")
     # the payee rule decides the type, history proposes the category: complete but not standing
     p = create_rule(
-        isolated_engine, payee_draft(w, name_exact=None, counterparty_ref="DE01"), dry_run=True
+        isolated_engine,
+        payee_draft(w, conditions=(rs.cond("counterparty_ref", "equals", "DE01"),)),
+        dry_run=True,
     ).preview
     assert (p.would_confirm, p.stay_in_review) == (0, 1)
 
@@ -226,7 +241,7 @@ def test_list_a_holds_matched_entries_whose_different_value_settling_keeps(
     isolated_engine: Engine, w: dict[str, Any]
 ):
     with isolated_engine.begin() as conn:
-        rid = rs.rule(conn, "rewe", "category", w["food"], name_exact="REWE")
+        rid = rs.rule(conn, "rewe", "category", w["food"], conditions=(rs.name_is("REWE"),))
         same = rs.confirmed_entry(
             conn,
             w["acct"],
@@ -264,7 +279,7 @@ def test_list_a_of_a_counter_account_and_a_payee_rule(isolated_engine: Engine, w
     with isolated_engine.begin() as conn:
         rs.new_entry(conn, w["acct"], counterparty_name="ATM")
         b = rs.confirmed_entry(conn, w["acct"], category=w["fun"], payee=w["other"], counterparty_name="ATM")
-    p = create_rule(isolated_engine, payee_draft(w, name_exact="ATM"), dry_run=True).preview
+    p = create_rule(isolated_engine, payee_draft(w, conditions=(rs.name_is("ATM"),)), dry_run=True).preview
     assert ids(p.different_value.rows) == {b}
     assert next(r for r in p.different_value.rows if r.entry_id == b).current_value == w["other"]
 
@@ -276,8 +291,8 @@ def test_list_b_holds_keyed_entries_the_edited_rule_no_longer_matches(
     isolated_engine: Engine, w: dict[str, Any]
 ):
     with isolated_engine.begin() as conn:
-        rid = rs.rule(conn, "rewe", "payee", w["rewe"], name_prefix="REWE")
-        other = rs.rule(conn, "other", "payee", w["other"], name_prefix="LIDL")
+        rid = rs.rule(conn, "rewe", "payee", w["rewe"], conditions=(rs.name_starts("REWE"),))
+        other = rs.rule(conn, "other", "payee", w["other"], conditions=(rs.name_starts("LIDL"),))
         keep = rs.confirmed_entry(
             conn,
             w["acct"],
@@ -307,14 +322,17 @@ def test_list_b_holds_keyed_entries_the_edited_rule_no_longer_matches(
         )
     # unchanged conditions: nothing lost
     same = update_rule(
-        isolated_engine, rid, payee_draft(w, name="rewe", name_exact=None, name_prefix="REWE"), dry_run=True
+        isolated_engine,
+        rid,
+        payee_draft(w, name="rewe", conditions=(rs.name_starts("REWE"),)),
+        dry_run=True,
     )
     assert same.preview.lost_key.total == 0
     # narrowed
     p = update_rule(
         isolated_engine,
         rid,
-        payee_draft(w, name="rewe", name_exact=None, name_prefix="REWE MARKT"),
+        payee_draft(w, name="rewe", conditions=(rs.name_starts("REWE MARKT"),)),
         dry_run=True,
     ).preview
     assert ids(p.lost_key.rows) == {lose, type_only} and p.lost_key.total == 2
@@ -332,7 +350,7 @@ def test_list_b_counts_an_entry_the_rule_matches_by_conditions_but_not_by_accoun
     isolated_engine: Engine, w: dict[str, Any]
 ):
     with isolated_engine.begin() as conn:
-        rid = rs.rule(conn, "atm", "counter_account", w["cash"], name_exact="ATM")
+        rid = rs.rule(conn, "atm", "counter_account", w["cash"], conditions=(rs.name_is("ATM"),))
         e = rs.confirmed_entry(
             conn,
             w["acct"],
@@ -341,6 +359,92 @@ def test_list_b_counts_an_entry_the_rule_matches_by_conditions_but_not_by_accoun
             counterparty_name="ATM",
         )
         conn.execute(text("UPDATE account SET closed_on = '2026-01-01' WHERE id = :i"), {"i": w["cash"]})
-    d = RuleDraft(name="atm", sets="counter_account", counter_account_id=w["cash"], name_exact="ATM")
+    d = RuleDraft(
+        name="atm", sets="counter_account", counter_account_id=w["cash"], conditions=(rs.name_is("ATM"),)
+    )
     p = update_rule(isolated_engine, rid, d, dry_run=True).preview
     assert ids(p.lost_key.rows) == {e}  # the closed wallet no longer matches
+
+
+def test_every_row_list_carries_the_entry_source_without_extra_queries(
+    isolated_engine: Engine, w: dict[str, Any]
+):
+    with isolated_engine.begin() as conn:
+        a = rs.new_entry(
+            conn,
+            w["acct"],
+            counterparty_name="REWE",
+            counterparty_ref="DE01",
+            counterparty_bic="BYLADEM1",
+            purpose="Einkauf",
+            booking_text="Kartenzahlung",
+            end_to_end_id="E2E-1",
+            mandate_ref="M-1",
+            instructed_amount=-900,
+            instructed_currency="USD",
+        )
+        # a user-authored row: no importer, run or format; it has only a purpose
+        user = rs.new_entry(
+            conn, w["acct"], importer=None, import_run_id=None, source_format=None, purpose="REWE Einkauf"
+        )
+        lost = rs.rule(conn, "old", "category", w["fun"], conditions=(rs.name_is("REWE"),))
+        conn.execute(
+            text("UPDATE ledger_entry SET derivation = CAST(:d AS jsonb) WHERE id = :i"),
+            {"d": json.dumps({"category": rs.key(lost)}), "i": a},
+        )
+    draft = cat_draft(w, conditions=(rs.cond("purpose", "contains", "einkauf"), rs.name_is("REWE")))
+    p = update_rule(isolated_engine, lost, draft, dry_run=True).preview
+    assert [r.entry_id for r in p.matches.rows] == [a]
+    src = p.matches.rows[0].source
+    assert src == SourceFields(
+        counterparty_name="REWE",
+        counterparty_ref="DE01",
+        counterparty_bic="BYLADEM1",
+        purpose="Einkauf",
+        booking_text="Kartenzahlung",
+        end_to_end_id="E2E-1",
+        mandate_ref="M-1",
+        instructed_amount=-900,
+        instructed_currency="USD",
+        source_format="csv",
+    )
+    assert not hasattr(src, "raw") and not hasattr(src, "content_hash")
+    # a condition on the purpose matches the user-authored row too, and it has no source
+    only_purpose = cat_draft(w, name="by purpose", conditions=(rs.cond("purpose", "contains", "rewe"),))
+    q = create_rule(isolated_engine, only_purpose, dry_run=True).preview
+    by = {r.entry_id: r for r in q.matches.rows}
+    assert set(by) == {user}  # the imported row's purpose is "Einkauf"
+    assert by[user].source is None
+    # list B (the old rule's key on an entry it no longer matches) carries it too
+    assert [r.entry_id for r in create_rule(isolated_engine, draft, dry_run=True).preview.lost_key.rows] == []
+    narrowed = update_rule(
+        isolated_engine, lost, cat_draft(w, conditions=(rs.name_is("NOBODY"),)), dry_run=True
+    )
+    assert [r.entry_id for r in narrowed.preview.lost_key.rows] == [a]
+    assert narrowed.preview.lost_key.rows[0].source == src
+
+
+def test_the_preview_reads_the_sources_in_one_batch(isolated_engine: Engine, w: dict[str, Any]):
+    """The number of statements does not grow with the number of rows (no query per row)."""
+    from sqlalchemy import event
+
+    def statements_for_preview() -> int:
+        seen: list[str] = []
+
+        def count(conn: Any, cursor: Any, statement: str, *rest: Any) -> None:
+            seen.append(statement)
+
+        event.listen(isolated_engine, "before_cursor_execute", count)
+        try:
+            create_rule(isolated_engine, cat_draft(w), dry_run=True)
+        finally:
+            event.remove(isolated_engine, "before_cursor_execute", count)
+        return len(seen)
+
+    with isolated_engine.begin() as conn:
+        rs.new_entry(conn, w["acct"], counterparty_name="REWE")
+    few = statements_for_preview()
+    with isolated_engine.begin() as conn:
+        for _ in range(12):
+            rs.new_entry(conn, w["acct"], counterparty_name="REWE", purpose="x")
+    assert statements_for_preview() == few
