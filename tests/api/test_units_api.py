@@ -164,4 +164,6 @@ def test_operation_ids(anna: TestClient) -> None:
         ("/api/units/queue", "get"): "get_review_queue",
         ("/api/units/queue/new-count", "get"): "get_new_unit_count",
         ("/api/units/{entry_id}", "get"): "get_unit",
+        ("/api/units/preview", "post"): "preview_unit",
+        ("/api/units/commit", "post"): "commit_unit",
     }

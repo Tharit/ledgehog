@@ -838,6 +838,44 @@
         "title": "CreateInstance",
         "type": "object"
       },
+      "DeleteCountsOut": {
+        "properties": {
+          "confirmed_entries": {
+            "title": "Confirmed Entries",
+            "type": "integer"
+          },
+          "entries": {
+            "title": "Entries",
+            "type": "integer"
+          },
+          "freed_documents": {
+            "title": "Freed Documents",
+            "type": "integer"
+          },
+          "partners_returning_to_review": {
+            "title": "Partners Returning To Review",
+            "type": "integer"
+          },
+          "tag_memberships": {
+            "title": "Tag Memberships",
+            "type": "integer"
+          },
+          "tagged_entries": {
+            "title": "Tagged Entries",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "entries",
+          "confirmed_entries",
+          "tagged_entries",
+          "tag_memberships",
+          "partners_returning_to_review",
+          "freed_documents"
+        ],
+        "title": "DeleteCountsOut",
+        "type": "object"
+      },
       "DeleteOut": {
         "properties": {
           "settle": {
@@ -848,6 +886,62 @@
           "settle"
         ],
         "title": "DeleteOut",
+        "type": "object"
+      },
+      "EditEffectsOut": {
+        "properties": {
+          "collapsed_entry_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Collapsed Entry Ids",
+            "type": "array"
+          },
+          "deleted_entry_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Deleted Entry Ids",
+            "type": "array"
+          },
+          "rederived_entry_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Rederived Entry Ids",
+            "type": "array"
+          },
+          "returned_to_review_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Returned To Review Ids",
+            "type": "array"
+          },
+          "unpaired_entry_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Unpaired Entry Ids",
+            "type": "array"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/EntryVersionOut"
+            },
+            "title": "Versions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "collapsed_entry_ids",
+          "unpaired_entry_ids",
+          "deleted_entry_ids",
+          "rederived_entry_ids",
+          "returned_to_review_ids",
+          "versions"
+        ],
+        "title": "EditEffectsOut",
         "type": "object"
       },
       "EntryOut": {
@@ -1162,6 +1256,24 @@
           "settle"
         ],
         "title": "EntryTagsOut",
+        "type": "object"
+      },
+      "EntryVersionOut": {
+        "properties": {
+          "entry_id": {
+            "title": "Entry Id",
+            "type": "integer"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "entry_id",
+          "version"
+        ],
+        "title": "EntryVersionOut",
         "type": "object"
       },
       "ErrorBody": {
@@ -2614,6 +2726,197 @@
         "title": "SettleOut",
         "type": "object"
       },
+      "SourceCreateBody": {
+        "additionalProperties": false,
+        "properties": {
+          "account_id": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 9007199254740992.0,
+            "title": "Account Id",
+            "type": "integer"
+          },
+          "amount": {
+            "maximum": 9007199254740992.0,
+            "minimum": -9007199254740992.0,
+            "title": "Amount",
+            "type": "integer"
+          },
+          "booked_on": {
+            "format": "date",
+            "title": "Booked On",
+            "type": "string"
+          },
+          "id": {
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Id",
+            "type": "string"
+          },
+          "purpose": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          }
+        },
+        "required": [
+          "id",
+          "account_id",
+          "amount",
+          "booked_on"
+        ],
+        "title": "SourceCreateBody",
+        "type": "object"
+      },
+      "SourceDeleteOut": {
+        "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/DeleteCountsOut"
+          },
+          "dry_run": {
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "freed_document_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Freed Document Ids",
+            "type": "array"
+          },
+          "partners": {
+            "items": {
+              "$ref": "#/components/schemas/EntryOut"
+            },
+            "title": "Partners",
+            "type": "array"
+          },
+          "removed": {
+            "items": {
+              "$ref": "#/components/schemas/EntryOut"
+            },
+            "title": "Removed",
+            "type": "array"
+          },
+          "removed_entry_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Removed Entry Ids",
+            "type": "array"
+          },
+          "settle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SettleOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source_transaction_id": {
+            "title": "Source Transaction Id",
+            "type": "integer"
+          },
+          "units": {
+            "items": {
+              "$ref": "#/components/schemas/UnitRefOut"
+            },
+            "title": "Units",
+            "type": "array"
+          }
+        },
+        "required": [
+          "dry_run",
+          "source_transaction_id",
+          "counts",
+          "removed",
+          "removed_entry_ids",
+          "freed_document_ids",
+          "partners",
+          "units",
+          "settle"
+        ],
+        "title": "SourceDeleteOut",
+        "type": "object"
+      },
+      "SourceEditOut": {
+        "properties": {
+          "anchor_entry_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anchor Entry Id"
+          },
+          "dry_run": {
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "effects": {
+            "$ref": "#/components/schemas/EditEffectsOut"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/EntryOut"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "removed_entry_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Removed Entry Ids",
+            "type": "array"
+          },
+          "settle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SettleOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source_transaction_id": {
+            "title": "Source Transaction Id",
+            "type": "integer"
+          },
+          "units": {
+            "items": {
+              "$ref": "#/components/schemas/UnitRefOut"
+            },
+            "title": "Units",
+            "type": "array"
+          }
+        },
+        "required": [
+          "dry_run",
+          "source_transaction_id",
+          "effects",
+          "anchor_entry_id",
+          "entries",
+          "units",
+          "removed_entry_ids",
+          "settle"
+        ],
+        "title": "SourceEditOut",
+        "type": "object"
+      },
       "SourceTransactionOut": {
         "description": "An entry's source transaction as the UI and rules read it; never the raw record or the hash.",
         "properties": {
@@ -2728,6 +3031,119 @@
           "source_format"
         ],
         "title": "SourceTransactionOut",
+        "type": "object"
+      },
+      "SourceUpdateBody": {
+        "additionalProperties": false,
+        "description": "Absent fields stay; `purpose: null` or blank clears it. Never the account (422).",
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740992.0,
+                "minimum": -9007199254740992.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "booked_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked On"
+          },
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "expected_versions": {
+            "additionalProperties": {
+              "exclusiveMinimum": 0.0,
+              "maximum": 2147483647.0,
+              "type": "integer"
+            },
+            "default": {},
+            "title": "Expected Versions",
+            "type": "object"
+          },
+          "purpose": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          }
+        },
+        "title": "SourceUpdateBody",
+        "type": "object"
+      },
+      "SourceWriteOut": {
+        "properties": {
+          "anchor_entry_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anchor Entry Id"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/EntryOut"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "removed_entry_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Removed Entry Ids",
+            "type": "array"
+          },
+          "settle": {
+            "$ref": "#/components/schemas/SettleOut"
+          },
+          "source_transaction_id": {
+            "title": "Source Transaction Id",
+            "type": "integer"
+          },
+          "units": {
+            "items": {
+              "$ref": "#/components/schemas/UnitRefOut"
+            },
+            "title": "Units",
+            "type": "array"
+          }
+        },
+        "required": [
+          "source_transaction_id",
+          "anchor_entry_id",
+          "entries",
+          "units",
+          "removed_entry_ids",
+          "settle"
+        ],
+        "title": "SourceWriteOut",
         "type": "object"
       },
       "SpanOut": {
@@ -3211,6 +3627,415 @@
         "title": "TagsOut",
         "type": "object"
       },
+      "UnitCommitConsequenceOut": {
+        "properties": {
+          "entry_id": {
+            "title": "Entry Id",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "created",
+              "changed",
+              "returns_to_review",
+              "deleted",
+              "unpaired",
+              "left_behind"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "entry_id",
+          "kind"
+        ],
+        "title": "UnitCommitConsequenceOut",
+        "type": "object"
+      },
+      "UnitCommitOut": {
+        "description": "Everything the commit touched, as rows (architecture \u00a74.1): the client patches what comes back.",
+        "properties": {
+          "consequences": {
+            "items": {
+              "$ref": "#/components/schemas/UnitCommitConsequenceOut"
+            },
+            "title": "Consequences",
+            "type": "array"
+          },
+          "created": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Created",
+            "type": "object"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/EntryOut"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "other_entry_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Other Entry Ids",
+            "type": "array"
+          },
+          "removed_entry_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Removed Entry Ids",
+            "type": "array"
+          },
+          "settle": {
+            "$ref": "#/components/schemas/SettleOut"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          },
+          "units": {
+            "items": {
+              "$ref": "#/components/schemas/UnitCommittedOut"
+            },
+            "title": "Units",
+            "type": "array"
+          }
+        },
+        "required": [
+          "created",
+          "removed_entry_ids",
+          "entries",
+          "other_entry_ids",
+          "truncated",
+          "units",
+          "consequences",
+          "settle"
+        ],
+        "title": "UnitCommitOut",
+        "type": "object"
+      },
+      "UnitCommittedOut": {
+        "properties": {
+          "anchor_entry_id": {
+            "title": "Anchor Entry Id",
+            "type": "integer"
+          },
+          "entry_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Entry Ids",
+            "type": "array"
+          },
+          "state": {
+            "$ref": "#/components/schemas/UnitStateOut"
+          }
+        },
+        "required": [
+          "anchor_entry_id",
+          "entry_ids",
+          "state"
+        ],
+        "title": "UnitCommittedOut",
+        "type": "object"
+      },
+      "UnitConsequenceOut": {
+        "properties": {
+          "entry_id": {
+            "title": "Entry Id",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "created",
+              "changed",
+              "returns_to_review",
+              "deleted",
+              "unpaired",
+              "left_behind"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "row": {
+            "$ref": "#/components/schemas/UnitPreviewRowOut"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "entry_id",
+          "kind",
+          "version",
+          "row"
+        ],
+        "title": "UnitConsequenceOut",
+        "type": "object"
+      },
+      "UnitDraftEntryIn": {
+        "additionalProperties": false,
+        "description": "One entry the draft changes. `description` and `note` are left as stored when absent and emptied when\nnull. A new entry (negative `id`) names `source_entry_id`, a stored entry of the source it splits, and\ncarries its `amount`; the source's original entry is the residual and takes no amount of its own.",
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "maximum": 4.611686018427388e+18,
+                "minimum": -4.611686018427388e+18,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "category": {
+            "$ref": "#/components/schemas/UnitFieldDraftIn"
+          },
+          "counter_account": {
+            "$ref": "#/components/schemas/UnitFieldDraftIn"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "id": {
+            "maximum": 9007199254740992.0,
+            "minimum": -9007199254740992.0,
+            "title": "Id",
+            "type": "integer"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "payee": {
+            "$ref": "#/components/schemas/UnitFieldDraftIn"
+          },
+          "source_entry_id": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 9007199254740992.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Entry Id"
+          },
+          "type": {
+            "$ref": "#/components/schemas/UnitFieldDraftIn"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "UnitDraftEntryIn",
+        "type": "object"
+      },
+      "UnitDraftIn": {
+        "additionalProperties": false,
+        "description": "The draft of the unit anchored on `anchor_entry_id`. `versions` map an entry id to the version the\nclient saw, for every entry of the unit (a commit carries them; a preview ignores them).",
+        "properties": {
+          "anchor_entry_id": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 9007199254740992.0,
+            "title": "Anchor Entry Id",
+            "type": "integer"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/UnitDraftEntryIn"
+            },
+            "maxItems": 500,
+            "title": "Entries",
+            "type": "array"
+          },
+          "removed_entry_ids": {
+            "items": {
+              "exclusiveMinimum": 0.0,
+              "maximum": 9007199254740992.0,
+              "type": "integer"
+            },
+            "maxItems": 500,
+            "title": "Removed Entry Ids",
+            "type": "array"
+          },
+          "reresolve_all": {
+            "default": false,
+            "title": "Reresolve All",
+            "type": "boolean"
+          },
+          "versions": {
+            "additionalProperties": {
+              "exclusiveMinimum": 0.0,
+              "maximum": 2147483647.0,
+              "type": "integer"
+            },
+            "title": "Versions",
+            "type": "object"
+          }
+        },
+        "required": [
+          "anchor_entry_id"
+        ],
+        "title": "UnitDraftIn",
+        "type": "object"
+      },
+      "UnitFieldDraftIn": {
+        "additionalProperties": false,
+        "description": "`keep`: untouched (a commit accepts what resolution makes of it). `fixed`: the user's `value` (null\nleaves the field empty). `reresolve`: the passes decide this field again.",
+        "properties": {
+          "mode": {
+            "default": "keep",
+            "enum": [
+              "keep",
+              "fixed",
+              "reresolve"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "shown_basis": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UnitShownBasisIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "title": "UnitFieldDraftIn",
+        "type": "object"
+      },
+      "UnitFieldOut": {
+        "description": "One derived field of a row as the draft leaves it.",
+        "properties": {
+          "commit_key": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UnitKeyOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "is_proposal": {
+            "title": "Is Proposal",
+            "type": "boolean"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UnitKeyOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stored": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UnitStoredFieldOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "value",
+          "key",
+          "is_proposal",
+          "commit_key",
+          "stored"
+        ],
+        "title": "UnitFieldOut",
+        "type": "object"
+      },
+      "UnitKeyOut": {
+        "description": "A derivation key: the pass and its basis (a `user` key's basis is the proposal it accepted).",
+        "properties": {
+          "basis": {
+            "additionalProperties": true,
+            "title": "Basis",
+            "type": "object"
+          },
+          "pass": {
+            "title": "Pass",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pass",
+          "basis"
+        ],
+        "title": "UnitKeyOut",
+        "type": "object"
+      },
       "UnitOut": {
         "properties": {
           "anchor_entry_id": {
@@ -3241,6 +4066,391 @@
         "title": "UnitOut",
         "type": "object"
       },
+      "UnitPlannedOut": {
+        "properties": {
+          "anchor_entry_id": {
+            "title": "Anchor Entry Id",
+            "type": "integer"
+          },
+          "entry_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Entry Ids",
+            "type": "array"
+          },
+          "state": {
+            "$ref": "#/components/schemas/UnitStateOut"
+          },
+          "unit_key": {
+            "title": "Unit Key",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "anchor_entry_id",
+          "unit_key",
+          "entry_ids",
+          "state"
+        ],
+        "title": "UnitPlannedOut",
+        "type": "object"
+      },
+      "UnitPreviewOut": {
+        "description": "What committing the draft would do. Nothing was written.",
+        "properties": {
+          "consequences": {
+            "items": {
+              "$ref": "#/components/schemas/UnitConsequenceOut"
+            },
+            "title": "Consequences",
+            "type": "array"
+          },
+          "problems": {
+            "items": {
+              "$ref": "#/components/schemas/UnitProblemOut"
+            },
+            "title": "Problems",
+            "type": "array"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/UnitPreviewRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "splits": {
+            "items": {
+              "$ref": "#/components/schemas/UnitSplitOut"
+            },
+            "title": "Splits",
+            "type": "array"
+          },
+          "state": {
+            "$ref": "#/components/schemas/UnitStateOut"
+          },
+          "units": {
+            "items": {
+              "$ref": "#/components/schemas/UnitPlannedOut"
+            },
+            "title": "Units",
+            "type": "array"
+          },
+          "versions": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Versions",
+            "type": "object"
+          }
+        },
+        "required": [
+          "state",
+          "units",
+          "rows",
+          "splits",
+          "problems",
+          "consequences",
+          "versions"
+        ],
+        "title": "UnitPreviewOut",
+        "type": "object"
+      },
+      "UnitPreviewRowOut": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "integer"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "booked_on": {
+            "format": "date",
+            "title": "Booked On",
+            "type": "string"
+          },
+          "counterpart_entry_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Counterpart Entry Id"
+          },
+          "derivation": {
+            "additionalProperties": true,
+            "title": "Derivation",
+            "type": "object"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "fields": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/UnitFieldOut"
+            },
+            "propertyNames": {
+              "enum": [
+                "type",
+                "payee",
+                "category",
+                "counter_account"
+              ]
+            },
+            "title": "Fields",
+            "type": "object"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "in_unit": {
+            "title": "In Unit",
+            "type": "boolean"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "original": {
+            "title": "Original",
+            "type": "boolean"
+          },
+          "review_flags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Review Flags",
+            "type": "array"
+          },
+          "source_transaction_id": {
+            "title": "Source Transaction Id",
+            "type": "integer"
+          },
+          "stored": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UnitStoredRowOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tag_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Tag Ids",
+            "type": "array"
+          },
+          "unit_key": {
+            "title": "Unit Key",
+            "type": "integer"
+          },
+          "value_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value On"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "source_transaction_id",
+          "unit_key",
+          "in_unit",
+          "original",
+          "account_id",
+          "booked_on",
+          "value_on",
+          "amount",
+          "description",
+          "note",
+          "tag_ids",
+          "counterpart_entry_id",
+          "fields",
+          "review_flags",
+          "derivation",
+          "stored"
+        ],
+        "title": "UnitPreviewRowOut",
+        "type": "object"
+      },
+      "UnitProblemOut": {
+        "description": "A way the result would break an invariant (a commit is refused for it): a code, never prose.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "detail": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Detail",
+            "type": "object"
+          },
+          "entry_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entry Id"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          }
+        },
+        "required": [
+          "code",
+          "entry_id",
+          "field",
+          "detail"
+        ],
+        "title": "UnitProblemOut",
+        "type": "object"
+      },
+      "UnitRefOut": {
+        "properties": {
+          "anchor_entry_id": {
+            "title": "Anchor Entry Id",
+            "type": "integer"
+          },
+          "entry_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Entry Ids",
+            "type": "array"
+          },
+          "state": {
+            "$ref": "#/components/schemas/UnitStateOut"
+          }
+        },
+        "required": [
+          "anchor_entry_id",
+          "entry_ids",
+          "state"
+        ],
+        "title": "UnitRefOut",
+        "type": "object"
+      },
+      "UnitShownBasisIn": {
+        "additionalProperties": false,
+        "description": "The key of the proposal the client showed for a value (`pass` is history, llm or matcher_proposal).",
+        "properties": {
+          "basis": {
+            "additionalProperties": true,
+            "title": "Basis",
+            "type": "object"
+          },
+          "pass": {
+            "title": "Pass",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pass"
+        ],
+        "title": "UnitShownBasisIn",
+        "type": "object"
+      },
+      "UnitSplitOut": {
+        "description": "One source transaction's allocation: the residual is its original entry.",
+        "properties": {
+          "entry_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Entry Ids",
+            "type": "array"
+          },
+          "residual_amount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "residual_entry_id": {
+            "title": "Residual Entry Id",
+            "type": "integer"
+          },
+          "source_amount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "source_transaction_id": {
+            "title": "Source Transaction Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source_transaction_id",
+          "source_amount",
+          "residual_entry_id",
+          "residual_amount",
+          "entry_ids"
+        ],
+        "title": "UnitSplitOut",
+        "type": "object"
+      },
       "UnitStateOut": {
         "properties": {
           "confirmed": {
@@ -3265,6 +4475,76 @@
           "reasons"
         ],
         "title": "UnitStateOut",
+        "type": "object"
+      },
+      "UnitStoredFieldOut": {
+        "properties": {
+          "key": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UnitKeyOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "value",
+          "key"
+        ],
+        "title": "UnitStoredFieldOut",
+        "type": "object"
+      },
+      "UnitStoredRowOut": {
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "amount",
+          "description",
+          "note"
+        ],
+        "title": "UnitStoredRowOut",
         "type": "object"
       },
       "UpdateBody": {
@@ -6692,6 +7972,267 @@
         ]
       }
     },
+    "/api/ledger/sources": {
+      "post": {
+        "description": "Enter a movement on an unsynced account. A repeated `id` returns the row already entered (200).",
+        "operationId": "create_ledger_source",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceCreateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceWriteOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceWriteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflicts with the current state."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Create Ledger Source",
+        "tags": [
+          "sources"
+        ]
+      }
+    },
+    "/api/ledger/sources/{source_id}": {
+      "delete": {
+        "description": "Delete a user-authored row and its entries (the removal routine). `dry_run` reports what goes.",
+        "operationId": "delete_ledger_source",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740992,
+              "title": "Source Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Dry Run",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Repeatable `entry_id:version`: the row's entries and their partners.",
+            "in": "query",
+            "name": "expected_versions",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Repeatable `entry_id:version`: the row's entries and their partners.",
+              "title": "Expected Versions"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceDeleteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflicts with the current state."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Delete Ledger Source",
+        "tags": [
+          "sources"
+        ]
+      },
+      "put": {
+        "description": "Edit a user-authored row's amount, date or purpose; the entries follow (spec \u00a75.6).\n\n`dry_run` reports what the edit would collapse, unpair and derive again, and writes nothing. A real\nrun carries `expected_versions` for the row's entries and the partners it unpairs.",
+        "operationId": "update_ledger_source",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740992,
+              "title": "Source Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceUpdateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceEditOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflicts with the current state."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Update Ledger Source",
+        "tags": [
+          "sources"
+        ]
+      }
+    },
     "/api/ledger/tags": {
       "get": {
         "description": "Every tag by name with its derived span; a tag no entry uses has a null span and a count of 0.",
@@ -7223,6 +8764,130 @@
           }
         },
         "summary": "Login"
+      }
+    },
+    "/api/units/commit": {
+      "post": {
+        "description": "Write the draft in one transaction, then settle. A commit does not confirm: settling does.\n\n409 `conflict` names the entries whose version moved (or that `versions` omitted); 409 `unit_moved` is a\nclosure that changed under the locks; 409 `stale_reference` a category, payee or account that no longer\nexists; 409 `try_again` a deadlock lost twice. 422 carries the code of the first problem the preview would\nlist (all of them in `details.problems`), or `invalid_draft`.",
+        "operationId": "commit_unit",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnitDraftIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnitCommitOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflicts with the current state."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Commit Unit",
+        "tags": [
+          "units"
+        ]
+      }
+    },
+    "/api/units/preview": {
+      "post": {
+        "description": "The unit as a commit of the draft would leave it, resolved fresh: rows, keys, flags, the state it leads\nto, the problems that would refuse the commit and the consequences. An in-memory overlay: nothing is\nwritten.",
+        "operationId": "preview_unit",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnitDraftIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnitPreviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflicts with the current state."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Preview Unit",
+        "tags": [
+          "units"
+        ]
       }
     },
     "/api/units/queue": {

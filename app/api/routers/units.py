@@ -14,7 +14,19 @@ from pydantic import BaseModel
 from app.api.errors import ApiError, map_error
 from app.api.ids import PathId
 from app.api.routers.entries import EntryOut
+from app.api.routers.unit_drafts import (
+    UnitCommitOut,
+    UnitDraftIn,
+    UnitPreviewOut,
+    UnitProblemOut,
+    UnitStateOut,
+)
 from app.api.session import CurrentUser, EngineDep
+from app.core.units.commit import CommitRefused, UnitMoved
+from app.core.units.commit import commit_unit as write_unit
+from app.core.units.draft import DraftError
+from app.core.units.preview import UnitNotFound
+from app.core.units.preview import preview_unit as read_preview
 from app.core.units.read import (
     DEFAULT_LIMIT,
     MAX_LIMIT,
@@ -25,7 +37,8 @@ from app.core.units.read import (
     review_queue,
 )
 from app.core.units.read import get_unit as read_unit
-from app.core.units.state import UnitState
+
+__all__ = ["UnitStateOut", "router"]  # UnitStateOut is shared with the entry form
 
 router = APIRouter(prefix="/api/units", tags=["units"])
 
@@ -37,18 +50,8 @@ map_error(
     details=lambda e: [{"location": ["query", e.parameter], "message": str(e), "type": "invalid_token"}],
 )
 
-UnitReason = Literal["incomplete", "unpaired_transfer", "non_standing_keys"]
 SectionKind = Literal["pending_review", "needs_account", "waiting"]
 Token = Annotated[str, Query(min_length=1, max_length=200)]
-
-
-class UnitStateOut(BaseModel):
-    confirmed: bool
-    reasons: list[UnitReason]  # why not; empty when confirmed
-
-    @staticmethod
-    def of(state: UnitState) -> UnitStateOut:
-        return UnitStateOut(confirmed=state.confirmed, reasons=list(state.reasons))
 
 
 class UnitOut(BaseModel):
@@ -142,3 +145,43 @@ def get_unit(entry_id: PathId, user: CurrentUser, engine: EngineDep) -> UnitOut:
     if view is None:
         raise UnitMissing(entry_id)
     return UnitOut.of(view)
+
+
+# a draft that makes no sense against the stored unit: one 422 with the machine code in `details.code`
+map_error(
+    DraftError,
+    422,
+    "invalid_draft",
+    details=lambda e: {"code": e.code, "entry_id": e.entry_id, "field": e.field},
+)
+map_error(UnitNotFound, 404, "not_found")
+# the closure changed between reading the unit and holding its locks: reload it
+map_error(UnitMoved, 409, "unit_moved", details=lambda e: {"anchor_entry_id": e.anchor_entry_id})
+
+
+@router.post("/preview")
+def preview_unit(body: UnitDraftIn, user: CurrentUser, engine: EngineDep) -> UnitPreviewOut:
+    """The unit as a commit of the draft would leave it, resolved fresh: rows, keys, flags, the state it leads
+    to, the problems that would refuse the commit and the consequences. An in-memory overlay: nothing is
+    written."""
+    return UnitPreviewOut.of(read_preview(engine, body.to_core()))
+
+
+@router.post("/commit")
+def commit_unit(body: UnitDraftIn, user: CurrentUser, engine: EngineDep) -> UnitCommitOut:
+    """Write the draft in one transaction, then settle. A commit does not confirm: settling does.
+
+    409 `conflict` names the entries whose version moved (or that `versions` omitted); 409 `unit_moved` is a
+    closure that changed under the locks; 409 `stale_reference` a category, payee or account that no longer
+    exists; 409 `try_again` a deadlock lost twice. 422 carries the code of the first problem the preview would
+    list (all of them in `details.problems`), or `invalid_draft`."""
+    try:
+        return UnitCommitOut.of(write_unit(engine, body.to_core()))
+    except CommitRefused as refused:
+        first = refused.problems[0]
+        raise ApiError(
+            422,
+            first.code,
+            str(refused),
+            {"problems": [UnitProblemOut.of(p).model_dump() for p in refused.problems]},
+        ) from refused

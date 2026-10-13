@@ -11,12 +11,13 @@ nothing to write (I37). Confirmed units are never read (I20).
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy import Connection, text
 
-from app.core.plugins.classifier import FIELD_ORDER, Field
+from app.core.plugins.classifier import FIELD_ORDER, AccountFact, Classifier, Field, HistorySource
 from app.core.resolution import Decided, Resolved, diff, rederive
 from app.core.resolution.load import UnconfirmedEntry, load_accounts, load_rules, load_unconfirmed
 from app.core.resolution.registry import classifiers_for
@@ -90,6 +91,61 @@ def _stale_keys(row: UnconfirmedEntry, current: Mapping[Field, Decided | None]) 
     return any(f in row.derivation and current[f] is None for f in _COLUMN)
 
 
+@dataclass(frozen=True, slots=True)
+class Rewrite:
+    """What settling writes on one entry: its four values and its whole `derivation`."""
+
+    type: str | None
+    payee_id: int | None
+    category_id: int | None
+    counter_account_id: int | None
+    derivation: dict[str, Any]
+
+
+def rewrite_of(
+    row: UnconfirmedEntry,
+    *,
+    accounts: Sequence[AccountFact],
+    classifiers: Sequence[Classifier],
+    history: HistorySource | None,
+) -> Rewrite | None:
+    """What step 1 writes for one entry of an unconfirmed unit, or None when it writes nothing.
+
+    The one decision both settling and the unit preview take, so a preview cannot drift from the settle
+    that follows a commit. A paired leg is never rewritten (the pair owns its type and counter-account),
+    nor is a transfer on an entry that is not its source's original (I31).
+    """
+    if row.paired:  # a pair's type and counter-account belong to the pair (spec §5.7, step 8)
+        return None
+    current = stored_decisions(row)
+    new = rederive(
+        row.input,
+        current,
+        accounts=accounts,
+        classifiers=classifiers,
+        history=history,
+        exclude_entry_ids=frozenset({row.input.entry_id}),
+    )
+    if not diff(current, new) and not _stale_keys(row, current):
+        return None
+    kind = new.get("type")
+    if kind is not None and kind.value == "transfer" and not row.original:
+        # a source transaction has at most one transfer entry (I31), and a split's other
+        # entries are flows: leave this one as it is rather than break the unique index
+        return None
+
+    def value(d: Decided | None) -> int | None:
+        return int(d.value) if d is not None else None
+
+    return Rewrite(
+        type=str(kind.value) if kind is not None else None,
+        payee_id=value(new.get("payee")),
+        category_id=value(new.get("category")),
+        counter_account_id=value(new.get("counter_account")),
+        derivation=new_derivation(row.derivation, new),
+    )
+
+
 def resolve_step(conn: Connection) -> StepOutcome:
     run = current_run()
     ctx = _context(conn, run)
@@ -100,37 +156,19 @@ def resolve_step(conn: Connection) -> StepOutcome:
     counters: list[int | None] = []
     derivations: list[str] = []
     for row in load_unconfirmed(conn):
-        if row.paired:  # a pair's type and counter-account belong to the pair (spec §5.7, step 8)
-            continue
         # after the first pass only what the new votes can reach is resolved again: rules and accounts
         # do not change within a settle, and a second pass over unchanged inputs writes nothing
         if ctx.grown is not None and not touches(ctx.grown, row.input, row.payee_id):
             continue
-        current = stored_decisions(row)
-        new = rederive(
-            row.input,
-            current,
-            accounts=ctx.accounts,
-            classifiers=ctx.classifiers,
-            history=ctx.snapshot,
-            exclude_entry_ids=frozenset({row.input.entry_id}),
-        )
-        if not diff(current, new) and not _stale_keys(row, current):
-            continue
-        kind = new.get("type")
-        if kind is not None and kind.value == "transfer" and not row.original:
-            # a source transaction has at most one transfer entry (I31), and a split's other
-            # entries are flows: leave this one as it is rather than break the unique index
+        rewrite = rewrite_of(row, accounts=ctx.accounts, classifiers=ctx.classifiers, history=ctx.snapshot)
+        if rewrite is None:
             continue
         ids.append(row.input.entry_id)
-        types.append(str(kind.value) if kind is not None else None)
-        for out, d in (
-            (payees, new.get("payee")),
-            (categories, new.get("category")),
-            (counters, new.get("counter_account")),
-        ):
-            out.append(int(d.value) if d is not None else None)
-        derivations.append(json.dumps(new_derivation(row.derivation, new)))
+        types.append(rewrite.type)
+        payees.append(rewrite.payee_id)
+        categories.append(rewrite.category_id)
+        counters.append(rewrite.counter_account_id)
+        derivations.append(json.dumps(rewrite.derivation))
     if not ids:
         return StepOutcome()
     written = conn.execute(

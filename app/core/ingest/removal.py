@@ -5,8 +5,8 @@ user-authored transaction, always inside the caller's transaction (the caller ho
 settle lock shared and the accounts' locks). What it does for the entries removed:
 
 * a partner loses its counterpart and the counter-account its pair set (key basis
-  ``{"from": "counterpart"}``), and keeps every other value; a counter-leg the system
-  created stays;
+  ``{"from": "counterpart"}``) and the pair's own key, and keeps every other value; a
+  counter-leg the system created stays (`unpair` is that half of the routine on its own);
 * a document an entry carried is free again (the link is the entry's column, so it goes
   with the row; the ids are reported);
 * the derived entries of every affected account are recomputed.
@@ -41,6 +41,8 @@ class Affected:
     partner_entry_ids: tuple[int, ...] = ()
     account_ids: tuple[int, ...] = ()
     freed_document_ids: tuple[int, ...] = ()
+    # `unpair` only: every entry that lost its link, the ones asked for and their partners
+    unpaired_entry_ids: tuple[int, ...] = ()
 
 
 def entry_scope(conn: Connection, entry_ids: Sequence[int]) -> tuple[list[int], list[int]]:
@@ -57,6 +59,74 @@ def entry_scope(conn: Connection, entry_ids: Sequence[int]) -> tuple[list[int], 
         {"ids": removed},
     ).scalars()
     return removed, [int(p) for p in partners]
+
+
+def _release(conn: Connection, ids: Sequence[int]) -> list[int]:
+    """Undo the pair of each of `ids`: no counterpart, no counter-account the pair set, no pair key.
+
+    A counter-account the entry had before it was paired (a key that is not `{"from": "counterpart"}`)
+    stays, with every other value. Returns the accounts of the entries written, in no order.
+    """
+    if not ids:
+        return []
+    rows = conn.execute(
+        text(
+            "UPDATE ledger_entry SET counterpart_entry_id = NULL,"
+            " counter_account_id = CASE WHEN derivation #> '{counter_account,basis}' @> CAST(:basis AS jsonb)"
+            "                           THEN NULL ELSE counter_account_id END,"
+            " derivation = CASE WHEN derivation #> '{counter_account,basis}' @> CAST(:basis AS jsonb)"
+            "                   THEN derivation - 'counter_account' - 'counterpart'"
+            "                   ELSE derivation - 'counterpart' END"
+            " WHERE id = ANY(:ids) RETURNING account_id"
+        ),
+        {"ids": list(ids), "basis": _PAIR_BASIS},
+    ).all()
+    return [int(r.account_id) for r in rows]
+
+
+def unpair(conn: Connection, entry_ids: Sequence[int]) -> Affected:
+    """The unpair half of the removal routine, deleting nothing (spec §5.6, §5.9 'Breaking a pair').
+
+    Every paired entry of `entry_ids` and its partner lose their counterpart link, the counter-account
+    the pair set and the pair's key (`_release`), and keep every other value; an entry of `entry_ids` that
+    is not paired is left as it is. Both legs return to review through settling: an unpaired transfer
+    cannot be confirmed (§6), and a unit that was one is now two. Entries of `entry_ids` take whatever
+    state the caller writes next; the partners outside `entry_ids` are the ones left behind.
+
+    Preconditions as for `remove_entries`: the settle lock shared and the accounts' locks are held;
+    the ledger_entry rows are locked ascending by the caller, or here. Raises `IngestError` for an
+    unknown id. Versions bump (`counterpart_entry_id` is structural), the unit is recomputed by settling.
+    """
+    asked, partners = entry_scope(conn, entry_ids)
+    lock_rows(conn, "ledger_entry", [*asked, *partners])
+    if not asked:
+        return Affected()
+    present = {
+        int(i)
+        for i in conn.execute(
+            text("SELECT id FROM ledger_entry WHERE id = ANY(:ids)"), {"ids": asked}
+        ).scalars()
+    }
+    if missing := sorted(set(asked) - present):
+        raise IngestError(f"no such entries: {missing}")
+    # only entries that point somewhere or are pointed at are written: an unpaired leg is left alone
+    linked = conn.execute(
+        text(
+            "SELECT e.id FROM ledger_entry e WHERE e.id = ANY(:ids)"
+            " AND (e.counterpart_entry_id IS NOT NULL"
+            "      OR EXISTS (SELECT 1 FROM ledger_entry q WHERE q.counterpart_entry_id = e.id))"
+            " ORDER BY e.id"
+        ),
+        {"ids": sorted({*asked, *partners})},
+    ).scalars()
+    unlinked = [int(i) for i in linked]
+    # both sides in one statement: the pair trigger is deferred, the unique index only sees NULLs
+    accounts = _release(conn, unlinked)
+    return Affected(
+        partner_entry_ids=tuple(partners),
+        account_ids=tuple(sorted(set(accounts))),
+        unpaired_entry_ids=tuple(unlinked),
+    )
 
 
 def remove_entries(
@@ -95,21 +165,11 @@ def remove_entries(
 
     # Partners first: a unique index (ux_le_counterpart) and the pair trigger must see a
     # pair undone from the surviving side. Only a counter-account the pair itself set goes.
-    partner_rows = conn.execute(
-        text(
-            "UPDATE ledger_entry SET counterpart_entry_id = NULL,"
-            " counter_account_id = CASE WHEN derivation #> '{counter_account,basis}' @> CAST(:basis AS jsonb)"
-            "                           THEN NULL ELSE counter_account_id END,"
-            " derivation = CASE WHEN derivation #> '{counter_account,basis}' @> CAST(:basis AS jsonb)"
-            "                   THEN derivation - 'counter_account' ELSE derivation END"
-            " WHERE id = ANY(:ids) RETURNING account_id"
-        ),
-        {"ids": partners, "basis": _PAIR_BASIS},
-    ).all()
+    partner_accounts = _release(conn, partners)
     # One statement; the rows are locked in ascending id order already.
     conn.execute(text("DELETE FROM ledger_entry WHERE id = ANY(:ids)"), {"ids": removed})
 
-    accounts = sorted({r.account_id for r in rows} | {r.account_id for r in partner_rows})
+    accounts = sorted({r.account_id for r in rows} | set(partner_accounts))
     for account_id in accounts:
         recompute_derived(conn, account_id)
     return Affected(

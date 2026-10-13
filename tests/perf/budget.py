@@ -80,3 +80,18 @@ max of 7 samples: first page of 100 units (all three sections) 26-28 ms, a page 
 by cursor 26-28 ms, new-count 11-15 ms, one unit 3 ms. The unit CTE runs once per request (set-based, no query
 per unit); only the entries of the page are loaded. Budget = 2 x the largest (52 ms), never below 0.5 s.
 """
+
+UNIT_PREVIEW_BUDGET_SECONDS = 0.5
+"""Opening one unit: `POST /api/units/preview`
+(`tests/perf/test_unit_preview_budget.py`), as the endpoint computes it.
+
+The preview loads the closure, the accounts, the rules and the history snapshot (one query over every
+voter, indexed in Python, built per request and without the unit's own entries), then lays the draft over
+the unit in memory. Measured on the dev machine (Postgres 18, localhost), max of 7 samples over two
+sessions: 8,000 unconfirmed entries (no voters) 15-21 ms for an opened unit, a split with a drafted
+category and a re-resolved unit; ~70% confirmed (5,600 voters) 60-83 ms for the same. The target was 0.3
+s; the snapshot does not dominate, so it is built per request and not cached (nothing to invalidate). 2 x
+the largest (83 ms) is 0.17 s; the floor of 0.5 s is the budget.
+
+A commit and the settle that follows (the same test, ~70% confirmed, after the first settle): median
+531-534 ms, max 558 ms, inside the settle budget (`BUDGET_SECONDS`)."""

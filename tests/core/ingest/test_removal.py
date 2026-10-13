@@ -7,6 +7,7 @@ import json
 import pytest
 from sqlalchemy import text
 
+from app.core.domain.errors import IngestError
 from app.core.ingest import removal
 from app.core.ingest.removal import remove_entries
 from tests.core.ingest.dup_helpers import Ledger
@@ -105,3 +106,86 @@ def test_the_derived_entries_of_every_affected_account_are_recomputed(
         removal.remove_entries(conn, [a])
         ledger.mark_dup(conn, a_src)
     assert seen == [ledger.checking, ledger.savings]
+
+
+# ---- unpair: the unpair half of the routine, deleting nothing -------------------------------------
+
+
+def _version(ledger: Ledger, entry_id: int) -> int:
+    return int(ledger.one("SELECT version FROM ledger_entry WHERE id = :i", i=entry_id).version)
+
+
+def test_unpair_frees_both_legs_and_clears_what_the_pair_set(ledger: Ledger) -> None:
+    _, a, _, b = ledger.transfer_pair()
+    before = {a: _version(ledger, a), b: _version(ledger, b)}
+    with ledger.engine.begin() as conn:
+        affected = removal.unpair(conn, [a])
+    for entry_id, other in ((a, "out"), (b, "in")):
+        row = ledger.one("SELECT * FROM ledger_entry WHERE id = :i", i=entry_id)
+        assert row.counterpart_entry_id is None and row.counter_account_id is None
+        assert "counter_account" not in row.derivation
+        assert row.type == "transfer" and row.description == other  # everything else stays
+        assert row.version == before[entry_id] + 1  # the link is structural
+    assert affected.partner_entry_ids == (b,)
+    assert affected.unpaired_entry_ids == (a, b)
+    assert affected.removed_entry_ids == ()
+    assert affected.account_ids == (ledger.checking, ledger.savings)
+    ledger.assert_checks_clean()
+
+
+def test_unpair_keeps_a_counter_account_the_leg_had_before_it_was_paired(ledger: Ledger) -> None:
+    _, a, _, b = ledger.transfer_pair()
+    own = json.dumps({"counter_account": {"pass": "rule", "basis": {"rule_id": 3}}})
+    with ledger.engine.begin() as conn:
+        conn.execute(
+            text("UPDATE ledger_entry SET derivation = CAST(:d AS jsonb) WHERE id = :i"), {"d": own, "i": b}
+        )
+        removal.unpair(conn, [a])
+    own_side = ledger.one("SELECT * FROM ledger_entry WHERE id = :i", i=b)
+    assert (
+        own_side.counter_account_id == ledger.checking
+        and own_side.derivation["counter_account"]["pass"] == "rule"
+    )
+    assert (
+        ledger.one("SELECT counter_account_id FROM ledger_entry WHERE id = :i", i=a).counter_account_id
+        is None
+    )
+
+
+def test_unpair_drops_the_pair_key_from_both_legs(ledger: Ledger) -> None:
+    _, a, _, b = ledger.transfer_pair()
+    key = json.dumps({"counterpart": {"pass": "matcher_decision"}, "payee": {"pass": "user"}})
+    with ledger.engine.begin() as conn:
+        for e in (a, b):
+            conn.execute(
+                text("UPDATE ledger_entry SET derivation = derivation || CAST(:d AS jsonb) WHERE id = :i"),
+                {"d": key, "i": e},
+            )
+        removal.unpair(conn, [b])
+    for e in (a, b):
+        derivation = ledger.one("SELECT derivation FROM ledger_entry WHERE id = :i", i=e).derivation
+        assert "counterpart" not in derivation and derivation["payee"] == {"pass": "user"}
+
+
+def test_unpair_of_both_legs_and_of_an_unpaired_entry(ledger: Ledger) -> None:
+    _, a, _, b = ledger.transfer_pair()
+    _, lone = ledger.movement(amount=-70)
+    with ledger.engine.begin() as conn:
+        both = removal.unpair(conn, [b, a])
+        nothing = removal.unpair(conn, [lone])
+        none = removal.unpair(conn, [])
+    assert both.partner_entry_ids == () and both.unpaired_entry_ids == (a, b)
+    assert nothing.unpaired_entry_ids == () and nothing.partner_entry_ids == ()
+    assert none == removal.Affected()
+    assert ledger.one("SELECT version FROM ledger_entry WHERE id = :i", i=lone).version == 1
+    ledger.assert_checks_clean()
+
+
+def test_unpair_refuses_an_unknown_entry_and_deletes_nothing(ledger: Ledger) -> None:
+    _, a, _, b = ledger.transfer_pair()
+    with pytest.raises(IngestError, match="no such entries"), ledger.engine.begin() as conn:
+        removal.unpair(conn, [a, 999_999])
+    assert (
+        ledger.one("SELECT counterpart_entry_id FROM ledger_entry WHERE id = :i", i=a).counterpart_entry_id
+        == b
+    )
