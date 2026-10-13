@@ -10,11 +10,23 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
-from sqlalchemy import Connection, func, select, text
+from sqlalchemy import Connection, FromClause, func, select, text
 
 from app.core.domain.source import SourceFields
 from app.core.ledger.filters import LedgerFilter
-from app.core.ledger.sql import compose, le, st
+from app.core.ledger.sql import compose, le, partner, st
+from app.core.units.lookup import unit_keys_of
+
+
+@dataclass(frozen=True)
+class PartnerSummary:
+    """The other leg of a transfer as a row shows it: where, when and how much."""
+
+    entry_id: int
+    account_id: int
+    booked_on: date
+    amount: int  # signed minor units, in `currency`
+    currency: str
 
 
 @dataclass(frozen=True)
@@ -39,6 +51,10 @@ class EntryRow:
     review_flags: tuple[str, ...]  # sorted
     tag_ids: tuple[int, ...]  # sorted
     source: SourceFields | None  # None for derived and user-authored entries
+    derivation: Mapping[str, Any]  # as stored: key name -> {"pass", "basis", ...}
+    unit_key: int | None  # the unit it is reviewed in (core/units); None for a derived entry
+    authored: bool  # a user-authored movement (its source has no importer)
+    partner: PartnerSummary | None  # the other leg of a paired transfer
 
 
 @dataclass(frozen=True)
@@ -53,6 +69,11 @@ def display_text(description: str | None, counterparty: str | None, purpose: str
     return description or counterparty or purpose or None
 
 
+def _paged(conn: Connection, stmt: Any) -> tuple[EntryRow, ...]:
+    rows = conn.execute(stmt).all()
+    return _build(conn, rows)
+
+
 def list_entries(conn: Connection, flt: LedgerFilter, *, limit: int, offset: int) -> EntryPage:
     """One page of the entries matching `flt`, newest first; ties are total.
 
@@ -62,9 +83,10 @@ def list_entries(conn: Connection, flt: LedgerFilter, *, limit: int, offset: int
     """
     parts = compose(flt)
     total = conn.execute(select(func.count()).select_from(parts.source).where(*parts.where)).scalar_one()
-    rows = conn.execute(
+    entries = _paged(
+        conn,
         select(*_COLUMNS)
-        .select_from(parts.source)
+        .select_from(_with_partner(parts.source))
         .where(*parts.where)
         .order_by(
             le.c.booked_on.desc(),
@@ -72,21 +94,33 @@ def list_entries(conn: Connection, flt: LedgerFilter, *, limit: int, offset: int
             le.c.id.desc(),
         )
         .limit(limit)
-        .offset(offset)
-    ).all()
-    return EntryPage(_build(rows, tag_ids_of(conn, [r.id for r in rows])), int(total), limit, offset)
+        .offset(offset),
+    )
+    return EntryPage(entries, int(total), limit, offset)
 
 
 def get_entry(conn: Connection, entry_id: int) -> EntryRow | None:
     """One entry in the row shape of the list, or None when there is none."""
-    rows = conn.execute(
+    found = entries_by_ids(conn, [entry_id])
+    return found[0] if found else None
+
+
+def entries_by_ids(conn: Connection, entry_ids: Sequence[int]) -> tuple[EntryRow, ...]:
+    """The rows of these entries in the row shape of the list, ascending by id."""
+    if not entry_ids:
+        return ()
+    return _paged(
+        conn,
         select(*_COLUMNS)
-        .select_from(le.outerjoin(st, st.c.id == le.c.source_transaction_id))
-        .where(le.c.id == entry_id)
-    ).all()
-    if not rows:
-        return None
-    return _build(rows, tag_ids_of(conn, [entry_id]))[0]
+        .select_from(_with_partner(le.outerjoin(st, st.c.id == le.c.source_transaction_id)))
+        .where(le.c.id.in_(list(entry_ids)))
+        .order_by(le.c.id),
+    )
+
+
+def _with_partner(source: FromClause) -> FromClause:
+    """`source` with the other leg of a transfer joined in: one unique-index lookup per row."""
+    return source.outerjoin(partner, partner.c.id == le.c.counterpart_entry_id)
 
 
 # the entry's own columns and the source's, from ledger_entry LEFT JOIN source_transaction: one query
@@ -108,6 +142,12 @@ _COLUMNS = (
     le.c.source_transaction_id,
     le.c.document_id,
     le.c.review_flags,
+    le.c.derivation,
+    partner.c.id.label("partner_id"),
+    partner.c.account_id.label("partner_account_id"),
+    partner.c.booked_on.label("partner_booked_on"),
+    partner.c.amount.label("partner_amount"),
+    partner.c.currency.label("partner_currency"),
     st.c.importer,
     st.c.counterparty_name,
     st.c.counterparty_ref,
@@ -122,7 +162,9 @@ _COLUMNS = (
 )
 
 
-def _build(rows: Sequence[Any], tags: Mapping[int, tuple[int, ...]]) -> tuple[EntryRow, ...]:
+def _build(conn: Connection, rows: Sequence[Any]) -> tuple[EntryRow, ...]:
+    tags = tag_ids_of(conn, [r.id for r in rows])
+    unit_keys = unit_keys_of(conn, {r.source_transaction_id for r in rows if r.source_transaction_id})
     return tuple(
         EntryRow(
             id=r.id,
@@ -145,6 +187,18 @@ def _build(rows: Sequence[Any], tags: Mapping[int, tuple[int, ...]]) -> tuple[En
             review_flags=tuple(sorted(r.review_flags)),
             tag_ids=tags.get(r.id, ()),
             source=_source(r),
+            derivation=r.derivation,
+            unit_key=unit_keys.get(r.source_transaction_id) if r.source_transaction_id else None,
+            authored=r.source_transaction_id is not None and r.importer is None,
+            partner=None
+            if r.partner_id is None
+            else PartnerSummary(
+                entry_id=r.partner_id,
+                account_id=r.partner_account_id,
+                booked_on=r.partner_booked_on,
+                amount=r.partner_amount,
+                currency=r.partner_currency,
+            ),
         )
         for r in rows
     )

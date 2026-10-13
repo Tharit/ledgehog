@@ -65,7 +65,7 @@ class UnconfirmedEntry:
     original: bool  # the lowest entry id of its source transaction: the only one that may be a transfer
     # what the rule preview shows and groups by; settling does not read them
     confirmed: bool = False  # its unit is confirmed (confirmed.py)
-    source_id: int = 0  # its source transaction: the unit, until step 8
+    unit_key: int = 0  # the unit it belongs to (confirmed.py: source transaction, or the pair's lower one)
     description: str | None = None
     source: SourceFields | None = None  # None for a user-authored row; never the raw record
 
@@ -75,7 +75,7 @@ def _movements(where: str) -> TextClause:
         f"""
     WITH units AS ({units_sql()})
     SELECT e.id, e.account_id, e.currency, e.booked_on, e.amount, e.description,
-           u.unit_ok AS confirmed, u.src AS source_id,
+           u.unit_ok AS confirmed, u.unit_key AS unit_key,
            (s.importer IS NULL) AS user_authored,
            s.counterparty_ref, s.counterparty_name, s.purpose, s.booking_text, s.mandate_ref,
            s.instructed_currency, s.counterparty_bic, s.end_to_end_id, s.instructed_amount,
@@ -132,7 +132,7 @@ def _load(conn: Connection, query: TextClause) -> list[UnconfirmedEntry]:
                 paired=r.paired,
                 original=r.original,
                 confirmed=r.confirmed,
-                source_id=r.source_id,
+                unit_key=r.unit_key,
                 description=r.description,
                 source=None
                 if r.user_authored

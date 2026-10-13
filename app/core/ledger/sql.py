@@ -21,7 +21,7 @@ from sqlalchemy import (
     select,
     table,
 )
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 
 from app.core.ledger.filters import LedgerFilter
 
@@ -45,7 +45,10 @@ le = table(
     column("description"),
     column("note"),
     column("review_flags", ARRAY(Text)),
+    column("derivation", JSONB),
 )
+# the other leg of a transfer, for the partner summary of a row
+partner = le.alias("partner")
 st = table(
     "source_transaction",
     column("id"),

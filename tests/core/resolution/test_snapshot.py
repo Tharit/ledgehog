@@ -17,9 +17,11 @@ from app.core.resolution.snapshot import (
     HistorySnapshot,
     load_snapshot,
     load_votes,
+    load_votes_of,
     touches,
 )
 from app.plugins.classifiers.history import JACCARD_MIN
+from tests.core.units.helpers import Bench, keys
 from tests.invariants.helpers import make_category, make_entry, make_source
 from tests.plugins.classifiers.fakes import ListHistory, entry, vote
 
@@ -166,3 +168,18 @@ def test_a_vote_carries_its_source_facts(db_conn: Connection, make_account: Make
         cat,
     )
     assert v.purpose == "Einkauf" and v.counter_account_id is None
+
+
+def test_a_leg_whose_partner_is_unconfirmed_does_not_vote(
+    db_conn: Connection, make_account: MakeAccount
+) -> None:
+    """The unit votes as a whole (I19): a pair, its siblings and a proposal on one leg."""
+    b = Bench(db_conn, make_account)
+    clean_a, clean_b = b.transfer(b.source()), b.transfer(b.source(b.b))
+    b.pair(clean_a, clean_b)
+    held_a = b.transfer(b.source())
+    held_b = b.transfer(b.source(b.b), derivation=keys(counter_account="history"))
+    sibling = b.flow(b.source())  # alone and clean: votes
+    b.pair(held_a, held_b)
+    assert {v.entry_id for v in load_votes(db_conn)} == {clean_a, clean_b, sibling}
+    assert {v.entry_id for v in load_votes_of(db_conn, [held_a, clean_b])} == {clean_b}

@@ -15,6 +15,11 @@ baseline pass over 8000 unclassified entries (no voters) 330-410 ms; post-commit
 rules, 2,014 by history, two rounds) 470-680 ms; its second, idle settle 450 ms. The budget stays at
 the floor of 1.0 s (2 x the largest, 0.68 s, would be 1.4 s: the stricter number is kept while it is met).
 
+Step 7 (units): the unit CTE adds one indexed self-join on `counterpart_entry_id` and a window over the
+unit key, and the flags now read it. Re-measured: baseline 405 ms, post-commit settle 304-319 ms,
+`confirmed_share=0.7` resolving settle 753 ms (one run; 470-680 ms before), its idle second settle 439 ms.
+Still inside 1.0 s.
+
 Caveat: transfer pairing (step 8) and document matching (step 9) will register their steps; re-measure
 then. If the budget is missed, narrow the first round to a dirty set (architecture §5.2); rounds after
 the first are already narrowed to the entries the newly confirmed votes can reach.
@@ -64,3 +69,14 @@ rederive) and ~70% confirmed (5,600 history voters, about 2,400 unconfirmed). Me
 rule matching all 8,000 entries 0.20-0.32 s; edit (narrowing, list B through the GIN index) 0.09-0.14 s;
 delete 0.10-0.21 s. Settle after a real rule write: median 0.28-0.46 s, max 0.48 s (the settle budget
 applies). 2 x the largest (0.32 s) is 0.64 s, so the floor of 1.0 s is the budget."""
+
+QUEUE_BUDGET_SECONDS = 0.5
+"""A request of the review queue (`tests/perf/test_queue_budget.py`): the first page, a page of 500
+units, a page by cursor, the new-count and one unit, as the endpoints compute them.
+
+Derivation: on the backfill fixture (8,000 entries), all unconfirmed (a queue of 8,000 units, the worst
+case) and the ~70% confirmed variant (2,427 units). Measured on the dev machine (Postgres 18, localhost),
+max of 7 samples: first page of 100 units (all three sections) 26-28 ms, a page of 500 units 45-52 ms, a page
+by cursor 26-28 ms, new-count 11-15 ms, one unit 3 ms. The unit CTE runs once per request (set-based, no query
+per unit); only the entries of the page are loaded. Budget = 2 x the largest (52 ms), never below 0.5 s.
+"""

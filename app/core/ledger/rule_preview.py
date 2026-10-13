@@ -203,7 +203,7 @@ def _units_confirmed(
     unit_ids: set[int],
     by_unit: Mapping[int, list[UnconfirmedEntry]],
 ) -> dict[int, bool]:
-    """Per unit (source transaction): would it be confirmed once settling has applied `ev.rules`?
+    """Per unit (`unit_key`): would it be confirmed once settling has applied `ev.rules`?
 
     Settling's own resolution step, in memory: the stored decisions are rederived against the rule
     set and the history snapshot, and the unit is complete when every entry has a type, a flow its
@@ -281,10 +281,10 @@ def build_preview(
     if unconfirmed and not deleted:
         by_unit: dict[int, list[UnconfirmedEntry]] = defaultdict(list)
         for r in entries:
-            by_unit[r.source_id].append(r)
-        units = {r.source_id for r in unconfirmed}
+            by_unit[r.unit_key].append(r)
+        units = {r.unit_key for r in unconfirmed}
         confirmed_units = _units_confirmed(conn, _Evaluation(tools, list(rules), accounts), units, by_unit)
-        would_confirm = sum(1 for r in unconfirmed if confirmed_units[r.source_id])
+        would_confirm = sum(1 for r in unconfirmed if confirmed_units[r.unit_key])
         stay = len(unconfirmed) - would_confirm
 
     different = (

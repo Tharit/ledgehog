@@ -859,6 +859,10 @@
           "amount": {
             "$ref": "#/components/schemas/Money"
           },
+          "authored": {
+            "title": "Authored",
+            "type": "boolean"
+          },
           "booked_on": {
             "format": "date",
             "title": "Booked On",
@@ -896,6 +900,11 @@
               }
             ],
             "title": "Counterpart Entry Id"
+          },
+          "derivation": {
+            "additionalProperties": true,
+            "title": "Derivation",
+            "type": "object"
           },
           "description": {
             "anyOf": [
@@ -944,6 +953,16 @@
               }
             ],
             "title": "Note"
+          },
+          "partner": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PartnerOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "payee_id": {
             "anyOf": [
@@ -1016,6 +1035,17 @@
             ],
             "title": "Type"
           },
+          "unit_key": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Key"
+          },
           "value_on": {
             "anyOf": [
               {
@@ -1052,7 +1082,11 @@
           "document_id",
           "review_flags",
           "tag_ids",
-          "source"
+          "source",
+          "derivation",
+          "unit_key",
+          "authored",
+          "partner"
         ],
         "title": "EntryOut",
         "type": "object"
@@ -1324,6 +1358,53 @@
           "to_id"
         ],
         "title": "MovedChildOut",
+        "type": "object"
+      },
+      "NewCountOut": {
+        "properties": {
+          "new_count": {
+            "title": "New Count",
+            "type": "integer"
+          },
+          "snapshot": {
+            "title": "Snapshot",
+            "type": "string"
+          }
+        },
+        "required": [
+          "new_count",
+          "snapshot"
+        ],
+        "title": "NewCountOut",
+        "type": "object"
+      },
+      "PartnerOut": {
+        "description": "The other leg of a paired transfer: where, when and how much.",
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "integer"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "booked_on": {
+            "format": "date",
+            "title": "Booked On",
+            "type": "string"
+          },
+          "entry_id": {
+            "title": "Entry Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "entry_id",
+          "account_id",
+          "booked_on",
+          "amount"
+        ],
+        "title": "PartnerOut",
         "type": "object"
       },
       "PayeeCreateBody": {
@@ -1863,6 +1944,49 @@
         "title": "PreviewRowOut",
         "type": "object"
       },
+      "QueueSectionOut": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "pending_review",
+              "needs_account",
+              "waiting"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "units": {
+            "items": {
+              "$ref": "#/components/schemas/UnitOut"
+            },
+            "title": "Units",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "total",
+          "units",
+          "next_cursor"
+        ],
+        "title": "QueueSectionOut",
+        "type": "object"
+      },
       "RecordDeleteOut": {
         "properties": {
           "account": {
@@ -1962,6 +2086,32 @@
           }
         },
         "title": "RevertBody",
+        "type": "object"
+      },
+      "ReviewQueueOut": {
+        "properties": {
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/QueueSectionOut"
+            },
+            "title": "Sections",
+            "type": "array"
+          },
+          "snapshot": {
+            "title": "Snapshot",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sections",
+          "total",
+          "snapshot"
+        ],
+        "title": "ReviewQueueOut",
         "type": "object"
       },
       "RuleCreateBody": {
@@ -3059,6 +3209,62 @@
           "tags"
         ],
         "title": "TagsOut",
+        "type": "object"
+      },
+      "UnitOut": {
+        "properties": {
+          "anchor_entry_id": {
+            "title": "Anchor Entry Id",
+            "type": "integer"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/EntryOut"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "state": {
+            "$ref": "#/components/schemas/UnitStateOut"
+          },
+          "unit_key": {
+            "title": "Unit Key",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "anchor_entry_id",
+          "unit_key",
+          "state",
+          "entries"
+        ],
+        "title": "UnitOut",
+        "type": "object"
+      },
+      "UnitStateOut": {
+        "properties": {
+          "confirmed": {
+            "title": "Confirmed",
+            "type": "boolean"
+          },
+          "reasons": {
+            "items": {
+              "enum": [
+                "incomplete",
+                "unpaired_transfer",
+                "non_standing_keys"
+              ],
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          }
+        },
+        "required": [
+          "confirmed",
+          "reasons"
+        ],
+        "title": "UnitStateOut",
         "type": "object"
       },
       "UpdateBody": {
@@ -7017,6 +7223,221 @@
           }
         },
         "summary": "Login"
+      }
+    },
+    "/api/units/queue": {
+      "get": {
+        "description": "The review queue: the first page of each section, or the page after `cursor` of one `section`.",
+        "operationId": "get_review_queue",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "section",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "pending_review",
+                    "needs_account",
+                    "waiting"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Section"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewQueueOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Get Review Queue",
+        "tags": [
+          "units"
+        ]
+      }
+    },
+    "/api/units/queue/new-count": {
+      "get": {
+        "description": "How many units entered the queue since `since` (a `snapshot` of the queue): one cheap pass.",
+        "operationId": "get_new_unit_count",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Since",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewCountOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Get New Unit Count",
+        "tags": [
+          "units"
+        ]
+      }
+    },
+    "/api/units/{entry_id}": {
+      "get": {
+        "description": "The unit holding the entry, as stored: its state and every entry with its derivation.",
+        "operationId": "get_unit",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entry_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740992,
+              "title": "Entry Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnitOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Get Unit",
+        "tags": [
+          "units"
+        ]
       }
     }
   }

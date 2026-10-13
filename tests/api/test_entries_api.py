@@ -114,6 +114,10 @@ def test_row_json_shape_and_money(anna: TestClient, api_engine: Engine, acct: in
                 "instructed_amount": {"amount": -1400, "currency": "USD"},
                 "source_format": "camt053",
             },
+            "derivation": {},
+            "unit_key": src,
+            "authored": False,
+            "partner": None,
         }
     ]
     # the one-entry read answers with the same row, nothing more and nothing less
@@ -329,4 +333,45 @@ def test_the_list_reads_sources_in_one_query(anna: TestClient, api_engine: Engin
         listed(anna)
         return len([s for s in seen if "source_transaction" in s])
 
-    assert statements() <= 2  # the page and its count, however many rows
+    assert statements() <= 3  # the page, its count and the pairs' sources: constant, however many rows
+
+
+def test_rows_carry_derivation_unit_key_authored_and_partner(
+    anna: TestClient, api_engine: Engine, make_account: Any
+):
+    from tests.core.units.helpers import Bench, keys
+
+    with api_engine.begin() as conn:
+        b = Bench(conn, make_account)
+        s1, s2 = b.source(), b.source(b.b, amount=100, parts=2, authored=True)
+        x, y = b.transfer(s1, derivation=keys(counter_account="rule")), b.transfer(s2)
+        sib = b.flow(s2)
+        b.pair(x, y)
+        alone = b.flow(b.source(authored=True), derivation=keys(category="history"))
+    rows = {e["id"]: e for e in listed(anna)["entries"]}
+    assert rows[x]["derivation"] == {"counter_account": {"pass": "rule"}}
+    assert (rows[x]["unit_key"], rows[y]["unit_key"], rows[sib]["unit_key"]) == (s1, s1, s1)  # via the pair
+    assert rows[alone]["unit_key"] == rows[alone]["source_transaction_id"]
+    assert (rows[x]["authored"], rows[y]["authored"], rows[alone]["authored"]) == (False, True, True)
+    assert rows[y]["source"] is None and rows[x]["source"] is not None
+    assert rows[x]["partner"] == {
+        "entry_id": y,
+        "account_id": b.b,
+        "booked_on": "2026-03-10",
+        "amount": {"amount": 100, "currency": "EUR"},
+    }
+    assert rows[y]["partner"]["entry_id"] == x and rows[y]["partner"]["account_id"] == b.a
+    assert rows[sib]["partner"] is None and rows[alone]["partner"] is None
+    assert anna.get(f"{URL}/{x}").json() == rows[x]
+
+
+def test_derived_entries_have_no_unit_and_are_not_authored(anna: TestClient, api_engine: Engine, acct: int):
+    with api_engine.begin() as conn:
+        d = seed.derived(conn, acct)
+    (row,) = listed(anna)["entries"]
+    assert row["id"] == d and (row["unit_key"], row["authored"], row["partner"], row["derivation"]) == (
+        None,
+        False,
+        None,
+        {},
+    )

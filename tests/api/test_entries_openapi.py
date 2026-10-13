@@ -69,6 +69,15 @@ def test_a_sample_row_validates_against_the_model():
             "instructed_amount": {"amount": -7, "currency": "USD"},
             "source_format": "csv",
         },
+        "derivation": {"category": {"pass": "history", "basis": {"from": "similar"}}},
+        "unit_key": 7,
+        "authored": False,
+        "partner": {
+            "entry_id": 9,
+            "account_id": 4,
+            "booked_on": "2026-03-10",
+            "amount": {"amount": 5, "currency": "EUR"},
+        },
     }
     page = EntryPageOut.model_validate({"entries": [row], "total": 1, "limit": 100, "offset": 0})
     assert page.model_dump(mode="json")["entries"] == [row]

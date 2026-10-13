@@ -8,7 +8,7 @@ client already holds the account, category and payee lists. Money travels as
 from __future__ import annotations
 
 from datetime import date
-from typing import Annotated, Literal, cast
+from typing import Annotated, Any, Literal, cast
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, StringConstraints
@@ -74,6 +74,15 @@ class SourceTransactionOut(BaseModel):
         )
 
 
+class PartnerOut(BaseModel):
+    """The other leg of a paired transfer: where, when and how much."""
+
+    entry_id: int
+    account_id: int
+    booked_on: date
+    amount: Money
+
+
 class EntryOut(BaseModel):
     id: int
     version: int
@@ -94,6 +103,10 @@ class EntryOut(BaseModel):
     review_flags: list[ReviewFlag]
     tag_ids: list[int]
     source: SourceTransactionOut | None  # null for derived and user-authored entries
+    derivation: dict[str, Any]  # as stored: derived field -> {"pass", "basis", ...}; `{}` when none
+    unit_key: int | None  # the unit it is reviewed in (spec §6); null for a derived entry
+    authored: bool  # entered by the user (the entry form); `source` is null for these
+    partner: PartnerOut | None  # the other leg of a paired transfer, null otherwise
 
     @staticmethod
     def of(row: EntryRow) -> EntryOut:
@@ -117,6 +130,17 @@ class EntryOut(BaseModel):
             review_flags=cast(list[ReviewFlag], list(row.review_flags)),
             tag_ids=list(row.tag_ids),
             source=SourceTransactionOut.of(row.source),
+            derivation=dict(row.derivation),
+            unit_key=row.unit_key,
+            authored=row.authored,
+            partner=None
+            if row.partner is None
+            else PartnerOut(
+                entry_id=row.partner.entry_id,
+                account_id=row.partner.account_id,
+                booked_on=row.partner.booked_on,
+                amount=Money(amount=row.partner.amount, currency=row.partner.currency),
+            ),
         )
 
 
