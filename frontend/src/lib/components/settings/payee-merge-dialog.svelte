@@ -3,7 +3,7 @@
 	import { payeeMergeSummary } from '#lib/payees/summary.js';
 	import { resolvePayee } from '#lib/theme/resolve.js';
 	import MergeDialog from './merge-dialog.svelte';
-	import type { PickerItem } from './entity-picker.svelte';
+	import type { PickerItem } from '#lib/components/common/picker.svelte';
 
 	// Merge a payee into another (spec §3.6): entries and rules are repointed, the target's
 	// attributes win. Every other payee is offered; the server decides the rest.

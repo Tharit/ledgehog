@@ -28,14 +28,6 @@ export function targetOptions(
 	return options.sort((a, b) => a.label.localeCompare(b.label));
 }
 
-/** The options whose label contains the text, case-insensitively; all of them for blank text. */
-export function filterOptions(options: readonly TargetOption[], text: string): TargetOption[] {
-	const needle = text.trim().toLowerCase();
-	return needle === ''
-		? [...options]
-		: options.filter((o) => o.label.toLowerCase().includes(needle));
-}
-
 /** The words for a kind in a sentence: "category", "payee", "counter-account". */
 export function kindWord(kind: RuleSets): string {
 	return kind === 'counter_account' ? 'counter-account' : kind;

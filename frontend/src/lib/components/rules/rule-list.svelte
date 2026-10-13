@@ -1,7 +1,8 @@
 <script lang="ts">
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
+	import EmptyState from '#lib/components/common/empty-state.svelte';
 	import ErrorState from '#lib/components/common/error-state.svelte';
-	import { Button } from '#lib/components/ui/button/index.js';
+	import RowActions from '#lib/components/common/row-actions.svelte';
 	import { DEFAULT_PRIORITY, SETS_INFO, targetId } from '#lib/rules/form.js';
 	import { groupRules } from '#lib/rules/groups.js';
 	import type { Lookups } from '#lib/ledger/lookups.js';
@@ -12,7 +13,9 @@
 
 	// The rules, grouped by what they set and in evaluation order within each group (spec §5.9):
 	// a name, what it asks for in one line, what it sets. Priority shows only when it is not the
-	// default. Comfortable density: 48px rows with a second line (design §5).
+	// default. Comfortable density: 48px rows with a second line (design §5). A row's primary
+	// action is its name, a link to the editor; its one other action, "Delete…", is an inline icon
+	// button (patterns §11.3).
 	let {
 		rules,
 		status,
@@ -47,12 +50,10 @@
 		{/each}
 	</div>
 {:else if rules.length === 0}
-	<div
-		class="flex w-full flex-col items-center gap-3 rounded-xl border bg-card p-8 text-center shadow-card"
-	>
-		<p class="text-sm text-muted-foreground">No rules yet.</p>
-		<Button href={NEW_RULE_PATH}>Add rule</Button>
-	</div>
+	<EmptyState title="No rules yet" actionLabel="Add rule" actionHref={NEW_RULE_PATH}>
+		A rule decides entries for good, without review: it says which entries it matches and what it
+		sets on them.
+	</EmptyState>
 {:else}
 	<div class="flex flex-col gap-6">
 		{#each groups as group (group.sets)}
@@ -61,7 +62,7 @@
 				<ul class="flex flex-col rounded-xl border bg-card shadow-card">
 					{#each group.rules as rule (rule.id)}
 						<li
-							class="grid min-h-12 grid-cols-[minmax(0,1fr)_minmax(0,14rem)_auto] items-center gap-x-4 border-b border-border px-4 py-1.5 last:border-b-0"
+							class="group grid min-h-12 grid-cols-[minmax(0,1fr)_minmax(0,14rem)_auto] items-center gap-x-4 border-b border-border px-4 py-1.5 last:border-b-0"
 							data-rule-id={rule.id}
 						>
 							<div class="flex min-w-0 flex-col">
@@ -88,18 +89,17 @@
 							<div class="flex min-w-0 items-center text-sm">
 								<RuleTarget sets={group.sets} id={targetId(rule)} {lookups} />
 							</div>
-							<div class="flex items-center gap-1">
-								<Button variant="outline" href={ruleUrl(rule.id)}>Edit</Button>
-								<Button
-									variant="ghost"
-									size="icon"
-									aria-label={`Delete the rule ${rule.name}`}
-									title="Delete…"
-									onclick={() => ondelete?.(rule)}
-								>
-									<Trash2Icon size={16} strokeWidth={1.75} aria-hidden="true" />
-								</Button>
-							</div>
+							<RowActions
+								name={rule.name}
+								primary={[
+									{
+										verb: 'Delete…',
+										label: `Delete the rule ${rule.name}`,
+										icon: Trash2Icon,
+										onselect: () => ondelete?.(rule)
+									}
+								]}
+							/>
 						</li>
 					{/each}
 				</ul>

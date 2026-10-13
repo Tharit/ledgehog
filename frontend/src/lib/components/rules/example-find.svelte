@@ -101,7 +101,7 @@
 									aria-selected={index === store.highlighted}
 									data-entry-id={entry.id}
 									class={[
-										'grid cursor-pointer grid-cols-[6rem_6rem_minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,1fr)] items-center gap-x-3 border-b border-border px-3 py-1 text-[13px] last:border-b-0',
+										'grid grid-cols-[6rem_6rem_minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,1fr)] items-center gap-x-3 border-b border-border px-3 py-1 text-[13px] last:border-b-0',
 										index === store.highlighted ? 'bg-accent' : 'hover:bg-muted'
 									]}
 									onmousedown={(event) => event.preventDefault()}

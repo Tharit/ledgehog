@@ -121,6 +121,15 @@ describe('EntryRow: tags', () => {
 		expect(screen.getByText('+1')).toHaveAttribute('title', 'Gift');
 	});
 
+	it('reports a click on the tags cell, the mouse path of the t key', async () => {
+		const ontags = vi.fn();
+		row({ tag_ids: [] }, { ontags });
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Edit tags' }));
+
+		expect(ontags).toHaveBeenCalledOnce();
+	});
+
 	it('skips a tag it has no name for', () => {
 		row({ tag_ids: [999] });
 

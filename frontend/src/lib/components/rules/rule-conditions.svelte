@@ -1,5 +1,6 @@
 <script lang="ts">
 	import XIcon from '@lucide/svelte/icons/x';
+	import IconButton from '#lib/components/common/icon-button.svelte';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import type { Lookups } from '#lib/ledger/lookups.js';
@@ -91,15 +92,9 @@
 						aria-describedby={error ? `rule-condition-${row.key}-error` : undefined}
 						oninput={(event) => onchange(index, { value: event.currentTarget.value })}
 					/>
-					<button
-						type="button"
-						class="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
-						aria-label={`Remove condition ${n}`}
-						title="Remove"
-						onclick={() => onremove(index)}
-					>
-						<XIcon size={16} strokeWidth={1.75} aria-hidden="true" />
-					</button>
+					<IconButton verb="Remove" label={`Remove condition ${n}`} onclick={() => onremove(index)}>
+						<XIcon aria-hidden="true" />
+					</IconButton>
 				</div>
 				{#if error}
 					<p id={`rule-condition-${row.key}-error`} class="text-xs text-destructive">{error}</p>

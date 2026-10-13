@@ -4,7 +4,7 @@
 	import type { CategoriesStore } from '#lib/categories/store.svelte.js';
 	import { resolveCategory } from '#lib/theme/resolve.js';
 	import MergeDialog from './merge-dialog.svelte';
-	import type { PickerItem } from './entity-picker.svelte';
+	import type { PickerItem } from '#lib/components/common/picker.svelte';
 
 	// Merge a category into another of its kind (spec §3.5): its entries and rules are repointed,
 	// its children move under the target, same-named children merge. The source and its own

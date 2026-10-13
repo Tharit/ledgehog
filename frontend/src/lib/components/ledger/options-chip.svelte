@@ -81,7 +81,7 @@
 			{#each shown as option (option.value)}
 				<li>
 					<label
-						class="flex h-8 cursor-pointer items-center gap-2 rounded-md px-1.5 text-[13px] hover:bg-muted"
+						class="flex h-8 items-center gap-2 rounded-md px-1.5 text-[13px] hover:bg-muted"
 						title={option.hint}
 					>
 						<input

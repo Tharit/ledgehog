@@ -2,8 +2,9 @@
 	import { onDestroy, onMount } from 'svelte';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
 	import ErrorState from '#lib/components/common/error-state.svelte';
-	import Notice from '#lib/components/common/notice.svelte';
-	import { Button } from '#lib/components/ui/button/index.js';
+	import ActionButton from '#lib/components/common/action-button.svelte';
+	import NoticeLine from '#lib/components/common/notice-line.svelte';
+	import PageHeader from '#lib/components/common/page-header.svelte';
 	import { RULES_PATH } from '#lib/rules/links.js';
 	import { describeRuleError, doneUrl } from '#lib/rules/messages.js';
 	import { sourceColumns } from '#lib/rules/preview.js';
@@ -85,6 +86,25 @@
 	});
 	const columns = $derived(sourceColumns(store.previewedConditions));
 	const title = $derived(store.editing ? (store.rule?.name ?? 'Rule') : 'Add rule');
+	const description = $derived(
+		store.editing
+			? 'Change what this rule matches and what it sets; the preview shows what it would do.'
+			: 'Say which entries it matches and what it sets; the preview shows what it would do before anything is saved.'
+	);
+	// the line holds one notice: the editor's own, with the lists that did not load after it
+	const notice = $derived.by(() => {
+		const lists =
+			store.lookupsFailed.length > 0
+				? `Some lists could not be loaded (${store.lookupsFailed.join(', ')}); their names may be missing below.`
+				: null;
+		if (store.notice) {
+			return {
+				text: lists ? `${store.notice.text} ${lists}` : store.notice.text,
+				error: store.notice.error
+			};
+		}
+		return lists ? { text: lists, error: false } : null;
+	});
 </script>
 
 <LeaveGuard dirty={store.dirty && !leaving} />
@@ -97,20 +117,9 @@
 		<ArrowLeftIcon size={14} strokeWidth={1.75} aria-hidden="true" />
 		All rules
 	</a>
-	<h2 class="text-xl font-semibold">{title}</h2>
+	<PageHeader {title} {description} />
 
-	<!-- one reserved line, so a notice appearing never moves the form (patterns §7) -->
-	<div class="flex min-h-5 flex-col gap-1">
-		{#if store.notice}
-			<Notice role={store.notice.error ? 'alert' : 'status'}>{store.notice.text}</Notice>
-		{/if}
-		{#if store.lookupsFailed.length > 0}
-			<Notice>
-				Some lists could not be loaded ({store.lookupsFailed.join(', ')}); their names may be
-				missing below.
-			</Notice>
-		{/if}
-	</div>
+	<NoticeLine {notice} />
 
 	{#if store.loadStatus === 'loading'}
 		<p class="text-sm text-muted-foreground" aria-busy="true">Loading…</p>
@@ -119,7 +128,7 @@
 			title="This rule does not exist"
 			message="It may have been deleted. Rules that were deleted show “rule deleted” where they decided an entry."
 		/>
-		<Button variant="outline" href={RULES_PATH} class="w-fit">Back to the rules</Button>
+		<ActionButton variant="outline" href={RULES_PATH} class="w-fit">Back to the rules</ActionButton>
 	{:else if store.loadStatus === 'error'}
 		<ErrorState
 			title="The rule could not be loaded"

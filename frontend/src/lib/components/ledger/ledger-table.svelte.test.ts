@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { describe, expect, it, vi } from 'vitest';
 import { account, entry, tag } from '#lib/ledger/fixtures.js';
@@ -58,9 +58,10 @@ describe('LedgerTable: states', () => {
 		table({ entries: [], total: 0, activeFilters: ['Giro', '“rewe”'], onclearfilters });
 
 		expect(screen.getByText('No entries match these filters')).toBeInTheDocument();
-		// the box spans the table's width, its content centred
-		const box = screen.getByText('No entries match these filters').parentElement;
-		expect(box).toHaveClass('w-full', 'items-center', 'text-center');
+		// the shared empty state: a left-aligned card
+		expect(
+			screen.getByText('No entries match these filters').closest('[data-slot="empty"]')
+		).not.toBeNull();
 		expect(screen.getByText('Giro · “rewe”')).toBeInTheDocument();
 		await fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
 		expect(onclearfilters).toHaveBeenCalledOnce();
@@ -427,6 +428,27 @@ describe('LedgerTable: the tag picker (t)', () => {
 		expect(screen.getByRole('option', { name: /Tax/ })).toBeInTheDocument();
 	});
 
+	it('opens from a click on the tags cell, for that row', async () => {
+		table({
+			entries: [entry({ id: 3, tag_ids: [31] }), entry({ id: 2 })],
+			total: 2,
+			ontoggletag: toggle(),
+			oncreatetag: toggle(),
+			onnotice: vi.fn()
+		});
+		const rows = screen.getAllByRole('row').filter((r) => r.hasAttribute('data-entry-id'));
+
+		await fireEvent.click(within(rows[0]).getByRole('button', { name: 'Edit tags' }));
+
+		expect(await screen.findByLabelText('Search tags')).toBeInTheDocument();
+		const carried = screen
+			.getAllByRole('option')
+			.filter((o) => o.getAttribute('data-checked') === 'true');
+		expect(carried).toHaveLength(1);
+		expect(carried[0]).toHaveTextContent(/Tax/);
+		expect(rows[0]).toHaveAttribute('aria-selected', 'true');
+	});
+
 	it('does nothing without a cursor row', async () => {
 		table({ ontoggletag: toggle() });
 
@@ -499,7 +521,7 @@ describe('LedgerTable: the tag picker (t)', () => {
 		const input = await screen.findByLabelText('Search tags');
 
 		await fireEvent.input(input, { target: { value: '  Holiday ' } });
-		await fireEvent.click(await screen.findByRole('option', { name: 'Create tag "Holiday"' }));
+		await fireEvent.click(await screen.findByRole('option', { name: 'Add tag “Holiday”' }));
 
 		expect(oncreatetag).toHaveBeenCalledWith(3, 'Holiday');
 	});
@@ -510,7 +532,7 @@ describe('LedgerTable: the tag picker (t)', () => {
 
 		await fireEvent.input(input, { target: { value: 'tax' } });
 
-		expect(screen.queryByRole('option', { name: /Create tag/ })).toBeNull();
+		expect(screen.queryByRole('option', { name: /Add tag/ })).toBeNull();
 	});
 
 	it('closes on Esc, leaving the cursor where it was', async () => {

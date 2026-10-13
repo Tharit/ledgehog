@@ -50,7 +50,6 @@
 			{#each presets as preset (preset.id)}
 				<Button
 					variant={preset.from === from && preset.to === to ? 'secondary' : 'outline'}
-					size="sm"
 					class="sm:justify-start"
 					onclick={() => apply(preset.from, preset.to)}>{preset.label}</Button
 				>

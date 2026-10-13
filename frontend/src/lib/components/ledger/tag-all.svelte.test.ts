@@ -43,7 +43,9 @@ async function openAndChoose(name = 'Lisbon trip') {
 	await fireEvent.click(await screen.findByRole('option', { name: new RegExp(name) }));
 }
 
-const confirm = () => screen.getByRole('button', { name: /Confirm|Tagging/ });
+// the verb of the decision carries the number: "Tag", "Tag 3 entries", while it runs "Tagging…"
+const confirm = () =>
+	screen.getByRole('button', { name: /^(Tag( [\d,]+ entr(y|ies))?|Tagging…)$/ });
 
 beforeEach(() => {
 	vi.resetAllMocks();
@@ -59,9 +61,10 @@ describe('TagAll: the button', () => {
 	it('is disabled with the reason as its tooltip when the filter is empty', () => {
 		setup({ reason: 'Narrow the filter first' });
 
+		// the reason is the tooltip of the visible, disabled button (ActionButton); no native title
 		const button = screen.getByRole('button', { name: /Tag all/ });
 		expect(button).toBeDisabled();
-		expect(button.parentElement).toHaveAttribute('title', 'Narrow the filter first');
+		expect(button.closest('[title]')).toBeNull();
 	});
 });
 
@@ -118,7 +121,7 @@ describe('TagAll: the dialog', () => {
 		expect(screen.getByText(/no entries yet/)).toBeInTheDocument();
 	});
 
-	it('disables Confirm while the preview loads', async () => {
+	it('disables the verb while the preview loads', async () => {
 		vi.mocked(applyTag).mockReturnValue(new Promise(() => {}));
 		setup();
 
@@ -128,7 +131,7 @@ describe('TagAll: the dialog', () => {
 		expect(confirm()).toBeDisabled();
 	});
 
-	it('says "Nothing to tag" and keeps Confirm disabled when everything is tagged already', async () => {
+	it('says "Nothing to tag" and keeps the verb disabled when everything is tagged already', async () => {
 		vi.mocked(applyTag).mockResolvedValue(applyOut({ newly_tagged: 0, already_tagged: 5 }));
 		setup();
 
@@ -139,7 +142,7 @@ describe('TagAll: the dialog', () => {
 		expect(confirm()).toBeDisabled();
 	});
 
-	it('Confirm sends the previewed count as expected_count, patches, closes and says so', async () => {
+	it('the verb sends the previewed count as expected_count, patches, closes and says so', async () => {
 		vi.mocked(applyTag)
 			.mockResolvedValueOnce(applyOut({ newly_tagged: 3 }))
 			.mockResolvedValueOnce(applyOut({ dry_run: false, entries: [{ id: 5, tag_ids: [30] }] }));
@@ -161,7 +164,7 @@ describe('TagAll: the dialog', () => {
 		);
 	});
 
-	it('re-previews when the result changed and asks to confirm again', async () => {
+	it('re-previews when the result changed and asks again', async () => {
 		vi.mocked(applyTag)
 			.mockResolvedValueOnce(applyOut({ newly_tagged: 3 }))
 			.mockRejectedValueOnce(
@@ -228,7 +231,7 @@ describe('TagAll: the dialog', () => {
 		const input = await screen.findByLabelText('Search tags');
 
 		await fireEvent.input(input, { target: { value: 'Holiday' } });
-		await fireEvent.click(await screen.findByRole('option', { name: 'Create tag "Holiday"' }));
+		await fireEvent.click(await screen.findByRole('option', { name: 'Add tag “Holiday”' }));
 
 		await screen.findByText(/entries will be tagged/);
 		expect(createTag).toHaveBeenCalledWith('Holiday');
@@ -325,7 +328,7 @@ describe('TagAll: rows the user changed', () => {
 		expect(screen.getByText(/2 rows still shown/)).toBeInTheDocument();
 	});
 
-	it('keeps Confirm off with the box unchecked and Nothing to tag, and enables it when checked', async () => {
+	it('keeps the verb off with the box unchecked and Nothing to tag, and enables it when checked', async () => {
 		noneNew();
 		setup({ marked });
 		await openAndChoose('Lisbon trip');

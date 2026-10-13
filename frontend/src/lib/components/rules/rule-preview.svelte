@@ -144,7 +144,7 @@
 			{#each LISTS as item (item.name)}
 				{@const data = preview[item.name]}
 				<details class="rounded-lg border px-3 py-2" data-slot={`preview-${item.name}`}>
-					<summary class="cursor-pointer text-sm font-medium">
+					<summary class="text-sm font-medium">
 						{item.title} ({count(data.total)})
 					</summary>
 					<div class="mt-2 flex flex-col gap-2">

@@ -8,6 +8,7 @@
 		title,
 		actionLabel,
 		onaction,
+		actionHref,
 		actionDisabled = false,
 		children
 	}: {
@@ -16,6 +17,8 @@
 		/** the page's add action: "Add category" */
 		actionLabel?: string;
 		onaction?: () => void;
+		/** the action leads to a route (a page that adds, "Add rule") */
+		actionHref?: string;
 		actionDisabled?: boolean;
 		/** the next step, one sentence */
 		children: Snippet;
@@ -30,7 +33,9 @@
 		<h3 class="text-base font-semibold">{title}</h3>
 		<p class="max-w-prose text-muted-foreground">{@render children()}</p>
 	</div>
-	{#if actionLabel && onaction}
-		<ActionButton disabled={actionDisabled} onclick={onaction}>{actionLabel}</ActionButton>
+	{#if actionLabel && (onaction || actionHref)}
+		<ActionButton href={actionHref} disabled={actionDisabled} onclick={onaction}>
+			{actionLabel}
+		</ActionButton>
 	{/if}
 </div>

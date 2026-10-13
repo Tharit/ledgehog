@@ -5,7 +5,7 @@
 	import { describeFailure } from '#lib/dimensions/errors.js';
 	import { resolveCategory } from '#lib/theme/resolve.js';
 	import type { Category } from '#lib/types/domain.js';
-	import EntityPicker, { type PickerItem } from './entity-picker.svelte';
+	import Picker, { type PickerItem } from '#lib/components/common/picker.svelte';
 
 	// "Move Food under…": a pick dialog (patterns §11.2), opened from a menu item. Choosing the
 	// parent is the whole action and can be redone, so it writes at once and closes; a refusal
@@ -65,7 +65,7 @@
 	mode="pick"
 	feedback={failure ? { kind: 'error', text: failure } : null}
 >
-	<EntityPicker
+	<Picker
 		{items}
 		label="new parents"
 		placeholder="Find a category…"

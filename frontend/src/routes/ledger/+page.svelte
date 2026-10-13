@@ -2,7 +2,8 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { onDestroy, onMount, untrack } from 'svelte';
-	import Notice from '#lib/components/common/notice.svelte';
+	import NoticeLine from '#lib/components/common/notice-line.svelte';
+	import PageHeader from '#lib/components/common/page-header.svelte';
 	import FilterBar from '#lib/components/ledger/filter-bar.svelte';
 	import LedgerTable from '#lib/components/ledger/ledger-table.svelte';
 	import TagAll from '#lib/components/ledger/tag-all.svelte';
@@ -36,6 +37,17 @@
 		if (typing) searchEl?.focus({ preventScroll: true });
 	}
 
+	// the line holds one notice: a write's, else the lists that did not load
+	const notice = $derived(
+		ledger.notice ??
+			(ledger.lookupsFailed.length > 0
+				? {
+						text: `Some lists could not be loaded (${ledger.lookupsFailed.join(', ')}); their names may be missing below.`,
+						error: false
+					}
+				: null)
+	);
+
 	function focusSearch() {
 		searchEl?.focus({ preventScroll: true });
 		searchEl?.select();
@@ -47,7 +59,11 @@
 </svelte:head>
 
 <div class="flex flex-col gap-4">
-	<h1 class="text-[28px] font-semibold">Ledger</h1>
+	<PageHeader
+		level={1}
+		title="Ledger"
+		description="Every entry across your accounts. Narrow it with the filters, then tag the rows by key or all at once."
+	/>
 
 	<FilterBar
 		filter={ledger.filter}
@@ -70,17 +86,7 @@
 	</FilterBar>
 
 	<!-- one reserved line, so a notice appearing never moves the rows (patterns §7) -->
-	<div class="flex min-h-5 flex-col gap-1">
-		{#if ledger.notice}
-			<Notice role={ledger.notice.error ? 'alert' : 'status'}>{ledger.notice.text}</Notice>
-		{/if}
-		{#if ledger.lookupsFailed.length > 0}
-			<Notice>
-				Some lists could not be loaded ({ledger.lookupsFailed.join(', ')}); their names may be
-				missing below.
-			</Notice>
-		{/if}
-	</div>
+	<NoticeLine {notice} />
 
 	<LedgerTable
 		bind:this={table}

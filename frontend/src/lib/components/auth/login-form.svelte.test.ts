@@ -35,10 +35,10 @@ describe('LoginForm', () => {
 		expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 	});
 
-	it('disables the button while pending', () => {
+	it('disables the button while pending and says what it is doing', () => {
 		render(LoginForm, { props: { onsubmit: vi.fn(), pending: true } });
 
-		expect(screen.getByRole('button', { name: 'Log in' })).toBeDisabled();
+		expect(screen.getByRole('button', { name: 'Logging in…' })).toBeDisabled();
 	});
 
 	it('masks the password and names the fields for the browser', () => {

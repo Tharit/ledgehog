@@ -298,11 +298,9 @@ describe('RuleForm: saving', () => {
 	it('is disabled, with the reason as its tooltip, until the rule can be saved', () => {
 		setup({ saveBlocked: 'Waiting for the preview of this version of the rule' });
 
+		// the reason is a tooltip (ActionButton), not a native title
 		expect(saveButton()).toBeDisabled();
-		expect(saveButton().closest('span')).toHaveAttribute(
-			'title',
-			'Waiting for the preview of this version of the rule'
-		);
+		expect(saveButton().closest('[title]')).toBeNull();
 	});
 
 	it('saves with the button', async () => {

@@ -9,6 +9,7 @@
 
 <script lang="ts">
 	import { untrack } from 'svelte';
+	import Field from '#lib/components/common/field.svelte';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import { formatMoney, parseMoneyInput, type MoneyParseError } from '#lib/format/index.js';
@@ -124,44 +125,55 @@
 		{#each DIRECTIONS as option (option.value)}
 			<Button
 				variant={chosenDirection === option.value ? 'secondary' : 'outline'}
-				size="sm"
 				role="radio"
 				aria-checked={chosenDirection === option.value}
 				onclick={() => (chosenDirection = option.value)}>{option.text}</Button
 			>
 		{/each}
 	</div>
-	<div class="flex items-center gap-2">
-		<Input
-			aria-label="Minimum amount"
-			placeholder="Min"
-			inputmode="decimal"
-			bind:value={minText}
-			class="amount"
-		/>
-		<span class="text-muted-foreground" aria-hidden="true">&ndash;</span>
-		<Input
-			aria-label="Maximum amount"
-			placeholder="Max"
-			inputmode="decimal"
-			bind:value={maxText}
-			class="amount"
-		/>
-		<select
-			aria-label="Currency"
-			bind:value={chosenCurrency}
-			class="h-8 rounded-lg border border-input bg-card px-2 text-sm"
-		>
-			{#each choices as code (code)}
-				<option value={code}>{code}</option>
-			{/each}
-		</select>
+	<div class="flex items-end gap-2">
+		<Field label="Min">
+			{#snippet children(control)}
+				<Input
+					{...control}
+					aria-label="Minimum amount"
+					inputmode="decimal"
+					bind:value={minText}
+					class="amount"
+				/>
+			{/snippet}
+		</Field>
+		<span class="pb-1.5 text-muted-foreground" aria-hidden="true">&ndash;</span>
+		<Field label="Max">
+			{#snippet children(control)}
+				<Input
+					{...control}
+					aria-label="Maximum amount"
+					inputmode="decimal"
+					bind:value={maxText}
+					class="amount"
+				/>
+			{/snippet}
+		</Field>
+		<Field label="Currency">
+			{#snippet children(control)}
+				<select
+					id={control.id}
+					bind:value={chosenCurrency}
+					class="h-8 rounded-lg border border-input bg-card px-2 text-sm"
+				>
+					{#each choices as code (code)}
+						<option value={code}>{code}</option>
+					{/each}
+				</select>
+			{/snippet}
+		</Field>
 	</div>
 	{#if problem}
 		<p role="alert" class="text-xs text-destructive">{problem}</p>
 	{/if}
 	<div class="flex items-center justify-between">
-		<Button variant="ghost" size="sm" onclick={clear}>Clear</Button>
-		<Button size="sm" onclick={apply}>Apply</Button>
+		<Button variant="ghost" onclick={clear}>Clear</Button>
+		<Button onclick={apply}>Apply</Button>
 	</div>
 </FilterChip>

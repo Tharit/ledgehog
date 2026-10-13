@@ -197,7 +197,7 @@
 					{#each ENTRY_TYPES as type (type)}
 						<li>
 							<label
-								class="flex h-8 cursor-pointer items-center gap-2 rounded-md px-1.5 text-[13px] hover:bg-muted"
+								class="flex h-8 items-center gap-2 rounded-md px-1.5 text-[13px] hover:bg-muted"
 							>
 								<input
 									type="checkbox"
@@ -282,7 +282,7 @@
 		onkeydown={onsearchkeydown}
 	/>
 	{#if !isEmpty(filter)}
-		<Button variant="ghost" size="sm" onclick={clearAll}>Clear</Button>
+		<Button variant="ghost" onclick={clearAll}>Clear</Button>
 	{/if}
 	{@render trailing?.()}
 </div>

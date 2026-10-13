@@ -165,6 +165,8 @@
 	/* Tailwind 4 stopped giving buttons the pointer cursor; clickable things should show it. */
 	button:not(:disabled),
 	[role='button']:not([aria-disabled='true']),
+	[role='option']:not([aria-disabled='true']),
+	summary,
 	select:not(:disabled),
 	label:has(input[type='checkbox']:not(:disabled)),
 	label:has(input[type='radio']:not(:disabled)) {

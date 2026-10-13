@@ -32,7 +32,7 @@ function setup() {
 	return { flow, host };
 }
 
-const confirm = () => screen.getByRole('button', { name: /^Delete(ing…)?$/ });
+const verb = () => screen.getByRole('button', { name: /^Delete(ing…)?$/ });
 
 beforeEach(() => {
 	vi.resetAllMocks();
@@ -57,14 +57,14 @@ describe('RuleDeleteDialog', () => {
 
 		void flow.start(rule());
 
-		await waitFor(() => expect(confirm()).toBeDisabled());
+		await waitFor(() => expect(verb()).toBeDisabled());
 	});
 
 	it('deletes with the previewed count and says what settled', async () => {
 		vi.mocked(deleteRule).mockResolvedValueOnce(dry(14, 9));
 		const { flow, host } = setup();
 		await flow.start(rule({ id: 4 }));
-		await waitFor(() => expect(confirm()).toBeEnabled());
+		await waitFor(() => expect(verb()).toBeEnabled());
 		vi.mocked(deleteRule).mockResolvedValueOnce({
 			...dry(14, 9),
 			dry_run: false,
@@ -72,7 +72,7 @@ describe('RuleDeleteDialog', () => {
 			settle: { touched_entry_ids: [1, 2], error: null }
 		});
 
-		await fireEvent.click(confirm());
+		await fireEvent.click(verb());
 
 		await waitFor(() => expect(host.deleted).toHaveBeenCalledOnce());
 		expect(vi.mocked(deleteRule).mock.calls.at(-1)).toEqual([4, { expectedCount: 14, limit: 1 }]);
@@ -84,7 +84,7 @@ describe('RuleDeleteDialog', () => {
 		vi.mocked(deleteRule).mockResolvedValueOnce(dry(14, 9));
 		const { flow, host } = setup();
 		await flow.start(rule({ id: 4 }));
-		await waitFor(() => expect(confirm()).toBeEnabled());
+		await waitFor(() => expect(verb()).toBeEnabled());
 		vi.mocked(deleteRule)
 			.mockRejectedValueOnce(
 				new ApiError(409, 'conflict', 'x', {
@@ -95,7 +95,7 @@ describe('RuleDeleteDialog', () => {
 			)
 			.mockResolvedValueOnce(dry(16, 9));
 
-		await fireEvent.click(confirm());
+		await fireEvent.click(verb());
 
 		expect(await screen.findByText('16 entries')).toBeInTheDocument();
 		expect(screen.getByText(/14 entries before, 16 now/)).toBeInTheDocument();
@@ -107,7 +107,7 @@ describe('RuleDeleteDialog', () => {
 		vi.mocked(deleteRule).mockResolvedValue(dry(1, 0));
 		const { flow, host } = setup();
 		await flow.start(rule());
-		await waitFor(() => expect(confirm()).toBeEnabled());
+		await waitFor(() => expect(verb()).toBeEnabled());
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 

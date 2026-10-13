@@ -29,7 +29,8 @@
 		cursor = false,
 		changed = false,
 		changedTitle = CHANGED_BY_YOU,
-		onselect
+		onselect,
+		ontags
 	}: {
 		entry: Entry;
 		lookups: Lookups;
@@ -41,6 +42,8 @@
 		/** why the row is marked (tooltip) */
 		changedTitle?: string;
 		onselect?: () => void;
+		/** a click on the tags cell: the mouse path for the `t` key (patterns §11.3) */
+		ontags?: () => void;
 	} = $props();
 
 	// Derived entries (spec §3.9) take a fixed icon and their type's name in place of a category.
@@ -130,18 +133,27 @@
 				{#if !fixed && payee}{payee.name}{/if}
 			</div>
 		{:else if column.id === 'tags'}
-			<div role="gridcell" class="flex min-w-0 items-center gap-1">
-				<span class="flex min-w-0 items-center gap-1 overflow-hidden">
-					{#each shownTags as tag (tag.id)}
-						<TagChip name={tag.name} color={resolveTag(tag).color} />
-					{/each}
-				</span>
-				{#if hiddenTags.length > 0}
-					<span
-						class="shrink-0 text-xs text-muted-foreground"
-						title={hiddenTags.map((tag) => tag.name).join(', ')}>+{hiddenTags.length}</span
-					>
-				{/if}
+			<div role="gridcell" class="flex min-w-0 items-center">
+				<!-- not in the tab order: the keyboard path is `t`, handled for the whole list -->
+				<button
+					type="button"
+					tabindex="-1"
+					aria-label="Edit tags"
+					class="flex h-full min-w-0 flex-1 items-center gap-1 text-left"
+					onclick={() => ontags?.()}
+				>
+					<span class="flex min-w-0 items-center gap-1 overflow-hidden">
+						{#each shownTags as tag (tag.id)}
+							<TagChip name={tag.name} color={resolveTag(tag).color} />
+						{/each}
+					</span>
+					{#if hiddenTags.length > 0}
+						<span
+							class="shrink-0 text-xs text-muted-foreground"
+							title={hiddenTags.map((tag) => tag.name).join(', ')}>+{hiddenTags.length}</span
+						>
+					{/if}
+				</button>
 			</div>
 		{:else if column.id === 'description'}
 			<div role="gridcell" class="min-w-0 truncate">

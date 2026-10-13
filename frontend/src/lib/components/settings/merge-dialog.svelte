@@ -3,7 +3,7 @@
 	import ActionButton from '#lib/components/common/action-button.svelte';
 	import ActionDialog, { type DialogFeedback } from '#lib/components/common/action-dialog.svelte';
 	import type { MergeFlow } from '#lib/dimensions/flows.svelte.js';
-	import EntityPicker, { type PickerItem } from './entity-picker.svelte';
+	import Picker, { type PickerItem } from '#lib/components/common/picker.svelte';
 
 	// The merge dialog both dimensions share, a decision dialog (spec §3.5, §3.6): choose the
 	// target, read the server's dry run, merge explicitly. The consequence list is the caller's
@@ -54,7 +54,7 @@
 	width="lg"
 >
 	{#if flow.preview === null}
-		<EntityPicker
+		<Picker
 			{items}
 			label={`Merge into: ${label}`}
 			placeholder="Find a target…"

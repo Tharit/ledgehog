@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { Button } from '#lib/components/ui/button/index.js';
+	import ActionButton from '#lib/components/common/action-button.svelte';
+	import Field from '#lib/components/common/field.svelte';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import Notice from '#lib/components/common/notice.svelte';
 
@@ -13,7 +14,6 @@
 		onsubmit: (login: string, password: string) => void;
 	} = $props();
 
-	const id = $props.id();
 	let login = $state('');
 	let password = $state('');
 
@@ -29,23 +29,25 @@
 >
 	<!-- Placeholder wordmark: the raster mascot must be redrawn as SVG before it ships (design §9). -->
 	<h1 class="text-[28px] font-semibold text-primary">Ledgehog</h1>
-	<div class="flex flex-col gap-1.5">
-		<label for="{id}-login" class="text-xs font-medium text-muted-foreground">Login</label>
-		<Input id="{id}-login" name="login" autocomplete="username" required bind:value={login} />
-	</div>
-	<div class="flex flex-col gap-1.5">
-		<label for="{id}-pw" class="text-xs font-medium text-muted-foreground">Password</label>
-		<Input
-			id="{id}-pw"
-			name="password"
-			type="password"
-			autocomplete="current-password"
-			required
-			bind:value={password}
-		/>
-	</div>
+	<Field label="Login">
+		{#snippet children(control)}
+			<Input {...control} name="login" autocomplete="username" required bind:value={login} />
+		{/snippet}
+	</Field>
+	<Field label="Password">
+		{#snippet children(control)}
+			<Input
+				{...control}
+				name="password"
+				type="password"
+				autocomplete="current-password"
+				required
+				bind:value={password}
+			/>
+		{/snippet}
+	</Field>
 	{#if error}
 		<Notice role="alert">{error}</Notice>
 	{/if}
-	<Button type="submit" size="lg" disabled={pending}>Log in</Button>
+	<ActionButton type="submit" busy={pending} busyLabel="Logging in…">Log in</ActionButton>
 </form>

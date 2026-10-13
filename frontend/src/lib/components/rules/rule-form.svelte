@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { Button } from '#lib/components/ui/button/index.js';
+	import ActionButton from '#lib/components/common/action-button.svelte';
+	import Field from '#lib/components/common/field.svelte';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import type { Lookups } from '#lib/ledger/lookups.js';
 	import type { ConditionRow } from '#lib/rules/conditions.js';
@@ -66,61 +67,54 @@
 	onsubmit={(event) => event.preventDefault()}
 	{onkeydown}
 >
-	<div class="flex flex-col gap-1">
-		<label for="rule-name" class="text-xs font-medium">Name</label>
-		<Input
-			id="rule-name"
-			value={form.name}
-			autocomplete="off"
-			aria-invalid={errors.name ? true : undefined}
-			aria-describedby={errors.name ? 'rule-name-error' : undefined}
-			oninput={(event) => onedit({ name: event.currentTarget.value })}
-		/>
-		{#if errors.name}
-			<p id="rule-name-error" class="text-xs text-destructive">{errors.name}</p>
-		{/if}
-		<p class="text-xs text-muted-foreground">
-			Shown as the reason (“rule: Rent”) wherever this rule decides an entry.
-		</p>
-	</div>
+	<Field
+		label="Name"
+		hint="Shown as the reason (“rule: Rent”) wherever this rule decides an entry."
+		error={errors.name ?? null}
+	>
+		{#snippet children(control)}
+			<Input
+				{...control}
+				value={form.name}
+				autocomplete="off"
+				oninput={(event) => onedit({ name: event.currentTarget.value })}
+			/>
+		{/snippet}
+	</Field>
 
 	<fieldset class="flex flex-col gap-3">
 		<legend class="mb-1 text-sm font-semibold">What it sets</legend>
-		<div class="flex flex-col gap-1">
-			<label for="rule-sets" class="text-xs font-medium">Sets</label>
-			<select
-				id="rule-sets"
-				class={`${SELECT_CLASS} w-full`}
-				value={form.sets}
-				disabled={editing}
-				onchange={(event) => onedit({ sets: event.currentTarget.value as RuleSets }, true)}
-			>
-				{#each SETS as sets (sets)}
-					<option value={sets}>{SETS_INFO[sets].name}</option>
-				{/each}
-			</select>
-			<p class="text-xs text-muted-foreground">
-				{SETS_INFO[form.sets].hint}
-				{#if editing}Fixed once the rule exists.{/if}
-			</p>
-		</div>
-		<div class="flex flex-col gap-1">
-			<span id="rule-target-label" class="text-xs font-medium">
-				{SETS_INFO[form.sets].name}
-			</span>
-			<TargetPicker
-				id="rule-target"
-				kind={form.sets}
-				value={form.target}
-				{lookups}
-				label={`The ${kindWord(form.sets)} this rule sets`}
-				invalid={errors.target !== undefined}
-				onchange={(target) => onedit({ target }, true)}
-			/>
-			{#if errors.target}
-				<p class="text-xs text-destructive">{errors.target}</p>
-			{/if}
-		</div>
+		<Field
+			label="Sets"
+			hint={`${SETS_INFO[form.sets].hint}${editing ? ' Fixed once the rule exists.' : ''}`}
+		>
+			{#snippet children(control)}
+				<select
+					{...control}
+					class={`${SELECT_CLASS} w-full`}
+					value={form.sets}
+					disabled={editing}
+					onchange={(event) => onedit({ sets: event.currentTarget.value as RuleSets }, true)}
+				>
+					{#each SETS as sets (sets)}
+						<option value={sets}>{SETS_INFO[sets].name}</option>
+					{/each}
+				</select>
+			{/snippet}
+		</Field>
+		<Field label={SETS_INFO[form.sets].name} error={errors.target ?? null}>
+			{#snippet children(control)}
+				<TargetPicker
+					id={control.id}
+					kind={form.sets}
+					value={form.target}
+					{lookups}
+					label={`The ${kindWord(form.sets)} this rule sets`}
+					invalid={errors.target !== undefined}
+					onchange={(target) => onedit({ target }, true)}
+				/>
+			{/snippet}
+		</Field>
 	</fieldset>
 
 	{@render example?.()}
@@ -140,35 +134,39 @@
 	/>
 
 	<details class="rounded-lg border px-3 py-2" open={advancedOpen}>
-		<summary class="cursor-pointer text-sm font-medium">Advanced</summary>
-		<div class="mt-3 flex flex-col gap-1">
-			<label for="rule-priority" class="text-xs font-medium">Priority</label>
-			<Input
-				id="rule-priority"
-				class="w-28"
-				inputmode="numeric"
-				value={form.priority}
-				aria-invalid={errors.priority ? true : undefined}
-				oninput={(event) => onedit({ priority: event.currentTarget.value })}
-			/>
-			{#if errors.priority}
-				<p class="text-xs text-destructive">{errors.priority}</p>
-			{/if}
-			<p class="text-xs text-muted-foreground">
-				Among rules that set the same kind of value, the lower number is tried first. Blank is 100.
-			</p>
+		<summary class="text-sm font-medium">Advanced</summary>
+		<div class="mt-3">
+			<Field
+				label="Priority"
+				hint="Among rules that set the same kind of value, the lower number is tried first. Blank is 100."
+				error={errors.priority ?? null}
+			>
+				{#snippet children(control)}
+					<Input
+						{...control}
+						class="w-28"
+						inputmode="numeric"
+						value={form.priority}
+						oninput={(event) => onedit({ priority: event.currentTarget.value })}
+					/>
+				{/snippet}
+			</Field>
 		</div>
 	</details>
 
 	<div class="flex flex-wrap items-center gap-2">
-		<span class="inline-flex" title={saveBlocked ?? undefined}>
-			<Button disabled={saveBlocked !== null} onclick={onsave}>
-				{saving ? 'Saving…' : 'Save rule'}
-			</Button>
-		</span>
-		<Button variant="outline" href={RULES_PATH}>Cancel</Button>
+		<ActionButton
+			busy={saving}
+			busyLabel="Saving…"
+			disabled={saveBlocked !== null}
+			reason={saveBlocked ?? undefined}
+			onclick={onsave}
+		>
+			Save rule
+		</ActionButton>
+		<ActionButton variant="outline" href={RULES_PATH}>Cancel</ActionButton>
 		{#if editing && ondelete}
-			<Button variant="destructive" class="ml-auto" onclick={ondelete}>Delete…</Button>
+			<ActionButton variant="destructive" class="ml-auto" onclick={ondelete}>Delete…</ActionButton>
 		{/if}
 		<span class="basis-full text-xs text-muted-foreground">⌘/Ctrl + Enter saves.</span>
 	</div>

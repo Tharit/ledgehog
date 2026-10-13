@@ -1,10 +1,11 @@
 <script lang="ts">
+	import Picker from '#lib/components/common/picker.svelte';
 	import * as Popover from '#lib/components/ui/popover/index.js';
+	import { tagItems } from '#lib/ledger/tag-items.js';
 	import type { Tag } from '#lib/types/domain.js';
-	import TagChooser from './tag-chooser.svelte';
 
-	// `t` on a row: the tags of that one entry, in a popover anchored to the row. It has no
-	// trigger: the list opens it and says which row it belongs to.
+	// `t` on a row, or a click on its tags cell: the tags of that one entry, in a popover anchored
+	// to the row. It has no trigger of its own: the list opens it and says which row it belongs to.
 	let {
 		open = $bindable(false),
 		anchor = null,
@@ -27,6 +28,8 @@
 		/** the popover closed: where the keyboard goes back to */
 		onclosefocus?: (event: Event) => void;
 	} = $props();
+
+	const items = $derived(tagItems(tags));
 </script>
 
 <Popover.Root bind:open>
@@ -37,6 +40,21 @@
 		class="w-72 gap-0 p-1"
 		onCloseAutoFocus={onclosefocus}
 	>
-		<TagChooser {tags} {checked} {busy} {onselect} {oncreate} />
+		<Picker
+			{items}
+			{checked}
+			checkedLabel="tagged"
+			{busy}
+			label="Tags"
+			findLabel="Search tags"
+			placeholder="Find or add a tag…"
+			emptyText="No tags yet. Type a name to add one."
+			{oncreate}
+			createLabel={(name) => `Add tag “${name}”`}
+			onselect={(id) => {
+				const tag = tags.find((t) => t.id === id);
+				if (tag) onselect(tag);
+			}}
+		/>
 	</Popover.Content>
 </Popover.Root>

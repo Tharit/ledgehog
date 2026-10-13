@@ -98,17 +98,14 @@ describe('RuleList', () => {
 		expect(screen.getByText('priority 50')).toBeInTheDocument();
 	});
 
-	it('opens a rule through its name and its Edit button', () => {
+	it("opens a rule through its name, which is the row's one primary action", () => {
 		setup();
 
 		expect(screen.getByRole('link', { name: 'Landlord' })).toHaveAttribute(
 			'href',
 			'/settings/rules/4'
 		);
-		expect(screen.getAllByRole('link', { name: 'Edit' })[0]).toHaveAttribute(
-			'href',
-			'/settings/rules/1'
-		);
+		expect(screen.queryByRole('link', { name: 'Edit' })).toBeNull();
 	});
 
 	it('asks to delete a rule, naming it', async () => {
@@ -128,7 +125,7 @@ describe('RuleList', () => {
 	it('says there are no rules and offers to add one, with no link to the ledger', () => {
 		setup({ rules: [] });
 
-		expect(screen.getByText('No rules yet.')).toBeInTheDocument();
+		expect(screen.getByText('No rules yet')).toBeInTheDocument();
 		expect(screen.getByRole('link', { name: 'Add rule' })).toHaveAttribute(
 			'href',
 			'/settings/rules/new'
@@ -143,7 +140,7 @@ describe('RuleList', () => {
 			'aria-busy',
 			'true'
 		);
-		expect(screen.queryByText('No rules yet.')).toBeNull();
+		expect(screen.queryByText('No rules yet')).toBeNull();
 	});
 
 	it('offers a retry when the list could not be loaded', async () => {

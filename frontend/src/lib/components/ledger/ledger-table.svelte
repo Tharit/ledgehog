@@ -1,7 +1,8 @@
 <script lang="ts">
+	import ActionButton from '#lib/components/common/action-button.svelte';
+	import EmptyState from '#lib/components/common/empty-state.svelte';
 	import ErrorState from '#lib/components/common/error-state.svelte';
 	import Notice from '#lib/components/common/notice.svelte';
-	import { Button } from '#lib/components/ui/button/index.js';
 	import { formatCount } from '#lib/format/index.js';
 	import { describeLoadError } from '#lib/ledger/errors.js';
 	import { DERIVED_NOT_TAGGABLE } from '#lib/ledger/errors.js';
@@ -85,6 +86,7 @@
 	const pickerChecked = $derived(new Set(pickerEntry?.tag_ids ?? []));
 	const tagList = $derived<Tag[]>([...lookups.tags.values()]);
 
+	// `t`, or a click on a row's tags cell, which puts the cursor on that row first
 	function openPicker() {
 		if (cursorIndex < 0) return;
 		const entry = entries[cursorIndex];
@@ -193,21 +195,20 @@
 			class="max-w-none items-center p-8 text-center"
 		/>
 	{:else if status === 'ready' && entries.length === 0}
-		<div
-			class="flex w-full flex-col items-center gap-3 rounded-xl border bg-card p-8 text-center shadow-card"
-		>
-			{#if activeFilters.length > 0}
-				<h2 class="text-base font-semibold">No entries match these filters</h2>
-				<p class="text-sm text-muted-foreground">{activeFilters.join(' · ')}</p>
-				<Button variant="outline" onclick={onclearfilters}>Clear filters</Button>
-			{:else}
-				<h2 class="text-base font-semibold">No entries yet</h2>
-				<p class="text-sm text-muted-foreground">
-					Entries arrive when a bank account is synced, when an export file is uploaded, or when one
-					is entered by hand. Start with an account under Accounts, then bring its data in.
-				</p>
-			{/if}
-		</div>
+		{#if activeFilters.length > 0}
+			<EmptyState
+				title="No entries match these filters"
+				actionLabel="Clear filters"
+				onaction={onclearfilters}
+			>
+				{activeFilters.join(' · ')}
+			</EmptyState>
+		{:else}
+			<EmptyState title="No entries yet">
+				Entries arrive when a bank account is synced, when an export file is uploaded, or when one
+				is entered by hand. Start with an account under Accounts, then bring its data in.
+			</EmptyState>
+		{/if}
 	{:else}
 		<div
 			bind:this={container}
@@ -268,6 +269,10 @@
 						changed={changedIds.has(entry.id) || movedIds.has(entry.id)}
 						changedTitle={changedIds.has(entry.id) ? CHANGED_BY_YOU : CHANGED_ELSEWHERE}
 						onselect={() => (cursorId = entry.id)}
+						ontags={() => {
+							cursorId = entry.id;
+							openPicker();
+						}}
 					/>
 				{/each}
 			{/if}
@@ -277,18 +282,25 @@
 			<div class="flex flex-wrap items-center gap-3 py-3 text-xs text-muted-foreground">
 				<span>{formatCount(entries.length, locale)} of {formatCount(total, locale)}</span>
 				{#if entries.length < total}
-					<Button variant="outline" size="sm" onclick={onloadmore} disabled={loadingMore}>
-						{loadingMore ? 'Loading…' : 'Load more'}
-					</Button>
+					<ActionButton
+						variant="outline"
+						onclick={onloadmore}
+						busy={loadingMore}
+						busyLabel="Loading…"
+					>
+						Load more
+					</ActionButton>
 				{/if}
 				{#if moreFailure}
 					<Notice role="alert">
 						{moreFailure.title}.
-						{#if moreFailure.retryable}
-							<button type="button" class="underline underline-offset-2" onclick={onloadmore}>
-								Try again
-							</button>
-						{/if}
+						{#snippet action()}
+							{#if moreFailure.retryable}
+								<ActionButton variant="link" class="h-auto p-0" onclick={onloadmore}>
+									Try again
+								</ActionButton>
+							{/if}
+						{/snippet}
 					</Notice>
 				{/if}
 				<button
