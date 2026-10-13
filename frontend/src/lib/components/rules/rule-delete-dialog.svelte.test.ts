@@ -32,7 +32,7 @@ function setup() {
 	return { flow, host };
 }
 
-const confirm = () => screen.getByRole('button', { name: /Delete rule/ });
+const confirm = () => screen.getByRole('button', { name: /^Delete(ing…)?$/ });
 
 beforeEach(() => {
 	vi.resetAllMocks();

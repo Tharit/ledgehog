@@ -1,9 +1,10 @@
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
+import { createRawSnippet } from 'svelte';
 import { describe, expect, it, vi } from 'vitest';
 import { account, category, payee } from '#lib/ledger/fixtures.js';
 import { buildLookups } from '#lib/ledger/lookups.js';
+import { newConditionRow } from '#lib/rules/conditions.js';
 import { emptyForm, type RuleForm } from '#lib/rules/form.js';
-import { suggestionsFromEntry } from '#lib/rules/prefill.js';
 import RuleFormView from './rule-form.svelte';
 
 const lookups = buildLookups({
@@ -13,16 +14,29 @@ const lookups = buildLookups({
 });
 
 function form(over: Partial<RuleForm> = {}): RuleForm {
-	return { ...emptyForm(), name: 'Rent', target: 11, name_prefix: 'Landlord', ...over };
+	return {
+		...emptyForm(),
+		name: 'Rent',
+		target: 11,
+		conditions: [
+			newConditionRow({ field: 'counterparty_name', op: 'starts_with', value: 'Landlord' })
+		],
+		...over
+	};
 }
 
 function setup(props: Record<string, unknown> = {}) {
-	const onedit = vi.fn();
-	const onsave = vi.fn();
+	const handlers = {
+		onedit: vi.fn(),
+		oncondition: vi.fn(),
+		onaddcondition: vi.fn(),
+		onremovecondition: vi.fn(),
+		onsave: vi.fn()
+	};
 	render(RuleFormView, {
-		props: { form: form(), lookups, onedit, onsave, saveBlocked: null, ...props }
+		props: { form: form(), lookups, ...handlers, saveBlocked: null, ...props }
 	});
-	return { onedit, onsave };
+	return handlers;
 }
 
 const saveButton = () => screen.getByRole('button', { name: 'Save rule' });
@@ -32,43 +46,72 @@ describe('RuleForm: fields', () => {
 		setup();
 
 		expect(screen.getByLabelText('Name')).toHaveValue('Rent');
-		expect(screen.getByLabelText('Sets a')).toHaveValue('category');
+		expect(screen.getByLabelText('Sets')).toHaveValue('category');
 		expect(screen.getByRole('button', { name: 'The category this rule sets' })).toHaveTextContent(
 			'Rent'
 		);
-		expect(screen.getByLabelText('Counterparty name starts with')).toHaveValue('Landlord');
-		expect(screen.getByLabelText('Counterparty reference')).toHaveValue('');
+		expect(screen.getByLabelText('Condition 1: field')).toHaveValue('counterparty_name');
+		expect(screen.getByLabelText('Condition 1: operator')).toHaveValue('starts_with');
+		expect(screen.getByLabelText('Condition 1: value')).toHaveValue('Landlord');
+	});
+
+	it('has no placeholder in any text input', () => {
+		setup();
+
+		for (const input of screen.getAllByRole('textbox')) {
+			expect(input).not.toHaveAttribute('placeholder');
+		}
 	});
 
 	it('reports every edit and leaves the form to its owner', async () => {
 		const { onedit } = setup();
 
 		await fireEvent.input(screen.getByLabelText('Name'), { target: { value: 'Rent flat' } });
-		await fireEvent.input(screen.getByLabelText('Booking text'), { target: { value: 'SEPA' } });
 
-		expect(onedit).toHaveBeenNthCalledWith(1, { name: 'Rent flat' });
-		expect(onedit).toHaveBeenNthCalledWith(2, { booking_text: 'SEPA' });
+		expect(onedit).toHaveBeenCalledWith({ name: 'Rent flat' });
 	});
 
 	it('offers a payee condition on a category rule only', () => {
 		const { unmount } = render(RuleFormView, {
-			props: { form: form(), lookups, onedit: vi.fn(), onsave: vi.fn() }
+			props: {
+				form: form(),
+				lookups,
+				onedit: vi.fn(),
+				oncondition: vi.fn(),
+				onaddcondition: vi.fn(),
+				onremovecondition: vi.fn(),
+				onsave: vi.fn()
+			}
 		});
-		expect(
-			screen.getByRole('button', { name: 'Only entries with this payee' })
-		).toBeInTheDocument();
+		expect(screen.getByText('Payee is')).toBeInTheDocument();
 		unmount();
 
 		render(RuleFormView, {
-			props: { form: form({ sets: 'payee' }), lookups, onedit: vi.fn(), onsave: vi.fn() }
+			props: {
+				form: form({ sets: 'payee' }),
+				lookups,
+				onedit: vi.fn(),
+				oncondition: vi.fn(),
+				onaddcondition: vi.fn(),
+				onremovecondition: vi.fn(),
+				onsave: vi.fn()
+			}
 		});
-		expect(screen.queryByRole('button', { name: 'Only entries with this payee' })).toBeNull();
+		expect(screen.queryByText('Payee is')).toBeNull();
+	});
+
+	it('sets the payee condition at once, with the preview to follow', async () => {
+		const { onedit } = setup({ form: form({ condition_payee_id: 20 }) });
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Clear the payee' }));
+
+		expect(onedit).toHaveBeenCalledWith({ condition_payee_id: null }, true);
 	});
 
 	it('changes what it sets at once, with the preview to follow', async () => {
 		const { onedit } = setup();
 
-		await fireEvent.change(screen.getByLabelText('Sets a'), { target: { value: 'payee' } });
+		await fireEvent.change(screen.getByLabelText('Sets'), { target: { value: 'payee' } });
 
 		expect(onedit).toHaveBeenCalledWith({ sets: 'payee' }, true);
 	});
@@ -76,77 +119,172 @@ describe('RuleForm: fields', () => {
 	it('fixes what it sets once the rule exists', () => {
 		setup({ editing: true });
 
-		expect(screen.getByLabelText('Sets a')).toBeDisabled();
+		expect(screen.getByLabelText('Sets')).toBeDisabled();
 		expect(screen.getByText(/Fixed once the rule exists/)).toBeInTheDocument();
 	});
 
 	it('keeps the priority under Advanced, open only when it is set', () => {
 		const { unmount } = render(RuleFormView, {
-			props: { form: form(), lookups, onedit: vi.fn(), onsave: vi.fn() }
+			props: {
+				form: form(),
+				lookups,
+				onedit: vi.fn(),
+				oncondition: vi.fn(),
+				onaddcondition: vi.fn(),
+				onremovecondition: vi.fn(),
+				onsave: vi.fn()
+			}
 		});
 		expect(screen.getByText('Advanced').closest('details')).not.toHaveAttribute('open');
 		unmount();
 
 		render(RuleFormView, {
-			props: { form: form({ priority: '20' }), lookups, onedit: vi.fn(), onsave: vi.fn() }
+			props: {
+				form: form({ priority: '20' }),
+				lookups,
+				onedit: vi.fn(),
+				oncondition: vi.fn(),
+				onaddcondition: vi.fn(),
+				onremovecondition: vi.fn(),
+				onsave: vi.fn()
+			}
 		});
 		expect(screen.getByText('Advanced').closest('details')).toHaveAttribute('open');
 		expect(screen.getByLabelText('Priority')).toHaveValue('20');
 	});
+
+	it('shows the example region above the conditions', () => {
+		const example = createRawSnippet(() => ({ render: () => '<p>the example</p>' }));
+		setup({ example });
+
+		const text = screen.getByText('the example');
+		const conditions = screen.getByRole('group', { name: /source transaction has/ });
+		expect(
+			text.compareDocumentPosition(conditions) & Node.DOCUMENT_POSITION_FOLLOWING
+		).toBeTruthy();
+	});
 });
 
-describe('RuleForm: suggestions from an entry', () => {
-	const suggestions = suggestionsFromEntry({
-		id: 1,
-		counterparty_name: 'PAYPAL *SEEED',
-		category_id: null,
-		mandate_ref: 'M-1'
+describe('RuleForm: the condition rows', () => {
+	it('shows every row with its field, operator and value, and nothing prefilled', () => {
+		setup({
+			form: form({
+				conditions: [
+					newConditionRow({ field: 'purpose', op: 'contains', value: 'Markt' }),
+					newConditionRow({ field: 'mandate_ref', op: 'equals', value: 'M1' })
+				]
+			})
+		});
+
+		expect(screen.getByLabelText('Condition 1: field')).toHaveValue('purpose');
+		expect(screen.getByLabelText('Condition 2: field')).toHaveValue('mandate_ref');
+		expect(screen.getByLabelText('Condition 2: operator')).toHaveValue('equals');
+		expect(screen.getByLabelText('Condition 2: value')).toHaveValue('M1');
 	});
 
-	it('are unchecked boxes next to the value, and fill nothing in', () => {
-		setup({ form: form({ name_prefix: '' }), suggestions });
+	it('offers the plain field and operator labels', () => {
+		setup();
 
-		const boxes = screen.getAllByRole('checkbox');
-		expect(boxes).toHaveLength(3);
-		for (const box of boxes) expect(box).not.toBeChecked();
-		expect(screen.getByLabelText('Counterparty name starts with')).toHaveValue('');
-		expect(screen.getAllByText('“PAYPAL *SEEED”')).toHaveLength(2);
+		const fields = within(screen.getByLabelText('Condition 1: field'));
+		expect(fields.getAllByRole('option').map((o) => o.textContent)).toEqual([
+			'Counterparty name',
+			'Counterparty IBAN or reference',
+			'Purpose',
+			'Booking text',
+			'Mandate reference'
+		]);
+		const ops = within(screen.getByLabelText('Condition 1: operator'));
+		expect(ops.getAllByRole('option').map((o) => o.textContent)).toEqual([
+			'is',
+			'starts with',
+			'contains',
+			'matches pattern (regex)'
+		]);
 	});
 
-	it('put their value into the field when ticked, and take it out when unticked', async () => {
-		const { onedit } = setup({ form: form({ name_prefix: '' }), suggestions });
+	it('reports a change of field, operator and value of one row', async () => {
+		const { oncondition } = setup();
 
-		await fireEvent.click(screen.getAllByRole('checkbox')[1]);
+		await fireEvent.change(screen.getByLabelText('Condition 1: field'), {
+			target: { value: 'purpose' }
+		});
+		await fireEvent.change(screen.getByLabelText('Condition 1: operator'), {
+			target: { value: 'regex' }
+		});
+		await fireEvent.input(screen.getByLabelText('Condition 1: value'), {
+			target: { value: 'a|b' }
+		});
 
-		expect(onedit).toHaveBeenCalledWith({ name_prefix: 'PAYPAL *SEEED' }, true);
+		expect(oncondition).toHaveBeenNthCalledWith(1, 0, { field: 'purpose' });
+		expect(oncondition).toHaveBeenNthCalledWith(2, 0, { op: 'regex' });
+		expect(oncondition).toHaveBeenNthCalledWith(3, 0, { value: 'a|b' });
 	});
 
-	it('show as ticked while the field holds the value', async () => {
-		const { onedit } = setup({ form: form({ name_prefix: 'PAYPAL *SEEED' }), suggestions });
+	it('adds a condition with a button and removes one with its own', async () => {
+		const { onaddcondition, onremovecondition } = setup({
+			form: form({ conditions: [newConditionRow({ value: 'A' }), newConditionRow({ value: 'B' })] })
+		});
 
-		const box = screen.getAllByRole('checkbox')[1];
-		expect(box).toBeChecked();
-		await fireEvent.click(box);
+		await fireEvent.click(screen.getByRole('button', { name: 'Add condition' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Remove condition 2' }));
 
-		expect(onedit).toHaveBeenCalledWith({ name_prefix: '' }, true);
+		expect(onaddcondition).toHaveBeenCalledOnce();
+		expect(onremovecondition).toHaveBeenCalledWith(1);
+	});
+
+	it('says what the regex operator takes, for that row only', () => {
+		setup({
+			form: form({
+				conditions: [
+					newConditionRow({ op: 'contains', value: 'a' }),
+					newConditionRow({ op: 'regex', value: 'b' })
+				]
+			})
+		});
+
+		const rows = screen.getAllByRole('listitem');
+		expect(within(rows[0]).queryByText(/regular expression/)).toBeNull();
+		expect(within(rows[1]).getByText(/regular expression/)).toBeInTheDocument();
+	});
+
+	it('shows the server’s word about a row at that row', () => {
+		setup({
+			form: form({
+				conditions: [newConditionRow({ value: 'a' }), newConditionRow({ op: 'regex', value: '(' })]
+			}),
+			errors: { rows: { 1: 'The regex does not compile (at position 1)' } }
+		});
+
+		const rows = screen.getAllByRole('listitem');
+		expect(
+			within(rows[1]).getByText('The regex does not compile (at position 1)')
+		).toBeInTheDocument();
+		expect(screen.getByLabelText('Condition 2: value')).toHaveAttribute('aria-invalid', 'true');
+		expect(screen.getByLabelText('Condition 1: value')).not.toHaveAttribute('aria-invalid');
+		expect(
+			screen.getByLabelText('Condition 2: value').getAttribute('aria-describedby')
+		).toBeTruthy();
+	});
+
+	it('says rows without a value are left out, when there are such rows and others', () => {
+		setup({ form: form({ conditions: [newConditionRow({ value: 'a' }), newConditionRow()] }) });
+
+		expect(screen.getByText('Rows without a value are left out.')).toBeInTheDocument();
 	});
 });
 
 describe('RuleForm: errors', () => {
-	it('shows the server’s regex error at the regex field', () => {
-		setup({ errors: { purpose_regex: 'unterminated group' } });
-
-		const input = screen.getByLabelText('Purpose matches (regular expression)');
-		expect(input).toHaveAttribute('aria-invalid', 'true');
-		expect(screen.getByText('unterminated group')).toBeInTheDocument();
-		expect(input.getAttribute('aria-describedby')).toBe('rule-purpose_regex-error');
-	});
-
 	it('shows a taken name at the name', () => {
 		setup({ errors: { name: 'A rule with this name already exists.' } });
 
 		expect(screen.getByLabelText('Name')).toHaveAttribute('aria-invalid', 'true');
 		expect(screen.getByText('A rule with this name already exists.')).toBeInTheDocument();
+	});
+
+	it('shows a missing condition at the list', () => {
+		setup({ errors: { conditions: 'a rule needs at least one condition' } });
+
+		expect(screen.getByText('a rule needs at least one condition')).toBeInTheDocument();
 	});
 
 	it('opens Advanced for a priority the server refused', () => {
@@ -175,15 +313,27 @@ describe('RuleForm: saving', () => {
 		expect(onsave).toHaveBeenCalledOnce();
 	});
 
-	it('saves with ⌘/Ctrl + Enter, but only when it can be saved', async () => {
+	it('saves with ⌘/Ctrl + Enter, never with Enter alone', async () => {
 		const { onsave } = setup();
 		const name = screen.getByLabelText('Name');
 
 		await fireEvent.keyDown(name, { key: 'Enter', ctrlKey: true });
 		await fireEvent.keyDown(name, { key: 'Enter', metaKey: true });
 		await fireEvent.keyDown(name, { key: 'Enter' });
+		await fireEvent.keyDown(screen.getByLabelText('Condition 1: value'), { key: 'Enter' });
 
 		expect(onsave).toHaveBeenCalledTimes(2);
+	});
+
+	it('does not submit the form when Enter is pressed in a field', async () => {
+		setup();
+		const form = screen.getByRole('form', { name: 'Rule' });
+		const submitted = vi.fn((event: Event) => event.defaultPrevented);
+		form.addEventListener('submit', submitted);
+
+		await fireEvent.submit(form);
+
+		expect(submitted).toHaveReturnedWith(true);
 	});
 
 	it('does not save with the keys while it is blocked', async () => {
@@ -198,7 +348,7 @@ describe('RuleForm: saving', () => {
 		const ondelete = vi.fn();
 		setup({ editing: true, ondelete });
 
-		await fireEvent.click(screen.getByRole('button', { name: 'Delete rule…' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Delete…' }));
 
 		expect(ondelete).toHaveBeenCalledOnce();
 	});
@@ -206,12 +356,14 @@ describe('RuleForm: saving', () => {
 	it('has no delete for a new rule', () => {
 		setup();
 
-		expect(screen.queryByRole('button', { name: 'Delete rule…' })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Delete…' })).toBeNull();
 	});
 
-	it('cancels to the list', () => {
+	it('cancels to the list, as an outline button', () => {
 		setup();
 
-		expect(screen.getByRole('link', { name: 'Cancel' })).toHaveAttribute('href', '/settings/rules');
+		const cancel = screen.getByRole('link', { name: 'Cancel' });
+		expect(cancel).toHaveAttribute('href', '/settings/rules');
+		expect(cancel.className).toContain('border-border');
 	});
 });

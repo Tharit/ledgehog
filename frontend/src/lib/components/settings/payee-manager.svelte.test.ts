@@ -42,6 +42,20 @@ beforeEach(() => {
 	vi.resetAllMocks();
 });
 
+const headerAdd = () =>
+	within(document.querySelector('[data-slot="page-header"]') as HTMLElement).getByRole('button', {
+		name: 'Add payee'
+	});
+
+/** open the ⋯ menu of a row (by keyboard: the menu opens on Enter) and choose an item */
+async function chooseFromMenu(name: string, item: string) {
+	await fireEvent.keyDown(screen.getByRole('button', { name: `More actions for ${name}` }), {
+		key: 'Enter'
+	});
+	const menu = await screen.findByRole('menu');
+	await fireEvent.click(within(menu).getByRole('menuitem', { name: item }));
+}
+
 describe('PayeeManager: the list', () => {
 	it('shows name and note, "default" for a payee without its own look, and no document provider', async () => {
 		await setup([{ ...rewe, document_provider: 'amazon' }, edeka]);
@@ -59,7 +73,7 @@ describe('PayeeManager: the list', () => {
 		await setup();
 
 		expect(
-			screen.getByText(/Create a payee only for a merchant you want to report on/)
+			screen.getByText(/Add a payee only for a merchant you want to report on/)
 		).toBeInTheDocument();
 	});
 
@@ -77,65 +91,120 @@ describe('PayeeManager: empty', () => {
 
 		expect(screen.getByText('No payees yet')).toBeInTheDocument();
 		expect(screen.getByText(/rules can then set it/)).toBeInTheDocument();
-		expect(screen.getByRole('button', { name: 'Add payee' })).toBeEnabled();
+		const empty = document.querySelector('[data-slot="empty"]') as HTMLElement;
+		expect(within(empty).getByRole('button', { name: 'Add payee' })).toBeEnabled();
+		expect(headerAdd()).toBeEnabled();
 	});
 });
 
-describe('PayeeManager: create and edit', () => {
-	it('creates a payee with its note', async () => {
+describe('PayeeManager: row actions', () => {
+	it('shows Edit inline and Merge… and Delete… in the menu, Delete last', async () => {
+		await setup();
+
+		const row = document.querySelector('[data-payee-id="1"]') as HTMLElement;
+		expect(
+			within(row)
+				.getAllByRole('button')
+				.map((b) => b.getAttribute('aria-label'))
+				.filter((label) => label !== null && !/^Change icon/.test(label))
+		).toEqual(['Edit REWE', 'More actions for REWE']);
+		await fireEvent.keyDown(screen.getByRole('button', { name: 'More actions for REWE' }), {
+			key: 'Enter'
+		});
+		const menu = await screen.findByRole('menu');
+		expect(
+			within(menu)
+				.getAllByRole('menuitem')
+				.map((i) => i.textContent?.trim())
+		).toEqual(['Merge…', 'Delete…']);
+	});
+});
+
+describe('PayeeManager: add and edit', () => {
+	it('adds a payee with its note in a labelled form dialog, then reveals its row', async () => {
 		vi.mocked(createPayee).mockResolvedValue(
 			written(rewe) as Awaited<ReturnType<typeof createPayee>>
 		);
 		await setup([]);
+		vi.mocked(listPayees).mockResolvedValue([rewe]);
 
-		await fireEvent.click(screen.getByRole('button', { name: 'Add payee' }));
-		await fireEvent.input(screen.getByLabelText('Name of the new payee'), {
-			target: { value: 'REWE' }
-		});
-		await fireEvent.input(screen.getByLabelText('Note on the new payee'), {
+		await fireEvent.click(headerAdd());
+		const dialog = await screen.findByRole('dialog', { name: 'Add payee' });
+		await fireEvent.input(within(dialog).getByLabelText('Name'), { target: { value: 'REWE' } });
+		await fireEvent.input(within(dialog).getByLabelText('Note'), {
 			target: { value: 'groceries' }
 		});
-		await fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
 
 		await waitFor(() =>
 			expect(createPayee).toHaveBeenCalledWith({ name: 'REWE', note: 'groceries' })
 		);
 		expect(listPayees).toHaveBeenCalledTimes(2);
+		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+		const row = document.querySelector('[data-payee-id="1"]') as HTMLElement;
+		expect(row).toHaveAttribute('data-revealed');
+		await waitFor(() => expect(row.firstElementChild).toHaveFocus());
 	});
 
-	it('shows a taken name beside the field', async () => {
+	it('needs a name, and says a taken one under the name field', async () => {
 		vi.mocked(createPayee).mockRejectedValue(
 			new ApiError(409, 'conflict', 'x', { reason: 'duplicate_name' })
 		);
 		await setup([]);
 
-		await fireEvent.click(screen.getByRole('button', { name: 'Add payee' }));
-		await fireEvent.input(screen.getByLabelText('Name of the new payee'), {
-			target: { value: 'REWE' }
-		});
-		await fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+		await fireEvent.click(headerAdd());
+		const dialog = await screen.findByRole('dialog', { name: 'Add payee' });
+		expect(within(dialog).getByRole('button', { name: 'Add' })).toBeDisabled();
+		await fireEvent.input(within(dialog).getByLabelText('Name'), { target: { value: 'REWE' } });
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
 
-		expect(await screen.findByRole('alert')).toHaveTextContent(
+		expect(await within(dialog).findByRole('alert')).toHaveTextContent(
 			'A payee named "REWE" already exists.'
 		);
 	});
 
-	it('edits name and note and sends both', async () => {
+	it('edits name and note in a form dialog and sends both', async () => {
 		vi.mocked(updatePayee).mockResolvedValue(
 			written(rewe) as Awaited<ReturnType<typeof updatePayee>>
 		);
 		await setup();
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Edit REWE' }));
-		await fireEvent.input(screen.getByLabelText('Name of REWE'), {
+		const dialog = await screen.findByRole('dialog', { name: 'Edit REWE' });
+		expect(within(dialog).getByLabelText('Name')).toHaveValue('REWE');
+		expect(within(dialog).getByLabelText('Note')).toHaveValue('weekly shop');
+		await fireEvent.input(within(dialog).getByLabelText('Name'), {
 			target: { value: 'REWE Markt' }
 		});
-		await fireEvent.input(screen.getByLabelText('Note on REWE'), { target: { value: '' } });
-		await fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+		await fireEvent.input(within(dialog).getByLabelText('Note'), { target: { value: '' } });
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
 
 		await waitFor(() =>
 			expect(updatePayee).toHaveBeenCalledWith(1, { name: 'REWE Markt', note: null })
 		);
+		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+	});
+
+	it('closes an unchanged edit without writing', async () => {
+		await setup();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Edit REWE' }));
+		const dialog = await screen.findByRole('dialog', { name: 'Edit REWE' });
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+
+		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+		expect(updatePayee).not.toHaveBeenCalled();
+	});
+
+	it('cancels with Esc without writing', async () => {
+		await setup();
+
+		await fireEvent.click(headerAdd());
+		const dialog = await screen.findByRole('dialog', { name: 'Add payee' });
+		await fireEvent.keyDown(within(dialog).getByLabelText('Name'), { key: 'Escape' });
+
+		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+		expect(createPayee).not.toHaveBeenCalled();
 	});
 
 	it('changes the colour from the fixed set', async () => {
@@ -178,7 +247,7 @@ describe('PayeeManager: delete', () => {
 		);
 		await setup();
 
-		await fireEvent.click(screen.getByRole('button', { name: 'Delete Shell' }));
+		await chooseFromMenu('Shell', 'Delete…');
 
 		const dialog = await screen.findByRole('dialog');
 		expect(await within(dialog).findByText('Shell fuel (sets this payee)')).toBeInTheDocument();
@@ -195,7 +264,7 @@ describe('PayeeManager: delete', () => {
 		);
 		await setup();
 
-		await fireEvent.click(screen.getByRole('button', { name: 'Delete Shell' }));
+		await chooseFromMenu('Shell', 'Delete…');
 
 		const dialog = await screen.findByRole('dialog');
 		expect(await within(dialog).findByText(/referenced by 12 entries/)).toBeInTheDocument();
@@ -219,7 +288,7 @@ const mergeOut = (over: Partial<PayeeMergeOut> = {}): PayeeMergeOut => ({
 });
 
 async function openMergeInto(name: RegExp) {
-	await fireEvent.click(screen.getByRole('button', { name: 'Merge REWE into another payee' }));
+	await chooseFromMenu('REWE', 'Merge…');
 	const dialog = await screen.findByRole('dialog');
 	await fireEvent.click(within(dialog).getByRole('option', { name }));
 	return dialog;

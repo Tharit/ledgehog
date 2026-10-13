@@ -1,0 +1,36 @@
+<script lang="ts">
+	import type { Snippet } from 'svelte';
+	import ActionButton from './action-button.svelte';
+
+	// An empty list (patterns §11.6): what is missing, one sentence on the next step and, when the
+	// page has one, its add action as a button. A card, left-aligned (design §7).
+	let {
+		title,
+		actionLabel,
+		onaction,
+		actionDisabled = false,
+		children
+	}: {
+		/** "No categories yet" */
+		title: string;
+		/** the page's add action: "Add category" */
+		actionLabel?: string;
+		onaction?: () => void;
+		actionDisabled?: boolean;
+		/** the next step, one sentence */
+		children: Snippet;
+	} = $props();
+</script>
+
+<div
+	data-slot="empty"
+	class="flex flex-col items-start gap-3 rounded-xl border border-border bg-card p-5 text-sm"
+>
+	<div class="flex flex-col gap-1">
+		<h3 class="text-base font-semibold">{title}</h3>
+		<p class="max-w-prose text-muted-foreground">{@render children()}</p>
+	</div>
+	{#if actionLabel && onaction}
+		<ActionButton disabled={actionDisabled} onclick={onaction}>{actionLabel}</ActionButton>
+	{/if}
+</div>

@@ -5,7 +5,7 @@
 	import { DEFAULT_PRIORITY, SETS_INFO, targetId } from '#lib/rules/form.js';
 	import { groupRules } from '#lib/rules/groups.js';
 	import type { Lookups } from '#lib/ledger/lookups.js';
-	import { ruleUrl } from '#lib/rules/links.js';
+	import { NEW_RULE_PATH, ruleUrl } from '#lib/rules/links.js';
 	import { summarizeConditions } from '#lib/rules/summary.js';
 	import type { Rule } from '#lib/rules/types.js';
 	import RuleTarget from './rule-target.svelte';
@@ -50,11 +50,8 @@
 	<div
 		class="flex w-full flex-col items-center gap-3 rounded-xl border bg-card p-8 text-center shadow-card"
 	>
-		<h2 class="text-base font-semibold">No rules yet</h2>
-		<p class="max-w-prose text-sm text-muted-foreground">
-			A rule decides entries like this one for good; start from an entry in the ledger.
-		</p>
-		<Button href="/ledger">Go to the ledger</Button>
+		<p class="text-sm text-muted-foreground">No rules yet.</p>
+		<Button href={NEW_RULE_PATH}>Add rule</Button>
 	</div>
 {:else}
 	<div class="flex flex-col gap-6">
@@ -92,10 +89,10 @@
 								<RuleTarget sets={group.sets} id={targetId(rule)} {lookups} />
 							</div>
 							<div class="flex items-center gap-1">
-								<Button variant="outline" size="sm" href={ruleUrl(rule.id)}>Open</Button>
+								<Button variant="outline" href={ruleUrl(rule.id)}>Edit</Button>
 								<Button
 									variant="ghost"
-									size="icon-sm"
+									size="icon"
 									aria-label={`Delete the rule ${rule.name}`}
 									title="Delete…"
 									onclick={() => ondelete?.(rule)}

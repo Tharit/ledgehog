@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
 	ApiError,
 	createRule,
-	findEntry,
 	getRule,
 	listAccounts,
 	listCategories,
@@ -10,7 +9,7 @@ import {
 	listRules,
 	updateRule
 } from '#lib/api/index.js';
-import { entry } from '#lib/ledger/fixtures.js';
+import { newConditionRow, type ConditionField, type ConditionOp } from '#lib/rules/conditions.js';
 import { preview, previewList, previewRow, rule } from '#lib/rules/fixtures.js';
 import { PREVIEW_PAGE, RuleEditorStore } from './rule-editor.svelte.js';
 
@@ -20,7 +19,6 @@ vi.mock('#lib/api/index.js', async (importOriginal) => ({
 	updateRule: vi.fn(),
 	getRule: vi.fn(),
 	listRules: vi.fn(),
-	findEntry: vi.fn(),
 	listAccounts: vi.fn(),
 	listCategories: vi.fn(),
 	listPayees: vi.fn()
@@ -43,6 +41,15 @@ function failure(status: number, code: string, details: unknown = null) {
 }
 
 const DEBOUNCE = 400;
+
+/** a condition row; the counterparty name starting with `value` unless told otherwise */
+function cond(
+	value: string,
+	field: ConditionField = 'counterparty_name',
+	op: ConditionOp = 'starts_with'
+) {
+	return newConditionRow({ field, op, value });
+}
 
 /** an editor for a stored rule, loaded and previewed */
 async function editing(p = preview({ matches: previewList([previewRow()], 1) })) {
@@ -87,7 +94,10 @@ describe('RuleEditorStore: loading', () => {
 		expect(updateRule).toHaveBeenCalledTimes(1);
 		const [id, fields, controls] = vi.mocked(updateRule).mock.calls[0];
 		expect(id).toBe(5);
-		expect(fields).toMatchObject({ category_id: 10, name_prefix: 'Landlord' });
+		expect(fields).toMatchObject({
+			category_id: 10,
+			conditions: [{ field: 'counterparty_name', op: 'starts_with', value: 'Landlord' }]
+		});
 		expect(controls).toMatchObject({ dryRun: true, limit: PREVIEW_PAGE });
 		expect(controls?.expectedCount).toBeUndefined();
 		expect(store.previewStatus).toBe('ready');
@@ -111,35 +121,6 @@ describe('RuleEditorStore: loading', () => {
 
 		expect(store.loadStatus).toBe('error');
 	});
-
-	it('offers the entry text as suggestions and applies none of it', async () => {
-		vi.mocked(findEntry).mockResolvedValue(
-			entry({ id: 42, counterparty_name: 'PAYPAL *SEEED', category_id: 10 })
-		);
-		const store = new RuleEditorStore({
-			ruleId: null,
-			from: { id: 42, on: '2026-10-09', accountId: 1 }
-		});
-
-		await store.init();
-
-		expect(findEntry).toHaveBeenCalledWith(42, { id: 42, on: '2026-10-09', accountId: 1 });
-		expect(store.suggestions.map((s) => s.field)).toEqual(['name_prefix', 'name_exact']);
-		expect(store.form.name_prefix).toBe('');
-		expect(store.form.target).toBe(10);
-		expect(store.previewStatus).toBe('idle');
-		expect(createRule).not.toHaveBeenCalled();
-	});
-
-	it('starts from scratch, with a notice, when the entry cannot be found', async () => {
-		vi.mocked(findEntry).mockResolvedValue(null);
-		const store = new RuleEditorStore({ ruleId: null, from: { id: 42 } });
-
-		await store.init();
-
-		expect(store.loadStatus).toBe('ready');
-		expect(store.notice?.text).toMatch(/not found/);
-	});
 });
 
 describe('RuleEditorStore: the debounced preview', () => {
@@ -148,9 +129,9 @@ describe('RuleEditorStore: the debounced preview', () => {
 		const store = new RuleEditorStore({ ruleId: null });
 		await store.init();
 
-		store.edit({ target: 3, name_prefix: 'P' });
+		store.edit({ target: 3, conditions: [cond('P')] });
 		await vi.advanceTimersByTimeAsync(DEBOUNCE - 50);
-		store.edit({ name_prefix: 'PAY' });
+		store.edit({ conditions: [cond('PAY')] });
 		await vi.advanceTimersByTimeAsync(DEBOUNCE - 50);
 		expect(createRule).not.toHaveBeenCalled();
 		expect(store.previewStatus).toBe('loading');
@@ -159,7 +140,11 @@ describe('RuleEditorStore: the debounced preview', () => {
 
 		expect(createRule).toHaveBeenCalledTimes(1);
 		const [fields, controls] = vi.mocked(createRule).mock.calls[0];
-		expect(fields).toMatchObject({ sets: 'category', category_id: 3, name_prefix: 'PAY' });
+		expect(fields).toMatchObject({
+			sets: 'category',
+			category_id: 3,
+			conditions: [{ field: 'counterparty_name', op: 'starts_with', value: 'PAY' }]
+		});
 		expect(fields.name).toBe('Untitled rule');
 		expect(controls).toMatchObject({ dryRun: true, limit: PREVIEW_PAGE });
 		expect(store.previewStatus).toBe('ready');
@@ -176,13 +161,13 @@ describe('RuleEditorStore: the debounced preview', () => {
 		expect(store.previewStatus).toBe('idle');
 	});
 
-	it('asks at once for a ticked suggestion', async () => {
+	it('asks at once for a choice, without the pause', async () => {
 		vi.mocked(createRule).mockResolvedValue(out());
 		const store = new RuleEditorStore({ ruleId: null });
 		await store.init();
 		store.edit({ target: 3 });
 
-		store.edit({ name_prefix: 'PAYPAL *' }, true);
+		store.edit({ conditions: [cond('PAYPAL *')] }, true);
 		await vi.advanceTimersByTimeAsync(0);
 
 		expect(createRule).toHaveBeenCalledTimes(1);
@@ -195,10 +180,10 @@ describe('RuleEditorStore: the debounced preview', () => {
 			.mockResolvedValueOnce(out(preview({ would_confirm: 7 })));
 		const store = new RuleEditorStore({ ruleId: null });
 		await store.init();
-		store.edit({ target: 3, name_prefix: 'A' });
+		store.edit({ target: 3, conditions: [cond('A')] });
 		await vi.advanceTimersByTimeAsync(DEBOUNCE);
 
-		store.edit({ name_prefix: 'AB' });
+		store.edit({ conditions: [cond('AB')] });
 		await vi.advanceTimersByTimeAsync(DEBOUNCE);
 		first.resolve(out(preview({ would_confirm: 1 })));
 		await vi.advanceTimersByTimeAsync(0);
@@ -210,45 +195,49 @@ describe('RuleEditorStore: the debounced preview', () => {
 	it('keeps the held preview, not current, while the next one is on its way', async () => {
 		const store = await editing(preview({ would_confirm: 2 }));
 
-		store.edit({ booking_text: 'SEPA' });
+		store.edit({ conditions: [cond('SEPA', 'booking_text', 'equals')] });
 
 		expect(store.preview?.would_confirm).toBe(2);
 		expect(store.previewStatus).toBe('loading');
 		expect(store.previewCurrent).toBe(false);
 	});
 
-	it('shows an invalid regex at its field and holds no preview', async () => {
+	it('shows an invalid regex at its row and holds no preview', async () => {
 		vi.mocked(createRule).mockRejectedValue(
 			failure(422, 'invalid_rule', [
-				{ location: ['body', 'purpose_regex'], message: 'unterminated group', type: 'invalid_rule' }
+				{
+					location: ['body', 'conditions[0].value'],
+					message: 'conditions[0]: the regex does not compile',
+					type: 'invalid_rule'
+				}
 			])
 		);
 		const store = new RuleEditorStore({ ruleId: null });
 		await store.init();
 
-		store.edit({ target: 3, purpose_regex: '(' });
+		store.edit({ target: 3, conditions: [cond('(', 'purpose', 'regex')] });
 		await vi.advanceTimersByTimeAsync(DEBOUNCE);
 
 		expect(store.previewStatus).toBe('error');
 		expect(store.preview).toBeNull();
-		expect(store.fieldErrors.purpose_regex).toBe('unterminated group');
+		expect(store.fieldErrors.rows).toEqual({ 0: 'The regex does not compile' });
 		expect(store.canSave).toBe(false);
 	});
 
-	it('clears a field error as soon as that field is edited', async () => {
+	it('clears a row error as soon as the form is edited', async () => {
 		vi.mocked(createRule).mockRejectedValue(
 			failure(422, 'invalid_rule', [
-				{ location: ['body', 'purpose_regex'], message: 'bad', type: 'invalid_rule' }
+				{ location: ['body', 'conditions[0].value'], message: 'bad', type: 'invalid_rule' }
 			])
 		);
 		const store = new RuleEditorStore({ ruleId: null });
 		await store.init();
-		store.edit({ target: 3, purpose_regex: '(' });
+		store.edit({ target: 3, conditions: [cond('(', 'purpose', 'regex')] });
 		await vi.advanceTimersByTimeAsync(DEBOUNCE);
 
-		store.edit({ purpose_regex: '()' });
+		store.edit({ conditions: [cond('()', 'purpose', 'regex')] });
 
-		expect(store.fieldErrors.purpose_regex).toBeUndefined();
+		expect(store.fieldErrors.rows).toBeUndefined();
 	});
 
 	it('says so, with a way to retry, when the server cannot be reached', async () => {
@@ -256,7 +245,7 @@ describe('RuleEditorStore: the debounced preview', () => {
 		const store = new RuleEditorStore({ ruleId: null });
 		await store.init();
 
-		store.edit({ target: 3, name_prefix: 'P' });
+		store.edit({ target: 3, conditions: [cond('P')] });
 		await vi.advanceTimersByTimeAsync(DEBOUNCE);
 
 		expect(store.error?.kind).toBe('network');
@@ -277,7 +266,7 @@ describe('RuleEditorStore: the debounced preview', () => {
 		await store.more('matches');
 		expect(store.rowsOf('matches').map((r) => r.entry_id)).toEqual([1, 2]);
 
-		store.edit({ booking_text: 'x' }, true);
+		store.edit({ conditions: [cond('x', 'booking_text', 'equals')] }, true);
 		await vi.advanceTimersByTimeAsync(0);
 
 		expect(store.rowsOf('matches').map((r) => r.entry_id)).toEqual([2]);
@@ -332,13 +321,13 @@ describe('RuleEditorStore: saving', () => {
 		const store = await editing();
 		expect(store.canSave).toBe(false); // unchanged
 
-		store.edit({ booking_text: 'SEPA' });
+		store.edit({ conditions: [cond('SEPA', 'booking_text', 'equals')] });
 		expect(store.saveBlocked).toMatch(/preview/);
 
 		await vi.advanceTimersByTimeAsync(DEBOUNCE);
 		expect(store.canSave).toBe(true);
 
-		store.edit({ booking_text: 'SEPA2' });
+		store.edit({ conditions: [cond('SEPA2', 'booking_text', 'equals')] });
 		expect(store.canSave).toBe(false);
 	});
 
@@ -346,7 +335,7 @@ describe('RuleEditorStore: saving', () => {
 		vi.mocked(createRule).mockResolvedValue(out());
 		const store = new RuleEditorStore({ ruleId: null });
 		await store.init();
-		store.edit({ target: 3, name_prefix: 'P' }, true);
+		store.edit({ target: 3, conditions: [cond('P')] }, true);
 		await vi.advanceTimersByTimeAsync(0);
 
 		expect(store.saveBlocked).toMatch(/name/);
@@ -357,7 +346,7 @@ describe('RuleEditorStore: saving', () => {
 
 	it('writes with the previewed count and reports what settled', async () => {
 		const store = await editing(preview({ matches: previewList([previewRow()], 12) }));
-		store.edit({ booking_text: 'SEPA' });
+		store.edit({ conditions: [cond('SEPA', 'booking_text', 'equals')] });
 		await vi.advanceTimersByTimeAsync(DEBOUNCE);
 		vi.mocked(updateRule).mockResolvedValue(
 			out(preview(), {
@@ -371,7 +360,10 @@ describe('RuleEditorStore: saving', () => {
 
 		const [id, fields, controls] = vi.mocked(updateRule).mock.calls.at(-1)!;
 		expect(id).toBe(5);
-		expect(fields).toMatchObject({ booking_text: 'SEPA', name: 'Landlord' });
+		expect(fields).toMatchObject({
+			conditions: [{ field: 'booking_text', op: 'equals', value: 'SEPA' }],
+			name: 'Landlord'
+		});
 		expect(controls).toMatchObject({ expectedCount: 12 });
 		expect(controls?.dryRun).toBeFalsy();
 		expect(result).toEqual({
@@ -387,7 +379,7 @@ describe('RuleEditorStore: saving', () => {
 		);
 		const store = new RuleEditorStore({ ruleId: null });
 		await store.init();
-		store.edit({ name: 'Rent', target: 3, name_prefix: 'Landlord' }, true);
+		store.edit({ name: 'Rent', target: 3, conditions: [cond('Landlord')] }, true);
 		await vi.advanceTimersByTimeAsync(0);
 		vi.mocked(createRule).mockResolvedValueOnce(
 			out(preview(), { dry_run: false, rule: rule({ id: 77, name: 'Rent' }), settle: null })
@@ -402,7 +394,7 @@ describe('RuleEditorStore: saving', () => {
 
 	it('refreshes the preview and says so when the result moved', async () => {
 		const store = await editing(preview({ matches: previewList([previewRow()], 12) }));
-		store.edit({ booking_text: 'SEPA' });
+		store.edit({ conditions: [cond('SEPA', 'booking_text', 'equals')] });
 		await vi.advanceTimersByTimeAsync(DEBOUNCE);
 		vi.mocked(updateRule)
 			.mockRejectedValueOnce(
@@ -433,7 +425,7 @@ describe('RuleEditorStore: saving', () => {
 
 	it('reloads the lists and drops a target that is gone on a stale reference', async () => {
 		const store = await editing();
-		store.edit({ booking_text: 'SEPA' });
+		store.edit({ conditions: [cond('SEPA', 'booking_text', 'equals')] });
 		await vi.advanceTimersByTimeAsync(DEBOUNCE);
 		vi.mocked(updateRule).mockRejectedValue(
 			failure(409, 'stale_reference', { field: 'category_id', entity: 'category', id: 10 })
@@ -445,14 +437,14 @@ describe('RuleEditorStore: saving', () => {
 
 		expect(listCategories).toHaveBeenCalled();
 		expect(store.form.target).toBeNull();
-		expect(store.form.booking_text).toBe('SEPA');
+		expect(store.form.conditions[0].value).toBe('SEPA');
 		expect(store.fieldErrors.target).toMatch(/no longer exists/);
 		expect(store.notice?.text).toMatch(/Category you chose no longer exists/);
 	});
 
 	it('keeps the preview after a network failure, so saving can be tried again', async () => {
 		const store = await editing();
-		store.edit({ booking_text: 'SEPA' });
+		store.edit({ conditions: [cond('SEPA', 'booking_text', 'equals')] });
 		await vi.advanceTimersByTimeAsync(DEBOUNCE);
 		vi.mocked(updateRule).mockRejectedValue(failure(0, 'network_error'));
 
@@ -460,6 +452,102 @@ describe('RuleEditorStore: saving', () => {
 
 		expect(store.notice?.error).toBe(true);
 		expect(store.canSave).toBe(true);
+	});
+});
+
+describe('RuleEditorStore: the condition rows', () => {
+	it('starts with one blank row', async () => {
+		const store = new RuleEditorStore({ ruleId: null });
+		await store.init();
+
+		expect(store.form.conditions).toHaveLength(1);
+		expect(store.form.conditions[0].value).toBe('');
+	});
+
+	it('adds a row without asking for a preview: a blank row changes nothing', async () => {
+		const store = new RuleEditorStore({ ruleId: null });
+		await store.init();
+		store.edit({ target: 3, conditions: [cond('P')] }, true);
+		await vi.advanceTimersByTimeAsync(0);
+		vi.mocked(createRule).mockClear();
+
+		store.addCondition();
+		await vi.advanceTimersByTimeAsync(DEBOUNCE * 2);
+
+		expect(store.form.conditions).toHaveLength(2);
+		expect(createRule).not.toHaveBeenCalled();
+	});
+
+	it('edits one row: a text edit waits for the pause, a choice does not', async () => {
+		vi.mocked(createRule).mockResolvedValue(out());
+		const store = new RuleEditorStore({ ruleId: null });
+		await store.init();
+		store.edit({ target: 3 });
+
+		store.editCondition(0, { value: 'REWE' });
+		await vi.advanceTimersByTimeAsync(DEBOUNCE - 50);
+		expect(createRule).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(100);
+		expect(createRule).toHaveBeenCalledTimes(1);
+
+		store.editCondition(0, { op: 'equals' });
+		await vi.advanceTimersByTimeAsync(0);
+		expect(createRule).toHaveBeenCalledTimes(2);
+		expect(vi.mocked(createRule).mock.calls[1][0].conditions).toEqual([
+			{ field: 'counterparty_name', op: 'equals', value: 'REWE' }
+		]);
+	});
+
+	it('removes a row and asks again; the last row stays, blank', async () => {
+		vi.mocked(createRule).mockResolvedValue(out());
+		const store = new RuleEditorStore({ ruleId: null });
+		await store.init();
+		store.edit({ target: 3, conditions: [cond('A'), cond('B', 'purpose', 'contains')] }, true);
+		await vi.advanceTimersByTimeAsync(0);
+
+		store.removeCondition(0);
+		await vi.advanceTimersByTimeAsync(0);
+
+		expect(vi.mocked(createRule).mock.calls.at(-1)![0].conditions).toEqual([
+			{ field: 'purpose', op: 'contains', value: 'B' }
+		]);
+		store.removeCondition(0);
+		expect(store.form.conditions).toHaveLength(1);
+		expect(store.form.conditions[0].value).toBe('');
+		expect(store.previewStatus).toBe('idle');
+	});
+
+	it('shows a refused row at the editor row it came from, blank rows left out of the request', async () => {
+		vi.mocked(createRule).mockRejectedValue(
+			failure(422, 'invalid_rule', [
+				{
+					location: ['body', 'conditions[1].value'],
+					message: 'conditions[1]: the regex does not compile (at position 2)',
+					type: 'invalid_rule'
+				}
+			])
+		);
+		const store = new RuleEditorStore({ ruleId: null });
+		await store.init();
+
+		store.edit({
+			target: 3,
+			conditions: [cond('A'), cond(''), cond('(x', 'purpose', 'regex')]
+		});
+		await vi.advanceTimersByTimeAsync(DEBOUNCE);
+
+		expect(store.fieldErrors.rows).toEqual({ 2: 'The regex does not compile (at position 2)' });
+	});
+
+	it('keeps the source columns of the held preview: the fields its conditions read', async () => {
+		vi.mocked(createRule).mockResolvedValue(out());
+		const store = new RuleEditorStore({ ruleId: null });
+		await store.init();
+
+		store.edit({ target: 3, conditions: [cond('x', 'purpose', 'contains')] }, true);
+		await vi.advanceTimersByTimeAsync(0);
+
+		expect(store.previewedConditions).toEqual([{ field: 'purpose', op: 'contains', value: 'x' }]);
 	});
 });
 

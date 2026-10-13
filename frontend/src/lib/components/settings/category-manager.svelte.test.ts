@@ -55,6 +55,24 @@ beforeEach(() => {
 	vi.resetAllMocks();
 });
 
+const headerAdd = () =>
+	within(document.querySelector('[data-slot="page-header"]') as HTMLElement).getByRole('button', {
+		name: 'Add category'
+	});
+
+/** open the ⋯ menu of a row (by keyboard: the menu opens on Enter) and return it */
+async function openMenu(name: string) {
+	await fireEvent.keyDown(screen.getByRole('button', { name: `More actions for ${name}` }), {
+		key: 'Enter'
+	});
+	return screen.findByRole('menu');
+}
+
+async function chooseFromMenu(name: string, item: string) {
+	const menu = await openMenu(name);
+	await fireEvent.click(within(menu).getByRole('menuitem', { name: item }));
+}
+
 describe('CategoryManager: the tree', () => {
 	it('shows Income and Expense as headings, with the categories below as indented rows', async () => {
 		await setup();
@@ -86,12 +104,48 @@ describe('CategoryManager: the tree', () => {
 		expect(screen.getByRole('button', { name: 'Expand Food' })).toBeInTheDocument();
 	});
 
-	it('disables moving the first row up and the last down', async () => {
+	it('disables moving the first row up, in the menu', async () => {
 		await setup();
 
-		expect(screen.getByRole('button', { name: 'Move Travel up' })).toBeDisabled();
-		expect(screen.getByRole('button', { name: 'Move Food down' })).toBeDisabled();
-		expect(screen.getByRole('button', { name: 'Move Travel down' })).toBeEnabled();
+		const menu = await openMenu('Travel');
+
+		expect(within(menu).getByRole('menuitem', { name: 'Move up' })).toHaveAttribute(
+			'aria-disabled',
+			'true'
+		);
+		expect(within(menu).getByRole('menuitem', { name: 'Move down' })).not.toHaveAttribute(
+			'aria-disabled',
+			'true'
+		);
+	});
+
+	it('disables moving the last row down, in the menu', async () => {
+		await setup();
+
+		const menu = await openMenu('Food');
+
+		expect(within(menu).getByRole('menuitem', { name: 'Move down' })).toHaveAttribute(
+			'aria-disabled',
+			'true'
+		);
+	});
+
+	it('shows Rename and Add subcategory inline and the rest in the menu, Delete last', async () => {
+		await setup();
+
+		const row = document.querySelector('[data-category-id="4"]') as HTMLElement;
+		expect(
+			within(row)
+				.getAllByRole('button')
+				.map((b) => b.getAttribute('aria-label'))
+				.filter((label) => label !== null && !/^Change icon/.test(label))
+		).toEqual(['Rename Travel', 'Add subcategory to Travel', 'More actions for Travel']);
+		const menu = await openMenu('Travel');
+		expect(
+			within(menu)
+				.getAllByRole('menuitem')
+				.map((i) => i.textContent?.trim())
+		).toEqual(['Move up', 'Move down', 'Move to…', 'Merge…', 'Delete…']);
 	});
 });
 
@@ -99,27 +153,108 @@ describe('CategoryManager: empty', () => {
 	it('explains the next step and offers Add category, with no starter tree', async () => {
 		await setup([]);
 
-		expect(screen.getByText('No categories yet')).toBeInTheDocument();
-		expect(screen.getByRole('button', { name: 'Add category' })).toBeEnabled();
+		const empty = document.querySelector('[data-slot="empty"]') as HTMLElement;
+		expect(within(empty).getByText('No categories yet')).toBeInTheDocument();
+		expect(within(empty).getByRole('button', { name: 'Add category' })).toBeEnabled();
+		expect(headerAdd()).toBeEnabled();
 		expect(document.querySelectorAll('[data-slot="category-row"]')).toHaveLength(0);
 	});
+});
 
-	it('creates a top-level category of the chosen kind', async () => {
+describe('CategoryManager: add', () => {
+	it('adds a top-level category of the chosen kind in a form dialog, then reveals its row', async () => {
 		vi.mocked(createCategory).mockResolvedValue(
 			write(food) as Awaited<ReturnType<typeof createCategory>>
 		);
 		await setup([]);
+		vi.mocked(listCategories).mockResolvedValue([food]);
 
-		await fireEvent.click(screen.getByRole('button', { name: 'Add category' }));
-		await fireEvent.input(screen.getByLabelText('Name of the new category'), {
-			target: { value: 'Food' }
-		});
-		await fireEvent.click(screen.getByRole('radio', { name: 'Income' }));
-		await fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+		await fireEvent.click(headerAdd());
+		const dialog = await screen.findByRole('dialog', { name: 'Add category' });
+		await fireEvent.input(within(dialog).getByLabelText('Name'), { target: { value: 'Food' } });
+		await fireEvent.click(within(dialog).getByRole('radio', { name: 'Income' }));
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
 
 		await waitFor(() =>
 			expect(createCategory).toHaveBeenCalledWith({ name: 'Food', kind: 'income', sort_order: 0 })
 		);
+		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+		const row = document.querySelector('[data-category-id="1"]') as HTMLElement;
+		expect(row).toHaveAttribute('data-revealed');
+		await waitFor(() => expect(row.firstElementChild).toHaveFocus());
+	});
+
+	it('has no inline form: the name field lives in the dialog and Add needs a name', async () => {
+		await setup();
+
+		await fireEvent.click(headerAdd());
+
+		const dialog = await screen.findByRole('dialog', { name: 'Add category' });
+		expect(within(dialog).getByRole('button', { name: 'Add' })).toBeDisabled();
+		expect(within(dialog).getByText(/The kind cannot be changed later/)).toBeInTheDocument();
+		expect(screen.queryByRole('button', { name: 'Create' })).toBeNull();
+	});
+
+	it('adds a subcategory under its parent from the row, titled with the parent', async () => {
+		vi.mocked(createCategory).mockResolvedValue(
+			write(fruit) as Awaited<ReturnType<typeof createCategory>>
+		);
+		await setup();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Add subcategory to Food' }));
+		const dialog = await screen.findByRole('dialog', { name: 'Add subcategory to Food' });
+		expect(within(dialog).queryByRole('radio')).toBeNull();
+		await fireEvent.input(within(dialog).getByLabelText('Name'), { target: { value: 'Snacks' } });
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
+
+		await waitFor(() =>
+			expect(createCategory).toHaveBeenCalledWith({ name: 'Snacks', parent_id: 1, sort_order: 1 })
+		);
+	});
+
+	it('shows a taken name under the name field and keeps the dialog open', async () => {
+		vi.mocked(createCategory).mockRejectedValue(
+			new ApiError(409, 'conflict', 'x', { reason: 'duplicate_name' })
+		);
+		await setup();
+
+		await fireEvent.click(headerAdd());
+		const dialog = await screen.findByRole('dialog', { name: 'Add category' });
+		await fireEvent.input(within(dialog).getByLabelText('Name'), { target: { value: 'Food' } });
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
+
+		expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+			'A category named "Food" already exists at this level.'
+		);
+		expect(within(dialog).getByLabelText('Name')).toHaveAttribute('aria-invalid', 'true');
+	});
+
+	it('shows any other refusal in the dialog', async () => {
+		vi.mocked(createCategory).mockRejectedValue(new ApiError(0, 'network_error', 'x'));
+		await setup();
+
+		await fireEvent.click(headerAdd());
+		const dialog = await screen.findByRole('dialog', { name: 'Add category' });
+		await fireEvent.input(within(dialog).getByLabelText('Name'), { target: { value: 'Food' } });
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
+
+		expect(await within(dialog).findByRole('alert')).toHaveTextContent('could not be reached');
+		expect(within(dialog).getByLabelText('Name')).not.toHaveAttribute('aria-invalid', 'true');
+	});
+
+	it('cancels without writing, and starts empty the next time', async () => {
+		await setup();
+
+		await fireEvent.click(headerAdd());
+		let dialog = await screen.findByRole('dialog', { name: 'Add category' });
+		await fireEvent.input(within(dialog).getByLabelText('Name'), { target: { value: 'Food' } });
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+		expect(createCategory).not.toHaveBeenCalled();
+
+		await fireEvent.click(headerAdd());
+		dialog = await screen.findByRole('dialog', { name: 'Add category' });
+		expect(within(dialog).getByLabelText('Name')).toHaveValue('');
 	});
 });
 
@@ -137,6 +272,37 @@ describe('CategoryManager: rename, order, look', () => {
 
 		await waitFor(() => expect(updateCategory).toHaveBeenCalledWith(1, { name: 'Eating' }));
 		expect(listCategories).toHaveBeenCalledTimes(2);
+	});
+
+	it('commits a changed name on blur and drops an unchanged one', async () => {
+		vi.mocked(updateCategory).mockResolvedValue(
+			write({ ...food, name: 'Eating' }) as Awaited<ReturnType<typeof updateCategory>>
+		);
+		await setup();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Rename Food' }));
+		await fireEvent.blur(screen.getByLabelText('Name of Food'));
+		expect(screen.queryByLabelText('Name of Food')).toBeNull();
+		expect(updateCategory).not.toHaveBeenCalled();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Rename Food' }));
+		const input = screen.getByLabelText('Name of Food');
+		await fireEvent.input(input, { target: { value: 'Eating' } });
+		await fireEvent.blur(input);
+
+		await waitFor(() => expect(updateCategory).toHaveBeenCalledWith(1, { name: 'Eating' }));
+	});
+
+	it('cancels a rename with Esc', async () => {
+		await setup();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Rename Food' }));
+		const input = screen.getByLabelText('Name of Food');
+		await fireEvent.input(input, { target: { value: 'Eating' } });
+		await fireEvent.keyDown(input, { key: 'Escape' });
+
+		expect(screen.queryByLabelText('Name of Food')).toBeNull();
+		expect(updateCategory).not.toHaveBeenCalled();
 	});
 
 	it('shows a taken name beside the field and reloads the list', async () => {
@@ -163,7 +329,7 @@ describe('CategoryManager: rename, order, look', () => {
 		await setup();
 
 		// Travel (0) is above Food (1): moving it down numbers Food 0 and Travel 1
-		await fireEvent.click(screen.getByRole('button', { name: 'Move Travel down' }));
+		await chooseFromMenu('Travel', 'Move down');
 
 		await waitFor(() => expect(updateCategory).toHaveBeenCalled());
 		const calls = vi.mocked(updateCategory).mock.calls.map(([id, body]) => [id, body]);
@@ -202,9 +368,7 @@ describe('CategoryManager: move to', () => {
 	it('disables the category itself, its descendants and its current parent', async () => {
 		await setup();
 
-		await fireEvent.click(
-			screen.getByRole('button', { name: 'Move Groceries under another category' })
-		);
+		await chooseFromMenu('Groceries', 'Move to…');
 
 		const dialog = await screen.findByRole('dialog');
 		const option = (label: string) =>
@@ -224,9 +388,7 @@ describe('CategoryManager: move to', () => {
 		);
 		await setup();
 
-		await fireEvent.click(
-			screen.getByRole('button', { name: 'Move Groceries under another category' })
-		);
+		await chooseFromMenu('Groceries', 'Move to…');
 		const dialog = await screen.findByRole('dialog');
 		await fireEvent.click(within(dialog).getByRole('option', { name: /^Travel$/ }));
 
@@ -256,7 +418,7 @@ describe('CategoryManager: delete', () => {
 		);
 		await setup();
 
-		await fireEvent.click(screen.getByRole('button', { name: 'Delete Travel' }));
+		await chooseFromMenu('Travel', 'Delete…');
 
 		const dialog = await screen.findByRole('dialog');
 		await within(dialog).findByText(/Nothing uses Travel/);
@@ -274,7 +436,7 @@ describe('CategoryManager: delete', () => {
 		vi.mocked(mergeCategory).mockResolvedValue(mergeOut());
 		await setup();
 
-		await fireEvent.click(screen.getByRole('button', { name: 'Delete Travel' }));
+		await chooseFromMenu('Travel', 'Delete…');
 
 		const dialog = await screen.findByRole('dialog');
 		expect(await within(dialog).findByText(/it holds 12 entries, 1 rule/)).toBeInTheDocument();
@@ -319,9 +481,7 @@ function mergeOut(over: Partial<CategoryMergeOut> = {}): CategoryMergeOut {
 }
 
 async function openMergeInto(target: RegExp) {
-	await fireEvent.click(
-		screen.getByRole('button', { name: 'Merge Groceries into another category' })
-	);
+	await chooseFromMenu('Groceries', 'Merge…');
 	const dialog = await screen.findByRole('dialog');
 	await fireEvent.click(within(dialog).getByRole('option', { name: target }));
 	return dialog;
@@ -348,9 +508,7 @@ describe('CategoryManager: merge', () => {
 		vi.mocked(mergeCategory).mockResolvedValue(mergeOut());
 		await setup();
 
-		await fireEvent.click(
-			screen.getByRole('button', { name: 'Merge Groceries into another category' })
-		);
+		await chooseFromMenu('Groceries', 'Merge…');
 
 		const dialog = await screen.findByRole('dialog');
 		expect(within(dialog).queryByRole('option', { name: /Groceries/ })).toBeNull();
@@ -381,9 +539,7 @@ describe('CategoryManager: merge', () => {
 		vi.mocked(mergeCategory).mockResolvedValue(mergeOut());
 		await setup();
 
-		await fireEvent.click(
-			screen.getByRole('button', { name: 'Merge Groceries into another category' })
-		);
+		await chooseFromMenu('Groceries', 'Merge…');
 
 		const dialog = await screen.findByRole('dialog');
 		expect(within(dialog).getByRole('button', { name: 'Merge' })).toBeDisabled();

@@ -41,6 +41,7 @@ export type Account = {
 type Schemas = import('../types/api.js').components['schemas'];
 
 export type Entry = Schemas['EntryOut'];
+export type SourceTransaction = Schemas['SourceTransactionOut'];
 export type EntryPage = Schemas['EntryPageOut'];
 export type EntryType = NonNullable<Entry['type']>;
 export type ReviewFlag = Entry['review_flags'][number];

@@ -60,7 +60,6 @@ describe('EntryRow: a flow entry', () => {
 			'tags',
 			'description',
 			'review',
-			'actions',
 			'amount'
 		]);
 		expect(screen.getByRole('row').style.gridTemplateColumns).toBe(GRID_TEMPLATE);
@@ -191,47 +190,5 @@ describe('EntryRow: the cursor', () => {
 		await fireEvent.click(screen.getByRole('row'));
 
 		expect(onselect).toHaveBeenCalledOnce();
-	});
-});
-
-describe('EntryRow: create a rule', () => {
-	it('offers the action on a flow entry and reports it without moving the cursor', async () => {
-		const oncreaterule = vi.fn();
-		const onselect = vi.fn();
-		row({}, { oncreaterule, onselect });
-
-		await fireEvent.click(screen.getByRole('button', { name: 'Create rule from this entry…' }));
-
-		expect(oncreaterule).toHaveBeenCalledOnce();
-		expect(onselect).not.toHaveBeenCalled();
-	});
-
-	it('names the key in its tooltip', () => {
-		row({}, { oncreaterule: vi.fn() });
-
-		expect(screen.getByRole('button', { name: 'Create rule from this entry…' })).toHaveAttribute(
-			'title',
-			'Create rule from this entry… (r)'
-		);
-	});
-
-	it('is there on a transfer too', () => {
-		row({ type: 'transfer', counter_account_id: 2 }, { oncreaterule: vi.fn() });
-
-		expect(
-			screen.getByRole('button', { name: 'Create rule from this entry…' })
-		).toBeInTheDocument();
-	});
-
-	it('is not there on a derived entry, which has no source', () => {
-		row({ type: 'valuation' }, { oncreaterule: vi.fn() });
-
-		expect(screen.queryByRole('button', { name: 'Create rule from this entry…' })).toBeNull();
-	});
-
-	it('is not there when nothing listens', () => {
-		row();
-
-		expect(screen.queryByRole('button', { name: 'Create rule from this entry…' })).toBeNull();
 	});
 });

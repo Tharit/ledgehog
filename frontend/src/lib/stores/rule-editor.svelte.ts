@@ -7,7 +7,6 @@
 import {
 	classifyRuleError,
 	createRule,
-	findEntry,
 	getRule,
 	listRules,
 	updateRule,
@@ -21,6 +20,12 @@ import {
 } from '#lib/api/index.js';
 import { emptyLookups, type Lookups } from '#lib/ledger/lookups.js';
 import {
+	newConditionRow,
+	requestRows,
+	type Condition,
+	type ConditionRow
+} from '#lib/rules/conditions.js';
+import {
 	emptyForm,
 	formFromRule,
 	formKey,
@@ -33,12 +38,6 @@ import {
 	type RuleForm
 } from '#lib/rules/form.js';
 import { describeRuleError, fieldErrors } from '#lib/rules/messages.js';
-import {
-	formFromEntry,
-	suggestionsFromEntry,
-	type FromEntry,
-	type Suggestion
-} from '#lib/rules/prefill.js';
 import { loadRuleLookups } from './rule-lookups.js';
 import { session } from './session.svelte.js';
 
@@ -56,8 +55,6 @@ export type SaveResult = { rule: Rule; touched: number; settleFailed: boolean };
 export type RuleEditorOptions = {
 	/** the rule to change; null for a new one */
 	ruleId: number | null;
-	/** a new rule starting from this entry */
-	from?: FromEntry | null;
 	debounceMs?: number;
 };
 
@@ -73,7 +70,6 @@ export class RuleEditorStore {
 	#seq = 0;
 	#timer: ReturnType<typeof setTimeout> | null = null;
 	#controller: AbortController | null = null;
-	readonly #from: FromEntry | null;
 	readonly #debounce: number;
 
 	loadStatus = $state<EditorLoad>('loading');
@@ -81,8 +77,6 @@ export class RuleEditorStore {
 	/** the stored rule, when editing one */
 	rule = $state.raw<Rule | null>(null);
 	form = $state.raw<RuleForm>(emptyForm());
-	/** the entry's text, offered as conditions to tick */
-	suggestions = $state.raw<Suggestion[]>([]);
 	lookups = $state.raw<Lookups>(emptyLookups());
 	lookupsFailed = $state.raw<string[]>([]);
 	/** every rule, for the names of the ones that take precedence */
@@ -91,6 +85,8 @@ export class RuleEditorStore {
 	preview = $state.raw<RulePreview | null>(null);
 	/** the key of the form the held preview was asked for */
 	previewedKey = $state.raw<string | null>(null);
+	/** the conditions the held preview was asked with: they say which source columns it shows */
+	previewedConditions = $state.raw<Condition[]>([]);
 	previewStatus = $state<PreviewStatus>('idle');
 	/** rows fetched by "show more", per list, after the ones the preview came with */
 	extra = $state.raw<Record<PreviewListName, RulePreviewRow[]>>(NO_EXTRA);
@@ -101,7 +97,7 @@ export class RuleEditorStore {
 	saving = $state(false);
 
 	readonly locale = $derived(session.config?.locale ?? 'en');
-	readonly fieldErrors = $derived(fieldErrors(this.error));
+	readonly fieldErrors = $derived(fieldErrors(this.error, requestRows(this.form.conditions)));
 	/** a preview of exactly this form has arrived */
 	readonly previewCurrent = $derived(
 		this.previewStatus === 'ready' &&
@@ -119,9 +115,8 @@ export class RuleEditorStore {
 	);
 	readonly canSave = $derived(this.saveBlocked === null);
 
-	constructor({ ruleId, from = null, debounceMs = PREVIEW_DEBOUNCE_MS }: RuleEditorOptions) {
+	constructor({ ruleId, debounceMs = PREVIEW_DEBOUNCE_MS }: RuleEditorOptions) {
 		this.ruleId = ruleId;
-		this.#from = from;
 		this.#debounce = debounceMs;
 	}
 
@@ -140,16 +135,15 @@ export class RuleEditorStore {
 		return this.preview ? [...this.preview[name].rows, ...this.extra[name]] : [];
 	}
 
-	/** Load what the editor needs; for a new rule from an entry, that entry's text. */
+	/** Load what the editor needs: the lookups, the rules, and the rule when editing one. */
 	async init(): Promise<void> {
 		this.loadStatus = 'loading';
 		this.loadError = null;
 		const stored = this.ruleId === null ? null : getRule(this.ruleId);
-		const [lookups, rules, rule, entry] = await Promise.allSettled([
+		const [lookups, rules, rule] = await Promise.allSettled([
 			loadRuleLookups(),
 			listRules(),
-			stored ?? Promise.resolve(null),
-			this.#from ? findEntry(this.#from.id, this.#from) : Promise.resolve(null)
+			stored ?? Promise.resolve(null)
 		]);
 
 		if (lookups.status === 'fulfilled') {
@@ -168,19 +162,6 @@ export class RuleEditorStore {
 			const loaded = rule.value as Rule;
 			this.rule = loaded;
 			this.form = formFromRule(loaded);
-		} else if (this.#from) {
-			if (entry.status === 'fulfilled' && entry.value) {
-				this.form = formFromEntry(entry.value);
-				this.suggestions = suggestionsFromEntry(entry.value);
-			} else {
-				this.notice = {
-					text:
-						entry.status === 'rejected'
-							? 'The entry could not be loaded; start from scratch.'
-							: 'That entry was not found; start from scratch.',
-					error: false
-				};
-			}
 		}
 		this.#initialKey = formKey(this.form);
 		this.loadStatus = 'ready';
@@ -200,6 +181,25 @@ export class RuleEditorStore {
 		this.error = null;
 		this.notice = null;
 		if (formKey(next) !== formKey(before)) this.#schedule(now);
+	}
+
+	/** Change one condition row; a text edit waits for the pause, a choice does not. */
+	editCondition(index: number, patch: Partial<Omit<ConditionRow, 'key'>>): void {
+		const now = patch.value === undefined;
+		this.edit(
+			{ conditions: this.form.conditions.map((c, i) => (i === index ? { ...c, ...patch } : c)) },
+			now
+		);
+	}
+
+	addCondition(): void {
+		this.edit({ conditions: [...this.form.conditions, newConditionRow()] });
+	}
+
+	/** Remove a row; the last one stays (blank), so there is always a row to type in. */
+	removeCondition(index: number): void {
+		const rest = this.form.conditions.filter((_, i) => i !== index);
+		this.edit({ conditions: rest.length > 0 ? rest : [newConditionRow()] }, true);
 	}
 
 	/** Ask for the preview now, discarding whatever is pending. */
@@ -247,6 +247,7 @@ export class RuleEditorStore {
 			if (seq !== this.#seq) return; // a newer edit superseded this answer
 			this.preview = out.preview;
 			this.previewedKey = key;
+			this.previewedConditions = toFields(form).conditions ?? [];
 			this.extra = NO_EXTRA;
 			this.error = null;
 			this.previewStatus = 'ready';

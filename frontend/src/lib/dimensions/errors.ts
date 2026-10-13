@@ -97,6 +97,11 @@ export function needsReload(failure: DimensionFailure): boolean {
 	);
 }
 
+/** Does a refused write belong under the field it came from (the name), not to the dialog as a whole? */
+export function isFieldFailure(failure: DimensionFailure): boolean {
+	return failure.kind === 'duplicate_name' || failure.kind === 'validation';
+}
+
 const PLURAL: Record<string, [string, string]> = {
 	entries: ['entry', 'entries'],
 	rules: ['rule', 'rules'],

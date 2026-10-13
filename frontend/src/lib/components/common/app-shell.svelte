@@ -19,7 +19,7 @@
 
 <script lang="ts">
 	import LogOutIcon from '@lucide/svelte/icons/log-out';
-	import { Button } from '#lib/components/ui/button/index.js';
+	import IconButton from './icon-button.svelte';
 
 	// The shell: a 232px sidebar (wordmark, navigation, user) beside the content (design §5).
 	// The raster mascot head beside the wordmark must be redrawn as SVG first (design §9).
@@ -74,9 +74,9 @@
 			{/if}
 			<div class="flex items-center justify-between gap-2 px-2">
 				<span class="truncate text-sm" title={userName}>{userName}</span>
-				<Button variant="ghost" size="icon" onclick={onlogout} aria-label="Log out" title="Log out">
+				<IconButton verb="Log out" onclick={onlogout}>
 					<LogOutIcon size={18} strokeWidth={1.75} aria-hidden="true" />
-				</Button>
+				</IconButton>
 			</div>
 		</div>
 	</aside>

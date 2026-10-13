@@ -6,42 +6,66 @@
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { RULES_PATH } from '#lib/rules/links.js';
 	import { describeRuleError, doneUrl } from '#lib/rules/messages.js';
-	import type { FromEntry } from '#lib/rules/prefill.js';
+	import { sourceColumns } from '#lib/rules/preview.js';
 	import { RuleDeleteFlow } from '#lib/stores/rule-delete.svelte.js';
 	import { RuleEditorStore, type SaveResult } from '#lib/stores/rule-editor.svelte.js';
+	import { RuleExampleStore } from '#lib/stores/rule-example.svelte.js';
+	import LeaveGuard from './leave-guard.svelte';
 	import RuleDeleteDialog from './rule-delete-dialog.svelte';
+	import RuleExample from './rule-example.svelte';
 	import RuleForm from './rule-form.svelte';
 	import RulePreview from './rule-preview.svelte';
 
 	// The rule editor: the form on one side, the server's preview of it on the other (stacked on a
-	// narrow screen). New (`ruleId` null, optionally from an entry) or a stored rule. Leaving, after
-	// a save or a delete, is the route's business (`onleave`, with the address to go to).
+	// narrow screen). Add (`ruleId` null) or change a stored rule. The example is an entry to look
+	// at while writing the conditions; `exampleId` opens the page with one and `onexample` reports
+	// each change of it (the route puts it in the address). Leaving, after a save or a delete, is
+	// the route's business (`onleave`, with the address to go to).
 	let {
 		ruleId = null,
-		from = null,
-		onleave
-	}: { ruleId?: number | null; from?: FromEntry | null; onleave: (url: string) => void } = $props();
+		exampleId = null,
+		onleave,
+		onexample
+	}: {
+		ruleId?: number | null;
+		exampleId?: number | null;
+		onleave: (url: string) => void;
+		onexample?: (id: number | null) => void;
+	} = $props();
 
 	// the editor is made once per page: the route keys it by what it edits
-	const make = () => new RuleEditorStore({ ruleId, from });
+	const make = () => new RuleEditorStore({ ruleId });
+	const makeExample = () =>
+		new RuleExampleStore({ initialId: exampleId, onchange: (id) => onexample?.(id) });
 	const store = make();
+	const exampleStore = makeExample();
+	// the way out after a save or a delete is not a discard
+	let leaving = $state(false);
+	const leave = (url: string) => {
+		leaving = true;
+		onleave(url);
+	};
 	const remove = new RuleDeleteFlow({
 		locale: () => store.locale,
 		deleted: (rule, touched, settleFailed) =>
-			onleave(doneUrl({ action: 'deleted', name: rule.name, touched, settleFailed })),
-		gone: () => onleave(RULES_PATH)
+			leave(doneUrl({ action: 'deleted', name: rule.name, touched, settleFailed })),
+		gone: () => leave(RULES_PATH)
 	});
 
-	onMount(() => void store.init());
+	onMount(() => {
+		void store.init();
+		void exampleStore.init();
+	});
 	onDestroy(() => {
 		store.dispose();
+		exampleStore.dispose();
 		remove.close();
 	});
 
 	async function save() {
 		const result: SaveResult | null = await store.save();
 		if (result) {
-			onleave(
+			leave(
 				doneUrl({
 					action: 'saved',
 					name: result.rule.name,
@@ -59,10 +83,11 @@
 		different_value: store.rowsOf('different_value'),
 		lost_key: store.rowsOf('lost_key')
 	});
-	const title = $derived(
-		store.editing ? (store.rule?.name ?? 'Rule') : from ? 'New rule from an entry' : 'New rule'
-	);
+	const columns = $derived(sourceColumns(store.previewedConditions));
+	const title = $derived(store.editing ? (store.rule?.name ?? 'Rule') : 'Add rule');
 </script>
+
+<LeaveGuard dirty={store.dirty && !leaving} />
 
 <div class="flex flex-col gap-4">
 	<a
@@ -103,19 +128,25 @@
 		/>
 	{:else}
 		{@const stored = store.rule}
-		<div class="grid items-start gap-4 xl:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]">
+		<div class="grid items-start gap-4 xl:grid-cols-[minmax(0,34rem)_minmax(0,1fr)]">
 			<RuleForm
 				form={store.form}
-				suggestions={store.suggestions}
 				lookups={store.lookups}
 				errors={store.fieldErrors}
 				editing={store.editing}
 				saveBlocked={store.saveBlocked}
 				saving={store.saving}
 				onedit={(patch, now) => store.edit(patch, now)}
+				oncondition={(index, patch) => store.editCondition(index, patch)}
+				onaddcondition={() => store.addCondition()}
+				onremovecondition={(index) => store.removeCondition(index)}
 				onsave={save}
 				ondelete={stored ? () => remove.start(stored) : undefined}
-			/>
+			>
+				{#snippet example()}
+					<RuleExample store={exampleStore} lookups={store.lookups} locale={store.locale} />
+				{/snippet}
+			</RuleForm>
 			<RulePreview
 				preview={store.preview}
 				status={store.previewStatus}
@@ -123,6 +154,7 @@
 				{failure}
 				{retryable}
 				{rows}
+				{columns}
 				moreBusy={store.moreBusy}
 				sets={store.form.sets}
 				lookups={store.lookups}

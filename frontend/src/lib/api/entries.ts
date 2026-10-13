@@ -42,40 +42,7 @@ export function listEntries(
 	});
 }
 
-/** How many entries `findEntry` looks through when it has nothing to narrow the search by. */
-export const FIND_SCAN_LIMIT = 5000;
-
-/**
- * One entry by id. The API has no single-entry read yet, so the list is narrowed by what the
- * caller knows (the booking date and the account) and searched for the id; without that it scans
- * the newest `FIND_SCAN_LIMIT` entries. Null when it is not found.
- */
-export async function findEntry(
-	id: number,
-	hints: { on?: string; accountId?: number } = {},
-	signal?: AbortSignal
-): Promise<Entry | null> {
-	const narrowed = hints.on !== undefined;
-	const filter: EntryFilter = {
-		account_id: hints.accountId === undefined ? [] : [hints.accountId],
-		category_id: [],
-		category_descendants: true,
-		uncategorised: false,
-		payee_id: [],
-		tag_id: [],
-		q: '',
-		type: [],
-		flag: [],
-		from: hints.on,
-		to: hints.on
-	};
-	const size = 500;
-	const limit = narrowed ? 2000 : FIND_SCAN_LIMIT;
-	for (let offset = 0; offset < limit; offset += size) {
-		const page = await listEntries(filter, { limit: size, offset, signal });
-		const found = page.entries.find((entry) => entry.id === id);
-		if (found) return found;
-		if (offset + size >= page.total) break;
-	}
-	return null;
+/** One entry, with its source transaction (`source`, null for a user-authored or derived one). */
+export function getEntry(id: number, signal?: AbortSignal): Promise<Entry> {
+	return request('GET', `/api/ledger/entries/${id}`, { signal });
 }

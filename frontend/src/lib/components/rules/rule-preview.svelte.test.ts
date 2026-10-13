@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import { account, category } from '#lib/ledger/fixtures.js';
 import { buildLookups } from '#lib/ledger/lookups.js';
-import { preview, previewList, previewRow } from '#lib/rules/fixtures.js';
+import { preview, previewList, previewRow, source } from '#lib/rules/fixtures.js';
 import RulePreview from './rule-preview.svelte';
 
 const lookups = buildLookups({
@@ -27,6 +27,7 @@ function setup(props: Record<string, unknown> = {}) {
 			status: 'ready',
 			current: true,
 			rows,
+			columns: ['counterparty_name'],
 			sets: 'category',
 			lookups,
 			ruleName: (id: number) => (id === 3 ? 'Wallet withdrawals' : undefined),
@@ -52,7 +53,7 @@ describe('RulePreview: the result', () => {
 			'Matches 14 entries (9 unconfirmed, 5 confirmed)'
 		);
 		expect(screen.getByText(/Would confirm/)).toHaveTextContent(
-			'Would confirm 6 units, 3 stay in review'
+			'Would confirm 6 entries, 3 stay in review'
 		);
 	});
 
@@ -69,7 +70,7 @@ describe('RulePreview: the result', () => {
 			'Matches 1 entry (1 unconfirmed, 0 confirmed)'
 		);
 		expect(screen.getByText(/Would confirm/)).toHaveTextContent(
-			'Would confirm 1 unit, 0 stay in review'
+			'Would confirm 1 entry, 0 stay in review'
 		);
 	});
 
@@ -88,73 +89,125 @@ describe('RulePreview: the result', () => {
 });
 
 describe('RulePreview: the matched entries', () => {
-	it('are compact rows with date, account, text and amount', () => {
+	const matched = (rows = [previewRow()], total = rows.length) =>
+		preview({ matches: previewList(rows, total) });
+	const table = () => screen.getByRole('table', { name: 'Matched entries' });
+
+	it('are a table with headers in two groups', () => {
+		setup({ preview: matched() });
+
+		const groups = within(table()).getAllByRole('columnheader');
+		const names = groups.map((h) => h.textContent?.trim());
+		expect(names.slice(0, 2)).toEqual(['Entry', 'Source transaction']);
+		expect(names.slice(2)).toEqual([
+			'Booked',
+			'Account',
+			'Amount',
+			'Currently',
+			'Counterparty name'
+		]);
+		expect(within(table()).getByText('Entry')).toHaveAttribute('colspan', '4');
+	});
+
+	it('show one source column for every field the conditions read, the counterparty name first', () => {
 		setup({
-			preview: preview({
-				matches: previewList([previewRow({ entry_id: 7, description: 'Rent October' })], 1),
-				would_confirm: 1
-			})
+			preview: matched([
+				previewRow({ source: source({ purpose: 'Einkauf Markt', mandate_ref: 'M1' }) })
+			]),
+			columns: ['counterparty_name', 'purpose', 'mandate_ref']
 		});
 
-		const row = within(screen.getByRole('list', { name: 'Matched entries' })).getByRole('listitem');
+		const headers = within(table())
+			.getAllByRole('columnheader')
+			.map((h) => h.textContent?.trim());
+		expect(headers.slice(-3)).toEqual(['Counterparty name', 'Purpose', 'Mandate reference']);
+		expect(within(table()).getByText('Source transaction')).toHaveAttribute('colspan', '3');
+		const row = within(table()).getAllByRole('row').at(-1)!;
+		expect(row).toHaveTextContent('Landlord GmbH');
+		expect(row).toHaveTextContent('Einkauf Markt');
+		expect(row).toHaveTextContent('M1');
+	});
+
+	it('show the entry: date, account and amount, and what it holds now with its basis', () => {
+		setup({
+			preview: matched([
+				previewRow({
+					entry_id: 7,
+					current_value: 11,
+					current_key: { pass: 'rule', basis: { rule_id: 3 } }
+				})
+			])
+		});
+
+		const row = within(table()).getAllByRole('row').at(-1)!;
 		expect(row).toHaveTextContent('Oct 1, 2026');
 		expect(row).toHaveTextContent('Giro');
-		expect(row).toHaveTextContent('Rent October');
 		expect(row).toHaveTextContent('−950.00');
-		expect(row.className).toContain('h-8');
+		expect(row).toHaveTextContent('Rent');
+		expect(row).toHaveTextContent('rule: Wallet withdrawals');
+	});
+
+	it('say "None yet" for an entry that holds nothing for what the rule sets', () => {
+		setup({ preview: matched() });
+
+		expect(within(table()).getByText('None yet')).toBeInTheDocument();
+	});
+
+	it('show a dash for a source field the entry lacks, and for an entry without a source', () => {
+		setup({
+			preview: matched([
+				previewRow({ entry_id: 1, source: null }),
+				previewRow({ entry_id: 2, source: source({ counterparty_name: null }) })
+			])
+		});
+
+		expect(within(table()).getAllByText('—')).toHaveLength(2);
 	});
 
 	it('mark an unconfirmed one and not a confirmed one', () => {
 		setup({
-			preview: preview({
-				matches: previewList(
-					[
-						previewRow({ entry_id: 1, confirmed: false }),
-						previewRow({ entry_id: 2, confirmed: true })
-					],
-					2
-				)
-			})
+			preview: matched([
+				previewRow({ entry_id: 1, confirmed: false }),
+				previewRow({ entry_id: 2, confirmed: true })
+			])
 		});
 
 		expect(screen.getAllByRole('img', { name: /Unconfirmed/i })).toHaveLength(1);
 	});
 
 	it('name the rule that takes precedence', () => {
-		setup({
-			preview: preview({
-				matches: previewList([previewRow({ shadowed_by_rule_id: 3 })], 1)
-			})
-		});
+		setup({ preview: matched([previewRow({ shadowed_by_rule_id: 3 })]) });
 
 		expect(screen.getByText('Rule “Wallet withdrawals” takes precedence')).toBeInTheDocument();
 	});
 
 	it('fall back to the id of a rule that was not loaded', () => {
-		setup({
-			preview: preview({ matches: previewList([previewRow({ shadowed_by_rule_id: 99 })], 1) })
-		});
+		setup({ preview: matched([previewRow({ shadowed_by_rule_id: 99 })]) });
 
 		expect(screen.getByText('Rule “#99” takes precedence')).toBeInTheDocument();
 	});
 
-	it('link to the ledger on that day, in that account', () => {
+	it('have no links at all: rows are plain', () => {
 		setup({
 			preview: preview({
-				matches: previewList([previewRow({ booked_on: '2026-10-09', account_id: 1 })], 1)
+				matches: previewList([previewRow()], 1),
+				different_value: previewList([previewRow({ entry_id: 8, current_value: 11 })], 1),
+				lost_key: previewList([previewRow({ entry_id: 9, current_value: 10 })], 1)
 			})
 		});
 
-		expect(screen.getByRole('link', { name: 'Show in the ledger' })).toHaveAttribute(
-			'href',
-			'/ledger?from=2026-10-09&to=2026-10-09&account_id=1'
-		);
+		expect(screen.queryAllByRole('link', { hidden: true })).toHaveLength(0);
+		expect(screen.queryByLabelText('Show in the ledger')).toBeNull();
+	});
+
+	it('scroll inside their own container', () => {
+		setup({ preview: matched() });
+
+		expect(table().closest('[data-slot="preview-table"]')?.className).toContain('overflow-x-auto');
 	});
 
 	it('say how many of the matches are shown, and ask for more', async () => {
-		const { onmore } = setup({
-			preview: preview({ matches: previewList([previewRow()], 120) })
-		});
+		const { onmore } = setup({ preview: matched([previewRow()], 120) });
 
 		expect(screen.getByText('Showing 1 of 120')).toBeInTheDocument();
 		await fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
@@ -163,7 +216,7 @@ describe('RulePreview: the matched entries', () => {
 	});
 
 	it('have no show-more once everything is shown', () => {
-		setup({ preview: preview({ matches: previewList([previewRow()], 1) }) });
+		setup({ preview: matched() });
 
 		expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
 	});
@@ -174,7 +227,13 @@ describe('RulePreview: the two lists to check by hand', () => {
 		matches: previewList([previewRow()], 1),
 		different_value: previewList([previewRow({ entry_id: 8, current_value: 11 })], 2),
 		lost_key: previewList(
-			[previewRow({ entry_id: 9, current_value: 10, keyed_fields: ['category'] })],
+			[
+				previewRow({
+					entry_id: 9,
+					current_value: 10,
+					current_key: { pass: 'rule', basis: { rule_id: 77 } }
+				})
+			],
 			1
 		)
 	});
@@ -182,7 +241,9 @@ describe('RulePreview: the two lists to check by hand', () => {
 	it('are collapsed by default, each with its count', () => {
 		setup({ preview: lists });
 
-		const different = screen.getByText(/Check by hand: hold a different value/);
+		const different = screen.getByText(
+			/Check by hand: hold a different value that settling leaves/
+		);
 		const lost = screen.getByText(/Carry this rule’s key but no longer match/);
 		expect(different).toHaveTextContent('(2)');
 		expect(lost).toHaveTextContent('(1)');
@@ -190,15 +251,32 @@ describe('RulePreview: the two lists to check by hand', () => {
 		expect(lost.closest('details')).not.toHaveAttribute('open');
 	});
 
-	it('hold the rows, with what the entry holds now', () => {
+	it('use the same table, with the same headers', () => {
 		setup({ preview: lists });
 
 		const details = screen.getByText(/Check by hand/).closest('details')!;
-		expect(within(details).getByRole('listitem', { hidden: true })).toHaveTextContent('holds');
-		expect(within(details).getByRole('listitem', { hidden: true })).toHaveTextContent('Rent');
+		const headers = within(details)
+			.getAllByRole('columnheader', { hidden: true })
+			.map((h) => h.textContent?.trim());
+		expect(headers).toEqual([
+			'Entry',
+			'Source transaction',
+			'Booked',
+			'Account',
+			'Amount',
+			'Currently',
+			'Counterparty name'
+		]);
+	});
+
+	it('hold the rows, with what the entry holds now and where it came from', () => {
+		setup({ preview: lists });
+
+		const details = screen.getByText(/Check by hand/).closest('details')!;
+		expect(within(details).getAllByRole('row', { hidden: true }).at(-1)).toHaveTextContent('Rent');
 		const lost = screen.getByText(/Carry this rule’s key/).closest('details')!;
-		expect(within(lost).getByRole('listitem', { hidden: true })).toHaveTextContent(
-			'key on category'
+		expect(within(lost).getAllByRole('row', { hidden: true }).at(-1)).toHaveTextContent(
+			'rule deleted'
 		);
 	});
 
@@ -230,7 +308,7 @@ describe('RulePreview: its states', () => {
 	it('says so while the first preview is on its way', () => {
 		setup({ preview: null, status: 'loading', current: false, rows: noRows });
 
-		expect(screen.getByText(/Checking what this rule would do/)).toBeInTheDocument();
+		expect(screen.getByText(/Checking what would change/)).toBeInTheDocument();
 		expect(screen.getByRole('region', { name: 'Preview' })).toHaveAttribute('aria-busy', 'true');
 	});
 

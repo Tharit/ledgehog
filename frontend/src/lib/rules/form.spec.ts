@@ -14,6 +14,7 @@ import {
 	type RuleForm,
 	type SaveState
 } from './form.js';
+import { newConditionRow, type ConditionRow } from './conditions.js';
 import { rule } from './fixtures.js';
 
 const ready: SaveState = {
@@ -23,8 +24,22 @@ const ready: SaveState = {
 	unchanged: false
 };
 
+function row(
+	value: string,
+	field: ConditionRow['field'] = 'counterparty_name',
+	op: ConditionRow['op'] = 'starts_with'
+) {
+	return newConditionRow({ field, op, value });
+}
+
 function form(over: Partial<RuleForm> = {}): RuleForm {
-	return { ...emptyForm('payee'), name: 'Rent', target: 5, name_prefix: 'Landlord', ...over };
+	return {
+		...emptyForm('payee'),
+		name: 'Rent',
+		target: 5,
+		conditions: [row('Landlord')],
+		...over
+	};
 }
 
 describe('parsePriority', () => {
@@ -43,9 +58,13 @@ describe('parsePriority', () => {
 });
 
 describe('toFields', () => {
-	it('sends the one target the rule sets, trimmed conditions and nulls for the rest', () => {
+	it('sends the one target the rule sets, the trimmed conditions and nulls for the rest', () => {
 		const fields = toFields(
-			form({ sets: 'payee', target: 5, name_prefix: '  PAYPAL * ', purpose_regex: '  ' })
+			form({
+				sets: 'payee',
+				target: 5,
+				conditions: [row('  PAYPAL * '), row('cloud|hosting', 'purpose', 'regex')]
+			})
 		);
 
 		expect(fields).toEqual({
@@ -55,14 +74,31 @@ describe('toFields', () => {
 			payee_id: 5,
 			category_id: null,
 			condition_payee_id: null,
-			counterparty_ref: null,
-			mandate_ref: null,
-			name_exact: null,
-			name_prefix: 'PAYPAL *',
-			purpose_regex: null,
-			booking_text: null,
+			conditions: [
+				{ field: 'counterparty_name', op: 'starts_with', value: 'PAYPAL *' },
+				{ field: 'purpose', op: 'regex', value: 'cloud|hosting' }
+			],
 			priority: 100
 		});
+	});
+
+	it('leaves out a row with no value and keeps the order of the others', () => {
+		const fields = toFields(
+			form({ conditions: [row('A'), row('  '), row('B', 'purpose', 'contains'), row('')] })
+		);
+
+		expect(fields.conditions).toEqual([
+			{ field: 'counterparty_name', op: 'starts_with', value: 'A' },
+			{ field: 'purpose', op: 'contains', value: 'B' }
+		]);
+	});
+
+	it('sends the same field twice when the user asked for it', () => {
+		const fields = toFields(
+			form({ conditions: [row('A', 'purpose', 'contains'), row('B', 'purpose', 'contains')] })
+		);
+
+		expect(fields.conditions).toHaveLength(2);
 	});
 
 	it('keeps the payee condition for a category rule only', () => {
@@ -90,7 +126,10 @@ describe('formFromRule', () => {
 			sets: 'counter_account',
 			category_id: null,
 			counter_account_id: 3,
-			mandate_ref: 'M-1',
+			conditions: [
+				{ field: 'mandate_ref', op: 'equals', value: 'M-1' },
+				{ field: 'purpose', op: 'regex', value: 'miete|rent' }
+			],
 			priority: 30
 		});
 
@@ -100,9 +139,17 @@ describe('formFromRule', () => {
 			name: 'Landlord',
 			sets: 'counter_account',
 			counter_account_id: 3,
-			mandate_ref: 'M-1',
+			conditions: stored.conditions,
 			priority: 30
 		});
+	});
+
+	it('gives a rule with only a payee condition the one blank row', () => {
+		const loaded = formFromRule(rule({ conditions: [], condition_payee_id: 4 }));
+
+		expect(loaded.conditions).toHaveLength(1);
+		expect(loaded.conditions[0].value).toBe('');
+		expect(loaded.condition_payee_id).toBe(4);
 	});
 
 	it('shows the default priority as blank', () => {
@@ -114,7 +161,7 @@ describe('what a preview needs', () => {
 	it('wants a target and a condition', () => {
 		expect(isPreviewable(form())).toBe(true);
 		expect(isPreviewable(form({ target: null }))).toBe(false);
-		expect(isPreviewable(form({ name_prefix: '' }))).toBe(false);
+		expect(isPreviewable(form({ conditions: [row('')] }))).toBe(false);
 		expect(isPreviewable(form({ priority: 'x' }))).toBe(false);
 	});
 
@@ -127,10 +174,17 @@ describe('what a preview needs', () => {
 
 describe('the form against its preview', () => {
 	it('matches a preview taken for the same request, however it was typed', () => {
-		const key = formKey(form({ name_prefix: 'Landlord' }));
+		const key = formKey(form({ conditions: [row('Landlord')] }));
 
-		expect(previewMatchesForm(key, form({ name_prefix: ' Landlord ' }))).toBe(true);
-		expect(previewMatchesForm(key, form({ name_prefix: 'Landlords' }))).toBe(false);
+		expect(previewMatchesForm(key, form({ conditions: [row(' Landlord ')] }))).toBe(true);
+		expect(previewMatchesForm(key, form({ conditions: [row('Landlord'), row('')] }))).toBe(true);
+		expect(previewMatchesForm(key, form({ conditions: [row('Landlords')] }))).toBe(false);
+		expect(
+			previewMatchesForm(
+				key,
+				form({ conditions: [row('Landlord', 'counterparty_name', 'equals')] })
+			)
+		).toBe(false);
 		expect(previewMatchesForm(key, form({ target: 6 }))).toBe(false);
 		expect(previewMatchesForm(null, form())).toBe(false);
 	});
@@ -139,7 +193,10 @@ describe('the form against its preview', () => {
 		const start = formKey(form());
 
 		expect(isDirty(form(), start)).toBe(false);
-		expect(isDirty(form({ booking_text: 'SEPA' }), start)).toBe(true);
+		expect(
+			isDirty(form({ conditions: [row('Landlord'), row('SEPA', 'booking_text')] }), start)
+		).toBe(true);
+		expect(isDirty(form({ conditions: [row('Landlord'), row('')] }), start)).toBe(false);
 	});
 });
 
@@ -151,7 +208,7 @@ describe('saveBlock', () => {
 	it('says what is missing, in the order the form asks for it', () => {
 		expect(saveBlock(form({ name: ' ' }), ready)).toMatch(/name/);
 		expect(saveBlock(form({ target: null }), ready)).toMatch(/payee/);
-		expect(saveBlock(form({ name_prefix: '' }), ready)).toMatch(/condition/);
+		expect(saveBlock(form({ conditions: [row('')] }), ready)).toMatch(/condition/);
 		expect(saveBlock(form({ priority: 'x' }), ready)).toMatch(/priority/);
 	});
 

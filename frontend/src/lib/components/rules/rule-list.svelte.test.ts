@@ -18,8 +18,7 @@ const rules = [
 		sets: 'counter_account',
 		category_id: null,
 		counter_account_id: 3,
-		name_prefix: null,
-		booking_text: 'ATM'
+		conditions: [{ field: 'booking_text', op: 'equals', value: 'ATM' }]
 	}),
 	rule({
 		id: 2,
@@ -27,11 +26,18 @@ const rules = [
 		sets: 'payee',
 		category_id: null,
 		payee_id: 20,
-		name_prefix: 'REWE SAGT DANKE',
+		conditions: [{ field: 'counterparty_name', op: 'starts_with', value: 'REWE SAGT DANKE' }],
 		priority: 50
 	}),
-	rule({ id: 3, name: 'Groceries', condition_payee_id: 20, name_prefix: null }),
-	rule({ id: 4, name: 'Landlord', purpose_regex: 'miete|rent', name_prefix: null })
+	rule({ id: 3, name: 'Groceries', condition_payee_id: 20, conditions: [] }),
+	rule({
+		id: 4,
+		name: 'Landlord',
+		conditions: [
+			{ field: 'purpose', op: 'regex', value: 'miete|rent' },
+			{ field: 'counterparty_name', op: 'contains', value: 'Haus' }
+		]
+	})
 ];
 
 function setup(props: Record<string, unknown> = {}) {
@@ -67,10 +73,12 @@ describe('RuleList', () => {
 	it('sums up the conditions in one line, from the fields', () => {
 		setup();
 
-		expect(screen.getByText('booking text “ATM”')).toBeInTheDocument();
-		expect(screen.getByText('name starts with “REWE SAGT DANKE”')).toBeInTheDocument();
-		expect(screen.getByText('purpose matches /miete|rent/')).toBeInTheDocument();
-		expect(screen.getByText('payee is REWE')).toBeInTheDocument();
+		expect(screen.getByText('Booking text is "ATM"')).toBeInTheDocument();
+		expect(screen.getByText('Counterparty name starts with "REWE SAGT DANKE"')).toBeInTheDocument();
+		expect(
+			screen.getByText('Purpose matches pattern "miete|rent" and Counterparty name contains "Haus"')
+		).toBeInTheDocument();
+		expect(screen.getByText('Payee is REWE')).toBeInTheDocument();
 	});
 
 	it('shows what each sets, the way the ledger draws it', () => {
@@ -90,14 +98,14 @@ describe('RuleList', () => {
 		expect(screen.getByText('priority 50')).toBeInTheDocument();
 	});
 
-	it('opens a rule through its name and its Open button', () => {
+	it('opens a rule through its name and its Edit button', () => {
 		setup();
 
 		expect(screen.getByRole('link', { name: 'Landlord' })).toHaveAttribute(
 			'href',
 			'/settings/rules/4'
 		);
-		expect(screen.getAllByRole('link', { name: 'Open' })[0]).toHaveAttribute(
+		expect(screen.getAllByRole('link', { name: 'Edit' })[0]).toHaveAttribute(
 			'href',
 			'/settings/rules/1'
 		);
@@ -117,18 +125,15 @@ describe('RuleList', () => {
 		expect(screen.getByText('Unknown category')).toBeInTheDocument();
 	});
 
-	it('explains the next step when there are no rules, and links to the ledger', () => {
+	it('says there are no rules and offers to add one, with no link to the ledger', () => {
 		setup({ rules: [] });
 
-		expect(
-			screen.getByText(
-				'A rule decides entries like this one for good; start from an entry in the ledger.'
-			)
-		).toBeInTheDocument();
-		expect(screen.getByRole('link', { name: 'Go to the ledger' })).toHaveAttribute(
+		expect(screen.getByText('No rules yet.')).toBeInTheDocument();
+		expect(screen.getByRole('link', { name: 'Add rule' })).toHaveAttribute(
 			'href',
-			'/ledger'
+			'/settings/rules/new'
 		);
+		expect(screen.queryByRole('link', { name: /ledger/i })).toBeNull();
 	});
 
 	it('shows placeholders while loading', () => {
@@ -138,7 +143,7 @@ describe('RuleList', () => {
 			'aria-busy',
 			'true'
 		);
-		expect(screen.queryByText('No rules yet')).toBeNull();
+		expect(screen.queryByText('No rules yet.')).toBeNull();
 	});
 
 	it('offers a retry when the list could not be loaded', async () => {

@@ -72,11 +72,7 @@
 		</Popover.Trigger>
 		<Popover.Content align="start" class="w-80 gap-0 p-1" aria-label={`Choose a ${kindWord(kind)}`}>
 			<Command.Root shouldFilter={false}>
-				<Command.Input
-					placeholder={`Find a ${kindWord(kind)}…`}
-					aria-label={`Search ${kindWord(kind)}`}
-					bind:value={query}
-				/>
+				<Command.Input aria-label={`Search ${kindWord(kind)}`} bind:value={query} />
 				<Command.List aria-label="Choices">
 					{#each shown as option (option.id)}
 						<Command.Item

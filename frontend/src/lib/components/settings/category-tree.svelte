@@ -6,8 +6,21 @@
 
 	// The tree (spec §3.5): the two roots, Income and Expense, are the kinds themselves and so
 	// headings, not rows; the categories below them are indented and fold away.
-	let { store, onmoveto }: { store: CategoriesStore; onmoveto: (category: Category) => void } =
-		$props();
+	let {
+		store,
+		revealedId = null,
+		focusRevealed = false,
+		onaddchild,
+		onmoveto
+	}: {
+		store: CategoriesStore;
+		/** the category just added: its row is marked and focused */
+		revealedId?: number | null;
+		/** the dialog that added it has closed: the revealed row takes focus */
+		focusRevealed?: boolean;
+		onaddchild: (category: Category) => void;
+		onmoveto: (category: Category) => void;
+	} = $props();
 
 	const HEADINGS: Record<CategoryKind, string> = { expense: 'Expense', income: 'Income' };
 </script>
@@ -21,7 +34,14 @@
 		{:else}
 			<ul aria-label={`${HEADINGS[kind]} categories`}>
 				{#each rows as row (row.category.id)}
-					<CategoryRow {row} {store} onmoveto={() => onmoveto(row.category)} />
+					<CategoryRow
+						{row}
+						{store}
+						revealed={row.category.id === revealedId}
+						focus={focusRevealed && row.category.id === revealedId}
+						onaddchild={() => onaddchild(row.category)}
+						onmoveto={() => onmoveto(row.category)}
+					/>
 				{/each}
 			</ul>
 		{/if}

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { filterQuery, listEntries } from './entries.js';
+import { filterQuery, getEntry, listEntries } from './entries.js';
 import { listCategories, listPayees, listTags } from './lookups.js';
 import type { EntryFilter } from './types.js';
 
@@ -113,6 +113,35 @@ describe('listEntries', () => {
 		expect((fetchMock.mock.calls.at(-1) as [string, RequestInit])[1].signal).toBe(
 			controller.signal
 		);
+	});
+});
+
+describe('getEntry', () => {
+	it('reads one entry by id, its source included', async () => {
+		fetchMock.mockImplementation(async () =>
+			reply({ id: 42, source: { counterparty_name: 'REWE', purpose: null } })
+		);
+
+		const found = await getEntry(42);
+
+		expect(lastUrl()).toBe('/api/ledger/entries/42');
+		expect((fetchMock.mock.calls.at(-1) as [string, RequestInit])[1].method).toBe('GET');
+		expect(found).toMatchObject({ id: 42, source: { counterparty_name: 'REWE' } });
+	});
+
+	it('fails with the API error when there is no such entry', async () => {
+		fetchMock.mockImplementation(
+			async () =>
+				new Response(
+					JSON.stringify({ error: { code: 'not_found', message: 'x', details: null } }),
+					{
+						status: 404,
+						headers: { 'Content-Type': 'application/json' }
+					}
+				)
+		);
+
+		await expect(getEntry(9)).rejects.toMatchObject({ status: 404, code: 'not_found' });
 	});
 });
 

@@ -6,7 +6,7 @@
 	import RuleDeleteDialog from '#lib/components/rules/rule-delete-dialog.svelte';
 	import RuleList from '#lib/components/rules/rule-list.svelte';
 	import { Button } from '#lib/components/ui/button/index.js';
-	import { RULES_PATH } from '#lib/rules/links.js';
+	import { NEW_RULE_PATH, RULES_PATH } from '#lib/rules/links.js';
 	import { describeRuleError, doneFromSearch } from '#lib/rules/messages.js';
 	import { RuleListStore } from '#lib/stores/rule-list.svelte.js';
 
@@ -34,7 +34,7 @@
 			A rule decides entries for good, without review. They are tried in this order: counter-account
 			rules, then payee rules, then category rules; within each, the lower priority first.
 		</p>
-		<Button href="/settings/rules/new">New rule</Button>
+		<Button href={NEW_RULE_PATH}>Add rule</Button>
 	</div>
 
 	<!-- one reserved line, so a notice appearing never moves the list (patterns §7) -->

@@ -5,17 +5,7 @@ import { SETTLE_STALE } from '#lib/ledger/errors.js';
 import { RULES_PATH } from './links.js';
 
 /** The form fields a failure can point at; the others are shown as one line. */
-export type FieldKey =
-	| 'name'
-	| 'target'
-	| 'condition_payee_id'
-	| 'counterparty_ref'
-	| 'mandate_ref'
-	| 'name_prefix'
-	| 'name_exact'
-	| 'purpose_regex'
-	| 'booking_text'
-	| 'priority';
+export type FieldKey = 'name' | 'target' | 'condition_payee_id' | 'conditions' | 'priority';
 
 const FIELD_OF: Record<string, FieldKey> = {
 	name: 'name',
@@ -23,35 +13,58 @@ const FIELD_OF: Record<string, FieldKey> = {
 	payee_id: 'target',
 	category_id: 'target',
 	condition_payee_id: 'condition_payee_id',
-	counterparty_ref: 'counterparty_ref',
-	mandate_ref: 'mandate_ref',
-	name_prefix: 'name_prefix',
-	name_exact: 'name_exact',
-	purpose_regex: 'purpose_regex',
-	booking_text: 'booking_text',
+	conditions: 'conditions',
 	priority: 'priority'
 };
 
-export type FieldErrors = Partial<Record<FieldKey, string>>;
+/** `conditions[2]` or `conditions[2].value`: which row of the request, and which part of it. */
+const CONDITION_PART = /^conditions\[(\d+)\](?:\.(field|op|value))?$/;
 
-/** The part of a failure that belongs to one field, to show beside it. */
-export function fieldErrors(error: RuleError | null): FieldErrors {
+/**
+ * What to show beside the form's fields: by field, and for the condition rows by position in the
+ * editor (`rows`), which is not the position in the request when blank rows were left out.
+ */
+export type FieldErrors = Partial<Record<FieldKey, string>> & { rows?: Record<number, string> };
+
+/** A failure's place is one the form shows beside a field or a row. */
+function isFieldLevel(field: string): boolean {
+	return field in FIELD_OF || CONDITION_PART.test(field);
+}
+
+/** The server's message about a row names the request's position ("conditions[2]: ..."): drop it. */
+function rowMessage(message: string): string {
+	const text = message.replace(/^conditions\[\d+\]:\s*/, '');
+	return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function place(found: FieldErrors, field: string, message: string, rowOf: readonly number[]): void {
+	const part = CONDITION_PART.exec(field);
+	if (part) {
+		const at = Number(part[1]);
+		const row = rowOf[at] ?? at;
+		found.rows = { ...found.rows, [row]: found.rows?.[row] ?? rowMessage(message) };
+		return;
+	}
+	const key = FIELD_OF[field];
+	if (key && !found[key]) found[key] = message;
+}
+
+/**
+ * The part of a failure that belongs to one field or one condition row, to show beside it.
+ * `rowOf` maps a position in the request's conditions to the editor's row (see `requestRows`).
+ */
+export function fieldErrors(error: RuleError | null, rowOf: readonly number[] = []): FieldErrors {
 	if (!error) return {};
+	const found: FieldErrors = {};
 	switch (error.kind) {
 		case 'duplicate_name':
 			return { name: 'A rule with this name already exists.' };
-		case 'invalid_rule': {
-			const key = FIELD_OF[error.field];
-			return key ? { [key]: error.message } : {};
-		}
-		case 'validation': {
-			const found: FieldErrors = {};
-			for (const problem of error.problems) {
-				const key = FIELD_OF[problem.field];
-				if (key && !found[key]) found[key] = problem.message;
-			}
+		case 'invalid_rule':
+			place(found, error.field, error.message, rowOf);
 			return found;
-		}
+		case 'validation':
+			for (const problem of error.problems) place(found, problem.field, problem.message, rowOf);
+			return found;
 		case 'stale_reference': {
 			const key = error.field ? FIELD_OF[error.field] : undefined;
 			return key ? { [key]: 'This no longer exists. Choose another.' } : {};
@@ -71,7 +84,7 @@ export function describeRuleError(error: RuleError, locale = 'en'): string {
 		case 'stale_reference':
 			return `${error.entity ? capitalise(error.entity) : 'A value'} you chose no longer exists (merged or deleted elsewhere). The lists were reloaded; choose again.`;
 		case 'invalid_rule':
-			return error.field in FIELD_OF
+			return isFieldLevel(error.field)
 				? 'The server did not accept this rule; see the highlighted field.'
 				: `The server did not accept this rule: ${error.message}`;
 		case 'validation':

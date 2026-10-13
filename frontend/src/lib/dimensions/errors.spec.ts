@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { classifyDimensionError, describeFailure, describeHeld, needsReload } from './errors.js';
+import {
+	classifyDimensionError,
+	describeFailure,
+	describeHeld,
+	isFieldFailure,
+	needsReload
+} from './errors.js';
 
 describe('classifyDimensionError', () => {
 	it('routes a conflict by its reason', () => {
@@ -111,5 +117,15 @@ describe('describeFailure', () => {
 		expect(describeFailure({ kind: 'stale', field: 'into' }, 'category')).toMatch(
 			/^The merge target no longer exists/
 		);
+	});
+});
+
+describe('isFieldFailure', () => {
+	it('puts a taken name and a rejected value under the field, everything else on the dialog', () => {
+		expect(isFieldFailure({ kind: 'duplicate_name' })).toBe(true);
+		expect(isFieldFailure({ kind: 'validation', message: 'x' })).toBe(true);
+		expect(isFieldFailure({ kind: 'network' })).toBe(false);
+		expect(isFieldFailure({ kind: 'other' })).toBe(false);
+		expect(isFieldFailure({ kind: 'stale', field: null })).toBe(false);
 	});
 });

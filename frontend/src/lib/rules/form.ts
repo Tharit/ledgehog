@@ -1,6 +1,12 @@
 // The rule editor's form as plain data, and its mapping to and from the API's rule. No matching
 // happens here (architecture §6.3): conditions are text the server will judge.
 import type { Rule, RuleFields, RuleSets } from '#lib/api/rules.js';
+import {
+	newConditionRow,
+	rowsFromConditions,
+	toConditions,
+	type ConditionRow
+} from './conditions.js';
 
 export const SETS: readonly RuleSets[] = ['counter_account', 'payee', 'category'];
 
@@ -23,17 +29,6 @@ export const SETS_INFO: Record<RuleSets, { group: string; name: string; hint: st
 	}
 };
 
-/** The text conditions, in the order the editor shows them. */
-export const CONDITION_FIELDS = [
-	'counterparty_ref',
-	'mandate_ref',
-	'name_prefix',
-	'name_exact',
-	'purpose_regex',
-	'booking_text'
-] as const;
-export type ConditionField = (typeof CONDITION_FIELDS)[number];
-
 export const DEFAULT_PRIORITY = 100;
 
 export type RuleForm = {
@@ -41,12 +36,8 @@ export type RuleForm = {
 	sets: RuleSets;
 	/** the id of the counter-account, payee or category `sets` names */
 	target: number | null;
-	counterparty_ref: string;
-	mandate_ref: string;
-	name_prefix: string;
-	name_exact: string;
-	purpose_regex: string;
-	booking_text: string;
+	/** every one must hold; a row without a value is not sent */
+	conditions: ConditionRow[];
 	/** category rules only */
 	condition_payee_id: number | null;
 	/** as typed; blank means the default */
@@ -58,12 +49,7 @@ export function emptyForm(sets: RuleSets = 'category'): RuleForm {
 		name: '',
 		sets,
 		target: null,
-		counterparty_ref: '',
-		mandate_ref: '',
-		name_prefix: '',
-		name_exact: '',
-		purpose_regex: '',
-		booking_text: '',
+		conditions: [newConditionRow()],
 		condition_payee_id: null,
 		priority: ''
 	};
@@ -86,12 +72,7 @@ export function formFromRule(rule: Rule): RuleForm {
 		name: rule.name,
 		sets,
 		target: targetId(rule),
-		counterparty_ref: rule.counterparty_ref ?? '',
-		mandate_ref: rule.mandate_ref ?? '',
-		name_prefix: rule.name_prefix ?? '',
-		name_exact: rule.name_exact ?? '',
-		purpose_regex: rule.purpose_regex ?? '',
-		booking_text: rule.booking_text ?? '',
+		conditions: rowsFromConditions(rule.conditions),
 		condition_payee_id: rule.condition_payee_id,
 		priority: rule.priority === DEFAULT_PRIORITY ? '' : String(rule.priority)
 	};
@@ -106,12 +87,6 @@ export function parsePriority(text: string): number | null {
 	return Number.isSafeInteger(value) && Math.abs(value) < 2 ** 31 ? value : null;
 }
 
-/** A condition as the request carries it: trimmed, and null when blank. */
-function condition(text: string): string | null {
-	const trimmed = text.trim();
-	return trimmed === '' ? null : trimmed;
-}
-
 /** Whether a payee condition applies: category rules only. */
 export function takesPayeeCondition(sets: RuleSets): boolean {
 	return sets === 'category';
@@ -119,7 +94,7 @@ export function takesPayeeCondition(sets: RuleSets): boolean {
 
 export function hasCondition(form: RuleForm): boolean {
 	return (
-		CONDITION_FIELDS.some((field) => condition(form[field]) !== null) ||
+		toConditions(form.conditions).length > 0 ||
 		(takesPayeeCondition(form.sets) && form.condition_payee_id !== null)
 	);
 }
@@ -143,12 +118,7 @@ export function toFields(form: RuleForm, { forPreview = false } = {}): RuleField
 		payee_id: form.sets === 'payee' ? target : null,
 		category_id: form.sets === 'category' ? target : null,
 		condition_payee_id: takesPayeeCondition(form.sets) ? form.condition_payee_id : null,
-		counterparty_ref: condition(form.counterparty_ref),
-		mandate_ref: condition(form.mandate_ref),
-		name_exact: condition(form.name_exact),
-		name_prefix: condition(form.name_prefix),
-		purpose_regex: condition(form.purpose_regex),
-		booking_text: condition(form.booking_text),
+		conditions: toConditions(form.conditions),
 		priority: parsePriority(form.priority) ?? DEFAULT_PRIORITY
 	};
 }

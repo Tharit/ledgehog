@@ -3,6 +3,7 @@ import { ApiError } from './http.js';
 import {
 	classifyRuleError,
 	createRule,
+	locationPath,
 	deleteRule,
 	getRule,
 	listRules,
@@ -31,7 +32,7 @@ const fields: RuleFields = {
 	name: 'Rent',
 	sets: 'category',
 	category_id: 4,
-	name_prefix: 'Landlord',
+	conditions: [{ field: 'counterparty_name', op: 'starts_with', value: 'Landlord' }],
 	priority: 100
 };
 
@@ -170,6 +171,37 @@ describe('classifyRuleError', () => {
 		).toEqual({ kind: 'invalid_rule', field: 'purpose_regex', message: 'bad' });
 	});
 
+	it('names the condition and the part of an invalid rule', async () => {
+		expect(
+			await fail(422, 'invalid_rule', [
+				{
+					location: ['body', 'conditions[2].value'],
+					message: 'conditions[2]: the value must not be blank',
+					type: 'invalid_rule'
+				}
+			])
+		).toEqual({
+			kind: 'invalid_rule',
+			field: 'conditions[2].value',
+			message: 'conditions[2]: the value must not be blank'
+		});
+	});
+
+	it('names the condition of a validation error given as segments', async () => {
+		expect(
+			await fail(422, 'validation_error', [
+				{ location: ['body', 'conditions', 1, 'value'], message: 'too long' },
+				{ location: ['body', 'name'], message: 'short' }
+			])
+		).toEqual({
+			kind: 'validation',
+			problems: [
+				{ field: 'conditions[1].value', message: 'too long' },
+				{ field: 'name', message: 'short' }
+			]
+		});
+	});
+
 	it('lists the fields of a validation error', async () => {
 		expect(
 			await fail(422, 'validation_error', [{ location: ['body', 'name'], message: 'short' }])
@@ -189,5 +221,14 @@ describe('classifyRuleError', () => {
 			kind: 'other',
 			status: 409
 		});
+	});
+});
+
+describe('locationPath', () => {
+	it('drops the body and writes list positions in brackets', () => {
+		expect(locationPath(['body', 'name'])).toBe('name');
+		expect(locationPath(['body', 'conditions', 0, 'op'])).toBe('conditions[0].op');
+		expect(locationPath(['body', 'conditions[3].field'])).toBe('conditions[3].field');
+		expect(locationPath(['body'])).toBe('');
 	});
 });

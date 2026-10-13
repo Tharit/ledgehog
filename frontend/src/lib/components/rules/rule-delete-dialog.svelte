@@ -55,7 +55,7 @@
 				Cancel
 			</Button>
 			<Button variant="destructive" disabled={!flow.canConfirm} onclick={() => flow.confirm()}>
-				{flow.status === 'deleting' ? 'Deleting…' : 'Delete rule'}
+				{flow.status === 'deleting' ? 'Deleting…' : 'Delete'}
 			</Button>
 		</Dialog.Footer>
 	</Dialog.Content>

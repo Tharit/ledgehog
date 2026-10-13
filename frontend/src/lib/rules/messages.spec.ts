@@ -1,14 +1,55 @@
 import { describe, expect, it } from 'vitest';
 import { doneFromSearch, doneText, doneUrl, describeRuleError, fieldErrors } from './messages.js';
 import { groupRules } from './groups.js';
-import { ledgerLink, ruleUrl } from './links.js';
+import { ruleUrl } from './links.js';
 import { rule } from './fixtures.js';
 
 describe('fieldErrors', () => {
-	it('puts an invalid regex at its field', () => {
+	it('puts a condition the server refused at its row', () => {
 		expect(
-			fieldErrors({ kind: 'invalid_rule', field: 'purpose_regex', message: 'unterminated' })
-		).toEqual({ purpose_regex: 'unterminated' });
+			fieldErrors({
+				kind: 'invalid_rule',
+				field: 'conditions[1].value',
+				message: 'conditions[1]: the regex does not compile (at position 3)'
+			})
+		).toEqual({ rows: { 1: 'The regex does not compile (at position 3)' } });
+	});
+
+	it('puts a refused condition at the editor row it came from, blank rows left out', () => {
+		// the editor has rows 0 (blank), 1, 2 (blank), 3; the request carried rows 1 and 3
+		expect(
+			fieldErrors(
+				{
+					kind: 'invalid_rule',
+					field: 'conditions[1].op',
+					message: 'conditions[1]: the operator is not one a rule knows'
+				},
+				[1, 3]
+			)
+		).toEqual({ rows: { 3: 'The operator is not one a rule knows' } });
+	});
+
+	it('puts a missing condition at the list of conditions', () => {
+		expect(
+			fieldErrors({
+				kind: 'invalid_rule',
+				field: 'conditions',
+				message: 'a rule needs at least one condition'
+			})
+		).toEqual({ conditions: 'a rule needs at least one condition' });
+	});
+
+	it('reads the rows of a validation error given as segments, the first message per row', () => {
+		expect(
+			fieldErrors({
+				kind: 'validation',
+				problems: [
+					{ field: 'conditions[0].value', message: 'too long' },
+					{ field: 'conditions[0].op', message: 'other' },
+					{ field: 'conditions[2].value', message: 'bad' }
+				]
+			})
+		).toEqual({ rows: { 0: 'Too long', 2: 'Bad' } });
 	});
 
 	it('puts a taken name at the name', () => {
@@ -33,6 +74,15 @@ describe('fieldErrors', () => {
 				]
 			})
 		).toEqual({ name: 'too short' });
+	});
+
+	it('says an unknown place in one line, not at a field', () => {
+		expect(
+			describeRuleError({ kind: 'invalid_rule', field: 'sets', message: 'bad sets' })
+		).toContain('bad sets');
+		expect(
+			describeRuleError({ kind: 'invalid_rule', field: 'conditions[0].value', message: 'x' })
+		).toMatch(/highlighted/);
 	});
 
 	it('has none for a failure that is not about a field', () => {
@@ -110,12 +160,6 @@ describe('groupRules', () => {
 });
 
 describe('links', () => {
-	it('points a row at its booking day in its account', () => {
-		expect(ledgerLink({ booked_on: '2026-10-01', account_id: 2 })).toBe(
-			'/ledger?from=2026-10-01&to=2026-10-01&account_id=2'
-		);
-	});
-
 	it('points a rule at its page', () => {
 		expect(ruleUrl(9)).toBe('/settings/rules/9');
 	});

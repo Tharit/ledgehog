@@ -91,7 +91,11 @@ export function deleteRule(id: number, controls: RuleWriteControls = {}): Promis
 	});
 }
 
-/** One field the server refused, from a 422's `details` (`location` is `['body', field]`). */
+/**
+ * One place the server refused, from a 422's `details`. `field` is the location without the
+ * leading `body`: `name`, `conditions`, or a condition's part as `conditions[2].value`, whether
+ * the server wrote it as one string (`invalid_rule`) or as segments (`validation_error`).
+ */
 export type RuleFieldProblem = { field: string; message: string };
 
 /** A failed rule request, routed by `code` and the details' shape, never by the message. */
@@ -106,13 +110,23 @@ export type RuleError =
 	| { kind: 'network' }
 	| { kind: 'other'; status: number };
 
+/** `['body', 'conditions', 2, 'value']` and `['body', 'conditions[2].value']` are the same place. */
+export function locationPath(location: readonly unknown[]): string {
+	const parts = location[0] === 'body' ? location.slice(1) : location;
+	return parts.reduce<string>((path, part) => {
+		if (typeof part === 'number') return `${path}[${part}]`;
+		return path === '' ? String(part) : `${path}.${String(part)}`;
+	}, '');
+}
+
 function problemsOf(details: unknown): RuleFieldProblem[] {
 	if (!Array.isArray(details)) return [];
 	return details.flatMap((item) => {
 		const location = (item as { location?: unknown } | null)?.location;
 		const message = (item as { message?: unknown } | null)?.message;
 		if (!Array.isArray(location) || location.length === 0) return [];
-		return [{ field: String(location[location.length - 1]), message: String(message ?? '') }];
+		const field = locationPath(location);
+		return field === '' ? [] : [{ field, message: String(message ?? '') }];
 	});
 }
 

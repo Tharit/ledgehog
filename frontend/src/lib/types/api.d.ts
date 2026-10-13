@@ -371,6 +371,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ledger/entries/{entry_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Ledger Entry
+         * @description One entry in the row shape of the list, its `source` included.
+         */
+        get: operations["get_ledger_entry"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ledger/entries/{entry_id}/tags/{tag_id}": {
         parameters: {
             query?: never;
@@ -804,6 +824,37 @@ export interface components {
              */
             closed_on: string;
         };
+        /**
+         * ConditionBody
+         * @description A condition as written. The field and operator are not narrowed here: an unknown one is the
+         *     plugin's 422 `invalid_rule`, located at `conditions[i].field`, like a blank value.
+         */
+        ConditionBody: {
+            /** Field */
+            field: string;
+            /** Op */
+            op: string;
+            /** Value */
+            value: string;
+        };
+        /**
+         * ConditionOut
+         * @description One condition of a rule; all of a rule's conditions must hold.
+         */
+        ConditionOut: {
+            /**
+             * Field
+             * @enum {string}
+             */
+            field: "counterparty_name" | "counterparty_ref" | "purpose" | "booking_text" | "mandate_ref";
+            /**
+             * Op
+             * @enum {string}
+             */
+            op: "equals" | "starts_with" | "contains" | "regex";
+            /** Value */
+            value: string;
+        };
         /** CorrectBody */
         CorrectBody: {
             balance: components["schemas"]["Money"];
@@ -866,8 +917,6 @@ export interface components {
             counter_account_id: number | null;
             /** Counterpart Entry Id */
             counterpart_entry_id: number | null;
-            /** Counterparty Name */
-            counterparty_name: string | null;
             /** Description */
             description: string | null;
             /** Display Text */
@@ -880,10 +929,9 @@ export interface components {
             note: string | null;
             /** Payee Id */
             payee_id: number | null;
-            /** Purpose */
-            purpose: string | null;
             /** Review Flags */
             review_flags: ("unconfirmed" | "unclassified" | "document_suggested" | "waiting" | "unmatched_transfer")[];
+            source: components["schemas"]["SourceTransactionOut"] | null;
             /** Source Transaction Id */
             source_transaction_id: number | null;
             /** Tag Ids */
@@ -1127,8 +1175,6 @@ export interface components {
             booked_on: string;
             /** Confirmed */
             confirmed: boolean;
-            /** Counterparty Name */
-            counterparty_name: string | null;
             /** Current Key */
             current_key: {
                 [key: string]: unknown;
@@ -1143,6 +1189,7 @@ export interface components {
             keyed_fields: string[];
             /** Shadowed By Rule Id */
             shadowed_by_rule_id: number | null;
+            source: components["schemas"]["SourceTransactionOut"] | null;
         };
         /** RecordDeleteOut */
         RecordDeleteOut: {
@@ -1185,16 +1232,14 @@ export interface components {
         };
         /** RuleCreateBody */
         RuleCreateBody: {
-            /** Booking Text */
-            booking_text?: string | null;
             /** Category Id */
             category_id?: number | null;
             /** Condition Payee Id */
             condition_payee_id?: number | null;
+            /** Conditions */
+            conditions?: components["schemas"]["ConditionBody"][];
             /** Counter Account Id */
             counter_account_id?: number | null;
-            /** Counterparty Ref */
-            counterparty_ref?: string | null;
             /**
              * Dry Run
              * @default false
@@ -1202,14 +1247,8 @@ export interface components {
             dry_run: boolean;
             /** Expected Count */
             expected_count?: number | null;
-            /** Mandate Ref */
-            mandate_ref?: string | null;
             /** Name */
             name: string;
-            /** Name Exact */
-            name_exact?: string | null;
-            /** Name Prefix */
-            name_prefix?: string | null;
             /** Payee Id */
             payee_id?: number | null;
             /**
@@ -1217,8 +1256,6 @@ export interface components {
              * @default 100
              */
             priority: number;
-            /** Purpose Regex */
-            purpose_regex?: string | null;
             /**
              * Sets
              * @enum {string}
@@ -1240,32 +1277,22 @@ export interface components {
          * @description A rule; exactly the target id `sets` names is set.
          */
         RuleOut: {
-            /** Booking Text */
-            booking_text: string | null;
             /** Category Id */
             category_id: number | null;
             /** Condition Payee Id */
             condition_payee_id: number | null;
+            /** Conditions */
+            conditions: components["schemas"]["ConditionOut"][];
             /** Counter Account Id */
             counter_account_id: number | null;
-            /** Counterparty Ref */
-            counterparty_ref: string | null;
             /** Id */
             id: number;
-            /** Mandate Ref */
-            mandate_ref: string | null;
             /** Name */
             name: string;
-            /** Name Exact */
-            name_exact: string | null;
-            /** Name Prefix */
-            name_prefix: string | null;
             /** Payee Id */
             payee_id: number | null;
             /** Priority */
             priority: number;
-            /** Purpose Regex */
-            purpose_regex: string | null;
             /**
              * Sets
              * @enum {string}
@@ -1300,16 +1327,14 @@ export interface components {
          *     `sets` may be restated but never changed (422 `invalid_rule`).
          */
         RuleUpdateBody: {
-            /** Booking Text */
-            booking_text?: string | null;
             /** Category Id */
             category_id?: number | null;
             /** Condition Payee Id */
             condition_payee_id?: number | null;
+            /** Conditions */
+            conditions?: components["schemas"]["ConditionBody"][];
             /** Counter Account Id */
             counter_account_id?: number | null;
-            /** Counterparty Ref */
-            counterparty_ref?: string | null;
             /**
              * Dry Run
              * @default false
@@ -1317,14 +1342,8 @@ export interface components {
             dry_run: boolean;
             /** Expected Count */
             expected_count?: number | null;
-            /** Mandate Ref */
-            mandate_ref?: string | null;
             /** Name */
             name: string;
-            /** Name Exact */
-            name_exact?: string | null;
-            /** Name Prefix */
-            name_prefix?: string | null;
             /** Payee Id */
             payee_id?: number | null;
             /**
@@ -1332,8 +1351,6 @@ export interface components {
              * @default 100
              */
             priority: number;
-            /** Purpose Regex */
-            purpose_regex?: string | null;
             /** Sets */
             sets?: ("counter_account" | "payee" | "category") | null;
         };
@@ -1360,6 +1377,29 @@ export interface components {
             error: string | null;
             /** Touched Entry Ids */
             touched_entry_ids: number[];
+        };
+        /**
+         * SourceTransactionOut
+         * @description An entry's source transaction as the UI and rules read it; never the raw record or the hash.
+         */
+        SourceTransactionOut: {
+            /** Booking Text */
+            booking_text: string | null;
+            /** Counterparty Bic */
+            counterparty_bic: string | null;
+            /** Counterparty Name */
+            counterparty_name: string | null;
+            /** Counterparty Ref */
+            counterparty_ref: string | null;
+            /** End To End Id */
+            end_to_end_id: string | null;
+            instructed_amount: components["schemas"]["Money"] | null;
+            /** Mandate Ref */
+            mandate_ref: string | null;
+            /** Purpose */
+            purpose: string | null;
+            /** Source Format */
+            source_format: string | null;
         };
         /** SpanOut */
         SpanOut: {
@@ -3053,6 +3093,55 @@ export interface operations {
             };
             /** @description Not signed in (or wrong login or password). */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_ledger_entry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntryOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
