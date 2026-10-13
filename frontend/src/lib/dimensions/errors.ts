@@ -2,7 +2,7 @@
 // `code` and, for a 409 `conflict`, its `details.reason`, never by its message (architecture §4.4,
 // patterns §8).
 
-export type Subject = 'category' | 'payee';
+export type Subject = 'category' | 'payee' | 'tag';
 
 export type DimensionFailure =
 	| { kind: 'duplicate_name' }
@@ -126,12 +126,12 @@ const FIELD_NAMES: Record<string, string> = {
 
 /** What the user is told. `name` is the thing being written, where the sentence wants it. */
 export function describeFailure(failure: DimensionFailure, subject: Subject, name = ''): string {
-	const noun = subject === 'category' ? 'category' : 'payee';
+	const noun = subject;
 	switch (failure.kind) {
 		case 'duplicate_name':
 			return subject === 'category'
 				? `A category named "${name}" already exists at this level.`
-				: `A payee named "${name}" already exists.`;
+				: `A ${subject} named "${name}" already exists.`;
 		case 'cycle':
 			return 'A category cannot be moved under itself or one of its own subcategories.';
 		case 'into_descendant':

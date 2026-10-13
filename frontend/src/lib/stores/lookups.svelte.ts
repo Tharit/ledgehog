@@ -80,6 +80,10 @@ export class LookupsStore {
 		this.lookups = withCategories(this.lookups, categories);
 	}
 
+	setTags(tags: readonly Tag[]): void {
+		this.lookups = withTags(this.lookups, tags);
+	}
+
 	setPayees(payees: readonly Payee[]): void {
 		this.lookups = withPayees(this.lookups, payees);
 	}

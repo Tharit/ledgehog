@@ -1,6 +1,14 @@
-// Tags: create one, tag or untag one entry, and tag everything a filter selects (previewed first).
+// Tags: create, rename or recolour, and delete one, tag or untag one entry, and tag everything a filter selects (previewed first).
 import { request } from './http.js';
-import type { EntryFilter, EntryTagsOut, TagApplyBody, TagApplyOut, TagWriteOut } from './types.js';
+import type {
+	EntryFilter,
+	EntryTagsOut,
+	TagApplyBody,
+	TagApplyOut,
+	TagDeleteOut,
+	TagUpdateBody,
+	TagWriteOut
+} from './types.js';
 
 export type ApplyControls = {
 	/** only count, change nothing */
@@ -42,6 +50,16 @@ export function applyBody(
 /** A new tag; its colour is optional. */
 export function createTag(name: string, color: string | null = null): Promise<TagWriteOut> {
 	return request('POST', '/api/ledger/tags', { body: { name, color } });
+}
+
+/** Absent fields stay; `color: null` clears the colour. */
+export function updateTag(id: number, body: TagUpdateBody): Promise<TagWriteOut> {
+	return request('PUT', `/api/ledger/tags/${id}`, { body });
+}
+
+/** The tag goes with its memberships; no entry version moves. 404 `not_found` when it is gone. */
+export function deleteTag(id: number): Promise<TagDeleteOut> {
+	return request('DELETE', `/api/ledger/tags/${id}`);
 }
 
 /** Tag every entry the body's filter selects (or preview it with `dry_run`). */

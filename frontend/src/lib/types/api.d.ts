@@ -978,47 +978,6 @@ export interface components {
              */
             closed_on: string;
         };
-        /** CommitConsequenceOut */
-        CommitConsequenceOut: {
-            /** Entry Id */
-            entry_id: number;
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "created" | "changed" | "returns_to_review" | "deleted" | "unpaired" | "left_behind";
-        };
-        /**
-         * CommitOut
-         * @description Everything the commit touched, as rows (architecture §4.1): the client patches what comes back.
-         */
-        CommitOut: {
-            /** Consequences */
-            consequences: components["schemas"]["CommitConsequenceOut"][];
-            /** Created */
-            created: {
-                [key: string]: number;
-            };
-            /** Entries */
-            entries: components["schemas"]["EntryOut"][];
-            /** Other Entry Ids */
-            other_entry_ids: number[];
-            /** Removed Entry Ids */
-            removed_entry_ids: number[];
-            settle: components["schemas"]["SettleOut"];
-            /** Truncated */
-            truncated: boolean;
-            /** Units */
-            units: components["schemas"]["CommittedUnitOut"][];
-        };
-        /** CommittedUnitOut */
-        CommittedUnitOut: {
-            /** Anchor Entry Id */
-            anchor_entry_id: number;
-            /** Entry Ids */
-            entry_ids: number[];
-            state: components["schemas"]["UnitStateOut"];
-        };
         /**
          * ConditionBody
          * @description A condition as written. The field and operator are not narrowed here: an unknown one is the
@@ -1049,19 +1008,6 @@ export interface components {
             op: "equals" | "starts_with" | "contains" | "regex";
             /** Value */
             value: string;
-        };
-        /** ConsequenceOut */
-        ConsequenceOut: {
-            /** Entry Id */
-            entry_id: number;
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "created" | "changed" | "returns_to_review" | "deleted" | "unpaired" | "left_behind";
-            row: components["schemas"]["app__api__routers__unit_drafts__PreviewRowOut"];
-            /** Version */
-            version: number | null;
         };
         /** CorrectBody */
         CorrectBody: {
@@ -1123,28 +1069,6 @@ export interface components {
         /** DeleteOut */
         DeleteOut: {
             settle: components["schemas"]["SettleOut"];
-        };
-        /**
-         * DraftEntryIn
-         * @description One entry the draft changes. `description` and `note` are left as stored when absent and emptied when
-         *     null. A new entry (negative `id`) names `source_entry_id`, a stored entry of the source it splits, and
-         *     carries its `amount`; the source's original entry is the residual and takes no amount of its own.
-         */
-        DraftEntryIn: {
-            /** Amount */
-            amount?: number | null;
-            category?: components["schemas"]["FieldDraftIn"];
-            counter_account?: components["schemas"]["FieldDraftIn"];
-            /** Description */
-            description?: string | null;
-            /** Id */
-            id: number;
-            /** Note */
-            note?: string | null;
-            payee?: components["schemas"]["FieldDraftIn"];
-            /** Source Entry Id */
-            source_entry_id?: number | null;
-            type?: components["schemas"]["FieldDraftIn"];
         };
         /** EditEffectsOut */
         EditEffectsOut: {
@@ -1263,35 +1187,6 @@ export interface components {
         ErrorEnvelope: {
             error: components["schemas"]["ErrorBody"];
         };
-        /**
-         * FieldDraftIn
-         * @description `keep`: untouched (a commit accepts what resolution makes of it). `fixed`: the user's `value` (null
-         *     leaves the field empty). `reresolve`: the passes decide this field again.
-         */
-        FieldDraftIn: {
-            /**
-             * Mode
-             * @default keep
-             * @enum {string}
-             */
-            mode: "keep" | "fixed" | "reresolve";
-            shown_basis?: components["schemas"]["ShownBasisIn"] | null;
-            /** Value */
-            value?: number | string | null;
-        };
-        /**
-         * FieldOut
-         * @description One derived field of a row as the draft leaves it.
-         */
-        FieldOut: {
-            commit_key: components["schemas"]["KeyOut"] | null;
-            /** Is Proposal */
-            is_proposal: boolean;
-            key: components["schemas"]["KeyOut"] | null;
-            stored: components["schemas"]["StoredFieldOut"] | null;
-            /** Value */
-            value: number | string | null;
-        };
         /** HeldOut */
         HeldOut: {
             /** Children */
@@ -1300,18 +1195,6 @@ export interface components {
             entries: number;
             /** Rules */
             rules: number;
-        };
-        /**
-         * KeyOut
-         * @description A derivation key: the pass and its basis (a `user` key's basis is the proposal it accepted).
-         */
-        KeyOut: {
-            /** Basis */
-            basis: {
-                [key: string]: unknown;
-            };
-            /** Pass */
-            pass: string;
         };
         /** LinkAccount */
         LinkAccount: {
@@ -1496,59 +1379,40 @@ export interface components {
             /** Payees */
             payees: components["schemas"]["PayeeOut"][];
         };
-        /** PlannedUnitOut */
-        PlannedUnitOut: {
-            /** Anchor Entry Id */
-            anchor_entry_id: number;
-            /** Entry Ids */
-            entry_ids: number[];
-            state: components["schemas"]["UnitStateOut"];
-            /** Unit Key */
-            unit_key: number;
-        };
         /** PreviewListOut */
         PreviewListOut: {
             /** Rows */
-            rows: components["schemas"]["app__api__routers__rules__PreviewRowOut"][];
+            rows: components["schemas"]["PreviewRowOut"][];
             /** Total */
             total: number;
         };
-        /**
-         * PreviewOut
-         * @description What committing the draft would do. Nothing was written.
-         */
-        PreviewOut: {
-            /** Consequences */
-            consequences: components["schemas"]["ConsequenceOut"][];
-            /** Problems */
-            problems: components["schemas"]["ProblemOut"][];
-            /** Rows */
-            rows: components["schemas"]["app__api__routers__unit_drafts__PreviewRowOut"][];
-            /** Splits */
-            splits: components["schemas"]["SplitOut"][];
-            state: components["schemas"]["UnitStateOut"];
-            /** Units */
-            units: components["schemas"]["PlannedUnitOut"][];
-            /** Versions */
-            versions: {
-                [key: string]: number;
-            };
-        };
-        /**
-         * ProblemOut
-         * @description A way the result would break an invariant (a commit is refused for it): a code, never prose.
-         */
-        ProblemOut: {
-            /** Code */
-            code: string;
-            /** Detail */
-            detail: {
-                [key: string]: number | string | null;
-            };
+        /** PreviewRowOut */
+        PreviewRowOut: {
+            /** Account Id */
+            account_id: number;
+            amount: components["schemas"]["Money"];
+            /**
+             * Booked On
+             * Format: date
+             */
+            booked_on: string;
+            /** Confirmed */
+            confirmed: boolean;
+            /** Current Key */
+            current_key: {
+                [key: string]: unknown;
+            } | null;
+            /** Current Value */
+            current_value: number | null;
+            /** Description */
+            description: string | null;
             /** Entry Id */
-            entry_id: number | null;
-            /** Field */
-            field: string | null;
+            entry_id: number;
+            /** Keyed Fields */
+            keyed_fields: string[];
+            /** Shadowed By Rule Id */
+            shadowed_by_rule_id: number | null;
+            source: components["schemas"]["SourceTransactionOut"] | null;
         };
         /** QueueSectionOut */
         QueueSectionOut: {
@@ -1760,18 +1624,6 @@ export interface components {
             /** Touched Entry Ids */
             touched_entry_ids: number[];
         };
-        /**
-         * ShownBasisIn
-         * @description The key of the proposal the client showed for a value (`pass` is history, llm or matcher_proposal).
-         */
-        ShownBasisIn: {
-            /** Basis */
-            basis?: {
-                [key: string]: unknown;
-            };
-            /** Pass */
-            pass: string;
-        };
         /** SourceCreateBody */
         SourceCreateBody: {
             /** Account Id */
@@ -1893,34 +1745,6 @@ export interface components {
             entry_count: number;
             /** Starts On */
             starts_on: string | null;
-        };
-        /**
-         * SplitOut
-         * @description One source transaction's allocation: the residual is its original entry.
-         */
-        SplitOut: {
-            /** Entry Ids */
-            entry_ids: number[];
-            residual_amount: components["schemas"]["Money"];
-            /** Residual Entry Id */
-            residual_entry_id: number;
-            source_amount: components["schemas"]["Money"];
-            /** Source Transaction Id */
-            source_transaction_id: number;
-        };
-        /** StoredFieldOut */
-        StoredFieldOut: {
-            key: components["schemas"]["KeyOut"] | null;
-            /** Value */
-            value: number | string | null;
-        };
-        /** StoredRowOut */
-        StoredRowOut: {
-            amount: components["schemas"]["Money"];
-            /** Description */
-            description: string | null;
-            /** Note */
-            note: string | null;
         };
         /**
          * TagApplyBody
@@ -2062,6 +1886,82 @@ export interface components {
             /** Tags */
             tags: components["schemas"]["TagOut"][];
         };
+        /** UnitCommitConsequenceOut */
+        UnitCommitConsequenceOut: {
+            /** Entry Id */
+            entry_id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "created" | "changed" | "returns_to_review" | "deleted" | "unpaired" | "left_behind";
+        };
+        /**
+         * UnitCommitOut
+         * @description Everything the commit touched, as rows (architecture §4.1): the client patches what comes back.
+         */
+        UnitCommitOut: {
+            /** Consequences */
+            consequences: components["schemas"]["UnitCommitConsequenceOut"][];
+            /** Created */
+            created: {
+                [key: string]: number;
+            };
+            /** Entries */
+            entries: components["schemas"]["EntryOut"][];
+            /** Other Entry Ids */
+            other_entry_ids: number[];
+            /** Removed Entry Ids */
+            removed_entry_ids: number[];
+            settle: components["schemas"]["SettleOut"];
+            /** Truncated */
+            truncated: boolean;
+            /** Units */
+            units: components["schemas"]["UnitCommittedOut"][];
+        };
+        /** UnitCommittedOut */
+        UnitCommittedOut: {
+            /** Anchor Entry Id */
+            anchor_entry_id: number;
+            /** Entry Ids */
+            entry_ids: number[];
+            state: components["schemas"]["UnitStateOut"];
+        };
+        /** UnitConsequenceOut */
+        UnitConsequenceOut: {
+            /** Entry Id */
+            entry_id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "created" | "changed" | "returns_to_review" | "deleted" | "unpaired" | "left_behind";
+            row: components["schemas"]["UnitPreviewRowOut"];
+            /** Version */
+            version: number | null;
+        };
+        /**
+         * UnitDraftEntryIn
+         * @description One entry the draft changes. `description` and `note` are left as stored when absent and emptied when
+         *     null. A new entry (negative `id`) names `source_entry_id`, a stored entry of the source it splits, and
+         *     carries its `amount`; the source's original entry is the residual and takes no amount of its own.
+         */
+        UnitDraftEntryIn: {
+            /** Amount */
+            amount?: number | null;
+            category?: components["schemas"]["UnitFieldDraftIn"];
+            counter_account?: components["schemas"]["UnitFieldDraftIn"];
+            /** Description */
+            description?: string | null;
+            /** Id */
+            id: number;
+            /** Note */
+            note?: string | null;
+            payee?: components["schemas"]["UnitFieldDraftIn"];
+            /** Source Entry Id */
+            source_entry_id?: number | null;
+            type?: components["schemas"]["UnitFieldDraftIn"];
+        };
         /**
          * UnitDraftIn
          * @description The draft of the unit anchored on `anchor_entry_id`. `versions` map an entry id to the version the
@@ -2071,7 +1971,7 @@ export interface components {
             /** Anchor Entry Id */
             anchor_entry_id: number;
             /** Entries */
-            entries?: components["schemas"]["DraftEntryIn"][];
+            entries?: components["schemas"]["UnitDraftEntryIn"][];
             /** Removed Entry Ids */
             removed_entry_ids?: number[];
             /**
@@ -2084,6 +1984,47 @@ export interface components {
                 [key: string]: number;
             };
         };
+        /**
+         * UnitFieldDraftIn
+         * @description `keep`: untouched (a commit accepts what resolution makes of it). `fixed`: the user's `value` (null
+         *     leaves the field empty). `reresolve`: the passes decide this field again.
+         */
+        UnitFieldDraftIn: {
+            /**
+             * Mode
+             * @default keep
+             * @enum {string}
+             */
+            mode: "keep" | "fixed" | "reresolve";
+            shown_basis?: components["schemas"]["UnitShownBasisIn"] | null;
+            /** Value */
+            value?: number | string | null;
+        };
+        /**
+         * UnitFieldOut
+         * @description One derived field of a row as the draft leaves it.
+         */
+        UnitFieldOut: {
+            commit_key: components["schemas"]["UnitKeyOut"] | null;
+            /** Is Proposal */
+            is_proposal: boolean;
+            key: components["schemas"]["UnitKeyOut"] | null;
+            stored: components["schemas"]["UnitStoredFieldOut"] | null;
+            /** Value */
+            value: number | string | null;
+        };
+        /**
+         * UnitKeyOut
+         * @description A derivation key: the pass and its basis (a `user` key's basis is the proposal it accepted).
+         */
+        UnitKeyOut: {
+            /** Basis */
+            basis: {
+                [key: string]: unknown;
+            };
+            /** Pass */
+            pass: string;
+        };
         /** UnitOut */
         UnitOut: {
             /** Anchor Entry Id */
@@ -2094,6 +2035,97 @@ export interface components {
             /** Unit Key */
             unit_key: number;
         };
+        /** UnitPlannedOut */
+        UnitPlannedOut: {
+            /** Anchor Entry Id */
+            anchor_entry_id: number;
+            /** Entry Ids */
+            entry_ids: number[];
+            state: components["schemas"]["UnitStateOut"];
+            /** Unit Key */
+            unit_key: number;
+        };
+        /**
+         * UnitPreviewOut
+         * @description What committing the draft would do. Nothing was written.
+         */
+        UnitPreviewOut: {
+            /** Consequences */
+            consequences: components["schemas"]["UnitConsequenceOut"][];
+            /** Problems */
+            problems: components["schemas"]["UnitProblemOut"][];
+            /** Rows */
+            rows: components["schemas"]["UnitPreviewRowOut"][];
+            /** Splits */
+            splits: components["schemas"]["UnitSplitOut"][];
+            state: components["schemas"]["UnitStateOut"];
+            /** Units */
+            units: components["schemas"]["UnitPlannedOut"][];
+            /** Versions */
+            versions: {
+                [key: string]: number;
+            };
+        };
+        /** UnitPreviewRowOut */
+        UnitPreviewRowOut: {
+            /** Account Id */
+            account_id: number;
+            amount: components["schemas"]["Money"];
+            /**
+             * Booked On
+             * Format: date
+             */
+            booked_on: string;
+            /** Counterpart Entry Id */
+            counterpart_entry_id: number | null;
+            /** Derivation */
+            derivation: {
+                [key: string]: unknown;
+            };
+            /** Description */
+            description: string | null;
+            /** Fields */
+            fields: {
+                [key: string]: components["schemas"]["UnitFieldOut"];
+            };
+            /** Id */
+            id: number;
+            /** In Unit */
+            in_unit: boolean;
+            /** Note */
+            note: string | null;
+            /** Original */
+            original: boolean;
+            /** Review Flags */
+            review_flags: string[];
+            /** Source Transaction Id */
+            source_transaction_id: number;
+            stored: components["schemas"]["UnitStoredRowOut"] | null;
+            /** Tag Ids */
+            tag_ids: number[];
+            /** Unit Key */
+            unit_key: number;
+            /** Value On */
+            value_on: string | null;
+            /** Version */
+            version: number | null;
+        };
+        /**
+         * UnitProblemOut
+         * @description A way the result would break an invariant (a commit is refused for it): a code, never prose.
+         */
+        UnitProblemOut: {
+            /** Code */
+            code: string;
+            /** Detail */
+            detail: {
+                [key: string]: number | string | null;
+            };
+            /** Entry Id */
+            entry_id: number | null;
+            /** Field */
+            field: string | null;
+        };
         /** UnitRefOut */
         UnitRefOut: {
             /** Anchor Entry Id */
@@ -2102,12 +2134,52 @@ export interface components {
             entry_ids: number[];
             state: components["schemas"]["UnitStateOut"];
         };
+        /**
+         * UnitShownBasisIn
+         * @description The key of the proposal the client showed for a value (`pass` is history, llm or matcher_proposal).
+         */
+        UnitShownBasisIn: {
+            /** Basis */
+            basis?: {
+                [key: string]: unknown;
+            };
+            /** Pass */
+            pass: string;
+        };
+        /**
+         * UnitSplitOut
+         * @description One source transaction's allocation: the residual is its original entry.
+         */
+        UnitSplitOut: {
+            /** Entry Ids */
+            entry_ids: number[];
+            residual_amount: components["schemas"]["Money"];
+            /** Residual Entry Id */
+            residual_entry_id: number;
+            source_amount: components["schemas"]["Money"];
+            /** Source Transaction Id */
+            source_transaction_id: number;
+        };
         /** UnitStateOut */
         UnitStateOut: {
             /** Confirmed */
             confirmed: boolean;
             /** Reasons */
             reasons: ("incomplete" | "unpaired_transfer" | "non_standing_keys")[];
+        };
+        /** UnitStoredFieldOut */
+        UnitStoredFieldOut: {
+            key: components["schemas"]["UnitKeyOut"] | null;
+            /** Value */
+            value: number | string | null;
+        };
+        /** UnitStoredRowOut */
+        UnitStoredRowOut: {
+            amount: components["schemas"]["Money"];
+            /** Description */
+            description: string | null;
+            /** Note */
+            note: string | null;
         };
         /**
          * UpdateBody
@@ -2150,78 +2222,6 @@ export interface components {
             }[];
             /** Truncated */
             truncated: boolean;
-        };
-        /** PreviewRowOut */
-        app__api__routers__rules__PreviewRowOut: {
-            /** Account Id */
-            account_id: number;
-            amount: components["schemas"]["Money"];
-            /**
-             * Booked On
-             * Format: date
-             */
-            booked_on: string;
-            /** Confirmed */
-            confirmed: boolean;
-            /** Current Key */
-            current_key: {
-                [key: string]: unknown;
-            } | null;
-            /** Current Value */
-            current_value: number | null;
-            /** Description */
-            description: string | null;
-            /** Entry Id */
-            entry_id: number;
-            /** Keyed Fields */
-            keyed_fields: string[];
-            /** Shadowed By Rule Id */
-            shadowed_by_rule_id: number | null;
-            source: components["schemas"]["SourceTransactionOut"] | null;
-        };
-        /** PreviewRowOut */
-        app__api__routers__unit_drafts__PreviewRowOut: {
-            /** Account Id */
-            account_id: number;
-            amount: components["schemas"]["Money"];
-            /**
-             * Booked On
-             * Format: date
-             */
-            booked_on: string;
-            /** Counterpart Entry Id */
-            counterpart_entry_id: number | null;
-            /** Derivation */
-            derivation: {
-                [key: string]: unknown;
-            };
-            /** Description */
-            description: string | null;
-            /** Fields */
-            fields: {
-                [key: string]: components["schemas"]["FieldOut"];
-            };
-            /** Id */
-            id: number;
-            /** In Unit */
-            in_unit: boolean;
-            /** Note */
-            note: string | null;
-            /** Original */
-            original: boolean;
-            /** Review Flags */
-            review_flags: string[];
-            /** Source Transaction Id */
-            source_transaction_id: number;
-            stored: components["schemas"]["StoredRowOut"] | null;
-            /** Tag Ids */
-            tag_ids: number[];
-            /** Unit Key */
-            unit_key: number;
-            /** Value On */
-            value_on: string | null;
-            /** Version */
-            version: number | null;
         };
     };
     responses: never;
@@ -5112,7 +5112,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CommitOut"];
+                    "application/json": components["schemas"]["UnitCommitOut"];
                 };
             };
             /** @description Not signed in (or wrong login or password). */
@@ -5163,7 +5163,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PreviewOut"];
+                    "application/json": components["schemas"]["UnitPreviewOut"];
                 };
             };
             /** @description Not signed in (or wrong login or password). */

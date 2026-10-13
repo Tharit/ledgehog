@@ -1,6 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from './http.js';
-import { applyBody, applyTag, createTag, tagEntry, untagEntry } from './tags.js';
+import {
+	applyBody,
+	applyTag,
+	createTag,
+	deleteTag,
+	tagEntry,
+	untagEntry,
+	updateTag
+} from './tags.js';
 import type { EntryFilter } from './types.js';
 
 const fetchMock = vi.fn();
@@ -152,6 +160,54 @@ describe('createTag', () => {
 			code: 'conflict',
 			details: { reason: 'duplicate_name' }
 		});
+	});
+});
+
+describe('updateTag', () => {
+	it('puts only the fields given; null clears the colour', async () => {
+		fetchMock.mockImplementation(async () =>
+			reply({ tag: { id: 9, name: 'Trip', color: null }, settle: {} })
+		);
+
+		await updateTag(9, { color: null });
+		expect(last()[0]).toBe('/api/ledger/tags/9');
+		expect(last()[1].method).toBe('PUT');
+		expect(JSON.parse(last()[1].body as string)).toEqual({ color: null });
+
+		await updateTag(9, { name: 'Trip' });
+		expect(JSON.parse(last()[1].body as string)).toEqual({ name: 'Trip' });
+	});
+
+	it('reports a duplicate name and a missing tag by code', async () => {
+		fetchMock.mockResolvedValueOnce(failure(409, 'conflict', { reason: 'duplicate_name' }));
+		await expect(updateTag(9, { name: 'Trip' })).rejects.toMatchObject({
+			code: 'conflict',
+			details: { reason: 'duplicate_name' }
+		});
+		fetchMock.mockResolvedValueOnce(failure(404, 'not_found'));
+		await expect(updateTag(9, { name: 'Trip' })).rejects.toMatchObject({ code: 'not_found' });
+	});
+
+	it('reports an invalid value as a validation error', async () => {
+		fetchMock.mockResolvedValue(failure(422, 'validation_error', [{ message: 'bad' }]));
+		await expect(updateTag(9, { name: ' ' })).rejects.toMatchObject({ code: 'validation_error' });
+	});
+});
+
+describe('deleteTag', () => {
+	it('deletes by id and answers the removed memberships', async () => {
+		fetchMock.mockResolvedValue(reply({ removed_memberships: 4, settle: { error: null } }));
+
+		const out = await deleteTag(9);
+
+		expect(out.removed_memberships).toBe(4);
+		expect(last()[0]).toBe('/api/ledger/tags/9');
+		expect(last()[1].method).toBe('DELETE');
+	});
+
+	it('reports a tag that is gone', async () => {
+		fetchMock.mockResolvedValue(failure(404, 'not_found'));
+		await expect(deleteTag(9)).rejects.toMatchObject({ code: 'not_found' });
 	});
 });
 

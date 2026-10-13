@@ -5,6 +5,7 @@
 	export const SETTINGS_TABS: readonly SettingsTab[] = [
 		{ href: '/settings/categories', label: 'Categories' },
 		{ href: '/settings/payees', label: 'Payees' },
+		{ href: '/settings/tags', label: 'Tags' },
 		{ href: '/settings/rules', label: 'Rules' }
 	];
 </script>
