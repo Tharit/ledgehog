@@ -42,6 +42,7 @@ ReviewFlag = Literal["unconfirmed", "unclassified", "document_suggested", "waiti
 class SourceTransactionOut(BaseModel):
     """An entry's source transaction as the UI and rules read it; never the raw record or the hash."""
 
+    amount: Money  # the source transaction's own amount; a split part's entry carries only its part
     counterparty_name: str | None
     counterparty_ref: str | None
     counterparty_bic: str | None
@@ -62,6 +63,7 @@ class SourceTransactionOut(BaseModel):
             else Money(amount=src.instructed_amount, currency=src.instructed_currency)
         )
         return SourceTransactionOut(
+            amount=Money(amount=src.amount, currency=src.currency),
             counterparty_name=src.counterparty_name,
             counterparty_ref=src.counterparty_ref,
             counterparty_bic=src.counterparty_bic,

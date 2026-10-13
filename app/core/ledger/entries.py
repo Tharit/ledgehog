@@ -149,6 +149,8 @@ _COLUMNS = (
     partner.c.amount.label("partner_amount"),
     partner.c.currency.label("partner_currency"),
     st.c.importer,
+    st.c.amount.label("source_amount"),
+    st.c.currency.label("source_currency"),
     st.c.counterparty_name,
     st.c.counterparty_ref,
     st.c.counterparty_bic,
@@ -208,18 +210,7 @@ def _source(r: Any) -> SourceFields | None:
     """The nested source: none for a derived entry or a user-authored row (no importer)."""
     if r.source_transaction_id is None or r.importer is None:
         return None
-    return SourceFields(
-        counterparty_name=r.counterparty_name,
-        counterparty_ref=r.counterparty_ref,
-        counterparty_bic=r.counterparty_bic,
-        purpose=r.purpose,
-        booking_text=r.booking_text,
-        end_to_end_id=r.end_to_end_id,
-        mandate_ref=r.mandate_ref,
-        instructed_amount=r.instructed_amount,
-        instructed_currency=r.instructed_currency,
-        source_format=r.source_format,
-    )
+    return SourceFields.of_row(r)
 
 
 def matching_entry_ids(conn: Connection, flt: LedgerFilter) -> list[int]:

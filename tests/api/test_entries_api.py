@@ -104,6 +104,7 @@ def test_row_json_shape_and_money(anna: TestClient, api_engine: Engine, acct: in
             "review_flags": ["unclassified", "unconfirmed"],
             "tag_ids": [t],
             "source": {
+                "amount": {"amount": -1250, "currency": "EUR"},
                 "counterparty_name": "CP",
                 "counterparty_ref": "DE00 1",
                 "counterparty_bic": "BIC1",
@@ -299,7 +300,7 @@ def test_an_imported_source_without_an_instructed_amount_has_none(
     src = anna.get(f"{URL}/{e}").json()["source"]
     assert src["instructed_amount"] is None and src["counterparty_name"] == "X"
     assert set(src) == {
-        "counterparty_name", "counterparty_ref", "counterparty_bic", "purpose", "booking_text",
+        "amount", "counterparty_name", "counterparty_ref", "counterparty_bic", "purpose", "booking_text",
         "end_to_end_id", "mandate_ref", "instructed_amount", "source_format",
     }  # fmt: skip
 
@@ -334,6 +335,21 @@ def test_the_list_reads_sources_in_one_query(anna: TestClient, api_engine: Engin
         return len([s for s in seen if "source_transaction" in s])
 
     assert statements() <= 3  # the page, its count and the pairs' sources: constant, however many rows
+
+
+def test_a_split_part_carries_the_whole_source_amount(
+    anna: TestClient, api_engine: Engine, make_account: Any
+):
+    from tests.core.units.helpers import Bench
+
+    with api_engine.begin() as conn:
+        b = Bench(conn, make_account)
+        s = b.source(amount=-300, parts=2)  # an imported source of -600 in two parts of -300
+        p1, p2 = b.flow(s), b.flow(s, amount=-300)
+    rows = {e["id"]: e for e in listed(anna)["entries"]}
+    for i in (p1, p2):
+        assert rows[i]["amount"]["amount"] == -300
+        assert rows[i]["source"]["amount"] == {"amount": -600, "currency": "EUR"}
 
 
 def test_rows_carry_derivation_unit_key_authored_and_partner(

@@ -51,10 +51,21 @@ def test_row_shape(db_conn: Connection, acct: int):
     assert (row.amount, row.currency, row.type) == (-1250, "EUR", "flow")
     assert (row.description, row.note) == ("Lunch", "n")
     assert row.source is not None and (row.source.counterparty_name, row.source.purpose) == ("CP", "PU")
+    assert (row.source.amount, row.source.currency) == (-1250, "EUR")
     assert (row.payee_id, row.category_id) == (p, c)
     assert row.counter_account_id is None and row.counterpart_entry_id is None
     assert row.source_transaction_id == seed.source_of(db_conn, e) and row.document_id is None
     assert row.review_flags == ("unconfirmed",) and row.tag_ids == (t,)
+
+
+def test_split_part_carries_the_whole_source_amount(db_conn: Connection, acct: int):
+    whole = seed.entry(db_conn, acct, amount=-1000, on=D, imported=True)
+    part = seed.entry(db_conn, acct, amount=-300, on=D, source_id=seed.source_of(db_conn, whole))
+    rest = seed.entry(db_conn, acct, amount=-700, on=D, source_id=seed.source_of(db_conn, whole))
+    by = {e.id: e for e in list_entries(db_conn, LedgerFilter(), limit=10, offset=0).entries}
+    assert [by[i].amount for i in (part, rest)] == [-300, -700]
+    for i in (part, rest):
+        assert by[i].source is not None and (by[i].source.amount, by[i].source.currency) == (-1000, "EUR")
 
 
 def test_display_text_falls_back(db_conn: Connection, acct: int):

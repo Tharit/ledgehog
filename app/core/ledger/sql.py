@@ -53,6 +53,8 @@ st = table(
     "source_transaction",
     column("id"),
     column("importer"),
+    column("amount"),
+    column("currency"),
     column("counterparty_name"),
     column("counterparty_ref"),
     column("counterparty_bic"),

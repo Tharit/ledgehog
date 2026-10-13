@@ -59,6 +59,7 @@ def test_a_sample_row_validates_against_the_model():
         "review_flags": ["unconfirmed"],
         "tag_ids": [3],
         "source": {
+            "amount": {"amount": -1250, "currency": "EUR"},
             "counterparty_name": "CP",
             "counterparty_ref": None,
             "counterparty_bic": None,
@@ -112,7 +113,7 @@ def test_source_is_nullable_and_shared_with_the_rule_preview(schema):
     refs = [s.get("$ref") for s in comps["PreviewRowOut"]["properties"]["source"]["anyOf"]]
     assert "#/components/schemas/SourceTransactionOut" in refs
     assert set(comps["SourceTransactionOut"]["properties"]) == {
-        "counterparty_name", "counterparty_ref", "counterparty_bic", "purpose", "booking_text",
+        "amount", "counterparty_name", "counterparty_ref", "counterparty_bic", "purpose", "booking_text",
         "end_to_end_id", "mandate_ref", "instructed_amount", "source_format",
     }  # fmt: skip
     assert "counterparty_name" not in comps["EntryOut"]["properties"]

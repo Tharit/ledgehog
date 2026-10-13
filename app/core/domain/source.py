@@ -7,10 +7,13 @@ preview all hold an entry's source as this record. Never the raw record, never t
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass(frozen=True, slots=True)
 class SourceFields:
+    amount: int  # the source transaction's own signed amount in minor units, in `currency`
+    currency: str  # (a split part's entry carries only its part; this is the whole)
     counterparty_name: str | None = None
     counterparty_ref: str | None = None
     counterparty_bic: str | None = None
@@ -21,3 +24,21 @@ class SourceFields:
     instructed_amount: int | None = None  # signed minor units, in `instructed_currency`
     instructed_currency: str | None = None
     source_format: str | None = None
+
+    @staticmethod
+    def of_row(r: Any) -> SourceFields:
+        """From a row exposing the source columns (`source_amount`, `source_currency` and the rest)."""
+        return SourceFields(
+            amount=r.source_amount,
+            currency=r.source_currency,
+            counterparty_name=r.counterparty_name,
+            counterparty_ref=r.counterparty_ref,
+            counterparty_bic=r.counterparty_bic,
+            purpose=r.purpose,
+            booking_text=r.booking_text,
+            end_to_end_id=r.end_to_end_id,
+            mandate_ref=r.mandate_ref,
+            instructed_amount=r.instructed_amount,
+            instructed_currency=r.instructed_currency,
+            source_format=r.source_format,
+        )

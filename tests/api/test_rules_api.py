@@ -128,6 +128,7 @@ def test_create_returns_the_rule_the_preview_and_the_settle_result(
     assert row["entry_id"] == e and row["amount"] == {"amount": -1000, "currency": "EUR"}
     assert row["confirmed"] is False and row["current_value"] is None and row["shadowed_by_rule_id"] is None
     assert row["source"] == {
+        "amount": {"amount": -1000, "currency": "EUR"},
         "counterparty_name": "REWE", "counterparty_ref": None, "counterparty_bic": None, "purpose": None,
         "booking_text": None, "end_to_end_id": None, "mandate_ref": None, "instructed_amount": None,
         "source_format": "csv",

@@ -2920,6 +2920,9 @@
       "SourceTransactionOut": {
         "description": "An entry's source transaction as the UI and rules read it; never the raw record or the hash.",
         "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/Money"
+          },
           "booking_text": {
             "anyOf": [
               {
@@ -3020,6 +3023,7 @@
           }
         },
         "required": [
+          "amount",
           "counterparty_name",
           "counterparty_ref",
           "counterparty_bic",

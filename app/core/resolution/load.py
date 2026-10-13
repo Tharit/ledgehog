@@ -79,7 +79,7 @@ def _movements(where: str) -> TextClause:
            (s.importer IS NULL) AS user_authored,
            s.counterparty_ref, s.counterparty_name, s.purpose, s.booking_text, s.mandate_ref,
            s.instructed_currency, s.counterparty_bic, s.end_to_end_id, s.instructed_amount,
-           s.source_format,
+           s.source_format, s.amount AS source_amount, s.currency AS source_currency,
            e.type, e.payee_id, e.category_id, e.counter_account_id, e.derivation,
            (e.counterpart_entry_id IS NOT NULL) AS paired, (u.first_id = e.id) AS original
       FROM units AS u
@@ -134,20 +134,7 @@ def _load(conn: Connection, query: TextClause) -> list[UnconfirmedEntry]:
                 confirmed=r.confirmed,
                 unit_key=r.unit_key,
                 description=r.description,
-                source=None
-                if r.user_authored
-                else SourceFields(
-                    counterparty_name=r.counterparty_name,
-                    counterparty_ref=r.counterparty_ref,
-                    counterparty_bic=r.counterparty_bic,
-                    purpose=r.purpose,
-                    booking_text=r.booking_text,
-                    end_to_end_id=r.end_to_end_id,
-                    mandate_ref=r.mandate_ref,
-                    instructed_amount=r.instructed_amount,
-                    instructed_currency=r.instructed_currency,
-                    source_format=r.source_format,
-                ),
+                source=None if r.user_authored else SourceFields.of_row(r),
             )
         )
     return out

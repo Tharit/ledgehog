@@ -397,6 +397,8 @@ def test_every_row_list_carries_the_entry_source_without_extra_queries(
     assert [r.entry_id for r in p.matches.rows] == [a]
     src = p.matches.rows[0].source
     assert src == SourceFields(
+        amount=src.amount,
+        currency=src.currency,
         counterparty_name="REWE",
         counterparty_ref="DE01",
         counterparty_bic="BYLADEM1",
