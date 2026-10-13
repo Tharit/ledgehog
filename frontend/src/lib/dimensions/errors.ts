@@ -142,8 +142,8 @@ export function describeFailure(failure: DimensionFailure, subject: Subject, nam
 		}
 		case 'count_changed':
 			return failure.actual === null
-				? 'The result changed since the preview. Check it and confirm again.'
-				: `The result changed since the preview: it now touches ${failure.actual} ${failure.actual === 1 ? 'entry' : 'entries'}. Check it and confirm again.`;
+				? 'The result changed since the preview. Check it and try again.'
+				: `The result changed since the preview: it now touches ${failure.actual} ${failure.actual === 1 ? 'entry' : 'entries'}. Check it and try again.`;
 		case 'stale': {
 			const field = failure.field ? (FIELD_NAMES[failure.field] ?? failure.field) : `a ${noun}`;
 			return `${field[0].toUpperCase()}${field.slice(1)} no longer exists. The lists were reloaded; check them and try again.`;

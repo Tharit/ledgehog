@@ -55,6 +55,18 @@ beforeEach(() => {
 	vi.resetAllMocks();
 });
 
+describe('CategoryManager: loading', () => {
+	it('shows skeleton rows while loading, not a text line', () => {
+		vi.mocked(listCategories).mockReturnValue(new Promise(() => {}));
+		render(CategoryManager, { props: { store: new CategoriesStore() } });
+
+		const loading = document.querySelector('[data-slot="categories-loading"]') as HTMLElement;
+		expect(loading).toHaveAttribute('aria-busy', 'true');
+		expect(loading.children.length).toBeGreaterThan(0);
+		expect(screen.queryByText(/Loading/)).toBeNull();
+	});
+});
+
 const headerAdd = () =>
 	within(document.querySelector('[data-slot="page-header"]') as HTMLElement).getByRole('button', {
 		name: 'Add category'

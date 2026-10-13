@@ -123,7 +123,7 @@ export class MergeFlow<Out extends Counted> {
 			const before = preview.entry_count;
 			if (await this.#preview(sourceId, targetId)) {
 				const now = this.preview?.entry_count ?? before;
-				this.moved = `The result changed since the preview: it now repoints ${now} ${now === 1 ? 'entry' : 'entries'} (was ${before}). Check it and confirm again.`;
+				this.moved = `The result changed since the preview: it now repoints ${now} ${now === 1 ? 'entry' : 'entries'} (was ${before}). Check it and try again.`;
 			}
 			return;
 		}

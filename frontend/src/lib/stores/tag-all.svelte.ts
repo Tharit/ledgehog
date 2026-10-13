@@ -218,8 +218,8 @@ export class TagAllFlow {
 			const locale = this.#host.locale();
 			this.conflict =
 				now === undefined
-					? 'The result changed — please check and confirm again'
-					: `The result changed (was ${formatCount(was, locale)}, now ${formatCount(now, locale)}) — please check and confirm again`;
+					? 'The numbers changed — check them and try again'
+					: `The numbers changed (was ${formatCount(was, locale)}, now ${formatCount(now, locale)}) — check them and try again`;
 			return;
 		}
 		await this.#failed(failure);

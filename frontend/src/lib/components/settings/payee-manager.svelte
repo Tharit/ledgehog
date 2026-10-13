@@ -65,7 +65,17 @@
 	<NoticeLine notice={store.notice} />
 
 	{#if store.status === 'loading'}
-		<p class="text-sm text-muted-foreground" aria-busy="true">Loading payees…</p>
+		<div aria-busy="true" aria-label="Loading payees" data-slot="payees-loading">
+			{#each [0, 1, 2, 3, 4] as i (i)}
+				<div class="flex h-12 items-center gap-3 border-b border-border">
+					<div class="size-8 shrink-0 animate-pulse rounded-full bg-muted"></div>
+					<div
+						class="h-3 animate-pulse rounded bg-muted"
+						style:width={`${30 + ((i * 17) % 30)}%`}
+					></div>
+				</div>
+			{/each}
+		</div>
 	{:else if store.status === 'error' && store.error}
 		<ErrorState
 			title="The payees could not be loaded"

@@ -137,9 +137,7 @@ describe('TagAllFlow', () => {
 
 		await flow.confirm();
 
-		expect(flow.conflict).toBe(
-			'The result changed (was 3, now 5) — please check and confirm again'
-		);
+		expect(flow.conflict).toBe('The numbers changed (was 3, now 5) — check them and try again');
 		expect(flow.preview?.newly_tagged).toBe(5);
 		expect(flow.open).toBe(true);
 		expect(flow.canConfirm).toBe(true);

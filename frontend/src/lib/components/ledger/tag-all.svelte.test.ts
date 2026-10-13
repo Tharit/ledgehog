@@ -182,7 +182,7 @@ describe('TagAll: the dialog', () => {
 		await fireEvent.click(confirm());
 
 		expect(
-			await screen.findByText('The result changed (was 3, now 5) — please check and confirm again')
+			await screen.findByText('The numbers changed (was 3, now 5) — check them and try again')
 		).toBeInTheDocument();
 		expect(screen.getByText(/5 entries will be tagged/)).toBeInTheDocument();
 		expect(screen.getByRole('dialog')).toBeInTheDocument();

@@ -102,7 +102,7 @@ export function describeTagError(
 				return `A tag named "${name ?? ''}" already exists — the tag list was refreshed.`;
 			}
 			if (reason === 'filter_result_changed') {
-				return 'The result changed. Check it and confirm again.';
+				return 'The result changed. Check it and try again.';
 			}
 			return ROWS_REFRESHED;
 		case 'validation_error':
