@@ -185,6 +185,19 @@ describe('ReviewQueue', () => {
 });
 
 describe('ReviewQueue: the keyboard', () => {
+	it('has the shared keyboard help: a button, and ? and Esc', async () => {
+		await shown({ pending_review: [flow(1, 'REWE')] });
+
+		await fireEvent.click(screen.getByRole('button', { name: /Keyboard shortcuts/ }));
+		const help = screen.getByRole('region', { name: 'Keyboard shortcuts' });
+		expect(help).toHaveTextContent('Open the unit for review');
+		expect(help).toHaveTextContent('previous or next unit');
+		await key('Escape');
+		expect(screen.queryByRole('region', { name: 'Keyboard shortcuts' })).toBeNull();
+		await key('?');
+		expect(screen.getByRole('region', { name: 'Keyboard shortcuts' })).toBeInTheDocument();
+	});
+
 	it('moves a cursor over units, not entries, and stops at the ends', async () => {
 		await shown({
 			pending_review: [
@@ -221,6 +234,32 @@ describe('ReviewQueue: the keyboard', () => {
 
 		expect(vi.mocked(unitPanel.open).mock.calls[0][0]).toBe(9);
 		expect(activeUnitSource()).toBe(store.source);
+	});
+
+	it('puts the cursor on the unit the panel shows, both entries of a split', async () => {
+		const store = await shown({
+			pending_review: [
+				flow(1, 'REWE'),
+				unit({
+					anchor_entry_id: 3,
+					entries: [
+						entry({ id: 3, unit_key: 3, display_text: 'Amazon' }),
+						entry({ id: 4, unit_key: 3, display_text: 'Amazon' })
+					]
+				})
+			]
+		});
+
+		expect(store.source.reveal?.(4)).toBe(true);
+
+		await waitFor(() => {
+			const selected = screen
+				.getAllByRole('row')
+				.filter((r) => r.getAttribute('aria-selected') === 'true');
+			expect(selected).toHaveLength(2);
+			expect(selected[0]).toHaveTextContent('Amazon');
+		});
+		expect(store.source.reveal?.(99)).toBe(false);
 	});
 
 	it('Enter without a cursor opens nothing; a click on a row opens its unit', async () => {

@@ -2,6 +2,7 @@
 	import ActionButton from '#lib/components/common/action-button.svelte';
 	import EmptyState from '#lib/components/common/empty-state.svelte';
 	import ErrorState from '#lib/components/common/error-state.svelte';
+	import KeyboardHelp, { type HelpGroup } from '#lib/components/common/keyboard-help.svelte';
 	import Notice from '#lib/components/common/notice.svelte';
 	import { formatCount } from '#lib/format/index.js';
 	import { describeLoadError } from '#lib/ledger/errors.js';
@@ -126,7 +127,13 @@
 	// of a split skipped. It knows entries, not units, so it knows no "12 of 214" either.
 	const source = {
 		neighbour: (id: number, dir: -1 | 1) => neighbourEntry(entries, id, dir),
-		patch: (affected: Affected) => onpatch?.(affected)
+		patch: (affected: Affected) => onpatch?.(affected),
+		// the cursor follows the unit the panel shows; the existing effect scrolls the row into view
+		reveal: (id: number) => {
+			if (!entries.some((e) => e.id === id)) return false;
+			cursorId = id;
+			return true;
+		}
 	};
 	$effect(() => registerUnitSource(source));
 
@@ -172,16 +179,12 @@
 				openUnit();
 				break;
 			case 'escape':
-				if (helpOpen) helpOpen = false;
-				else if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+				// (an open help closes itself first and keeps the key)
+				if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
 				break;
 			case 'search':
 				event.preventDefault();
 				onsearch?.();
-				break;
-			case 'help':
-				event.preventDefault();
-				helpOpen = !helpOpen;
 				break;
 			case 'tag':
 				// prevented, so the key is not typed into the picker's search box that opens
@@ -202,13 +205,17 @@
 	const failure = $derived(error ? describeLoadError(error.code) : null);
 	const moreFailure = $derived(moreError ? describeLoadError(moreError.code) : null);
 
-	const KEYS: [string, string][] = [
-		['↑ ↓ / k j', 'Move the cursor'],
-		['Enter', 'Open the entry for review'],
-		['t', 'Tag the row'],
-		['/', 'Filter text'],
-		['Esc', 'Close this help, leave a field'],
-		['?', 'Show or hide this help']
+	const HELP: HelpGroup[] = [
+		{
+			items: [
+				{ keys: '↑ ↓ / k j', description: 'Move the cursor' },
+				{ keys: 'Enter', description: 'Open the entry for review' },
+				{ keys: 't', description: 'Tag the row' },
+				{ keys: '/', description: 'Filter text' },
+				{ keys: 'Esc', description: 'Close this help, leave a field' },
+				{ keys: '?', description: 'Show or hide this help' }
+			]
+		}
 	];
 </script>
 
@@ -332,14 +339,7 @@
 						{/snippet}
 					</Notice>
 				{/if}
-				<button
-					type="button"
-					class="ml-auto underline-offset-2 hover:underline"
-					onclick={() => (helpOpen = !helpOpen)}
-					aria-expanded={helpOpen}
-				>
-					Keyboard shortcuts (?)
-				</button>
+				<KeyboardHelp groups={HELP} bind:open={helpOpen} class="ml-auto" />
 			</div>
 		{/if}
 	{/if}
@@ -357,20 +357,4 @@
 			container?.focus({ preventScroll: true });
 		}}
 	/>
-
-	{#if helpOpen}
-		<div
-			role="region"
-			aria-label="Keyboard shortcuts"
-			class="fixed right-4 bottom-4 z-50 w-72 max-w-[calc(100vw-2rem)] rounded-xl border bg-popover p-4 text-sm text-popover-foreground shadow-md"
-		>
-			<h2 class="mb-2 text-base font-semibold">Keyboard</h2>
-			<dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
-				{#each KEYS as [keys, what] (keys)}
-					<dt><kbd class="rounded-sm bg-muted px-1.5 py-0.5 font-mono text-xs">{keys}</kbd></dt>
-					<dd class="text-muted-foreground">{what}</dd>
-				{/each}
-			</dl>
-		</div>
-	{/if}
 </section>

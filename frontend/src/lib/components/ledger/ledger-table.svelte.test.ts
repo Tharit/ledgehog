@@ -331,6 +331,20 @@ describe('LedgerTable: the keyboard', () => {
 		expect(source?.neighbour(2, -1)).toBe(4);
 	});
 
+	it('moves the cursor to the unit the panel shows, and says when the entry is not in the list', async () => {
+		table();
+		await tick();
+		const source = activeUnitSource();
+
+		expect(source?.reveal?.(2)).toBe(true);
+		await tick();
+
+		expect(cursorTexts()).toHaveLength(1);
+		expect(cursorTexts()[0]).toContain('Second');
+		expect(source?.reveal?.(99)).toBe(false);
+		expect(cursorTexts()[0]).toContain('Second');
+	});
+
 	it('/ asks for the filter text box', async () => {
 		const onsearch = vi.fn();
 		table({ onsearch });

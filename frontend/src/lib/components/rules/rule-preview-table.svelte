@@ -48,6 +48,13 @@
 				const at = rows.findIndex((r) => r.entry_id === id);
 				return at < 0 ? null : (rows[at + dir]?.entry_id ?? null);
 			},
+			// the table has no cursor: the row of the unit shown is scrolled into view
+			reveal: (id) => {
+				const row = document.querySelector(`[data-entry-id="${id}"]`);
+				if (!row || !rows.some((r) => r.entry_id === id)) return false;
+				row.scrollIntoView?.({ block: 'nearest' });
+				return true;
+			},
 			patch: () => {}
 		});
 		unitPanel.open(entryId, row);

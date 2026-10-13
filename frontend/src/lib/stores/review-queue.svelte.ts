@@ -50,6 +50,9 @@ export class ReviewQueueStore {
 	/** what the unit panel's actions did to the rows held */
 	marks = $state.raw<Marks>(noMarks());
 
+	/** the unit (anchor id) the panel shows: the page puts its cursor there */
+	revealed = $state<number | null>(null);
+
 	readonly total = $derived(this.sections.reduce((sum, s) => sum + s.total, 0));
 	/** the loaded units in queue order, across the sections */
 	readonly units = $derived(this.sections.flatMap((s) => s.units));
@@ -63,6 +66,12 @@ export class ReviewQueueStore {
 	readonly source: UnitSource = {
 		neighbour: (id, dir) => this.neighbour(id, dir),
 		patch: (affected) => this.patchAffected(affected),
+		reveal: (id) => {
+			const at = this.#indexOf(id);
+			if (at < 0) return false;
+			this.revealed = this.units[at].anchor_entry_id;
+			return true;
+		},
 		position: (id) => {
 			const at = this.#indexOf(id);
 			return at < 0 ? null : { index: at + 1, total: this.total };

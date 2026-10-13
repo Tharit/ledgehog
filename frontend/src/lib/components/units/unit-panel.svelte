@@ -1,6 +1,7 @@
 <script lang="ts">
 	import ActionButton from '#lib/components/common/action-button.svelte';
 	import ErrorState from '#lib/components/common/error-state.svelte';
+	import KeyboardHelp, { type HelpGroup } from '#lib/components/common/keyboard-help.svelte';
 	import * as Dialog from '#lib/components/ui/dialog/index.js';
 	import { formatCount } from '#lib/format/index.js';
 	import type { Lookups } from '#lib/ledger/lookups.js';
@@ -31,6 +32,32 @@
 	}: { panel: UnitPanel; lookups: Lookups; locale?: string } = $props();
 
 	let content = $state<HTMLElement | null>(null);
+	let helpOpen = $state(false);
+	$effect(() => {
+		if (!panel.isOpen) helpOpen = false;
+	});
+	// the keys of the panel; the editing keys (c y s x r) join when editing lands
+	const HELP: HelpGroup[] = [
+		{
+			title: 'Panel',
+			items: [
+				{ keys: '[', description: 'Previous unit' },
+				{ keys: ']', description: 'Next unit' },
+				{ keys: 'Esc', description: 'Close this help, then the panel' },
+				{ keys: '?', description: 'Show or hide this help' }
+			]
+		}
+	];
+
+	// The click or Enter that opened the panel must not count as a click outside it, whatever the
+	// order the browser delivers it in: outside clicks are ignored for a moment after opening.
+	let openedAt = 0;
+	$effect(() => {
+		if (panel.isOpen) openedAt = performance.now();
+	});
+	function ignoreEarlyOutside(event: Event) {
+		if (performance.now() - openedAt < 300) event.preventDefault();
+	}
 
 	const unit = $derived(panel.unit);
 	const title = $derived(
@@ -84,6 +111,7 @@
 		class={cn(PANEL_GEOMETRY, 'grid-rows-[auto_1fr_auto] gap-3 p-5')}
 		data-slot="unit-panel"
 		{onkeydown}
+		onInteractOutside={ignoreEarlyOutside}
 		onOpenAutoFocus={openAutoFocus}
 		onCloseAutoFocus={closeAutoFocus}
 	>
@@ -153,13 +181,10 @@
 		<footer
 			class="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-t pt-3 text-xs text-muted-foreground"
 		>
-			<p data-slot="panel-keys">
-				<kbd class="rounded-sm bg-muted px-1.5 py-0.5 font-mono">[</kbd>
-				<kbd class="rounded-sm bg-muted px-1.5 py-0.5 font-mono">]</kbd>
-				previous and next unit ·
-				<kbd class="rounded-sm bg-muted px-1.5 py-0.5 font-mono">Esc</kbd> close
-				{#if panel.stepNotice}<span class="ml-2 italic">{panel.stepNotice}</span>{/if}
-			</p>
+			<div class="flex flex-wrap items-center gap-3" data-slot="panel-keys">
+				<KeyboardHelp groups={HELP} bind:open={helpOpen} scope="panel" />
+				{#if panel.stepNotice}<span class="italic">{panel.stepNotice}</span>{/if}
+			</div>
 			<ActionButton variant="outline" disabled reason="Editing arrives next">Commit</ActionButton>
 		</footer>
 	</Dialog.Content>

@@ -12,6 +12,12 @@ export interface UnitSource {
 	neighbour(entryId: number, dir: StepDirection): number | null;
 	/** What an action touched: patch the rows held, in place. */
 	patch(affected: Affected): void;
+	/**
+	 * Put the list's cursor on the row of this entry and scroll it into view, without touching the
+	 * list's filter, address or contents. True when the entry is in the list. The panel calls it
+	 * when it opens and on each step, so the list behind the overlay follows the unit shown.
+	 */
+	reveal?(entryId: number): boolean;
 	/** Where the unit is in the list ("12 of 214"), when the source knows. */
 	position?(entryId: number): { index: number; total: number } | null;
 }

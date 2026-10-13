@@ -21,10 +21,11 @@
 </script>
 
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import ActionButton from '#lib/components/common/action-button.svelte';
 	import EmptyState from '#lib/components/common/empty-state.svelte';
 	import ErrorState from '#lib/components/common/error-state.svelte';
+	import KeyboardHelp, { type HelpGroup } from '#lib/components/common/keyboard-help.svelte';
 	import EntryRow from '#lib/components/ledger/entry-row.svelte';
 	import { gridTemplate, QUEUE_COLUMNS, ROW_GRID } from '#lib/components/ledger/columns.js';
 	import { formatCount } from '#lib/format/index.js';
@@ -53,6 +54,18 @@
 
 	let cursorId = $state<number | null>(null); // the anchor entry id of the unit under the cursor
 	let container = $state<HTMLElement | null>(null);
+	let helpOpen = $state(false);
+	const HELP: HelpGroup[] = [
+		{
+			items: [
+				{ keys: '↑ ↓ / k j', description: 'Move the cursor over units' },
+				{ keys: 'Enter', description: 'Open the unit for review' },
+				{ keys: '[ ]', description: 'In the panel: previous or next unit' },
+				{ keys: 'Esc', description: 'Close this help, leave a field' },
+				{ keys: '?', description: 'Show or hide this help' }
+			]
+		}
+	];
 	const template = gridTemplate(QUEUE_COLUMNS);
 
 	const units = $derived(store.units);
@@ -105,6 +118,19 @@
 				break;
 		}
 	}
+
+	// the cursor follows the unit the panel shows (stepping, opening by address)
+	$effect(() => {
+		const id = store.revealed;
+		if (id === null) return;
+		// untracked: moving the cursor reads and writes the store's marks, which must not re-run this
+		untrack(() => {
+			const unit = units.find((u) => u.anchor_entry_id === id);
+			if (!unit) return;
+			cursorId = id;
+			store.visited(unit.entries.map((e) => e.id));
+		});
+	});
 
 	// the cursor unit scrolls into view
 	$effect(() => {
@@ -239,12 +265,8 @@
 				{/if}
 			</section>
 		{/each}
-		<p class="text-xs text-muted-foreground">
-			<kbd class="rounded-sm bg-muted px-1.5 py-0.5 font-mono">↑</kbd>
-			<kbd class="rounded-sm bg-muted px-1.5 py-0.5 font-mono">↓</kbd> move ·
-			<kbd class="rounded-sm bg-muted px-1.5 py-0.5 font-mono">Enter</kbd> open ·
-			<kbd class="rounded-sm bg-muted px-1.5 py-0.5 font-mono">[</kbd>
-			<kbd class="rounded-sm bg-muted px-1.5 py-0.5 font-mono">]</kbd> step through units in the panel
-		</p>
+		<div class="flex text-xs text-muted-foreground">
+			<KeyboardHelp groups={HELP} bind:open={helpOpen} class="ml-auto" />
+		</div>
 	</div>
 {/if}

@@ -8,6 +8,7 @@
 // Navigation is injected (`PanelNav`), so this store never touches SvelteKit or the DOM history
 // itself and can be tested with a plain object.
 
+import { untrack } from 'svelte';
 import { ApiError, getUnit } from '#lib/api/index.js';
 import { unitIdOf, withUnit } from './address.js';
 import { ruleNames } from '#lib/stores/rule-names.svelte.js';
@@ -74,6 +75,8 @@ export class UnitPanel {
 	});
 
 	#pushed = false;
+	/** the unit closed by a Back that has not completed yet */
+	#leaving: number | null = null;
 	#generation = 0;
 	#controller: AbortController | null = null;
 
@@ -81,15 +84,28 @@ export class UnitPanel {
 		this.#nav = nav;
 	}
 
-	/** Follow the address: on load, after Back/Forward, after a navigation. */
+	/**
+	 * Follow the address: on load, after Back/Forward, after a navigation. The address is the
+	 * source of truth and this is the ONLY way it flows into the panel; it never reads reactive
+	 * state (so an effect calling it is not re-run by the panel's own changes: that was a loop in
+	 * which closing re-opened the panel from the address Back had not yet left).
+	 */
 	sync(): void {
-		const id = unitIdOf(this.#nav.url());
-		if (id === this.unitId) return;
-		if (id === null) {
-			this.#reset();
-			return;
-		}
-		this.#show(id);
+		untrack(() => {
+			const id = unitIdOf(this.#nav.url());
+			if (id !== null && id === this.#leaving) {
+				// Back is under way: the address still names the unit just closed
+				this.#leaving = null;
+				return;
+			}
+			this.#leaving = null;
+			if (id === this.unitId) return;
+			if (id === null) {
+				this.#reset();
+				return;
+			}
+			this.#show(id);
+		});
 	}
 
 	/** Open the panel on the unit of `entryId`: a new history entry. */
@@ -134,6 +150,7 @@ export class UnitPanel {
 	close(): void {
 		if (!this.isOpen) return;
 		if (this.#pushed) {
+			this.#leaving = this.unitId;
 			this.#nav.back();
 		} else {
 			this.#nav.replace(withUnit(this.#nav.url(), null));
@@ -146,16 +163,33 @@ export class UnitPanel {
 		if (this.unitId !== null) void this.#load(this.unitId);
 	}
 
-	/** The panel's element to focus on close: the origin, else the row of the entry it came from. */
+	/**
+	 * Where focus goes on close: the row of the unit last shown when it can take focus (a table
+	 * row), else the list it was opened from (a grid whose cursor `reveal` has already put on
+	 * that unit), else the grid holding the row.
+	 */
 	focusTarget(): HTMLElement | null {
-		if (this.origin?.isConnected) return this.origin;
-		if (this.originEntryId === null) return null;
-		const ids = [this.originEntryId, ...(this.unit?.entries.map((e) => e.id) ?? [])];
+		const ids = this.unit
+			? this.#candidates(this.unit)
+			: this.originEntryId === null
+				? []
+				: [this.originEntryId];
+		let grid: HTMLElement | null = null;
 		for (const id of ids) {
 			const row = document.querySelector<HTMLElement>(`[data-entry-id="${id}"]`);
-			if (row) return row.closest<HTMLElement>('[role="grid"]') ?? row;
+			if (!row) continue;
+			if (row.tabIndex >= 0) return row;
+			grid ??= row.closest<HTMLElement>('[role="grid"]') ?? row;
 		}
-		return null;
+		if (this.origin?.isConnected) return this.origin;
+		return grid;
+	}
+
+	/** Put the list's cursor on the unit shown (the source decides what that means). */
+	#reveal(ids: readonly number[]): void {
+		const source = activeUnitSource();
+		if (!source?.reveal) return;
+		for (const id of ids) if (source.reveal(id)) return;
 	}
 
 	#candidates(unit: Unit): number[] {
@@ -165,6 +199,7 @@ export class UnitPanel {
 	#show(id: number): void {
 		this.unitId = id;
 		this.stepNotice = null;
+		this.#reveal([id]);
 		void this.#load(id);
 	}
 
@@ -192,6 +227,7 @@ export class UnitPanel {
 			if (generation !== this.#generation) return;
 			this.unit = unit;
 			this.status = 'ready';
+			this.#reveal(this.#candidates(unit));
 			// opened by any entry of the unit: the address names the anchor
 			if (unit.anchor_entry_id !== id) {
 				this.#nav.replace(withUnit(this.#nav.url(), unit.anchor_entry_id));

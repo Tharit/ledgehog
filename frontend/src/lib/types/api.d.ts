@@ -524,6 +524,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ledger/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Ledger Source
+         * @description Enter a movement on an unsynced account. A repeated `id` returns the row already entered (200).
+         */
+        post: operations["create_ledger_source"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ledger/sources/{source_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Ledger Source
+         * @description Edit a user-authored row's amount, date or purpose; the entries follow (spec §5.6).
+         *
+         *     `dry_run` reports what the edit would collapse, unpair and derive again, and writes nothing. A real
+         *     run carries `expected_versions` for the row's entries and the partners it unpairs.
+         */
+        put: operations["update_ledger_source"];
+        post?: never;
+        /**
+         * Delete Ledger Source
+         * @description Delete a user-authored row and its entries (the removal routine). `dry_run` reports what goes.
+         */
+        delete: operations["delete_ledger_source"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ledger/tags": {
         parameters: {
             query?: never;
@@ -637,6 +684,53 @@ export interface paths {
         post: operations["login"];
         /** Logout */
         delete: operations["logout"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/units/commit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Commit Unit Draft
+         * @description Write the draft in one transaction, then settle. A commit does not confirm: settling does.
+         *
+         *     409 `conflict` names the entries whose version moved (or that `versions` omitted); 409 `unit_moved` is a
+         *     closure that changed under the locks; 409 `stale_reference` a category, payee or account that no longer
+         *     exists; 409 `try_again` a deadlock lost twice. 422 carries the code of the first problem the preview would
+         *     list (all of them in `details.problems`), or `invalid_draft`.
+         */
+        post: operations["commit_unit_draft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/units/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Unit Draft
+         * @description The unit as a commit of the draft would leave it, resolved fresh: rows, keys, flags, the state it leads
+         *     to, the problems that would refuse the commit and the consequences. An in-memory overlay: nothing is
+         *     written.
+         */
+        post: operations["preview_unit_draft"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -884,6 +978,47 @@ export interface components {
              */
             closed_on: string;
         };
+        /** CommitConsequenceOut */
+        CommitConsequenceOut: {
+            /** Entry Id */
+            entry_id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "created" | "changed" | "returns_to_review" | "deleted" | "unpaired" | "left_behind";
+        };
+        /**
+         * CommitOut
+         * @description Everything the commit touched, as rows (architecture §4.1): the client patches what comes back.
+         */
+        CommitOut: {
+            /** Consequences */
+            consequences: components["schemas"]["CommitConsequenceOut"][];
+            /** Created */
+            created: {
+                [key: string]: number;
+            };
+            /** Entries */
+            entries: components["schemas"]["EntryOut"][];
+            /** Other Entry Ids */
+            other_entry_ids: number[];
+            /** Removed Entry Ids */
+            removed_entry_ids: number[];
+            settle: components["schemas"]["SettleOut"];
+            /** Truncated */
+            truncated: boolean;
+            /** Units */
+            units: components["schemas"]["CommittedUnitOut"][];
+        };
+        /** CommittedUnitOut */
+        CommittedUnitOut: {
+            /** Anchor Entry Id */
+            anchor_entry_id: number;
+            /** Entry Ids */
+            entry_ids: number[];
+            state: components["schemas"]["UnitStateOut"];
+        };
         /**
          * ConditionBody
          * @description A condition as written. The field and operator are not narrowed here: an unknown one is the
@@ -914,6 +1049,19 @@ export interface components {
             op: "equals" | "starts_with" | "contains" | "regex";
             /** Value */
             value: string;
+        };
+        /** ConsequenceOut */
+        ConsequenceOut: {
+            /** Entry Id */
+            entry_id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "created" | "changed" | "returns_to_review" | "deleted" | "unpaired" | "left_behind";
+            row: components["schemas"]["app__api__routers__unit_drafts__PreviewRowOut"];
+            /** Version */
+            version: number | null;
         };
         /** CorrectBody */
         CorrectBody: {
@@ -957,9 +1105,61 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** DeleteCountsOut */
+        DeleteCountsOut: {
+            /** Confirmed Entries */
+            confirmed_entries: number;
+            /** Entries */
+            entries: number;
+            /** Freed Documents */
+            freed_documents: number;
+            /** Partners Returning To Review */
+            partners_returning_to_review: number;
+            /** Tag Memberships */
+            tag_memberships: number;
+            /** Tagged Entries */
+            tagged_entries: number;
+        };
         /** DeleteOut */
         DeleteOut: {
             settle: components["schemas"]["SettleOut"];
+        };
+        /**
+         * DraftEntryIn
+         * @description One entry the draft changes. `description` and `note` are left as stored when absent and emptied when
+         *     null. A new entry (negative `id`) names `source_entry_id`, a stored entry of the source it splits, and
+         *     carries its `amount`; the source's original entry is the residual and takes no amount of its own.
+         */
+        DraftEntryIn: {
+            /** Amount */
+            amount?: number | null;
+            category?: components["schemas"]["FieldDraftIn"];
+            counter_account?: components["schemas"]["FieldDraftIn"];
+            /** Description */
+            description?: string | null;
+            /** Id */
+            id: number;
+            /** Note */
+            note?: string | null;
+            payee?: components["schemas"]["FieldDraftIn"];
+            /** Source Entry Id */
+            source_entry_id?: number | null;
+            type?: components["schemas"]["FieldDraftIn"];
+        };
+        /** EditEffectsOut */
+        EditEffectsOut: {
+            /** Collapsed Entry Ids */
+            collapsed_entry_ids: number[];
+            /** Deleted Entry Ids */
+            deleted_entry_ids: number[];
+            /** Rederived Entry Ids */
+            rederived_entry_ids: number[];
+            /** Returned To Review Ids */
+            returned_to_review_ids: number[];
+            /** Unpaired Entry Ids */
+            unpaired_entry_ids: number[];
+            /** Versions */
+            versions: components["schemas"]["EntryVersionOut"][];
         };
         /** EntryOut */
         EntryOut: {
@@ -1037,6 +1237,13 @@ export interface components {
             entry: components["schemas"]["EntryTagIdsOut"];
             settle: components["schemas"]["SettleOut"];
         };
+        /** EntryVersionOut */
+        EntryVersionOut: {
+            /** Entry Id */
+            entry_id: number;
+            /** Version */
+            version: number;
+        };
         /**
          * ErrorBody
          * @description The `error` object: the frontend routes on `code`, never on `message`.
@@ -1056,6 +1263,35 @@ export interface components {
         ErrorEnvelope: {
             error: components["schemas"]["ErrorBody"];
         };
+        /**
+         * FieldDraftIn
+         * @description `keep`: untouched (a commit accepts what resolution makes of it). `fixed`: the user's `value` (null
+         *     leaves the field empty). `reresolve`: the passes decide this field again.
+         */
+        FieldDraftIn: {
+            /**
+             * Mode
+             * @default keep
+             * @enum {string}
+             */
+            mode: "keep" | "fixed" | "reresolve";
+            shown_basis?: components["schemas"]["ShownBasisIn"] | null;
+            /** Value */
+            value?: number | string | null;
+        };
+        /**
+         * FieldOut
+         * @description One derived field of a row as the draft leaves it.
+         */
+        FieldOut: {
+            commit_key: components["schemas"]["KeyOut"] | null;
+            /** Is Proposal */
+            is_proposal: boolean;
+            key: components["schemas"]["KeyOut"] | null;
+            stored: components["schemas"]["StoredFieldOut"] | null;
+            /** Value */
+            value: number | string | null;
+        };
         /** HeldOut */
         HeldOut: {
             /** Children */
@@ -1064,6 +1300,18 @@ export interface components {
             entries: number;
             /** Rules */
             rules: number;
+        };
+        /**
+         * KeyOut
+         * @description A derivation key: the pass and its basis (a `user` key's basis is the proposal it accepted).
+         */
+        KeyOut: {
+            /** Basis */
+            basis: {
+                [key: string]: unknown;
+            };
+            /** Pass */
+            pass: string;
         };
         /** LinkAccount */
         LinkAccount: {
@@ -1248,40 +1496,59 @@ export interface components {
             /** Payees */
             payees: components["schemas"]["PayeeOut"][];
         };
+        /** PlannedUnitOut */
+        PlannedUnitOut: {
+            /** Anchor Entry Id */
+            anchor_entry_id: number;
+            /** Entry Ids */
+            entry_ids: number[];
+            state: components["schemas"]["UnitStateOut"];
+            /** Unit Key */
+            unit_key: number;
+        };
         /** PreviewListOut */
         PreviewListOut: {
             /** Rows */
-            rows: components["schemas"]["PreviewRowOut"][];
+            rows: components["schemas"]["app__api__routers__rules__PreviewRowOut"][];
             /** Total */
             total: number;
         };
-        /** PreviewRowOut */
-        PreviewRowOut: {
-            /** Account Id */
-            account_id: number;
-            amount: components["schemas"]["Money"];
-            /**
-             * Booked On
-             * Format: date
-             */
-            booked_on: string;
-            /** Confirmed */
-            confirmed: boolean;
-            /** Current Key */
-            current_key: {
-                [key: string]: unknown;
-            } | null;
-            /** Current Value */
-            current_value: number | null;
-            /** Description */
-            description: string | null;
+        /**
+         * PreviewOut
+         * @description What committing the draft would do. Nothing was written.
+         */
+        PreviewOut: {
+            /** Consequences */
+            consequences: components["schemas"]["ConsequenceOut"][];
+            /** Problems */
+            problems: components["schemas"]["ProblemOut"][];
+            /** Rows */
+            rows: components["schemas"]["app__api__routers__unit_drafts__PreviewRowOut"][];
+            /** Splits */
+            splits: components["schemas"]["SplitOut"][];
+            state: components["schemas"]["UnitStateOut"];
+            /** Units */
+            units: components["schemas"]["PlannedUnitOut"][];
+            /** Versions */
+            versions: {
+                [key: string]: number;
+            };
+        };
+        /**
+         * ProblemOut
+         * @description A way the result would break an invariant (a commit is refused for it): a code, never prose.
+         */
+        ProblemOut: {
+            /** Code */
+            code: string;
+            /** Detail */
+            detail: {
+                [key: string]: number | string | null;
+            };
             /** Entry Id */
-            entry_id: number;
-            /** Keyed Fields */
-            keyed_fields: string[];
-            /** Shadowed By Rule Id */
-            shadowed_by_rule_id: number | null;
-            source: components["schemas"]["SourceTransactionOut"] | null;
+            entry_id: number | null;
+            /** Field */
+            field: string | null;
         };
         /** QueueSectionOut */
         QueueSectionOut: {
@@ -1494,6 +1761,70 @@ export interface components {
             touched_entry_ids: number[];
         };
         /**
+         * ShownBasisIn
+         * @description The key of the proposal the client showed for a value (`pass` is history, llm or matcher_proposal).
+         */
+        ShownBasisIn: {
+            /** Basis */
+            basis?: {
+                [key: string]: unknown;
+            };
+            /** Pass */
+            pass: string;
+        };
+        /** SourceCreateBody */
+        SourceCreateBody: {
+            /** Account Id */
+            account_id: number;
+            /** Amount */
+            amount: number;
+            /**
+             * Booked On
+             * Format: date
+             */
+            booked_on: string;
+            /** Id */
+            id: string;
+            /** Purpose */
+            purpose?: string | null;
+        };
+        /** SourceDeleteOut */
+        SourceDeleteOut: {
+            counts: components["schemas"]["DeleteCountsOut"];
+            /** Dry Run */
+            dry_run: boolean;
+            /** Freed Document Ids */
+            freed_document_ids: number[];
+            /** Partners */
+            partners: components["schemas"]["EntryOut"][];
+            /** Removed */
+            removed: components["schemas"]["EntryOut"][];
+            /** Removed Entry Ids */
+            removed_entry_ids: number[];
+            settle: components["schemas"]["SettleOut"] | null;
+            /** Source Transaction Id */
+            source_transaction_id: number;
+            /** Units */
+            units: components["schemas"]["UnitRefOut"][];
+        };
+        /** SourceEditOut */
+        SourceEditOut: {
+            /** Anchor Entry Id */
+            anchor_entry_id: number | null;
+            /** Dry Run */
+            dry_run: boolean;
+            effects: components["schemas"]["EditEffectsOut"];
+            /** Entries */
+            entries: components["schemas"]["EntryOut"][];
+            /** Removed Entry Ids */
+            removed_entry_ids: number[];
+            settle: components["schemas"]["SettleOut"] | null;
+            /** Source Transaction Id */
+            source_transaction_id: number;
+            /** Units */
+            units: components["schemas"]["UnitRefOut"][];
+        };
+        /**
          * SourceTransactionOut
          * @description An entry's source transaction as the UI and rules read it; never the raw record or the hash.
          */
@@ -1516,6 +1847,44 @@ export interface components {
             /** Source Format */
             source_format: string | null;
         };
+        /**
+         * SourceUpdateBody
+         * @description Absent fields stay; `purpose: null` or blank clears it. Never the account (422).
+         */
+        SourceUpdateBody: {
+            /** Amount */
+            amount?: number | null;
+            /** Booked On */
+            booked_on?: string | null;
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+            /**
+             * Expected Versions
+             * @default {}
+             */
+            expected_versions: {
+                [key: string]: number;
+            };
+            /** Purpose */
+            purpose?: string | null;
+        };
+        /** SourceWriteOut */
+        SourceWriteOut: {
+            /** Anchor Entry Id */
+            anchor_entry_id: number | null;
+            /** Entries */
+            entries: components["schemas"]["EntryOut"][];
+            /** Removed Entry Ids */
+            removed_entry_ids: number[];
+            settle: components["schemas"]["SettleOut"];
+            /** Source Transaction Id */
+            source_transaction_id: number;
+            /** Units */
+            units: components["schemas"]["UnitRefOut"][];
+        };
         /** SpanOut */
         SpanOut: {
             /** Ends On */
@@ -1524,6 +1893,34 @@ export interface components {
             entry_count: number;
             /** Starts On */
             starts_on: string | null;
+        };
+        /**
+         * SplitOut
+         * @description One source transaction's allocation: the residual is its original entry.
+         */
+        SplitOut: {
+            /** Entry Ids */
+            entry_ids: number[];
+            residual_amount: components["schemas"]["Money"];
+            /** Residual Entry Id */
+            residual_entry_id: number;
+            source_amount: components["schemas"]["Money"];
+            /** Source Transaction Id */
+            source_transaction_id: number;
+        };
+        /** StoredFieldOut */
+        StoredFieldOut: {
+            key: components["schemas"]["KeyOut"] | null;
+            /** Value */
+            value: number | string | null;
+        };
+        /** StoredRowOut */
+        StoredRowOut: {
+            amount: components["schemas"]["Money"];
+            /** Description */
+            description: string | null;
+            /** Note */
+            note: string | null;
         };
         /**
          * TagApplyBody
@@ -1665,6 +2062,28 @@ export interface components {
             /** Tags */
             tags: components["schemas"]["TagOut"][];
         };
+        /**
+         * UnitDraftIn
+         * @description The draft of the unit anchored on `anchor_entry_id`. `versions` map an entry id to the version the
+         *     client saw, for every entry of the unit (a commit carries them; a preview ignores them).
+         */
+        UnitDraftIn: {
+            /** Anchor Entry Id */
+            anchor_entry_id: number;
+            /** Entries */
+            entries?: components["schemas"]["DraftEntryIn"][];
+            /** Removed Entry Ids */
+            removed_entry_ids?: number[];
+            /**
+             * Reresolve All
+             * @default false
+             */
+            reresolve_all: boolean;
+            /** Versions */
+            versions?: {
+                [key: string]: number;
+            };
+        };
         /** UnitOut */
         UnitOut: {
             /** Anchor Entry Id */
@@ -1674,6 +2093,14 @@ export interface components {
             state: components["schemas"]["UnitStateOut"];
             /** Unit Key */
             unit_key: number;
+        };
+        /** UnitRefOut */
+        UnitRefOut: {
+            /** Anchor Entry Id */
+            anchor_entry_id: number;
+            /** Entry Ids */
+            entry_ids: number[];
+            state: components["schemas"]["UnitStateOut"];
         };
         /** UnitStateOut */
         UnitStateOut: {
@@ -1723,6 +2150,78 @@ export interface components {
             }[];
             /** Truncated */
             truncated: boolean;
+        };
+        /** PreviewRowOut */
+        app__api__routers__rules__PreviewRowOut: {
+            /** Account Id */
+            account_id: number;
+            amount: components["schemas"]["Money"];
+            /**
+             * Booked On
+             * Format: date
+             */
+            booked_on: string;
+            /** Confirmed */
+            confirmed: boolean;
+            /** Current Key */
+            current_key: {
+                [key: string]: unknown;
+            } | null;
+            /** Current Value */
+            current_value: number | null;
+            /** Description */
+            description: string | null;
+            /** Entry Id */
+            entry_id: number;
+            /** Keyed Fields */
+            keyed_fields: string[];
+            /** Shadowed By Rule Id */
+            shadowed_by_rule_id: number | null;
+            source: components["schemas"]["SourceTransactionOut"] | null;
+        };
+        /** PreviewRowOut */
+        app__api__routers__unit_drafts__PreviewRowOut: {
+            /** Account Id */
+            account_id: number;
+            amount: components["schemas"]["Money"];
+            /**
+             * Booked On
+             * Format: date
+             */
+            booked_on: string;
+            /** Counterpart Entry Id */
+            counterpart_entry_id: number | null;
+            /** Derivation */
+            derivation: {
+                [key: string]: unknown;
+            };
+            /** Description */
+            description: string | null;
+            /** Fields */
+            fields: {
+                [key: string]: components["schemas"]["FieldOut"];
+            };
+            /** Id */
+            id: number;
+            /** In Unit */
+            in_unit: boolean;
+            /** Note */
+            note: string | null;
+            /** Original */
+            original: boolean;
+            /** Review Flags */
+            review_flags: string[];
+            /** Source Transaction Id */
+            source_transaction_id: number;
+            stored: components["schemas"]["StoredRowOut"] | null;
+            /** Tag Ids */
+            tag_ids: number[];
+            /** Unit Key */
+            unit_key: number;
+            /** Value On */
+            value_on: string | null;
+            /** Version */
+            version: number | null;
         };
     };
     responses: never;
@@ -3952,6 +4451,190 @@ export interface operations {
             };
         };
     };
+    create_ledger_source: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SourceCreateBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceWriteOut"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceWriteOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    update_ledger_source: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SourceUpdateBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceEditOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    delete_ledger_source: {
+        parameters: {
+            query?: {
+                dry_run?: boolean;
+                /** @description Repeatable `entry_id:version`: the row's entries and their partners. */
+                expected_versions?: string[] | null;
+            };
+            header?: never;
+            path: {
+                source_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceDeleteOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     list_ledger_tags: {
         parameters: {
             query?: never;
@@ -4407,6 +5090,108 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    commit_unit_draft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UnitDraftIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommitOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    preview_unit_draft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UnitDraftIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };

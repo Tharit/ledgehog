@@ -134,9 +134,30 @@ describe('UnitPanel: a flow unit', () => {
 		expect(within(dialog).getByRole('button', { name: 'Commit' })).toBeDisabled();
 	});
 
-	it('lists the keys in the footer', async () => {
+	it('has its own keyboard help: [ ] and Esc, opened by the button or by ? inside the panel', async () => {
 		const { dialog } = await openPanel(unit());
-		expect(dialog).toHaveTextContent('previous and next unit');
+		const button = within(dialog).getByRole('button', { name: /Keyboard shortcuts/ });
+
+		await fireEvent.click(button);
+		const help = within(dialog).getByRole('region', { name: 'Keyboard shortcuts' });
+		expect(help).toHaveTextContent('Previous unit');
+		expect(help).toHaveTextContent('Next unit');
+		expect(help).toHaveTextContent('Esc');
+		expect(help).not.toHaveTextContent('Tag the row'); // the list's keys are not the panel's
+
+		await fireEvent.keyDown(dialog, { key: 'Escape' });
+		expect(within(dialog).queryByRole('region', { name: 'Keyboard shortcuts' })).toBeNull();
+		await fireEvent.keyDown(dialog, { key: '?' });
+		expect(within(dialog).getByRole('region', { name: 'Keyboard shortcuts' })).toBeInTheDocument();
+	});
+
+	it('Esc closes the help alone: the panel stays open', async () => {
+		const { panel, dialog } = await openPanel(unit());
+		await fireEvent.keyDown(dialog, { key: '?' });
+
+		await fireEvent.keyDown(dialog, { key: 'Escape' });
+
+		expect(panel.isOpen).toBe(true);
 	});
 
 	it('shows the model rationale on demand', async () => {
