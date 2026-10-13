@@ -39,3 +39,13 @@ export function withTag(lookups: Lookups, tag: Tag): Lookups {
 export function withTags(lookups: Lookups, tags: readonly Tag[]): Lookups {
 	return { ...lookups, tags: byId(tags) };
 }
+
+/** The lookups with the category list replaced, the rest untouched. */
+export function withCategories(lookups: Lookups, categories: readonly Category[]): Lookups {
+	return { ...lookups, categories: byId(categories) };
+}
+
+/** The lookups with the payee list replaced, the rest untouched. */
+export function withPayees(lookups: Lookups, payees: readonly Payee[]): Lookups {
+	return { ...lookups, payees: byId(payees) };
+}

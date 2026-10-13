@@ -1,5 +1,5 @@
-// What the preview table shows besides what the server sent: which source columns there are, and
-// a derivation key in the one vocabulary of patterns §4.3. Nothing here matches anything.
+// What the preview table shows besides what the server sent: which source columns there are
+// (the words for a derivation key are units/evidence.ts). Nothing here matches anything.
 import type { RulePreviewRow } from '#lib/api/rules.js';
 import { CONDITION_FIELDS, type Condition, type ConditionField, fieldsRead } from './conditions.js';
 
@@ -20,37 +20,4 @@ export function sourceText(
 ): string | null {
 	const text = row.source?.[field];
 	return text === undefined || text === null || text === '' ? null : text;
-}
-
-/**
- * The basis of a value as a short phrase, or null when there is no key. `ruleName` gives a rule's
- * name; a rule it does not know is "rule deleted" (patterns §4.3).
- */
-export function keyLabel(
-	key: RulePreviewRow['current_key'],
-	ruleName: (id: number) => string | undefined
-): string | null {
-	if (!key) return null;
-	switch (key.pass) {
-		case 'rule': {
-			const basis = key.basis as { rule_id?: unknown } | null | undefined;
-			const id = typeof basis?.rule_id === 'number' ? basis.rule_id : null;
-			const name = id === null ? undefined : ruleName(id);
-			return name === undefined ? 'rule deleted' : `rule: ${name}`;
-		}
-		case 'history':
-			return 'history';
-		case 'user':
-			return 'you';
-		case 'own_account':
-			return 'own account';
-		case 'llm':
-			return 'model';
-		case 'matcher_decision':
-			return 'matched automatically';
-		case 'matcher_proposal':
-			return 'document matched';
-		default:
-			return typeof key.pass === 'string' ? key.pass : null;
-	}
 }

@@ -4,7 +4,15 @@
 // other column has a fixed width so the rows align.
 
 export type ColumnId =
-	'date' | 'account' | 'category' | 'payee' | 'tags' | 'description' | 'review' | 'amount';
+	| 'date'
+	| 'account'
+	| 'category'
+	| 'payee'
+	| 'tags'
+	| 'description'
+	| 'review'
+	| 'amount'
+	| 'basis';
 
 export type Column = {
 	id: ColumnId;
@@ -27,8 +35,19 @@ export const COLUMNS: readonly Column[] = [
 	{ id: 'amount', header: 'Amount', width: '7rem', align: 'right' }
 ];
 
-/** The grid-template-columns value shared by the header and the rows. */
-export const GRID_TEMPLATE = COLUMNS.map((column) => column.width).join(' ');
+/** The review queue's rows: the ledger's columns and, last, the basis of what is proposed. */
+export const QUEUE_COLUMNS: readonly Column[] = [
+	...COLUMNS,
+	{ id: 'basis', header: 'Basis', width: '10rem' }
+];
+
+/** The grid-template-columns value of a column list, shared by its header and its rows. */
+export function gridTemplate(columns: readonly Column[]): string {
+	return columns.map((column) => column.width).join(' ');
+}
+
+/** The ledger's grid-template-columns value. */
+export const GRID_TEMPLATE = gridTemplate(COLUMNS);
 
 /** Classes every row shares so that its cells sit on the column tracks. */
 export const ROW_GRID = 'grid items-center gap-x-3';

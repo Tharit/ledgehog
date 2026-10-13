@@ -16,6 +16,7 @@ import { DeleteFlow, MergeFlow } from '#lib/dimensions/flows.svelte.js';
 import { plural } from '#lib/dimensions/text.js';
 import { SETTLE_STALE } from '#lib/ledger/errors.js';
 import { NO_IDS } from '#lib/ledger/patch.js';
+import { lookupsStore } from '#lib/stores/lookups.svelte.js';
 import type { Category, CategoryDeleteOut, CategoryMergeOut } from '#lib/types/domain.js';
 import {
 	buildTree,
@@ -65,6 +66,7 @@ export class CategoriesStore {
 		if (!quiet) this.status = 'loading';
 		try {
 			this.categories = await listCategories();
+			lookupsStore.setCategories(this.categories);
 			this.status = 'ready';
 			this.error = null;
 		} catch (error) {

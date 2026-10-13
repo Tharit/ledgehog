@@ -11,6 +11,10 @@
 	import { CHANGED_BY_YOU, CHANGED_ELSEWHERE } from '#lib/ledger/patch.js';
 	import { isDerivedType } from '#lib/ledger/types.js';
 	import type { Entry, Tag } from '#lib/types/domain.js';
+	import { DERIVED_NOTICE } from '#lib/units/describe.js';
+	import { unitPanel } from '#lib/units/panel-instance.js';
+	import { neighbourEntry, registerUnitSource } from '#lib/units/sources.js';
+	import type { Affected } from '#lib/units/types.js';
 	import { cn } from '#lib/utils.js';
 	import { COLUMNS, GRID_TEMPLATE, ROW_GRID } from './columns.js';
 	import EntryRow from './entry-row.svelte';
@@ -36,7 +40,8 @@
 		onsearch,
 		ontoggletag,
 		oncreatetag,
-		onnotice
+		onnotice,
+		onpatch
 	}: {
 		entries: readonly Entry[];
 		total: number;
@@ -63,6 +68,8 @@
 		oncreatetag?: (entryId: number, name: string) => Promise<boolean>;
 		/** a quiet one-line message for the page to show */
 		onnotice?: (text: string) => void;
+		/** what an action touched in a unit: patch the rows held, in place */
+		onpatch?: (affected: Affected) => void;
 	} = $props();
 
 	let cursorId = $state<number | null>(null);
@@ -115,6 +122,26 @@
 		if (pickerOpen && !pickerEntry) pickerOpen = false;
 	});
 
+	// The ledger is where the panel steps (`[` `]`): to the next row of ANOTHER unit, the siblings
+	// of a split skipped. It knows entries, not units, so it knows no "12 of 214" either.
+	const source = {
+		neighbour: (id: number, dir: -1 | 1) => neighbourEntry(entries, id, dir),
+		patch: (affected: Affected) => onpatch?.(affected)
+	};
+	$effect(() => registerUnitSource(source));
+
+	/** Enter or a click: open the unit of the row, or say a derived entry has none (patterns §5). */
+	function openUnit(entryId: number | null = cursorId) {
+		const entry = entries.find((e) => e.id === entryId);
+		if (!entry) return;
+		if (isDerivedType(entry.type)) {
+			onnotice?.(DERIVED_NOTICE);
+			return;
+		}
+		registerUnitSource(source); // the newest list is the one the panel steps through
+		unitPanel.open(entry.id, container);
+	}
+
 	function moveBy(delta: number) {
 		const next = moveCursor(cursorIndex, delta, entries.length);
 		cursorId = next < 0 ? null : entries[next].id;
@@ -141,7 +168,8 @@
 				moveBy(action === 'up' ? -1 : 1);
 				break;
 			case 'open':
-				// Enter will open the unit panel; there is none yet
+				event.preventDefault();
+				openUnit();
 				break;
 			case 'escape':
 				if (helpOpen) helpOpen = false;
@@ -176,7 +204,7 @@
 
 	const KEYS: [string, string][] = [
 		['↑ ↓ / k j', 'Move the cursor'],
-		['Enter', 'Open the entry (not built yet)'],
+		['Enter', 'Open the entry for review'],
 		['t', 'Tag the row'],
 		['/', 'Filter text'],
 		['Esc', 'Close this help, leave a field'],
@@ -269,6 +297,7 @@
 						changed={changedIds.has(entry.id) || movedIds.has(entry.id)}
 						changedTitle={changedIds.has(entry.id) ? CHANGED_BY_YOU : CHANGED_ELSEWHERE}
 						onselect={() => (cursorId = entry.id)}
+						onopen={() => openUnit(entry.id)}
 						ontags={() => {
 							cursorId = entry.id;
 							openPicker();

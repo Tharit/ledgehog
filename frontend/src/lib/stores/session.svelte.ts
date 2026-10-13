@@ -11,6 +11,7 @@ import {
 	type AppConfig,
 	type SessionUser
 } from '#lib/api/index.js';
+import { lookupsStore } from './lookups.svelte.js';
 
 export type SessionStatus = 'loading' | 'authenticated' | 'anonymous' | 'error';
 
@@ -57,6 +58,7 @@ class SessionStore {
 
 	/** The session has ended: back to anonymous, nothing of the user kept. */
 	expire(): void {
+		lookupsStore.reset();
 		this.user = null;
 		this.config = null;
 		this.error = null;

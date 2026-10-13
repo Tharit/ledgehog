@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { keyLabel, sourceColumns, sourceText } from './preview.js';
+import { sourceColumns, sourceText } from './preview.js';
 import { previewRow, source } from './fixtures.js';
 
 describe('sourceColumns', () => {
@@ -31,24 +31,5 @@ describe('sourceText', () => {
 
 	it('is null without a source', () => {
 		expect(sourceText(previewRow({ source: null }), 'counterparty_name')).toBeNull();
-	});
-});
-
-describe('keyLabel', () => {
-	const names = (id: number) => (id === 3 ? 'Rent' : undefined);
-
-	it('names a rule, or says it is gone', () => {
-		expect(keyLabel({ pass: 'rule', basis: { rule_id: 3 } }, names)).toBe('rule: Rent');
-		expect(keyLabel({ pass: 'rule', basis: { rule_id: 9 } }, names)).toBe('rule deleted');
-		expect(keyLabel({ pass: 'rule', basis: {} }, names)).toBe('rule deleted');
-	});
-
-	it('uses the vocabulary of the ledger', () => {
-		expect(keyLabel({ pass: 'history', basis: {} }, names)).toBe('history');
-		expect(keyLabel({ pass: 'user' }, names)).toBe('you');
-	});
-
-	it('has nothing to say without a key', () => {
-		expect(keyLabel(null, names)).toBeNull();
 	});
 });

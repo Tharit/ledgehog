@@ -642,6 +642,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/units/queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Review Queue
+         * @description The review queue: the first page of each section, or the page after `cursor` of one `section`.
+         */
+        get: operations["get_review_queue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/units/queue/new-count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get New Unit Count
+         * @description How many units entered the queue since `since` (a `snapshot` of the queue): one cheap pass.
+         */
+        get: operations["get_new_unit_count"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/units/{entry_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Unit
+         * @description The unit holding the entry, as stored: its state and every entry with its derivation.
+         */
+        get: operations["get_unit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -906,6 +966,8 @@ export interface components {
             /** Account Id */
             account_id: number;
             amount: components["schemas"]["Money"];
+            /** Authored */
+            authored: boolean;
             /**
              * Booked On
              * Format: date
@@ -917,6 +979,10 @@ export interface components {
             counter_account_id: number | null;
             /** Counterpart Entry Id */
             counterpart_entry_id: number | null;
+            /** Derivation */
+            derivation: {
+                [key: string]: unknown;
+            };
             /** Description */
             description: string | null;
             /** Display Text */
@@ -927,6 +993,7 @@ export interface components {
             id: number;
             /** Note */
             note: string | null;
+            partner: components["schemas"]["PartnerOut"] | null;
             /** Payee Id */
             payee_id: number | null;
             /** Review Flags */
@@ -938,6 +1005,8 @@ export interface components {
             tag_ids: number[];
             /** Type */
             type: ("flow" | "transfer" | "opening" | "valuation" | "reconciliation") | null;
+            /** Unit Key */
+            unit_key: number | null;
             /** Value On */
             value_on: string | null;
             /** Version */
@@ -1047,6 +1116,29 @@ export interface components {
             name: string;
             /** To Id */
             to_id: number;
+        };
+        /** NewCountOut */
+        NewCountOut: {
+            /** New Count */
+            new_count: number;
+            /** Snapshot */
+            snapshot: string;
+        };
+        /**
+         * PartnerOut
+         * @description The other leg of a paired transfer: where, when and how much.
+         */
+        PartnerOut: {
+            /** Account Id */
+            account_id: number;
+            amount: components["schemas"]["Money"];
+            /**
+             * Booked On
+             * Format: date
+             */
+            booked_on: string;
+            /** Entry Id */
+            entry_id: number;
         };
         /** PayeeCreateBody */
         PayeeCreateBody: {
@@ -1191,6 +1283,20 @@ export interface components {
             shadowed_by_rule_id: number | null;
             source: components["schemas"]["SourceTransactionOut"] | null;
         };
+        /** QueueSectionOut */
+        QueueSectionOut: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "pending_review" | "needs_account" | "waiting";
+            /** Next Cursor */
+            next_cursor: string | null;
+            /** Total */
+            total: number;
+            /** Units */
+            units: components["schemas"]["UnitOut"][];
+        };
         /** RecordDeleteOut */
         RecordDeleteOut: {
             account: components["schemas"]["AccountOut"];
@@ -1229,6 +1335,15 @@ export interface components {
             expected_versions?: {
                 [key: string]: number;
             } | null;
+        };
+        /** ReviewQueueOut */
+        ReviewQueueOut: {
+            /** Sections */
+            sections: components["schemas"]["QueueSectionOut"][];
+            /** Snapshot */
+            snapshot: string;
+            /** Total */
+            total: number;
         };
         /** RuleCreateBody */
         RuleCreateBody: {
@@ -1549,6 +1664,23 @@ export interface components {
         TagsOut: {
             /** Tags */
             tags: components["schemas"]["TagOut"][];
+        };
+        /** UnitOut */
+        UnitOut: {
+            /** Anchor Entry Id */
+            anchor_entry_id: number;
+            /** Entries */
+            entries: components["schemas"]["EntryOut"][];
+            state: components["schemas"]["UnitStateOut"];
+            /** Unit Key */
+            unit_key: number;
+        };
+        /** UnitStateOut */
+        UnitStateOut: {
+            /** Confirmed */
+            confirmed: boolean;
+            /** Reasons */
+            reasons: ("incomplete" | "unpaired_transfer" | "non_standing_keys")[];
         };
         /**
          * UpdateBody
@@ -4275,6 +4407,137 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    get_review_queue: {
+        parameters: {
+            query?: {
+                limit?: number;
+                section?: ("pending_review" | "needs_account" | "waiting") | null;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewQueueOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_new_unit_count: {
+        parameters: {
+            query: {
+                since: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NewCountOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_unit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnitOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };

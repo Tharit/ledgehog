@@ -7,11 +7,7 @@ import {
 	ApiError,
 	createTag,
 	DEFAULT_PAGE_SIZE,
-	listAccounts,
-	listCategories,
 	listEntries,
-	listPayees,
-	listTags,
 	tagEntry,
 	untagEntry
 } from '#lib/api/index.js';
@@ -39,14 +35,11 @@ import {
 	rowsOutOfTagFilter,
 	withIds
 } from '#lib/ledger/patch.js';
-import {
-	buildLookups,
-	emptyLookups,
-	withTag,
-	withTags,
-	type Lookups
-} from '#lib/ledger/lookups.js';
+import type { Lookups } from '#lib/ledger/lookups.js';
 import type { Entry, EntryTagIds, Tag } from '#lib/types/domain.js';
+import { applyAffected, noMarks, type Marks } from '#lib/units/patch.js';
+import type { Affected } from '#lib/units/types.js';
+import { lookupsStore, type LookupsStore } from './lookups.svelte.js';
 import { session } from './session.svelte.js';
 import { TagAllFlow } from './tag-all.svelte.js';
 
@@ -76,9 +69,19 @@ export class LedgerStore {
 	/** why "load more" failed; the entries held stay */
 	moreError = $state.raw<ApiError | null>(null);
 
-	lookups = $state.raw<Lookups>(emptyLookups());
+	readonly #lookups: LookupsStore;
+	/** the shared lists rows resolve ids against (stores/lookups.svelte.ts) */
+	get lookups(): Lookups {
+		return this.#lookups.lookups;
+	}
 	/** the lists that could not be loaded (their names), shown as a quiet notice */
-	lookupsFailed = $state.raw<string[]>([]);
+	get lookupsFailed(): string[] {
+		return this.#lookups.failed;
+	}
+
+	constructor(lookups: LookupsStore = lookupsStore) {
+		this.#lookups = lookups;
+	}
 
 	readonly locale = $derived(session.config?.locale ?? 'en');
 	readonly baseCurrency = $derived(session.config?.base_currency ?? 'EUR');
@@ -92,6 +95,9 @@ export class LedgerStore {
 	notice = $state.raw<LedgerNotice | null>(null);
 	/** entries whose tags were changed here since the list was fetched */
 	touchedIds = $state.raw<ReadonlySet<number>>(NO_IDS);
+
+	/** what the unit panel's actions did to the rows held (resolved, consequence, deleted, returned) */
+	marks = $state.raw<Marks>(noMarks());
 
 	/** rows a refresh in place did not return: kept and marked, never removed (patterns §7, §8) */
 	movedIds = $state.raw<ReadonlySet<number>>(NO_IDS);
@@ -129,7 +135,6 @@ export class LedgerStore {
 	#refreshController: AbortController | null = null;
 	#generation = 0;
 	#key: string | null = null;
-	#lookupsRequested = false;
 
 	/** Show this filter. The same filter as the one held does nothing (a URL echo). */
 	applyFilter(next: LedgerFilterState): void {
@@ -156,6 +161,7 @@ export class LedgerStore {
 		this.total = 0;
 		this.touchedIds = NO_IDS;
 		this.movedIds = NO_IDS;
+		this.marks = noMarks();
 		this.notice = null;
 		try {
 			const page = await listEntries(this.filter, {
@@ -240,11 +246,7 @@ export class LedgerStore {
 
 	/** Load the tag list again (a tag was created or deleted elsewhere). */
 	async reloadTags(): Promise<void> {
-		try {
-			this.lookups = withTags(this.lookups, await listTags());
-		} catch {
-			// the lookups held stay; the notice already said what happened
-		}
+		await this.#lookups.reloadTags();
 	}
 
 	/** After a failed tag write: refetch what moved, as `tagErrorEffects` says. Never a retry. */
@@ -256,26 +258,9 @@ export class LedgerStore {
 		]);
 	}
 
-	/** Load the lists rows resolve ids against, once. A list that fails is simply empty. */
-	async loadLookups(): Promise<void> {
-		if (this.#lookupsRequested) return;
-		this.#lookupsRequested = true;
-		const names = ['accounts', 'categories', 'payees', 'tags'];
-		const results = await Promise.allSettled([
-			listAccounts(),
-			listCategories(),
-			listPayees(),
-			listTags()
-		]);
-		const value = <T>(result: PromiseSettledResult<T[]>): T[] =>
-			result.status === 'fulfilled' ? result.value : [];
-		this.lookups = buildLookups({
-			accounts: value(results[0]),
-			categories: value(results[1]),
-			payees: value(results[2]),
-			tags: value(results[3])
-		});
-		this.lookupsFailed = names.filter((_, i) => results[i].status === 'rejected');
+	/** Load the lists rows resolve ids against, once (shared with every other screen). */
+	loadLookups(): Promise<void> {
+		return this.#lookups.ensure();
 	}
 
 	notify(text: string, error = false): void {
@@ -284,7 +269,7 @@ export class LedgerStore {
 
 	/** A tag created here joins the list the rows and pickers resolve against. */
 	addTag(tag: Tag): void {
-		this.lookups = withTag(this.lookups, tag);
+		this.#lookups.addTag(tag);
 	}
 
 	/** Patch tag ids into the rows held, in place: never added, removed or reordered (§7). */
@@ -295,6 +280,13 @@ export class LedgerStore {
 			this.touchedIds,
 			updates.map((u) => u.id)
 		);
+	}
+
+	/** An action in the unit panel touched these entries: patch the rows held, in place (§7). */
+	patchAffected(affected: Affected): void {
+		const out = applyAffected(this.entries, affected, this.marks);
+		this.entries = out.entries;
+		this.marks = out.marks;
 	}
 
 	/** Tag (`tagged`) or untag one entry; the row follows the answer. True when it worked. */

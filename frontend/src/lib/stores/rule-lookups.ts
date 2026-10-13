@@ -1,20 +1,14 @@
 // The lists the rule screens resolve ids against (targets, payee conditions, preview rows):
-// accounts, categories and payees. A list that cannot be loaded is simply empty and named, so the
-// screen can say so in one quiet line.
-import { listAccounts, listCategories, listPayees } from '#lib/api/index.js';
-import { buildLookups, type Lookups } from '#lib/ledger/lookups.js';
+// accounts, categories and payees, from the shared lookups (stores/lookups.svelte.ts), refetched
+// so a rule screen never shows a stale name. A list that cannot be loaded is simply empty and
+// named, so the screen can say so in one quiet line. Tags are not the rule screens' business.
+import type { Lookups } from '#lib/ledger/lookups.js';
+import { lookupsStore } from './lookups.svelte.js';
 
 export async function loadRuleLookups(): Promise<{ lookups: Lookups; failed: string[] }> {
-	const names = ['accounts', 'categories', 'payees'];
-	const results = await Promise.allSettled([listAccounts(), listCategories(), listPayees()]);
-	const value = <T>(result: PromiseSettledResult<T[]>): T[] =>
-		result.status === 'fulfilled' ? result.value : [];
+	await lookupsStore.reload();
 	return {
-		lookups: buildLookups({
-			accounts: value(results[0]),
-			categories: value(results[1]),
-			payees: value(results[2])
-		}),
-		failed: names.filter((_, i) => results[i].status === 'rejected')
+		lookups: lookupsStore.lookups,
+		failed: lookupsStore.failed.filter((name) => name !== 'tags')
 	};
 }

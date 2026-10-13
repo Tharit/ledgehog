@@ -9,4 +9,5 @@ export * from './payees.js';
 export * from './rules.js';
 export * from './session.js';
 export * from './tags.js';
+export * from './units.js';
 export type * from './types.js';

@@ -1,5 +1,5 @@
 // State of the payees screen: the list (by name) and the writes (create, edit, look, delete,
-// merge). The list is reloaded after every write; the ledger loads its own lookups when it opens.
+// merge). The list is reloaded after every write; the shared lookups take the fresh list over.
 // No domain computation here.
 import {
 	ApiError,
@@ -14,6 +14,7 @@ import { needsReload, type Outcome } from '#lib/dimensions/errors.js';
 import { DeleteFlow, MergeFlow } from '#lib/dimensions/flows.svelte.js';
 import { plural } from '#lib/dimensions/text.js';
 import { SETTLE_STALE } from '#lib/ledger/errors.js';
+import { lookupsStore } from '#lib/stores/lookups.svelte.js';
 import { indexPayees } from './summary.js';
 import type { Payee, PayeeDeleteOut, PayeeMergeOut } from '#lib/types/domain.js';
 
@@ -57,6 +58,7 @@ export class PayeesStore {
 		if (!quiet) this.status = 'loading';
 		try {
 			this.payees = await listPayees();
+			lookupsStore.setPayees(this.payees);
 			this.status = 'ready';
 			this.error = null;
 		} catch (error) {

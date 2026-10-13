@@ -16,6 +16,7 @@ export type {
 	PayeeDeleteOut,
 	PayeeMergeOut,
 	ReviewFlag,
+	SourceTransaction,
 	Tag,
 	TagApplyOut
 } from '#lib/api/types.js';

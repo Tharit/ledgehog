@@ -5,16 +5,19 @@
 	import ReviewBadge from '#lib/components/common/review-badge.svelte';
 	import type { Lookups } from '#lib/ledger/lookups.js';
 	import { FIELD_LABELS, type ConditionField } from '#lib/rules/conditions.js';
-	import { keyLabel, sourceText } from '#lib/rules/preview.js';
+	import { sourceText } from '#lib/rules/preview.js';
 	import type { RulePreviewRow, RuleSets } from '#lib/rules/types.js';
 	import { resolveAccount } from '#lib/theme/resolve.js';
+	import { describeKey, asKey, knownRules } from '#lib/units/evidence.js';
+	import { unitPanel } from '#lib/units/panel-instance.js';
+	import { registerUnitSource } from '#lib/units/sources.js';
 	import RuleTarget from './rule-target.svelte';
 
 	// The entries of one preview list as a table with headers in two groups. "Entry" is what the
 	// row is: booked date, account, amount and what the rule's target holds now with its basis.
 	// "Source transaction" is what the rule reads: the counterparty name always, and one column
-	// for every other field the conditions read. Rows are plain: they open the review panel once
-	// there are units. Everything shown is what the server sent. A table may be wider than the
+	// for every other field the conditions read. A row opens the review panel on its entry (click or
+	// Enter), and the panel steps through this table's rows. Everything shown is what the server sent. A table may be wider than the
 	// screen and scrolls inside its own container.
 	let {
 		rows,
@@ -36,6 +39,19 @@
 		label: string;
 		locale?: string;
 	} = $props();
+
+	const rules = $derived(knownRules(ruleName));
+
+	function open(entryId: number, row: HTMLElement | null) {
+		registerUnitSource({
+			neighbour: (id, dir) => {
+				const at = rows.findIndex((r) => r.entry_id === id);
+				return at < 0 ? null : (rows[at + dir]?.entry_id ?? null);
+			},
+			patch: () => {}
+		});
+		unitPanel.open(entryId, row);
+	}
 
 	function shadow(row: RulePreviewRow): string | null {
 		return row.shadowed_by_rule_id === null
@@ -77,9 +93,21 @@
 		>
 			{#each rows as row (row.entry_id)}
 				{@const account = lookups.accounts.get(row.account_id)}
-				{@const basis = keyLabel(row.current_key, ruleName)}
+				{@const basis = describeKey(asKey(row.current_key), rules, locale)}
 				{@const taken = shadow(row)}
-				<tr data-entry-id={row.entry_id}>
+				<!-- the keyboard path is Enter on the focused row; a click is the mouse path -->
+				<tr
+					data-entry-id={row.entry_id}
+					tabindex="0"
+					class="cursor-default hover:bg-muted focus-visible:bg-accent focus-visible:outline-none"
+					onclick={(event) => open(row.entry_id, event.currentTarget)}
+					onkeydown={(event) => {
+						if (event.key === 'Enter' && event.target === event.currentTarget) {
+							event.preventDefault();
+							open(row.entry_id, event.currentTarget);
+						}
+					}}
+				>
 					<td>
 						<span class="flex items-center gap-2">
 							<DateDisplay date={row.booked_on} {locale} />
@@ -102,8 +130,11 @@
 							<RuleTarget {sets} id={row.current_value} {lookups} />
 						{/if}
 						{#if basis}
-							<span class="block text-xs text-muted-foreground" data-slot="preview-basis">
-								{basis}
+							<span
+								class={['block text-xs text-muted-foreground', basis.proposal && 'italic']}
+								data-slot="preview-basis"
+							>
+								{basis.text}
 							</span>
 						{/if}
 						{#if taken}

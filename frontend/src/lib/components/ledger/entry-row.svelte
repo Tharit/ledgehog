@@ -17,7 +17,8 @@
 	import { resolveAccount, resolveCategory, resolveTag } from '#lib/theme/resolve.js';
 	import type { Entry } from '#lib/types/domain.js';
 	import { cn } from '#lib/utils.js';
-	import { COLUMNS, GRID_TEMPLATE, ROW_GRID } from './columns.js';
+	import type { Evidence } from '#lib/units/evidence.js';
+	import { COLUMNS, gridTemplate, ROW_GRID, type Column } from './columns.js';
 
 	// One entry as a compact row: 32px, one line, a divider below (design §5). The cursor row has
 	// the accent background and a 2px primary bar on its left edge (design §7).
@@ -26,22 +27,31 @@
 		lookups,
 		locale = 'en',
 		showCurrency = false,
+		columns = COLUMNS,
+		basis = null,
 		cursor = false,
 		changed = false,
 		changedTitle = CHANGED_BY_YOU,
 		onselect,
+		onopen,
 		ontags
 	}: {
 		entry: Entry;
 		lookups: Lookups;
 		locale?: string;
 		showCurrency?: boolean;
+		/** the columns to show (the queue adds a basis column) */
+		columns?: readonly Column[];
+		/** the basis of what is proposed, for a `basis` column */
+		basis?: Evidence | null;
 		cursor?: boolean;
 		/** the user's last action took this row out of the filter; it stays until a refresh (§7) */
 		changed?: boolean;
 		/** why the row is marked (tooltip) */
 		changedTitle?: string;
 		onselect?: () => void;
+		/** a click on the row (not on its tags cell): open the unit panel */
+		onopen?: () => void;
 		/** a click on the tags cell: the mouse path for the `t` key (patterns §11.3) */
 		ontags?: () => void;
 	} = $props();
@@ -81,8 +91,12 @@
 		'group relative h-8 scroll-mt-10 border-b border-border px-3 text-[13px]',
 		cursor ? 'bg-accent' : 'hover:bg-muted'
 	)}
-	style:grid-template-columns={GRID_TEMPLATE}
-	onclick={onselect}
+	style:grid-template-columns={gridTemplate(columns)}
+	onclick={(event) => {
+		onselect?.();
+		// the tags cell has its own click (the mouse path for `t`)
+		if (!(event.target instanceof Element && event.target.closest('button'))) onopen?.();
+	}}
 >
 	{#if changed}
 		<span class="absolute inset-y-0 left-0 w-0.5 bg-dim-ochre" aria-hidden="true"></span>
@@ -94,7 +108,7 @@
 		></span>
 	{/if}
 
-	{#each COLUMNS as column (column.id)}
+	{#each columns as column (column.id)}
 		{#if column.id === 'date'}
 			<div role="gridcell"><DateDisplay date={entry.booked_on} {locale} /></div>
 		{:else if column.id === 'account'}
@@ -173,6 +187,15 @@
 						<ReviewBadge {flag} />
 					{/each}
 				{/if}
+			</div>
+		{:else if column.id === 'basis'}
+			<div
+				role="gridcell"
+				class={cn('min-w-0 truncate text-xs text-muted-foreground', basis?.proposal && 'italic')}
+				title={basis?.text}
+				data-slot="row-basis"
+			>
+				{basis?.short ?? ''}
 			</div>
 		{:else if column.id === 'amount'}
 			<div role="gridcell">

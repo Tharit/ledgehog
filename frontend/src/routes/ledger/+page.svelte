@@ -14,6 +14,8 @@
 		type LedgerFilterState
 	} from '#lib/ledger/filter.js';
 	import { LedgerStore } from '#lib/stores/ledger.svelte.js';
+	import { unitPanel } from '#lib/units/panel-instance.js';
+	import { UNIT_PARAM } from '#lib/units/address.js';
 
 	const ledger = new LedgerStore();
 	let searchEl = $state<HTMLInputElement | null>(null);
@@ -30,7 +32,10 @@
 	onDestroy(() => ledger.dispose());
 
 	async function show(filter: LedgerFilterState) {
-		const query = toSearchParams(filter).toString();
+		const params = toSearchParams(filter);
+		// the panel's address survives a filter change
+		if (unitPanel.unitId !== null) params.set(UNIT_PARAM, String(unitPanel.unitId));
+		const query = params.toString();
 		const typing = document.activeElement === searchEl;
 		await goto(`${page.url.pathname}${query ? `?${query}` : ''}`, { replaceState: true });
 		// a navigation moves focus to the page; typing in the filter box goes on
@@ -108,5 +113,6 @@
 		ontoggletag={(entryId, tagId, tagged) => ledger.setEntryTag(entryId, tagId, tagged)}
 		oncreatetag={(entryId, name) => ledger.createTagFor(entryId, name)}
 		onnotice={(text) => ledger.notify(text)}
+		onpatch={(affected) => ledger.patchAffected(affected)}
 	/>
 </div>

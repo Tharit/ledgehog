@@ -1,10 +1,17 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { tick } from 'svelte';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { account, entry, tag } from '#lib/ledger/fixtures.js';
 import { buildLookups } from '#lib/ledger/lookups.js';
+import { DERIVED_NOTICE } from '#lib/units/describe.js';
+import { unitPanel } from '#lib/units/panel-instance.js';
+import { activeUnitSource } from '#lib/units/sources.js';
 import { COLUMNS, GRID_TEMPLATE } from './columns.js';
 import LedgerTable from './ledger-table.svelte';
+
+vi.mock('#lib/units/panel-instance.js', () => ({ unitPanel: { open: vi.fn() } }));
+
+beforeEach(() => vi.mocked(unitPanel.open).mockClear());
 
 const lookups = buildLookups({
 	accounts: [account(), account({ id: 2, name: 'Cash' })],
@@ -260,13 +267,68 @@ describe('LedgerTable: the keyboard', () => {
 		expect(scroll).toHaveBeenCalledWith({ block: 'nearest' });
 	});
 
-	it('does nothing on Enter yet', async () => {
+	it('Enter opens the unit panel on the entry under the cursor', async () => {
 		table();
+		await key('j');
 		await key('j');
 
 		await key('Enter');
 
-		expect(cursorTexts()).toHaveLength(1);
+		expect(unitPanel.open).toHaveBeenCalledOnce();
+		expect(vi.mocked(unitPanel.open).mock.calls[0][0]).toBe(2);
+	});
+
+	it('Enter without a cursor opens nothing', async () => {
+		table();
+
+		await key('Enter');
+
+		expect(unitPanel.open).not.toHaveBeenCalled();
+	});
+
+	it('a click on a row opens it, a click on the tags cell edits tags instead', async () => {
+		table();
+
+		await fireEvent.click(screen.getByText('First'));
+		expect(vi.mocked(unitPanel.open).mock.calls.map((c) => c[0])).toEqual([1]);
+
+		const row = screen.getByText('Second').closest('[role="row"]') as HTMLElement;
+		await fireEvent.click(within(row).getByRole('button', { name: 'Edit tags' }));
+		expect(unitPanel.open).toHaveBeenCalledOnce();
+	});
+
+	it('a derived entry shows a quiet notice instead of opening', async () => {
+		const onnotice = vi.fn();
+		table({
+			entries: [entry({ id: 5, type: 'opening', display_text: null })],
+			total: 1,
+			onnotice
+		});
+		await key('j');
+
+		await key('Enter');
+
+		expect(onnotice).toHaveBeenCalledWith(DERIVED_NOTICE);
+		expect(unitPanel.open).not.toHaveBeenCalled();
+	});
+
+	it('registers as the panel source and steps past the siblings of one unit', async () => {
+		table({
+			entries: [
+				entry({ id: 4, unit_key: 11 }),
+				entry({ id: 3, unit_key: 10 }),
+				entry({ id: 2, unit_key: 10 }),
+				entry({ id: 1, unit_key: 9 })
+			],
+			total: 4
+		});
+
+		await tick();
+		const source = activeUnitSource();
+
+		expect(source?.neighbour(4, 1)).toBe(3);
+		expect(source?.neighbour(3, 1)).toBe(1);
+		expect(source?.neighbour(2, -1)).toBe(4);
 	});
 
 	it('/ asks for the filter text box', async () => {

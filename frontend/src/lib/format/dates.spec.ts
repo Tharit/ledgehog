@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { formatDate, formatDateRange, formatInstant, relativeDay, todayIso } from './dates.js';
+import {
+	formatDate,
+	formatDateRange,
+	formatInstant,
+	formatMonth,
+	relativeDay,
+	todayIso
+} from './dates.js';
 
 describe('formatDate', () => {
 	it('formats a calendar date in the locale', () => {
@@ -102,5 +109,12 @@ describe('formatDateRange', () => {
 
 	it('collapses a one-day range', () => {
 		expect(formatDateRange('2026-03-01', '2026-03-01', 'en-GB')).toBe('1 Mar');
+	});
+});
+
+describe('formatMonth', () => {
+	it('names the month and year, whatever the day', () => {
+		expect(formatMonth('2026-03-31', 'en')).toBe('Mar 2026');
+		expect(formatMonth('2026-03-01', 'en')).toBe('Mar 2026');
 	});
 });

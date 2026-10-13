@@ -84,3 +84,13 @@ export function formatDateRange(from: IsoDate, to: IsoDate, locale = 'en'): stri
 	if (from === to) return format.format(start);
 	return `${format.format(start)} ${EN_DASH} ${format.format(end)}`;
 }
+
+/** The month of a calendar date ("Mar 2026"), for evidence that spans time. */
+export function formatMonth(isoDate: IsoDate, locale = 'en'): string {
+	const format = new Intl.DateTimeFormat(locale, {
+		month: 'short',
+		year: 'numeric',
+		timeZone: 'UTC'
+	});
+	return format.format(utcDate(isoDate));
+}

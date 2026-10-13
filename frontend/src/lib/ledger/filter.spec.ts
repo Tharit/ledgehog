@@ -227,3 +227,12 @@ describe('normalizeFilter, filterKey, isIsoDate', () => {
 		expect(isIsoDate(undefined)).toBe(false);
 	});
 });
+
+describe('the unit panel parameter', () => {
+	it('is not part of the filter: it is ignored and never written back', () => {
+		const withUnit = fromSearchParams('account_id=2&unit=45');
+		expect(withUnit).toEqual(fromSearchParams('account_id=2'));
+		expect(filterKey(withUnit)).toBe('account_id=2');
+		expect(toSearchParams(withUnit).has('unit')).toBe(false);
+	});
+});
