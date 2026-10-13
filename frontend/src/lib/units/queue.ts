@@ -1,7 +1,8 @@
 // Pure helpers of the review queue's rows (patterns §7): paging appends without duplicates, and
 // patching replaces entries by id inside the units held, never adding or moving a unit.
 import type { Entry } from '#lib/types/domain.js';
-import type { Unit } from './types.js';
+import { insertCreated } from './patch.js';
+import type { Affected, Unit } from './types.js';
 
 /** The units held followed by a further page, leaving out units that are already held. */
 export function appendUnits(held: readonly Unit[], more: readonly Unit[]): Unit[] {
@@ -13,4 +14,17 @@ export function appendUnits(held: readonly Unit[], more: readonly Unit[]): Unit[
 export function patchUnitEntries(units: readonly Unit[], entries: readonly Entry[]): Unit[] {
 	const byId = new Map(entries.map((e) => [e.id, e]));
 	return units.map((unit) => ({ ...unit, entries: unit.entries.map((e) => byId.get(e.id) ?? e) }));
+}
+
+/** The units with the entries an action created put into the unit of their anchor (and nowhere else). */
+export function insertUnitEntries(units: readonly Unit[], affected: Affected): Unit[] {
+	const createdIds = new Set(affected.created ?? []);
+	const anchor = affected.anchor_entry_id;
+	if (createdIds.size === 0 || anchor === undefined) return [...units];
+	const created = affected.entries.filter((e) => createdIds.has(e.id));
+	return units.map((unit) =>
+		unit.entries.some((e) => e.id === anchor)
+			? { ...unit, entries: insertCreated(unit.entries, created, anchor) }
+			: unit
+	);
 }

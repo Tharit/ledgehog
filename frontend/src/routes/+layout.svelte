@@ -9,7 +9,10 @@
 	import favicon from '#lib/assets/favicon.svg';
 	import AppShell, { type NavItem } from '#lib/components/common/app-shell.svelte';
 	import ErrorState from '#lib/components/common/error-state.svelte';
+	import EntryFormDialogs from '#lib/components/entry-form/entry-form-dialogs.svelte';
+	import PanelNavigationGuard from '#lib/components/units/panel-navigation-guard.svelte';
 	import UnitPanelView from '#lib/components/units/unit-panel.svelte';
+	import { entryForm } from '#lib/entry-form/controller.svelte.js';
 	import { lookupsStore } from '#lib/stores/lookups.svelte.js';
 	import { session } from '#lib/stores/session.svelte.js';
 	import { setPanelNav, unitPanel } from '#lib/units/panel-instance.js';
@@ -62,6 +65,9 @@
 		if (unitPanel.isOpen) void lookupsStore.ensure();
 	});
 
+	// the entry form's dialogs take the entry the panel shows (an authored unit's)
+	const entryOf = (id: number) => unitPanel.unit?.entries.find((e) => e.id === id);
+
 	// The auth gate: anonymous visitors go to /login, signed-in ones leave it.
 	$effect(() => {
 		if (session.status === 'anonymous' && !onLogin) void goto('/login');
@@ -83,11 +89,21 @@
 	>
 		{@render children()}
 	</AppShell>
+	<PanelNavigationGuard panel={unitPanel} />
 	<UnitPanelView
 		panel={unitPanel}
 		lookups={lookupsStore.lookups}
 		locale={session.config?.locale ?? 'en'}
+		onEditEntry={(id) => {
+			const entry = entryOf(id);
+			if (entry) entryForm.openEdit(entry);
+		}}
+		onDeleteEntry={(id) => {
+			const entry = entryOf(id);
+			if (entry) entryForm.openDelete(entry);
+		}}
 	/>
+	<EntryFormDialogs />
 {:else if session.status === 'anonymous' && onLogin}
 	{@render children()}
 {:else if session.status === 'error' && session.error}

@@ -3,6 +3,7 @@ import { entry } from '#lib/ledger/fixtures.js';
 import {
 	applyAffected,
 	clearMarks,
+	insertCreated,
 	markOf,
 	MARK_CONSEQUENCE,
 	MARK_DELETED,
@@ -74,5 +75,54 @@ describe('marks', () => {
 		expect(markOf(marks, 1)).toBe(MARK_RESOLVED);
 		expect(markOf(clearMarks(marks, 1), 1)).toBeUndefined();
 		expect(clearMarks(noMarks(), 5).resolved.size).toBe(0);
+	});
+});
+
+describe('insertCreated: the one exception to never adding a row', () => {
+	const unitRows = [
+		entry({ id: 1, unit_key: 1 }),
+		entry({ id: 2, unit_key: 5 }),
+		entry({ id: 3, unit_key: 5 }),
+		entry({ id: 4, unit_key: 9 })
+	];
+
+	it('puts the created entries after the anchor and the rest of its unit, by id', () => {
+		const out = insertCreated(
+			unitRows,
+			[entry({ id: 12, unit_key: 5 }), entry({ id: 11, unit_key: 5 })],
+			2
+		);
+		expect(out.map((e) => e.id)).toEqual([1, 2, 3, 11, 12, 4]);
+	});
+
+	it('does not insert an entry the list holds again', () => {
+		expect(insertCreated(unitRows, [entry({ id: 3, unit_key: 5 })], 2).map((e) => e.id)).toEqual([
+			1, 2, 3, 4
+		]);
+	});
+
+	it('adds nothing when the list holds neither the anchor nor a row of the unit', () => {
+		expect(insertCreated(unitRows, [entry({ id: 20, unit_key: 77 })], 70)).toHaveLength(4);
+	});
+
+	it('finds the unit by key when only a sibling of the anchor is held', () => {
+		const out = insertCreated([entry({ id: 3, unit_key: 5 })], [entry({ id: 8, unit_key: 5 })], 2);
+		expect(out.map((e) => e.id)).toEqual([3, 8]);
+	});
+
+	it('is applied by applyAffected for created ids, and the new rows are marked resolved', () => {
+		const out = applyAffected(unitRows, {
+			entries: [entry({ id: 1, unit_key: 1 }), entry({ id: 11, unit_key: 1 })],
+			created: [11],
+			resolved: [1, 11],
+			anchor_entry_id: 1
+		});
+		expect(out.entries.map((e) => e.id)).toEqual([1, 11, 2, 3, 4]);
+		expect(out.marks.resolved.has(11)).toBe(true);
+	});
+
+	it('inserts nothing without an anchor', () => {
+		const out = applyAffected(unitRows, { entries: [entry({ id: 11 })], created: [11] });
+		expect(out.entries).toHaveLength(4);
 	});
 });

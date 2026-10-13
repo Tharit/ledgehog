@@ -13,9 +13,11 @@
 		toSearchParams,
 		type LedgerFilterState
 	} from '#lib/ledger/filter.js';
+	import { entryForm } from '#lib/entry-form/controller.svelte.js';
 	import { LedgerStore } from '#lib/stores/ledger.svelte.js';
 	import { unitPanel } from '#lib/units/panel-instance.js';
 	import { UNIT_PARAM } from '#lib/units/address.js';
+	import { activeUnitSource } from '#lib/units/sources.js';
 
 	const ledger = new LedgerStore();
 	let searchEl = $state<HTMLInputElement | null>(null);
@@ -30,6 +32,19 @@
 
 	onMount(() => void ledger.loadLookups());
 	onDestroy(() => ledger.dispose());
+
+	// The ledger is a snapshot: a transaction entered here is not inserted at its sorted place (that
+	// depends on the filter and the sort); the first page is fetched again and the cursor goes to
+	// the new row. Notices of the entry form (a delete) land on this page's line.
+	$effect(() =>
+		entryForm.listen({
+			created: async (out) => {
+				await ledger.reload();
+				if (out.anchor_entry_id !== null) activeUnitSource()?.reveal?.(out.anchor_entry_id);
+			},
+			notify: (text, error) => ledger.notify(text, error)
+		})
+	);
 
 	async function show(filter: LedgerFilterState) {
 		const params = toSearchParams(filter);
@@ -68,6 +83,8 @@
 		level={1}
 		title="Ledger"
 		description="Every entry across your accounts. Narrow it with the filters, then tag the rows by key or all at once."
+		actionLabel="Add entry"
+		onaction={() => entryForm.openAdd({ filtered: ledger.filter.account_id })}
 	/>
 
 	<FilterBar
@@ -114,5 +131,7 @@
 		oncreatetag={(entryId, name) => ledger.createTagFor(entryId, name)}
 		onnotice={(text) => ledger.notify(text)}
 		onpatch={(affected) => ledger.patchAffected(affected)}
+		marks={ledger.marks}
+		onvisit={(ids) => ledger.visited(ids)}
 	/>
 </div>

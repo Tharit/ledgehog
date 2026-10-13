@@ -79,15 +79,21 @@ export type SourceGroup =
 
 /**
  * Where the entries came from: one group per distinct source transaction (the entries of a split
- * share one), and one for the entries entered by hand. Entries with neither (derived ones, a
- * counter-leg the data does not describe) are not listed.
+ * share one), and one for the entries entered by hand (`authored`, which also carry a source of
+ * their own). Derived entries (no source) are not listed.
  */
 export function sourceGroups(entries: readonly Entry[]): SourceGroup[] {
 	const groups: SourceGroup[] = [];
 	const bySource = new Map<number, Extract<SourceGroup, { kind: 'source' }>>();
 	let authored: Extract<SourceGroup, { kind: 'authored' }> | null = null;
 	for (const entry of entries) {
-		if (entry.source && entry.source_transaction_id !== null) {
+		if (entry.authored) {
+			if (!authored) {
+				authored = { kind: 'authored', entryIds: [] };
+				groups.push(authored);
+			}
+			authored.entryIds.push(entry.id);
+		} else if (entry.source && entry.source_transaction_id !== null) {
 			let group = bySource.get(entry.source_transaction_id);
 			if (!group) {
 				group = {
@@ -100,12 +106,6 @@ export function sourceGroups(entries: readonly Entry[]): SourceGroup[] {
 				groups.push(group);
 			}
 			group.entryIds.push(entry.id);
-		} else if (entry.authored) {
-			if (!authored) {
-				authored = { kind: 'authored', entryIds: [] };
-				groups.push(authored);
-			}
-			authored.entryIds.push(entry.id);
 		}
 	}
 	return groups;

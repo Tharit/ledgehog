@@ -17,7 +17,7 @@
 		children,
 		...rest
 	}: Omit<ButtonProps, 'variant' | 'size' | 'children' | 'disabled'> & {
-		variant?: 'primary' | 'outline' | 'destructive' | 'ghost' | 'link';
+		variant?: 'primary' | 'secondary' | 'outline' | 'destructive' | 'ghost' | 'link';
 		busy?: boolean;
 		busyLabel?: string;
 		/** why the action is disabled, shown as a tooltip */

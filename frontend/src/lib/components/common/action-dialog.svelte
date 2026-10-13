@@ -40,6 +40,7 @@
 		feedback = null,
 		width = 'md',
 		oncloseautofocus,
+		secondary,
 		children
 	}: {
 		open: boolean;
@@ -62,6 +63,8 @@
 		width?: 'sm' | 'md' | 'lg';
 		/** what happens to focus when the dialog has closed; `preventDefault` to place it yourself */
 		oncloseautofocus?: (event: Event) => void;
+		/** a secondary action between Cancel and the verb ("Add and add another"), a button of its own */
+		secondary?: Snippet;
 		/** the body: fields, a picker, a consequence list */
 		children: Snippet;
 	} = $props();
@@ -136,6 +139,7 @@
 		<ActionButton variant="outline" data-role="cancel" disabled={busy} onclick={() => onclose()}>
 			Cancel
 		</ActionButton>
+		{#if secondary}{@render secondary()}{/if}
 		{#if mode !== 'pick' && verb}
 			<ActionButton
 				type={mode === 'form' ? 'submit' : 'button'}

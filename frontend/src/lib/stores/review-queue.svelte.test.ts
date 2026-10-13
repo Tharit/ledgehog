@@ -233,3 +233,52 @@ describe('ReviewQueueStore', () => {
 		expect(ruleNames.names.name(3)).toBe('Rewe');
 	});
 });
+
+describe('ReviewQueueStore: what the panel does to it', () => {
+	it('puts the entries a split created into the unit of their anchor, marked resolved', async () => {
+		vi.mocked(getQueue).mockResolvedValue(queue({ pending_review: [plain(1), plain(2)] }));
+		const store = new ReviewQueueStore();
+		await store.load();
+
+		store.patchAffected({
+			entries: [entry({ id: 1, unit_key: 1 }), entry({ id: 11, unit_key: 1 })],
+			created: [11],
+			resolved: [1, 11],
+			anchor_entry_id: 1
+		});
+
+		expect(store.units[0].entries.map((e) => e.id)).toEqual([1, 11]);
+		expect(store.units[1].entries.map((e) => e.id)).toEqual([2]);
+		expect(store.marks.resolved.has(11)).toBe(true);
+		expect(store.total).toBe(2); // the queue never adds a unit
+	});
+
+	it('names its end, takes the panel’s notice and clears it on a reload', async () => {
+		vi.mocked(getQueue).mockResolvedValue(queue({ pending_review: [plain(1)] }));
+		const store = new ReviewQueueStore();
+		await store.load();
+
+		expect(store.source.finishedText).toBe('Review done');
+		store.source.notice!('Review done');
+		expect(store.notice).toBe('Review done');
+		await store.load();
+		expect(store.notice).toBeNull();
+	});
+
+	it('loads the next page of a section for the panel, and says whether it added units', async () => {
+		vi.mocked(getQueue).mockResolvedValueOnce(queue({ pending_review: [plain(1)] }, { total: 2 }));
+		const store = new ReviewQueueStore();
+		await store.load();
+		expect(await store.source.loadMore!()).toBe(false); // no cursor: nothing more
+
+		vi.mocked(getQueue).mockResolvedValueOnce(queue({ pending_review: [plain(1)] }, { total: 2 }));
+		await store.load();
+		store.sections = store.sections.map((s) =>
+			s.kind === 'pending_review' ? { ...s, nextCursor: 'c1', total: 2 } : s
+		);
+		vi.mocked(getQueue).mockResolvedValueOnce(queue({ pending_review: [plain(2)] }));
+
+		expect(await store.source.loadMore!()).toBe(true);
+		expect(store.units.map((u) => u.anchor_entry_id)).toEqual([1, 2]);
+	});
+});

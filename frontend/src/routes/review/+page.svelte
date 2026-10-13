@@ -4,6 +4,7 @@
 	import NoticeLine from '#lib/components/common/notice-line.svelte';
 	import PageHeader from '#lib/components/common/page-header.svelte';
 	import ReviewQueue from '#lib/components/review/review-queue.svelte';
+	import { entryForm } from '#lib/entry-form/controller.svelte.js';
 	import { formatCount } from '#lib/format/index.js';
 	import { lookupsStore } from '#lib/stores/lookups.svelte.js';
 	import { ReviewQueueStore } from '#lib/stores/review-queue.svelte.js';
@@ -30,15 +31,21 @@
 	});
 	onDestroy(() => queue.dispose());
 
+	// notices of the entry form (a delete) land on this page's line; a created entry opens in the
+	// panel and the queue is told through the panel's source, not refreshed
+	$effect(() => entryForm.listen({ notify: (text) => (queue.notice = text) }));
+
 	const notice = $derived(
-		queue.newCount > 0
-			? { text: `${formatCount(queue.newCount, locale)} new`, error: false }
-			: lookupsStore.failed.length > 0
-				? {
-						text: `Some lists could not be loaded (${lookupsStore.failed.join(', ')}); their names may be missing below.`,
-						error: false
-					}
-				: null
+		queue.notice !== null
+			? { text: queue.notice, error: false }
+			: queue.newCount > 0
+				? { text: `${formatCount(queue.newCount, locale)} new`, error: false }
+				: lookupsStore.failed.length > 0
+					? {
+							text: `Some lists could not be loaded (${lookupsStore.failed.join(', ')}); their names may be missing below.`,
+							error: false
+						}
+					: null
 	);
 </script>
 

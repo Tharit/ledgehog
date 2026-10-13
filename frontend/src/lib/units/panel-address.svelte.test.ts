@@ -3,7 +3,7 @@
 // the panel never flickers: opening stays open, closing stays closed.
 import { flushSync } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getUnit } from '#lib/api/index.js';
+import { getUnit, previewUnit } from '#lib/api/index.js';
 import { entry } from '#lib/ledger/fixtures.js';
 import { unit } from './fixtures.js';
 import { UnitPanel, type PanelNav } from './panel.svelte.js';
@@ -12,6 +12,7 @@ import { registerUnitSource, type UnitSource } from './sources.js';
 vi.mock('#lib/api/index.js', async (importOriginal) => ({
 	...(await importOriginal<typeof import('#lib/api/index.js')>()),
 	getUnit: vi.fn(),
+	previewUnit: vi.fn(),
 	listRules: vi.fn().mockResolvedValue([])
 }));
 
@@ -66,6 +67,7 @@ function setup(start = '/ledger?account_id=2') {
 beforeEach(() => {
 	vi.resetAllMocks();
 	vi.mocked(getUnit).mockImplementation(async (id) => unit({ anchor_entry_id: id }));
+	vi.mocked(previewUnit).mockImplementation(() => new Promise(() => {}));
 });
 afterEach(() => stop?.());
 

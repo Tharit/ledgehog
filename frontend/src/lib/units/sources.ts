@@ -18,6 +18,15 @@ export interface UnitSource {
 	 * when it opens and on each step, so the list behind the overlay follows the unit shown.
 	 */
 	reveal?(entryId: number): boolean;
+	/**
+	 * The list ends here and has more to load: load it and say whether rows were added, so the
+	 * panel can carry on advancing instead of stopping at the end of a page.
+	 */
+	loadMore?(): Promise<boolean>;
+	/** A quiet line for the page ("Review done"): where the panel's end-of-list message goes. */
+	notice?(text: string): void;
+	/** What the end of this list is called ("Review done"; default "No more units"). */
+	finishedText?: string;
 	/** Where the unit is in the list ("12 of 214"), when the source knows. */
 	position?(entryId: number): { index: number; total: number } | null;
 }

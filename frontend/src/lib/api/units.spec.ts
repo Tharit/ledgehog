@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from './http.js';
-import { getNewUnitCount, getQueue, getUnit } from './units.js';
+import { commitUnit, getNewUnitCount, getQueue, getUnit, previewUnit } from './units.js';
 
 const fetchMock = vi.fn();
 
@@ -56,5 +56,34 @@ describe('getNewUnitCount', () => {
 	it('sends the snapshot', async () => {
 		await getNewUnitCount('snap 1');
 		expect(lastUrl()).toBe('/api/units/queue/new-count?since=snap+1');
+	});
+});
+
+describe('previewUnit and commitUnit', () => {
+	const draft = { anchor_entry_id: 5, entries: [], removed_entry_ids: [], reresolve_all: false };
+
+	it('post the draft as JSON to the preview', async () => {
+		await previewUnit(draft);
+		const [url, init] = fetchMock.mock.calls.at(-1) as [string, RequestInit];
+		expect(url).toBe('/api/units/preview');
+		expect(init.method).toBe('POST');
+		expect(JSON.parse(init.body as string)).toEqual(draft);
+	});
+
+	it('post it to the commit', async () => {
+		await commitUnit(draft);
+		const [url, init] = fetchMock.mock.calls.at(-1) as [string, RequestInit];
+		expect(url).toBe('/api/units/commit');
+		expect(init.method).toBe('POST');
+	});
+
+	it('answer a conflict with its code and the entries that moved', async () => {
+		fetchMock.mockImplementation(async () =>
+			reply({ error: { code: 'conflict', message: 'x', details: { entry_ids: [5] } } }, 409)
+		);
+		await expect(commitUnit(draft)).rejects.toMatchObject({
+			code: 'conflict',
+			details: { entry_ids: [5] }
+		});
 	});
 });

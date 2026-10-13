@@ -37,7 +37,7 @@ import {
 } from '#lib/ledger/patch.js';
 import type { Lookups } from '#lib/ledger/lookups.js';
 import type { Entry, EntryTagIds, Tag } from '#lib/types/domain.js';
-import { applyAffected, noMarks, type Marks } from '#lib/units/patch.js';
+import { applyAffected, clearMarks, noMarks, type Marks } from '#lib/units/patch.js';
 import type { Affected } from '#lib/units/types.js';
 import { lookupsStore, type LookupsStore } from './lookups.svelte.js';
 import { session } from './session.svelte.js';
@@ -287,6 +287,13 @@ export class LedgerStore {
 		const out = applyAffected(this.entries, affected, this.marks);
 		this.entries = out.entries;
 		this.marks = out.marks;
+	}
+
+	/** The cursor visited these entries: their marks fade (patterns §7). */
+	visited(entryIds: readonly number[]): void {
+		let next = this.marks;
+		for (const id of entryIds) next = clearMarks(next, id);
+		if (next !== this.marks) this.marks = next;
 	}
 
 	/** Tag (`tagged`) or untag one entry; the row follows the answer. True when it worked. */

@@ -20,6 +20,7 @@ export function rule(over: Partial<Rule> = {}): Rule {
 /** A source transaction with nothing but a counterparty name unless told otherwise. */
 export function source(over: Partial<SourceTransaction> = {}): SourceTransaction {
 	return {
+		amount: { amount: -95000, currency: 'EUR' },
 		counterparty_name: 'Landlord GmbH',
 		counterparty_ref: null,
 		counterparty_bic: null,

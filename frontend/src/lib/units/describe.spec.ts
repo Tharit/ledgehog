@@ -83,7 +83,7 @@ describe('sourceGroups', () => {
 		const groups = sourceGroups([
 			entry({ id: 1, source: src, source_transaction_id: 5 }),
 			entry({ id: 2, source: src, source_transaction_id: 5 }),
-			entry({ id: 3, authored: true }),
+			entry({ id: 3, authored: true, source: src, source_transaction_id: 6 }),
 			entry({ id: 4 })
 		]);
 		expect(groups).toHaveLength(2);

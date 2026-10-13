@@ -1,6 +1,14 @@
 // Units and the review queue (architecture §4.1): reads only.
 import { request } from './http.js';
-import type { NewUnitCount, ReviewQueue, SectionKind, Unit } from '#lib/units/types.js';
+import type {
+	NewUnitCount,
+	ReviewQueue,
+	SectionKind,
+	Unit,
+	UnitCommit,
+	UnitDraftRequest,
+	UnitPreview
+} from '#lib/units/types.js';
 
 export const QUEUE_PAGE_SIZE = 50;
 
@@ -30,4 +38,14 @@ export function getQueue({
 /** How many units entered the queue since `since` (a snapshot token of the queue). */
 export function getNewUnitCount(since: string, signal?: AbortSignal): Promise<NewUnitCount> {
 	return request('GET', '/api/units/queue/new-count', { query: { since }, signal });
+}
+
+/** What committing the draft would do; nothing is written (architecture §4.1, §6.3). */
+export function previewUnit(draft: UnitDraftRequest, signal?: AbortSignal): Promise<UnitPreview> {
+	return request('POST', '/api/units/preview', { body: draft, signal });
+}
+
+/** Write the draft in one transaction, then settle. A commit does not confirm: settling does. */
+export function commitUnit(draft: UnitDraftRequest, signal?: AbortSignal): Promise<UnitCommit> {
+	return request('POST', '/api/units/commit', { body: draft, signal });
 }

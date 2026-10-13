@@ -4,6 +4,7 @@
 </script>
 
 <script lang="ts">
+	import CheckIcon from '@lucide/svelte/icons/check';
 	import AbsentValue from '#lib/components/common/absent-value.svelte';
 	import AccountDot from '#lib/components/common/account-dot.svelte';
 	import DateDisplay from '#lib/components/common/date-display.svelte';
@@ -32,6 +33,7 @@
 		cursor = false,
 		changed = false,
 		changedTitle = CHANGED_BY_YOU,
+		resolved = false,
 		onselect,
 		onopen,
 		ontags
@@ -49,6 +51,8 @@
 		changed?: boolean;
 		/** why the row is marked (tooltip) */
 		changedTitle?: string;
+		/** the user's last action resolved this row: muted text and a check in the badge slot (design §7) */
+		resolved?: boolean;
 		onselect?: () => void;
 		/** a click on the row (not on its tags cell): open the unit panel */
 		onopen?: () => void;
@@ -85,11 +89,13 @@
 	aria-selected={cursor}
 	data-cursor={cursor || undefined}
 	data-changed={changed || undefined}
-	title={changed ? changedTitle : undefined}
+	data-resolved={resolved || undefined}
+	title={changed || resolved ? changedTitle : undefined}
 	class={cn(
 		ROW_GRID,
 		'group relative h-8 scroll-mt-10 border-b border-border px-3 text-[13px]',
-		cursor ? 'bg-accent' : 'hover:bg-muted'
+		cursor ? 'bg-accent' : 'hover:bg-muted',
+		resolved && 'text-muted-foreground'
 	)}
 	style:grid-template-columns={gridTemplate(columns)}
 	onclick={(event) => {
@@ -182,7 +188,9 @@
 			</div>
 		{:else if column.id === 'review'}
 			<div role="gridcell" class="flex items-center gap-1 overflow-hidden">
-				{#if !fixed}
+				{#if resolved}
+					<CheckIcon size={14} strokeWidth={1.75} aria-label="Resolved" role="img" />
+				{:else if !fixed}
 					{#each entry.review_flags as flag (flag)}
 						<ReviewBadge {flag} />
 					{/each}

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { account, entry, tag } from '#lib/ledger/fixtures.js';
 import { buildLookups } from '#lib/ledger/lookups.js';
 import { DERIVED_NOTICE } from '#lib/units/describe.js';
+import { applyAffected, MARK_RESOLVED } from '#lib/units/patch.js';
 import { unitPanel } from '#lib/units/panel-instance.js';
 import { activeUnitSource } from '#lib/units/sources.js';
 import { COLUMNS, GRID_TEMPLATE } from './columns.js';
@@ -704,5 +705,60 @@ describe('LedgerTable: rows changed by the last action', () => {
 		expect(title('2')).toBe('changed by your last action');
 		expect(title('1')).toBe('no longer matches, or changed elsewhere');
 		expect(title('3')).toBeNull();
+	});
+});
+
+describe('LedgerTable: marks of the unit panel (patterns §7, design §7)', () => {
+	const marked = () =>
+		applyAffected(three, {
+			entries: [
+				entry({ id: 3, display_text: 'Third' }),
+				entry({ id: 2, display_text: 'Second', review_flags: ['unconfirmed'] })
+			],
+			resolved: [3]
+		}).marks;
+
+	it('mutes a resolved row, puts a check in its badge slot and gives the tooltip', () => {
+		table({ marks: marked() });
+
+		const rows = screen.getAllByRole('row').slice(1);
+		const resolved = rows.find((r) => r.getAttribute('data-entry-id') === '3')!;
+		expect(resolved).toHaveAttribute('data-resolved');
+		expect(resolved).toHaveClass('text-muted-foreground');
+		expect(resolved).toHaveAttribute('title', MARK_RESOLVED);
+		expect(within(resolved).getByRole('img', { name: 'Resolved' })).toBeInTheDocument();
+		expect(resolved).not.toHaveAttribute('data-changed');
+	});
+
+	it('marks a row changed as a consequence with the ochre bar and its tooltip', () => {
+		table({ marks: marked() });
+
+		const changed = document.querySelector('[data-entry-id="2"]')!;
+		expect(changed).toHaveAttribute('data-changed');
+		expect(changed).toHaveAttribute('title', 'changed by your last action');
+		expect(changed.querySelector('.bg-dim-ochre')).not.toBeNull();
+	});
+
+	it('tells the page which rows the cursor visits, so their marks fade', async () => {
+		const onvisit = vi.fn();
+		table({ marks: marked(), onvisit });
+
+		await key('j'); // the cursor is not on a row yet: this puts it on the first
+		await key('j');
+
+		expect(onvisit).toHaveBeenCalledWith([3]);
+		expect(onvisit).toHaveBeenCalledWith([2]);
+	});
+
+	it('hands the panel the end of the list: a notice, "load more", and no resolved neighbour', async () => {
+		const onnotice = vi.fn();
+		const onloadmore = vi.fn();
+		table({ onnotice, onloadmore });
+		const source = activeUnitSource()!;
+
+		source.notice!('No more units');
+		expect(onnotice).toHaveBeenCalledWith('No more units');
+		expect(await source.loadMore!()).toBe(false); // nothing was added
+		expect(onloadmore).toHaveBeenCalled();
 	});
 });

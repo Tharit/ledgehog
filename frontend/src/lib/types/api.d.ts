@@ -699,7 +699,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Commit Unit Draft
+         * Commit Unit
          * @description Write the draft in one transaction, then settle. A commit does not confirm: settling does.
          *
          *     409 `conflict` names the entries whose version moved (or that `versions` omitted); 409 `unit_moved` is a
@@ -707,7 +707,7 @@ export interface paths {
          *     exists; 409 `try_again` a deadlock lost twice. 422 carries the code of the first problem the preview would
          *     list (all of them in `details.problems`), or `invalid_draft`.
          */
-        post: operations["commit_unit_draft"];
+        post: operations["commit_unit"];
         delete?: never;
         options?: never;
         head?: never;
@@ -724,12 +724,12 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Preview Unit Draft
+         * Preview Unit
          * @description The unit as a commit of the draft would leave it, resolved fresh: rows, keys, flags, the state it leads
          *     to, the problems that would refuse the commit and the consequences. An in-memory overlay: nothing is
          *     written.
          */
-        post: operations["preview_unit_draft"];
+        post: operations["preview_unit"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1681,6 +1681,7 @@ export interface components {
          * @description An entry's source transaction as the UI and rules read it; never the raw record or the hash.
          */
         SourceTransactionOut: {
+            amount: components["schemas"]["Money"];
             /** Booking Text */
             booking_text: string | null;
             /** Counterparty Bic */
@@ -5093,7 +5094,7 @@ export interface operations {
             };
         };
     };
-    commit_unit_draft: {
+    commit_unit: {
         parameters: {
             query?: never;
             header?: never;
@@ -5144,7 +5145,7 @@ export interface operations {
             };
         };
     };
-    preview_unit_draft: {
+    preview_unit: {
         parameters: {
             query?: never;
             header?: never;

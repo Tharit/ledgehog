@@ -225,8 +225,9 @@
 										columns={QUEUE_COLUMNS}
 										basis={rowBasis(entry, rules, locale)}
 										cursor={unit.anchor_entry_id === cursorId}
-										changed={mark !== undefined}
+										changed={mark !== undefined && !store.marks.resolved.has(entry.id)}
 										changedTitle={mark}
+										resolved={store.marks.resolved.has(entry.id)}
 										onselect={() => (cursorId = unit.anchor_entry_id)}
 										onopen={() => openUnit(unit)}
 										ontags={() => openUnit(unit)}

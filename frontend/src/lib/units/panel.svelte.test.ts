@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, getUnit, listRules } from '#lib/api/index.js';
+import { ApiError, getUnit, listRules, previewUnit } from '#lib/api/index.js';
 import { entry } from '#lib/ledger/fixtures.js';
 import { rule } from '#lib/rules/fixtures.js';
 import { unitIdOf, withUnit } from './address.js';
@@ -11,7 +11,9 @@ import { unit } from './fixtures.js';
 vi.mock('#lib/api/index.js', async (importOriginal) => ({
 	...(await importOriginal<typeof import('#lib/api/index.js')>()),
 	getUnit: vi.fn(),
-	listRules: vi.fn()
+	listRules: vi.fn(),
+	previewUnit: vi.fn(),
+	commitUnit: vi.fn()
 }));
 
 /** A history of one tab: just enough of it to see what the panel asks for. */
@@ -43,6 +45,7 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 beforeEach(() => {
 	vi.resetAllMocks();
+	vi.mocked(previewUnit).mockImplementation(() => new Promise(() => {}));
 	ruleNames.reset();
 	vi.mocked(listRules).mockResolvedValue([rule({ id: 3, name: 'Rewe' })]);
 });

@@ -63,6 +63,14 @@ export type PayeeUpdateBody = Schemas['PayeeUpdateBody'];
 export type PayeeWriteOut = Schemas['PayeeWriteOut'];
 export type PayeeDeleteOut = Schemas['PayeeDeleteOut'];
 export type PayeeMergeOut = Schemas['PayeeMergeOut'];
+export type SourceCreateBody = Schemas['SourceCreateBody'];
+export type SourceUpdateBody = Schemas['SourceUpdateBody'];
+export type SourceWriteOut = Schemas['SourceWriteOut'];
+export type SourceEditOut = Schemas['SourceEditOut'];
+export type SourceEditEffects = Schemas['EditEffectsOut'];
+export type SourceDeleteOut = Schemas['SourceDeleteOut'];
+export type SourceDeleteCounts = Schemas['DeleteCountsOut'];
+export type SourceUnitRef = Schemas['UnitRefOut'];
 
 // TEMPORARY, hand-written from app/api/routers/lookups.py until the generated types contain
 // GET /api/ledger/categories|payees|tags; then replace these with `Schemas[...]`.

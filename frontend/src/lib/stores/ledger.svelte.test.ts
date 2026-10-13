@@ -676,3 +676,53 @@ describe('LedgerStore: refreshInPlace', () => {
 		expect(store.notice?.error).toBe(true);
 	});
 });
+
+describe('LedgerStore: what the unit panel does to the rows', () => {
+	async function loaded() {
+		vi.mocked(listEntries).mockResolvedValue({
+			entries: [3, 2, 1].map((id) => entry({ id, unit_key: id })),
+			total: 3,
+			limit: 100,
+			offset: 0
+		});
+		const store = new LedgerStore();
+		store.applyFilter(emptyFilter());
+		await flush();
+		return store;
+	}
+
+	it('inserts the entries a split created next to their anchor and marks them resolved', async () => {
+		const store = await loaded();
+
+		store.patchAffected({
+			entries: [entry({ id: 2, unit_key: 2 }), entry({ id: 12, unit_key: 2 })],
+			created: [12],
+			resolved: [2, 12],
+			anchor_entry_id: 2
+		});
+
+		expect(store.entries.map((e) => e.id)).toEqual([3, 2, 12, 1]);
+		expect(store.total).toBe(3); // the list's own count is the server's
+		expect(store.marks.resolved.has(12)).toBe(true);
+	});
+
+	it('fades a mark when the cursor visits the row, and keeps the others', async () => {
+		const store = await loaded();
+		store.patchAffected({
+			entries: [entry({ id: 3, unit_key: 3 }), entry({ id: 1, unit_key: 1 })],
+			resolved: [3, 1]
+		});
+
+		store.visited([3]);
+
+		expect(store.marks.resolved.has(3)).toBe(false);
+		expect(store.marks.resolved.has(1)).toBe(true);
+	});
+
+	it('does not touch the marks when a visited row has none', async () => {
+		const store = await loaded();
+		const before = store.marks;
+		store.visited([2]);
+		expect(store.marks).toBe(before);
+	});
+});

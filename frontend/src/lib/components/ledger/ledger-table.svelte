@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import ActionButton from '#lib/components/common/action-button.svelte';
 	import EmptyState from '#lib/components/common/empty-state.svelte';
 	import ErrorState from '#lib/components/common/error-state.svelte';
@@ -14,6 +15,7 @@
 	import type { Entry, Tag } from '#lib/types/domain.js';
 	import { DERIVED_NOTICE } from '#lib/units/describe.js';
 	import { unitPanel } from '#lib/units/panel-instance.js';
+	import { markOf, noMarks, type Marks } from '#lib/units/patch.js';
 	import { neighbourEntry, registerUnitSource } from '#lib/units/sources.js';
 	import type { Affected } from '#lib/units/types.js';
 	import { cn } from '#lib/utils.js';
@@ -35,6 +37,7 @@
 		activeFilters = [],
 		changedIds = new Set<number>(),
 		movedIds = new Set<number>(),
+		marks = noMarks(),
 		onclearfilters,
 		onretry,
 		onloadmore,
@@ -42,7 +45,8 @@
 		ontoggletag,
 		oncreatetag,
 		onnotice,
-		onpatch
+		onpatch,
+		onvisit
 	}: {
 		entries: readonly Entry[];
 		total: number;
@@ -56,7 +60,7 @@
 		activeFilters?: readonly string[];
 		onclearfilters?: () => void;
 		onretry?: () => void;
-		onloadmore?: () => void;
+		onloadmore?: () => void | Promise<void>;
 		/** `/` was pressed: focus the filter bar's text box */
 		onsearch?: () => void;
 		/** rows the user's tag action took out of the filter: marked, never removed */
@@ -71,6 +75,10 @@
 		onnotice?: (text: string) => void;
 		/** what an action touched in a unit: patch the rows held, in place */
 		onpatch?: (affected: Affected) => void;
+		/** what the unit panel's actions did to the rows (resolved, consequence, deleted, returned) */
+		marks?: Marks;
+		/** the cursor visited these rows: their marks fade */
+		onvisit?: (entryIds: number[]) => void;
 	} = $props();
 
 	let cursorId = $state<number | null>(null);
@@ -128,6 +136,13 @@
 	const source = {
 		neighbour: (id: number, dir: -1 | 1) => neighbourEntry(entries, id, dir),
 		patch: (affected: Affected) => onpatch?.(affected),
+		notice: (text: string) => onnotice?.(text),
+		// the end of the loaded rows is not the end of the list: load more and carry on
+		loadMore: async () => {
+			const held = entries.length;
+			await onloadmore?.();
+			return entries.length > held;
+		},
 		// the cursor follows the unit the panel shows; the existing effect scrolls the row into view
 		reveal: (id: number) => {
 			if (!entries.some((e) => e.id === id)) return false;
@@ -193,6 +208,12 @@
 				break;
 		}
 	}
+
+	// a mark fades when the cursor visits the row (patterns §7)
+	$effect(() => {
+		const id = cursorId;
+		if (id !== null) untrack(() => onvisit?.([id]));
+	});
 
 	// the cursor row scrolls into view
 	$effect(() => {
@@ -295,14 +316,18 @@
 				{/each}
 			{:else}
 				{#each entries as entry (entry.id)}
+					{@const mark = markOf(marks, entry.id)}
 					<EntryRow
 						{entry}
 						{lookups}
 						{locale}
 						{showCurrency}
 						cursor={entry.id === cursorId}
-						changed={changedIds.has(entry.id) || movedIds.has(entry.id)}
-						changedTitle={changedIds.has(entry.id) ? CHANGED_BY_YOU : CHANGED_ELSEWHERE}
+						changed={changedIds.has(entry.id) ||
+							movedIds.has(entry.id) ||
+							(mark !== undefined && !marks.resolved.has(entry.id))}
+						changedTitle={mark ?? (changedIds.has(entry.id) ? CHANGED_BY_YOU : CHANGED_ELSEWHERE)}
+						resolved={marks.resolved.has(entry.id)}
 						onselect={() => (cursorId = entry.id)}
 						onopen={() => openUnit(entry.id)}
 						ontags={() => {

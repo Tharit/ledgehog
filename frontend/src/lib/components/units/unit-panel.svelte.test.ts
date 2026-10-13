@@ -4,18 +4,23 @@ import { account, category, entry, payee, tag } from '#lib/ledger/fixtures.js';
 import { buildLookups } from '#lib/ledger/lookups.js';
 import { rule, source } from '#lib/rules/fixtures.js';
 import { ruleNames } from '#lib/stores/rule-names.svelte.js';
-import { apiError, unit } from '#lib/units/fixtures.js';
+import { apiError, preview, unit } from '#lib/units/fixtures.js';
 import { UnitPanel, type PanelNav } from '#lib/units/panel.svelte.js';
 import { registerUnitSource } from '#lib/units/sources.js';
 import UnitPanelView from './unit-panel.svelte';
 
 // components never import the API, not even in tests: the mocks come from here
-const api = vi.hoisted(() => ({ getUnit: vi.fn(), listRules: vi.fn() }));
+const api = vi.hoisted(() => ({
+	getUnit: vi.fn(),
+	listRules: vi.fn(),
+	previewUnit: vi.fn(),
+	commitUnit: vi.fn()
+}));
 vi.mock('#lib/api/index.js', async (importOriginal) => ({
 	...(await importOriginal<typeof import('#lib/api/index.js')>()),
 	...api
 }));
-const { getUnit, listRules } = api;
+const { getUnit, listRules, previewUnit } = api;
 
 const lookups = buildLookups({
 	accounts: [account({ id: 1, name: 'Giro' }), account({ id: 2, name: 'Savings' })],
@@ -41,16 +46,20 @@ function nav(start = '/ledger'): PanelNav {
 
 async function openPanel(shown: ReturnType<typeof unit>, id = shown.anchor_entry_id) {
 	vi.mocked(getUnit).mockResolvedValue(shown);
+	vi.mocked(previewUnit).mockResolvedValue(preview(shown));
 	const panel = new UnitPanel(nav());
 	render(UnitPanelView, { props: { panel, lookups, locale: 'en' } });
 	panel.open(id);
 	const dialog = await screen.findByRole('dialog');
 	await waitFor(() => expect(panel.status).toBe('ready'));
+	await waitFor(() => expect(panel.flow.previewStatus).toBe('ready'));
 	return { panel, dialog };
 }
 
 beforeEach(() => {
 	vi.resetAllMocks();
+	// a preview that never arrives, unless a test says otherwise
+	vi.mocked(previewUnit).mockImplementation(() => new Promise(() => {}));
 	ruleNames.reset();
 	vi.mocked(listRules).mockResolvedValue([rule({ id: 3, name: 'Rewe' })]);
 });
@@ -66,7 +75,9 @@ describe('UnitPanel: a flow unit', () => {
 
 		expect(dialog).toHaveAccessibleName('REWE Markt Berlin');
 		expect(dialog).toHaveAttribute('aria-modal', 'true');
-		expect(within(dialog).getByText('Proposals to check')).toBeInTheDocument();
+		expect(dialog.querySelector('[data-slot="unit-state"]')).toHaveTextContent(
+			'Proposals to check'
+		);
 	});
 
 	it('starts with focus on the panel itself, not on a field, so the step keys work at once', async () => {
@@ -85,8 +96,8 @@ describe('UnitPanel: a flow unit', () => {
 		expect(rule).toHaveAttribute('href', '/settings/rules/3');
 		expect(rule.closest('[data-slot="evidence"]')).not.toHaveAttribute('data-proposal');
 		// the proposed category is italic too; the decided payee is not
-		expect(within(dialog).getByText('Groceries')).toHaveClass('italic');
-		expect(within(dialog).getByText('REWE')).not.toHaveClass('italic');
+		expect(within(dialog).getByText('Groceries').closest('[data-proposal]')).toHaveClass('italic');
+		expect(within(dialog).getByText('REWE').closest('[data-proposal]')).toBeNull();
 	});
 
 	it('says a rule is deleted when the loaded list lacks it', async () => {
@@ -122,7 +133,7 @@ describe('UnitPanel: a flow unit', () => {
 		expect(strip).toHaveTextContent('USD');
 	});
 
-	it('shows the tags read-only and a disabled Commit with its reason', async () => {
+	it('shows the tags read-only, saved immediately and outside the draft', async () => {
 		const { dialog } = await openPanel(
 			unit({
 				anchor_entry_id: 1,
@@ -131,7 +142,7 @@ describe('UnitPanel: a flow unit', () => {
 		);
 
 		expect(within(dialog).getByText('Lisbon trip')).toBeInTheDocument();
-		expect(within(dialog).getByRole('button', { name: 'Commit' })).toBeDisabled();
+		expect(within(dialog).getByText(/Saved immediately/)).toBeInTheDocument();
 	});
 
 	it('has its own keyboard help: [ ] and Esc, opened by the button or by ? inside the panel', async () => {
@@ -252,7 +263,7 @@ describe('UnitPanel: other units', () => {
 		);
 
 		expect(dialog).toHaveAccessibleName('Transfer Giro → Savings');
-		expect(within(dialog).getByText('Confirmed')).toBeInTheDocument();
+		expect(dialog.querySelector('[data-slot="unit-state"]')).toHaveTextContent('Confirmed');
 		expect(within(dialog).getAllByRole('region', { name: /^Entry / })).toHaveLength(2);
 		expect(within(dialog).getAllByText('Partner leg')).toHaveLength(2);
 	});

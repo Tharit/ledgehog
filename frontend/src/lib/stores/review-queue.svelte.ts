@@ -10,7 +10,7 @@ import { ruleNames } from './rule-names.svelte.js';
 import type { StepDirection, UnitSource } from '#lib/units/sources.js';
 import { SECTION_ORDER, type Affected, type SectionKind, type Unit } from '#lib/units/types.js';
 import { unitReadsRules } from '#lib/units/panel.svelte.js';
-import { appendUnits, patchUnitEntries } from '#lib/units/queue.js';
+import { appendUnits, insertUnitEntries, patchUnitEntries } from '#lib/units/queue.js';
 
 export type QueueStatus = 'loading' | 'ready' | 'error';
 
@@ -50,6 +50,9 @@ export class ReviewQueueStore {
 	/** what the unit panel's actions did to the rows held */
 	marks = $state.raw<Marks>(noMarks());
 
+	/** a quiet line the panel leaves behind ("Review done"); cleared by a reload */
+	notice = $state<string | null>(null);
+
 	/** the unit (anchor id) the panel shows: the page puts its cursor there */
 	revealed = $state<number | null>(null);
 
@@ -66,6 +69,16 @@ export class ReviewQueueStore {
 	readonly source: UnitSource = {
 		neighbour: (id, dir) => this.neighbour(id, dir),
 		patch: (affected) => this.patchAffected(affected),
+		notice: (text) => (this.notice = text),
+		finishedText: 'Review done',
+		// the end of a page is not the end of the queue: the panel carries on after loading more
+		loadMore: async () => {
+			const next = this.sections.find((s) => s.nextCursor !== null);
+			if (!next) return false;
+			const before = this.units.length;
+			await this.loadMore(next.kind);
+			return this.units.length > before;
+		},
 		reveal: (id) => {
 			const at = this.#indexOf(id);
 			if (at < 0) return false;
@@ -113,6 +126,7 @@ export class ReviewQueueStore {
 			});
 			this.#snapshot = queue.snapshot;
 			this.newCount = 0;
+			this.notice = null;
 			this.marks = noMarks();
 			this.status = 'ready';
 			if (this.units.some(unitReadsRules)) void ruleNames.ensure();
@@ -168,9 +182,14 @@ export class ReviewQueueStore {
 
 	/** An action touched these entries: patch the units held, in place; nothing is added or moved. */
 	patchAffected(affected: Affected): void {
-		const flat = this.units.flatMap((u) => u.entries);
+		// the one exception: the entries a split created join the unit of their anchor
+		const sections = this.sections.map((section) => ({
+			...section,
+			units: insertUnitEntries(section.units, affected)
+		}));
+		const flat = sections.flatMap((s) => s.units).flatMap((u) => u.entries);
 		const out = applyAffected(flat, affected, this.marks);
-		this.sections = this.sections.map((section) => ({
+		this.sections = sections.map((section) => ({
 			...section,
 			units: patchUnitEntries(section.units, out.entries)
 		}));
