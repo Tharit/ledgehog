@@ -1051,6 +1051,13 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** CurrencyGroupOut */
+        CurrencyGroupOut: {
+            /** Count */
+            count: number;
+            /** Currency */
+            currency: string;
+        };
         /** DeleteCountsOut */
         DeleteCountsOut: {
             /** Confirmed Entries */
@@ -1248,6 +1255,11 @@ export interface components {
             /** To Id */
             to_id: number;
         };
+        /** NeedsAccountOut */
+        NeedsAccountOut: {
+            /** Currency */
+            currency: string;
+        };
         /** NewCountOut */
         NewCountOut: {
             /** New Count */
@@ -1418,6 +1430,8 @@ export interface components {
         };
         /** QueueSectionOut */
         QueueSectionOut: {
+            /** Groups */
+            groups: components["schemas"]["CurrencyGroupOut"][];
             /**
              * Kind
              * @enum {string}
@@ -2048,9 +2062,11 @@ export interface components {
             anchor_entry_id: number;
             /** Entries */
             entries: components["schemas"]["EntryOut"][];
+            needs_account?: components["schemas"]["NeedsAccountOut"] | null;
             state: components["schemas"]["UnitStateOut"];
             /** Unit Key */
             unit_key: number;
+            waiting?: components["schemas"]["WaitingOut"] | null;
         };
         /** UnitPlannedOut */
         UnitPlannedOut: {
@@ -2250,6 +2266,13 @@ export interface components {
             }[];
             /** Truncated */
             truncated: boolean;
+        };
+        /** WaitingOut */
+        WaitingOut: {
+            /** Account Id */
+            account_id: number;
+            /** Synced Through */
+            synced_through: string | null;
         };
     };
     responses: never;

@@ -7,6 +7,7 @@ export type Unit = Schemas['UnitOut'];
 export type UnitState = Schemas['UnitStateOut'];
 export type UnitReason = UnitState['reasons'][number];
 export type QueueSection = Schemas['QueueSectionOut'];
+export type QueueGroup = Schemas['CurrencyGroupOut'];
 export type SectionKind = QueueSection['kind'];
 export type ReviewQueue = Schemas['ReviewQueueOut'];
 export type NewUnitCount = Schemas['NewCountOut'];

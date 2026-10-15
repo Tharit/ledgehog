@@ -1,7 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { entry } from '#lib/ledger/fixtures.js';
 import { unit } from './fixtures.js';
-import { appendUnits, insertUnitEntries, patchUnitEntries } from './queue.js';
+import { account } from '#lib/ledger/fixtures.js';
+import { buildLookups } from '#lib/ledger/lookups.js';
+import {
+	appendUnits,
+	completableNotice,
+	groupHeading,
+	insertUnitEntries,
+	orderByGroups,
+	patchUnitEntries,
+	unitsOfGroup,
+	waitingReason
+} from './queue.js';
 
 describe('appendUnits', () => {
 	it('appends a page and skips units already held', () => {
@@ -37,5 +48,51 @@ describe('insertUnitEntries', () => {
 	it('leaves the units alone when nothing was created', () => {
 		const units = [unit({ anchor_entry_id: 1 })];
 		expect(insertUnitEntries(units, { entries: [] })).toEqual(units);
+	});
+});
+
+describe('group wording', () => {
+	it('says a transfer in the singular and N transfers otherwise', () => {
+		expect(groupHeading(1, 'USD')).toBe('A transfer needs an account in USD');
+		expect(groupHeading(3, 'USD')).toBe('3 transfers need an account in USD');
+		expect(groupHeading(1200, 'USD')).toBe('1,200 transfers need an account in USD');
+	});
+
+	it('words the notice after an account was added', () => {
+		expect(completableNotice(1)).toBe('1 unit can now be completed: refresh');
+		expect(completableNotice(4)).toBe('4 units can now be completed: refresh');
+	});
+});
+
+describe('orderByGroups', () => {
+	const needing = (id: number, currency: string) =>
+		unit({ anchor_entry_id: id, needs_account: { currency } });
+
+	it('orders by the groups, stable by date within a group, ungrouped units last', () => {
+		const units = [
+			needing(1, 'USD'),
+			needing(2, 'EUR'),
+			needing(3, 'USD'),
+			unit({ anchor_entry_id: 4 })
+		];
+		const groups = [
+			{ currency: 'EUR', count: 1 },
+			{ currency: 'USD', count: 2 }
+		];
+		expect(orderByGroups(units, groups).map((u) => u.anchor_entry_id)).toEqual([2, 1, 3, 4]);
+		expect(unitsOfGroup(units, 'USD').map((u) => u.anchor_entry_id)).toEqual([1, 3]);
+	});
+});
+
+describe('waitingReason', () => {
+	const lookups = buildLookups({ accounts: [account({ id: 2, name: 'Savings' })] });
+
+	it('names the account and what its sync covers', () => {
+		expect(waitingReason({ account_id: 2, synced_through: null }, lookups)).toBe(
+			'Waiting for Savings, not synced yet'
+		);
+		expect(waitingReason({ account_id: 2, synced_through: '2026-10-12' }, lookups)).toMatch(
+			/^Waiting for Savings, synced through .*2026$/
+		);
 	});
 });

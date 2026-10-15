@@ -8,9 +8,20 @@ import { ApiError, getNewUnitCount, getQueue } from '#lib/api/index.js';
 import { clearMarks, applyAffected, noMarks, type Marks } from '#lib/units/patch.js';
 import { ruleNames } from './rule-names.svelte.js';
 import type { StepDirection, UnitSource } from '#lib/units/sources.js';
-import { SECTION_ORDER, type Affected, type SectionKind, type Unit } from '#lib/units/types.js';
+import {
+	SECTION_ORDER,
+	type Affected,
+	type QueueGroup,
+	type SectionKind,
+	type Unit
+} from '#lib/units/types.js';
 import { unitReadsRules } from '#lib/units/panel.svelte.js';
-import { appendUnits, insertUnitEntries, patchUnitEntries } from '#lib/units/queue.js';
+import {
+	appendUnits,
+	insertUnitEntries,
+	orderByGroups,
+	patchUnitEntries
+} from '#lib/units/queue.js';
 
 export type QueueStatus = 'loading' | 'ready' | 'error';
 
@@ -19,6 +30,8 @@ export type SectionState = {
 	/** units in the section, whatever the page */
 	total: number;
 	units: Unit[];
+	/** needs-an-account only: the units per currency over the whole section, by currency code */
+	groups: QueueGroup[];
 	nextCursor: string | null;
 	loadingMore: boolean;
 	moreError: ApiError | null;
@@ -35,6 +48,7 @@ function emptySections(): SectionState[] {
 		kind,
 		total: 0,
 		units: [],
+		groups: [],
 		nextCursor: null,
 		loadingMore: false,
 		moreError: null
@@ -52,6 +66,15 @@ export class ReviewQueueStore {
 
 	/** a quiet line the panel leaves behind ("Review done"); cleared by a reload */
 	notice = $state<string | null>(null);
+
+	/** currencies an account was added for since the load: "N units can now be completed" */
+	accountsAdded = $state.raw<readonly string[]>([]);
+
+	/** An account in this currency now exists: a passive notice, no row moves (patterns §7). */
+	noteAccountAdded(currency: string): void {
+		if (!this.accountsAdded.includes(currency))
+			this.accountsAdded = [...this.accountsAdded, currency];
+	}
 
 	/** the unit (anchor id) the panel shows: the page puts its cursor there */
 	revealed = $state<number | null>(null);
@@ -118,10 +141,12 @@ export class ReviewQueueStore {
 			if (generation !== this.#generation) return;
 			this.sections = SECTION_ORDER.map((kind) => {
 				const found = queue.sections.find((s) => s.kind === kind);
+				const groups = found?.groups ?? [];
 				return {
 					kind,
 					total: found?.total ?? 0,
-					units: found?.units ?? [],
+					units: orderByGroups(found?.units ?? [], groups),
+					groups,
 					nextCursor: found?.next_cursor ?? null,
 					loadingMore: false,
 					moreError: null
@@ -130,6 +155,7 @@ export class ReviewQueueStore {
 			this.#snapshot = queue.snapshot;
 			this.newCount = 0;
 			this.notice = null;
+			this.accountsAdded = [];
 			this.marks = noMarks();
 			this.status = 'ready';
 			if (this.units.some(unitReadsRules)) void ruleNames.refresh(); // fresh after this load
@@ -154,7 +180,12 @@ export class ReviewQueueStore {
 			// the section as it is NOW (an action may have patched its rows meanwhile)
 			const now = this.sections.find((s) => s.kind === kind) ?? section;
 			this.#update(kind, {
-				units: appendUnits(now.units, found?.units ?? []),
+				// the units of a later page join their currency group
+				units: orderByGroups(
+					appendUnits(now.units, found?.units ?? []),
+					found?.groups ?? now.groups
+				),
+				groups: found?.groups ?? now.groups,
 				total: found?.total ?? section.total,
 				nextCursor: found?.next_cursor ?? null,
 				loadingMore: false

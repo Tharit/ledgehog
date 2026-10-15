@@ -6,6 +6,7 @@ import { ReviewQueueStore } from '#lib/stores/review-queue.svelte.js';
 import { apiError, queue, section, unit } from '#lib/units/fixtures.js';
 import { unitPanel } from '#lib/units/panel-instance.js';
 import { activeUnitSource } from '#lib/units/sources.js';
+import { accounts as accountDialog } from '#lib/accounts/controller.svelte.js';
 import ReviewQueue from './review-queue.svelte';
 
 // components never import the API, not even in tests: the mocks come from here
@@ -71,7 +72,7 @@ describe('ReviewQueue', () => {
 		expect(pending).toHaveTextContent('(2)');
 		expect(screen.getByRole('heading', { name: /Needs an account/ })).toHaveTextContent('(0)');
 		expect(screen.getByRole('heading', { name: /Waiting/ })).toHaveTextContent('(0)');
-		expect(screen.getAllByText(/A transfer whose counter account does not exist/)).toHaveLength(1);
+		expect(screen.getByText('No transfer is missing an account.')).toBeInTheDocument();
 		expect(screen.getByText(/Nothing is waiting/)).toBeInTheDocument();
 	});
 
@@ -373,5 +374,130 @@ describe('ReviewQueue: the keyboard', () => {
 
 		await fireEvent.click(screen.getByText('REWE'));
 		expect(vi.mocked(unitPanel.open).mock.calls[0][0]).toBe(7);
+	});
+});
+
+describe('ReviewQueue: needs an account and waiting', () => {
+	function needing(id: number, currency: string) {
+		return unit({
+			...flow(id, `Out ${id}`),
+			needs_account: { currency }
+		});
+	}
+	function groupedQueue(
+		units: ReturnType<typeof needing>[],
+		groups: { currency: string; count: number }[],
+		over = {}
+	) {
+		const base = queue({ needs_account: units });
+		return {
+			...base,
+			sections: base.sections.map((s) =>
+				s.kind === 'needs_account'
+					? { ...s, groups, total: groups.reduce((n, g) => n + g.count, 0), ...over }
+					: s
+			)
+		};
+	}
+	async function showGrouped(q: ReturnType<typeof groupedQueue>) {
+		vi.mocked(getQueue).mockResolvedValue(q);
+		const store = new ReviewQueueStore();
+		await store.load();
+		render(ReviewQueue, { props: { store, lookups, locale: 'en' } });
+		return store;
+	}
+
+	it('groups the units by currency under headings with the server counts, singular and plural', async () => {
+		await showGrouped(
+			groupedQueue(
+				[needing(1, 'USD'), needing(2, 'GBP'), needing(3, 'USD')],
+				[
+					{ currency: 'GBP', count: 1 },
+					{ currency: 'USD', count: 3 }
+				]
+			)
+		);
+
+		const headings = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
+		expect(headings).toEqual([
+			'A transfer needs an account in GBP',
+			'3 transfers need an account in USD'
+		]);
+		const usd = document.querySelector('[data-group="USD"]')!.nextElementSibling as HTMLElement;
+		expect(within(usd).getAllByRole('rowgroup')).toHaveLength(2);
+		expect(screen.getByRole('heading', { name: /Needs an account/ })).toHaveTextContent('(4)');
+	});
+
+	it('opens the Add account dialog for the currency, kind cash, and says nothing moved after it', async () => {
+		const open = vi.spyOn(accountDialog, 'openAdd').mockImplementation(() => {});
+		const store = await showGrouped(
+			groupedQueue([needing(1, 'USD'), needing(2, 'USD')], [{ currency: 'USD', count: 2 }])
+		);
+		expect(screen.queryByText(/can now be completed/)).toBeNull();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Add account' }));
+
+		const options = open.mock.calls[0][0]!;
+		expect(options).toMatchObject({ currency: 'USD', kind: 'cash' });
+		options.onadded!({} as never);
+		await waitFor(() =>
+			expect(screen.getByText('2 units can now be completed: refresh')).toBeInTheDocument()
+		);
+		expect(store.units.map((u) => u.anchor_entry_id)).toEqual([1, 2]);
+
+		getQueue.mockClear();
+		await fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+		expect(getQueue).toHaveBeenCalledTimes(1);
+		await waitFor(() => expect(screen.queryByText(/can now be completed/)).toBeNull());
+		open.mockRestore();
+	});
+
+	it('steps in the visual order: the units of a later page join their currency group', async () => {
+		const first = groupedQueue(
+			[needing(1, 'USD'), needing(2, 'EUR')],
+			[
+				{ currency: 'EUR', count: 2 },
+				{ currency: 'USD', count: 2 }
+			],
+			{ next_cursor: 'c2' }
+		);
+		const store = await showGrouped(first);
+		expect(store.units.map((u) => u.anchor_entry_id)).toEqual([2, 1]);
+
+		const more = groupedQueue(
+			[needing(3, 'EUR'), needing(4, 'USD')],
+			[
+				{ currency: 'EUR', count: 2 },
+				{ currency: 'USD', count: 2 }
+			]
+		);
+		getQueue.mockResolvedValue(more);
+		await fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
+
+		await waitFor(() => expect(store.units).toHaveLength(4));
+		const drawn = [...document.querySelectorAll('[data-unit]')].map((n) =>
+			Number(n.getAttribute('data-unit'))
+		);
+		expect(drawn).toEqual([2, 3, 1, 4]);
+		expect(store.units.map((u) => u.anchor_entry_id)).toEqual(drawn);
+		expect(store.neighbour(2, 1)).toBe(3);
+		expect(store.neighbour(3, 1)).toBe(1);
+	});
+
+	it('gives a waiting unit its reason in one line, and the unit stays a plain row', async () => {
+		await shown({
+			waiting: [
+				unit({ ...flow(1, 'Out'), waiting: { account_id: 2, synced_through: '2026-10-12' } }),
+				unit({ ...flow(2, 'Out 2'), waiting: { account_id: 2, synced_through: null } })
+			]
+		});
+
+		const reasons = [...document.querySelectorAll('[data-slot="waiting-reason"]')].map((n) =>
+			n.textContent!.trim()
+		);
+		expect(reasons).toHaveLength(2);
+		expect(reasons[0]).toMatch(/^Waiting for Savings, synced through .*12.*2026$/);
+		expect(reasons[1]).toBe('Waiting for Savings, not synced yet');
+		expect(screen.getByRole('heading', { name: /Waiting/ })).toHaveTextContent('(2)');
 	});
 });

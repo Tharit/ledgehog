@@ -9,8 +9,7 @@
 		},
 		needs_account: {
 			title: 'Needs an account',
-			empty:
-				'No transfer is missing an account. A transfer whose counter account does not exist yet appears here.'
+			empty: 'No transfer is missing an account.'
 		},
 		waiting: {
 			title: 'Waiting',
@@ -22,6 +21,8 @@
 
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
+	import { accounts as accountDialog } from '#lib/accounts/controller.svelte.js';
+	import NoticeLine from '#lib/components/common/notice-line.svelte';
 	import ActionButton from '#lib/components/common/action-button.svelte';
 	import EmptyState from '#lib/components/common/empty-state.svelte';
 	import ErrorState from '#lib/components/common/error-state.svelte';
@@ -37,7 +38,13 @@
 	import { unitPanel } from '#lib/units/panel-instance.js';
 	import { markOf } from '#lib/units/patch.js';
 	import { registerUnitSource } from '#lib/units/sources.js';
-	import type { Unit } from '#lib/units/types.js';
+	import {
+		completableNotice,
+		groupHeading,
+		unitsOfGroup,
+		waitingReason
+	} from '#lib/units/queue.js';
+	import type { QueueGroup, Unit } from '#lib/units/types.js';
 	import { cn } from '#lib/utils.js';
 
 	// The review queue (views/review-queue.md): three sections (pending review, needs an account,
@@ -78,6 +85,30 @@
 
 	// the panel steps through this queue; the newest registration is the active one
 	onMount(() => registerUnitSource(store.source));
+
+	/** A section's blocks: the needs-an-account section is one block per currency group (the
+	 * server's order; the store keeps the units in that order too, so stepping matches), the others
+	 * are one block without a heading. */
+	type Block = { key: string; group: QueueGroup | null; units: Unit[] };
+	function blocksOf(kind: string, sectionUnits: Unit[], groups: QueueGroup[]): Block[] {
+		if (kind !== 'needs_account') return [{ key: kind, group: null, units: sectionUnits }];
+		return groups
+			.map((group) => ({
+				key: `group-${group.currency}`,
+				group,
+				units: unitsOfGroup(sectionUnits, group.currency)
+			}))
+			.filter((block) => block.units.length > 0);
+	}
+
+	function addAccount(currency: string, event: MouseEvent) {
+		accountDialog.openAdd({
+			currency,
+			kind: 'cash',
+			onadded: () => store.noteAccountAdded(currency),
+			returnFocus: event.currentTarget instanceof HTMLElement ? event.currentTarget : null
+		});
+	}
 
 	function moveTo(index: number) {
 		if (index < 0) {
@@ -184,54 +215,93 @@
 				{:else if section.units.length === 0}
 					<p class="text-sm text-muted-foreground" data-slot="section-empty">{info.empty}</p>
 				{:else}
-					<div role="grid" aria-label={info.title}>
-						<div
-							role="row"
-							class={cn(
-								ROW_GRID,
-								'h-8 border-b border-border bg-muted px-3 text-xs font-medium text-muted-foreground'
-							)}
-							style:grid-template-columns={template}
-						>
-							{#each COLUMNS as column (column.id)}
-								<div
-									role="columnheader"
-									class={column.align === 'right' ? 'text-right' : undefined}
+					{#each blocksOf(section.kind, section.units, section.groups) as block (block.key)}
+						{@const heading = block.group
+							? groupHeading(block.group.count, block.group.currency, locale)
+							: info.title}
+						{#if block.group}
+							{@const currency = block.group.currency}
+							<div class="mt-2 mb-1 flex flex-wrap items-center gap-3" data-group={currency}>
+								<h3 class="text-sm font-medium">{heading}</h3>
+								<ActionButton
+									variant="outline"
+									onclick={(event: MouseEvent) => addAccount(currency, event)}
 								>
-									{#if column.hiddenHeader}<span class="sr-only">{column.header}</span
-										>{:else}{column.header}{/if}
+									Add account
+								</ActionButton>
+							</div>
+							{#if store.accountsAdded.includes(currency)}
+								<NoticeLine
+									notice={{ text: completableNotice(block.group.count, locale), error: false }}
+								>
+									{#snippet action()}
+										<ActionButton variant="link" class="h-auto p-0" onclick={() => store.load()}>
+											Refresh
+										</ActionButton>
+									{/snippet}
+								</NoticeLine>
+							{/if}
+						{/if}
+						<div role="grid" aria-label={heading}>
+							<div
+								role="row"
+								class={cn(
+									ROW_GRID,
+									'h-8 border-b border-border bg-muted px-3 text-xs font-medium text-muted-foreground'
+								)}
+								style:grid-template-columns={template}
+							>
+								{#each COLUMNS as column (column.id)}
+									<div
+										role="columnheader"
+										class={column.align === 'right' ? 'text-right' : undefined}
+									>
+										{#if column.hiddenHeader}<span class="sr-only">{column.header}</span
+											>{:else}{column.header}{/if}
+									</div>
+								{/each}
+							</div>
+							{#each block.units as unit (unit.anchor_entry_id)}
+								<div
+									role="rowgroup"
+									data-unit={unit.anchor_entry_id}
+									class={unit.entries.length > 1 ? UNIT_FRAME : undefined}
+								>
+									{#each unit.entries as entry (entry.id)}
+										{@const mark = markOf(store.marks, entry.id)}
+										{@const total = unitTotal(unit.entries)}
+										<EntryRow
+											joined={unit.entries.length > 1}
+											unitTotal={entry.id === unit.entries[0].id ? total : null}
+											{entry}
+											{lookups}
+											{locale}
+											{showCurrency}
+											cursor={unit.anchor_entry_id === cursorId}
+											changed={mark !== undefined && !store.marks.resolved.has(entry.id)}
+											changedTitle={mark}
+											resolved={store.marks.resolved.has(entry.id)}
+											confirmed={store.marks.confirmed.has(entry.id)}
+											onselect={() => (cursorId = unit.anchor_entry_id)}
+											onopen={() => openUnit(unit)}
+											ontags={() => openUnit(unit)}
+										/>
+									{/each}
+									{#if unit.waiting}
+										<div role="row" class="border-b border-border px-3 py-1">
+											<div
+												role="gridcell"
+												class="text-xs text-muted-foreground"
+												data-slot="waiting-reason"
+											>
+												{waitingReason(unit.waiting, lookups, locale)}
+											</div>
+										</div>
+									{/if}
 								</div>
 							{/each}
 						</div>
-						{#each section.units as unit (unit.anchor_entry_id)}
-							<div
-								role="rowgroup"
-								data-unit={unit.anchor_entry_id}
-								class={unit.entries.length > 1 ? UNIT_FRAME : undefined}
-							>
-								{#each unit.entries as entry (entry.id)}
-									{@const mark = markOf(store.marks, entry.id)}
-									{@const total = unitTotal(unit.entries)}
-									<EntryRow
-										joined={unit.entries.length > 1}
-										unitTotal={entry.id === unit.entries[0].id ? total : null}
-										{entry}
-										{lookups}
-										{locale}
-										{showCurrency}
-										cursor={unit.anchor_entry_id === cursorId}
-										changed={mark !== undefined && !store.marks.resolved.has(entry.id)}
-										changedTitle={mark}
-										resolved={store.marks.resolved.has(entry.id)}
-										confirmed={store.marks.confirmed.has(entry.id)}
-										onselect={() => (cursorId = unit.anchor_entry_id)}
-										onopen={() => openUnit(unit)}
-										ontags={() => openUnit(unit)}
-									/>
-								{/each}
-							</div>
-						{/each}
-					</div>
+					{/each}
 					<div class="flex flex-wrap items-center gap-3 py-2 text-xs text-muted-foreground">
 						<span>
 							{formatCount(section.units.length, locale)} of {formatCount(section.total, locale)}
