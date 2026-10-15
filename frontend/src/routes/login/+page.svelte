@@ -30,5 +30,8 @@
 </svelte:head>
 
 <div class="grid min-h-screen place-items-center p-4">
-	<LoginForm {pending} {error} onsubmit={submit} />
+	<div class="flex w-full max-w-sm flex-col items-center gap-6">
+		<img src="/brand/mascot.png" alt="" width="128" height="135" class="h-auto w-32" />
+		<LoginForm {pending} {error} onsubmit={submit} />
+	</div>
 </div>
