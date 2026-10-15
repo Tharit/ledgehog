@@ -1,5 +1,6 @@
 // The add form's state and its two submissions: "Add" (creates, closes, opens the work panel on the
-// new unit) and "Add and add another" (creates, keeps the dialog, clears amount and purpose).
+// new unit) and "Add and add another" (creates, keeps the dialog, resets the
+// amount to its sign and clears the purpose).
 // A submission keeps its client id while its values do not change, so a retry after a lost answer
 // is the same request and the server cannot enter the row twice (architecture §4.1).
 import { ApiError, createSource } from '#lib/api/index.js';
@@ -8,7 +9,7 @@ import { formatMoney, todayIso } from '#lib/format/index.js';
 import { lookupsStore } from '#lib/stores/lookups.svelte.js';
 import { session } from '#lib/stores/session.svelte.js';
 import type { Account } from '#lib/types/domain.js';
-import { DEFAULT_SIGN, type Sign } from './amount.js';
+import { DEFAULT_AMOUNT_TEXT, leadingSign } from './amount.js';
 import { entryForm, type AddOptions } from './controller.svelte.js';
 import { defaultAccountId, entryAccounts, readLastAccount, writeLastAccount } from './defaults.js';
 import { classifyEntryError } from './errors.js';
@@ -28,8 +29,7 @@ function asApiError(error: unknown): ApiError {
 export class AddFlow {
 	accountId = $state<number | null>(null);
 	date = $state('');
-	amountText = $state('');
-	sign = $state<Sign>(DEFAULT_SIGN);
+	amountText = $state(DEFAULT_AMOUNT_TEXT);
 	purpose = $state('');
 
 	errors = $state.raw<FieldErrors>({});
@@ -51,8 +51,7 @@ export class AddFlow {
 		this.accountId = null;
 		this.defaultAccount(options);
 		this.date = todayIso(session.config?.timezone ?? 'UTC');
-		this.amountText = '';
-		this.sign = DEFAULT_SIGN;
+		this.amountText = DEFAULT_AMOUNT_TEXT;
 		this.purpose = '';
 		this.errors = {};
 		this.feedback = null;
@@ -84,7 +83,6 @@ export class AddFlow {
 				currency: this.account?.currency ?? null,
 				date: this.date,
 				amountText: this.amountText,
-				sign: this.sign,
 				purpose: this.purpose
 			},
 			this.locale
@@ -130,7 +128,7 @@ export class AddFlow {
 			showPlus: false
 		});
 		this.added = `Added ${money}${input.purpose ? ` · ${input.purpose}` : ''}.`;
-		this.amountText = '';
+		this.amountText = leadingSign(this.amountText) ?? DEFAULT_AMOUNT_TEXT;
 		this.purpose = '';
 		this.errors = {};
 		this.focusAmount++;

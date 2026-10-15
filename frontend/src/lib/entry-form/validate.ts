@@ -1,5 +1,5 @@
 // The entry form's values checked before anything is sent: what goes under which field.
-import { signedAmount, type Sign } from './amount.js';
+import { signedAmount } from './amount.js';
 
 export const MAX_PURPOSE = 500;
 
@@ -9,7 +9,6 @@ export type FormValues = {
 	currency: string | null;
 	date: string;
 	amountText: string;
-	sign: Sign;
 	purpose: string;
 };
 
@@ -40,10 +39,10 @@ export function validateEntry(
 	if (!isCalendarDate(values.date)) errors.date = 'Enter a date.';
 	let minor = 0;
 	if (values.currency !== null) {
-		const amount = signedAmount(values.amountText, values.sign, values.currency, locale);
+		const amount = signedAmount(values.amountText, values.currency, locale);
 		if (amount.ok) minor = amount.minor;
 		else errors.amount = amount.message;
-	} else if (values.amountText.trim() === '') {
+	} else if (/^\s*[-\u2212+]?\s*$/.test(values.amountText)) {
 		errors.amount = 'Enter an amount.';
 	}
 	const purpose = values.purpose.trim();

@@ -75,8 +75,10 @@ describe('AddEntryDialog: the form', () => {
 		for (const label of ['Account', 'Date', 'Amount', 'Purpose']) {
 			expect(within(dialog).getByLabelText(label)).toBeInTheDocument();
 		}
-		expect(within(dialog).getByRole('radio', { name: 'Expense' })).toBeChecked();
-		expect(within(dialog).getByRole('radio', { name: 'Income' })).not.toBeChecked();
+		expect(within(dialog).queryByRole('radio')).toBeNull();
+		expect(field(dialog, 'Amount').value).toBe('\u2212');
+		const hint = within(dialog).getByText('\u2212 money out, + money in');
+		expect(field(dialog, 'Amount').getAttribute('aria-describedby')).toContain(hint.id);
 		const buttons = within(dialog)
 			.getAllByRole('button')
 			.map((b) => b.textContent?.trim());
@@ -124,13 +126,13 @@ describe('AddEntryDialog: the form', () => {
 		const onclose = vi.fn();
 		const view = render(AddEntryDialog, { props: { open: true, onclose } });
 		const dialog = await screen.findByRole('dialog', { name: 'Add entry' });
-		await fill(dialog, '12.50', 'groceries');
+		await fill(dialog, '\u221212.50', 'groceries');
 
 		await view.rerender({ open: false, onclose });
 		await view.rerender({ open: true, onclose });
 
 		const again = await screen.findByRole('dialog', { name: 'Add entry' });
-		expect(field(again, 'Amount').value).toBe('');
+		expect(field(again, 'Amount').value).toBe('\u2212');
 		expect(field(again, 'Purpose').value).toBe('');
 	});
 });
@@ -142,7 +144,7 @@ describe('AddEntryDialog: Add', () => {
 		const stop = entryForm.listen({ created });
 		const { dialog, onclose } = await open({ options: { filtered: [1] } });
 		await waitFor(() => expect(field(dialog, 'Account').value).toBe('1'));
-		await fill(dialog, '12.50', ' groceries ');
+		await fill(dialog, '\u221212.50', ' groceries ');
 
 		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
 
@@ -163,8 +165,7 @@ describe('AddEntryDialog: Add', () => {
 		vi.mocked(api.createSource).mockResolvedValue(written());
 		const { dialog } = await open({ options: { filtered: [1] } });
 		await waitFor(() => expect(field(dialog, 'Account').value).toBe('1'));
-		await fill(dialog, '40');
-		await fireEvent.click(within(dialog).getByRole('radio', { name: 'Income' }));
+		await fill(dialog, '+40');
 
 		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
 
@@ -176,7 +177,7 @@ describe('AddEntryDialog: Add', () => {
 		vi.mocked(api.createSource).mockResolvedValue(written());
 		const { dialog } = await open({ options: { filtered: [1] } });
 		await waitFor(() => expect(field(dialog, 'Account').value).toBe('1'));
-		await fill(dialog, '5');
+		await fill(dialog, '\u22125');
 
 		await fireEvent.submit(field(dialog, 'Purpose').closest('form') as HTMLFormElement);
 
@@ -195,10 +196,33 @@ describe('AddEntryDialog: Add', () => {
 		expect(api.createSource).not.toHaveBeenCalled();
 	});
 
+	it('asks for a sign when there is none, and sends nothing', async () => {
+		const { dialog } = await open({ options: { filtered: [1] } });
+		await waitFor(() => expect(field(dialog, 'Account').value).toBe('1'));
+		await fill(dialog, '12.50');
+
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
+
+		expect(
+			await within(dialog).findByText('Add a sign: \u2212 for money out, + for money in')
+		).toBeInTheDocument();
+		expect(api.createSource).not.toHaveBeenCalled();
+	});
+
+	it('refuses the sign alone as no amount', async () => {
+		const { dialog } = await open({ options: { filtered: [1] } });
+		await waitFor(() => expect(field(dialog, 'Account').value).toBe('1'));
+
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
+
+		expect(await within(dialog).findByText('Enter an amount.')).toBeInTheDocument();
+		expect(api.createSource).not.toHaveBeenCalled();
+	});
+
 	it('refuses an ambiguous amount instead of guessing', async () => {
 		const { dialog } = await open({ options: { filtered: [1] } });
 		await waitFor(() => expect(field(dialog, 'Account').value).toBe('1'));
-		await fill(dialog, '1,234');
+		await fill(dialog, '\u22121,234');
 
 		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
 
@@ -208,23 +232,22 @@ describe('AddEntryDialog: Add', () => {
 });
 
 describe('AddEntryDialog: Add and add another', () => {
-	it('keeps the dialog, clears amount and purpose, keeps account, date and sign, and says what was added', async () => {
+	it('keeps the dialog, resets the amount to its sign and clears the purpose, keeps account, date and sign, and says what was added', async () => {
 		vi.mocked(api.createSource).mockResolvedValue(written());
 		const { dialog, onclose } = await open({ options: { filtered: [1] } });
 		await waitFor(() => expect(field(dialog, 'Account').value).toBe('1'));
 		await fireEvent.input(field(dialog, 'Date'), { target: { value: '2026-10-01' } });
-		await fireEvent.click(within(dialog).getByRole('radio', { name: 'Income' }));
-		await fill(dialog, '12.50', 'refund');
+		await fill(dialog, '+12.50', 'refund');
 
 		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add and add another' }));
 
 		expect(await within(dialog).findByText(/^Added .*12\.50.*EUR · refund\.$/)).toBeInTheDocument();
-		expect(field(dialog, 'Amount').value).toBe('');
+		expect(field(dialog, 'Amount').value).toBe('+');
 		expect(field(dialog, 'Purpose').value).toBe('');
 		expect(field(dialog, 'Account').value).toBe('1');
 		expect(field(dialog, 'Date').value).toBe('2026-10-01');
-		expect(within(dialog).getByRole('radio', { name: 'Income' })).toBeChecked();
 		await waitFor(() => expect(field(dialog, 'Amount')).toHaveFocus());
+		expect(field(dialog, 'Amount').selectionStart).toBe(1);
 		expect(onclose).not.toHaveBeenCalled();
 		expect(panel.open).not.toHaveBeenCalled();
 		expect(body()).toMatchObject({ amount: 1250, booked_on: '2026-10-01' });
@@ -234,11 +257,11 @@ describe('AddEntryDialog: Add and add another', () => {
 		vi.mocked(api.createSource).mockResolvedValue(written());
 		const { dialog } = await open({ options: { filtered: [1] } });
 		await waitFor(() => expect(field(dialog, 'Account').value).toBe('1'));
-		await fill(dialog, '5');
+		await fill(dialog, '\u22125');
 		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add and add another' }));
 		await within(dialog).findByText(/^Added/);
 
-		await fill(dialog, '5');
+		await fill(dialog, '\u22125');
 		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add and add another' }));
 
 		await waitFor(() => expect(api.createSource).toHaveBeenCalledTimes(2));
@@ -254,7 +277,7 @@ describe('AddEntryDialog: idempotency and failures', () => {
 			.mockResolvedValue(written());
 		const { dialog } = await open({ options: { filtered: [1] } });
 		await waitFor(() => expect(field(dialog, 'Account').value).toBe('1'));
-		await fill(dialog, '12.50');
+		await fill(dialog, '\u221212.50');
 		const add = () => fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
 
 		await add();
@@ -263,7 +286,7 @@ describe('AddEntryDialog: idempotency and failures', () => {
 		await add();
 		await waitFor(() => expect(api.createSource).toHaveBeenCalledTimes(2));
 		await within(dialog).findByRole('alert');
-		await fill(dialog, '13');
+		await fill(dialog, '\u221213');
 		await add();
 		await waitFor(() => expect(api.createSource).toHaveBeenCalledTimes(3));
 
@@ -275,13 +298,13 @@ describe('AddEntryDialog: idempotency and failures', () => {
 		vi.mocked(api.createSource).mockRejectedValue(apiError(0, 'network_error'));
 		const { dialog, onclose } = await open({ options: { filtered: [1] } });
 		await waitFor(() => expect(field(dialog, 'Account').value).toBe('1'));
-		await fill(dialog, '12.50');
+		await fill(dialog, '\u221212.50');
 
 		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
 
 		expect(await within(dialog).findByText(/could not be reached/)).toBeInTheDocument();
 		expect(within(dialog).getByRole('button', { name: 'Try again' })).toBeInTheDocument();
-		expect(field(dialog, 'Amount').value).toBe('12.50');
+		expect(field(dialog, 'Amount').value).toBe('\u221212.50');
 		expect(onclose).not.toHaveBeenCalled();
 	});
 
@@ -289,7 +312,7 @@ describe('AddEntryDialog: idempotency and failures', () => {
 		vi.mocked(api.createSource).mockRejectedValue(apiError(422, 'account_synced'));
 		const { dialog } = await open({ options: { filtered: [1] } });
 		await waitFor(() => expect(field(dialog, 'Account').value).toBe('1'));
-		await fill(dialog, '12.50');
+		await fill(dialog, '\u221212.50');
 
 		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
 
@@ -307,7 +330,7 @@ describe('AddEntryDialog: idempotency and failures', () => {
 		vi.mocked(api.listAccounts).mockResolvedValue([giro, loan]);
 		const { dialog } = await open({ options: { filtered: [1] } });
 		await waitFor(() => expect(field(dialog, 'Account').value).toBe('1'));
-		await fill(dialog, '12.50');
+		await fill(dialog, '\u221212.50');
 
 		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
 
@@ -324,7 +347,7 @@ describe('AddEntryDialog: idempotency and failures', () => {
 		);
 		const { dialog } = await open({ options: { filtered: [1] } });
 		await waitFor(() => expect(field(dialog, 'Account').value).toBe('1'));
-		await fill(dialog, '12.50');
+		await fill(dialog, '\u221212.50');
 
 		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
 

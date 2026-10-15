@@ -5,7 +5,7 @@
 import { ApiError, updateSource, type SourceChanges } from '#lib/api/index.js';
 import type { SourceEditEffects } from '#lib/api/types.js';
 import { session } from '#lib/stores/session.svelte.js';
-import { amountText, signOf, type Sign } from './amount.js';
+import { amountText } from './amount.js';
 import { entryForm, type EditTarget } from './controller.svelte.js';
 import { summarizeEdit } from './effects.js';
 import { classifyEntryError } from './errors.js';
@@ -26,7 +26,6 @@ export class EditFlow {
 	target = $state.raw<EditTarget | null>(null);
 	date = $state('');
 	amountText = $state('');
-	sign = $state<Sign>('expense');
 	purpose = $state('');
 
 	errors = $state.raw<FieldErrors>({});
@@ -42,14 +41,12 @@ export class EditFlow {
 	#timer: ReturnType<typeof setTimeout> | null = null;
 	#generation = 0;
 	#controller: AbortController | null = null;
-	#initial = { date: '', amountText: '', sign: 'expense' as Sign, purpose: '', minor: 0 };
+	#initial = { date: '', amountText: '', purpose: '', minor: 0 };
 
 	readonly locale = $derived(session.config?.locale ?? 'en');
 	readonly currency = $derived(this.target?.entry.amount.currency ?? 'EUR');
 	/** every field, as one value to watch: a change schedules the dry run */
-	readonly fingerprint = $derived(
-		JSON.stringify([this.date, this.amountText, this.sign, this.purpose])
-	);
+	readonly fingerprint = $derived(JSON.stringify([this.date, this.amountText, this.purpose]));
 	readonly canSave = $derived(this.status === 'ready' && !this.busy && !this.gone);
 
 	start(target: EditTarget): void {
@@ -59,12 +56,10 @@ export class EditFlow {
 		const locale = this.locale;
 		this.date = entry.booked_on;
 		this.amountText = amountText(sourceMinor, entry.amount.currency, locale);
-		this.sign = signOf(sourceMinor);
 		this.purpose = entry.source?.purpose ?? '';
 		this.#initial = {
 			date: this.date,
 			amountText: this.amountText,
-			sign: this.sign,
 			purpose: this.purpose.trim(),
 			minor: sourceMinor
 		};
@@ -128,7 +123,6 @@ export class EditFlow {
 				currency: this.currency,
 				date: this.date,
 				amountText: this.amountText,
-				sign: this.sign,
 				purpose: this.purpose
 			},
 			this.locale

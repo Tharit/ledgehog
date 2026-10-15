@@ -1,10 +1,11 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import ActionButton from '#lib/components/common/action-button.svelte';
 	import ActionDialog, { type DialogFeedback } from '#lib/components/common/action-dialog.svelte';
 	import EmptyState from '#lib/components/common/empty-state.svelte';
 	import Field from '#lib/components/common/field.svelte';
 	import { Input } from '#lib/components/ui/input/index.js';
+	import { AMOUNT_HINT } from '#lib/entry-form/amount.js';
 	import { AddFlow } from '#lib/entry-form/add-flow.svelte.js';
 	import type { AddOptions } from '#lib/entry-form/controller.svelte.js';
 	import { lookupsStore } from '#lib/stores/lookups.svelte.js';
@@ -36,10 +37,17 @@
 	});
 
 	$effect(() => {
-		if (flow.focusAmount > 0) {
-			amountInput?.focus();
-			amountInput?.select();
-		}
+		if (flow.focusAmount === 0) return;
+		// after the field shows its new text
+		void tick().then(() => {
+			if (!amountInput) return;
+			amountInput.focus();
+			// only the sign is there: the caret goes after it; a typed amount is selected to retype
+			if (/^\s*[-\u2212+]?\s*$/.test(amountInput.value)) {
+				const end = amountInput.value.length;
+				amountInput.setSelectionRange(end, end);
+			} else amountInput.select();
+		});
 	});
 
 	async function add() {
@@ -134,11 +142,7 @@
 				/>
 			{/snippet}
 		</Field>
-		<Field
-			label="Amount"
-			hint={flow.account ? `In ${flow.account.currency}, without a sign.` : undefined}
-			error={flow.errors.amount ?? null}
-		>
+		<Field label="Amount" hint={AMOUNT_HINT} error={flow.errors.amount ?? null}>
 			{#snippet children(field)}
 				<Input
 					bind:ref={amountInput}
@@ -150,18 +154,6 @@
 					oninput={() => flow.touch('amount')}
 				/>
 			{/snippet}
-		</Field>
-		<Field group label="Sign">
-			<div class="flex items-center gap-4">
-				<label class="flex items-center gap-1.5">
-					<input type="radio" class="accent-primary" bind:group={flow.sign} value="expense" />
-					Expense
-				</label>
-				<label class="flex items-center gap-1.5">
-					<input type="radio" class="accent-primary" bind:group={flow.sign} value="income" />
-					Income
-				</label>
-			</div>
 		</Field>
 		<Field label="Purpose" error={flow.errors.purpose ?? null}>
 			{#snippet children(field)}

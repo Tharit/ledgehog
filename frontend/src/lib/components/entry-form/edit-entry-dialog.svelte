@@ -4,6 +4,7 @@
 	import Field from '#lib/components/common/field.svelte';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import type { EditTarget } from '#lib/entry-form/controller.svelte.js';
+	import { AMOUNT_HINT } from '#lib/entry-form/amount.js';
 	import { EditFlow } from '#lib/entry-form/edit-flow.svelte.js';
 	import { EDIT_WARNING } from '#lib/entry-form/effects.js';
 	import { lookupsStore } from '#lib/stores/lookups.svelte.js';
@@ -77,11 +78,7 @@
 			<Input type="date" bind:value={flow.date} {...field} readonly={flow.busy} />
 		{/snippet}
 	</Field>
-	<Field
-		label="Amount"
-		hint={target ? `In ${target.entry.amount.currency}, without a sign.` : undefined}
-		error={flow.errors.amount ?? null}
-	>
+	<Field label="Amount" hint={AMOUNT_HINT} error={flow.errors.amount ?? null}>
 		{#snippet children(field)}
 			<Input
 				bind:value={flow.amountText}
@@ -91,18 +88,6 @@
 				readonly={flow.busy}
 			/>
 		{/snippet}
-	</Field>
-	<Field group label="Sign">
-		<div class="flex items-center gap-4">
-			<label class="flex items-center gap-1.5">
-				<input type="radio" class="accent-primary" bind:group={flow.sign} value="expense" />
-				Expense
-			</label>
-			<label class="flex items-center gap-1.5">
-				<input type="radio" class="accent-primary" bind:group={flow.sign} value="income" />
-				Income
-			</label>
-		</div>
 	</Field>
 	<Field label="Purpose" error={flow.errors.purpose ?? null}>
 		{#snippet children(field)}

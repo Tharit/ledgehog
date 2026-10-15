@@ -56,8 +56,8 @@ describe('EditEntryDialog', () => {
 		const { dialog } = await open();
 
 		expect(field(dialog, 'Date').value).toBe('2026-10-09');
-		expect(field(dialog, 'Amount').value).toBe('12.50');
-		expect(within(dialog).getByRole('radio', { name: 'Expense' })).toBeChecked();
+		expect(field(dialog, 'Amount').value).toBe('\u221212.50');
+		expect(within(dialog).queryByRole('radio')).toBeNull();
 		expect(field(dialog, 'Purpose').value).toBe('groceries');
 		expect(within(dialog).getByText('Cash')).toBeInTheDocument();
 		expect(within(dialog).queryByRole('combobox')).toBeNull();
@@ -65,6 +65,35 @@ describe('EditEntryDialog', () => {
 		const footer = save(dialog).closest('[data-slot="dialog-footer"]') as HTMLElement;
 		expect(warning.compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 		expect(within(dialog).queryByRole('button', { name: 'Add' })).toBeNull();
+	});
+
+	it('flips an entry to money in with a typed plus, sending the signed amount only', async () => {
+		vi.mocked(api.updateSource).mockResolvedValue(edited());
+		const { dialog } = await open();
+
+		await fireEvent.input(field(dialog, 'Amount'), { target: { value: '+12.50' } });
+
+		await waitFor(() => expect(api.updateSource).toHaveBeenCalled());
+		expect(call(0)[1]).toEqual({ amount: 1250 });
+	});
+
+	it('asks for a sign and sends nothing when it is missing', async () => {
+		const { dialog } = await open();
+
+		await fireEvent.input(field(dialog, 'Amount'), { target: { value: '12.50' } });
+
+		expect(
+			await within(dialog).findByText('Add a sign: \u2212 for money out, + for money in')
+		).toBeInTheDocument();
+		expect(api.updateSource).not.toHaveBeenCalled();
+	});
+
+	it('links the hint to the amount field', async () => {
+		const { dialog } = await open();
+
+		const amount = field(dialog, 'Amount');
+		const hint = within(dialog).getByText('\u2212 money out, + money in');
+		expect(amount.getAttribute('aria-describedby')).toContain(hint.id);
 	});
 
 	it('cannot be saved while nothing is changed, and asks nothing of the server', async () => {
@@ -78,7 +107,7 @@ describe('EditEntryDialog', () => {
 		vi.mocked(api.updateSource).mockResolvedValue(edited());
 		const { dialog } = await open();
 
-		await fireEvent.input(field(dialog, 'Amount'), { target: { value: '20' } });
+		await fireEvent.input(field(dialog, 'Amount'), { target: { value: '\u221220' } });
 
 		expect(save(dialog)).toBeDisabled();
 		await waitFor(() => expect(save(dialog)).toBeEnabled());
@@ -98,7 +127,7 @@ describe('EditEntryDialog', () => {
 		);
 		const { dialog } = await open();
 
-		await fireEvent.input(field(dialog, 'Amount'), { target: { value: '20' } });
+		await fireEvent.input(field(dialog, 'Amount'), { target: { value: '\u221220' } });
 
 		expect(
 			await within(dialog).findByText('2 split entries are collapsed into the original.')
@@ -133,7 +162,7 @@ describe('EditEntryDialog', () => {
 			)
 			.mockResolvedValueOnce(edited({}, false));
 		const { dialog, onclose } = await open();
-		await fireEvent.input(field(dialog, 'Amount'), { target: { value: '20' } });
+		await fireEvent.input(field(dialog, 'Amount'), { target: { value: '\u221220' } });
 		await waitFor(() => expect(save(dialog)).toBeEnabled());
 
 		await fireEvent.click(save(dialog));
@@ -154,7 +183,7 @@ describe('EditEntryDialog', () => {
 			)
 			.mockResolvedValueOnce(edited({ versions: [{ entry_id: 5, version: 4 }] }));
 		const { dialog, onclose } = await open();
-		await fireEvent.input(field(dialog, 'Amount'), { target: { value: '20' } });
+		await fireEvent.input(field(dialog, 'Amount'), { target: { value: '\u221220' } });
 		await waitFor(() => expect(save(dialog)).toBeEnabled());
 
 		await fireEvent.click(save(dialog));
@@ -165,13 +194,13 @@ describe('EditEntryDialog', () => {
 		expect(panel.reload).toHaveBeenCalled();
 		expect(onclose).not.toHaveBeenCalled();
 		await waitFor(() => expect(save(dialog)).toBeEnabled());
-		expect(field(dialog, 'Amount').value).toBe('20');
+		expect(field(dialog, 'Amount').value).toBe('\u221220');
 	});
 
 	it('says under the field what it cannot read, and does not ask the server', async () => {
 		const { dialog } = await open();
 
-		await fireEvent.input(field(dialog, 'Amount'), { target: { value: 'abc' } });
+		await fireEvent.input(field(dialog, 'Amount'), { target: { value: '\u2212abc' } });
 
 		expect(await within(dialog).findByText('This is not an amount.')).toBeInTheDocument();
 		expect(save(dialog)).toBeDisabled();
@@ -182,7 +211,7 @@ describe('EditEntryDialog', () => {
 		vi.mocked(api.updateSource).mockRejectedValue(apiError(404, 'not_found'));
 		const { dialog } = await open();
 
-		await fireEvent.input(field(dialog, 'Amount'), { target: { value: '20' } });
+		await fireEvent.input(field(dialog, 'Amount'), { target: { value: '\u221220' } });
 
 		expect(await within(dialog).findByText('This entry no longer exists.')).toBeInTheDocument();
 		expect(save(dialog)).toBeDisabled();

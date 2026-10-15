@@ -89,7 +89,7 @@ describe('the panel and the entry form together', () => {
 		await fireEvent.click(item);
 
 		const dialog = await screen.findByRole('dialog', { name: 'Edit entry' });
-		expect((within(dialog).getByLabelText('Amount') as HTMLInputElement).value).toBe('12.50');
+		expect((within(dialog).getByLabelText('Amount') as HTMLInputElement).value).toBe('\u221212.50');
 		expect((within(dialog).getByLabelText('Date') as HTMLInputElement).value).toBe('2026-10-09');
 	});
 
