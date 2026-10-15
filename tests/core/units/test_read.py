@@ -76,7 +76,7 @@ def _anchors(queue: Any, kind: str = "pending_review") -> list[int]:
     return [u.anchor_entry_id for u in section.units]
 
 
-def test_the_queue_has_three_sections_the_last_two_empty(db_conn: Connection, bench: Bench) -> None:
+def test_the_queue_has_three_sections_in_order(db_conn: Connection, bench: Bench) -> None:
     q = review_queue(db_conn)
     assert [s.kind for s in q.sections] == ["pending_review", "needs_account", "waiting"]
     assert [s.total for s in q.sections] == [0, 0, 0] and q.total == 0

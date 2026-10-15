@@ -4,10 +4,13 @@ The membership of the queue is the unit CTE of `core/resolution/confirmed.py` (s
 unit); the per-unit reasons come from the pure `unit_state`, over the rows of the page only. The two agree
 by `tests/core/units/test_equivalence.py`. Reads only: no lock, no write, no settle.
 
-The queue has three sections: `pending_review` (every unit that is not confirmed, until the matcher and
-pairing steps split the others off), `needs_account` and `waiting` (empty until step 8). Each is ordered by
-the date of the unit's anchor entry (its lowest id), then the anchor id: a total order, so a keyset
-cursor `(booked_on, anchor)` stays valid when units come and go while the client pages.
+The queue has three disjoint sections; a unit that is not confirmed is in exactly one (spec §5.7, §6):
+`needs_account` when any of its entries is a leg that needs an account (an unpaired transfer leg with no
+counter-account, an instructed currency, and no open account other than its own in that currency: the
+currency rule of `core/resolution/accounts.py`, restated in SQL and covered by the section tests), else
+`waiting` when any entry carries the `waiting` flag, else `pending_review`. Each is ordered by the date of
+the unit's anchor entry (its lowest id), then the anchor id: a total order, so a keyset cursor
+`(booked_on, anchor)` stays valid when units come and go while the client pages.
 """
 
 from __future__ import annotations
@@ -17,9 +20,9 @@ import binascii
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
-from typing import Literal
+from typing import Any, Literal
 
-from sqlalchemy import Connection, text
+from sqlalchemy import Connection, Row, text
 
 from app.core.ledger.entries import EntryRow, entries_by_ids
 from app.core.resolution.confirmed import STANDING, units_sql
@@ -42,11 +45,25 @@ class InvalidCursor(ValueError):
 
 
 @dataclass(frozen=True)
+class WaitingFor:
+    account_id: int  # the counter-account of the first waiting leg
+    synced_through: date | None  # how far that account has been fetched; None = never
+
+
+@dataclass(frozen=True)
 class UnitView:
     anchor_entry_id: int  # the lowest entry id of the unit: what opens it
     unit_key: int
     state: UnitState
     entries: tuple[EntryRow, ...]  # ascending by id
+    needs_account: str | None = None  # queue only: the instructed currency a unit in `needs_account` needs
+    waiting: WaitingFor | None = None  # queue only: what a unit in `waiting` waits for
+
+
+@dataclass(frozen=True)
+class CurrencyGroup:
+    currency: str
+    count: int  # units in the section that need an account in it
 
 
 @dataclass(frozen=True)
@@ -55,6 +72,7 @@ class QueueSection:
     total: int  # units in the section, whatever the page
     units: tuple[UnitView, ...]
     next_cursor: str | None
+    groups: tuple[CurrencyGroup, ...] = ()  # `needs_account` only: per currency, over the whole section
 
 
 @dataclass(frozen=True)
@@ -75,13 +93,20 @@ def unit_entry_of(row: EntryRow) -> UnitEntry:
     )
 
 
-def _view(unit_key: int, rows: Sequence[EntryRow]) -> UnitView:
+def _view(
+    unit_key: int,
+    rows: Sequence[EntryRow],
+    needs_account: str | None = None,
+    waiting: WaitingFor | None = None,
+) -> UnitView:
     ordered = tuple(sorted(rows, key=lambda r: r.id))
     return UnitView(
         anchor_entry_id=ordered[0].id,
         unit_key=unit_key,
         state=unit_state([unit_entry_of(r) for r in ordered]),
         entries=ordered,
+        needs_account=needs_account,
+        waiting=waiting,
     )
 
 
@@ -95,17 +120,62 @@ def get_unit(conn: Connection, entry_id: int) -> UnitView | None:
 
 # ---- the queue ----------------------------------------------------------------------------------
 
+# The unclassified units, one row each, with their section. A leg NEEDS AN ACCOUNT (spec §5.7) when it is an
+# unpaired transfer with no counter-account and an instructed currency (of its source), and no account other
+# than its own, open on its booking date, is in that currency (`arrival_currency_ok`, `open_on_booking_date`).
+# A leg is WAITING when it carries the flag `core/settle/flags.py` writes.
+_SECTIONED = """
+    WITH units AS ({units}),
+         legs AS (
+            SELECT u.unit_key, u.id, le.booked_on, st.instructed_currency, le.counter_account_id,
+                   (le.type = 'transfer' AND le.counterpart_entry_id IS NULL
+                    AND le.counter_account_id IS NULL AND st.instructed_currency IS NOT NULL
+                    AND NOT EXISTS (
+                        SELECT 1 FROM account AS a
+                         WHERE a.currency = st.instructed_currency AND a.id <> le.account_id
+                           AND (a.closed_on IS NULL OR le.booked_on <= a.closed_on))) AS needs_account,
+                   ('waiting' = ANY(le.review_flags)) AS waiting
+              FROM units AS u JOIN ledger_entry AS le ON le.id = u.id
+              JOIN source_transaction AS st ON st.id = le.source_transaction_id
+             WHERE NOT u.unit_ok),
+         q AS (
+            SELECT l.unit_key, min(l.id) AS anchor,
+                   CASE WHEN bool_or(l.needs_account) THEN 'needs_account'
+                        WHEN bool_or(l.waiting) THEN 'waiting' ELSE 'pending_review' END AS section,
+                   (array_agg(l.instructed_currency ORDER BY l.id) FILTER (WHERE l.needs_account))[1]
+                       AS currency,
+                   (array_agg(l.counter_account_id ORDER BY l.id) FILTER (WHERE l.waiting))[1]
+                       AS wait_account
+              FROM legs AS l GROUP BY l.unit_key)
+"""
+
+_SECTIONED_SQL = _SECTIONED.format(units=units_sql())
+
 _QUEUE_PAGE = text(
-    f"""
-    WITH units AS ({units_sql()}),
-         q AS (SELECT u.unit_key, min(u.id) AS anchor FROM units AS u WHERE NOT u.unit_ok GROUP BY u.unit_key)
-    SELECT t.unit_key, t.anchor, t.booked_on, t.total
-      FROM (SELECT q.unit_key, q.anchor, e.booked_on, count(*) OVER () AS total
-              FROM q JOIN ledger_entry AS e ON e.id = q.anchor) AS t
-     WHERE (CAST(:after_on AS date) IS NULL
-            OR (t.booked_on, t.anchor) > (CAST(:after_on AS date), CAST(:after_anchor AS bigint)))
-     ORDER BY t.booked_on, t.anchor
-     LIMIT :limit
+    _SECTIONED_SQL
+    + """
+    SELECT p.unit_key, p.anchor, p.booked_on, p.total, p.currency, p.wait_account, cv.synced_through
+      FROM (SELECT t.*
+              FROM (SELECT q.unit_key, q.anchor, q.currency, q.wait_account, e.booked_on,
+                           count(*) OVER () AS total
+                      FROM q JOIN ledger_entry AS e ON e.id = q.anchor
+                     WHERE q.section = :section) AS t
+             WHERE (CAST(:after_on AS date) IS NULL
+                    OR (t.booked_on, t.anchor) > (CAST(:after_on AS date), CAST(:after_anchor AS bigint)))
+             ORDER BY t.booked_on, t.anchor
+             LIMIT :limit) AS p
+      LEFT JOIN v_account_coverage AS cv ON cv.account_id = p.wait_account
+     ORDER BY p.booked_on, p.anchor
+    """
+)
+
+_SECTION_TOTAL = text(_SECTIONED_SQL + "SELECT count(*) FROM q WHERE q.section = :section")
+
+_NEEDS_ACCOUNT_GROUPS = text(
+    _SECTIONED_SQL
+    + """
+    SELECT q.currency, count(*) AS n FROM q WHERE q.section = 'needs_account'
+     GROUP BY q.currency ORDER BY q.currency
     """
 )
 
@@ -169,29 +239,45 @@ def decode_snapshot(token: str) -> int:
         raise InvalidCursor("since") from exc
 
 
-def _pending_review(conn: Connection, *, limit: int, cursor: str | None) -> QueueSection:
+def _section(conn: Connection, kind: SectionKind, *, limit: int, cursor: str | None) -> QueueSection:
     after_on, after_anchor = decode_cursor(cursor) if cursor else (None, 0)
     rows = conn.execute(
         _QUEUE_PAGE,
-        {"standing": STANDING, "after_on": after_on, "after_anchor": after_anchor, "limit": limit + 1},
+        {
+            "standing": STANDING,
+            "section": kind,
+            "after_on": after_on,
+            "after_anchor": after_anchor,
+            "limit": limit + 1,
+        },
     ).all()
     if rows:
         total = int(rows[0].total)
     elif cursor:  # a cursor past the end: the page is empty, the section is not
-        total = int(conn.execute(_QUEUE_TOTAL, {"standing": STANDING}).scalar_one())
+        total = _section_total(conn, kind)
     else:
         total = 0
     page, more = rows[:limit], len(rows) > limit
-    units = _units_of_page(conn, [int(r.unit_key) for r in page])
+    by_key = {int(r.unit_key): r for r in page}
+    units = _units_of_page(conn, [int(r.unit_key) for r in page], by_key)
+    groups: tuple[CurrencyGroup, ...] = ()
+    if kind == "needs_account":
+        found = conn.execute(_NEEDS_ACCOUNT_GROUPS, {"standing": STANDING}).all()
+        groups = tuple(CurrencyGroup(currency=str(r.currency), count=int(r.n)) for r in found)
     return QueueSection(
-        kind="pending_review",
+        kind=kind,
         total=total,
         units=units,
         next_cursor=encode_cursor(page[-1].booked_on, int(page[-1].anchor)) if more else None,
+        groups=groups,
     )
 
 
-def _units_of_page(conn: Connection, keys: list[int]) -> tuple[UnitView, ...]:
+def _section_total(conn: Connection, kind: SectionKind) -> int:
+    return int(conn.execute(_SECTION_TOTAL, {"standing": STANDING, "section": kind}).scalar_one())
+
+
+def _units_of_page(conn: Connection, keys: list[int], facts: dict[int, Row[Any]]) -> tuple[UnitView, ...]:
     if not keys:
         return ()
     ids = [int(i) for i in conn.execute(_ENTRIES_OF_UNITS, {"keys": keys}).scalars()]
@@ -200,12 +286,16 @@ def _units_of_page(conn: Connection, keys: list[int]) -> tuple[UnitView, ...]:
         if row.unit_key in by_key:
             by_key[row.unit_key].append(row)
     # the page order is the order of `keys` (the section's order), not of the anchors' ids
-    return tuple(_view(k, by_key[k]) for k in keys)
+    return tuple(_view(k, by_key[k], *_facts_of(facts[k])) for k in keys)
 
 
-def _empty(kind: SectionKind) -> QueueSection:
-    """`needs_account` and `waiting` need pairing's notion of waiting (step 8): nothing is in them yet."""
-    return QueueSection(kind=kind, total=0, units=(), next_cursor=None)
+def _facts_of(row: Row[Any]) -> tuple[str | None, WaitingFor | None]:
+    """What the section says of a unit: the currency it needs an account in, or the account it waits for."""
+    needs = str(row.currency) if row.currency is not None else None
+    waiting = None
+    if needs is None and row.wait_account is not None:
+        waiting = WaitingFor(account_id=int(row.wait_account), synced_through=row.synced_through)
+    return needs, waiting
 
 
 def review_queue(
@@ -222,17 +312,13 @@ def review_queue(
     snapshot = encode_snapshot(int(conn.execute(_MAX_ENTRY_ID).scalar_one()))
     wanted = SECTIONS if section is None else (section,)
     built = tuple(
-        _pending_review(conn, limit=limit, cursor=cursor if section == kind else None)
-        if kind == "pending_review"
-        else _empty(kind)
-        for kind in wanted
+        _section(conn, kind, limit=limit, cursor=cursor if section == kind else None) for kind in wanted
     )
-    total = built[0].total if section in (None, "pending_review") else _pending_total(conn)
+    if section is None:
+        total = sum(s.total for s in built)
+    else:
+        total = int(conn.execute(_QUEUE_TOTAL, {"standing": STANDING}).scalar_one())
     return ReviewQueue(sections=built, total=total, snapshot=snapshot)
-
-
-def _pending_total(conn: Connection) -> int:
-    return int(conn.execute(_QUEUE_TOTAL, {"standing": STANDING}).scalar_one())
 
 
 def new_unit_count(conn: Connection, since: str) -> tuple[int, str]:

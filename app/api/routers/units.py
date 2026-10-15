@@ -6,6 +6,7 @@ source transaction), reviewed and committed together. Reads only: no lock, no wr
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Query
@@ -54,11 +55,29 @@ SectionKind = Literal["pending_review", "needs_account", "waiting"]
 Token = Annotated[str, Query(min_length=1, max_length=200)]
 
 
+class NeedsAccountOut(BaseModel):
+    currency: str  # the instructed currency of the unit's first (by entry id) leg that needs an account
+
+
+class WaitingOut(BaseModel):
+    account_id: int  # the counter-account of the unit's first (by entry id) waiting leg
+    synced_through: date | None  # how far that account has been fetched; null = never
+
+
+class CurrencyGroupOut(BaseModel):
+    currency: str
+    count: int  # units (not legs) that need an account in the currency, over the whole section
+
+
 class UnitOut(BaseModel):
     anchor_entry_id: int  # the lowest entry id of the unit: what opens it (`?unit=`)
     unit_key: int
     state: UnitStateOut
     entries: list[EntryOut]  # ascending by id
+    # queue only (null from `GET /{entry_id}` and in `pending_review`): set for a unit in `needs_account` ...
+    needs_account: NeedsAccountOut | None = None
+    # ... and for a unit in `waiting`
+    waiting: WaitingOut | None = None
 
     @staticmethod
     def of(view: UnitView) -> UnitOut:
@@ -67,6 +86,12 @@ class UnitOut(BaseModel):
             unit_key=view.unit_key,
             state=UnitStateOut.of(view.state),
             entries=[EntryOut.of(e) for e in view.entries],
+            needs_account=NeedsAccountOut(currency=view.needs_account) if view.needs_account else None,
+            waiting=(
+                WaitingOut(account_id=view.waiting.account_id, synced_through=view.waiting.synced_through)
+                if view.waiting
+                else None
+            ),
         )
 
 
@@ -75,6 +100,7 @@ class QueueSectionOut(BaseModel):
     total: int  # units in the section, whatever the page
     units: list[UnitOut]  # by the anchor's booked_on, then anchor id
     next_cursor: str | None
+    groups: list[CurrencyGroupOut]  # `needs_account` only: units per required currency, by code; else []
 
     @staticmethod
     def of(section: QueueSection) -> QueueSectionOut:
@@ -83,6 +109,7 @@ class QueueSectionOut(BaseModel):
             total=section.total,
             units=[UnitOut.of(u) for u in section.units],
             next_cursor=section.next_cursor,
+            groups=[CurrencyGroupOut(currency=g.currency, count=g.count) for g in section.groups],
         )
 
 

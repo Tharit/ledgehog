@@ -61,5 +61,74 @@ def test_queue_within_budget_all_unconfirmed(backfill: Backfill) -> None:
     _within_budget(backfill, "all unconfirmed")
 
 
+def test_queue_within_budget_with_transfers(backfill_transfers: Backfill) -> None:
+    """Every section populated, from cases built here: the session ledger is shared and other perf tests pair
+    and re-flag its legs, so nothing is assumed of its transfers. Inside one transaction, rolled back:
+    300 legs with no counter-account and an instructed currency no account has, 150 legs towards the synced
+    account (its partner not yet delivered), and the flags rewritten."""
+    from sqlalchemy import text
+
+    from app.core.settle.flags import recompute_review_flags
+
+    samples: dict[str, list[float]] = {"first page": [], "page of 500": [], "needs_account page": []}
+    summary = backfill_transfers.summary
+    with backfill_transfers.engine.connect() as conn:
+        synced = int(conn.execute(text("SELECT min(account_id) FROM account_source")).scalar_one())
+        i = next(
+            k
+            for k, (acc, cur) in enumerate(zip(summary.account_ids, summary.account_currencies, strict=True))
+            if cur == "EUR" and acc != synced
+        )
+        account, run = summary.account_ids[i], summary.run_ids[i]
+        day = summary.last_booked
+        for kind, count, counter, instructed in (("need", 300, None, "JPY"), ("wait", 150, synced, None)):
+            conn.execute(
+                text(
+                    "WITH s AS (INSERT INTO source_transaction (importer, import_run_id, account_id,"
+                    " source_id,"
+                    " source_format, amount, currency, booked_on, purpose, raw, instructed_amount,"
+                    " instructed_currency)"
+                    " SELECT 'perf', :run, :account, :kind || n, 'csv', -(100000 + n), 'EUR', :day,"
+                    " 'perf', '{}',"
+                    " CASE WHEN CAST(:instructed AS text) IS NULL THEN NULL ELSE -(100000 + n) * 150 END,"
+                    " CAST(:instructed AS text)"
+                    " FROM generate_series(1, :count) AS n RETURNING id, amount)"
+                    " INSERT INTO ledger_entry (source_transaction_id, account_id, currency, booked_on,"
+                    " amount,"
+                    " type, counter_account_id, derivation)"
+                    " SELECT s.id, :account, 'EUR', :day, s.amount, 'transfer', :counter,"
+                    ' \'{"type": {"pass": "user"}}\' FROM s'
+                ),
+                {
+                    "run": run,
+                    "account": account,
+                    "kind": kind,
+                    "day": day,
+                    "instructed": instructed,
+                    "count": count,
+                    "counter": counter,
+                },
+            )
+        recompute_review_flags(conn)
+        first = review_queue(conn, limit=100)
+        kinds = {s.kind: s.total for s in first.sections}
+        print(f"[perf] queue sections on the transfer ledger: {kinds}")
+        assert kinds["needs_account"] >= 300 and kinds["waiting"] >= 150 and kinds["pending_review"] > 0
+        for _ in range(REPEATS):
+            for label, call in {
+                "first page": lambda: review_queue(conn, limit=100),
+                "page of 500": lambda: review_queue(conn, limit=500),
+                "needs_account page": lambda: review_queue(conn, limit=100, section="needs_account"),
+            }.items():
+                started = time.perf_counter()
+                call()
+                samples[label].append(time.perf_counter() - started)
+        conn.rollback()
+    for label, taken in samples.items():
+        stats = Stats.of(taken)
+        print(f"[perf] queue with every section populated, {label}: {stats}")
+        assert stats.max <= QUEUE_BUDGET_SECONDS, f"{label}: {stats} exceeds {QUEUE_BUDGET_SECONDS} s"
+
+
 def test_queue_within_budget_with_most_entries_confirmed(backfill_settled: Backfill) -> None:
     _within_budget(backfill_settled, "70% confirmed")

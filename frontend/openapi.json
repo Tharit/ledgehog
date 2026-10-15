@@ -840,6 +840,24 @@
         "title": "CreateInstance",
         "type": "object"
       },
+      "CurrencyGroupOut": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "currency",
+          "count"
+        ],
+        "title": "CurrencyGroupOut",
+        "type": "object"
+      },
       "DeleteCountsOut": {
         "properties": {
           "confirmed_entries": {
@@ -1474,6 +1492,19 @@
         "title": "MovedChildOut",
         "type": "object"
       },
+      "NeedsAccountOut": {
+        "properties": {
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "currency"
+        ],
+        "title": "NeedsAccountOut",
+        "type": "object"
+      },
       "NewCountOut": {
         "properties": {
           "new_count": {
@@ -2068,6 +2099,13 @@
       },
       "QueueSectionOut": {
         "properties": {
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/CurrencyGroupOut"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
           "kind": {
             "enum": [
               "pending_review",
@@ -2104,7 +2142,8 @@
           "kind",
           "total",
           "units",
-          "next_cursor"
+          "next_cursor",
+          "groups"
         ],
         "title": "QueueSectionOut",
         "type": "object"
@@ -4101,12 +4140,32 @@
             "title": "Entries",
             "type": "array"
           },
+          "needs_account": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NeedsAccountOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "state": {
             "$ref": "#/components/schemas/UnitStateOut"
           },
           "unit_key": {
             "title": "Unit Key",
             "type": "integer"
+          },
+          "waiting": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WaitingOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -4784,6 +4843,32 @@
           "truncated"
         ],
         "title": "ViewCheckOut",
+        "type": "object"
+      },
+      "WaitingOut": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "integer"
+          },
+          "synced_through": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Synced Through"
+          }
+        },
+        "required": [
+          "account_id",
+          "synced_through"
+        ],
+        "title": "WaitingOut",
         "type": "object"
       }
     }

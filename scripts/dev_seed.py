@@ -254,6 +254,102 @@ def classify(engine: Engine, seed: int, out: list[str]) -> None:
     )
 
 
+def transfer_cases(engine: Engine, out: list[str]) -> None:
+    """PROTOTYPE-ONLY dev data: two transfer legs that put units in the review queue's `needs_account` and
+    `waiting` sections (spec §5.7), written with direct SQL on the last day of the giro's data.
+
+    * a cash withdrawal abroad on the giro, instructed in USD, typed a transfer with no counter-account: no
+      USD account exists, so it needs an account in USD;
+    * a leg the user entered on the (unsynced) cash account towards the giro, which is synced and not yet
+      synced through the matching window: its partner has not arrived, so it waits.
+    """
+    with engine.begin() as conn:
+        lock_settle_exclusive(conn)
+        ids = {
+            key: int(
+                conn.execute(
+                    text("SELECT id FROM account WHERE name = :n"), {"n": name + data.SUFFIX}
+                ).scalar_one()
+            )
+            for key, name, _kind, _ref in data.ACCOUNTS
+            if key in ("giro", "cash")
+        }
+        day = conn.execute(
+            text(
+                "SELECT max(booked_on) FROM ledger_entry WHERE account_id = :a AND balance_record_id IS NULL"
+            ),
+            {"a": ids["giro"]},
+        ).scalar_one()
+        run = conn.execute(
+            text("SELECT max(id) FROM import_run WHERE account_id = :a AND status = 'ok'"), {"a": ids["giro"]}
+        ).scalar_one()
+
+        def leg(account: int, amount: int, counter: int | None, **source: Any) -> None:
+            columns = {
+                "importer": None,
+                "import_run_id": None,
+                "source_format": None,
+                "source_id": None,
+                **source,
+            }
+            sid = conn.execute(
+                text(
+                    "INSERT INTO source_transaction (importer, import_run_id, account_id, source_id,"
+                    " content_hash, source_format, amount, currency, booked_on, purpose, raw,"
+                    " instructed_amount, instructed_currency)"
+                    " VALUES (:importer, :import_run_id, :account, :source_id, :content_hash,"
+                    " :source_format, :amount, 'EUR', :day, :purpose, '{}',"
+                    " :instructed_amount, :instructed_currency) RETURNING id"
+                ),
+                {
+                    "account": account,
+                    "amount": amount,
+                    "day": day,
+                    "instructed_amount": None,
+                    "instructed_currency": None,
+                    "content_hash": None if columns["source_id"] else f"seed-{account}-{amount}",
+                    **columns,
+                },
+            ).scalar_one()
+            conn.execute(
+                text(
+                    "INSERT INTO ledger_entry (source_transaction_id, account_id, currency, booked_on,"
+                    " amount, type, counter_account_id, derivation)"
+                    " VALUES (:s, :account, 'EUR', :day, :amount, 'transfer', :counter, CAST(:d AS jsonb))"
+                ),
+                {
+                    "s": sid,
+                    "account": account,
+                    "day": day,
+                    "amount": amount,
+                    "counter": counter,
+                    "d": json.dumps(
+                        {
+                            "type": {"pass": "user"},
+                            **({"counter_account": {"pass": "user"}} if counter else {}),
+                        }
+                    ),
+                },
+            )
+
+        leg(
+            ids["giro"],
+            -9_200,
+            None,
+            importer="csv",
+            import_run_id=run,
+            source_format="csv",
+            source_id="seed-abroad-atm",
+            purpose="ATM WITHDRAWAL NEW YORK USD 100.00 [seed]",
+            instructed_amount=-10_000,
+            instructed_currency="USD",
+        )
+        leg(ids["cash"], -4_711, ids["giro"], purpose="Cash given to a friend [seed]")
+    out.append(
+        "PROTOTYPE-ONLY dev data (direct SQL): 2 transfer legs for the needs-account and waiting sections"
+    )
+
+
 def make_rules(engine: Engine, out: list[str]) -> None:
     """The named rules of `dev_seed_data.RULES`, through the real operation: previewed first, then
     written with the preview's count (spec §5.9). Needs the categories and payees `classify` made."""
@@ -378,6 +474,7 @@ def seed(engine: Engine, *, months: int, seed_value: int, do_classify: bool, tod
     if do_classify:
         classify(engine, seed_value, out)
         make_rules(engine, out)
+        transfer_cases(engine, out)
     settle(engine)  # review flags recomputed once, at the end
     with engine.connect() as conn:
         report = check_integrity(conn)

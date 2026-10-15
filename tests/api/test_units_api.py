@@ -7,12 +7,13 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine
+from sqlalchemy import Engine, text
 
 from app.core.settle.flags import recompute_review_flags
 from tests.api.accounts_helpers import assert_envelope
 from tests.api.conftest import login
 from tests.core.units.helpers import Bench, keys
+from tests.invariants.helpers import make_source
 
 QUEUE = "/api/units/queue"
 
@@ -55,7 +56,15 @@ def test_get_unit_shape_for_a_pair_with_a_split(anna: TestClient, api_engine: En
     r = anna.get(f"/api/units/{sib}")
     assert r.status_code == 200, r.text
     body = r.json()
-    assert set(body) == {"anchor_entry_id", "unit_key", "state", "entries"}
+    assert set(body) == {
+        "anchor_entry_id",
+        "unit_key",
+        "state",
+        "entries",
+        "needs_account",
+        "waiting",
+    }
+    assert body["needs_account"] is None and body["waiting"] is None
     assert (body["anchor_entry_id"], body["unit_key"]) == (x, s1)
     assert body["state"] == {"confirmed": False, "reasons": ["incomplete", "non_standing_keys"]}
     assert [e["id"] for e in body["entries"]] == [x, y, sib]
@@ -106,12 +115,64 @@ def test_the_queue_shape_sections_and_order(anna: TestClient, api_engine: Engine
         ("waiting", 0),
     ]
     pending = body["sections"][0]
-    assert set(pending) == {"kind", "total", "units", "next_cursor"} and pending["next_cursor"] is None
+    assert (
+        set(pending) == {"kind", "total", "units", "next_cursor", "groups"} and pending["next_cursor"] is None
+    )
     assert [u["anchor_entry_id"] for u in pending["units"]] == [early, late]
     assert pending["units"][0]["state"] == {"confirmed": False, "reasons": ["non_standing_keys"]}
     assert pending["units"][1]["state"]["reasons"] == ["incomplete"]
-    assert set(pending["units"][0]) == {"anchor_entry_id", "unit_key", "state", "entries"}
+    assert set(pending["units"][0]) == {
+        "anchor_entry_id",
+        "unit_key",
+        "state",
+        "entries",
+        "needs_account",
+        "waiting",
+    }
+    assert pending["groups"] == [] and pending["units"][0]["needs_account"] is None
     assert body["sections"][1]["units"] == [] and body["sections"][2]["next_cursor"] is None
+
+
+def test_the_queue_sections_needs_account_and_waiting_with_groups(
+    anna: TestClient, api_engine: Engine, world: Bench
+) -> None:
+    def build(b: Bench) -> tuple[int, int, int]:
+        usd = make_source(
+            b.conn,
+            b.a,
+            amount=-100,
+            booked_on=date(2026, 3, 1),
+            columns={"instructed_currency": "USD", "instructed_amount": -110},
+        )
+        chf = make_source(
+            b.conn,
+            b.a,
+            amount=-100,
+            booked_on=date(2026, 3, 2),
+            columns={"instructed_currency": "CHF", "instructed_amount": -95},
+        )
+        b._each.update({usd: -100, chf: -100})
+        need_usd, need_chf = b.transfer(usd), b.transfer(chf)
+        wait = b.transfer(b.source(on=date(2026, 3, 3)), counter_account_id=b.b)
+        b.conn.execute(
+            text("UPDATE ledger_entry SET review_flags = ARRAY['waiting'] WHERE id = :i"), {"i": wait}
+        )
+        return need_usd, need_chf, wait
+
+    need_usd, need_chf, wait = _make(api_engine, world, build)
+    body = anna.get(QUEUE).json()
+    pending, needs, waiting = body["sections"]
+    assert body["total"] == 3 and pending["groups"] == [] and waiting["groups"] == []
+    assert needs["groups"] == [{"currency": "CHF", "count": 1}, {"currency": "USD", "count": 1}]
+    assert [u["anchor_entry_id"] for u in needs["units"]] == [need_usd, need_chf]
+    assert [u["needs_account"] for u in needs["units"]] == [{"currency": "USD"}, {"currency": "CHF"}]
+    assert all(u["waiting"] is None for u in needs["units"])
+    (unit,) = waiting["units"]
+    assert unit["anchor_entry_id"] == wait and unit["needs_account"] is None
+    assert unit["waiting"] == {"account_id": world.b, "synced_through": None}
+    page = anna.get(QUEUE, params={"section": "needs_account", "limit": 1}).json()["sections"][0]
+    assert len(page["units"]) == 1 and page["total"] == 2 and page["next_cursor"]
+    assert page["groups"] == needs["groups"]
 
 
 def test_the_queue_carries_the_authored_source(anna: TestClient, api_engine: Engine, world: Bench) -> None:

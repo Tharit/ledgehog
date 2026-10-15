@@ -320,3 +320,14 @@ def test_reset_removes_everything_it_created_and_a_reseed_works(
     assert _one(dev_engine, "SELECT count(*) FROM category") > 0
     with dev_engine.connect() as conn:
         assert check_integrity(conn).ok
+
+
+def test_transfer_legs_fill_the_needs_account_and_waiting_sections(seeded: str, dev_engine: Engine):
+    from app.core.units.read import review_queue
+
+    with dev_engine.connect() as conn:
+        queue = review_queue(conn)
+    by_kind = {s.kind: s for s in queue.sections}
+    needs, waiting = by_kind["needs_account"], by_kind["waiting"]
+    assert needs.total >= 1 and [(g.currency, g.count) for g in needs.groups] == [("USD", needs.total)]
+    assert waiting.total >= 1 and all(u.waiting is not None for u in waiting.units)
