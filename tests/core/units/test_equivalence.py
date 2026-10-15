@@ -25,7 +25,11 @@ _KEY_CHOICES = ["", "", "", "rule", "user", "own_account", "history", "llm", "ma
 
 def _derivation(rng: random.Random) -> str:
     chosen = rng.choice(_KEY_CHOICES)
-    return keys(category=chosen) if chosen else "{}"
+    # the user's decision of no payee: a standing `user` key on a NULL payee (never makes a unit unconfirmed)
+    passes = {"payee": "user"} if rng.random() < 0.25 else {}
+    if chosen:
+        passes["category"] = chosen
+    return keys(**passes) if passes else "{}"
 
 
 def _scenario(bench: Bench, rng: random.Random) -> None:

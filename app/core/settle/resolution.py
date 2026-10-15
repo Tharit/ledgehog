@@ -22,6 +22,7 @@ from app.core.resolution import Decided, Resolved, diff, rederive
 from app.core.resolution.load import UnconfirmedEntry, load_accounts, load_rules, load_unconfirmed
 from app.core.resolution.registry import classifiers_for
 from app.core.resolution.snapshot import load_snapshot, load_votes_of, touches
+from app.core.resolution.types import USER_NO_PAYEE, is_user_no_payee
 from app.core.settle.run import ResolutionContext, SettleRun, StepOutcome, current_run
 
 _COLUMN: dict[Field, str] = {
@@ -67,10 +68,12 @@ def stored_decisions(row: UnconfirmedEntry) -> dict[Field, Decided | None]:
     current: dict[Field, Decided | None] = {}
     for f in FIELD_ORDER:
         value = values[f]
-        if value is None:
-            current[f] = None
-            continue
         key = row.derivation.get(f)
+        if value is None:
+            # the one key a NULL carries: the user's decision of no payee (a standing key)
+            is_decision = f == "payee" and isinstance(key, Mapping) and key.get("pass") == "user"
+            current[f] = USER_NO_PAYEE if is_decision else None
+            continue
         if isinstance(key, Mapping) and isinstance(key.get("pass"), str):
             basis = key.get("basis")
             current[f] = Decided(value, key["pass"], dict(basis) if isinstance(basis, Mapping) else {})
@@ -82,12 +85,13 @@ def stored_decisions(row: UnconfirmedEntry) -> dict[Field, Decided | None]:
 def new_derivation(old: Mapping[str, Any], new: Resolved) -> dict[str, Any]:
     out = {k: v for k, v in old.items() if k not in _COLUMN}
     for f, d in new.items():
-        out[f] = {"pass": d.pass_name, "basis": dict(d.basis)}
+        out[f] = {"pass": "user"} if is_user_no_payee(d) else {"pass": d.pass_name, "basis": dict(d.basis)}
     return out
 
 
 def _stale_keys(row: UnconfirmedEntry, current: Mapping[Field, Decided | None]) -> bool:
-    """A key of a field that has no value: it is removed (a key explains a value)."""
+    """A key of a field that has no value: it is removed (a key explains a value). The user's decision of
+    no payee is the exception: a standing key on a NULL (`stored_decisions` reads it as a decision)."""
     return any(f in row.derivation and current[f] is None for f in _COLUMN)
 
 
@@ -135,7 +139,7 @@ def rewrite_of(
         return None
 
     def value(d: Decided | None) -> int | None:
-        return int(d.value) if d is not None else None
+        return int(d.value) if d is not None and not is_user_no_payee(d) else None
 
     return Rewrite(
         type=str(kind.value) if kind is not None else None,

@@ -265,12 +265,15 @@ def test_emptying_a_reviewed_entrys_category_returns_its_unit_to_review(scene: S
     assert scene.row(e).review_flags == ["unclassified"]
 
 
-def test_the_flags_of_an_unconfirmed_unit_mark_every_entry_of_it(scene: Scene) -> None:
-    """Spec §6: settling proposes a category again for the emptied entry, so the whole unit is unconfirmed."""
+def test_an_emptied_category_is_not_a_decision_the_passes_propose_it_again(scene: Scene) -> None:
+    """Emptying type, category or counter-account is `reresolve`: history proposes Food again, and the
+    commit accepts what the draft shows (as for an untouched proposal), so the unit is confirmed."""
     scene.confirmed("REWE", "Food")
     _src, (a, b) = scene.movement(-600, -400, counterparty="REWE")
     scene.settle()
     plan, _ = preview_then_commit(scene, scene.draft(a, DraftEntry(b, category=fixed(None))))
-    assert plan.row(a).flags == ("unconfirmed",)
-    assert plan.row(b).flags == ("unconfirmed",)
-    assert plan.anchor_unit.state.reasons == ("non_standing_keys",)
+    food = scene.cats["Food"]
+    assert plan.row(b).fields["category"].value == food
+    assert scene.row(b).category_id == food
+    assert scene.row(b).derivation["category"]["pass"] == "user"
+    assert plan.anchor_unit.state.reasons == ()

@@ -101,3 +101,16 @@ def test_a_second_settle_writes_nothing() -> None:
     s = [Script("rule", {"payee": 5}), Script("history", {"category": 8})]
     first = go({}, s)
     assert diff(first, go(first, s)) == {}
+
+
+# ---- the third payee state: no payee by the user's decision (a standing key on a NULL) ------------
+
+
+def test_a_user_none_payee_is_kept_while_earlier_fields_change_and_never_proposed_over() -> None:
+    from app.core.resolution.types import USER_NO_PAYEE
+
+    current = {"payee": USER_NO_PAYEE, "category": dec(8, "rule")}  # the type is derived: changed
+    s = Script("rule", {"type": "flow", "payee": 6, "category": 9})
+    r = go(current, [s])
+    assert r["payee"] == USER_NO_PAYEE
+    assert r["category"].value == 9

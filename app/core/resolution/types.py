@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any
 
-from app.core.plugins.classifier import FIELD_ORDER, Field
+from app.core.plugins.classifier import FIELD_ORDER, NO_PAYEE, Field
 
 
 @dataclass(frozen=True, slots=True)
@@ -17,6 +17,17 @@ class Decided:
     value: int | str
     pass_name: str
     basis: Mapping[str, Any]
+
+
+# A flow's payee is in one of three states: a payee, undecided (NULL, no key) or NO PAYEE BY THE USER'S
+# DECISION (NULL with the standing key `{"pass": "user"}`). Resolution carries the third as this decision on
+# the payee: the value is the `NO_PAYEE` sentinel (a stored column holds NULL), the pass is `user`.
+USER_NO_PAYEE = Decided(NO_PAYEE, "user", {})
+
+
+def is_user_no_payee(d: Decided | None) -> bool:
+    """The user's decision of no payee (the standing third state), never a pass's proposal."""
+    return d is not None and d.value == NO_PAYEE and d.pass_name == "user"
 
 
 class Resolved(Mapping[Field, Decided]):

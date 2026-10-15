@@ -324,3 +324,42 @@ def test_a_value_without_a_key_is_kept(isolated_engine: Engine, acct: int) -> No
     after = _row(isolated_engine, e)
     assert after.category_id == c
     assert "payee" not in after.derivation  # the key of a field without a value goes
+
+
+# ---- the third payee state: no payee by the user's decision --------------------------------------
+
+
+def test_settle_never_proposes_a_payee_over_the_users_none(isolated_engine: Engine, acct: int) -> None:
+    """A payee rule does not override the decision; it stays, keyed `user`, and a second settle is a no-op."""
+    with isolated_engine.begin() as conn:
+        p, c = _payee(conn, "Rewe"), make_category(conn, "Food")
+        rs.rule(conn, "rewe payee", "payee", p, conditions=(rs.name_is("REWE"),))
+        rs.rule(conn, "cat", "category", c, conditions=(rs.name_is("REWE"),))
+        e = make_entry(
+            conn,
+            _src(conn, acct, counterparty_name="REWE"),
+            type="flow",
+            derivation=json.dumps({"type": {"pass": "user"}, "payee": {"pass": "user"}}),
+        )
+    assert settle(isolated_engine).error is None
+    r = _row(isolated_engine, e)
+    assert r.payee_id is None and r.derivation["payee"] == {"pass": "user"}
+    assert r.category_id == c  # the rule still decides the category
+    assert r.derivation["category"]["pass"] == "rule"
+    assert r.review_flags == []  # the decision keeps nothing unconfirmed
+    assert settle(isolated_engine).touched_entry_ids == ()
+
+
+def test_a_payee_condition_does_not_match_a_users_none(isolated_engine: Engine, acct: int) -> None:
+    with isolated_engine.begin() as conn:
+        p, c = _payee(conn, "Rewe"), make_category(conn, "Food")
+        rs.rule(conn, "cat", "category", c, conditions=(rs.payee_is(p), rs.name_is("REWE")))
+        e = make_entry(
+            conn,
+            _src(conn, acct, counterparty_name="REWE"),
+            type="flow",
+            derivation=json.dumps({"type": {"pass": "user"}, "payee": {"pass": "user"}}),
+        )
+    settle(isolated_engine)
+    r = _row(isolated_engine, e)
+    assert r.category_id is None and r.derivation["payee"] == {"pass": "user"}

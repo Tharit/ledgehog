@@ -19,6 +19,7 @@ from app.core.plugins.classifier import (
     HistorySource,
 )
 from app.core.resolution.resolve import Decided, Resolved, resolve
+from app.core.resolution.types import is_user_no_payee
 
 __all__ = ["diff", "rederive", "resolve_afresh"]
 
@@ -69,8 +70,10 @@ def rederive(
         nonlocal changed, last
         cur = current.get(field)
         own = field == "counter_account" and cur is not None and cur.value == entry.account_id
-        if cur is not None and cur.pass_name in STANDING_PASSES and not changed and not own:
-            new: Decided | None = cur
+        if is_user_no_payee(cur):
+            new: Decided | None = cur  # the user's decision stays until the user changes it (I18, I20)
+        elif cur is not None and cur.pass_name in STANDING_PASSES and not changed and not own:
+            new = cur
         else:
             if last is None or any(last.get(f) != d for f, d in fixed.items()):
                 last = resolve(

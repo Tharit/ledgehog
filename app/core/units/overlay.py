@@ -37,9 +37,18 @@ from app.core.plugins.classifier import (
 )
 from app.core.resolution import Decided, Resolved, resolve
 from app.core.resolution.load import UnconfirmedEntry
+from app.core.resolution.types import USER_NO_PAYEE, is_user_no_payee
 from app.core.settle.resolution import rewrite_of, stored_decisions
 from app.core.units.closure import UnitEntry, units_of
-from app.core.units.draft import DERIVED_FIELDS, PROPOSAL_PASSES, DraftEntry, DraftError, UnitDraft, _Unset
+from app.core.units.draft import (
+    DERIVED_FIELDS,
+    PROPOSAL_PASSES,
+    DraftEntry,
+    DraftError,
+    FieldDraft,
+    UnitDraft,
+    _Unset,
+)
 from app.core.units.plan import (
     Consequence,
     FieldResult,
@@ -57,6 +66,7 @@ from app.core.units.plan import (
 from app.core.units.state import UnitState, unit_state
 
 MAX_ROUNDS = 20
+RERESOLVE = FieldDraft(mode="reresolve")
 _USER: Mapping[str, Any] = {"pass": "user"}
 
 
@@ -300,7 +310,7 @@ class _Walk:
         hints: dict[Field, Decided] = {
             f: Decided(d.value, "user", {})
             for f in ("payee", "category", "counter_account")
-            if (d := row.draft.field(f)).mode == "fixed" and d.value is not None
+            if (d := _normalised(row.draft.field(f), f)).mode == "fixed" and d.value is not None
         }
         implied: str | None = None
         if any(f in hints for f in ("payee", "category")):
@@ -335,12 +345,12 @@ class _Walk:
 
         def step(f: Field) -> Decided | None:
             nonlocal changed
-            d = row.draft.field(f)
+            d = _normalised(row.draft.field(f), f)
             c = cur.get(f)
             new: Decided | None
             if d.mode == "fixed":
-                if d.value is None:
-                    new = None
+                if d.value is None:  # only the payee: 'no payee' is the user's decision (three states)
+                    new = c if is_user_no_payee(c) else USER_NO_PAYEE
                 elif c is not None and c.value == d.value:
                     new = c
                 else:
@@ -355,6 +365,8 @@ class _Walk:
                 own = f == "counter_account" and c is not None and c.value == entry.account_id
                 if owned and f in ("type", "counter_account"):
                     new = c  # the pair's, until the draft moves it
+                elif is_user_no_payee(c):
+                    new = c  # the user's 'no payee' stands until the user changes it (I18, I20)
                 elif c is not None and c.pass_name in STANDING_PASSES and not changed and not own:
                     new = c
                 elif not rederive_ok and not changed:
@@ -400,15 +412,26 @@ def _release(e: Stored) -> tuple[int | None, dict[str, Any]]:
     return counter, der
 
 
+def _normalised(d: FieldDraft, f: Field) -> FieldDraft:
+    """An emptied type, category or counter-account is not a decision: the passes propose again. Only the
+    payee has the decision 'no payee' (`fixed` with no value; the three states)."""
+    if d.mode == "fixed" and d.value is None and f != "payee":
+        return RERESOLVE
+    return d
+
+
 def _commit_key(
     stored_dec: Decided | None,
     stored_key: Mapping[str, Any] | None,
     final: Decided | None,
     shown: Mapping[str, Any] | None,
 ) -> Mapping[str, Any] | None:
-    """The key a commit writes for a value (§5.9, D212); None for an empty field."""
+    """The key a commit writes for a value (§5.9, D212); None for an empty field. The user's decision of no
+    payee is an empty field that carries the standing key `user`."""
     if final is None:
         return None
+    if is_user_no_payee(final):
+        return _USER
     if stored_dec is not None and stored_dec.value == final.value and stored_dec.pass_name in STANDING_PASSES:
         return stored_key if stored_key is not None else _USER
     if shown is not None:
@@ -531,9 +554,18 @@ def _problems(rows: Sequence[_Row], world: World) -> list[Problem]:
         if (
             r.category_id is not None
             and r.draft.category.mode == "fixed"
+            and r.draft.category.value is not None
             and r.category_id not in world.categories
         ):
             out.append(Problem("stale_reference", r.id, "category_id", {"id": r.category_id}))
+        if (
+            r.accepted
+            and r.payee_id is None
+            and isinstance(r.derivation, Mapping)
+            and "payee" in r.derivation
+            and r.type != "flow"
+        ):
+            out.append(Problem("type_conflict", r.id, "payee"))  # the user's 'no payee' is for flows (I9)
         if r.payee_id is not None and r.draft.payee.mode == "fixed" and r.payee_id not in world.payees:
             out.append(Problem("stale_reference", r.id, "payee_id", {"id": r.payee_id}))
     for src_id, legs in sorted(transfers.items()):
@@ -636,7 +668,7 @@ def _write_accepted(r: _Row, decisions: Mapping[Field, Decided | None]) -> None:
 
     r.type = None if decisions["type"] is None else str(decisions["type"].value)
     r.payee_id, r.category_id, r.counter_account_id = (
-        value("payee"),
+        None if is_user_no_payee(decisions["payee"]) else value("payee"),
         value("category"),
         value("counter_account"),
     )
@@ -670,10 +702,12 @@ def _field_results(r: _Row) -> dict[Field, FieldResult]:
             and r.s1_derivation.get(f) == der.get(f)
         )
         evidence = (r.evidence or {}).get(f) if untouched else after.get(f)
+        # an empty payee that carries the user's key is a decision, shown like a value
+        shown = value is not None or is_user_no_payee(evidence)
         out[f] = FieldResult(
             value=value,
-            evidence=evidence if value is not None else None,
-            key=der.get(f) if value is not None else None,
+            evidence=evidence if shown else None,
+            key=der.get(f) if shown else None,
             stored_value=stored_values[f],
             stored_key=r.stored.derivation.get(f) if r.stored else None,
         )
