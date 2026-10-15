@@ -1495,7 +1495,8 @@ paired it is the partner's account (I10): a pair made with a leg that had no
 counter-account sets it **as part of the pair** — its key has the pair's pass
 and the basis `{"from": "counterpart"}`; writing it is not a change of value that derives the
 fields after it again (§5.9); and it is cleared with the pair. A
-counter-account the leg had before it was paired is its own, and stays.
+counter-account the leg had before it was paired is its own, and stays. The
+pair key `counterpart` itself, on both legs, has an empty basis `{}`.
 
 Matching considers only legs already typed `transfer` — by resolution or by
 the user. Pairing never turns a flow into a transfer; it only decides which
@@ -1516,8 +1517,9 @@ A leg's **candidates** are the unpaired transfer legs on another account that:
 - and are not distinguished from it by their metadata:
   - where either leg's counter-account is known — from pass 0, a rule,
     history or the user (§5.9) — the other leg is on that account;
-  - where both carry a real end-to-end id, the ids are equal (placeholders such
-    as `NOTPROVIDED` count as absent).
+  - where both carry a real end-to-end id, the ids are equal (the placeholders
+    `NOTPROVIDED` and `NONREF`, and an empty id, compared case-insensitively,
+    count as absent).
 
 The purpose is not a filter: banks often rewrite it on the receiving side. It
 only breaks ties (below).
@@ -1531,12 +1533,16 @@ never paired automatically.
 Unpaired legs are processed in order of booking date, ties by id. Where a leg
 has more than one candidate, those whose purpose equals its own after the
 canonicalisation of §5.2 are preferred, if there are any. The leg is then
-paired with its closest-dated remaining candidate. A leg with no candidate
-stays unpaired.
+paired with its closest-dated remaining candidate; at equal distance in days
+the one with the earlier `booked_on`, then the lower entry id. A leg with no
+candidate stays unpaired.
 
 **A pair, once made, stands.** The matcher's pairing is a standing value
 (§5.9): it is not recomputed when other legs arrive, and falls only when a
-leg's type or counter-account changes (I18) or a user re-pairs it. Which of
+leg's type or counter-account changes (I18) or a user re-pairs it. A paired
+leg of an unconfirmed unit is re-derived by settling like any other (§5.9);
+when its type or its own counter-account changes, the pair is released on both
+legs and may be made again in the same round. Which of
 several candidates a leg pairs with can therefore depend on the order in which
 they arrived; the candidates share both accounts and the exact amount and are
 not told apart by an end-to-end id, so the order changes only which dates sit
@@ -1579,6 +1585,10 @@ them:
   transfer legs and untyped entries first, then legs paired elsewhere, shown
   with their partner; within each group exact matches first, then by distance
   in date;
+- for a leg without a counter-account, **every opposite-sign candidate in the
+  window on every account the currency rule allows**, in the same groups and
+  order; a pick sets the counter-account as the pair's (above), with a key of
+  pass `user`;
 - for a leg without a partner whose counter-account is unsynced, **a
   counter-leg**, which the commit creates (below).
 
@@ -1589,14 +1599,18 @@ leg whose own known counter-account is another account. Open offers decide
 what the preview proposes (below).
 
 For a partner booked later than the window allows, the picker can **widen the
-window** for that one pick. Automatic pairing keeps the window.
+window** for that one pick, by a bounded request parameter of at most 90 days
+that the server checks the pick against. Automatic pairing keeps the window.
 
 A pick joins the picked row to the unit being reviewed. Picking a leg paired
 elsewhere breaks that pair too, so up to two former partners — the reviewed
 leg's and the picked leg's — go through the removal routine (§5.6), and the
 preview shows both. There is no pick of "no partner": a wrong pair is
 corrected by picking the right one, once it has arrived. A swap takes one
-pick, and a cycle of *n* wrong pairs *n* − 1.
+pick when the legs it frees keep a counter-account of their own; a leg whose
+counter-account its pair set loses it with the pair, so it has nothing to
+pair by and needs a pick of its own. A cycle of *n* wrong pairs takes *n* − 1
+picks at best.
 
 The preview proposes an exact open offer where there is one, or else, where
 the leg has no open offer at all, the counter-leg where one is offered. Open
@@ -1644,8 +1658,8 @@ entry (§5.4).
 
 **Its amount.** In the same currency, the negated amount of its partner (I10).
 Across currencies, the partner's instructed amount, negated, where there is
-one; otherwise the user enters the amount received, and may be shown an
-estimate at the reference rate. A cross-currency destination without an
+one; otherwise the user types the amount received: the counter-leg carries no
+estimate, because conversion happens only in reporting (I27). A cross-currency destination without an
 instructed amount only ever comes from a user's choice — machine proposals obey
 the currency rule — so a user is always there to enter it. A later correction
 goes through the entry form, like any user-authored amount.
@@ -1680,15 +1694,21 @@ queue explains the leg when read — "needs an account in USD", derived from its
 instructed currency — and offers the existing accounts in that currency or
 "add account", prefilled with the currency. Adding the account creates
 nothing else; the legs that need it then offer it first — where the currency
-rule allows exactly one account, the preview proposes it — and each is
-confirmed on its own (§6).
+rule allows exactly one account, the preview preselects it, and it becomes a
+decision of pass `user` when the unit is committed, not a stored proposal —
+and each is confirmed on its own (§6).
+
+A leg **needs an account** when it is an unpaired transfer leg with no
+counter-account, has an instructed currency, and no open non-own account in
+that currency exists (by the currency rule). A leg without an instructed
+currency and without a counter-account does not: it stays in pending review.
 
 #### Keys on pairs
 
 A pair carries a `counterpart` key on both legs, written in one transaction
 and cleared together. It names its maker: pass `matcher_decision` for a pair
 settling made, and pass `user` for one a commit wrote, a counter-leg's
-included. Both are standing (§5.9). Whether the pair needs review is
+included. Both are standing (§5.9); their basis is empty (`{}`). Whether the pair needs review is
 decided by the legs' other keys, chiefly where the counter-account came from:
 
 - **Decided** — carrying a standing key (§5.9): pass 0, a rule, a user, or
@@ -1894,8 +1914,10 @@ after it are resolved around it.
 with a standing key is kept and joins the fixed set the later fields are
 resolved around; a field with a proposal key, or no key, is resolved afresh.
 When a field's value changes, the later fields that are standing are derived
-again (I18). Settling writes only the differences, so a second settle writes
-nothing.
+again (I18). A paired leg is walked like any other: when its type or its own
+counter-account changes, the pair is released on both legs and may be made again
+in the same round (§5.7). Settling writes only the differences, so a second
+settle writes nothing.
 
 For each field, the first pass to produce a value wins; a pass without the
 evidence it requires proposes nothing, and the next pass is tried — except

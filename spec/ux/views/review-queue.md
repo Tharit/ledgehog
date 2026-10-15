@@ -34,11 +34,13 @@ section, with the count per section.
 
 - **Pending review** — the units that have what they need and await a
   decision.
-- **Needs an account** — unmatched legs whose counter-account does not exist,
-  grouped by the currency they need, with one add action per group:
+- **Needs an account** — unmatched legs whose counter-account does not exist
+  (`spec.md` §5.7), grouped by the currency they need, with one add action
+  per currency group; this per-currency grouping is the one defined grouping
+  in the queue:
 
   ```
-  3 withdrawals need an account in USD          [ Add account ]
+  3 transfers need an account in USD          [ Add account ]
   ```
 
   The new account is then offered first on each, and each is confirmed on
@@ -46,7 +48,8 @@ section, with the count per section.
 - **Waiting** — entries expecting information that has not had its chance to
   arrive (`spec.md` §6): a partner leg, which cannot be confirmed until
   paired, and a document, which can. Waiting is a hint; the unit stays
-  editable.
+  editable. A unit waiting for a partner gives its reason in one line:
+  "Waiting for <account>, synced through <date>".
 
 **Unpaired legs show their offers** (`spec.md` §5.7) — unpaired legs and
 entries on the counter-account first, exact matches leading, then legs paired
@@ -55,7 +58,8 @@ an exact open offer preselected, or the counter-leg where there is no open
 offer, so the common case stays one keystroke. Where only open offers of
 another amount exist, nothing is preselected and the user picks. A leg paired
 elsewhere is never preselected, and a "load more candidates"
-action widens the window for one pick. An unmatched leg whose counter-account
+action widens the window for one pick. The offers are listed in the panel's
+popover (`ux/patterns.md` §11). An unmatched leg whose counter-account
 is synced says so: its partner is missing from the import, so the remedy is to
 import what is missing, or to convert the leg if it is not a transfer.
 

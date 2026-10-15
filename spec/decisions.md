@@ -3784,3 +3784,81 @@ Spec §3.7, §6, authorship table; architecture §4.1; patterns §5. Supersedes 
   all, settings).
 - Rejected: *the full tag set in the draft* (overwrites a concurrent change); *creating new tags only at commit*
   (names in the draft, more validation); *tags outside the draft* (the author's UX tests found it restrictive).
+
+## D219 Transfer matching: offers without a counter-account, tie-breaks, placeholders, no estimate
+
+Spec §5.7, §5.9; architecture §4.1, §5.2.
+
+- **A leg without a counter-account is offered every opposite-sign candidate** in the window on every account the
+  currency rule allows; a pick sets the counter-account as the pair's, with pass `user`. This makes I33's "offered in
+  review" concrete.
+- **Equal date distance:** the earlier `booked_on`, then the lower entry id; pairing is deterministic.
+- **The pair key `counterpart` has an empty basis `{}`** on both legs; the counter-account a pair sets keeps
+  `{"from": "counterpart"}`. Nothing reads the pair key's basis.
+- **Placeholder end-to-end ids** `NOTPROVIDED`, `NONREF` and empty, case-insensitively, count as absent.
+- **Needs an account:** an unpaired transfer leg with no counter-account, an instructed currency and no open
+  non-own account in that currency, by the one currency-rule function. A leg without an instructed currency and
+  without a counter-account stays in pending review.
+- **The one fitting account is a preselection** in the preview that becomes a `user` decision on commit, not a stored
+  proposal.
+- **A cross-currency counter-leg carries no estimate:** conversion happens only in reporting (I27); the user types
+  the amount received.
+- **Widening the window for one pick** is a request parameter of at most 90 days, checked by the server.
+- **A paired leg of an unconfirmed unit is re-derived by settling;** when its type or its own counter-account
+  changes, the pair is released on both legs and may be made again in the same round (I18). Settling's first step
+  no longer skips paired legs.
+- Rejected: *offers only on a known counter-account* (a leg with none could never be paired by hand); *a random
+  or first-seen tie-break* (order-dependent); *a reference-rate estimate on the counter-leg* (conversion outside
+  reporting); *an unbounded window for a pick* (offers without limit); *a stored proposal for the one fitting
+  account* (it would hold the unit unconfirmed with nothing to review).
+
+## D220 Transfer pairing in the panel and the queue
+
+Spec §5.7; patterns §4.2, §4.3, §11.1; review-queue; architecture §4.1. Qualifies D213: the per-currency grouping
+inside Needs an account is the one defined grouping.
+
+- **Offers are always in a popover,** never inline: the transfer block shows the partner summary (for an unpaired
+  leg the proposed offer, preselected, or "no partner yet") with a "Choose partner…" trigger, for a paired leg
+  "Pick another partner…". The popover scrolls with many offers; a pick is a draft edit. The offers and the amount
+  received are fields of the draft editor.
+- **No "Unpair" control:** the remedies are another partner, converting to a flow, or changing the counter-account.
+- **The queue says "N transfers need an account in USD"** with one "Add account" action per currency group (a card
+  payoff abroad is also a transfer); a waiting unit gives "Waiting for <account>, synced through <date>"; counts
+  are per section.
+- **"Add account" is a form dialog** (currency locked to the one needed); the full accounts page comes later.
+- **The badge is `unlink`** with the tooltip "Transfer leg without a partner"; the `waiting` tooltip names the
+  partner's account for an unpaired transfer leg. Evidence reads "paired with <account>" with "matched
+  automatically" or "set by you"; the counter-account a pair set reads "from its partner", with no clear control.
+- **The architecture carries it** as the draft's `pairing` field, offers per transfer leg in the preview, the unit
+  state distinguishing waiting from unmatched, a commit closure and lock set extended to the partner and the
+  counter-leg's account, and counter-legs created by a commit only.
+- Rejected: *an inline offers list for an unpaired leg and a popover for a paired one* (two surfaces for one
+  choice); *an "Unpair" control* (the spec has no "no partner" pick); *"withdrawals" in the queue wording* (not all
+  are); *an inline Add account form* (patterns: no inline forms); *a stored Add-account follow-up that moves queue
+  rows* (the snapshot holds).
+
+## D221 A swap takes one pick only where the freed legs keep their own counter-account
+
+Narrows the claim in D153 and D178 ("a swap takes one pick"). A counter-account a pair set is not an independent
+decision: it was inferred from a partner that a pick now rejects, so it leaves with the pair (§5.7) and a leg left
+behind keeps only what it had before. Keeping it would pin the leg to a wrong account, so the matcher's counter-account
+filter (I33) could never offer the right partner, and a re-pair would clash with I10.
+
+- **A swap** frees two legs. A freed leg that had its own counter-account (pass 0, a rule, history or the user) is
+  re-paired by settling; one whose counter-account its pair set has none and needs a pick of its own.
+- Rejected: *keeping the pair-set counter-account as a non-standing key after release* (a new kind of key to save one
+  pick in a rare case).
+
+## D222 The entry form takes one signed amount
+
+Spec §3.9, patterns §2. The form had an unsigned amount and an Income/Expense control. A leg of a transfer, such as
+cash paid into the bank, is neither, and the control also hid the sign that every other view shows (patterns §2:
+the sign is shown, not hidden). §3.9 only says the sign is prefilled — an expense — and can be changed, so the control
+was a patterns choice.
+
+- **One signed amount field,** prefilled with a minus (the expense default of §3.9), with the hint
+  "− money out, + money in". A typed `+`, `−` or `-` sets the sign.
+- **An amount without a sign is refused,** like any ambiguous input (architecture §6.6): the minus is prefilled, so
+  clearing it is the only way to omit it.
+- Rejected: *a neutral "Money out | Money in" control* (a mouse or extra key for a choice the sign already states,
+  and more space than the field).

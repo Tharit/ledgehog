@@ -520,6 +520,31 @@ present tag and removing an absent one are no-ops. A tag deleted meanwhile refus
 that changes only tags is valid and, like any commit without a change, bumps no version; membership changes
 move no `ledger_entry.version` in any case, so no version is involved in them.
 
+**Pairing in preview and commit** (`spec.md` §5.7). The draft carries a `pairing`
+field per transfer leg, with a mode: `keep`, `pick` (a partner entry id),
+`counter_leg` (a temporary id and the amount received) or `reresolve`. The
+preview response carries, per transfer leg, its **offers**: each with a kind
+(`open_leg`, `untyped_entry`, `paired_elsewhere`, `counter_leg`), `exact`,
+`proposed`, its group order, the partner summary of a leg paired elsewhere and
+effect hints (typed as transfer, the difference that becomes a flow, the pair it
+breaks), and `has_more` where the list is cut. The window for one pick is a
+request parameter, at most 90 days, and the server validates the pick against
+it. The unit's state distinguishes `waiting` from `unmatched` and carries the
+account waited for; the queue's `needs_account` entries carry the currency
+needed. A pick or an offer the server does not recognise is refused with a
+problem code: `partner_not_offered`, `partner_in_unit`, `counter_leg_not_offered`,
+`received_amount_required`, `received_amount_sign`, `counter_leg_account_synced`.
+
+The commit's closure and locks extend to the pick: the closure includes the
+picked partner's own closure and the former partners, and the lock set the
+counter-leg's account — up to four accounts, locked in ascending order, then the
+rows ascending — with the closure read again under the locks (409 `unit_moved`).
+**Only a commit creates a counter-leg:** a user-authored source on the unsynced
+account with importer NULL, its entry typed `transfer`, with the keys `user`;
+the commit then follows the partner's amount where the spec says
+(`spec.md` §5.7). The preview overlay runs the same pure pairing function as
+settling, so the preview equals the commit plus settling.
+
 #### The ledger list and tags
 
 **The list** is `GET /api/ledger/entries`: one page of the entries a filter selects, and the count of all of
@@ -1032,7 +1057,12 @@ Transaction boundaries:
      of any key, and no "none" — judged on step 1's result, which for them is
      the resolution without a document;
   3. resolution again of the fields after a link step 2 made;
-  4. transfer pairing, in booking-date order (`spec.md` §5.7);
+  4. transfer pairing (`pair_transfers`), in booking-date order (`spec.md`
+     §5.7), over the unpaired transfer legs of the covered units and their
+     candidates; the matching window is the connection setting
+     `ledger.matching_window_days`, which core reads from the connection like
+     `ledger.max_rate_age` and never from configuration. A pair released by
+     step 1 can be made again in the same round;
   5. review flags, and with them which units are confirmed — recording
      "none", keyed `matcher_decision`, for each transaction of a newly
      confirmed unit that has no document key (`spec.md` §6).
@@ -1046,8 +1076,9 @@ Transaction boundaries:
   the "none" it records keeps a document source added later from doing so
   (`spec.md` I20) — so the confirmed set only grows; two rounds are the
   ordinary case, and a maximum round count turns a step that never converges
-  into a reported failure. The five steps are an ordered list that later work
-  registers into; steps 1–4 are no-ops until it does. That is what makes settling idempotent (`spec.md` I37).
+  into a reported failure. The five steps are an ordered list. Step 1 re-derives a paired leg of an
+  unconfirmed unit like any other and releases its pair on both legs when its
+  type or its own counter-account changes (`spec.md` §5.7). That is what makes settling idempotent (`spec.md` I37).
 - **A settle that fails** after the write it follows committed leaves the
   write standing and reports the failure in the operation's response —
   `settle` never raises for its own failure, it returns it as
@@ -1317,8 +1348,8 @@ returned by `GET /api/config`.
    — runs and importer instances reference them — and loses their sessions. A
    password change is therefore a changed variable and a restart; the
    application has no password-change flow.
-6. Set the connection settings that reach SQL (`ledger.max_rate_age`) on every
-   connection the pool opens.
+6. Set the connection settings that reach SQL (`ledger.max_rate_age`,
+   `ledger.matching_window_days`) on every connection the pool opens.
 7. **Settle.** Settling runs once, so a changed window or any other changed
    configuration takes effect on stored data like any other write (`spec.md`
    §5, I37).
@@ -1659,8 +1690,8 @@ Layers:
   untyped entries, any amount, a different-amount pick never proposed but picked, an exact open offer proposed,
   splitting the larger leg, offers on waiting legs, a counter-leg offered
   only for an unsynced counter-account, a paired leg re-paired from its
-  offers, including a leg paired elsewhere — a swap fixed in one pick, a
-  three-cycle in two — never preselected, sorted after unpaired offers, a
+  offers, including a leg paired elsewhere — a swap fixed in one pick where
+  the freed legs keep their own counter-accounts, a three-cycle in two — never preselected, sorted after unpaired offers, a
   window widened for one pick, and a leg left behind paired as on ingest
   where its counter-account is decided, and shown in the operation's result; a
   counter-account rule not matching an account closed by the booking date;

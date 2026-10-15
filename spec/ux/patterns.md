@@ -51,9 +51,12 @@ says so; those are revisited after the first month of use, not per view.
 - **Unvalued is not zero.** A value with no usable rate renders as "unvalued"
   (a dash with a tooltip naming the currency and its rate age, spec §3.11),
   never as `0.00`, and totals that omit unvalued amounts say so (spec §8).
-- **Entering amounts.** The entry form takes an unsigned amount plus a sign
-  control prefilled as in spec §3.9; parsing follows the active locale and
-  rejects ambiguous input rather than guessing (architecture §6.6).
+- **Entering amounts.** The entry form takes one signed amount, prefilled
+  with a minus as spec §3.9 prefills an expense; a hint under the field says
+  "− money out, + money in", because a leg of a transfer is neither income
+  nor expense. A typed `+`, `−` or `-` sets the sign; an amount without a sign
+  is refused rather than guessed, as is anything ambiguous. Parsing follows
+  the active locale (architecture §6.6).
 
 ## 3. Dates and time
 
@@ -110,10 +113,11 @@ spec §6), one consistent badge per token and nothing else:
 | `unclassified` | "?" | type or category missing |
 | `document_suggested` | document icon | a document may explain this |
 | `waiting` | clock | partner or document still expected |
-| `unmatched_transfer` | broken link | transfer leg without a partner |
+| `unmatched_transfer` | unlink | Transfer leg without a partner |
 
 A confirmed entry shows no badge. Badges carry a tooltip with the sentence in
-the third column. Account and currency status (spec §3.11) is never shown as an
+the third column; the `waiting` tooltip names the partner's account when the
+entry is an unpaired transfer leg. Account and currency status (spec §3.11) is never shown as an
 entry badge; it belongs to the account (§4.4).
 
 ### 4.3 Derivation and evidence
@@ -132,6 +136,9 @@ Every derived value can show its basis, rendered from the derivation key
 | `user` with a basis | "confirmed by you, proposed by *…*" |
 | `user` without one | "set by you" |
 | `user` on an empty payee | "No payee" shown muted, with "set by you" |
+| `counterpart`, `matcher_decision` | "paired with *account*" / "matched automatically" |
+| `counterpart`, `user` | "paired with *account*" / "set by you" |
+| the counter-account a pair set (basis `{"from": "counterpart"}`) | "from its partner", with no clear control |
 
 Proposals (history, model, matcher proposal) are visually distinct from
 decided values — e.g. italic or a lighter weight — and the distinction is the
@@ -380,6 +387,15 @@ that must outlive navigation lives on a page and in a store that outlives it.
 A popover never makes a write that needs a decision; choosing or toggling is
 its only write. **There is no inline form**: adding, and editing more than one
 field, are dialogs or pages. The entry form is a form dialog; once it has created the transaction the work panel opens on it. It offers a secondary "Add and add another" beside "Add", which clears the form for the next transaction instead.
+
+In the work panel, a transfer leg's partner offers and the amount received of a
+counter-leg are fields of the draft editor, not inline forms. The transfer block shows the
+partner summary — for an unpaired leg the proposed offer, preselected, or "no
+partner yet" — with a "Choose partner…" trigger (for a paired leg "Pick another
+partner…") that opens the **offers popover**; offers are never listed inline.
+The popover scrolls where there are many offers, and a pick is a draft edit.
+There is no "Unpair" control: the remedies are another partner, converting the
+leg to a flow, or changing its counter-account. "Add account" is a form dialog.
 
 ### 11.2 Forms and keys
 
