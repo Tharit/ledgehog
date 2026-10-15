@@ -34,7 +34,8 @@ export type TagEdit = { add: readonly number[]; remove: readonly number[] };
 
 /**
  * A row the draft creates: it splits the source of a stored entry. `tags` are the tags it starts
- * with (the stored ones of that entry: what the server copies); the tag change applies on top.
+ * with (the stored ones of that entry: what the server copies); the row's tag change applies on
+ * top, and starts as the difference to what the original showed when the row was added.
  */
 export type NewSplit = { id: number; sourceEntryId: number; tags: readonly number[] };
 
@@ -333,9 +334,20 @@ export class Draft {
 	addSplit(sourceEntryId: number): Draft {
 		const id = this.nextTempId;
 		const tags = this.#s.base.get(sourceEntryId)?.tags ?? [];
+		// the row shows what the original shows now (its draft tags); the server copies the stored
+		// ones, so the difference goes into the row's own change. After this the row is independent.
+		const shown = this.effectiveTagIds(sourceEntryId);
+		const change = tagEdit(
+			shown.filter((t) => !tags.includes(t)),
+			tags.filter((t) => !shown.includes(t))
+		);
 		return this.#with({
 			splits: [...this.#s.splits, { id, sourceEntryId, tags }],
-			edits: new Map(this.#s.edits).set(id, { fields: {}, amount: null })
+			edits: new Map(this.#s.edits).set(id, {
+				fields: {},
+				amount: null,
+				...(change ? { tags: change } : {})
+			})
 		});
 	}
 

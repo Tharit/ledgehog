@@ -813,6 +813,20 @@ describe('tags', () => {
 		expect(flow.draft?.effectiveTagIds(1)).toEqual([30]);
 	});
 
+	it('Reset drops a split row together with its tags', async () => {
+		const { flow } = begin();
+		await settle();
+		flow.toggleTag(1, 99);
+		flow.addSplit(1);
+		flow.toggleTag(-1, 30);
+
+		flow.discard();
+
+		expect(flow.draft?.splits).toEqual([]);
+		expect(flow.isDirty).toBe(false);
+		expect(flow.draft?.effectiveTagIds(1)).toEqual([30]);
+	});
+
 	it('re-resolve keeps the tag changes', async () => {
 		const { flow } = begin();
 		await settle();

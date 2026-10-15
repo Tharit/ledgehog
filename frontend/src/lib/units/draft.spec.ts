@@ -532,3 +532,59 @@ describe('tags of an entry that is gone', () => {
 		expect(draft.toggleTag(99, 1)).toBe(draft);
 	});
 });
+
+describe('tags of a new split row follow the original as shown', () => {
+	const A = 30;
+	const B = 31;
+	const one = unit({
+		anchor_entry_id: 1,
+		entries: [entry({ id: 1, version: 3, unit_key: 1, source_transaction_id: 5, tag_ids: [A] })]
+	});
+	const start = () => Draft.of(one);
+
+	it('starts from the original’s draft tags and sends the difference to the stored ones', () => {
+		const draft = start().toggleTag(1, A).toggleTag(1, B).addSplit(1).setSplitAmount(-1, -500);
+		expect(draft.effectiveTagIds(-1)).toEqual([B]);
+		const row = draft.toRequest().entries!.find((e) => e.id === -1)!;
+		expect(row.tags).toEqual({ add: [B], remove: [A] });
+	});
+
+	it('takes the stored set with an empty change from an untouched original', () => {
+		const draft = start().addSplit(1).setSplitAmount(-1, -500);
+		expect(draft.effectiveTagIds(-1)).toEqual([A]);
+		expect(draft.tagEdit(-1)).toBeUndefined();
+		expect(draft.toRequest().entries![0]).not.toHaveProperty('tags');
+	});
+
+	it('is independent once added: later edits of the original do not move it', () => {
+		const draft = start().addSplit(1).toggleTag(1, A).toggleTag(1, B);
+		expect(draft.effectiveTagIds(1)).toEqual([B]);
+		expect(draft.effectiveTagIds(-1)).toEqual([A]);
+	});
+
+	it('toggles relative to its start set', () => {
+		const draft = start().toggleTag(1, A).addSplit(1); // starts as []
+		expect(draft.effectiveTagIds(-1)).toEqual([]);
+		const on = draft.toggleTag(-1, A);
+		expect(on.effectiveTagIds(-1)).toEqual([A]);
+		expect(on.tagEdit(-1)).toBeUndefined(); // back to the stored set
+		expect(draft.toggleTag(-1, B).tagEdit(-1)).toEqual({ add: [B], remove: [A] });
+	});
+
+	it('keeps the row’s change relative to the reloaded stored tags through a rebase', () => {
+		const draft = start().toggleTag(1, A).toggleTag(1, B).addSplit(1);
+		const now = unit({
+			anchor_entry_id: 1,
+			entries: [entry({ id: 1, version: 8, unit_key: 1, source_transaction_id: 5, tag_ids: [B] })]
+		});
+		const next = draft.rebase(now);
+		// B is stored now: only the removal of A is moot too, so nothing is left to change
+		expect(next.effectiveTagIds(-1)).toEqual([B]);
+		expect(next.tagEdit(-1)).toBeUndefined();
+	});
+
+	it('removing the row takes its tags with it', () => {
+		const draft = start().addSplit(1).toggleTag(-1, B).removeSplit(-1);
+		expect(draft.isDirty).toBe(false);
+	});
+});
