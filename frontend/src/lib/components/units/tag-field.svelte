@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import Picker from '#lib/components/common/picker.svelte';
 	import TagChip from '#lib/components/common/tag-chip.svelte';
@@ -10,7 +11,8 @@
 	// The tags of one entry under the draft: its chips, and a multi-choice picker (the shared one,
 	// patterns §11.2) to put tags on or take them off. Choosing keeps the picker open; adding a tag
 	// that does not exist yet creates it at once (the tag is no part of the draft) and puts it on
-	// the entry. There is no clear X and nothing is proposed: tags are the user's alone.
+	// the entry. Each chip has a remove X (a draft edit, no confirmation) and nothing is proposed: tags
+	// are the user's alone.
 	let {
 		tagIds,
 		lookups,
@@ -28,6 +30,21 @@
 	} = $props();
 
 	let open = $state(false);
+	let field = $state<HTMLElement>();
+
+	// the chip is gone: focus moves on to the next remove X (else the previous, else the trigger) so
+	// the panel's keys keep working
+	async function remove(tagId: number, index: number) {
+		if (busy) return;
+		ontoggle(tagId);
+		await tick();
+		const targets = field?.querySelectorAll<HTMLElement>(
+			'[data-slot="tag-remove"], [data-picker="tags"]'
+		);
+		if (!targets || targets.length === 0) return;
+		const last = targets.length - 1;
+		targets[Math.min(index, last)]?.focus();
+	}
 	const tags = $derived(
 		tagIds.flatMap((id) => {
 			const tag = lookups.tags.get(id);
@@ -38,13 +55,18 @@
 	const checked = $derived(new Set(tagIds));
 </script>
 
-<div class="flex flex-wrap items-center gap-1" data-slot="tag-field">
-	{#each tags as tag (tag.id)}
-		<TagChip name={tag.name} color={resolveTag(tag).color} />
+<div bind:this={field} class="flex flex-wrap items-center gap-1" data-slot="tag-field">
+	{#each tags as tag, i (tag.id)}
+		<TagChip
+			name={tag.name}
+			color={resolveTag(tag).color}
+			onremove={() => void remove(tag.id, i)}
+		/>
 	{/each}
 	<Popover.Root bind:open>
 		<Popover.Trigger
-			aria-label="Tags"
+			aria-label="Add or remove tags"
+			title="Add or remove tags"
 			data-picker="tags"
 			class="inline-flex h-5 shrink-0 items-center gap-1 rounded-sm border border-dashed border-input px-1.5 text-xs text-muted-foreground outline-none hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
 		>

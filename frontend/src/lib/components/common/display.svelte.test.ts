@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/svelte';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/svelte';
+import { describe, expect, it, vi } from 'vitest';
 import AbsentValue from './absent-value.svelte';
 import AccountDot from './account-dot.svelte';
 import DateDisplay from './date-display.svelte';
@@ -112,6 +112,26 @@ describe('TagChip', () => {
 		expect(chip).toHaveTextContent('Lisbon trip');
 		expect(chip.getAttribute('style')).toContain('--chip-bg: var(--dim-lavender-tint)');
 		expect(chip.getAttribute('style')).toContain('--chip-fg: var(--dim-lavender)');
+	});
+
+	it('has no remove X unless it is given onremove', () => {
+		render(TagChip, { props: { name: 'Lisbon trip' } });
+
+		expect(screen.queryByRole('button')).toBeNull();
+	});
+
+	it('with onremove shows a labelled X that calls it, on click and on Backspace or Delete', async () => {
+		const onremove = vi.fn();
+		render(TagChip, { props: { name: 'Lisbon trip', onremove } });
+
+		const remove = screen.getByRole('button', { name: 'Remove tag Lisbon trip' });
+		expect(remove).toHaveClass('opacity-0');
+		await fireEvent.click(remove);
+		await fireEvent.keyDown(remove, { key: 'Backspace' });
+		await fireEvent.keyDown(remove, { key: 'Delete' });
+		await fireEvent.keyDown(remove, { key: 'a' });
+
+		expect(onremove).toHaveBeenCalledTimes(3);
 	});
 });
 

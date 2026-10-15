@@ -1234,18 +1234,66 @@ describe('Edit entry and Delete entry', () => {
 describe('tags', () => {
 	const tagged = () =>
 		unit({ anchor_entry_id: 1, entries: [entry({ id: 1, unit_key: 1, tag_ids: [30] })] });
-	const tagsButton = (dialog: HTMLElement) => within(dialog).getByRole('button', { name: 'Tags' });
+	const tagsButton = (dialog: HTMLElement) =>
+		within(dialog).getByRole('button', { name: 'Add or remove tags' });
 
-	it('shows the chips of the entry and a picker to change them; nothing is clearable', async () => {
+	it('shows the chips of the entry and a picker to change them; nothing is proposed', async () => {
 		const { dialog } = await openPanel(tagged());
 
 		const field = dialog.querySelector<HTMLElement>('[data-slot="tag-field"]')!;
 		expect(within(field).getByText('Lisbon trip')).toBeInTheDocument();
 		expect(within(dialog).queryByText(/Saved immediately/)).toBeNull();
-		// the trigger is the row's only control: no clear X, nothing proposed
-		expect(within(field).getAllByRole('button')).toHaveLength(1);
+		// the chip's remove X and the trigger are the row's only controls
+		expect(within(field).getAllByRole('button')).toHaveLength(2);
 		expect(within(dialog).getByText('Tags', { selector: 'dt' })).toBeInTheDocument();
 	});
+
+	it('each chip has a remove X: in the DOM, hidden by opacity at rest, shown on hover and focus', async () => {
+		const { dialog } = await openPanel(tagged());
+
+		const remove = within(dialog).getByRole('button', { name: 'Remove tag Lisbon trip' });
+		expect(remove).toHaveAttribute('title', 'Remove tag Lisbon trip');
+		expect(remove).toHaveClass('opacity-0');
+		expect(remove).toHaveClass('group-hover:opacity-100');
+		expect(remove).toHaveClass('group-focus-within:opacity-100');
+		expect(remove).toHaveClass('[@media(hover:none)]:opacity-100');
+		expect(remove).not.toHaveClass('hidden');
+		expect(tagsButton(dialog)).toHaveAttribute('title', 'Add or remove tags');
+	});
+
+	it('clicking the X takes the tag off the entry and makes the draft dirty; no confirmation', async () => {
+		const { dialog } = await openPanel(tagged());
+		expect(within(dialog).getByRole('button', { name: 'Reset' })).toBeDisabled();
+
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Remove tag Lisbon trip' }));
+
+		await waitFor(() =>
+			expect(lastRequest().entries).toEqual([{ id: 1, tags: { add: [], remove: [30] } }])
+		);
+		await waitFor(() => expect(within(dialog).queryByText('Lisbon trip')).toBeNull());
+		expect(within(dialog).getByRole('button', { name: 'Reset' })).toBeEnabled();
+		expect(screen.queryByRole('alertdialog')).toBeNull();
+		// the panel is still there, and the focus stayed inside it
+		expect(dialog.contains(document.activeElement)).toBe(true);
+	});
+
+	it.each(['Backspace', 'Delete'])(
+		'%s on the focused X removes the tag and nothing else',
+		async (key) => {
+			const { dialog } = await openPanel(tagged());
+			const remove = within(dialog).getByRole('button', { name: 'Remove tag Lisbon trip' });
+			remove.focus();
+
+			const notDefault = fireEvent.keyDown(remove, { key });
+
+			expect(await notDefault).toBe(false); // preventDefault was called
+			await waitFor(() =>
+				expect(lastRequest().entries).toEqual([{ id: 1, tags: { add: [], remove: [30] } }])
+			);
+			await waitFor(() => expect(within(dialog).queryByText('Lisbon trip')).toBeNull());
+			expect(screen.queryByLabelText('Search tags')).toBeNull();
+		}
+	);
 
 	it('shows "Add tag" for an entry without tags', async () => {
 		const { dialog } = await openPanel(
@@ -1333,7 +1381,7 @@ describe('tags', () => {
 		await fireEvent.input(within(block).getByLabelText('Amount of the new split'), {
 			target: { value: '5' }
 		});
-		await fireEvent.click(within(block).getByRole('button', { name: 'Tags' }));
+		await fireEvent.click(within(block).getByRole('button', { name: 'Add or remove tags' }));
 		await fireEvent.click(await screen.findByRole('option', { name: /Lisbon trip/ }));
 
 		await waitFor(() => {

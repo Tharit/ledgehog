@@ -142,7 +142,7 @@ describe('UnitPanel: a flow unit', () => {
 		);
 
 		expect(within(dialog).getByText('Lisbon trip')).toBeInTheDocument();
-		expect(within(dialog).getByRole('button', { name: 'Tags' })).toBeInTheDocument();
+		expect(within(dialog).getByRole('button', { name: 'Add or remove tags' })).toBeInTheDocument();
 		expect(within(dialog).queryByText(/Saved immediately/)).toBeNull();
 	});
 
