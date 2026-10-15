@@ -3,6 +3,7 @@
 import type { Rule, RuleFields, RuleSets } from '#lib/api/rules.js';
 import {
 	newConditionRow,
+	keepRowsFor,
 	rowsFromConditions,
 	toConditions,
 	type ConditionRow
@@ -38,8 +39,6 @@ export type RuleForm = {
 	target: number | null;
 	/** every one must hold; a row without a value is not sent */
 	conditions: ConditionRow[];
-	/** category rules only */
-	condition_payee_id: number | null;
 	/** as typed; blank means the default */
 	priority: string;
 };
@@ -50,7 +49,6 @@ export function emptyForm(sets: RuleSets = 'category'): RuleForm {
 		sets,
 		target: null,
 		conditions: [newConditionRow()],
-		condition_payee_id: null,
 		priority: ''
 	};
 }
@@ -73,7 +71,6 @@ export function formFromRule(rule: Rule): RuleForm {
 		sets,
 		target: targetId(rule),
 		conditions: rowsFromConditions(rule.conditions),
-		condition_payee_id: rule.condition_payee_id,
 		priority: rule.priority === DEFAULT_PRIORITY ? '' : String(rule.priority)
 	};
 }
@@ -87,16 +84,18 @@ export function parsePriority(text: string): number | null {
 	return Number.isSafeInteger(value) && Math.abs(value) < 2 ** 31 ? value : null;
 }
 
-/** Whether a payee condition applies: category rules only. */
+/** Whether a payee condition applies (a row in the conditions): category rules only. */
 export function takesPayeeCondition(sets: RuleSets): boolean {
 	return sets === 'category';
 }
 
+/** The conditions the request carries: payee rows only for a category rule. */
+function requestConditions(form: RuleForm) {
+	return toConditions(keepRowsFor(form.conditions, takesPayeeCondition(form.sets)));
+}
+
 export function hasCondition(form: RuleForm): boolean {
-	return (
-		toConditions(form.conditions).length > 0 ||
-		(takesPayeeCondition(form.sets) && form.condition_payee_id !== null)
-	);
+	return requestConditions(form).length > 0;
 }
 
 /** Enough to ask the server what the rule would do: a target, a condition, a usable priority. */
@@ -117,8 +116,7 @@ export function toFields(form: RuleForm, { forPreview = false } = {}): RuleField
 		counter_account_id: form.sets === 'counter_account' ? target : null,
 		payee_id: form.sets === 'payee' ? target : null,
 		category_id: form.sets === 'category' ? target : null,
-		condition_payee_id: takesPayeeCondition(form.sets) ? form.condition_payee_id : null,
-		conditions: toConditions(form.conditions),
+		conditions: requestConditions(form),
 		priority: parsePriority(form.priority) ?? DEFAULT_PRIORITY
 	};
 }

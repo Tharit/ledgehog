@@ -29,7 +29,7 @@ const rules = [
 		conditions: [{ field: 'counterparty_name', op: 'starts_with', value: 'REWE SAGT DANKE' }],
 		priority: 50
 	}),
-	rule({ id: 3, name: 'Groceries', condition_payee_id: 20, conditions: [] }),
+	rule({ id: 3, name: 'Groceries', conditions: [{ field: 'payee', op: 'is', value: '20' }] }),
 	rule({
 		id: 4,
 		name: 'Landlord',

@@ -19,9 +19,9 @@ const lookups = buildLookups({
 	tags: [tag({ id: 30, name: 'Lisbon' }), tag({ id: 31, name: 'Tax' })]
 });
 const three = [
-	entry({ id: 3, display_text: 'Third' }),
-	entry({ id: 2, display_text: 'Second' }),
-	entry({ id: 1, display_text: 'First' })
+	entry({ id: 3, description: 'Third', display_text: 'Third' }),
+	entry({ id: 2, description: 'Second', display_text: 'Second' }),
+	entry({ id: 1, description: 'First', display_text: 'First' })
 ];
 
 function table(props = {}) {
@@ -301,7 +301,7 @@ describe('LedgerTable: the keyboard', () => {
 	it('a derived entry shows a quiet notice instead of opening', async () => {
 		const onnotice = vi.fn();
 		table({
-			entries: [entry({ id: 5, type: 'opening', display_text: null })],
+			entries: [entry({ id: 5, type: 'opening', description: null })],
 			total: 1,
 			onnotice
 		});
@@ -712,9 +712,14 @@ describe('LedgerTable: marks of the unit panel (patterns §7, design §7)', () =
 	const marked = () =>
 		applyAffected(three, {
 			entries: [
-				entry({ id: 3, display_text: 'Third' }),
-				entry({ id: 2, display_text: 'Second', review_flags: ['unconfirmed'] }),
-				entry({ id: 1, display_text: 'First', review_flags: ['unconfirmed'] })
+				entry({ id: 3, description: 'Third', display_text: 'Third' }),
+				entry({
+					id: 2,
+					description: 'Second',
+					display_text: 'Second',
+					review_flags: ['unconfirmed']
+				}),
+				entry({ id: 1, description: 'First', display_text: 'First', review_flags: ['unconfirmed'] })
 			],
 			resolved: [3, 1],
 			confirmed: [3]
@@ -734,9 +739,9 @@ describe('LedgerTable: marks of the unit panel (patterns §7, design §7)', () =
 
 	it('mutes a committed row that stays in review too, with its own badge and no check', () => {
 		const patched = [
-			entry({ id: 3, display_text: 'Third' }),
-			entry({ id: 2, display_text: 'Second' }),
-			entry({ id: 1, display_text: 'First', review_flags: ['unconfirmed'] })
+			entry({ id: 3, description: 'Third', display_text: 'Third' }),
+			entry({ id: 2, description: 'Second', display_text: 'Second' }),
+			entry({ id: 1, description: 'First', display_text: 'First', review_flags: ['unconfirmed'] })
 		];
 		table({ marks: marked(), entries: patched, total: patched.length });
 

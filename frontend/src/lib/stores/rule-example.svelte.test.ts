@@ -94,7 +94,7 @@ describe('RuleExampleStore: finding', () => {
 		expect(listEntries).toHaveBeenCalledTimes(1);
 		const [filter, options] = vi.mocked(listEntries).mock.calls[0];
 		expect(filter.q).toBe('rewe');
-		expect(filter.type).toEqual(['flow', 'transfer']);
+		expect(filter.type).toEqual([]);
 		expect(options).toMatchObject({ limit: FIND_LIMIT });
 		expect(store.results.map((e) => e.id)).toEqual([1, 2]);
 		expect(store.findStatus).toBe('ready');
@@ -163,6 +163,51 @@ describe('RuleExampleStore: finding', () => {
 		expect(store.highlighted).toBe(0);
 	});
 
+	it('searches without a type restriction: unclassified imports (type null) are found', async () => {
+		vi.mocked(listEntries).mockResolvedValue({
+			entries: [entry({ id: 1, type: null, source: source({ counterparty_name: 'Shop' }) })],
+			total: 1,
+			limit: FIND_LIMIT,
+			offset: 0
+		});
+		const store = new RuleExampleStore();
+		store.setQuery('shop');
+		await vi.advanceTimersByTimeAsync(FIND_DEBOUNCE_MS);
+
+		expect(vi.mocked(listEntries).mock.calls[0][0].type).toEqual([]);
+		expect(store.results.map((e) => e.id)).toEqual([1]);
+		expect(store.highlighted).toBe(0);
+	});
+
+	it('skips entries without a source: not highlighted first, not moved onto, not picked', async () => {
+		vi.mocked(listEntries).mockResolvedValue({
+			entries: [
+				entry({ id: 1, type: 'opening', source: null }),
+				entry({ id: 2, source: source({}) }),
+				entry({ id: 3, type: 'valuation', source: null }),
+				entry({ id: 4, source: source({}) })
+			],
+			total: 4,
+			limit: FIND_LIMIT,
+			offset: 0
+		});
+		const store = new RuleExampleStore();
+		store.setQuery('x');
+		await vi.advanceTimersByTimeAsync(FIND_DEBOUNCE_MS);
+
+		expect(store.highlighted).toBe(1);
+		store.move(1);
+		expect(store.highlighted).toBe(3);
+		store.move(1);
+		expect(store.highlighted).toBe(3);
+		store.move(-1);
+		expect(store.highlighted).toBe(1);
+		store.move(-1);
+		expect(store.highlighted).toBe(1);
+		expect(store.pick(store.results[0])).toBe(false);
+		expect(store.entry).toBeNull();
+	});
+
 	it('picks the highlighted result as the example and reports it', async () => {
 		vi.mocked(listEntries).mockResolvedValue(page([1, 2, 3]));
 		const onchange = vi.fn();
@@ -196,7 +241,7 @@ describe('RuleExampleStore: finding', () => {
 		await vi.advanceTimersByTimeAsync(FIND_DEBOUNCE_MS);
 		store.setQuery('xy');
 
-		store.pick(entry({ id: 3 }));
+		store.pick(entry({ id: 3, source: source() }));
 		await vi.advanceTimersByTimeAsync(FIND_DEBOUNCE_MS * 2);
 
 		expect(store.entry?.id).toBe(3);

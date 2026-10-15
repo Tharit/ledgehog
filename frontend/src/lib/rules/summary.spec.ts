@@ -36,26 +36,31 @@ describe('summarizeConditions', () => {
 		]);
 	});
 
-	it('names the payee condition when it can, by id when it cannot', () => {
-		const fields = { conditions: [], condition_payee_id: 7 };
+	it('names the payee condition when it can, "deleted" when it cannot', () => {
+		const fields = { conditions: [{ field: 'payee', op: 'is', value: '7' }] };
 
 		expect(summarizeConditions(fields, (id) => (id === 7 ? 'REWE' : undefined))).toBe(
 			'Payee is REWE'
 		);
-		expect(summarizeConditions(fields)).toBe('Payee is payee 7');
+		expect(summarizeConditions(fields)).toBe('Payee is deleted');
 	});
 
-	it('puts the payee after the text conditions', () => {
+	it('keeps the payee condition where it stands among the others', () => {
 		expect(
-			summarizeConditions({
-				conditions: [{ field: 'purpose', op: 'contains', value: 'x' }],
-				condition_payee_id: 7
-			})
-		).toBe('Purpose contains "x" and Payee is payee 7');
+			summarizeConditions(
+				{
+					conditions: [
+						{ field: 'purpose', op: 'contains', value: 'x' },
+						{ field: 'payee', op: 'is', value: '7' }
+					]
+				},
+				() => 'REWE'
+			)
+		).toBe('Purpose contains "x" and Payee is REWE');
 	});
 
 	it('says so when there is nothing', () => {
 		expect(summarizeConditions({})).toBe('No conditions');
-		expect(summarizeConditions({ conditions: [], condition_payee_id: null })).toBe('No conditions');
+		expect(summarizeConditions({ conditions: [] })).toBe('No conditions');
 	});
 });

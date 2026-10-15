@@ -57,26 +57,39 @@ const deleteOut = (over: Partial<PayeeDeleteOut> = {}): PayeeDeleteOut => ({
 	held: { entries: 0 },
 	payee: { ...payee({ name: 'REWE' }), document_provider: null },
 	rules: [],
+	dangling_rules: [],
 	settle: null,
 	...over
 });
 
 describe('payeeDeleteSummary', () => {
-	it('lists the rules that would be deleted with their role', () => {
+	it('counts the rules that set the payee (deleted) apart from those that only test it', () => {
 		const summary = payeeDeleteSummary(
 			deleteOut({
-				rules: [
-					{ id: 1, name: 'REWE → Groceries', sets: 'payee', role: 'sets' },
-					{ id: 2, name: 'Fuel', sets: 'category', role: 'condition' }
+				rules: [{ id: 1, name: 'REWE → Groceries', sets: 'payee', role: 'sets' }],
+				dangling_rules: [
+					{ id: 2, name: 'Fuel', sets: 'category', role: 'condition' },
+					{ id: 3, name: 'Snacks', sets: 'category', role: 'condition' }
 				]
 			})
 		);
 
 		expect(summary.deletable).toBe(true);
-		expect(summary.rules).toEqual([
-			'REWE → Groceries (sets this payee)',
-			'Fuel (names this payee as a condition)'
-		]);
+		expect(summary.deleted).toEqual({
+			heading: '1 rule sets this payee and will be deleted:',
+			names: ['REWE → Groceries']
+		});
+		expect(summary.dangling).toEqual({
+			heading: '2 rules test this payee and will stop matching:',
+			names: ['Fuel', 'Snacks']
+		});
+	});
+
+	it('has no groups when no rule is involved', () => {
+		const summary = payeeDeleteSummary(deleteOut());
+
+		expect(summary.deleted).toBeNull();
+		expect(summary.dangling).toBeNull();
 	});
 
 	it('refuses with the entries that reference it', () => {

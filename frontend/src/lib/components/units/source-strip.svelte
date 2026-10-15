@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { buttonVariants } from '#lib/components/ui/button/index.js';
 	import MoneyDisplay from '#lib/components/common/money-display.svelte';
 	import type { SourceGroup } from '#lib/units/describe.js';
 	import type { SourceTransaction } from '#lib/types/domain.js';
@@ -64,6 +65,14 @@
 					</dd>
 				{/if}
 			</dl>
+			<!-- another page, not a decision: no ellipsis. A new tab, because the panel may hold a draft -->
+			<a
+				href={`/settings/rules/new?from=${group.entryIds[0]}`}
+				target="_blank"
+				rel="noopener"
+				class={[buttonVariants({ variant: 'outline' }), 'mt-3']}
+				data-slot="add-rule-from-source">Add rule from this transaction</a
+			>
 		{/if}
 	</section>
 {/each}

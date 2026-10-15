@@ -21,7 +21,10 @@ import {
 import { emptyLookups, type Lookups } from '#lib/ledger/lookups.js';
 import { ruleNames } from './rule-names.svelte.js';
 import {
+	isPayeeRow,
+	keepRowsFor,
 	newConditionRow,
+	PAYEE_OP,
 	requestRows,
 	type Condition,
 	type ConditionRow
@@ -64,6 +67,20 @@ const NO_EXTRA: Record<PreviewListName, RulePreviewRow[]> = {
 	different_value: [],
 	lost_key: []
 };
+
+/**
+ * A row with a patch applied. Moving to or from the payee field starts the row over: the payee's
+ * value is an id and its operator is fixed, the text fields' are neither.
+ */
+function changedRow(row: ConditionRow, patch: Partial<Omit<ConditionRow, 'key'>>): ConditionRow {
+	const next = { ...row, ...patch };
+	if (patch.field !== undefined && isPayeeRow(next) !== isPayeeRow(row)) {
+		return isPayeeRow(next)
+			? { ...next, op: PAYEE_OP, value: '' }
+			: { ...next, op: 'contains', value: '' };
+	}
+	return next;
+}
 
 export class RuleEditorStore {
 	readonly ruleId: number | null;
@@ -176,7 +193,8 @@ export class RuleEditorStore {
 		if (patch.sets !== undefined && patch.sets !== before.sets) {
 			// what a rule sets is not a condition: a target of another kind does not carry over
 			next.target = null;
-			if (!takesPayeeCondition(next.sets)) next.condition_payee_id = null;
+			// a payee row belongs to category rules only
+			next.conditions = keepRowsFor(next.conditions, takesPayeeCondition(next.sets));
 		}
 		this.form = next;
 		this.error = null;
@@ -188,7 +206,9 @@ export class RuleEditorStore {
 	editCondition(index: number, patch: Partial<Omit<ConditionRow, 'key'>>): void {
 		const now = patch.value === undefined;
 		this.edit(
-			{ conditions: this.form.conditions.map((c, i) => (i === index ? { ...c, ...patch } : c)) },
+			{
+				conditions: this.form.conditions.map((c, i) => (i === index ? changedRow(c, patch) : c))
+			},
 			now
 		);
 	}
@@ -336,11 +356,8 @@ export class RuleEditorStore {
 					form.target !== null && !this.#exists(form.sets, form.target, lookups)
 						? { target: null }
 						: {};
-				const payeeGone =
-					form.condition_payee_id !== null && !lookups.payees.has(form.condition_payee_id)
-						? { condition_payee_id: null }
-						: {};
-				this.form = { ...form, ...gone, ...payeeGone };
+				// a payee row whose payee is gone stays, flagged: the editor shows it as deleted
+				this.form = { ...form, ...gone };
 				this.error = failure;
 				this.#schedule(false);
 				this.notice = { text: describeRuleError(failure, this.locale), error: false };

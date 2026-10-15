@@ -31,7 +31,7 @@ function row(over = {}, props = {}) {
 
 describe('EntryRow: a flow entry', () => {
 	it('shows date, account, text, payee, category and amount', () => {
-		row({ payee_id: 20, category_id: 10 });
+		row({ description: 'REWE Markt', payee_id: 20, category_id: 10 });
 
 		const cells = within(screen.getByRole('row')).getAllByRole('gridcell');
 		expect(cells[0]).toHaveTextContent('Oct 9, 2026');
@@ -66,15 +66,23 @@ describe('EntryRow: a flow entry', () => {
 	});
 
 	it('gives the description its full text as a tooltip', () => {
-		row({ display_text: 'A long purpose text' });
+		row({ description: 'A long purpose text' });
 
 		expect(screen.getByTitle('A long purpose text')).toBeInTheDocument();
 	});
 
-	it('shows a muted placeholder when the entry has no text', () => {
-		row({ display_text: null });
+	it("shows the entry's own description only: nothing borrowed from the source", () => {
+		row({ description: null, display_text: 'REWE Markt' });
 
-		expect(screen.getByText('No text')).toHaveClass('decoration-dotted');
+		expect(screen.queryByText('REWE Markt')).toBeNull();
+	});
+
+	it('leaves the cell empty, without a placeholder, when the description is empty', () => {
+		row({ description: null });
+
+		const cells = within(screen.getByRole('row')).getAllByRole('gridcell');
+		expect(cells[cell('description')]).toBeEmptyDOMElement();
+		expect(screen.queryByText('No text')).toBeNull();
 	});
 
 	it('shows Unclassified as an absent value, with the badge the server sent', () => {
@@ -162,7 +170,7 @@ describe('EntryRow: derived entries', () => {
 	] as const)('%s shows its type in place of a category, no payee, no badges', (type, name) => {
 		row({
 			type,
-			display_text: null,
+			description: null,
 			payee_id: 20,
 			review_flags: ['unconfirmed']
 		});

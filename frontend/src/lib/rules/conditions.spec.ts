@@ -2,11 +2,51 @@ import { describe, expect, it } from 'vitest';
 import {
 	conditionText,
 	fieldsRead,
+	keepRowsFor,
 	newConditionRow,
+	payeeOfRow,
 	requestRows,
 	rowsFromConditions,
 	toConditions
 } from './conditions.js';
+
+describe('payee rows', () => {
+	it('loads and sends a payee condition like any other, skipping a blank one', () => {
+		const rows = rowsFromConditions([
+			{ field: 'purpose', op: 'contains', value: 'x' },
+			{ field: 'payee', op: 'is', value: '7' }
+		]);
+		rows.push(newConditionRow({ field: 'payee', op: 'is', value: '' }));
+
+		expect(requestRows(rows)).toEqual([0, 1]);
+		expect(toConditions(rows)).toEqual([
+			{ field: 'purpose', op: 'contains', value: 'x' },
+			{ field: 'payee', op: 'is', value: '7' }
+		]);
+	});
+
+	it('reads a payee id from a row, or none', () => {
+		expect(payeeOfRow({ value: '12' })).toBe(12);
+		expect(payeeOfRow({ value: '' })).toBeNull();
+		expect(payeeOfRow({ value: 'x' })).toBeNull();
+	});
+
+	it('drops payee rows for a rule that cannot have them, keeping one blank row', () => {
+		const rows = [newConditionRow({ field: 'payee', op: 'is', value: '7' })];
+
+		expect(keepRowsFor(rows, true)).toEqual(rows);
+		const kept = keepRowsFor(rows, false);
+		expect(kept).toHaveLength(1);
+		expect(kept[0]).toMatchObject({ field: 'counterparty_name', value: '' });
+	});
+
+	it('says the payee by name, or deleted', () => {
+		const c = { field: 'payee', op: 'is', value: '7' };
+
+		expect(conditionText(c, () => 'REWE')).toBe('Payee is REWE');
+		expect(conditionText(c, () => undefined)).toBe('Payee is deleted');
+	});
+});
 
 describe('rows', () => {
 	it('starts with counterparty name, contains and nothing typed', () => {

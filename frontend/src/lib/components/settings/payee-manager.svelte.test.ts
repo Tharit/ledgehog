@@ -241,6 +241,7 @@ const deleteOut = (over: Partial<PayeeDeleteOut> = {}): PayeeDeleteOut => ({
 	held: { entries: 0 },
 	payee: shell as PayeeDeleteOut['payee'] & Payee,
 	rules: [],
+	dangling_rules: [],
 	settle: null,
 	...over
 });
@@ -250,24 +251,26 @@ describe('PayeeManager: delete', () => {
 		vi.mocked(deletePayee).mockImplementation(async (_id, options) =>
 			options?.dryRun
 				? deleteOut({
-						rules: [
-							{ id: 9, name: 'Shell fuel', sets: 'payee', role: 'sets' },
-							{ id: 10, name: 'Fuel', sets: 'category', role: 'condition' }
-						]
+						rules: [{ id: 9, name: 'Shell fuel', sets: 'payee', role: 'sets' }],
+						dangling_rules: [{ id: 10, name: 'Fuel', sets: 'category', role: 'condition' }]
 					})
-				: deleteOut({ dry_run: false, deleted: true, deleted_rule_ids: [9, 10] })
+				: deleteOut({ dry_run: false, deleted: true, deleted_rule_ids: [9] })
 		);
 		await setup();
 
 		await chooseFromMenu('Shell', 'Delete…');
 
 		const dialog = await screen.findByRole('dialog');
-		expect(await within(dialog).findByText('Shell fuel (sets this payee)')).toBeInTheDocument();
-		expect(within(dialog).getByText('Fuel (names this payee as a condition)')).toBeInTheDocument();
+		expect(
+			await within(dialog).findByText('1 rule sets this payee and will be deleted: Shell fuel')
+		).toBeInTheDocument();
+		expect(
+			within(dialog).getByText('1 rule tests this payee and will stop matching: Fuel')
+		).toBeInTheDocument();
 		await fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
 
 		await waitFor(() => expect(deletePayee).toHaveBeenCalledWith(3));
-		expect(await screen.findByText('Deleted Shell and 2 rules.')).toBeInTheDocument();
+		expect(await screen.findByText('Deleted Shell and 1 rule.')).toBeInTheDocument();
 	});
 
 	it('refuses with the entries held and offers Merge instead', async () => {

@@ -10,7 +10,6 @@ export function rule(over: Partial<Rule> = {}): Rule {
 		counter_account_id: null,
 		payee_id: null,
 		category_id: 10,
-		condition_payee_id: null,
 		conditions: [{ field: 'counterparty_name', op: 'starts_with', value: 'Landlord' }],
 		priority: 100,
 		...over

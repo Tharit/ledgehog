@@ -4,20 +4,14 @@ import { conditionText, type Condition } from './conditions.js';
 
 export type ConditionFields = {
 	conditions?: readonly Condition[];
-	condition_payee_id?: number | null;
 };
 
-/** The conditions, each as a short phrase, then the payee condition. */
+/** The conditions, each as a short phrase. */
 export function conditionParts(
 	fields: ConditionFields,
 	payeeName: (id: number) => string | undefined = () => undefined
 ): string[] {
-	const parts = (fields.conditions ?? []).map(conditionText);
-	const payee = fields.condition_payee_id;
-	if (payee !== null && payee !== undefined) {
-		parts.push(`Payee is ${payeeName(payee) ?? `payee ${payee}`}`);
-	}
-	return parts;
+	return (fields.conditions ?? []).map((c) => conditionText(c, payeeName));
 }
 
 /** `Counterparty name starts with "REWE" and Purpose contains "Markt"`: all of them must hold. */

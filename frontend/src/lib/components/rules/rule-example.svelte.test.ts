@@ -220,15 +220,20 @@ describe('RuleExample: without an example', () => {
 		expect(box()).toHaveValue('shop');
 	});
 
-	it('shows entries without a source transaction as such', async () => {
+	it('lists entries without a source transaction as disabled rows that cannot be picked', async () => {
 		find([handmade]);
-		setup();
+		const { onchange } = setup();
 
 		await type('coffee');
 
-		expect(screen.getByRole('option')).toHaveTextContent(
-			'No source transaction: Coffee at Starbucks'
-		);
+		const option = screen.getByRole('option');
+		expect(option).toHaveTextContent('No source transaction');
+		expect(option).not.toHaveTextContent('Coffee at Starbucks');
+		expect(option).toHaveAttribute('aria-disabled', 'true');
+		expect(option).toHaveAttribute('aria-selected', 'false');
+		await fireEvent.click(option);
+		await fireEvent.keyDown(box(), { key: 'Enter' });
+		expect(onchange).not.toHaveBeenCalled();
 	});
 });
 

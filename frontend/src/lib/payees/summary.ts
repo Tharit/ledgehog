@@ -40,17 +40,30 @@ export function payeeMergeSummary(
 	};
 }
 
+/** A sentence that counts rules, and their names to list under it. */
+export type RuleGroup = { heading: string; names: string[] };
+
 export type PayeeDeleteSummary = {
 	deletable: boolean;
 	reason: string;
-	/** "Rule name (sets the payee)" lines, the rules the delete would take with it */
-	rules: string[];
+	/** the rules that set this payee: the delete takes them with it */
+	deleted: RuleGroup | null;
+	/** the rules that only test this payee: they stay, and stop matching */
+	dangling: RuleGroup | null;
 };
 
-const ROLES: Record<string, string> = {
-	sets: 'sets this payee',
-	condition: 'names this payee as a condition'
-};
+function group(
+	rules: readonly { name: string }[],
+	verb: [one: string, many: string],
+	rest: string
+): RuleGroup | null {
+	if (rules.length === 0) return null;
+	const count = plural(rules.length, 'rule', 'rules');
+	return {
+		heading: `${count} ${rules.length === 1 ? verb[0] : verb[1]} this payee ${rest}:`,
+		names: rules.map((r) => r.name)
+	};
+}
 
 export function payeeDeleteSummary(out: PayeeDeleteOut): PayeeDeleteSummary {
 	return {
@@ -58,7 +71,8 @@ export function payeeDeleteSummary(out: PayeeDeleteOut): PayeeDeleteSummary {
 		reason: out.deletable
 			? ''
 			: `${out.payee.name} cannot be deleted: it is referenced by ${describeHeld(out.held)}. Merge it into another payee instead.`,
-		rules: out.rules.map((r) => `${r.name} (${ROLES[r.role] ?? r.role})`)
+		deleted: group(out.rules, ['sets', 'set'], 'and will be deleted'),
+		dangling: group(out.dangling_rules, ['tests', 'test'], 'and will stop matching')
 	};
 }
 

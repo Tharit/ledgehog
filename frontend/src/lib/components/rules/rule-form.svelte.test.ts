@@ -71,7 +71,13 @@ describe('RuleForm: fields', () => {
 		expect(onedit).toHaveBeenCalledWith({ name: 'Rent flat' });
 	});
 
-	it('offers a payee condition on a category rule only', () => {
+	const payeeRow = (value: string) => newConditionRow({ field: 'payee', op: 'is', value });
+	const fieldOptions = () =>
+		within(screen.getByLabelText('Condition 1: field'))
+			.getAllByRole('option')
+			.map((o) => o.textContent);
+
+	it('offers the payee as a condition field on a category rule only', () => {
 		const { unmount } = render(RuleFormView, {
 			props: {
 				form: form(),
@@ -83,7 +89,7 @@ describe('RuleForm: fields', () => {
 				onsave: vi.fn()
 			}
 		});
-		expect(screen.getByText('Payee is')).toBeInTheDocument();
+		expect(fieldOptions()).toContain('Payee');
 		unmount();
 
 		render(RuleFormView, {
@@ -97,15 +103,61 @@ describe('RuleForm: fields', () => {
 				onsave: vi.fn()
 			}
 		});
-		expect(screen.queryByText('Payee is')).toBeNull();
+		expect(fieldOptions()).not.toContain('Payee');
 	});
 
-	it('sets the payee condition at once, with the preview to follow', async () => {
-		const { onedit } = setup({ form: form({ condition_payee_id: 20 }) });
+	it('chooses the payee field through the condition callback', async () => {
+		const { oncondition } = setup();
 
-		await fireEvent.click(screen.getByRole('button', { name: 'Clear the payee' }));
+		await fireEvent.change(screen.getByLabelText('Condition 1: field'), {
+			target: { value: 'payee' }
+		});
 
-		expect(onedit).toHaveBeenCalledWith({ condition_payee_id: null }, true);
+		expect(oncondition).toHaveBeenCalledWith(0, { field: 'payee' });
+	});
+
+	it('shows a payee row with a fixed operator, the picker and its helper', async () => {
+		const { oncondition } = setup({ form: form({ conditions: [payeeRow('20')] }) });
+
+		const op = screen.getByLabelText('Condition 1: operator');
+		expect(op).toBeDisabled();
+		expect(op).toHaveValue('is');
+		const picker = screen.getByRole('button', { name: 'Condition 1: payee' });
+		expect(picker).toHaveTextContent('REWE');
+		expect(
+			screen.getByText(
+				'Uses the payee found for the entry, even a suggested one you have not confirmed.'
+			)
+		).toBeInTheDocument();
+		expect(screen.queryByText('Payee deleted')).toBeNull();
+		expect(screen.queryByLabelText('Condition 1: value')).toBeNull();
+
+		await fireEvent.click(picker);
+		await fireEvent.click(await screen.findByRole('option', { name: /REWE/ }));
+		expect(oncondition).toHaveBeenCalledWith(0, { value: '20' });
+	});
+
+	it('says "Payee deleted" for a payee that is not in the list, and lets another be picked', () => {
+		setup({ form: form({ conditions: [payeeRow('99')] }) });
+
+		const label = screen.getByText('Payee deleted');
+		expect(label).toHaveAttribute(
+			'title',
+			'This payee no longer exists; the rule cannot match until you pick another.'
+		);
+		expect(screen.getByRole('button', { name: 'Condition 1: payee' })).toHaveTextContent(
+			'Choose a payee'
+		);
+		expect(screen.getByRole('button', { name: 'Remove condition 1' })).toBeInTheDocument();
+	});
+
+	it('shows the server error on the payee row', () => {
+		setup({
+			form: form({ conditions: [payeeRow('99')] }),
+			errors: { rows: { 0: 'This payee no longer exists.' } }
+		});
+
+		expect(screen.getByText('This payee no longer exists.')).toBeInTheDocument();
 	});
 
 	it('changes what it sets at once, with the preview to follow', async () => {
@@ -191,7 +243,8 @@ describe('RuleForm: the condition rows', () => {
 			'Counterparty IBAN or reference',
 			'Purpose',
 			'Booking text',
-			'Mandate reference'
+			'Mandate reference',
+			'Payee'
 		]);
 		const ops = within(screen.getByLabelText('Condition 1: operator'));
 		expect(ops.getAllByRole('option').map((o) => o.textContent)).toEqual([

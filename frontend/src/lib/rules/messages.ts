@@ -5,20 +5,22 @@ import { SETTLE_STALE } from '#lib/ledger/errors.js';
 import { RULES_PATH } from './links.js';
 
 /** The form fields a failure can point at; the others are shown as one line. */
-export type FieldKey = 'name' | 'target' | 'condition_payee_id' | 'conditions' | 'priority';
+export type FieldKey = 'name' | 'target' | 'conditions' | 'priority';
 
 const FIELD_OF: Record<string, FieldKey> = {
 	name: 'name',
 	counter_account_id: 'target',
 	payee_id: 'target',
 	category_id: 'target',
-	condition_payee_id: 'condition_payee_id',
 	conditions: 'conditions',
 	priority: 'priority'
 };
 
 /** `conditions[2]` or `conditions[2].value`: which row of the request, and which part of it. */
 const CONDITION_PART = /^conditions\[(\d+)\](?:\.(field|op|value))?$/;
+
+/** What a row says when the server finds its payee gone at write time. */
+export const PAYEE_GONE = 'This payee no longer exists.';
 
 /**
  * What to show beside the form's fields: by field, and for the condition rows by position in the
@@ -66,6 +68,11 @@ export function fieldErrors(error: RuleError | null, rowOf: readonly number[] = 
 			for (const problem of error.problems) place(found, problem.field, problem.message, rowOf);
 			return found;
 		case 'stale_reference': {
+			const part = error.field ? CONDITION_PART.exec(error.field) : null;
+			if (part) {
+				const at = Number(part[1]);
+				return { rows: { [rowOf[at] ?? at]: PAYEE_GONE } };
+			}
 			const key = error.field ? FIELD_OF[error.field] : undefined;
 			return key ? { [key]: 'This no longer exists. Choose another.' } : {};
 		}

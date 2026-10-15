@@ -52,6 +52,15 @@ describe('fieldErrors', () => {
 		).toEqual({ rows: { 0: 'Too long', 2: 'Bad' } });
 	});
 
+	it('puts a stale payee on its row, by the editor position', () => {
+		expect(
+			fieldErrors(
+				{ kind: 'stale_reference', field: 'conditions[1].value', entity: 'payee' },
+				[0, 2, 3]
+			)
+		).toEqual({ rows: { 2: 'This payee no longer exists.' } });
+	});
+
 	it('puts a taken name at the name', () => {
 		expect(fieldErrors({ kind: 'duplicate_name' }).name).toMatch(/already exists/);
 	});

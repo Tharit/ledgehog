@@ -9,44 +9,49 @@
 		CONDITION_OPS,
 		FIELD_LABELS,
 		OP_LABELS,
-		type ConditionField,
-		type ConditionOp,
-		type ConditionRow
+		OP_LABELS_PAYEE,
+		PAYEE_FIELD,
+		isPayeeRow,
+		payeeOfRow,
+		type ConditionRow,
+		type RowField,
+		type RowOp
 	} from '#lib/rules/conditions.js';
 	import { SELECT_CLASS } from '#lib/rules/styles.js';
 	import TargetPicker from './target-picker.svelte';
 
 	// The conditions of a rule: a list of rows `[field] [operator] [value]`, all of which must hold,
-	// and for a category rule one more row, the payee. Conditions are text the server judges;
+	// where a category rule can also test the payee (a row whose operator is fixed and whose value is
+	// picked from the payees). Conditions are text the server judges;
 	// nothing is matched here. It holds nothing: every change goes up and the form comes back.
 	let {
 		rows,
 		errors = {},
 		listError,
-		payee = null,
 		takesPayee = false,
-		payeeError,
 		lookups,
 		onchange,
 		onadd,
-		onremove,
-		onpayee
+		onremove
 	}: {
 		rows: readonly ConditionRow[];
 		/** the server's word about a row, by the row's position */
 		errors?: Record<number, string>;
 		/** the server's word about the conditions as a whole */
 		listError?: string;
-		payee?: number | null;
-		/** category rules only */
+		/** category rules only: the field list offers the payee */
 		takesPayee?: boolean;
-		payeeError?: string;
 		lookups: Lookups;
 		onchange: (index: number, patch: Partial<Omit<ConditionRow, 'key'>>) => void;
 		onadd: () => void;
 		onremove: (index: number) => void;
-		onpayee: (id: number | null) => void;
 	} = $props();
+
+	/** the payee a row names that the lists do not know: deleted (or merged) since */
+	function payeeGone(row: ConditionRow): boolean {
+		const id = payeeOfRow(row);
+		return id !== null && !lookups.payees.has(id);
+	}
 
 	const hasBlank = $derived(rows.some((row) => row.value.trim() === ''));
 </script>
@@ -65,33 +70,66 @@
 						class={`${SELECT_CLASS} w-52 max-w-full`}
 						aria-label={`Condition ${n}: field`}
 						value={row.field}
-						onchange={(event) =>
-							onchange(index, { field: event.currentTarget.value as ConditionField })}
+						onchange={(event) => onchange(index, { field: event.currentTarget.value as RowField })}
 					>
 						{#each CONDITION_FIELDS as field (field)}
 							<option value={field}>{FIELD_LABELS[field]}</option>
 						{/each}
+						{#if takesPayee || isPayeeRow(row)}
+							<option value={PAYEE_FIELD}>Payee</option>
+						{/if}
 					</select>
-					<select
-						class={`${SELECT_CLASS} w-48 max-w-full`}
-						aria-label={`Condition ${n}: operator`}
-						value={row.op}
-						onchange={(event) => onchange(index, { op: event.currentTarget.value as ConditionOp })}
-					>
-						{#each CONDITION_OPS as op (op)}
-							<option value={op}>{OP_LABELS[op]}</option>
-						{/each}
-					</select>
-					<Input
-						class="w-auto min-w-40 flex-1"
-						aria-label={`Condition ${n}: value`}
-						value={row.value}
-						autocomplete="off"
-						spellcheck={false}
-						aria-invalid={error ? true : undefined}
-						aria-describedby={error ? `rule-condition-${row.key}-error` : undefined}
-						oninput={(event) => onchange(index, { value: event.currentTarget.value })}
-					/>
+					{#if isPayeeRow(row)}
+						<select
+							class={`${SELECT_CLASS} w-48 max-w-full`}
+							aria-label={`Condition ${n}: operator`}
+							value="is"
+							disabled
+						>
+							<option value="is">{OP_LABELS_PAYEE}</option>
+						</select>
+						<div class="flex min-w-48 flex-1 items-center gap-2" data-payee-value>
+							{#if payeeGone(row)}
+								<span
+									class="shrink-0 text-sm text-muted-foreground"
+									title="This payee no longer exists; the rule cannot match until you pick another."
+									>Payee deleted</span
+								>
+							{/if}
+							<div class="min-w-0 flex-1">
+								<TargetPicker
+									id={`rule-condition-${row.key}-payee`}
+									kind="payee"
+									value={payeeGone(row) ? null : payeeOfRow(row)}
+									{lookups}
+									label={`Condition ${n}: payee`}
+									invalid={error !== undefined}
+									onchange={(id) => onchange(index, { value: id === null ? '' : String(id) })}
+								/>
+							</div>
+						</div>
+					{:else}
+						<select
+							class={`${SELECT_CLASS} w-48 max-w-full`}
+							aria-label={`Condition ${n}: operator`}
+							value={row.op}
+							onchange={(event) => onchange(index, { op: event.currentTarget.value as RowOp })}
+						>
+							{#each CONDITION_OPS as op (op)}
+								<option value={op}>{OP_LABELS[op]}</option>
+							{/each}
+						</select>
+						<Input
+							class="w-auto min-w-40 flex-1"
+							aria-label={`Condition ${n}: value`}
+							value={row.value}
+							autocomplete="off"
+							spellcheck={false}
+							aria-invalid={error ? true : undefined}
+							aria-describedby={error ? `rule-condition-${row.key}-error` : undefined}
+							oninput={(event) => onchange(index, { value: event.currentTarget.value })}
+						/>
+					{/if}
 					<IconButton verb="Remove" label={`Remove condition ${n}`} onclick={() => onremove(index)}>
 						<XIcon aria-hidden="true" />
 					</IconButton>
@@ -99,7 +137,11 @@
 				{#if error}
 					<p id={`rule-condition-${row.key}-error`} class="text-xs text-destructive">{error}</p>
 				{/if}
-				{#if row.op === 'regex'}
+				{#if isPayeeRow(row)}
+					<p class="text-xs text-muted-foreground">
+						Uses the payee found for the entry, even a suggested one you have not confirmed.
+					</p>
+				{:else if row.op === 'regex'}
 					<p class="text-xs text-muted-foreground">
 						A regular expression, found anywhere in the text, upper and lower case alike; at most
 						200 characters.
@@ -119,30 +161,4 @@
 			<span class="text-xs text-muted-foreground">Rows without a value are left out.</span>
 		{/if}
 	</div>
-
-	{#if takesPayee}
-		<div class="flex flex-col gap-1">
-			<div class="flex flex-wrap items-center gap-2">
-				<span id="rule-condition-payee-label" class="w-24 shrink-0 text-sm">Payee is</span>
-				<div class="min-w-48 flex-1">
-					<TargetPicker
-						id="rule-condition-payee"
-						kind="payee"
-						value={payee}
-						{lookups}
-						label="Condition payee: the payee the entry must have"
-						clearable
-						invalid={payeeError !== undefined}
-						onchange={onpayee}
-					/>
-				</div>
-			</div>
-			{#if payeeError}
-				<p class="text-xs text-destructive">{payeeError}</p>
-			{/if}
-			<p class="text-xs text-muted-foreground">
-				Judged on the payee found before the category, a proposed one included.
-			</p>
-		</div>
-	{/if}
 </fieldset>

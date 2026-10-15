@@ -458,6 +458,41 @@ describe('RuleEditorStore: saving', () => {
 		expect(store.notice?.text).toMatch(/Category you chose no longer exists/);
 	});
 
+	it('keeps a payee row whose payee is gone, flagged on that row', async () => {
+		const store = await editing();
+		store.edit({
+			conditions: [
+				cond(''),
+				newConditionRow({ field: 'payee', op: 'is', value: '77' }),
+				cond('SEPA', 'booking_text', 'equals')
+			]
+		});
+		await vi.advanceTimersByTimeAsync(DEBOUNCE);
+		vi.mocked(updateRule).mockRejectedValue(
+			failure(409, 'stale_reference', { field: 'conditions[0].value', entity: 'payee', id: 77 })
+		);
+
+		await store.save();
+		await vi.advanceTimersByTimeAsync(DEBOUNCE);
+
+		// request position 0 is the editor's row 1: the blank first row was left out
+		expect(store.form.conditions.map((c) => c.value)).toEqual(['', '77', 'SEPA']);
+		expect(store.fieldErrors.rows).toEqual({ 1: 'This payee no longer exists.' });
+	});
+
+	it('starts a row over when it moves to or from the payee field', async () => {
+		const store = new RuleEditorStore({ ruleId: null });
+		await store.init();
+		store.editCondition(0, { value: 'x' });
+
+		store.editCondition(0, { field: 'payee' });
+		expect(store.form.conditions[0]).toMatchObject({ field: 'payee', op: 'is', value: '' });
+
+		store.editCondition(0, { value: '4' });
+		store.editCondition(0, { field: 'purpose' });
+		expect(store.form.conditions[0]).toMatchObject({ field: 'purpose', op: 'contains', value: '' });
+	});
+
 	it('keeps the preview after a network failure, so saving can be tried again', async () => {
 		const store = await editing();
 		store.edit({ conditions: [cond('SEPA', 'booking_text', 'equals')] });
@@ -582,11 +617,15 @@ describe('RuleEditorStore: the form', () => {
 	it('drops the payee condition when a rule stops being a category rule', async () => {
 		const store = new RuleEditorStore({ ruleId: null });
 		await store.init();
-		store.edit({ condition_payee_id: 4 });
+		store.editCondition(0, { field: 'payee' });
+		store.editCondition(0, { value: '4' });
+		store.addCondition();
+		store.editCondition(1, { value: 'x' });
 
 		store.edit({ sets: 'counter_account' });
 
-		expect(store.form.condition_payee_id).toBeNull();
+		expect(store.form.conditions.map((c) => c.field)).toEqual(['counterparty_name']);
+		expect(store.form.conditions[0].value).toBe('x');
 	});
 
 	it('names the rules that take precedence by id', async () => {

@@ -1000,12 +1000,12 @@ export interface components {
              * Field
              * @enum {string}
              */
-            field: "counterparty_name" | "counterparty_ref" | "purpose" | "booking_text" | "mandate_ref";
+            field: "counterparty_name" | "counterparty_ref" | "purpose" | "booking_text" | "mandate_ref" | "payee";
             /**
              * Op
              * @enum {string}
              */
-            op: "equals" | "starts_with" | "contains" | "regex";
+            op: "equals" | "starts_with" | "contains" | "regex" | "is";
             /** Value */
             value: string;
         };
@@ -1286,6 +1286,8 @@ export interface components {
         };
         /** PayeeDeleteOut */
         PayeeDeleteOut: {
+            /** Dangling Rules */
+            dangling_rules: components["schemas"]["RuleRefOut"][];
             /** Deletable */
             deletable: boolean;
             /** Deleted */
@@ -1480,8 +1482,6 @@ export interface components {
         RuleCreateBody: {
             /** Category Id */
             category_id?: number | null;
-            /** Condition Payee Id */
-            condition_payee_id?: number | null;
             /** Conditions */
             conditions?: components["schemas"]["ConditionBody"][];
             /** Counter Account Id */
@@ -1525,8 +1525,6 @@ export interface components {
         RuleOut: {
             /** Category Id */
             category_id: number | null;
-            /** Condition Payee Id */
-            condition_payee_id: number | null;
             /** Conditions */
             conditions: components["schemas"]["ConditionOut"][];
             /** Counter Account Id */
@@ -1575,8 +1573,6 @@ export interface components {
         RuleUpdateBody: {
             /** Category Id */
             category_id?: number | null;
-            /** Condition Payee Id */
-            condition_payee_id?: number | null;
             /** Conditions */
             conditions?: components["schemas"]["ConditionBody"][];
             /** Counter Account Id */

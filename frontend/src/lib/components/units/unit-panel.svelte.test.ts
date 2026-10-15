@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { account, category, entry, payee, tag } from '#lib/ledger/fixtures.js';
 import { buildLookups } from '#lib/ledger/lookups.js';
@@ -318,6 +318,64 @@ describe('UnitPanel: other units', () => {
 		expect(strip).toHaveTextContent('Amount');
 		expect(strip).toHaveTextContent('47.31');
 		expect(within(strip).queryByText('Entered by hand')).toBeNull();
+	});
+
+	it('offers "Add rule from this transaction" in the strip: a new tab, the entry as the example', async () => {
+		const { dialog } = await openPanel(
+			unit({
+				anchor_entry_id: 7,
+				entries: [entry({ id: 7, unit_key: 1, source_transaction_id: 5, source: source() })]
+			})
+		);
+
+		const strip = within(dialog).getByRole('region', { name: 'Source transaction' });
+		const link = within(strip).getByRole('link', { name: 'Add rule from this transaction' });
+		expect(link).toHaveAttribute('href', '/settings/rules/new?from=7');
+		expect(link).toHaveAttribute('target', '_blank');
+		expect(link).toHaveAttribute('rel', 'noopener');
+	});
+
+	it('offers it for an authored entry that has a source, but not without one or for a derived entry', async () => {
+		const authored = await openPanel(
+			unit({
+				anchor_entry_id: 3,
+				entries: [
+					entry({
+						id: 3,
+						unit_key: 1,
+						authored: true,
+						source_transaction_id: 5,
+						source: source(),
+						derivation: {}
+					})
+				]
+			})
+		);
+		expect(
+			within(authored.dialog).getByRole('link', { name: 'Add rule from this transaction' })
+		).toHaveAttribute('href', '/settings/rules/new?from=3');
+		cleanup();
+
+		const bare = await openPanel(
+			unit({
+				anchor_entry_id: 1,
+				entries: [entry({ id: 1, unit_key: 1, authored: true, derivation: {} })]
+			})
+		);
+		expect(
+			within(bare.dialog).queryByRole('link', { name: 'Add rule from this transaction' })
+		).toBeNull();
+		cleanup();
+
+		const derived = await openPanel(
+			unit({
+				anchor_entry_id: 2,
+				entries: [entry({ id: 2, unit_key: 1, type: 'opening', source: null })]
+			})
+		);
+		expect(
+			within(derived.dialog).queryByRole('link', { name: 'Add rule from this transaction' })
+		).toBeNull();
 	});
 
 	it('says "Entered by hand" for an authored entry without a source and shows no source columns', async () => {

@@ -4,7 +4,7 @@
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import { formatCount } from '#lib/format/index.js';
-	import type { RuleExampleStore } from '#lib/stores/rule-example.svelte.js';
+	import { selectable, type RuleExampleStore } from '#lib/stores/rule-example.svelte.js';
 
 	// The find box of the example: type, the entries list answers (after a pause), ↑ ↓ move through
 	// the results, Enter picks the highlighted one, Esc closes. A combobox with a listbox; the
@@ -93,19 +93,24 @@
 						</div>
 						<ul role="listbox" id={LISTBOX} aria-label="Entries found">
 							{#each store.results as entry, index (entry.id)}
+								{@const usable = selectable(entry)}
 								<!-- the input keeps the focus and the keyboard; a click picks -->
 								<!-- svelte-ignore a11y_click_events_have_key_events -->
 								<li
 									id={optionId(index)}
 									role="option"
 									aria-selected={index === store.highlighted}
+									aria-disabled={usable ? undefined : true}
 									data-entry-id={entry.id}
 									class={[
 										'grid grid-cols-[6rem_6rem_minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,1fr)] items-center gap-x-3 border-b border-border px-3 py-1 text-[13px] last:border-b-0',
-										index === store.highlighted ? 'bg-accent' : 'hover:bg-muted'
+										!usable && 'cursor-default',
+										usable && (index === store.highlighted ? 'bg-accent' : 'hover:bg-muted')
 									]}
 									onmousedown={(event) => event.preventDefault()}
-									onmousemove={() => (store.highlighted = index)}
+									onmousemove={() => {
+										if (usable) store.highlighted = index;
+									}}
 									onclick={() => store.pick(entry)}
 								>
 									<DateDisplay date={entry.booked_on} {locale} />
@@ -126,7 +131,7 @@
 										</span>
 									{:else}
 										<span class="col-span-3 truncate text-muted-foreground">
-											No source transaction{entry.display_text ? `: ${entry.display_text}` : ''}
+											No source transaction
 										</span>
 									{/if}
 								</li>

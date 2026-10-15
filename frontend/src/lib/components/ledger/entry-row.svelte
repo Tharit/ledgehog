@@ -173,13 +173,8 @@
 			</div>
 		{:else if column.id === 'description'}
 			<div role="gridcell" class="min-w-0 truncate">
-				{#if entry.display_text}
-					<span title={entry.display_text}>{entry.display_text}</span>
-				{:else if !fixed}
-					<AbsentValue
-						label="No text"
-						explanation="This entry has no description, counterparty or purpose"
-					/>
+				{#if entry.description}
+					<span title={entry.description}>{entry.description}</span>
 				{/if}
 			</div>
 		{:else if column.id === 'review'}

@@ -123,14 +123,11 @@
 		rows={form.conditions}
 		errors={errors.rows}
 		listError={errors.conditions}
-		payee={form.condition_payee_id}
 		takesPayee={takesPayeeCondition(form.sets)}
-		payeeError={errors.condition_payee_id}
 		{lookups}
 		onchange={oncondition}
 		onadd={onaddcondition}
 		onremove={onremovecondition}
-		onpayee={(id) => onedit({ condition_payee_id: id }, true)}
 	/>
 
 	<details class="rounded-lg border px-3 py-2" open={advancedOpen}>

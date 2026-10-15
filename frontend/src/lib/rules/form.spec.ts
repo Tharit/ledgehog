@@ -73,7 +73,6 @@ describe('toFields', () => {
 			counter_account_id: null,
 			payee_id: 5,
 			category_id: null,
-			condition_payee_id: null,
 			conditions: [
 				{ field: 'counterparty_name', op: 'starts_with', value: 'PAYPAL *' },
 				{ field: 'purpose', op: 'regex', value: 'cloud|hosting' }
@@ -101,13 +100,19 @@ describe('toFields', () => {
 		expect(fields.conditions).toHaveLength(2);
 	});
 
+	it('sends a payee row like any condition, and leaves a blank one out', () => {
+		const conditions = [row('Landlord'), row('9', 'payee', 'is'), row('', 'payee', 'is')];
+
+		expect(toFields(form({ sets: 'category', target: 2, conditions })).conditions).toEqual([
+			{ field: 'counterparty_name', op: 'starts_with', value: 'Landlord' },
+			{ field: 'payee', op: 'is', value: '9' }
+		]);
+	});
+
 	it('keeps the payee condition for a category rule only', () => {
-		expect(
-			toFields(form({ sets: 'category', target: 2, condition_payee_id: 9 })).condition_payee_id
-		).toBe(9);
-		expect(
-			toFields(form({ sets: 'payee', target: 2, condition_payee_id: 9 })).condition_payee_id
-		).toBeNull();
+		const conditions = [row('9', 'payee', 'is')];
+
+		expect(toFields(form({ sets: 'payee', target: 2, conditions })).conditions).toEqual([]);
 	});
 
 	it('names a preview of an unnamed rule, but never a save', () => {
@@ -144,12 +149,18 @@ describe('formFromRule', () => {
 		});
 	});
 
-	it('gives a rule with only a payee condition the one blank row', () => {
-		const loaded = formFromRule(rule({ conditions: [], condition_payee_id: 4 }));
+	it('loads a payee condition as a row of its own', () => {
+		const loaded = formFromRule(rule({ conditions: [{ field: 'payee', op: 'is', value: '4' }] }));
+
+		expect(loaded.conditions).toHaveLength(1);
+		expect(loaded.conditions[0]).toMatchObject({ field: 'payee', op: 'is', value: '4' });
+	});
+
+	it('gives a rule without conditions the one blank row', () => {
+		const loaded = formFromRule(rule({ conditions: [] }));
 
 		expect(loaded.conditions).toHaveLength(1);
 		expect(loaded.conditions[0].value).toBe('');
-		expect(loaded.condition_payee_id).toBe(4);
 	});
 
 	it('shows the default priority as blank', () => {
@@ -166,7 +177,11 @@ describe('what a preview needs', () => {
 	});
 
 	it('counts a payee condition only on a category rule', () => {
-		const onlyPayee = { ...emptyForm('category'), target: 1, condition_payee_id: 4 };
+		const onlyPayee = {
+			...emptyForm('category'),
+			target: 1,
+			conditions: [row('4', 'payee', 'is')]
+		};
 		expect(hasCondition(onlyPayee)).toBe(true);
 		expect(hasCondition({ ...onlyPayee, sets: 'payee' })).toBe(false);
 	});

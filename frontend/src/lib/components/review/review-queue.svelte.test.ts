@@ -35,6 +35,7 @@ function flow(id: number, text: string, over = {}) {
 			entry({
 				id,
 				unit_key: id,
+				description: text,
 				display_text: text,
 				category_id: 10,
 				derivation: { category: history },
@@ -96,8 +97,8 @@ describe('ReviewQueue', () => {
 				unit({
 					anchor_entry_id: 1,
 					entries: [
-						entry({ id: 1, unit_key: 1, display_text: 'Amazon' }),
-						entry({ id: 2, unit_key: 1, display_text: 'Amazon' })
+						entry({ id: 1, unit_key: 1, description: 'Amazon', display_text: 'Amazon' }),
+						entry({ id: 2, unit_key: 1, description: 'Amazon', display_text: 'Amazon' })
 					]
 				}),
 				unit({
@@ -108,6 +109,7 @@ describe('ReviewQueue', () => {
 							unit_key: 3,
 							type: 'transfer',
 							account_id: 1,
+							description: 'Out',
 							display_text: 'Out',
 							counterpart_entry_id: 4
 						}),
@@ -116,6 +118,7 @@ describe('ReviewQueue', () => {
 							unit_key: 3,
 							type: 'transfer',
 							account_id: 2,
+							description: 'In',
 							display_text: 'In',
 							counterpart_entry_id: 3
 						})
@@ -185,6 +188,7 @@ describe('ReviewQueue: marks after a commit', () => {
 		entry({
 			id,
 			unit_key: id,
+			description: text,
 			display_text: text,
 			category_id: 10,
 			derivation: { category: history },
@@ -253,8 +257,8 @@ describe('ReviewQueue: the keyboard', () => {
 				unit({
 					anchor_entry_id: 1,
 					entries: [
-						entry({ id: 1, unit_key: 1, display_text: 'Amazon' }),
-						entry({ id: 2, unit_key: 1, display_text: 'Amazon' })
+						entry({ id: 1, unit_key: 1, description: 'Amazon', display_text: 'Amazon' }),
+						entry({ id: 2, unit_key: 1, description: 'Amazon', display_text: 'Amazon' })
 					]
 				}),
 				flow(3, 'REWE')
@@ -292,8 +296,8 @@ describe('ReviewQueue: the keyboard', () => {
 				unit({
 					anchor_entry_id: 3,
 					entries: [
-						entry({ id: 3, unit_key: 3, display_text: 'Amazon' }),
-						entry({ id: 4, unit_key: 3, display_text: 'Amazon' })
+						entry({ id: 3, unit_key: 3, description: 'Amazon', display_text: 'Amazon' }),
+						entry({ id: 4, unit_key: 3, description: 'Amazon', display_text: 'Amazon' })
 					]
 				})
 			]

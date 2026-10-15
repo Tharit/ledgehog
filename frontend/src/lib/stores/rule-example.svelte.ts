@@ -13,6 +13,11 @@ export const FIND_LIMIT = 8;
 /** the longest text the entries list accepts as `q` */
 const MAX_QUERY = 200;
 
+/** an entry a rule could read: derived entries (opening, valuation, reconciliation) have no source */
+export function selectable(entry: Entry): boolean {
+	return entry.source !== null;
+}
+
 export type ExampleLoad = 'none' | 'loading' | 'ready' | 'missing' | 'error';
 export type FindStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -110,15 +115,16 @@ export class RuleExampleStore {
 		const controller = new AbortController();
 		this.#controller = controller;
 		try {
-			// derived entries (opening, valuation, reconciliation) have nothing a rule could read
+			// no type restriction: the backend's type filter never matches an unclassified import
+			// (type NULL). Derived entries (no source) come back too and are listed as unselectable.
 			const page = await listEntries(
-				{ ...emptyFilter(), q: this.searchText, type: ['flow', 'transfer'] },
+				{ ...emptyFilter(), q: this.searchText },
 				{ limit: FIND_LIMIT, signal: controller.signal }
 			);
 			if (seq !== this.#seq) return;
 			this.results = page.entries;
 			this.total = page.total;
-			this.highlighted = page.entries.length > 0 ? 0 : -1;
+			this.highlighted = page.entries.findIndex(selectable);
 			this.findStatus = 'ready';
 		} catch {
 			if (seq !== this.#seq) return;
@@ -129,18 +135,26 @@ export class RuleExampleStore {
 		}
 	}
 
-	/** Move the highlight by one result; it stops at both ends. */
+	/** Move the highlight by one selectable result; it stops at both ends. */
 	move(delta: number): void {
 		if (this.results.length === 0) return;
 		this.open = true;
-		const next =
-			this.highlighted < 0 ? (delta > 0 ? 0 : this.results.length - 1) : this.highlighted + delta;
-		this.highlighted = Math.min(this.results.length - 1, Math.max(0, next));
+		const step = delta > 0 ? 1 : -1;
+		let at = this.highlighted < 0 ? (step > 0 ? -1 : this.results.length) : this.highlighted;
+		for (let n = Math.abs(delta); n > 0; n--) {
+			let next = at + step;
+			while (next >= 0 && next < this.results.length && !selectable(this.results[next])) {
+				next += step;
+			}
+			if (next < 0 || next >= this.results.length) break;
+			at = next;
+		}
+		if (at >= 0 && at < this.results.length) this.highlighted = at;
 	}
 
 	/** Choose an entry (the highlighted one by default) as the example. */
 	pick(entry: Entry | undefined = this.results[this.highlighted]): boolean {
-		if (!entry) return false;
+		if (!entry || !selectable(entry)) return false;
 		this.#cancel();
 		this.#seq++;
 		this.entry = entry;
