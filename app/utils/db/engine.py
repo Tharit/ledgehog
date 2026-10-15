@@ -1,7 +1,8 @@
 """The synchronous SQLAlchemy Core engine over psycopg3 (architecture §2, §5.7).
 
 Every connection the pool opens gets `ledger.max_rate_age` (read by the schema
-function `base_value()`) and a guard that refuses float parameters: money is an
+function `base_value()`), `ledger.matching_window_days` (read by core/settle/window.py) and a
+guard that refuses float parameters: money is an
 integer in minor units, rates are Decimal, and a float reaching the driver is a
 bug (architecture §5.6).
 """
@@ -38,6 +39,10 @@ def max_rate_age_setting(cfg: Config) -> str:
     return f"{cfg.max_rate_age_days} days"
 
 
+def matching_window_setting(cfg: Config) -> str:
+    return str(cfg.matching_window_days)
+
+
 def make_engine(cfg: Config, *, pool_size: int = 5, max_overflow: int = 5) -> Engine:
     engine = create_engine(
         database_url(cfg),
@@ -46,6 +51,7 @@ def make_engine(cfg: Config, *, pool_size: int = 5, max_overflow: int = 5) -> En
         pool_pre_ping=True,
     )
     max_rate_age = max_rate_age_setting(cfg)
+    matching_window = matching_window_setting(cfg)
 
     @event.listens_for(engine, "connect")
     def _on_connect(dbapi_conn: psycopg.Connection[Any], _record: object) -> None:
@@ -54,6 +60,9 @@ def make_engine(cfg: Config, *, pool_size: int = 5, max_overflow: int = 5) -> En
         dbapi_conn.autocommit = True
         try:
             dbapi_conn.execute("SELECT set_config('ledger.max_rate_age', %s, false)", (max_rate_age,))
+            dbapi_conn.execute(
+                "SELECT set_config('ledger.matching_window_days', %s, false)", (matching_window,)
+            )
         finally:
             dbapi_conn.autocommit = previous
 

@@ -59,3 +59,37 @@ def test_float_binding_never_reaches_psycopg(db_conn):
 def test_integer_money_binds_fine(db_conn):
     m = Money(-1234, "EUR")
     assert db_conn.execute(text("SELECT CAST(:x AS bigint)"), {"x": m.minor}).scalar_one() == -1234
+
+
+def test_every_pooled_connection_gets_matching_window_days(isolated_db: Config):
+    import dataclasses
+
+    from app.core.settle.window import matching_window_days
+
+    engine = make_engine(isolated_db, pool_size=2, max_overflow=0)
+    try:
+        with engine.connect() as a, engine.connect() as b:
+            assert matching_window_days(a) == matching_window_days(b) == 7
+    finally:
+        engine.dispose()
+    engine = make_engine(dataclasses.replace(isolated_db, matching_window_days=0))
+    try:
+        with engine.connect() as conn:
+            assert matching_window_days(conn) == 0
+    finally:
+        engine.dispose()
+
+
+def test_matching_window_is_an_error_when_unset(isolated_db: Config):
+    from sqlalchemy import create_engine
+    from sqlalchemy.exc import DBAPIError
+
+    from app.core.settle.window import matching_window_days
+    from app.utils.db.engine import database_url
+
+    plain = create_engine(database_url(isolated_db))
+    try:
+        with plain.connect() as conn, pytest.raises(DBAPIError, match="matching_window_days"):
+            matching_window_days(conn)
+    finally:
+        plain.dispose()

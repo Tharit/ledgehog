@@ -16,7 +16,12 @@ def currency_ok(entry: EntryInput, account: AccountFact) -> bool:
     That is the instructed currency where the source has one (a card payment abroad), else the
     entry's own.
     """
-    return (entry.instructed_currency or entry.currency) == account.currency
+    return arrival_currency_ok(entry.instructed_currency, entry.currency, account)
+
+
+def arrival_currency_ok(instructed_currency: str | None, currency: str, account: AccountFact) -> bool:
+    """`currency_ok` on its parts, for callers that hold a leg rather than an `EntryInput` (the matcher)."""
+    return (instructed_currency or currency) == account.currency
 
 
 def open_on_booking_date(entry: EntryInput, account: AccountFact) -> bool:

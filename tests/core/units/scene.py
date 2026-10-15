@@ -104,13 +104,14 @@ class Scene:
         purpose: str | None = None,
         authored: bool = False,
         instructed: tuple[int, str] | None = None,
+        end_to_end_id: str | None = None,
         lead: dict[str, Any] | None = None,
         **cols: Any,
     ) -> tuple[int, list[int]]:
         """A source transaction with entries of `amounts` (default one of -1000): (source, entry ids)."""
         parts = list(amounts) or [-1000]
         acct = account or self.checking
-        columns: dict[str, Any] = {"counterparty_name": counterparty}
+        columns: dict[str, Any] = {"counterparty_name": counterparty, "end_to_end_id": end_to_end_id}
         if instructed is not None:
             columns.update(instructed_amount=instructed[0], instructed_currency=instructed[1])
 

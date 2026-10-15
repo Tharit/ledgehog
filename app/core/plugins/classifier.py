@@ -60,6 +60,8 @@ class EntryInput:
     booking_text: str | None = None
     mandate_ref: str | None = None
     instructed_currency: str | None = None
+    end_to_end_id: str | None = None
+    instructed_amount: int | None = None  # signed minor units, in `instructed_currency`
 
 
 @dataclass(frozen=True, slots=True)

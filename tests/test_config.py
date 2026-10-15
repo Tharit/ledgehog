@@ -68,6 +68,7 @@ def test_missing_required_variable_is_named(var):
         ("BASE_CURRENCY", "EURO"),
         ("TIMEZONE", "Mars/Olympus"),
         ("MAX_RATE_AGE_DAYS", "-1"),
+        ("MATCHING_WINDOW_DAYS", "-1"),
         ("MATCHING_WINDOW_DAYS", "1.5"),
         ("DOCUMENT_WINDOW_DAYS", ""),
     ],

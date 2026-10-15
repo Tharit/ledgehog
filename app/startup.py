@@ -20,7 +20,7 @@ from app.utils import clock
 from app.utils.auth import hash_password, revoke_sessions, verify_password
 from app.utils.config import Config, UserConfig
 from app.utils.db import migrate
-from app.utils.db.engine import make_engine, max_rate_age_setting
+from app.utils.db.engine import make_engine, matching_window_setting, max_rate_age_setting
 
 log = logging.getLogger("ledgehog.startup")
 
@@ -137,15 +137,20 @@ def reconcile_users(conn: Connection, users: Sequence[UserConfig]) -> ReconcileR
 
 
 def assert_pool_settings(engine: Engine, config: Config) -> None:
-    """Step 6: `make_engine` sets `ledger.max_rate_age` on every connection; check that it did."""
+    """Step 6: `make_engine` sets `ledger.max_rate_age` and `ledger.matching_window_days` on every
+    connection; check that it did."""
+    expected = {
+        "ledger.max_rate_age": max_rate_age_setting(config),
+        "ledger.matching_window_days": matching_window_setting(config),
+    }
     with engine.connect() as conn:
-        actual = conn.execute(text("SELECT current_setting('ledger.max_rate_age', true)")).scalar_one()
-    expected = max_rate_age_setting(config)
-    if actual != expected:
-        raise StartupError(
-            f"ledger.max_rate_age is {actual!r} on a pooled connection, expected {expected!r}: "
-            "the engine was not built by make_engine for this configuration"
-        )
+        for name, want in expected.items():
+            actual = conn.execute(text("SELECT current_setting(:n, true)"), {"n": name}).scalar_one()
+            if actual != want:
+                raise StartupError(
+                    f"{name} is {actual!r} on a pooled connection, expected {want!r}: "
+                    "the engine was not built by make_engine for this configuration"
+                )
 
 
 def run_settle(engine: Engine) -> SettleResult:

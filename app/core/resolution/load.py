@@ -122,6 +122,8 @@ def _load(conn: Connection, query: TextClause) -> list[UnconfirmedEntry]:
                     booking_text=r.booking_text,
                     mandate_ref=r.mandate_ref,
                     instructed_currency=r.instructed_currency,
+                    end_to_end_id=r.end_to_end_id,
+                    instructed_amount=r.instructed_amount,
                 ),
                 type=r.type,
                 payee_id=r.payee_id,

@@ -32,7 +32,7 @@ _SOURCES = text(
     SELECT s.id, s.amount, s.account_id, s.currency, s.booked_on, s.value_on,
            (s.importer IS NULL) AS authored,
            s.counterparty_ref, s.counterparty_name, s.purpose, s.booking_text, s.mandate_ref,
-           s.instructed_currency
+           s.instructed_currency, s.end_to_end_id, s.instructed_amount
       FROM source_transaction AS s
      WHERE s.id = ANY(:ids)
     """
@@ -87,6 +87,8 @@ def load_stored_entries(conn: Connection, anchor_entry_id: int, entry_ids: Itera
             booking_text=r.booking_text,
             mandate_ref=r.mandate_ref,
             instructed_currency=r.instructed_currency,
+            end_to_end_id=r.end_to_end_id,
+            instructed_amount=r.instructed_amount,
         )
         for r in conn.execute(_SOURCES, {"ids": sorted({e.source_transaction_id for e in entries})})
     }

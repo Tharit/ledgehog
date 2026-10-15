@@ -136,6 +136,8 @@ def _entry_input(row: _Row) -> EntryInput:
         booking_text=s.booking_text,
         mandate_ref=s.mandate_ref,
         instructed_currency=s.instructed_currency,
+        end_to_end_id=s.end_to_end_id,
+        instructed_amount=s.instructed_amount,
     )
 
 
