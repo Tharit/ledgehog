@@ -3961,6 +3961,9 @@
             ],
             "title": "Note"
           },
+          "pairing": {
+            "$ref": "#/components/schemas/UnitPairingIn"
+          },
           "payee": {
             "$ref": "#/components/schemas/UnitFieldDraftIn"
           },
@@ -4385,6 +4388,37 @@
         "title": "UnitOut",
         "type": "object"
       },
+      "UnitPairingIn": {
+        "additionalProperties": false,
+        "description": "What the draft says of a transfer leg's partner (spec \u00a75.7). `keep` (also: absent) leaves it, and a\ncommit accepts the proposal the preview shows. `pick` names a stored partner entry (`partner_entry_id`,\npositive): it must be an offer of the leg, else the preview lists the problem `partner_not_offered` or\n`partner_in_unit`. `reresolve` drops the stored pair and lets the passes decide again. A `pairing` on an\nentry that is not a transfer leg, or a negative id, is 422 `invalid_draft`.",
+        "properties": {
+          "mode": {
+            "default": "keep",
+            "enum": [
+              "keep",
+              "pick",
+              "reresolve"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "partner_entry_id": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740992.0,
+                "minimum": -9007199254740992.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Partner Entry Id"
+          }
+        },
+        "title": "UnitPairingIn",
+        "type": "object"
+      },
       "UnitPartnerOut": {
         "description": "A leg in a few words: the partner of a leg, or the one a leg paired elsewhere is paired with.",
         "properties": {
@@ -4730,6 +4764,16 @@
               }
             ],
             "title": "Field"
+          },
+          "suggested_split": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UnitSuggestedSplitOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -4768,6 +4812,19 @@
           "entry_id"
         ],
         "title": "UnitProposalOut",
+        "type": "object"
+      },
+      "UnitProposedPickOut": {
+        "properties": {
+          "entry_id": {
+            "title": "Entry Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "entry_id"
+        ],
+        "title": "UnitProposedPickOut",
         "type": "object"
       },
       "UnitRefOut": {
@@ -4948,6 +5005,24 @@
         "title": "UnitStoredRowOut",
         "type": "object"
       },
+      "UnitSuggestedSplitOut": {
+        "description": "How a `pair_unequal` is fixed: a new flow entry of `amount` (signed like the larger leg) split off the\nlarger leg's source, named by one of its stored entries (`source_entry_id`).",
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "source_entry_id": {
+            "title": "Source Entry Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source_entry_id",
+          "amount"
+        ],
+        "title": "UnitSuggestedSplitOut",
+        "type": "object"
+      },
       "UnitTagChangeIn": {
         "additionalProperties": false,
         "description": "A change of an entry's tags relative to its stored tags (a new entry's: the original's). A tag in both\nlists is 422 `invalid_draft` (`tag_conflict`); duplicates are tolerated.",
@@ -5014,6 +5089,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/UnitProposalOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "proposed_pick": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UnitProposedPickOut"
               },
               {
                 "type": "null"
@@ -9326,8 +9411,28 @@
     },
     "/api/units/commit": {
       "post": {
-        "description": "Write the draft in one transaction, then settle. A commit does not confirm: settling does.\n\n409 `conflict` names the entries whose version moved (or that `versions` omitted); 409 `unit_moved` is a\nclosure that changed under the locks; 409 `stale_reference` a category, payee or account that no longer\nexists; 409 `try_again` a deadlock lost twice. 422 carries the code of the first problem the preview would\nlist (all of them in `details.problems`), or `invalid_draft`.",
+        "description": "Write the draft in one transaction, then settle. A commit does not confirm: settling does.\n\n409 `conflict` names the entries whose version moved (or that `versions` omitted); 409 `unit_moved` is a\nclosure that changed under the locks; 409 `stale_reference` a category, payee or account that no longer\nexists; 409 `try_again` a deadlock lost twice. 422 carries the code of the first problem the preview would\nlist (all of them in `details.problems`), or `invalid_draft`. A pick is checked against the widest window\n(90 days), so one the widened preview accepted commits. `window_days` (1 to 90, default the matching\nwindow) is the window the proposals were shown for: send the one the preview used, so the proposals a\ncommit accepts (as the user's decisions) are the ones shown.",
         "operationId": "commit_unit",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "window_days",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 90,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Window Days"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {

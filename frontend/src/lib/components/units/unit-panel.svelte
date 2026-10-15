@@ -82,6 +82,7 @@
 				{ keys: 'y', description: 'Payee' },
 				{ keys: 't', description: 'Tags' },
 				{ keys: 's', description: 'Split entry' },
+				{ keys: 'p', description: 'Partner of a transfer' },
 				{ keys: 'x', description: 'Toggle flow ↔ transfer' },
 				{ keys: 'r', description: 'Re-resolve type, payee, category and counter account' }
 			]
@@ -215,6 +216,16 @@
 				event.preventDefault();
 				openPicker(editor(), 'tags');
 				break;
+			case 'p': {
+				// the focused leg's partner list, else the first one the panel has
+				const near = editor()?.querySelector<HTMLElement>('[data-picker="partner"]');
+				const any = content?.querySelector<HTMLElement>('[data-picker="partner"]');
+				if (near ?? any) {
+					event.preventDefault();
+					(near ?? any)!.click();
+				}
+				break;
+			}
 			case 's':
 				event.preventDefault();
 				split(editor());

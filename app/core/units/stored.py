@@ -271,3 +271,25 @@ def load_closure_of(conn: Connection, entry_ids: Iterable[int]) -> set[int]:
         if ids is not None:
             out.update(ids.entry_ids)
     return out
+
+
+def pick_partner_ids(draft: UnitDraft) -> list[int]:
+    """The partners the draft picks, ascending: each brings its own closure into the unit being drafted."""
+    return sorted(
+        {
+            e.pairing.partner_entry_id
+            for e in draft.entries
+            if e.pairing.mode == "pick" and e.pairing.partner_entry_id is not None
+        }
+    )
+
+
+def load_drafted_unit(conn: Connection, draft: UnitDraft) -> tuple[StoredUnit, frozenset[int]] | None:
+    """The closure of the anchor extended by the closure of every partner the draft picks (the unit as
+    drafted), and the ids of the anchor's own closure. None when the anchor is in no unit. A partner that
+    is in no unit is left out: the plan refuses the pick."""
+    ids = unit_ids_of(conn, draft.anchor_entry_id)
+    if ids is None:
+        return None
+    all_ids = set(ids.entry_ids) | load_closure_of(conn, pick_partner_ids(draft))
+    return load_stored_entries(conn, draft.anchor_entry_id, all_ids), frozenset(ids.entry_ids)

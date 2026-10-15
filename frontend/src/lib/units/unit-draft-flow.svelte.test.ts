@@ -437,13 +437,17 @@ describe('committing', () => {
 
 		await flow.commit();
 
-		expect(commitUnit).toHaveBeenCalledWith({
-			anchor_entry_id: 1,
-			entries: [{ id: 1, category: { mode: 'fixed', value: 11 } }],
-			removed_entry_ids: [],
-			reresolve_all: false,
-			versions: { 1: 3, 2: 4 }
-		});
+		expect(commitUnit).toHaveBeenCalledWith(
+			{
+				anchor_entry_id: 1,
+				entries: [{ id: 1, category: { mode: 'fixed', value: 11 } }],
+				removed_entry_ids: [],
+				reresolve_all: false,
+				versions: { 1: 3, 2: 4 }
+			},
+			undefined,
+			null
+		);
 		expect(h.patch).toHaveBeenCalledWith({
 			entries: loaded.entries,
 			resolved: [1, 2],
@@ -922,5 +926,181 @@ describe('tags', () => {
 			expect(flow.draft?.tagEdit(1)).toEqual({ add: [], remove: [30] });
 			expect(flow.notice?.text).toMatch(/tag you chose no longer exists/);
 		});
+	});
+});
+
+describe('the partner of a transfer leg', () => {
+	const calls = () => vi.mocked(previewUnit).mock.calls;
+	const unequal = (split: { source_entry_id: number; amount: number } | null) =>
+		problem('pair_unequal', {
+			entry_id: 1,
+			detail: { partner: 2, difference: -250 },
+			...(split
+				? { suggested_split: { ...split, amount: { amount: split.amount, currency: 'EUR' } } }
+				: {})
+		});
+
+	it('a pick is a draft edit: previewed at once with the pairing, dirty, and gone with Reset', async () => {
+		const { flow } = setup();
+		await settle();
+		expect(flow.isDirty).toBe(false);
+		vi.mocked(previewUnit).mockClear();
+
+		flow.pickPartner(1, 77);
+
+		expect(calls()[0][0].entries).toEqual([
+			{ id: 1, pairing: { mode: 'pick', partner_entry_id: 77 } }
+		]);
+		await settle();
+		expect(flow.isDirty).toBe(true);
+		flow.discard();
+		expect(flow.draft?.hasPick).toBe(false);
+		expect(flow.isDirty).toBe(false);
+	});
+
+	it('a re-resolve leaves no pick behind', async () => {
+		const { flow } = setup();
+		flow.pickPartner(1, 77);
+		await settle();
+		vi.mocked(previewUnit).mockClear();
+
+		flow.reresolve();
+
+		expect(calls()[0][0]).toMatchObject({ reresolve_all: true, entries: [] });
+	});
+
+	it('widens the window for the next request only: 30, then 90, then no more', async () => {
+		const { flow } = setup();
+		await settle();
+		expect(flow.nextWindow).toBe(30);
+		vi.mocked(previewUnit).mockClear();
+
+		flow.widenWindow();
+		await settle();
+		expect(calls()[0][2]).toBe(30);
+		expect(flow.previewWindow).toBe(30);
+		expect(flow.nextWindow).toBe(90);
+
+		flow.widenWindow();
+		await settle();
+		expect(calls()[1][2]).toBe(90);
+		expect(flow.nextWindow).toBeNull();
+
+		// any other change is previewed in the server's own window again
+		flow.setField(1, 'category', 11);
+		await settle();
+		expect(calls()[2][2]).toBeNull();
+		expect(flow.previewWindow).toBeNull();
+	});
+
+	it('a pick made from a widened list keeps the window, or the server would not offer it', async () => {
+		const { flow } = setup();
+		await settle();
+		flow.widenWindow();
+		await settle();
+		vi.mocked(previewUnit).mockClear();
+
+		flow.pickPartner(1, 77);
+		await settle();
+		flow.setField(1, 'category', 11);
+		await settle();
+
+		expect(calls().map((c) => c[2])).toEqual([30, 30]);
+		// once the pick is gone the window is spent with the next request
+		flow.clearPairing(1);
+		await settle();
+		flow.setField(1, 'category', 10);
+		await settle();
+		expect(calls().at(-1)![2]).toBeNull();
+	});
+
+	it('splits the fee off once, right after the pick, as a draft split of the suggested entry', async () => {
+		vi.mocked(previewUnit).mockImplementation(async (request) =>
+			preview(loaded, {
+				problems: (request.entries ?? []).some((e) => e.id === -1 || e.amount)
+					? []
+					: [unequal({ source_entry_id: 1, amount: 250 })]
+			})
+		);
+		const { flow } = setup();
+		await settle();
+		expect(flow.draft?.splits).toEqual([]); // not after a plain open
+
+		flow.pickPartner(1, 77);
+		await settle();
+
+		expect(flow.draft?.splits).toEqual([{ id: -1, sourceEntryId: 1, tags: [] }]);
+		// the amount takes the sign of the entry it splits (an expense here)
+		expect(flow.draft?.edit(-1).amount).toBe(-250);
+		expect(flow.lastAddedSplit).toBeNull();
+		expect(calls().at(-1)![0].entries).toContainEqual(
+			expect.objectContaining({ id: -1, source_entry_id: 1, amount: -250 })
+		);
+	});
+
+	it('does not loop: a suggestion that is still there after the split is left to the user', async () => {
+		vi.mocked(previewUnit).mockImplementation(async () =>
+			preview(loaded, { problems: [unequal({ source_entry_id: 1, amount: 250 })] })
+		);
+		const { flow } = setup();
+		await settle();
+
+		flow.pickPartner(1, 77);
+		await settle();
+		await settle();
+
+		expect(flow.draft?.splits).toHaveLength(1);
+		// a second change does not split again; a second pick may
+		flow.setField(1, 'category', 11);
+		await settle();
+		expect(flow.draft?.splits).toHaveLength(1);
+		flow.pickPartner(1, 78);
+		await settle();
+		expect(flow.draft?.splits).toHaveLength(2);
+	});
+
+	it('does not split when the pick ends in a pair of equal amounts', async () => {
+		const { flow } = setup();
+		flow.pickPartner(1, 77);
+		await settle();
+		expect(flow.draft?.splits).toEqual([]);
+	});
+
+	it('the manual "Split off the difference" prefers the suggestion', async () => {
+		const { flow } = setup();
+		await settle();
+		flow.splitOffDifference(unequal({ source_entry_id: 2, amount: 300 }));
+		expect(flow.draft?.splits).toEqual([{ id: -1, sourceEntryId: 2, tags: [] }]);
+		expect(flow.draft?.edit(-1).amount).toBe(-300);
+	});
+
+	it('commits with the window the held preview was widened to, so a far pick is not refused', async () => {
+		const { flow } = setup();
+		await settle();
+		flow.widenWindow();
+		await settle();
+		flow.pickPartner(1, 77);
+		await settle();
+		vi.mocked(commitUnit).mockResolvedValue(committed(loaded));
+
+		await flow.commit();
+
+		expect(vi.mocked(commitUnit).mock.calls[0][2]).toBe(30);
+		expect(vi.mocked(commitUnit).mock.calls[0][0].entries).toEqual([
+			{ id: 1, pairing: { mode: 'pick', partner_entry_id: 77 } }
+		]);
+	});
+
+	it.each([
+		['pairing_not_transfer', 'Only a transfer leg has a partner.'],
+		['invalid_pairing', 'The partner you picked cannot be used.']
+	])('says an invalid draft by its %s code', async (code, text) => {
+		const { flow } = setup();
+		await settle();
+		vi.mocked(commitUnit).mockRejectedValue(error(422, 'invalid_draft', { code }));
+
+		await flow.commit();
+
+		expect(flow.notice?.text).toContain(text);
 	});
 });

@@ -15,10 +15,15 @@ export type NewUnitCount = Schemas['NewCountOut'];
 // The draft, its preview and its commit (architecture §4.1, spec §6).
 export type UnitDraftRequest = Schemas['UnitDraftIn'];
 export type DraftEntryRequest = Schemas['UnitDraftEntryIn'];
+export type PairingRequest = Schemas['UnitPairingIn'];
 export type FieldDraftRequest = Schemas['UnitFieldDraftIn'];
 export type UnitPreview = Schemas['UnitPreviewOut'];
+export type UnitTransfer = Schemas['UnitTransferOut'];
 export type PreviewRow = Schemas['UnitPreviewRowOut'];
+export type UnitOffer = Schemas['UnitOfferOut'];
 export type PreviewField = Schemas['UnitFieldOut'];
+/** The split the server suggests for an unequal pair: the amount's magnitude in minor units. */
+export type SuggestedSplit = { source_entry_id: number; amount: number };
 export type UnitProblem = Schemas['UnitProblemOut'];
 export type UnitConsequence = Schemas['UnitConsequenceOut'];
 export type ConsequenceKind = UnitConsequence['kind'];

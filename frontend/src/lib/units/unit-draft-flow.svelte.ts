@@ -17,9 +17,25 @@ import {
 	type FieldValue,
 	type ShownBasis
 } from './draft.js';
-import { describeProblem, differenceOf, problemSentence, type ProblemText } from './problems.js';
+import {
+	describeProblem,
+	differenceOf,
+	problemSentence,
+	suggestedSplitOf,
+	type ProblemText
+} from './problems.js';
 import { effectiveChanged } from './view.js';
-import type { Affected, Unit, UnitCommit, UnitPreview, UnitProblem } from './types.js';
+import type {
+	Affected,
+	SuggestedSplit,
+	Unit,
+	UnitCommit,
+	UnitPreview,
+	UnitProblem
+} from './types.js';
+
+/** The windows "Load more candidates" steps through (days), after the matching window of the server. */
+export const WINDOW_STEPS = [30, 90] as const;
 
 /** how long typing rests before the preview is asked for */
 export const PREVIEW_DELAY_MS = 250;
@@ -117,12 +133,22 @@ export class UnitDraftFlow {
 	lastAddedSplit = $state<number | null>(null);
 	/** a tag is being created for the picker: it offers nothing meanwhile */
 	tagBusy = $state(false);
+	/** the window (days) the offers of the preview shown were listed for; null: the server's own */
+	previewWindow = $state<number | null>(null);
 
 	#timer: ReturnType<typeof setTimeout> | null = null;
 	#generation = 0;
 	/** counts the units begun and the panels closed: what an answer is still for */
 	#epoch = 0;
 	#controller: AbortController | null = null;
+	/**
+	 * The widened window of the next preview. It applies to the next request only, except while the
+	 * draft holds a pick: the server validates the pick against the window, so a pick made from a
+	 * widened list keeps the window it was offered in.
+	 */
+	#window: number | null = null;
+	/** the pick just made: its preview may suggest the fee split (applied once, never again) */
+	#feePending = false;
 
 	constructor(host: FlowHost) {
 		this.#host = host;
@@ -156,6 +182,7 @@ export class UnitDraftFlow {
 			problem,
 			text: describeProblem(problem, {
 				locale: this.#host.locale(),
+				windowDays: this.previewWindow,
 				currency: (entryId) => this.#currency(entryId)
 			})
 		}));
@@ -190,6 +217,9 @@ export class UnitDraftFlow {
 		this.lastAddedSplit = null;
 		this.tagBusy = false;
 		this.committing = false;
+		this.#window = null;
+		this.#feePending = false;
+		this.previewWindow = null;
 		this.#request();
 	}
 
@@ -210,6 +240,9 @@ export class UnitDraftFlow {
 		this.amountErrors = {};
 		this.lastAddedSplit = null;
 		this.tagBusy = false;
+		this.#window = null;
+		this.#feePending = false;
+		this.previewWindow = null;
 	}
 
 	/** Reset: throw every change away (the panel stays open): the unit as stored, previewed again. */
@@ -312,6 +345,43 @@ export class UnitDraftFlow {
 		this.edit((d) => d.reresolve(on));
 	}
 
+	// ---- the partner of a transfer leg (spec §5.7) ----------------------------------------
+
+	/**
+	 * Pick a partner for a transfer leg. The pick is a draft edit like any other: the preview says
+	 * what it does. A pick from a widened list keeps that window; a fee the picked pair differs by
+	 * is split off once, from the preview that follows.
+	 */
+	pickPartner(id: number, partnerEntryId: number): void {
+		if (!this.draft || this.committing) return;
+		this.#window = this.previewWindow;
+		this.#feePending = true;
+		this.edit((d) => d.pickPartner(id, partnerEntryId));
+	}
+
+	/** Pair the leg by the rules again. */
+	reresolvePairing(id: number): void {
+		this.edit((d) => d.reresolvePairing(id));
+	}
+
+	clearPairing(id: number): void {
+		this.edit((d) => d.clearPairing(id));
+	}
+
+	/** The window "Load more candidates" asks for next, or null when it is as wide as it gets. */
+	get nextWindow(): number | null {
+		const current = this.previewWindow ?? 0;
+		return WINDOW_STEPS.find((days) => days > current) ?? null;
+	}
+
+	/** Show the offers of a wider window (the next preview only, unless a pick keeps it). */
+	widenWindow(): void {
+		const days = this.nextWindow;
+		if (days === null || !this.draft || this.committing) return;
+		this.#window = days;
+		this.#schedule(true);
+	}
+
 	/** Add a split row to the source of a stored entry; its amount is typed next. */
 	addSplit(sourceEntryId: number): number | null {
 		const draft = this.draft;
@@ -331,8 +401,16 @@ export class UnitDraftFlow {
 		this.edit((d) => d.restoreSplit(id));
 	}
 
-	/** The remedy of an unequal pair (spec §5.7): split the difference off the larger leg. */
+	/**
+	 * The remedy of an unequal pair (spec §5.7): split the difference off the larger leg: the leg
+	 * the server suggests, else the one this draft finds.
+	 */
 	splitOffDifference(problem: UnitProblem): void {
+		const suggested = suggestedSplitOf(problem);
+		if (suggested) {
+			this.#applySplit(suggested);
+			return;
+		}
 		const difference = differenceOf(problem);
 		const preview = this.preview;
 		if (difference === null || !preview || problem.entry_id === null) return;
@@ -342,12 +420,24 @@ export class UnitDraftFlow {
 		const larger = legs.reduce((a, b) =>
 			Math.abs(b.amount.amount) > Math.abs(a.amount.amount) ? b : a
 		);
-		const sourceEntry = this.#storedOfSource(larger.source_transaction_id);
-		if (!sourceEntry) return;
-		const id = this.addSplit(sourceEntry.id);
+		const sourceId =
+			this.#storedOfSource(larger.source_transaction_id)?.id ??
+			// the leg of a partner picked from outside the unit is no stored entry of it
+			preview.rows.find(
+				(r) => r.source_transaction_id === larger.source_transaction_id && r.original && r.id > 0
+			)?.id;
+		if (sourceId === undefined) return;
+		this.#applySplit({ source_entry_id: sourceId, amount: difference });
+	}
+
+	/** A split of `amount` (its magnitude) off a stored entry; it takes the sign of that entry. */
+	#applySplit(split: SuggestedSplit): void {
+		const row = this.preview?.rows.find((r) => r.id === split.source_entry_id);
+		const stored = this.unit?.entries.find((e) => e.id === split.source_entry_id);
+		const negative = (row?.amount.amount ?? stored?.amount.amount ?? split.amount) < 0;
+		const id = this.addSplit(split.source_entry_id);
 		if (id === null) return;
-		const minor = difference * (larger.amount.amount < 0 ? -1 : 1);
-		this.edit((d) => d.setSplitAmount(id, minor));
+		this.edit((d) => d.setSplitAmount(id, Math.abs(split.amount) * (negative ? -1 : 1)));
 	}
 
 	#storedOfSource(sourceId: number): Entry | undefined {
@@ -412,10 +502,14 @@ export class UnitDraftFlow {
 		const generation = ++this.#generation;
 		this.previewStatus = 'loading';
 		this.stale = true;
-		previewUnit(draft.toRequest(), controller.signal).then(
+		const windowDays = this.#window;
+		// a widened window serves one request, unless a pick stands that was offered in it
+		if (!draft.hasPick) this.#window = null;
+		previewUnit(draft.toRequest(), controller.signal, windowDays).then(
 			(preview) => {
 				if (generation !== this.#generation) return; // a newer request owns the screen
 				this.preview = preview;
+				this.previewWindow = windowDays;
 				this.previewStatus = 'ready';
 				this.previewError = null;
 				this.stale = false;
@@ -439,7 +533,10 @@ export class UnitDraftFlow {
 	/** A pick the lists no longer hold: they are loaded again and the pick forgotten. */
 	#afterPreview(preview: UnitPreview): void {
 		const gone = preview.problems.filter((p) => p.code === 'stale_reference');
-		if (gone.length === 0) return;
+		if (gone.length === 0) {
+			this.#suggestFee(preview);
+			return;
+		}
 		void this.#host.reloadLookups();
 		let next = this.draft;
 		for (const problem of gone) {
@@ -460,6 +557,20 @@ export class UnitDraftFlow {
 		}
 	}
 
+	/**
+	 * The preview right after a pick: when it says the pair differs by a fee, the fee is split off
+	 * as a draft split, once per pick (the pick's guard is spent whatever the answer says).
+	 */
+	#suggestFee(preview: UnitPreview): void {
+		if (!this.#feePending) return;
+		this.#feePending = false;
+		const suggested = preview.problems.map(suggestedSplitOf).find((s) => s !== null);
+		if (!suggested || this.committing) return;
+		this.#applySplit(suggested);
+		// the amount is what the server suggested: nothing to type next
+		this.lastAddedSplit = null;
+	}
+
 	// ---- the commit ----------------------------------------------------------------------
 
 	async commit(): Promise<void> {
@@ -471,7 +582,7 @@ export class UnitDraftFlow {
 		this.notice = null;
 		let out: UnitCommit;
 		try {
-			out = await commitUnit(request);
+			out = await commitUnit(request, undefined, this.previewWindow);
 		} catch (error) {
 			this.committing = false;
 			await this.#failed(asApiError(error));
@@ -509,12 +620,19 @@ export class UnitDraftFlow {
 			case 'not_found':
 				this.notice = { kind: 'error', text: 'This unit no longer exists.' };
 				return;
-			case 'invalid_draft':
+			case 'invalid_draft': {
+				const code = (error.details as { code?: string } | null)?.code;
 				this.notice = {
 					kind: 'error',
-					text: 'This change cannot be committed as it stands. Review the amounts and values.'
+					text:
+						code === 'pairing_not_transfer'
+							? 'Only a transfer leg has a partner. Take the partner pick back, or make the entry a transfer.'
+							: code === 'invalid_pairing'
+								? 'The partner you picked cannot be used. Pick another partner.'
+								: 'This change cannot be committed as it stands. Review the amounts and values.'
 				};
 				return;
+			}
 			default: {
 				const problems = problemsOf(error);
 				if (error.status === 422 && problems.length > 0) {

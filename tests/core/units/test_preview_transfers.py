@@ -229,7 +229,9 @@ def test_the_draft_decides_the_pairing_the_preview_simulates(scene: Scene) -> No
     """A draft that gives the counter-account is the user's decision: it pairs with an outside leg."""
     e = leg(scene, -1000, scene.checking)
     x = leg(scene, 1000, scene.savings)
-    assert {r.id for r in scene.preview(e).rows} == {e}  # neither knows its counter-account (I33)
+    # neither knows its counter-account (I33): settling would not pair them, but the exact open offer is the
+    # proposal, which the preview takes as the pick (a commit accepts it)
+    assert scene.preview(e).transfers[e].proposed_pick == x
     draft = scene.draft(e, DraftEntry(e, counter_account=fixed(scene.savings)))
     plan = preview_then_commit(scene, draft)[0]
     assert {r.id for r in plan.rows} == {e, x}

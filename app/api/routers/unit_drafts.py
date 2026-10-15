@@ -20,7 +20,7 @@ from app.api.routers.entries import EntryOut
 from app.api.routers.maintenance import SettleOut
 from app.core.matching import Offer
 from app.core.units.commit import CommitResult
-from app.core.units.draft import UNSET, DraftEntry, FieldDraft, ShownBasis, UnitDraft
+from app.core.units.draft import UNSET, DraftEntry, FieldDraft, PairingDraft, ShownBasis, UnitDraft
 from app.core.units.plan import (
     Consequence,
     FieldResult,
@@ -72,6 +72,22 @@ class UnitFieldDraftIn(BaseModel):
         return FieldDraft(self.mode, self.value, shown)
 
 
+class UnitPairingIn(BaseModel):
+    """What the draft says of a transfer leg's partner (spec §5.7). `keep` (also: absent) leaves it, and a
+    commit accepts the proposal the preview shows. `pick` names a stored partner entry (`partner_entry_id`,
+    positive): it must be an offer of the leg, else the preview lists the problem `partner_not_offered` or
+    `partner_in_unit`. `reresolve` drops the stored pair and lets the passes decide again. A `pairing` on an
+    entry that is not a transfer leg, or a negative id, is 422 `invalid_draft`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: Literal["keep", "pick", "reresolve"] = "keep"
+    partner_entry_id: TempOrStoredId | None = None
+
+    def to_core(self) -> PairingDraft:
+        return PairingDraft(self.mode, self.partner_entry_id)
+
+
 class UnitTagChangeIn(BaseModel):
     """A change of an entry's tags relative to its stored tags (a new entry's: the original's). A tag in both
     lists is 422 `invalid_draft` (`tag_conflict`); duplicates are tolerated."""
@@ -98,6 +114,7 @@ class UnitDraftEntryIn(BaseModel):
     payee: UnitFieldDraftIn = Field(default_factory=UnitFieldDraftIn)
     category: UnitFieldDraftIn = Field(default_factory=UnitFieldDraftIn)
     counter_account: UnitFieldDraftIn = Field(default_factory=UnitFieldDraftIn)
+    pairing: UnitPairingIn = Field(default_factory=UnitPairingIn)
     source_entry_id: EntityId | None = None
     tags: UnitTagChangeIn | None = None
 
@@ -112,6 +129,7 @@ class UnitDraftEntryIn(BaseModel):
             payee=self.payee.to_core(),
             category=self.category.to_core(),
             counter_account=self.counter_account.to_core(),
+            pairing=self.pairing.to_core(),
             source_entry_id=self.source_entry_id,
             tags_add=tuple(sorted(set(self.tags.add))) if self.tags else (),
             tags_remove=tuple(sorted(set(self.tags.remove))) if self.tags else (),
@@ -130,8 +148,9 @@ class UnitDraftIn(BaseModel):
     reresolve_all: bool = False
     versions: dict[EntityId, EntityVersion] = Field(default_factory=dict)
 
-    def to_core(self) -> UnitDraft:
+    def to_core(self, window_days: int | None = None) -> UnitDraft:
         return UnitDraft(
+            window_days=window_days,
             anchor_entry_id=self.anchor_entry_id,
             entries=[e.to_core() for e in self.entries],
             removed_entry_ids=list(self.removed_entry_ids),
@@ -300,6 +319,10 @@ class UnitProposalOut(BaseModel):
     entry_id: int | None  # the offer's entry; null for the counter-leg
 
 
+class UnitProposedPickOut(BaseModel):
+    entry_id: int  # the partner the preview took the leg's proposal to be: the leg shows that pair
+
+
 class UnitWaitingForOut(BaseModel):
     account_id: int  # the counter-account the partner is awaited from
     synced_through: date | None  # how far that account has been fetched; null = never
@@ -317,8 +340,13 @@ class UnitTransferOut(BaseModel):
     needs_account: UnitNeedsAccountOut | None  # state `needs_account`
     partner: UnitPartnerOut | None  # state `paired`
     offers: list[UnitOfferOut]
-    proposal: UnitProposalOut | None  # what the preview preselects; none for a leg that has a partner
+    proposal: UnitProposalOut | None  # what the preview preselects; none for a leg with a partner of its own
     has_more: bool  # more candidates exist beyond the window, up to the widest a pick may ask for (90)
+    # set where the preview took the leg's proposal (an exact open offer) to be the pick: the leg is then
+    # `paired` with that partner and `offers` / `proposal` are the ones it had before (the proposed offer
+    # first); a commit accepts it as the user's decision. An explicit pick in the draft overrides it, and
+    # `pairing: reresolve` takes the proposal afresh.
+    proposed_pick: UnitProposedPickOut | None = None
 
     @staticmethod
     def of(t: TransferView) -> UnitTransferOut:
@@ -344,6 +372,7 @@ class UnitTransferOut(BaseModel):
             if t.proposal is None
             else UnitProposalOut(kind=t.proposal.kind, entry_id=t.proposal.entry_id),
             has_more=t.has_more,
+            proposed_pick=None if t.proposed_pick is None else UnitProposedPickOut(entry_id=t.proposed_pick),
         )
 
 
@@ -484,6 +513,14 @@ class UnitSplitOut(BaseModel):
         )
 
 
+class UnitSuggestedSplitOut(BaseModel):
+    """How a `pair_unequal` is fixed: a new flow entry of `amount` (signed like the larger leg) split off the
+    larger leg's source, named by one of its stored entries (`source_entry_id`)."""
+
+    source_entry_id: int
+    amount: Money
+
+
 class UnitProblemOut(BaseModel):
     """A way the result would break an invariant (a commit is refused for it): a code, never prose."""
 
@@ -491,10 +528,22 @@ class UnitProblemOut(BaseModel):
     entry_id: int | None
     field: str | None
     detail: dict[str, int | str | None]
+    suggested_split: UnitSuggestedSplitOut | None = None  # `pair_unequal` only
 
     @staticmethod
-    def of(p: Problem) -> UnitProblemOut:
-        return UnitProblemOut(code=p.code, entry_id=p.entry_id, field=p.field, detail=dict(p.detail))
+    def of(p: Problem, currency: str | None = None) -> UnitProblemOut:
+        split = p.suggested_split
+        return UnitProblemOut(
+            code=p.code,
+            entry_id=p.entry_id,
+            field=p.field,
+            detail=dict(p.detail),
+            suggested_split=None
+            if split is None or currency is None
+            else UnitSuggestedSplitOut(
+                source_entry_id=split.source_entry_id, amount=Money(amount=split.amount, currency=currency)
+            ),
+        )
 
 
 class UnitConsequenceOut(BaseModel):
@@ -513,6 +562,13 @@ class UnitConsequenceOut(BaseModel):
         return UnitConsequenceOut(
             entry_id=c.entry_id, kind=c.kind, version=planned.version, row=UnitPreviewRowOut.of(planned)
         )
+
+
+def _problem_currency(p: Problem, plan: Plan) -> str | None:
+    """The currency of a problem's split: the one of the larger leg's source (both legs share it)."""
+    if p.suggested_split is None:
+        return None
+    return next((r.currency for r in plan.rows if r.id == p.suggested_split.source_entry_id), None)
 
 
 class UnitPreviewOut(BaseModel):
@@ -534,7 +590,7 @@ class UnitPreviewOut(BaseModel):
             units=[UnitPlannedOut.of(u) for u in plan.units],
             rows=[UnitPreviewRowOut.of(r, plan.transfers.get(r.id)) for r in plan.rows],
             splits=[UnitSplitOut.of(s, currency[s.source_transaction_id]) for s in plan.splits],
-            problems=[UnitProblemOut.of(p) for p in plan.problems],
+            problems=[UnitProblemOut.of(p, _problem_currency(p, plan)) for p in plan.problems],
             consequences=[UnitConsequenceOut.of(c, plan) for c in plan.consequences],
             versions=dict(plan.versions),
         )

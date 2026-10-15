@@ -22,6 +22,24 @@ describe('AppShell', () => {
 		expect(screen.getByText('Ada')).toBeInTheDocument();
 	});
 
+	it('shows the decorative app icon beside the wordmark', () => {
+		const { container } = render(AppShell, {
+			props: {
+				items,
+				currentPath: '/ledger',
+				userName: 'Ada',
+				onlogout: vi.fn(),
+				children: content
+			}
+		});
+
+		const icon = container.querySelector('aside img');
+		expect(icon).toHaveAttribute('src', '/brand/app-icon-dark.png');
+		expect(icon).toHaveAttribute('alt', '');
+		expect(icon).toHaveAttribute('width', '28');
+		expect(screen.queryByRole('img')).toBeNull();
+	});
+
 	it('lists only the navigation items it is given', () => {
 		shell('/ledger');
 

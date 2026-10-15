@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describeProblem, differenceOf, problemSentence } from './problems.js';
+import { describeProblem, differenceOf, problemSentence, suggestedSplitOf } from './problems.js';
 import { problem } from './fixtures.js';
 
 const context = { currency: () => 'EUR', locale: 'en' };
@@ -85,5 +85,47 @@ describe('problemSentence and differenceOf', () => {
 		expect(differenceOf(problem('pair_unequal', { detail: { difference: -100 } }))).toBe(100);
 		expect(differenceOf(problem('pair_unequal', { detail: { difference: 0 } }))).toBeNull();
 		expect(differenceOf(problem('split_sum', { detail: { difference: 5 } }))).toBeNull();
+	});
+});
+
+describe('the partner problems', () => {
+	it('says a partner that is not offered, with the hint to widen the window while it is not widened', () => {
+		const text = describeProblem(problem('partner_not_offered'), context);
+		expect(text.text).toBe(
+			'This entry is not offered as a partner (wrong account, direction or date).'
+		);
+		expect(text.remedy).toContain('load more candidates');
+		const widened = describeProblem(problem('partner_not_offered'), { ...context, windowDays: 30 });
+		expect(widened.remedy).toBe('Pick another partner.');
+	});
+
+	it('says a partner that is already in the unit', () => {
+		expect(words('partner_in_unit').text).toBe('This entry is already part of this unit.');
+	});
+});
+
+describe('suggestedSplitOf', () => {
+	const money = (amount: number) => ({ amount, currency: 'EUR' });
+
+	it('reads the suggestion of an unequal pair as a magnitude', () => {
+		expect(
+			suggestedSplitOf(
+				problem('pair_unequal', { suggested_split: { source_entry_id: 4, amount: money(-250) } })
+			)
+		).toEqual({ source_entry_id: 4, amount: 250 });
+	});
+
+	it('is null without one, for another problem, and for nothing to split', () => {
+		expect(suggestedSplitOf(problem('pair_unequal'))).toBeNull();
+		expect(
+			suggestedSplitOf(
+				problem('pair_sign', { suggested_split: { source_entry_id: 1, amount: money(5) } })
+			)
+		).toBeNull();
+		expect(
+			suggestedSplitOf(
+				problem('pair_unequal', { suggested_split: { source_entry_id: 1, amount: money(0) } })
+			)
+		).toBeNull();
 	});
 });

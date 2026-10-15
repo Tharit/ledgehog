@@ -705,7 +705,10 @@ export interface paths {
          *     409 `conflict` names the entries whose version moved (or that `versions` omitted); 409 `unit_moved` is a
          *     closure that changed under the locks; 409 `stale_reference` a category, payee or account that no longer
          *     exists; 409 `try_again` a deadlock lost twice. 422 carries the code of the first problem the preview would
-         *     list (all of them in `details.problems`), or `invalid_draft`.
+         *     list (all of them in `details.problems`), or `invalid_draft`. A pick is checked against the widest window
+         *     (90 days), so one the widened preview accepted commits. `window_days` (1 to 90, default the matching
+         *     window) is the window the proposals were shown for: send the one the preview used, so the proposals a
+         *     commit accepts (as the user's decisions) are the ones shown.
          */
         post: operations["commit_unit"];
         delete?: never;
@@ -2007,6 +2010,7 @@ export interface components {
             id: number;
             /** Note */
             note?: string | null;
+            pairing?: components["schemas"]["UnitPairingIn"];
             payee?: components["schemas"]["UnitFieldDraftIn"];
             /** Source Entry Id */
             source_entry_id?: number | null;
@@ -2143,6 +2147,24 @@ export interface components {
             waiting?: components["schemas"]["WaitingOut"] | null;
         };
         /**
+         * UnitPairingIn
+         * @description What the draft says of a transfer leg's partner (spec §5.7). `keep` (also: absent) leaves it, and a
+         *     commit accepts the proposal the preview shows. `pick` names a stored partner entry (`partner_entry_id`,
+         *     positive): it must be an offer of the leg, else the preview lists the problem `partner_not_offered` or
+         *     `partner_in_unit`. `reresolve` drops the stored pair and lets the passes decide again. A `pairing` on an
+         *     entry that is not a transfer leg, or a negative id, is 422 `invalid_draft`.
+         */
+        UnitPairingIn: {
+            /**
+             * Mode
+             * @default keep
+             * @enum {string}
+             */
+            mode: "keep" | "pick" | "reresolve";
+            /** Partner Entry Id */
+            partner_entry_id?: number | null;
+        };
+        /**
          * UnitPartnerOut
          * @description A leg in a few words: the partner of a leg, or the one a leg paired elsewhere is paired with.
          */
@@ -2251,6 +2273,7 @@ export interface components {
             entry_id: number | null;
             /** Field */
             field: string | null;
+            suggested_split?: components["schemas"]["UnitSuggestedSplitOut"] | null;
         };
         /** UnitProposalOut */
         UnitProposalOut: {
@@ -2261,6 +2284,11 @@ export interface components {
              * @enum {string}
              */
             kind: "entry" | "counter_leg";
+        };
+        /** UnitProposedPickOut */
+        UnitProposedPickOut: {
+            /** Entry Id */
+            entry_id: number;
         };
         /** UnitRefOut */
         UnitRefOut: {
@@ -2318,6 +2346,16 @@ export interface components {
             note: string | null;
         };
         /**
+         * UnitSuggestedSplitOut
+         * @description How a `pair_unequal` is fixed: a new flow entry of `amount` (signed like the larger leg) split off the
+         *     larger leg's source, named by one of its stored entries (`source_entry_id`).
+         */
+        UnitSuggestedSplitOut: {
+            amount: components["schemas"]["Money"];
+            /** Source Entry Id */
+            source_entry_id: number;
+        };
+        /**
          * UnitTagChangeIn
          * @description A change of an entry's tags relative to its stored tags (a new entry's: the original's). A tag in both
          *     lists is 422 `invalid_draft` (`tag_conflict`); duplicates are tolerated.
@@ -2340,6 +2378,7 @@ export interface components {
             offers: components["schemas"]["UnitOfferOut"][];
             partner: components["schemas"]["UnitPartnerOut"] | null;
             proposal: components["schemas"]["UnitProposalOut"] | null;
+            proposed_pick?: components["schemas"]["UnitProposedPickOut"] | null;
             /**
              * State
              * @enum {string}
@@ -5275,7 +5314,9 @@ export interface operations {
     };
     commit_unit: {
         parameters: {
-            query?: never;
+            query?: {
+                window_days?: number | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;

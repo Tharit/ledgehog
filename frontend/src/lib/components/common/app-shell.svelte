@@ -22,7 +22,7 @@
 	import IconButton from './icon-button.svelte';
 
 	// The shell: a 232px sidebar (wordmark, navigation, user) beside the content (design §5).
-	// The raster mascot head beside the wordmark must be redrawn as SVG first (design §9).
+	// The mascot head beside the wordmark is raster for now; design §9 wants it redrawn as SVG.
 	let {
 		items,
 		footerItems = [],
@@ -58,7 +58,16 @@
 	<aside
 		class="sticky top-0 flex h-screen w-(--sidebar-width) shrink-0 flex-col border-r border-sidebar-border bg-sidebar p-4"
 	>
-		<p class="mb-6 px-2 text-xl font-semibold text-primary">Ledgehog</p>
+		<div class="mb-6 flex items-center gap-2 px-2">
+			<img
+				src="/brand/app-icon-dark.png"
+				alt=""
+				width="28"
+				height="28"
+				class="size-7 shrink-0 object-contain"
+			/>
+			<p class="text-xl font-semibold text-primary">Ledgehog</p>
+		</div>
 		<nav aria-label="Main" class="flex flex-col gap-1">
 			{#each items as item (item.href)}
 				{@render link(item)}

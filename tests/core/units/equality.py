@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from typing import Any
 
 from app.core.units.commit import CommitResult
@@ -45,6 +46,9 @@ def preview_then_commit(scene: Scene, draft: UnitDraft) -> tuple[Plan, CommitRes
     plan = preview_unit(scene.engine, draft)
     assert scene.fingerprint() == before, "a preview wrote something"
     assert not plan.problems, plan.problems
+    pulled = set(plan.versions) != set(draft.versions)
+    # a commit carries the versions of everything the preview shows (the proposals it took as picks included)
+    draft = dataclasses.replace(draft, versions={**draft.versions, **plan.versions})
     result = scene.commit_draft(draft)
     assert scene.settle().touched_entry_ids == (), "settling after a commit is not idempotent"
     scene.assert_checks_clean()  # I3, I9, I10, I11, I31 and the rest, as the integrity views judge them
@@ -69,14 +73,22 @@ def preview_then_commit(scene: Scene, draft: UnitDraft) -> tuple[Plan, CommitRes
         (result.created.get(c.entry_id, c.entry_id), c.kind) for c in plan.consequences
     )
     committed_consequences = sorted((c.entry_id, c.kind) for c in result.consequences)
-    if set(plan.versions) != set(draft.versions):
+    if pulled:
         # settling paired a leg of the unit with a leg outside it (the preview brought its unit in): the
         # preview shows what that changes (the leg `changed`, a unit that returns to review or does not, a
         # leg `unpaired` into the unit rather than `left_behind` it) and the commit's own plan, which holds
         # no leg of the ledger, cannot know: the entries agree, the kinds may differ in those ways
         both = set(previewed_consequences) ^ set(committed_consequences)
-        assert all(kind in ("changed", "returns_to_review", "unpaired", "left_behind") for _id, kind in both)
-        assert {i for i, _k in committed_consequences} <= {i for i, _k in previewed_consequences}
+        assert all(
+            kind in ("changed", "returns_to_review", "unpaired", "left_behind") for _id, kind in both
+        ), both
+        # the commit's own plan, which holds no leg of the ledger, may also return an entry to review that
+        # the preview shows paired and confirmed again (settling re-pairs it after the commit)
+        extra = {i for i, _k in committed_consequences} - {i for i, _k in previewed_consequences}
+        assert all(k == "returns_to_review" for i, k in committed_consequences if i in extra), (
+            previewed_consequences,
+            committed_consequences,
+        )
     else:
         assert previewed_consequences == committed_consequences
     assert set(result.removed_entry_ids) == {e.id for e in plan.removed}

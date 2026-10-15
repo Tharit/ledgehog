@@ -3,15 +3,16 @@
 Pure. `attach_transfers` runs after the plan (the walk and the simulation of settling): the pool offers are
 made of is read for the legs the plan ended with, and the plan's own rows count in it as planned, not as
 stored (a leg the draft has just freed is an unpaired leg, not the stored pair). Offers are computed, never
-stored, and a proposal is only a preselection of the preview.
+stored. A proposal (an exact open offer) is taken to be the pick it proposes (`new_proposals`, `with_picks`).
 """
 
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 
 from app.core.matching import OfferWorld, PoolEntry, Summary, offers
+from app.core.units.draft import DraftEntry, PairingDraft, UnitDraft
 from app.core.units.plan import (
     PartnerView,
     Plan,
@@ -63,7 +64,10 @@ def _plan_pool(plan: Plan) -> list[PoolEntry]:
     return out
 
 
-def transfer_views(plan: Plan, world: World, window: int) -> dict[int, TransferView]:
+def transfer_views(
+    plan: Plan, world: World, window: int, proposed: Mapping[int, int] | None = None
+) -> dict[int, TransferView]:
+    """`proposed` maps a leg to the partner its proposal was taken to be (the leg then shows that pair)."""
     rows = {r.id: r for r in plan.rows}
     offer_world = OfferWorld(
         accounts={a.id: a for a in world.accounts},
@@ -113,10 +117,53 @@ def transfer_views(plan: Plan, world: World, window: int) -> dict[int, TransferV
             offers=found.offers,
             proposal=found.proposal,
             has_more=found.has_more,
+            proposed_pick=(proposed or {}).get(r.id),
         )
     return views
 
 
-def attach_transfers(plan: Plan, world: World, window: int) -> Plan:
+def new_proposals(
+    plan: Plan,
+    views: Mapping[int, TransferView],
+    draft: UnitDraft,
+    base_ids: Collection[int],
+    allowed: Callable[[int], bool] = lambda _partner: True,
+) -> dict[int, int]:
+    """The proposals the preview takes to be picks (spec §5.9: every proposal shown is accepted): for each
+    unpaired transfer leg of the unit, stored in its own closure, that the draft does not pick for and that
+    has an exact open offer (kind `entry`) outside that closure, leg -> partner. `allowed` says whether a
+    partner may be taken (a commit takes only partners whose entries the client carries versions for)."""
+    out: dict[int, int] = {}
+    for r in plan.rows:
+        v = views.get(r.id)
+        if v is None or r.id not in base_ids or not r.in_unit or r.counterpart_entry_id is not None:
+            continue
+        if v.proposal is None or v.proposal.kind != "entry" or v.proposal.entry_id is None:
+            continue
+        d = draft.entry(r.id)
+        partner = v.proposal.entry_id
+        if (d is not None and d.pairing.mode == "pick") or partner in base_ids or partner in out.values():
+            continue
+        if allowed(partner):
+            out[r.id] = partner
+    return out
+
+
+def with_picks(draft: UnitDraft, picks: Mapping[int, int]) -> UnitDraft:
+    """`draft` with each leg of `picks` picking its partner, as a proposal (the server's, not a client's)."""
+    listed = {e.id for e in draft.entries}
+    entries = [
+        dataclasses.replace(e, pairing=PairingDraft("pick", picks[e.id], True)) if e.id in picks else e
+        for e in draft.entries
+    ]
+    entries += [
+        DraftEntry(i, pairing=PairingDraft("pick", p, True)) for i, p in picks.items() if i not in listed
+    ]
+    return dataclasses.replace(draft, entries=entries)
+
+
+def attach_transfers(
+    plan: Plan, world: World, window: int, proposed: Mapping[int, int] | None = None
+) -> Plan:
     """The plan with the transfer view of each of its transfer rows."""
-    return dataclasses.replace(plan, transfers=transfer_views(plan, world, window))
+    return dataclasses.replace(plan, transfers=transfer_views(plan, world, window, proposed))

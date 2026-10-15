@@ -201,19 +201,27 @@ def preview_unit(
     Settling is simulated ledger-wide: a leg of the unit that settling would pair with a leg outside it brings
     that leg's unit into the rows. Each transfer row carries `transfer`: its state, partner and offers.
     `window_days` (1 to 90, default the matching window) is the window the offers are shown for."""
-    return UnitPreviewOut.of(read_preview(engine, body.to_core(), window_days=window_days))
+    return UnitPreviewOut.of(read_preview(engine, body.to_core(window_days), window_days=window_days))
 
 
 @router.post("/commit")
-def commit_unit(body: UnitDraftIn, user: CurrentUser, engine: EngineDep) -> UnitCommitOut:
+def commit_unit(
+    body: UnitDraftIn,
+    user: CurrentUser,
+    engine: EngineDep,
+    window_days: Annotated[int | None, Query(ge=1, le=MAX_OFFER_WINDOW)] = None,
+) -> UnitCommitOut:
     """Write the draft in one transaction, then settle. A commit does not confirm: settling does.
 
     409 `conflict` names the entries whose version moved (or that `versions` omitted); 409 `unit_moved` is a
     closure that changed under the locks; 409 `stale_reference` a category, payee or account that no longer
     exists; 409 `try_again` a deadlock lost twice. 422 carries the code of the first problem the preview would
-    list (all of them in `details.problems`), or `invalid_draft`."""
+    list (all of them in `details.problems`), or `invalid_draft`. A pick is checked against the widest window
+    (90 days), so one the widened preview accepted commits. `window_days` (1 to 90, default the matching
+    window) is the window the proposals were shown for: send the one the preview used, so the proposals a
+    commit accepts (as the user's decisions) are the ones shown."""
     try:
-        return UnitCommitOut.of(write_unit(engine, body.to_core()))
+        return UnitCommitOut.of(write_unit(engine, body.to_core(window_days)))
     except CommitRefused as refused:
         first = refused.problems[0]
         raise ApiError(

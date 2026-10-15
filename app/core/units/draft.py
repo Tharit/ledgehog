@@ -15,7 +15,11 @@ A derived field (`type`, `payee`, `category`, `counter_account`) is drafted as a
 
 `UnitDraft.reresolve_all` makes every ``keep`` field ``reresolve``: the whole unit resolved afresh (§5.9).
 
-Not modelled yet, on purpose: picking a partner, offers, counter-legs, documents (steps 8 and 9).
+A transfer leg's partner is drafted as a `PairingDraft` (spec §5.7): ``keep`` (not touched: the proposal the
+preview shows is accepted), ``pick`` (the stored entry the user chose; a pick is the user's decision) or
+``reresolve`` (drop the stored pair and let the passes decide again).
+
+Not modelled yet, on purpose: counter-legs and documents (steps 8f and 9).
 """
 
 from __future__ import annotations
@@ -89,6 +93,38 @@ class FieldDraft:
 
 KEEP: Final = FieldDraft()
 
+PairingMode = Literal["keep", "pick", "reresolve"]
+PAIRING_MODES: Final[tuple[PairingMode, ...]] = ("keep", "pick", "reresolve")
+
+
+@dataclass(frozen=True, slots=True)
+class PairingDraft:
+    """What the draft says of a transfer leg's partner (spec §5.7).
+
+    ``pick`` names `partner_entry_id`, a stored entry (positive). `is_proposal` is for the server only: a
+    pick derived from the exact open offer the preview showed (a client cannot send it); it is the user's
+    decision all the same once committed.
+    """
+
+    mode: PairingMode = "keep"
+    partner_entry_id: int | None = None
+    is_proposal: bool = False
+
+    def __post_init__(self) -> None:
+        if self.mode not in PAIRING_MODES:
+            raise DraftError("invalid_pairing", f"unknown pairing mode {self.mode!r}")
+        if self.mode == "pick":
+            p = self.partner_entry_id
+            if not isinstance(p, int) or isinstance(p, bool) or p <= 0:
+                raise DraftError("invalid_pairing", "a pick names a stored partner entry (a positive id)")
+        elif self.partner_entry_id is not None:
+            raise DraftError("invalid_pairing", "only a pick names a partner")
+        if self.is_proposal and self.mode != "pick":
+            raise DraftError("invalid_pairing", "only a pick can be a proposal")
+
+
+KEEP_PAIRING: Final = PairingDraft()
+
 
 @dataclass(frozen=True, slots=True)
 class DraftEntry:
@@ -110,6 +146,7 @@ class DraftEntry:
     payee: FieldDraft = KEEP
     category: FieldDraft = KEEP
     counter_account: FieldDraft = KEEP
+    pairing: PairingDraft = KEEP_PAIRING
     source_entry_id: int | None = None
     tags_add: tuple[int, ...] = ()
     tags_remove: tuple[int, ...] = ()
@@ -140,6 +177,8 @@ class DraftEntry:
                 "a new entry names the stored entry of the source it splits; a stored entry does not",
                 entry_id=self.id,
             )
+        if self.is_new and self.pairing.mode != "keep":
+            raise DraftError("invalid_pairing", "a new entry is a flow: it has no partner", entry_id=self.id)
         if self.is_new and self.amount is None:
             raise DraftError("amount_missing", "a new entry carries its amount", entry_id=self.id)
         for tag in (*self.tags_add, *self.tags_remove):
@@ -177,6 +216,9 @@ class UnitDraft:
     removed_entry_ids: Sequence[int] = ()
     reresolve_all: bool = False
     versions: Mapping[int, int] = field(default_factory=dict)
+    window_days: int | None = (
+        None  # the window a pick is checked against (and offers shown for); None: the ledger's
+    )
 
     def __post_init__(self) -> None:
         if self.anchor_entry_id <= 0:

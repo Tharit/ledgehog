@@ -18,6 +18,7 @@
 	import { cn } from '#lib/utils.js';
 	import EvidenceLine from './evidence-line.svelte';
 	import FieldPicker from './field-picker.svelte';
+	import PartnerField from './partner-field.svelte';
 	import TagField from './tag-field.svelte';
 
 	// One entry of the unit under the draft (patterns §4.1, §5): its amount, then each derived value
@@ -78,9 +79,12 @@
 
 	// "Add account" in the counter-account picker: the dialog opens locked to the currency the
 	// currency rule asks for, when the preview says one; the new account is chosen on success
-	function addAccount(trigger: HTMLElement | null) {
+	function addAccount(
+		trigger: HTMLElement | null,
+		currency: string | undefined = required ?? undefined
+	) {
 		accountDialog.openAdd({
-			currency: required ?? undefined,
+			currency,
 			returnFocus: trigger,
 			onadded: (account) => pick(view.fields.counter_account, account.id)
 		});
@@ -244,7 +248,18 @@
 				/>
 				{@render evidenceOf(view.fields.counter_account)}
 			</dd>
-			{#if partner}
+			{#if view.transfer && !view.isNew}
+				<PartnerField
+					{view}
+					{flow}
+					{lookups}
+					{locale}
+					counterAccountId={typeof view.fields.counter_account.value === 'number'
+						? view.fields.counter_account.value
+						: null}
+					onaddaccount={addAccount}
+				/>
+			{:else if partner}
 				<dt class="text-muted-foreground">Partner leg</dt>
 				<dd class="flex flex-wrap items-center gap-x-3" data-slot="partner">
 					{#if partnerAccount}

@@ -105,6 +105,7 @@ class Scene:
         authored: bool = False,
         instructed: tuple[int, str] | None = None,
         end_to_end_id: str | None = None,
+        currency: str = "EUR",
         lead: dict[str, Any] | None = None,
         **cols: Any,
     ) -> tuple[int, list[int]]:
@@ -122,6 +123,7 @@ class Scene:
                 amount=sum(parts),
                 booked_on=on,
                 purpose=purpose,
+                currency=currency,
                 importer=None if authored else "test",
                 run_id=None if authored else self.run if acct == self.checking else None,
                 columns=columns,

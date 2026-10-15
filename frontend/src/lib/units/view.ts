@@ -27,7 +27,8 @@ import type {
 	Unit,
 	UnitConsequence,
 	UnitPreview,
-	UnitState
+	UnitState,
+	UnitTransfer
 } from './types.js';
 
 export type FieldView = {
@@ -73,6 +74,12 @@ export type EntryView = {
 	/** the tags the entry will have: the preview's row when it is the draft's own, else the draft applied */
 	tagIds: readonly number[];
 	flags: readonly string[];
+	/** a transfer leg's state, partner and offers as the preview left it (absent: not told) */
+	transfer: UnitTransfer | null;
+	/** how the pair was made, from the pair key ("paired with Savings"); null when there is none */
+	pairEvidence: Evidence | null;
+	/** the user has picked a partner for this leg (the draft's pairing edit) */
+	picked: boolean;
 	/** its amount is an allocation the user sets: a split row or a stored entry of a split */
 	amountEditable: boolean;
 	removable: boolean;
@@ -296,6 +303,19 @@ export function entryViews(args: {
 			fields,
 			tagIds: b.row && !stale ? b.row.tag_ids : draft.effectiveTagIds(b.id),
 			flags: b.row?.review_flags ?? entry?.review_flags ?? [],
+			transfer: b.row?.transfer ?? null,
+			pairEvidence: describeKey(
+				keyOf(b.row?.derivation ?? entry?.derivation, 'counterpart'),
+				rules,
+				locale,
+				{
+					field: 'counterpart',
+					partnerAccount: accountName(
+						b.row?.transfer?.partner?.account_id ?? entry?.partner?.account_id ?? 0
+					)
+				}
+			),
+			picked: edit.pairing?.mode === 'pick',
 			amountEditable: !original,
 			removable: !original
 		};

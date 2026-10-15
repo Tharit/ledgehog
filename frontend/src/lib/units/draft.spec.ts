@@ -588,3 +588,66 @@ describe('tags of a new split row follow the original as shown', () => {
 		expect(draft.isDirty).toBe(false);
 	});
 });
+
+describe('the partner of a transfer leg', () => {
+	it('a pick is a draft edit: dirty, another change than a field, and in the request of that entry only', () => {
+		const draft = empty().pickPartner(1, 77);
+		expect(draft.isDirty).toBe(true);
+		expect(draft.hasOtherChanges).toBe(true);
+		expect(draft.hasPick).toBe(true);
+		expect(draft.toRequest().entries).toEqual([
+			{ id: 1, pairing: { mode: 'pick', partner_entry_id: 77 } }
+		]);
+		// an entry with no pick says nothing about pairing
+		expect(empty().setField(1, 'category', 10).toRequest().entries![0]).not.toHaveProperty(
+			'pairing'
+		);
+	});
+
+	it('picks again: the last pick stands', () => {
+		expect(first(empty().pickPartner(1, 77).pickPartner(1, 78)).pairing).toEqual({
+			mode: 'pick',
+			partner_entry_id: 78
+		});
+	});
+
+	it('takes the pick back (clearPairing): the draft is clean again', () => {
+		const draft = empty().pickPartner(1, 77).clearPairing(1);
+		expect(draft.isDirty).toBe(false);
+		expect(draft.hasPick).toBe(false);
+		expect(draft.toRequest().entries).toEqual([]);
+	});
+
+	it('asks to pair by the rules again (reresolvePairing), which is not a pick', () => {
+		const draft = empty().reresolvePairing(1);
+		expect(first(draft).pairing).toEqual({ mode: 'reresolve', partner_entry_id: null });
+		expect(draft.isDirty).toBe(true);
+		expect(draft.hasPick).toBe(false);
+	});
+
+	it('is for a stored entry only: a split row has no partner', () => {
+		const draft = empty().addSplit(1);
+		expect(draft.pickPartner(-1, 77)).toBe(draft);
+	});
+
+	it('a draft-level re-resolve drops the pick, so none outlives it', () => {
+		const draft = empty().pickPartner(1, 77).reresolve();
+		expect(draft.hasPick).toBe(false);
+		expect(draft.toRequest()).toMatchObject({ reresolve_all: true, entries: [] });
+	});
+
+	it('the user’s own counter-account, type or a reset of them takes the pick back', () => {
+		expect(empty().pickPartner(1, 77).setField(1, 'counter_account', 3).hasPick).toBe(false);
+		expect(empty().pickPartner(1, 77).resetField(1, 'counter_account').hasPick).toBe(false);
+		expect(empty().pickPartner(1, 77).convertToFlow(1).hasPick).toBe(false);
+		// a category is no word about the pair
+		expect(empty().pickPartner(1, 77).setField(1, 'category', 10).hasPick).toBe(true);
+	});
+
+	it('survives a rebase over the unit as it is now, and goes with an entry that is gone', () => {
+		const draft = empty().pickPartner(1, 77);
+		expect(draft.rebase(loaded).hasPick).toBe(true);
+		const gone = unit({ anchor_entry_id: 2, entries: [loaded.entries[1]] });
+		expect(draft.rebase(gone).hasPick).toBe(false);
+	});
+});

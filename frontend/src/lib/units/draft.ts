@@ -14,6 +14,9 @@ export type FieldValue = number | string | null;
 /** The key of the proposal the user was shown when they chose the value it equals. */
 export type ShownBasis = { pass: string; basis: Record<string, unknown> };
 
+/** The partner of a transfer leg: the user's pick, or "pair it by the rules again". Absent: as it stands. */
+export type PairingEdit = { mode: 'pick'; partnerEntryId: number } | { mode: 'reresolve' };
+
 export type FieldEdit =
 	{ mode: 'fixed'; value: FieldValue; shown: ShownBasis | null } | { mode: 'reresolve' };
 
@@ -27,6 +30,8 @@ export type EntryEdit = {
 	amount?: number | null;
 	/** the tag change, relative to the tags the entry had when loaded (a split row: inherited) */
 	tags?: TagEdit;
+	/** the partner of a transfer leg (a stored entry only) */
+	pairing?: PairingEdit;
 };
 
 /** Tags the user added (the entry did not have them) and removed (it had). Never both, never empty. */
@@ -106,8 +111,16 @@ function isEmpty(edit: EntryEdit): boolean {
 		edit.description === undefined &&
 		edit.note === undefined &&
 		edit.amount === undefined &&
-		edit.tags === undefined
+		edit.tags === undefined &&
+		edit.pairing === undefined
 	);
+}
+
+/** A change of the type or the counter-account is the user's word over a pick: the pick goes. */
+function unpaired(edit: EntryEdit, field: FieldName): EntryEdit {
+	return (field === 'type' || field === 'counter_account') && edit.pairing !== undefined
+		? without(edit, 'pairing')
+		: edit;
 }
 
 /** The tag change in its normal form: sorted, and absent when it changes nothing. */
@@ -202,7 +215,8 @@ export class Draft {
 				edit.description !== undefined ||
 				edit.note !== undefined ||
 				edit.amount !== undefined ||
-				edit.tags !== undefined
+				edit.tags !== undefined ||
+				edit.pairing !== undefined
 			) {
 				return true;
 			}
@@ -267,7 +281,7 @@ export class Draft {
 	): Draft {
 		const stored = this.#s.base.get(id);
 		return this.#edited(id, (e) => ({
-			...e,
+			...unpaired(e, field),
 			fields: withField(e.fields, stored, field, value, shown)
 		}));
 	}
@@ -275,9 +289,35 @@ export class Draft {
 	/** "Reset to proposal": the passes decide this field again, a decided value included. */
 	resetField(id: number, field: FieldName): Draft {
 		return this.#edited(id, (e) => ({
-			...e,
+			...unpaired(e, field),
 			fields: { ...e.fields, [field]: { mode: 'reresolve' } }
 		}));
+	}
+
+	/** The partner the user chose for a transfer leg (the offers list, spec §5.7). */
+	pickPartner(id: number, partnerEntryId: number): Draft {
+		if (!this.#s.base.has(id)) return this;
+		return this.#edited(id, (e) => ({ ...e, pairing: { mode: 'pick', partnerEntryId } }));
+	}
+
+	/** Pair the leg by the rules again, a standing pair included. */
+	reresolvePairing(id: number): Draft {
+		if (!this.#s.base.has(id)) return this;
+		return this.#edited(id, (e) => ({ ...e, pairing: { mode: 'reresolve' } }));
+	}
+
+	/** Take a pairing edit back: the leg is as it stands. */
+	clearPairing(id: number): Draft {
+		return this.#edited(id, (e) => without(e, 'pairing'));
+	}
+
+	pairingEdit(id: number): PairingEdit | undefined {
+		return this.edit(id).pairing;
+	}
+
+	/** Does any leg hold a picked partner? */
+	get hasPick(): boolean {
+		return [...this.#s.edits.values()].some((e) => e.pairing?.mode === 'pick');
 	}
 
 	/**
@@ -443,7 +483,7 @@ export class Draft {
 			if (counterAccountId !== null) {
 				fields = withField(fields, stored, 'counter_account', counterAccountId, null);
 			}
-			return { ...e, fields };
+			return { ...unpaired(e, 'type'), fields };
 		});
 	}
 
@@ -451,7 +491,7 @@ export class Draft {
 	convertToFlow(id: number): Draft {
 		const stored = this.#s.base.get(id);
 		return this.#edited(id, (e) => ({
-			...e,
+			...unpaired(e, 'type'),
 			fields: withField(without(e.fields, 'counter_account'), stored, 'type', 'flow', null)
 		}));
 	}
@@ -467,8 +507,9 @@ export class Draft {
 		let changed = !this.#s.reresolveAll;
 		const edits = new Map<number, EntryEdit>();
 		for (const [id, edit] of this.#s.edits) {
-			if (Object.keys(edit.fields).length > 0) changed = true;
-			const next = { ...edit, fields: {} };
+			if (Object.keys(edit.fields).length > 0 || edit.pairing !== undefined) changed = true;
+			// a pick would outlive the re-resolve: the pairing is decided afresh too
+			const next = without({ ...edit, fields: {} }, 'pairing');
 			if (!isEmpty(next)) edits.set(id, next);
 		}
 		return changed ? this.#with({ reresolveAll: true, edits }) : this;
@@ -568,6 +609,12 @@ export class Draft {
 		if (edit.description !== undefined) body.description = normaliseText(edit.description);
 		if (edit.note !== undefined) body.note = normaliseText(edit.note);
 		if (edit.tags) body.tags = { add: [...edit.tags.add], remove: [...edit.tags.remove] };
+		if (edit.pairing) {
+			body.pairing =
+				edit.pairing.mode === 'pick'
+					? { mode: 'pick', partner_entry_id: edit.pairing.partnerEntryId }
+					: { mode: 'reresolve', partner_entry_id: null };
+		}
 		for (const name of FIELD_NAMES) {
 			const field = edit.fields[name];
 			if (field) body[name] = fieldRequest(field);

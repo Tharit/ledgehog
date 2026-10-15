@@ -2,7 +2,7 @@
 // "invalid is shown, not blocked", with the remedy the spec gives where it gives one). The server
 // sends a code and numbers, never prose; the words are here.
 import { formatMoney } from '#lib/format/index.js';
-import type { UnitProblem } from './types.js';
+import type { SuggestedSplit, UnitProblem } from './types.js';
 
 export type ProblemText = {
 	text: string;
@@ -14,6 +14,8 @@ export type ProblemContext = {
 	/** the currency of an entry's source, for the amounts a problem names */
 	currency: (entryId: number | null) => string;
 	locale: string;
+	/** the window the offers were listed for when it was widened (days), else null */
+	windowDays?: number | null;
 };
 
 const NUMBER_DETAIL = (detail: UnitProblem['detail'], key: string): number | null => {
@@ -83,6 +85,15 @@ export function describeProblem(problem: UnitProblem, context: ProblemContext): 
 				text: 'The two legs of a transfer must move money in opposite directions.',
 				remedy: 'Pick another partner.'
 			};
+		case 'partner_not_offered':
+			return {
+				text: 'This entry is not offered as a partner (wrong account, direction or date).',
+				remedy: context.windowDays
+					? 'Pick another partner.'
+					: 'Pick another partner, or load more candidates in the list.'
+			};
+		case 'partner_in_unit':
+			return { text: 'This entry is already part of this unit.' };
 		case 'split_sum':
 			return {
 				text: `The entries do not add up to the transaction: they are off by ${money(NUMBER_DETAIL(detail, 'difference'))}.`
@@ -106,4 +117,11 @@ export function differenceOf(problem: UnitProblem): number | null {
 	if (problem.code !== 'pair_unequal') return null;
 	const value = problem.detail.difference;
 	return typeof value === 'number' && value !== 0 ? Math.abs(value) : null;
+}
+
+/** The split the server suggests for an unequal pair (the fee of a transfer), when it names one. */
+export function suggestedSplitOf(problem: UnitProblem): SuggestedSplit | null {
+	const found = problem.suggested_split;
+	if (problem.code !== 'pair_unequal' || !found || found.amount.amount === 0) return null;
+	return { source_entry_id: found.source_entry_id, amount: Math.abs(found.amount.amount) };
 }

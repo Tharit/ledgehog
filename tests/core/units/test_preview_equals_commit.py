@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import os
+from datetime import timedelta
 from typing import Any
 
 import pytest
@@ -17,10 +19,10 @@ from hypothesis import strategies as st
 from sqlalchemy import text
 
 from app.core.units.commit import CommitRefused
-from app.core.units.draft import KEEP, UNSET, DraftEntry, FieldDraft, UnitDraft
+from app.core.units.draft import KEEP, UNSET, DraftEntry, DraftError, FieldDraft, PairingDraft, UnitDraft
 from app.core.units.preview import preview_unit
 from tests.core.units.equality import preview_then_commit
-from tests.core.units.scene import RERESOLVE, Scene, fixed
+from tests.core.units.scene import RERESOLVE, D, Scene, fixed
 
 COUNTERPARTIES = ["REWE", "ALDI", "RENT", "NEWCO", "ATM"]
 
@@ -64,7 +66,34 @@ def world(scene: Scene) -> Scene:
         )
 
     scene.tx(rules)
+    spares(scene)
     return scene
+
+
+def spares(scene: Scene) -> None:
+    """Partners to pick: open legs (no counter-account) of several amounts and dates, untyped entries (an
+    original, and a split's second entry), and a pair elsewhere. None matches an amount the examples use on a
+    counter-account a rule sets (the cash), so that settling alone never pairs them with an example's unit:
+    the draws must not depend on what earlier examples left."""
+    user = json.dumps({"type": {"pass": "user"}})
+    for account, amount, day in (
+        (scene.savings, 1000, 0),
+        (scene.savings, 500, 1),
+        (scene.cash, 650, 2),
+        (scene.savings, 400, 3),
+        (scene.cash, 1050, 20),
+    ):
+        scene.movement(
+            amount,
+            account=account,
+            on=D + timedelta(days=day),
+            type="transfer",
+            derivation=user,
+            authored=True,
+        )
+    scene.movement(1000, account=scene.savings, authored=True)
+    scene.movement(300, 200, account=scene.cash, authored=True)
+    scene.transfer_pair(-500)
 
 
 def field_drafts(scene: Scene) -> st.SearchStrategy[FieldDraft]:
@@ -93,17 +122,34 @@ def tag_sets(scene: Scene) -> st.SearchStrategy[tuple[int, ...]]:
 
 @st.composite
 def entries_draft(
-    draw: st.DrawFn, scene: Scene, ids: list[int], originals: set[int], flows_only: bool
+    draw: st.DrawFn, scene: Scene, ids: list[int], originals: set[int], flows_only: bool, spare_ids: list[int]
 ) -> UnitDraft:
+    # a pick names a spare leg, an id that does not exist, or an entry of the unit itself: an index, so that
+    # the draws do not depend on the ledger
+    in_unit = st.integers(0, len(spare_ids) + 1).map(
+        lambda n: spare_ids[n] if n < len(spare_ids) else 987_654 if n == len(spare_ids) else ids[0]
+    )
     payees = [fixed(scene.payees["Landlord"]), fixed(None)]
     accounts = [fixed(scene.savings), fixed(scene.cash), fixed(scene.usd), fixed(scene.checking)]
     edits: list[DraftEntry] = []
     for i in ids:
         if draw(st.booleans()):
             kind = draw(st.sampled_from(["keep", "keep", "flow", "transfer"]))
+            how = draw(st.sampled_from(["keep", "keep", "reresolve", "pick", "pick"]))
+            partner = draw(in_unit)
+            pairing = (
+                PairingDraft()
+                if how == "keep" or i not in originals
+                else PairingDraft("reresolve")
+                if how == "reresolve"
+                else PairingDraft("pick", partner)
+            )
+            if pairing.mode != "keep" and draw(st.sampled_from([True, True, True, False])):
+                kind = "transfer"  # most picks are of a transfer leg: the rest are 422s
             edits.append(
                 DraftEntry(
                     i,
+                    pairing=pairing,
                     description=draw(st.sampled_from(["x", None, "same"])) if draw(st.booleans()) else UNSET,
                     note=draw(st.sampled_from(["n", None])) if draw(st.booleans()) else UNSET,
                     type=KEEP if kind == "keep" else fixed(kind),
@@ -143,11 +189,16 @@ def entries_draft(
         removed_entry_ids=removed,
         reresolve_all=draw(st.booleans()),
         versions=versions,
+        # a commit checks a pick against the cap: the preview is made with a widened window, as the picker's
+        # "load more" does, so that what it refuses the commit refuses too
+        window_days=draw(st.sampled_from([30, 90])),
     )
 
 
 SETTINGS = settings(
-    max_examples=40, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
+    max_examples=int(os.environ.get("PEC_EXAMPLES", "40")),
+    deadline=None,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
 )
 
 
@@ -179,26 +230,48 @@ def _build(scene: Scene, kind: str, who: str, confirmed: bool) -> tuple[list[int
 @pytest.mark.parametrize("kind", ["plain", "split", "pair", "pair_split"])
 def test_preview_equals_commit_and_settle(world: Scene, kind: str) -> None:
     scene = world
-    outcomes = {"committed": 0, "refused": 0, "pulled": 0}
+    # the partners a draft may pick, fixed before the examples (a strategy must not read the database)
+    spare_ids = [
+        r.id
+        for r in scene.q("SELECT id FROM ledger_entry WHERE account_id <> :c ORDER BY id", c=scene.checking)
+    ]
+    outcomes = {"committed": 0, "refused": 0, "pulled": 0, "invalid": 0, "picked": 0}
 
     @SETTINGS
     @given(data=st.data(), who=st.sampled_from(COUNTERPARTIES), confirmed=st.booleans())
     def run(data: st.DataObject, who: str, confirmed: bool) -> None:
         ids, originals = _build(scene, kind, who, confirmed)
         ids = scene.unit_ids(ids[0])
-        draft = data.draw(entries_draft(scene, list(ids), originals, kind in ("plain", "split")))
-        plan = preview_unit(scene.engine, draft)
-        if plan.problems:
-            before = scene.fingerprint()
-            with pytest.raises(CommitRefused) as exc:
+        draft = data.draw(entries_draft(scene, list(ids), originals, kind in ("plain", "split"), spare_ids))
+        before = scene.fingerprint()
+        try:
+            plan = preview_unit(scene.engine, draft)
+        except DraftError as err:  # a pairing on something that is no transfer leg: the commit says the same
+            with pytest.raises(DraftError) as exc_draft:
                 scene.commit_draft(draft)
+            assert exc_draft.value.code == err.code
+            assert scene.fingerprint() == before
+            outcomes["invalid"] += 1
+            return
+        pulled = set(plan.versions) != set(draft.versions)  # a leg outside the unit was paired or picked
+        # a commit carries the versions of everything the preview shows (partners and proposals included)
+        carrying = dataclasses.replace(draft, versions={**draft.versions, **plan.versions})
+        if plan.problems:
+            with pytest.raises(CommitRefused) as exc:
+                scene.commit_draft(carrying)
             assert {p.code for p in exc.value.problems} == {p.code for p in plan.problems}
             assert scene.fingerprint() == before
             outcomes["refused"] += 1
             return
         preview_then_commit(scene, draft)
         outcomes["committed"] += 1
-        outcomes["pulled"] += set(plan.versions) != set(draft.versions)  # a leg outside the unit was paired
+        outcomes["pulled"] += pulled
+        outcomes["picked"] += any(
+            r.counterpart_entry_id is not None
+            and r.stored is not None
+            and r.stored.counterpart_entry_id != r.counterpart_entry_id
+            for r in plan.rows
+        )
 
     run()
     print(kind, outcomes)

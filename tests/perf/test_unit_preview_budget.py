@@ -8,6 +8,7 @@ with -s)."""
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import time
 from collections.abc import Callable
@@ -17,7 +18,7 @@ from sqlalchemy import text
 
 from app.core.settle.settle import settle
 from app.core.units.commit import commit_unit
-from app.core.units.draft import DraftEntry, FieldDraft, UnitDraft
+from app.core.units.draft import DraftEntry, FieldDraft, PairingDraft, UnitDraft
 from app.core.units.preview import preview_unit
 from app.core.units.read import review_queue
 from tests.perf.budget import BUDGET_SECONDS, UNIT_PREVIEW_BUDGET_SECONDS
@@ -193,3 +194,56 @@ def test_the_offers_pool_is_served_by_the_date_indexes(backfill_transfers: Backf
         )
     print(f"[perf] pool plan:\n{plan}")
     assert "Seq Scan on ledger_entry" not in plan, plan
+
+
+# ---- picking a partner (spec §5.7, step 8e) ----------------------------------------------------------------
+
+
+def test_preview_and_commit_of_a_pick_within_budget(backfill_transfers: Backfill) -> None:
+    """A pick brings the partner's closure into the unit (and the former partners'): the preview of a draft
+    that picks the first open offer, with the widest window, then the commit of one pick plus the settle."""
+    settle(backfill_transfers.engine)
+    engine = backfill_transfers.engine
+    legs = _unpaired_legs(backfill_transfers, 40, with_counter=True)
+    drafts: list[UnitDraft] = []
+    for anchor in legs:
+        opened = preview_unit(engine, UnitDraft(anchor), window_days=90)
+        offers = [o for o in opened.transfers[anchor].offers if o.entry_id is not None]
+        if opened.transfers[anchor].state != "unmatched" or not offers:
+            continue
+        drafts.append(
+            UnitDraft(
+                anchor,
+                [DraftEntry(anchor, pairing=PairingDraft("pick", offers[0].entry_id))],
+                window_days=90,
+            )
+        )
+        if len(drafts) == REPEATS:
+            break
+    assert drafts, "no unpaired leg with an offer in the fixture"
+    samples: list[float] = []
+    for draft in drafts:
+        started = time.perf_counter()
+        plan = preview_unit(engine, draft)
+        samples.append(time.perf_counter() - started)
+        assert plan.row(draft.anchor_entry_id).counterpart_entry_id is not None
+    stats = Stats.of(samples)
+    print(f"[perf] unit preview of a pick ({len(drafts)} legs): {stats}")
+    assert stats.max <= UNIT_PREVIEW_BUDGET_SECONDS, f"{stats}"
+    # an open offer of another amount is the usual pick here (exact ones are paired by settling): the split
+    # the preview suggests makes the pair equal
+    draft = drafts[0]
+    plan = preview_unit(engine, draft)
+    for problem in plan.problems:
+        assert problem.code == "pair_unequal" and problem.suggested_split is not None
+        split = DraftEntry(
+            -1, amount=problem.suggested_split.amount, source_entry_id=problem.suggested_split.source_entry_id
+        )
+        draft = dataclasses.replace(draft, entries=[*draft.entries, split])
+        plan = preview_unit(engine, draft)
+    assert not plan.problems
+    started = time.perf_counter()
+    result = commit_unit(engine, dataclasses.replace(draft, versions=dict(plan.versions)))
+    took = time.perf_counter() - started
+    print(f"[perf] unit commit of a pick + settle: {took * 1000:.0f} ms")
+    assert result.settle.error is None and took <= BUDGET_SECONDS

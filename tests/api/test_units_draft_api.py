@@ -103,7 +103,9 @@ def test_preview_reports_problems_as_codes(anna: TestClient, scene: Scene) -> No
         PREVIEW, json={"anchor_entry_id": e, "entries": [{"id": -1, "amount": -1000, "source_entry_id": e}]}
     )
     assert r.status_code == 200
-    assert r.json()["problems"] == [{"code": "residual_zero", "entry_id": e, "field": None, "detail": {}}]
+    assert r.json()["problems"] == [
+        {"code": "residual_zero", "entry_id": e, "field": None, "detail": {}, "suggested_split": None}
+    ]
 
 
 def test_preview_of_a_deleted_entry_carries_the_row_as_it_was(anna: TestClient, scene: Scene) -> None:
@@ -308,11 +310,23 @@ def test_a_transfer_row_carries_its_state_partner_and_offers(anna: TestClient, s
     untyped = scene.movement(1000, account=scene.savings, authored=True)[1][0]
     other = _leg(scene, 900, scene.cash)
     body = anna.post(PREVIEW, json={"anchor_entry_id": e}).json()
-    (row,) = body["rows"]
+    # the exact open offer is the proposal and the preview takes it as the pick: the leg shows the pair
+    row = next(r for r in body["rows"] if r["id"] == e)
+    assert {r["id"] for r in body["rows"]} == {e, untyped}
     t = row["transfer"]
-    assert set(t) == {"state", "waiting_for", "needs_account", "partner", "offers", "proposal", "has_more"}
-    assert (t["state"], t["waiting_for"], t["needs_account"], t["partner"]) == ("unmatched", None, None, None)
-    assert body["state"] == {"confirmed": False, "reasons": ["unmatched_transfer"]}
+    assert set(t) == {
+        "state",
+        "waiting_for",
+        "needs_account",
+        "partner",
+        "offers",
+        "proposal",
+        "has_more",
+        "proposed_pick",
+    }
+    assert (t["state"], t["waiting_for"], t["needs_account"]) == ("paired", None, None)
+    assert t["partner"]["entry_id"] == untyped and t["proposed_pick"] == {"entry_id": untyped}
+    assert body["state"] == {"confirmed": True, "reasons": []}
     assert t["proposal"] == {"kind": "entry", "entry_id": untyped} and t["has_more"] is False
     first, second = t["offers"]
     assert set(first) == set(
@@ -389,3 +403,129 @@ def test_waiting_and_needs_account_shapes(anna: TestClient, scene: Scene) -> Non
     )
     t = anna.post(PREVIEW, json={"anchor_entry_id": needs}).json()["rows"][0]["transfer"]
     assert t["state"] == "needs_account" and t["needs_account"] == {"currency": "GBP"}
+
+
+# ---- picking a partner (spec §5.7) ----------------------------------------------------------------------
+
+
+def test_a_pick_previews_and_commits_through_the_api(anna: TestClient, scene: Scene) -> None:
+    e = _leg(scene, -1000, scene.checking)
+    x = _leg(scene, 1000, scene.savings, day=2)
+    _leg(scene, 1000, scene.savings, day=1)  # the nearer exact leg is the proposal; the pick overrides it
+    draft = {"anchor_entry_id": e, "entries": [{"id": e, "pairing": {"mode": "pick", "partner_entry_id": x}}]}
+    body = anna.post(PREVIEW, json=draft).json()
+    assert body["problems"] == [] and {r["id"] for r in body["rows"]} == {e, x}
+    row = next(r for r in body["rows"] if r["id"] == e)
+    assert row["transfer"]["state"] == "paired" and row["transfer"]["proposed_pick"] is None
+    assert row["transfer"]["partner"]["entry_id"] == x and row["counterpart_entry_id"] == x
+    assert row["derivation"]["counterpart"] == {"pass": "user", "basis": {}}
+    assert body["versions"] == {str(e): 1, str(x): 1}
+    r = anna.post(COMMIT, json={**draft, "versions": body["versions"]})
+    assert r.status_code == 200, r.text
+    assert {u["state"]["confirmed"] for u in r.json()["units"]} == {True}
+    assert {en["id"] for en in r.json()["entries"]} >= {e, x}
+    assert scene.row(e).counterpart_entry_id == x
+
+
+def test_the_proposal_is_in_the_preview_and_a_commit_accepts_it(anna: TestClient, scene: Scene) -> None:
+    e = _leg(scene, -1000, scene.checking)
+    x = _leg(scene, 1000, scene.savings)
+    body = anna.post(PREVIEW, json={"anchor_entry_id": e}).json()
+    row = next(r for r in body["rows"] if r["id"] == e)
+    assert row["transfer"]["proposed_pick"] == {"entry_id": x} and row["transfer"]["state"] == "paired"
+    assert body["state"]["confirmed"] is True
+    assert anna.post(COMMIT, json={"anchor_entry_id": e, "versions": body["versions"]}).status_code == 200
+    assert scene.row(e).counterpart_entry_id == x
+    assert scene.row(e).derivation["counterpart"] == {"pass": "user", "basis": {}}
+
+
+def test_an_unequal_pick_names_the_split_that_fixes_it(anna: TestClient, scene: Scene) -> None:
+    e = _leg(scene, -1000, scene.checking)
+    x = _leg(scene, 900, scene.savings)
+    draft = {"anchor_entry_id": e, "entries": [{"id": e, "pairing": {"mode": "pick", "partner_entry_id": x}}]}
+    body = anna.post(PREVIEW, json=draft).json()
+    (problem,) = body["problems"]
+    assert problem["code"] == "pair_unequal" and problem["detail"]["difference"] == -100
+    assert problem["suggested_split"] == {"source_entry_id": e, "amount": {"amount": -100, "currency": "EUR"}}
+    r = anna.post(COMMIT, json={**draft, "versions": body["versions"]})
+    assert_envelope(r, 422, "pair_unequal")
+    assert scene.row(e).counterpart_entry_id is None
+
+
+def test_a_far_pick_commits_after_a_widened_preview(anna: TestClient, scene: Scene) -> None:
+    e = _leg(scene, -1000, scene.checking, counter=scene.savings)
+    far = _leg(scene, 1000, scene.savings, counter=scene.checking, day=20)
+    draft = {
+        "anchor_entry_id": e,
+        "entries": [{"id": e, "pairing": {"mode": "pick", "partner_entry_id": far}}],
+    }
+    narrow = anna.post(PREVIEW, json=draft).json()
+    assert [p["code"] for p in narrow["problems"]] == ["partner_not_offered"]
+    wide = anna.post(PREVIEW + "?window_days=30", json=draft).json()
+    assert wide["problems"] == []
+    # the commit checks a pick against the cap (90 days), with or without the window
+    r = anna.post(COMMIT, json={**draft, "versions": wide["versions"]})
+    assert r.status_code == 200, r.text
+    assert scene.row(e).counterpart_entry_id == far
+
+
+def test_a_pick_beyond_ninety_days_is_refused_in_preview_and_commit(anna: TestClient, scene: Scene) -> None:
+    e = _leg(scene, -1000, scene.checking, counter=scene.savings)
+    far = _leg(scene, 1000, scene.savings, counter=scene.checking, day=91)
+    draft = {
+        "anchor_entry_id": e,
+        "entries": [{"id": e, "pairing": {"mode": "pick", "partner_entry_id": far}}],
+    }
+    body = anna.post(PREVIEW + "?window_days=90", json=draft).json()
+    assert [p["code"] for p in body["problems"]] == ["partner_not_offered"]
+    r = anna.post(COMMIT + "?window_days=90", json={**draft, "versions": {str(e): 1, str(far): 1}})
+    assert_envelope(r, 422, "partner_not_offered")
+    assert scene.row(e).counterpart_entry_id is None
+
+
+def test_a_malformed_pairing_is_a_422(anna: TestClient, scene: Scene) -> None:
+    _s, (flow,) = scene.movement(-1000, type="flow", derivation=json.dumps({"type": {"pass": "user"}}))
+    e = _leg(scene, -1000, scene.checking)
+    x = _leg(scene, 1000, scene.savings)
+    cases: list[tuple[dict[str, object], str]] = [
+        (
+            {
+                "anchor_entry_id": flow,
+                "entries": [{"id": flow, "pairing": {"mode": "pick", "partner_entry_id": x}}],
+            },
+            "pairing_not_transfer",
+        ),
+        (
+            {
+                "anchor_entry_id": e,
+                "entries": [{"id": e, "pairing": {"mode": "pick", "partner_entry_id": -3}}],
+            },
+            "invalid_pairing",
+        ),
+        ({"anchor_entry_id": e, "entries": [{"id": e, "pairing": {"mode": "pick"}}]}, "invalid_pairing"),
+        (
+            {
+                "anchor_entry_id": e,
+                "entries": [{"id": e, "pairing": {"mode": "keep", "partner_entry_id": x}}],
+            },
+            "invalid_pairing",
+        ),
+        (
+            {
+                "anchor_entry_id": e,
+                "entries": [{"id": -1, "amount": -5, "source_entry_id": e, "pairing": {"mode": "reresolve"}}],
+            },
+            "invalid_pairing",
+        ),
+    ]
+    for body, code in cases:
+        for url in (PREVIEW, COMMIT):
+            r = anna.post(url, json=body)
+            assert_envelope(r, 422, "invalid_draft")
+            assert r.json()["error"]["details"]["code"] == code
+    r = anna.post(PREVIEW, json={"anchor_entry_id": e, "entries": [{"id": e, "pairing": {"mode": "swap"}}]})
+    assert r.status_code == 422
+    r = anna.post(
+        PREVIEW, json={"anchor_entry_id": e, "entries": [{"id": e, "pairing": {"is_proposal": True}}]}
+    )
+    assert r.status_code == 422  # a client cannot mark a pick as a proposal

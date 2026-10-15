@@ -12,8 +12,10 @@ import type {
 	UnitCommit,
 	UnitConsequence,
 	UnitDraftRequest,
+	UnitOffer,
 	UnitPreview,
-	UnitProblem
+	UnitProblem,
+	UnitTransfer
 } from './types.js';
 
 /** A one-entry unit (a flow proposed by history) unless told otherwise. */
@@ -174,7 +176,7 @@ export function previewFor(u: Unit, request: UnitDraftRequest): UnitPreview {
 }
 
 export function problem(code: string, over: Partial<UnitProblem> = {}): UnitProblem {
-	return { code, entry_id: null, field: null, detail: {}, ...over };
+	return { code, entry_id: null, field: null, detail: {}, suggested_split: null, ...over };
 }
 
 export function consequence(
@@ -202,6 +204,39 @@ export function committed(u: Unit, over: Partial<UnitCommit> = {}): UnitCommit {
 		],
 		consequences: [],
 		settle: { error: null, touched_entry_ids: [] },
+		...over
+	};
+}
+
+/** An offer of the partner list: an open leg of another account, exact, unless told otherwise. */
+export function offerOut(over: Partial<UnitOffer> = {}): UnitOffer {
+	return {
+		kind: 'open_leg',
+		entry_id: 2,
+		account_id: 2,
+		booked_on: '2026-10-09',
+		amount: { amount: 5000, currency: 'EUR' },
+		description: 'Transfer in',
+		exact: true,
+		proposed: false,
+		paired_with: null,
+		counter_leg: null,
+		effect: { types_as_transfer: false, fee: null, breaks_pair_with: [] },
+		...over
+	};
+}
+
+/** What a preview row says of a transfer leg: unpaired with no offers, unless told otherwise. */
+export function transferOut(over: Partial<UnitTransfer> = {}): UnitTransfer {
+	return {
+		state: 'unmatched',
+		waiting_for: null,
+		needs_account: null,
+		partner: null,
+		offers: [],
+		proposal: null,
+		proposed_pick: null,
+		has_more: false,
 		...over
 	};
 }

@@ -1,8 +1,12 @@
 """`commit` (architecture §4.1, §5.2, spec §5.9, §6): the draft written, in one transaction, then settled.
 
 The transaction takes the settle lock shared, then the account locks ascending for every account of the
-unit, then the entry rows ascending (`utils.db.locks`). The unit is read BEFORE the locks to know which
-accounts to take; after them the closure is read again, and a different one is `UnitMoved` (409): the
+unit, then the entry rows ascending (`utils.db.locks`). The unit is the unit AS DRAFTED: the anchor's closure
+plus the closure of every partner the draft picks (which holds the former partners of both legs). The
+proposals the preview shows are taken as picks first (`preview.resolve_draft`, limited to those whose
+entries the client carries versions for): a commit accepts every proposal shown, as the user's decision. The
+unit is read BEFORE the locks to know which accounts to take; after them the closure is read again, and a
+different one is `UnitMoved` (409): the
 draft was made for a unit that is no longer that unit. Then the versions the client carries are checked
 (`VersionConflict`, naming the entries that moved or that the client gave no version for) and the draft is
 laid over the stored state AGAIN, under the locks, by the same `overlay.plan_unit` the preview used. A
@@ -20,6 +24,7 @@ after the commit and reports its own failure in the result, never raising into t
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -32,6 +37,7 @@ from app.core.domain.errors import VersionConflict
 from app.core.ingest.duplicates import _check_versions
 from app.core.ingest.removal import remove_entries, unpair
 from app.core.ledger.entries import EntryRow, entries_by_ids
+from app.core.matching import MAX_WINDOW
 from app.core.settle.settle import SettleResult, settle
 from app.core.stale import StaleReference, stale_from_integrity
 from app.core.units.closure import UnitEntry, units_of
@@ -39,9 +45,15 @@ from app.core.units.draft import UnitDraft
 from app.core.units.lookup import unit_ids_of
 from app.core.units.overlay import plan_unit
 from app.core.units.plan import Consequence, Plan, PlannedRow, Problem
-from app.core.units.preview import UnitNotFound
+from app.core.units.preview import UnitNotFound, resolve_draft
 from app.core.units.state import UnitState, leg_states_of_flags, unit_state
-from app.core.units.stored import load_stored_entries, load_world, missing_tag
+from app.core.units.stored import (
+    load_closure_of,
+    load_stored_entries,
+    load_world,
+    missing_tag,
+    pick_partner_ids,
+)
 from app.utils.db.errors import constraint_name
 from app.utils.db.locks import lock_accounts, lock_rows, lock_settle_shared, retry_on_deadlock
 
@@ -95,6 +107,14 @@ def _read_closure(conn: Connection, anchor_entry_id: int) -> tuple[int, ...] | N
     return None if ids is None else ids.entry_ids
 
 
+def _read_drafted_closure(conn: Connection, draft: UnitDraft) -> tuple[int, ...] | None:
+    """The unit as drafted: the anchor's closure and the closure of each picked partner (ascending)."""
+    anchor = _read_closure(conn, draft.anchor_entry_id)
+    if anchor is None:
+        return None
+    return tuple(sorted({*anchor, *load_closure_of(conn, pick_partner_ids(draft))}))
+
+
 def _accounts_of(conn: Connection, entry_ids: tuple[int, ...]) -> set[int]:
     return {
         int(a)
@@ -115,7 +135,7 @@ _INSERT = text(
 _UPDATE = text(
     "UPDATE ledger_entry SET type = :type, payee_id = :payee, category_id = :category,"
     " counter_account_id = :counter, amount = :amount, description = :description, note = :note,"
-    " derivation = CAST(:derivation AS jsonb) WHERE id = :id"
+    " counterpart_entry_id = :counterpart, derivation = CAST(:derivation AS jsonb) WHERE id = :id"
 )
 
 
@@ -181,6 +201,7 @@ def _write(conn: Connection, plan: Plan) -> dict[int, int]:
                 "amount": w.amount,
                 "description": w.description,
                 "note": w.note,
+                "counterpart": w.counterpart_entry_id,
                 "derivation": json.dumps(w.derivation),
             },
         )
@@ -230,13 +251,13 @@ def _commit_once(engine: Engine, draft: UnitDraft) -> tuple[Plan, dict[int, int]
     try:
         with engine.begin() as conn:
             lock_settle_shared(conn)
-            before = _read_closure(conn, draft.anchor_entry_id)
+            before = _read_drafted_closure(conn, draft)
             if before is None:
                 raise UnitNotFound(draft.anchor_entry_id)
             closure = before
             lock_accounts(conn, _accounts_of(conn, before))
             lock_rows(conn, "ledger_entry", before)
-            after = _read_closure(conn, draft.anchor_entry_id)
+            after = _read_drafted_closure(conn, draft)
             if after != before:
                 raise UnitMoved(draft.anchor_entry_id)
             _check_versions(conn, draft.versions, written=before)
@@ -265,7 +286,13 @@ def _commit_once(engine: Engine, draft: UnitDraft) -> tuple[Plan, dict[int, int]
 def commit_unit(engine: Engine, draft: UnitDraft) -> CommitResult:
     """Write `draft`, then settle. Raises `UnitNotFound`, `DraftError`, `UnitMoved`, `VersionConflict`,
     `StaleReference`, `CommitRefused` and `WriteConflict` (a deadlock lost twice); nothing is written then."""
-    plan, created, _closure = retry_on_deadlock(lambda: _commit_once(engine, draft))
+    with engine.connect() as conn:
+        conn.execute(text("SET TRANSACTION READ ONLY"))
+        effective = resolve_draft(conn, draft, seen=draft.versions).draft
+    # a pick is checked against the widest window (the cap): the user chose the partner, and every other
+    # rule still applies; `window_days` only says which window the proposals were shown for
+    effective = dataclasses.replace(effective, window_days=MAX_WINDOW)
+    plan, created, _closure = retry_on_deadlock(lambda: _commit_once(engine, effective))
     settled = settle(engine)
     return _result(engine, plan, created, settled)
 

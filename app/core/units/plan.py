@@ -126,7 +126,17 @@ PROBLEM_CODES = (
     "pair_sign",
     "split_sum",
     "stale_reference",
+    "partner_not_offered",
+    "partner_in_unit",
 )
+
+
+@dataclass(frozen=True, slots=True)
+class SuggestedSplit:
+    """How a `pair_unequal` is fixed: split `amount` off a source (a stored entry of it) as a flow."""
+
+    source_entry_id: int
+    amount: int  # signed like the larger leg: larger.amount + other.amount
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,6 +147,7 @@ class Problem:
     entry_id: int | None = None
     field: str | None = None
     detail: Mapping[str, int | str | None] = dataclasses.field(default_factory=dict)
+    suggested_split: SuggestedSplit | None = None  # `pair_unequal` only
 
 
 ConsequenceKind = Literal["created", "changed", "returns_to_review", "deleted", "unpaired", "left_behind"]
@@ -207,6 +218,9 @@ class TransferView:
     offers: tuple[Offer, ...]
     proposal: Proposal | None
     has_more: bool
+    # the entry the preview took the leg's proposal to be (an exact open offer, effective in the preview and
+    # accepted by a commit as the user's decision); the leg then shows its partner
+    proposed_pick: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

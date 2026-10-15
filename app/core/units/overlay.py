@@ -22,6 +22,12 @@
 5. The invariants the schema's deferred triggers would check are checked here (`Problem`), so a commit is
    refused by code with a machine code, not by an aborted transaction.
 
+A drafted partner (`DraftEntry.pairing`, spec §5.7) is applied after the walk: a `pick` is validated as an
+offer (`picks.check_pick`), breaks the leg's pair and the picked leg's, types an untyped partner as a
+transfer, sets a missing counter-account as the pair's and writes the pair with the keys `user`;
+`reresolve` drops the stored pair. The partner's closure is part of the stored unit
+(`stored.load_drafted_unit`).
+
 Only the anchor's unit (after the draft) and the entries the draft lists are written; the rest of the
 closure is a consequence (a partner left behind, the other side of a pair that no longer exists).
 """
@@ -57,6 +63,7 @@ from app.core.units.draft import (
     UnitDraft,
     _Unset,
 )
+from app.core.units.picks import PickLeg, check_pick, window_of
 from app.core.units.plan import (
     Consequence,
     FieldResult,
@@ -68,6 +75,7 @@ from app.core.units.plan import (
     Stored,
     StoredSource,
     StoredUnit,
+    SuggestedSplit,
     World,
     Written,
 )
@@ -76,6 +84,7 @@ from app.core.units.state import LegState, UnitState, unit_state
 MAX_ROUNDS = 20
 RERESOLVE = FieldDraft(mode="reresolve")
 _USER: Mapping[str, Any] = {"pass": "user"}
+PAIR_COUNTER_BASIS: Mapping[str, str] = {"from": "counterpart"}
 
 
 @dataclass(slots=True)
@@ -609,6 +618,143 @@ def _settle(rows: Sequence[_Row], world: World, documented: frozenset[int]) -> s
     raise RuntimeError("the preview of settling did not converge")
 
 
+# ---- pairing: picks and re-resolving ---------------------------------------------------------------
+
+
+@dataclass(slots=True)
+class _Picks:
+    """The valid picks of a draft: (leg, partner, is_proposal), and the legs whose own pair they break."""
+
+    pairs: list[tuple[int, int, bool]]
+    broken: set[int]
+
+    def partners(self) -> dict[int, int]:
+        out: dict[int, int] = {}
+        for leg, partner, _p in self.pairs:
+            out[leg], out[partner] = partner, leg
+        return out
+
+
+def _own_counter(dec: Decided | None) -> int | None:
+    """The counter-account a leg had before: a pair's own (basis `{"from": "counterpart"}`) goes with it."""
+    if dec is None or not isinstance(dec.value, int) or dec.basis.get("from") == "counterpart":
+        return None
+    return dec.value
+
+
+def _apply_pairing(
+    stored: StoredUnit,
+    draft: UnitDraft,
+    rows: Mapping[int, _Row],
+    first: Mapping[int, Mapping[Field, Decided | None]],
+    links: dict[int, int | None],
+    world: World,
+    problems: list[Problem],
+) -> _Picks:
+    """The draft's `pairing` fields over `links` (the pairs that stand), in place. A pick that is not an offer
+    is a problem and changes nothing; a no-op pick (the leg's current partner) neither."""
+    out = _Picks([], set())
+    groups = units_of(
+        UnitEntry(e.id, e.source_transaction_id, e.type, e.category_id, e.counterpart_entry_id, e.derivation)
+        for e in stored.entries
+    )
+    unit_of = {ue.id: frozenset(ue2.id for ue2 in unit) for unit in groups.values() for ue in unit}
+    accounts = {a.id: a for a in world.accounts}
+    window = window_of(draft.window_days, world.matching_window)
+    used: set[int] = set()
+    for d in draft.entries:
+        if d.pairing.mode == "keep":
+            continue
+        r = rows.get(d.id)
+        kind = first[d.id]["type"] if r is not None else None
+        if r is None or r.stored is None or kind is None or kind.value != "transfer":
+            raise DraftError(
+                "pairing_not_transfer", "only a transfer leg has a partner", entry_id=d.id, field="pairing"
+            )
+        s = r.stored
+        if d.pairing.mode == "reresolve":
+            old = s.counterpart_entry_id
+            # only a pair that still stands is dropped: a leg a pick has just paired elsewhere is left alone
+            if old is not None and links.get(r.id) == old:
+                links[r.id] = None
+                if links.get(old) == r.id:
+                    links[old] = None
+            continue
+        partner_id = d.pairing.partner_entry_id
+        assert partner_id is not None
+        if s.counterpart_entry_id == partner_id:
+            continue  # the leg's own partner again: nothing to do
+        partner = rows.get(partner_id)
+        leg = PickLeg(
+            id=r.id,
+            account_id=r.account_id,
+            amount=r.amount,
+            currency=r.src.currency,
+            booked_on=r.src.booked_on,
+            counter_account_id=_own_counter(first[r.id]["counter_account"]),
+            instructed_currency=r.src.instructed_currency,
+        )
+        refused = check_pick(leg, partner_id, stored, unit_of.get(r.id, frozenset({r.id})), accounts, window)
+        if refused is None and (partner is None or partner.stored is None or {r.id, partner_id} & used):
+            refused = Problem("partner_not_offered", r.id, "pairing", {"partner": partner_id})
+        if refused is not None:
+            problems.append(refused)
+            continue
+        assert partner is not None and partner.stored is not None
+        former = {x for x in (s.counterpart_entry_id, partner.stored.counterpart_entry_id) if x is not None}
+        for x in former:
+            if x in links:
+                links[x] = None
+        links[r.id], links[partner_id] = partner_id, r.id
+        if s.counterpart_entry_id is not None:
+            out.broken.add(r.id)
+        if partner.stored.counterpart_entry_id is not None:
+            out.broken.add(partner_id)
+        used |= {r.id, partner_id, *former}
+        out.pairs.append((r.id, partner_id, d.pairing.is_proposal))
+        for a, b in ((r, partner), (partner, r)):
+            acc = accounts.get(b.account_id)
+            wanted = a.src.instructed_currency
+            if wanted is not None and acc is not None and acc.currency != wanted:
+                problems.append(
+                    Problem(
+                        "currency_rule",
+                        a.id,
+                        "counter_account",
+                        {"required": wanted, "actual": acc.currency},
+                    )
+                )
+    return out
+
+
+def _pick_decisions(
+    dec: Mapping[Field, Decided | None], other_account: int
+) -> tuple[dict[Field, Decided | None], bool]:
+    """A leg's decisions once it is picked: a transfer (an untyped partner is typed by the user), no payee or
+    category, and the partner's account as counter-account where the leg had none of its own (the second
+    value: the pair set it, spec §5.7)."""
+    out = dict(dec)
+    kind = out["type"]
+    if kind is None or kind.value != "transfer":
+        out["type"] = Decided("transfer", "user", {})
+    out["payee"], out["category"] = None, None
+    counter = out["counter_account"]
+    set_by_pair = counter is None or counter.value != other_account
+    if set_by_pair:
+        out["counter_account"] = Decided(other_account, "user", dict(PAIR_COUNTER_BASIS))
+    return out, set_by_pair
+
+
+def _pick_keys(row: _Row, set_by_pair: bool) -> None:
+    """The keys of a pick (spec §5.7 "Keys on pairs"): the pair is the user's on both legs, and a
+    counter-account the pair set says so."""
+    derivation = dict(row.derivation or {})
+    derivation["counterpart"] = {"pass": "user", "basis": {}}
+    if set_by_pair:
+        derivation["counter_account"] = {"pass": "user", "basis": dict(PAIR_COUNTER_BASIS)}
+    row.derivation = derivation
+
+
 # ---- 5. the invariants --------------------------------------------------------------------------
 
 
@@ -673,8 +819,16 @@ def _problems(rows: Sequence[_Row], world: World) -> list[Problem]:
         if _sign(o.amount) == _sign(r.amount):
             out.append(Problem("pair_sign", r.id, detail={"partner": o.id}))
         elif o.src.currency == r.src.currency and o.amount != -r.amount:
+            larger = r if abs(r.amount) > abs(o.amount) else o
             out.append(
-                Problem("pair_unequal", r.id, detail={"partner": o.id, "difference": r.amount + o.amount})
+                Problem(
+                    "pair_unequal",
+                    r.id,
+                    detail={"partner": o.id, "difference": r.amount + o.amount},
+                    suggested_split=SuggestedSplit(
+                        larger.id, larger.amount + (o if larger is r else r).amount
+                    ),
+                )
             )
     by_source: dict[int, int] = {}
     for r in rows:
@@ -827,10 +981,12 @@ def plan_unit(stored: StoredUnit, draft: UnitDraft, world: World) -> Plan:
             r, r.s0, owned=owned, rederive_ok=r.is_new or not stored_confirmed.get(r.id, False)
         )
     links = _pairs_that_stand(ordered, rows, first)
+    picks = _apply_pairing(stored, draft, rows, first, links, world, problems)
+    picked = picks.partners()
     unpaired = sorted(
         e.id for e in stored.entries if e.counterpart_entry_id is not None and links.get(e.id) is None
     )
-    released = set(unpaired)
+    released = set(unpaired) | picks.broken
     for r in ordered:
         r.counterpart = links[r.id]
         if r.id in released:
@@ -853,7 +1009,12 @@ def plan_unit(stored: StoredUnit, draft: UnitDraft, world: World) -> Plan:
         decisions = first[r.id]
         if r.id in released:  # a leg left free by its pair is judged as a free entry
             decisions = walk.run(r, r.s0, owned=False, rederive_ok=not stored_confirmed.get(r.id, False))
-        _write_accepted(r, decisions)
+        if r.id in picked:
+            decisions, set_by_pair = _pick_decisions(decisions, rows[picked[r.id]].account_id)
+            _write_accepted(r, decisions)
+            _pick_keys(r, set_by_pair)
+        else:
+            _write_accepted(r, decisions)
 
     problems.extend(_problems(ordered, world))
     written = {
