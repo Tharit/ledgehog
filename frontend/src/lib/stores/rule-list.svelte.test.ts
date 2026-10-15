@@ -68,6 +68,7 @@ describe('RuleListStore', () => {
 			rule: rule({ id: 2 }),
 			deleted: false,
 			settle: null,
+			settle_breakdown: null,
 			preview: preview()
 		});
 		await store.remove.start(rule({ id: 2, name: 'Rent' }));
@@ -75,13 +76,16 @@ describe('RuleListStore', () => {
 			dry_run: false,
 			rule: rule({ id: 2 }),
 			deleted: true,
-			settle: { touched_entry_ids: [4], error: null },
+			settle: { touched_entry_ids: [4, 5, 6, 7], error: null },
+			settle_breakdown: { total: 4, this_rule: 0, history: 1, other_rules: 2, other: 1 },
 			preview: preview()
 		});
 
 		await store.remove.confirm();
 
 		expect(store.rules.map((r) => r.id)).toEqual([1]);
-		expect(store.notice).toBe('Rule “Rent” deleted. Settling touched 1 entry.');
+		expect(store.notice).toBe(
+			'Rule “Rent” deleted. 4 entries were updated: 2 now follow another rule, 1 got a proposal from history, 1 changed otherwise.'
+		);
 	});
 });

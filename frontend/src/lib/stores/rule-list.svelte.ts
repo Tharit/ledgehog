@@ -23,9 +23,9 @@ export class RuleListStore {
 
 	readonly remove = new RuleDeleteFlow({
 		locale: () => this.locale,
-		deleted: (rule, touched, settleFailed) => {
+		deleted: (rule, breakdown, settleFailed) => {
 			this.rules = this.rules.filter((r) => r.id !== rule.id);
-			this.say({ action: 'deleted', name: rule.name, touched, settleFailed });
+			this.say({ action: 'deleted', name: rule.name, breakdown, settleFailed });
 		},
 		gone: (rule) => {
 			this.rules = this.rules.filter((r) => r.id !== rule.id);

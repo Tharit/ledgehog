@@ -20,6 +20,7 @@ function dry(matches: number, keyed: number) {
 		rule: rule(),
 		deleted: false,
 		settle: null,
+		settle_breakdown: null,
 		preview: preview({
 			matches: previewList([previewRow()], matches),
 			lost_key: previewList([previewRow()], keyed)
@@ -71,14 +72,21 @@ describe('RuleDeleteDialog', () => {
 			...dry(14, 9),
 			dry_run: false,
 			deleted: true,
-			settle: { touched_entry_ids: [1, 2], error: null }
+			settle: { touched_entry_ids: [1, 2], error: null },
+			settle_breakdown: { total: 2, this_rule: 0, history: 0, other_rules: 2, other: 0 }
 		});
 
 		await fireEvent.click(verb());
 
 		await waitFor(() => expect(host.deleted).toHaveBeenCalledOnce());
 		expect(vi.mocked(deleteRule).mock.calls.at(-1)).toEqual([4, { expectedCount: 14, limit: 1 }]);
-		expect(host.deleted.mock.calls[0][1]).toBe(2);
+		expect(host.deleted.mock.calls[0][1]).toEqual({
+			total: 2,
+			thisRule: 0,
+			history: 0,
+			otherRules: 2,
+			other: 0
+		});
 		expect(flow.open).toBe(false);
 	});
 

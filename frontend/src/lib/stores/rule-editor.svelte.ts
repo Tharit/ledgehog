@@ -41,7 +41,12 @@ import {
 	toFields,
 	type RuleForm
 } from '#lib/rules/form.js';
-import { describeRuleError, fieldErrors } from '#lib/rules/messages.js';
+import {
+	breakdownOf,
+	describeRuleError,
+	fieldErrors,
+	type SettleBreakdown
+} from '#lib/rules/messages.js';
 import { loadRuleLookups } from './rule-lookups.js';
 import { session } from './session.svelte.js';
 
@@ -54,7 +59,7 @@ export type PreviewListName = 'matches' | 'different_value' | 'lost_key';
 export type EditorLoad = 'loading' | 'ready' | 'error' | 'missing';
 export type PreviewStatus = 'idle' | 'loading' | 'ready' | 'error';
 export type EditorNotice = { text: string; error: boolean };
-export type SaveResult = { rule: Rule; touched: number; settleFailed: boolean };
+export type SaveResult = { rule: Rule; breakdown: SettleBreakdown | null; settleFailed: boolean };
 
 export type RuleEditorOptions = {
 	/** the rule to change; null for a new one */
@@ -329,7 +334,7 @@ export class RuleEditorStore {
 			ruleNames.invalidate(); // the names the panel and the queue hold are old
 			return {
 				rule: out.rule,
-				touched: out.settle?.touched_entry_ids.length ?? 0,
+				breakdown: breakdownOf(out),
 				settleFailed: !!out.settle?.error
 			};
 		} catch (error) {

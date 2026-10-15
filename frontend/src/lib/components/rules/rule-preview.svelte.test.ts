@@ -50,10 +50,10 @@ describe('RulePreview: the result', () => {
 		});
 
 		expect(screen.getByText(/Matches 14 entries/)).toHaveTextContent(
-			'Matches 14 entries (9 unconfirmed, 5 confirmed)'
+			'Matches 14 entries: 9 unconfirmed, 5 confirmed.'
 		);
-		expect(screen.getByText(/Would confirm/)).toHaveTextContent(
-			'Would confirm 6 entries, 3 stay in review'
+		expect(screen.getByText(/Of the 9 unconfirmed/)).toHaveTextContent(
+			'Of the 9 unconfirmed: 6 would be confirmed, 3 stay in review. The 5 confirmed entries are not changed.'
 		);
 	});
 
@@ -67,10 +67,25 @@ describe('RulePreview: the result', () => {
 		});
 
 		expect(screen.getByText(/Matches 1 entry/)).toHaveTextContent(
-			'Matches 1 entry (1 unconfirmed, 0 confirmed)'
+			'Matches 1 entry: 1 unconfirmed, 0 confirmed.'
 		);
-		expect(screen.getByText(/Would confirm/)).toHaveTextContent(
-			'Would confirm 1 entry, 0 stay in review'
+		expect(screen.getByText(/Of the unconfirmed entry/)).toHaveTextContent(
+			'Of the unconfirmed entry: 1 would be confirmed, 0 stay in review.'
+		);
+		expect(screen.queryByText(/not changed/)).toBeNull();
+	});
+
+	it('says what happens to a single confirmed match and a single stay', () => {
+		setup({
+			preview: preview({
+				matches: previewList([previewRow()], 3),
+				would_confirm: 1,
+				stay_in_review: 1
+			})
+		});
+
+		expect(screen.getByText(/Of the 2 unconfirmed/)).toHaveTextContent(
+			'Of the 2 unconfirmed: 1 would be confirmed, 1 stays in review. The confirmed entry is not changed.'
 		);
 	});
 
@@ -78,13 +93,13 @@ describe('RulePreview: the result', () => {
 		setup({ preview: preview() });
 
 		expect(screen.getByText('Matches no entries')).toBeInTheDocument();
-		expect(screen.queryByText(/Would confirm/)).toBeNull();
+		expect(screen.queryByText(/would be confirmed/)).toBeNull();
 	});
 
 	it('says when there is nothing left to confirm', () => {
 		setup({ preview: preview({ matches: previewList([previewRow({ confirmed: true })], 1) }) });
 
-		expect(screen.getByText(/every match is confirmed already/)).toBeInTheDocument();
+		expect(screen.getByText(/All matches are confirmed and stay unchanged/)).toBeInTheDocument();
 	});
 });
 

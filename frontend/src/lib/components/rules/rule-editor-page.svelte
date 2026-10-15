@@ -48,8 +48,8 @@
 	};
 	const remove = new RuleDeleteFlow({
 		locale: () => store.locale,
-		deleted: (rule, touched, settleFailed) =>
-			leave(doneUrl({ action: 'deleted', name: rule.name, touched, settleFailed })),
+		deleted: (rule, breakdown, settleFailed) =>
+			leave(doneUrl({ action: 'deleted', name: rule.name, breakdown, settleFailed })),
 		gone: () => leave(RULES_PATH)
 	});
 
@@ -70,7 +70,7 @@
 				doneUrl({
 					action: 'saved',
 					name: result.rule.name,
-					touched: result.touched,
+					breakdown: result.breakdown,
 					settleFailed: result.settleFailed
 				})
 			);

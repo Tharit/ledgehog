@@ -3,12 +3,12 @@
 // by the rule list and the editor; the host says what happens once the rule is gone.
 
 import { classifyRuleError, deleteRule, type Rule, type RulePreview } from '#lib/api/index.js';
-import { describeRuleError } from '#lib/rules/messages.js';
+import { breakdownOf, describeRuleError, type SettleBreakdown } from '#lib/rules/messages.js';
 import { ruleNames } from './rule-names.svelte.js';
 
 export type RuleDeleteHost = {
-	/** the rule is gone; `touched` entries were settled */
-	deleted: (rule: Rule, touched: number, settleFailed: boolean) => void;
+	/** the rule is gone; `breakdown` says where the entries settled stand (null: not known) */
+	deleted: (rule: Rule, breakdown: SettleBreakdown | null, settleFailed: boolean) => void;
 	/** the rule was already gone */
 	gone: (rule: Rule) => void;
 	locale: () => string;
@@ -82,7 +82,7 @@ export class RuleDeleteFlow {
 			ruleNames.invalidate(); // the names the panel and the queue hold are old
 			if (token !== this.#token) return;
 			this.close();
-			this.#host.deleted(rule, out.settle?.touched_entry_ids.length ?? 0, !!out.settle?.error);
+			this.#host.deleted(rule, breakdownOf(out), !!out.settle?.error);
 		} catch (error) {
 			if (token !== this.#token) return;
 			const failure = classifyRuleError(error);

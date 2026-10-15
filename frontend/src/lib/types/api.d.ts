@@ -1517,6 +1517,7 @@ export interface components {
             preview: components["schemas"]["RulePreviewOut"];
             rule: components["schemas"]["RuleOut"];
             settle: components["schemas"]["SettleOut"] | null;
+            settle_breakdown: components["schemas"]["SettleBreakdownOut"] | null;
         };
         /**
          * RuleOut
@@ -1603,6 +1604,7 @@ export interface components {
             preview: components["schemas"]["RulePreviewOut"];
             rule: components["schemas"]["RuleOut"] | null;
             settle: components["schemas"]["SettleOut"] | null;
+            settle_breakdown: components["schemas"]["SettleBreakdownOut"] | null;
         };
         /** SetBody */
         SetBody: {
@@ -1612,6 +1614,22 @@ export interface components {
              * Format: date
              */
             balance_on: string;
+        };
+        /**
+         * SettleBreakdownOut
+         * @description Where the entries settling touched after a rule write stand, by the field the rule sets.
+         */
+        SettleBreakdownOut: {
+            /** History */
+            history: number;
+            /** Other */
+            other: number;
+            /** Other Rules */
+            other_rules: number;
+            /** This Rule */
+            this_rule: number;
+            /** Total */
+            total: number;
         };
         /** SettleOut */
         SettleOut: {

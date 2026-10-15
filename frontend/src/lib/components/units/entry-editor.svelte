@@ -5,7 +5,6 @@
 	import ActionButton from '#lib/components/common/action-button.svelte';
 	import IconButton from '#lib/components/common/icon-button.svelte';
 	import DateDisplay from '#lib/components/common/date-display.svelte';
-	import Field from '#lib/components/common/field.svelte';
 	import MoneyDisplay from '#lib/components/common/money-display.svelte';
 	import ReviewBadge from '#lib/components/common/review-badge.svelte';
 	import TagChip from '#lib/components/common/tag-chip.svelte';
@@ -160,28 +159,35 @@
 		</span>
 	</div>
 
-	{#if view.amountEditable}
-		<div class="flex items-end gap-2">
-			<div class="w-40" data-slot="amount-field">
-				<Field label={view.isNew ? 'Amount of the new split' : 'Amount'} error={amountError}>
-					{#snippet children(control)}
-						<Input
-							{...control}
-							bind:ref={amountInput}
-							value={amountText}
-							inputmode="decimal"
-							autocomplete="off"
-							class="text-right tabular-nums"
-							oninput={(event) => flow.setAmountText(view.id, event.currentTarget.value)}
-						/>
-					{/snippet}
-				</Field>
-			</div>
-			<span class="pb-1.5 text-muted-foreground">{view.amount?.currency ?? ''}</span>
-		</div>
-	{/if}
-
 	<dl class="grid grid-cols-[8rem_1fr] items-start gap-x-4 gap-y-2">
+		{#if view.amountEditable}
+			<dt class="pt-1.5 text-muted-foreground">
+				<label for={`amount-${view.id}`}>Amount</label>
+			</dt>
+			<dd class="min-w-0" data-slot="amount-field">
+				<div class="flex items-center gap-2">
+					<Input
+						id={`amount-${view.id}`}
+						bind:ref={amountInput}
+						value={amountText}
+						inputmode="decimal"
+						autocomplete="off"
+						aria-label={view.isNew ? 'Amount of the new split' : 'Amount'}
+						aria-invalid={amountError ? true : undefined}
+						aria-describedby={amountError ? `amount-error-${view.id}` : undefined}
+						class="w-40 text-right tabular-nums"
+						oninput={(event) => flow.setAmountText(view.id, event.currentTarget.value)}
+					/>
+					<span class="text-muted-foreground">{view.amount?.currency ?? ''}</span>
+				</div>
+				{#if amountError}
+					<p id={`amount-error-${view.id}`} role="alert" class="text-xs text-destructive">
+						{amountError}
+					</p>
+				{/if}
+			</dd>
+		{/if}
+
 		{#if !view.isNew}
 			<dt class="pt-1.5 text-muted-foreground">Type</dt>
 			<dd class="min-w-0">

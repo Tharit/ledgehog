@@ -26,7 +26,7 @@ vi.mock('#lib/api/index.js', async (importOriginal) => ({
 }));
 
 function out(p = preview(), over = {}) {
-	return { dry_run: true, rule: null, preview: p, settle: null, ...over };
+	return { dry_run: true, rule: null, preview: p, settle: null, settle_breakdown: null, ...over };
 }
 
 function deferred<T>() {
@@ -353,7 +353,8 @@ describe('RuleEditorStore: saving', () => {
 			out(preview(), {
 				dry_run: false,
 				rule: rule({ id: 5, name: 'Landlord' }),
-				settle: { touched_entry_ids: [1, 2, 3], error: null }
+				settle: { touched_entry_ids: [1, 2, 3], error: null },
+				settle_breakdown: { total: 3, this_rule: 2, history: 1, other_rules: 0, other: 0 }
 			})
 		);
 
@@ -369,7 +370,7 @@ describe('RuleEditorStore: saving', () => {
 		expect(controls?.dryRun).toBeFalsy();
 		expect(result).toEqual({
 			rule: expect.objectContaining({ id: 5 }),
-			touched: 3,
+			breakdown: { total: 3, thisRule: 2, history: 1, otherRules: 0, other: 0 },
 			settleFailed: false
 		});
 	});
@@ -405,7 +406,7 @@ describe('RuleEditorStore: saving', () => {
 
 		expect(vi.mocked(createRule).mock.calls.at(-1)![1]).toMatchObject({ expectedCount: 4 });
 		expect(result?.rule.id).toBe(77);
-		expect(result?.touched).toBe(0);
+		expect(result?.breakdown).toBeNull();
 	});
 
 	it('refreshes the preview and says so when the result moved', async () => {

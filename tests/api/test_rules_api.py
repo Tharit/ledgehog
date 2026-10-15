@@ -120,7 +120,12 @@ def test_create_returns_the_rule_the_preview_and_the_settle_result(
         e = rs.new_entry(conn, w["acct"], counterparty_name="REWE")
     dry = anna.post(RULES, json=body(w, name="  Rewe  ", priority=7, dry_run=True))
     assert dry.status_code == 200  # nothing was created
-    assert dry.json()["rule"] is None and dry.json()["settle"] is None and dry.json()["dry_run"] is True
+    assert (
+        dry.json()["rule"] is None
+        and dry.json()["settle"] is None
+        and dry.json()["settle_breakdown"] is None
+        and dry.json()["dry_run"] is True
+    )
     preview = dry.json()["preview"]
     assert preview["matches"]["total"] == 1 and preview["would_confirm"] == 1
     row = preview["matches"]["rows"][0]
@@ -142,6 +147,7 @@ def test_create_returns_the_rule_the_preview_and_the_settle_result(
         "conditions": [{"field": "counterparty_name", "op": "equals", "value": "REWE"}], "priority": 7,
     }  # fmt: skip
     assert out["settle"] == {"touched_entry_ids": [e], "error": None}  # settling applied it
+    assert out["settle_breakdown"] == {"total": 1, "this_rule": 1, "history": 0, "other_rules": 0, "other": 0}
     # the preview is the one the dry run showed: the rule as written, the entries before settling applied it
     assert out["preview"]["matches"]["total"] == 1 and out["preview"]["would_confirm"] == 1
     assert out["preview"]["different_value"]["total"] == 0  # settling replaces what it held: nothing to check
@@ -443,12 +449,13 @@ def test_delete_previews_then_deletes_and_keys_stay(anna: TestClient, w: dict[st
     dry = anna.delete(f"{RULES}/{rid}?dry_run=true")
     assert dry.status_code == 200
     d = dry.json()
-    assert (d["dry_run"], d["deleted"], d["settle"]) == (True, False, None)
+    assert (d["dry_run"], d["deleted"], d["settle"], d["settle_breakdown"]) == (True, False, None, None)
     assert d["rule"]["id"] == rid and d["preview"]["lost_key"]["total"] == 1
     assert d["preview"]["lost_key"]["rows"][0]["entry_id"] == e
     assert snapshot(api_engine) == before
     r = anna.delete(f"{RULES}/{rid}?expected_count={d['preview']['matches']['total']}")
     assert r.status_code == 200 and r.json()["deleted"] is True and r.json()["settle"]["error"] is None
+    assert r.json()["settle_breakdown"]["total"] == len(r.json()["settle"]["touched_entry_ids"])
     assert q(api_engine, "SELECT count(*) FROM rule")[0][0] == 0
     assert q(api_engine, "SELECT derivation -> 'category' FROM ledger_entry WHERE id = :i", i=e)[0][
         0

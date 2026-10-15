@@ -2359,6 +2359,16 @@
                 "type": "null"
               }
             ]
+          },
+          "settle_breakdown": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SettleBreakdownOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -2366,7 +2376,8 @@
           "rule",
           "deleted",
           "preview",
-          "settle"
+          "settle",
+          "settle_breakdown"
         ],
         "title": "RuleDeleteOut",
         "type": "object"
@@ -2640,13 +2651,24 @@
                 "type": "null"
               }
             ]
+          },
+          "settle_breakdown": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SettleBreakdownOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
           "dry_run",
           "rule",
           "preview",
-          "settle"
+          "settle",
+          "settle_breakdown"
         ],
         "title": "RuleWriteOut",
         "type": "object"
@@ -2668,6 +2690,50 @@
           "balance"
         ],
         "title": "SetBody",
+        "type": "object"
+      },
+      "SettleBreakdownOut": {
+        "description": "Where the entries settling touched after a rule write stand, by the field the rule sets.",
+        "properties": {
+          "history": {
+            "maximum": 9007199254740992.0,
+            "minimum": 0.0,
+            "title": "History",
+            "type": "integer"
+          },
+          "other": {
+            "maximum": 9007199254740992.0,
+            "minimum": 0.0,
+            "title": "Other",
+            "type": "integer"
+          },
+          "other_rules": {
+            "maximum": 9007199254740992.0,
+            "minimum": 0.0,
+            "title": "Other Rules",
+            "type": "integer"
+          },
+          "this_rule": {
+            "maximum": 9007199254740992.0,
+            "minimum": 0.0,
+            "title": "This Rule",
+            "type": "integer"
+          },
+          "total": {
+            "maximum": 9007199254740992.0,
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "this_rule",
+          "history",
+          "other_rules",
+          "other"
+        ],
+        "title": "SettleBreakdownOut",
         "type": "object"
       },
       "SettleOut": {

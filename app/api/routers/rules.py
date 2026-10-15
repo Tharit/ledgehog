@@ -32,6 +32,7 @@ from app.core.ledger.rules import (
     RuleMissing,
     RuleRow,
     RuleWritten,
+    SettleBreakdown,
     create_rule,
     delete_rule,
     get_rule,
@@ -222,11 +223,32 @@ class RulePreviewOut(BaseModel):
         )
 
 
+class SettleBreakdownOut(BaseModel):
+    """Where the entries settling touched after a rule write stand, by the field the rule sets."""
+
+    total: Count
+    this_rule: Count  # decided by this rule
+    history: Count  # proposed by history
+    other_rules: Count  # decided by another rule
+    other: Count  # everything else: no value for the field, flag-only changes, the user's own decisions
+
+    @staticmethod
+    def of(b: SettleBreakdown) -> SettleBreakdownOut:
+        return SettleBreakdownOut(
+            total=b.total, this_rule=b.this_rule, history=b.history, other_rules=b.other_rules, other=b.other
+        )
+
+
+def _breakdown_out(written: RuleWritten) -> SettleBreakdownOut | None:
+    return None if written.settle_breakdown is None else SettleBreakdownOut.of(written.settle_breakdown)
+
+
 class RuleWriteOut(BaseModel):
     dry_run: bool
     rule: RuleOut | None  # as it stands (would stand, on a dry run); null for the dry run of a create
     preview: RulePreviewOut
     settle: SettleOut | None  # null on a dry run
+    settle_breakdown: SettleBreakdownOut | None  # null on a dry run and when settling failed
 
     @staticmethod
     def of(written: RuleWritten, *, dry_run: bool) -> RuleWriteOut:
@@ -235,6 +257,7 @@ class RuleWriteOut(BaseModel):
             rule=None if written.rule is None else RuleOut.of(written.rule),
             preview=RulePreviewOut.of(written.preview),
             settle=None if written.settle is None else SettleOut.of(written.settle),
+            settle_breakdown=_breakdown_out(written),
         )
 
 
@@ -244,6 +267,7 @@ class RuleDeleteOut(BaseModel):
     deleted: bool  # real run only
     preview: RulePreviewOut  # `lost_key` lists every entry carrying the rule's key
     settle: SettleOut | None
+    settle_breakdown: SettleBreakdownOut | None
 
     @staticmethod
     def of(written: RuleWritten, *, dry_run: bool) -> RuleDeleteOut:
@@ -254,6 +278,7 @@ class RuleDeleteOut(BaseModel):
             deleted=written.deleted,
             preview=RulePreviewOut.of(written.preview),
             settle=None if written.settle is None else SettleOut.of(written.settle),
+            settle_breakdown=_breakdown_out(written),
         )
 
 

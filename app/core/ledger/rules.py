@@ -112,6 +112,63 @@ class RuleRow:
 
 
 @dataclass(frozen=True)
+class SettleBreakdown:
+    """Where the entries a rule write's settling touched stand afterwards, by the final derivation pass
+    of the field the rule sets: decided by this rule, proposed by history, decided by another rule, or
+    anything else (no value for the field, flag-only changes, the user's own decisions, ...). The parts
+    add up to `total`. A deleted rule decides nothing: entries still carrying its key count as `other`."""
+
+    total: int
+    this_rule: int
+    history: int
+    other_rules: int
+    other: int
+
+
+_BREAKDOWN = (
+    "SELECT CASE"
+    " WHEN d.p = 'rule' AND d.rid = :rid THEN 'this_rule'"
+    " WHEN d.p = 'rule' THEN 'other_rules'"
+    " WHEN d.p = 'history' THEN 'history'"
+    " ELSE 'other' END AS kind, count(*) AS n"
+    " FROM (SELECT derivation -> CAST(:f AS text) ->> 'pass' AS p,"
+    " derivation -> CAST(:f AS text) -> 'basis' ->> 'rule_id' AS rid"
+    " FROM ledger_entry WHERE id = ANY(:ids)) d GROUP BY 1"
+)
+
+
+def _breakdown(
+    engine: Engine, result: SettleResult, rule: RuleRow, *, deleted: bool
+) -> SettleBreakdown | None:
+    """Classify the touched entries; None when settling failed (its numbers would mislead)."""
+    if result.error is not None:
+        return None
+    ids = list(result.touched_entry_ids)
+    counts: dict[str, int] = {}
+    if ids:
+        with engine.connect() as conn:
+            rows = conn.execute(text(_BREAKDOWN), {"f": rule.sets, "rid": str(rule.id), "ids": ids}).all()
+        counts = {str(r.kind): int(r.n) for r in rows}
+    this_rule = 0 if deleted else counts.get("this_rule", 0)
+    return SettleBreakdown(
+        total=len(ids),
+        this_rule=this_rule,
+        history=counts.get("history", 0),
+        other_rules=counts.get("other_rules", 0),
+        other=counts.get("other", 0) + (counts.get("this_rule", 0) if deleted else 0),
+    )
+
+
+def _settled(engine: Engine, result: RuleWritten) -> RuleWritten:
+    """The write's result with the settle round run after the committed write, and its breakdown."""
+    assert result.rule is not None
+    done = settle(engine)
+    return replace(
+        result, settle=done, settle_breakdown=_breakdown(engine, done, result.rule, deleted=result.deleted)
+    )
+
+
+@dataclass(frozen=True)
 class RuleWritten:
     """A create, update or delete. `rule` is the rule as it stands after the write (as it was, for a
     delete); None for the dry run of a create, which has no id yet. `settle` is None on a dry run."""
@@ -120,6 +177,7 @@ class RuleWritten:
     preview: RulePreview
     deleted: bool
     settle: SettleResult | None = None
+    settle_breakdown: SettleBreakdown | None = None
 
 
 _COLUMNS = "id, name, sets, counter_account_id, payee_id, category_id, conditions, priority"
@@ -271,7 +329,7 @@ def create_rule(
         return RuleWritten(None if dry_run else row, preview, False)
 
     result = retry_on_deadlock(lambda: previewable(engine, dry_run, work))
-    return result if dry_run else replace(result, settle=settle(engine))
+    return result if dry_run else _settled(engine, result)
 
 
 _INSERT = (
@@ -331,7 +389,7 @@ def update_rule(
         return RuleWritten(row, preview, False)
 
     result = retry_on_deadlock(lambda: previewable(engine, dry_run, work))
-    return result if dry_run else replace(result, settle=settle(engine))
+    return result if dry_run else _settled(engine, result)
 
 
 def delete_rule(
@@ -362,4 +420,4 @@ def delete_rule(
         return RuleWritten(row, preview, not dry_run)
 
     result = retry_on_deadlock(lambda: previewable(engine, dry_run, work))
-    return result if dry_run else replace(result, settle=settle(engine))
+    return result if dry_run else _settled(engine, result)

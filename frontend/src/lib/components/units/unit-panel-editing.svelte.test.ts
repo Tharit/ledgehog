@@ -645,7 +645,7 @@ describe('splits', () => {
 		expect(within(dialog).queryByLabelText('Amount of the new split')).toBeNull();
 	});
 
-	it('lays a split block out: amount and label on the header line, the field on its own row, an icon-only remove in the corner', async () => {
+	it('lays a split block out: amount and label on the header line, the field in the label-left row, an icon-only remove in the corner', async () => {
 		const { dialog } = await openPanel(shown());
 		await fireEvent.click(within(dialog).getByRole('button', { name: 'Split entry' }));
 		const row = await within(dialog).findByRole('region', { name: 'New split entry' });
@@ -660,6 +660,14 @@ describe('splits', () => {
 		const header = row.querySelector('[data-slot="split-label"]')!.parentElement!;
 		expect(header).toHaveTextContent('12.00');
 		expect(within(header).queryByLabelText('Amount of the new split')).toBeNull();
+		// the amount sits in the same label-left / value-right grid as the other rows
+		const amountRow = row.querySelector('[data-slot="amount-field"]')!;
+		expect(amountRow.tagName).toBe('DD');
+		expect(amountRow.previousElementSibling).toHaveTextContent('Amount');
+		expect(amountRow.previousElementSibling?.parentElement).toBe(
+			row.querySelector('[data-slot="amount-field"]')!.parentElement
+		);
+		expect(amountRow.parentElement).toHaveClass('grid-cols-[8rem_1fr]');
 		const remove = within(row).getByRole('button', { name: 'Remove split' });
 		expect(remove.textContent?.trim()).toBe('');
 		expect(remove).toHaveClass('absolute', 'top-2', 'right-2');

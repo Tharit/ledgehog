@@ -55,6 +55,27 @@
 	const unconfirmed = $derived(preview ? preview.would_confirm + preview.stay_in_review : 0);
 	const confirmed = $derived(preview ? Math.max(0, preview.matches.total - unconfirmed) : 0);
 
+	// the headline counts the matches; the sub line is only about the unconfirmed ones, confirmed
+	// entries are never touched
+	const headline = $derived(
+		preview
+			? `Matches ${noun(preview.matches.total, 'entry', 'entries')}: ${count(unconfirmed)} unconfirmed, ${count(confirmed)} confirmed.`
+			: ''
+	);
+	const subline = $derived.by(() => {
+		if (!preview) return '';
+		const of =
+			unconfirmed === 1 ? 'the unconfirmed entry' : `the ${count(unconfirmed)} unconfirmed`;
+		const stay = `${count(preview.stay_in_review)} ${preview.stay_in_review === 1 ? 'stays' : 'stay'} in review`;
+		const first = `Of ${of}: ${count(preview.would_confirm)} would be confirmed, ${stay}.`;
+		if (confirmed === 0) return first;
+		const kept =
+			confirmed === 1
+				? 'The confirmed entry is not changed.'
+				: `The ${count(confirmed)} confirmed entries are not changed.`;
+		return `${first} ${kept}`;
+	});
+
 	const LISTS: {
 		name: Exclude<ListName, 'matches'>;
 		title: string;
@@ -118,20 +139,13 @@
 					{#if preview.matches.total === 0}
 						Matches no entries
 					{:else}
-						Matches {noun(preview.matches.total, 'entry', 'entries')} ({count(unconfirmed)} unconfirmed,
-						{count(confirmed)} confirmed)
+						{headline}
 					{/if}
 				</p>
 				{#if unconfirmed > 0}
-					<p class="text-sm">
-						Would confirm {noun(preview.would_confirm, 'entry', 'entries')},
-						{count(preview.stay_in_review)}
-						{preview.stay_in_review === 1 ? 'stays' : 'stay'} in review
-					</p>
+					<p class="text-sm">{subline}</p>
 				{:else if preview.matches.total > 0}
-					<p class="text-sm text-muted-foreground">
-						Nothing to confirm: every match is confirmed already.
-					</p>
+					<p class="text-sm text-muted-foreground">All matches are confirmed and stay unchanged.</p>
 				{/if}
 			</div>
 

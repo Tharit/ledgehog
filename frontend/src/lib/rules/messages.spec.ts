@@ -116,11 +116,23 @@ describe('describeRuleError', () => {
 });
 
 describe('the notice after a write', () => {
+	const bd = (thisRule: number, history: number, otherRules: number, other: number) => ({
+		total: thisRule + history + otherRules + other,
+		thisRule,
+		history,
+		otherRules,
+		other
+	});
+	const saved = (breakdown: ReturnType<typeof bd> | null, settleFailed = false) =>
+		doneText({ action: 'saved', name: 'Rent', breakdown, settleFailed });
+	const deleted = (breakdown: ReturnType<typeof bd> | null) =>
+		doneText({ action: 'deleted', name: 'Rent', breakdown, settleFailed: false });
+
 	it('survives the address it travels in', () => {
 		const done = {
 			action: 'saved',
 			name: 'Rent & bills',
-			touched: 3,
+			breakdown: bd(9, 15, 1, 2),
 			settleFailed: false
 		} as const;
 
@@ -130,18 +142,53 @@ describe('the notice after a write', () => {
 		expect(doneFromSearch(url.split('?')[1])).toEqual(done);
 	});
 
-	it('says what settled', () => {
-		expect(doneText({ action: 'saved', name: 'Rent', touched: 3, settleFailed: false })).toBe(
-			'Rule “Rent” saved. Settling touched 3 entries.'
+	it('travels without a breakdown too', () => {
+		const done = { action: 'deleted', name: 'Rent', breakdown: null, settleFailed: true } as const;
+
+		expect(doneFromSearch(doneUrl(done).split('?')[1])).toEqual(done);
+	});
+
+	it('says where the entries of a save come from', () => {
+		expect(saved(bd(9, 15, 0, 0))).toBe(
+			'Rule “Rent” saved. 9 entries now follow it. History then proposed it for 15 more; they stay in review for you to check.'
 		);
-		expect(doneText({ action: 'deleted', name: 'Rent', touched: 1, settleFailed: false })).toBe(
-			'Rule “Rent” deleted. Settling touched 1 entry.'
+		expect(saved(bd(9, 15, 1, 2))).toBe(
+			'Rule “Rent” saved. 9 entries now follow it. History then proposed it for 15 more; they stay in review for you to check. 3 other entries were updated.'
 		);
-		expect(doneText({ action: 'saved', name: 'Rent', touched: 0, settleFailed: true })).toContain(
-			'No entries needed settling.'
+	});
+
+	it('leaves out the parts that are zero and keeps singular and plural apart', () => {
+		expect(saved(bd(1, 0, 0, 0))).toBe('Rule “Rent” saved. 1 entry now follows it.');
+		expect(saved(bd(0, 1, 0, 0))).toBe(
+			'Rule “Rent” saved. History proposed it for 1 entry; it stays in review for you to check.'
 		);
-		expect(doneText({ action: 'saved', name: 'Rent', touched: 0, settleFailed: true })).toContain(
-			'stale'
+		expect(saved(bd(2, 1, 0, 0))).toContain(
+			'History then proposed it for 1 more; it stays in review'
+		);
+		expect(saved(bd(2, 0, 0, 1))).toBe(
+			'Rule “Rent” saved. 2 entries now follow it. 1 other entry was updated.'
+		);
+		expect(saved(bd(0, 0, 1, 2))).toBe('Rule “Rent” saved. 3 entries were updated.');
+	});
+
+	it('says nothing changed when nothing did', () => {
+		expect(saved(bd(0, 0, 0, 0))).toBe('Rule “Rent” saved. No entries changed.');
+		expect(deleted(bd(0, 0, 0, 0))).toBe('Rule “Rent” deleted. No entries changed.');
+	});
+
+	it('says what a delete changed, leaving out zero parts', () => {
+		expect(deleted(bd(0, 1, 3, 2))).toBe(
+			'Rule “Rent” deleted. 6 entries were updated: 3 now follow another rule, 1 got a proposal from history, 2 changed otherwise.'
+		);
+		expect(deleted(bd(0, 0, 1, 0))).toBe(
+			'Rule “Rent” deleted. 1 entry was updated: 1 now follows another rule.'
+		);
+	});
+
+	it('names only the write when settling told nothing, and warns when it failed', () => {
+		expect(saved(null)).toBe('Rule “Rent” saved.');
+		expect(saved(null, true)).toBe(
+			'Rule “Rent” saved. Derived figures may be stale until the next action.'
 		);
 	});
 

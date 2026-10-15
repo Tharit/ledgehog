@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import pytest
-from sqlalchemy import Engine, text
+from sqlalchemy import Connection, Engine, text
 
 from app.core.ledger import rules as rules_mod
 from app.core.ledger.dimensions import DuplicateName, ExpectedCountRequired
@@ -474,3 +475,129 @@ def test_a_payee_condition_on_a_rule_that_does_not_set_a_category_is_refused(
                 dry_run=True,
             )
         assert info.value.field == "conditions[1].field"
+
+
+# ---- the settle breakdown --------------------------------------------------------------------
+
+
+def _sonnenkorn(conn: Connection, acct: int, decided: int, proposed: int) -> tuple[list[int], list[int]]:
+    """`decided` unconfirmed entries whose counterparty is Sonnenkorn, `proposed` unconfirmed ones with
+    the words only in the purpose (key 5 of history reaches them once the first group is confirmed)."""
+    by_name = [
+        rs.new_entry(conn, acct, counterparty_name="Sonnenkorn Bio", purpose="Einkauf Obst")
+        for _ in range(decided)
+    ]
+    by_purpose = [
+        rs.new_entry(conn, acct, counterparty_name="Biomarkt Nord", purpose="Sonnenkorn Bio Einkauf Obst")
+        for _ in range(proposed)
+    ]
+    return by_name, by_purpose
+
+
+def _sonnenkorn_rule(world: dict[str, Any], **kw: Any) -> RuleDraft:
+    return draft(
+        world, name="Sonnenkorn", conditions=(rs.cond("counterparty_name", "contains", "Sonnenkorn"),), **kw
+    )
+
+
+def _passes(engine: Engine, ids: list[int]) -> list[str | None]:
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text(
+                "SELECT id, derivation -> 'category' ->> 'pass' AS p"
+                " FROM ledger_entry WHERE id = ANY(:i) ORDER BY id"
+            ),
+            {"i": ids},
+        ).all()
+    return [r.p for r in rows]
+
+
+def test_a_create_splits_the_touched_entries_into_the_rule_and_history(
+    isolated_engine: Engine, world: dict[str, Any]
+):
+    with isolated_engine.begin() as conn:
+        by_name, by_purpose = _sonnenkorn(conn, world["acct"], 3, 2)
+    written = create_rule(isolated_engine, _sonnenkorn_rule(world), expected_count=3)
+    assert written.settle is not None and written.settle.error is None
+    assert _passes(isolated_engine, by_name) == ["rule"] * 3
+    assert _passes(isolated_engine, by_purpose) == ["history"] * 2
+    b = written.settle_breakdown
+    assert b is not None
+    assert (b.total, b.this_rule, b.history, b.other_rules, b.other) == (5, 3, 2, 0, 0)
+    assert b.total == len(written.settle.touched_entry_ids)
+
+
+def test_an_edit_that_narrows_a_rule_reports_what_the_new_conditions_decide(
+    isolated_engine: Engine, world: dict[str, Any]
+):
+    with isolated_engine.begin() as conn:
+        by_name, by_purpose = _sonnenkorn(conn, world["acct"], 2, 2)
+        other = rs.new_entry(conn, world["acct"], counterparty_name="Sonnenkorn Laden", purpose="Brot")
+        rid = rs.rule(
+            conn,
+            "Sonnenkorn",
+            "category",
+            world["food"],
+            conditions=(rs.cond("counterparty_name", "contains", "Sonnenkorn"),),
+        )
+    narrower = draft(
+        world, name="Sonnenkorn", conditions=(rs.cond("counterparty_name", "equals", "Sonnenkorn Bio"),)
+    )
+    written = update_rule(isolated_engine, rid, narrower, expected_count=2)
+    assert _passes(isolated_engine, by_name) == ["rule"] * 2
+    assert _passes(isolated_engine, by_purpose) == ["history"] * 2
+    assert _passes(isolated_engine, [other]) == [None]
+    b = written.settle_breakdown
+    assert b is not None
+    # the entry the narrower rule no longer reaches is touched too (its flags), with no value for the field
+    assert (b.total, b.this_rule, b.history, b.other_rules, b.other) == (5, 2, 2, 0, 1)
+
+
+def test_a_write_that_changes_nothing_has_an_empty_breakdown(isolated_engine: Engine, world: dict[str, Any]):
+    written = create_rule(isolated_engine, draft(world), expected_count=0)
+    b = written.settle_breakdown
+    assert b is not None and (b.total, b.this_rule, b.history, b.other_rules, b.other) == (0, 0, 0, 0, 0)
+
+
+def _fake_settle(monkeypatch: pytest.MonkeyPatch, ids: list[int], error: str | None = None) -> None:
+    monkeypatch.setattr(rules_mod, "settle", lambda engine: SettleResult(tuple(ids), error))
+
+
+def _keyed(engine: Engine, entry: int, key: dict[str, Any] | None) -> None:
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE ledger_entry SET derivation = CAST(:d AS jsonb) WHERE id = :i"),
+            {"d": json.dumps({} if key is None else {"category": key}), "i": entry},
+        )
+
+
+def test_a_delete_classifies_the_touched_entries_as_they_stand_afterwards(
+    isolated_engine: Engine, world: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+):
+    with isolated_engine.begin() as conn:
+        rid = rs.rule(conn, "gone", "category", world["food"], conditions=(rs.name_is("REWE"),))
+        other_rule = rs.rule(conn, "other", "category", world["fun"], conditions=(rs.name_is("ALDI"),))
+        ids = [rs.new_entry(conn, world["acct"], counterparty_name="REWE") for _ in range(5)]
+    _keyed(isolated_engine, ids[0], rs.key(other_rule))
+    _keyed(isolated_engine, ids[1], rs.key(other_rule))
+    _keyed(isolated_engine, ids[2], {"pass": "history", "basis": {}})
+    _keyed(isolated_engine, ids[3], rs.key(rid))  # still names the deleted rule: not a decision of it
+    _keyed(isolated_engine, ids[4], None)
+    _fake_settle(monkeypatch, ids)
+    written = delete_rule(isolated_engine, rid, expected_count=5)
+    b = written.settle_breakdown
+    assert b is not None
+    assert (b.total, b.this_rule, b.other_rules, b.history, b.other) == (5, 0, 2, 1, 2)
+
+
+def test_a_failed_settle_has_no_breakdown(
+    isolated_engine: Engine, world: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+):
+    _fake_settle(monkeypatch, [], error="boom")
+    written = create_rule(isolated_engine, draft(world), expected_count=0)
+    assert written.settle is not None and written.settle.error == "boom"
+    assert written.settle_breakdown is None
+
+
+def test_a_dry_run_has_no_breakdown(isolated_engine: Engine, world: dict[str, Any], settles: list[int]):
+    assert create_rule(isolated_engine, draft(world), dry_run=True).settle_breakdown is None
