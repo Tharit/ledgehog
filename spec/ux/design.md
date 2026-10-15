@@ -61,8 +61,8 @@ CSS variable shadcn-svelte uses, so the theme is one stylesheet.
   (`spec.md` §3.5), not by colour.
 - **There is no warning colour.** Account facts, run summaries and stale-state
   notices are notices (`patterns.md` §4.4, §8), shown in `text` and
-  `text-muted` with an icon. Red is for amounts and destructive confirmations
-  only.
+  `text-muted` with an icon. Red is for amounts, destructive confirmations and
+  the validation message under a field.
 - Never pure white (`#FFFFFF`) or a cool grey as a surface.
 
 Text tokens meet WCAG AA (4.5:1) on `background`, `sidebar` and `surface`;
@@ -143,6 +143,30 @@ An 8px grid, with 4px steps inside compact elements.
   table of entries. Rows 32px, one line, 13px text, category icon 24px,
   horizontal dividers only, no card padding around the table.
 
+**Controls.** One scale, so no view picks a height:
+
+| Control | Height | Where |
+|---|---|---|
+| Button, input, select, filter chip | 32px | everywhere |
+| Compact button | 24px | inside popovers and table rows only |
+| Icon button | 32px; 24px in a row | row actions, close |
+
+Variants by role: *primary* for the one action that finishes a surface;
+*outline* for Cancel and for secondary actions; *ghost* for header and popover
+helpers ("Clear"); *destructive* only for the button that carries out a
+deletion. A form dialog and a decision dialog put their buttons at the right
+of the footer, Cancel first, the primary last; a page editor puts them after
+the form, left-aligned, with the destructive action at the far right.
+
+**Row actions** (`patterns.md` §11.3) have `opacity: 0` and become `1` on row
+hover, `:focus-within` and an open menu of the row; under `(hover: none)` they
+are always `1`. No transition. The `⋯` is Lucide `ellipsis`.
+
+**The work panel** (`patterns.md` §11.1) is a large overlay over the list. Its
+geometry, whether it slides in from the right or is centred and its exact
+size, is open until it has been used on real units. Consequence marks (`patterns.md` §7) are a
+quiet marker on the row that fades once the cursor has visited it.
+
 ## 6. Icons
 
 Lucide (`@lucide/svelte`, architecture §2), stroke 1.75px, 18px by default and
@@ -212,7 +236,7 @@ the unit panel; never in a ledger row.
 | a reconciliation entry | `scale` |
 
 An unclassified entry shows no category icon: its category slot is the absent
-value "Unclassified" (§7).
+value "Unclassified" (§7). The type filter shows the four icons above for their types and names a flow with `coins`, drawn the same way; a flow in a row shows its category, never this icon.
 
 **Review badges** (`patterns.md` §4.2), 14px, `text-muted`, always with their
 tooltip:
@@ -235,13 +259,18 @@ section numbers in this table are `patterns.md`'s.
 | list cursor (`patterns.md` §5) | row background `accent`, 2px `primary` bar on the left edge |
 | keyboard focus inside a panel | 2px `ring` outline, 2px offset |
 | hover | row background `surface-muted`; never stronger than the cursor |
-| resolved by your action (§7) | row text `text-muted`, `check` icon in the badge slot |
+| clickable | the pointer cursor on every control that acts on a click; `not-allowed` on a disabled one |
+| committed by you (§7) | row text `text-muted`; a confirmed unit also shows a `check` icon in the badge slot, an unconfirmed one keeps its review badge |
 | changed as a consequence (§7) | 2px `ochre` bar on the left edge, with the tooltip "changed by your last action" |
 | proposal (§4.3) | `text-muted`, italic |
 | decided value | `text`, regular |
 | absent value (§9) — "Unclassified", "→ ?", "not anchored", unvalued | `text-muted` with a dotted underline, the explanation in a tooltip |
 | disabled commit (§6) | `primary` at 40 %, its reason as tooltip |
 | notice (account facts, stale state) | one line, `text-muted`, `info` icon; never a banner or a dialog |
+| placeholder | `text-muted`, regular weight, never italic (italic marks proposals) |
+| field validation message | 12px, `destructive`, under the field |
+| dialog feedback (`patterns.md` §11.5) | one slot above the footer; error in `destructive`, conflict and report in `text` |
+| empty state | `surface` card, 1px `border`, left-aligned in a settings page, centred in a full view; title 16px/600, body `text-muted` |
 
 ## 8. Charts
 

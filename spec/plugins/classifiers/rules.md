@@ -18,8 +18,8 @@ entry, for category rules. The rules arrive from core, whole; the plugin never
 reads the database.
 
 **Which rules decide the type** (`spec.md` §5.9): counter-account rules,
-payee rules, and category rules without a payee condition — the rules that can
-be judged before the payee is. A category rule with a payee condition never
+payee rules, and category rules that have no payee condition — the rules that can
+be judged before the payee is. A category rule that has a payee condition never
 decides the type; it applies in the category field, on whatever payee was
 resolved, a proposed one included. Its value is then standing, and is derived
 again if that payee changes (`spec.md` I18).
@@ -29,34 +29,54 @@ and payee conditions can hold for it.
 
 ## 2. Conditions
 
-All of a rule's conditions must hold; a condition on a field the entry lacks
-does not hold. Each is compared as follows.
+A rule holds a list of conditions, all of which must hold (an implicit AND),
+including, for a category rule, payee conditions. A condition is `{field, op, value}`. The format leaves room for
+grouping and negation later without a schema change; neither exists now.
 
-| Condition | Compared with | How |
-|---|---|---|
-| `counterparty_ref` | `counterparty_ref` | equal after the canonicalisation of `spec.md` §5.2 (NFKC, casefolded, alphanumerics only), both sides |
-| `mandate_ref` | `mandate_ref` | likewise |
-| `booking_text` | `booking_text` | likewise |
-| `name_exact` | counterparty name, or the linked document's merchant name | equal after **name normalisation** (below) |
-| `name_prefix` | the same | the normalised name starts with the normalised prefix |
-| `purpose_regex` | purpose, with a linked document's line descriptions appended, one per line | Python `re`, case-insensitive, `search` — unanchored unless the pattern anchors itself |
-| `condition_payee_id` | the payee resolved earlier in the same resolution | equal (category rules only) |
+A condition on a field the entry lacks fails. The same field may appear in
+several conditions.
+
+| Field | Read from |
+|---|---|
+| `counterparty_name` | the counterparty name, or the linked document's merchant name |
+| `counterparty_ref` | `counterparty_ref` |
+| `purpose` | the purpose, with a linked document's line descriptions appended, one per line |
+| `booking_text` | `booking_text` |
+| `mandate_ref` | `mandate_ref` |
+| `payee` | the payee resolved so far in the same resolution, a proposed one included; the value is the payee id as a digit string (category rules only) |
+
+`payee` takes the operator `is` only (equal ids); every other field takes the
+four operators `equals`, `starts_with`, `contains` and `regex`. A payee condition
+whose payee has been deleted never matches.
+
+| Fields | Comparison of `equals`, `starts_with`, `contains` |
+|---|---|
+| `counterparty_ref`, `mandate_ref` | both sides as canonical text (`spec.md` §5.2: NFKC, casefolded, alphanumerics only), so an IBAN prefix works |
+| `counterparty_name`, `purpose`, `booking_text` | both sides by **name normalisation** (below) |
+
+`regex` is Python `re`, case-insensitive, `search` — unanchored unless the
+pattern anchors itself — on the raw value of any field.
 
 **Name normalisation** is NFKC, casefolded, runs of whitespace collapsed to
 one space, trimmed. Punctuation is kept, so the typical card-descriptor rule
-`name_prefix 'PAYPAL *'` matches `PAYPAL *SEEEDDEVELO` but not
+`counterparty_name starts_with 'PAYPAL *'` matches `PAYPAL *SEEEDDEVELO` but not
 `PayPal Europe S.a.r.l.` — canonicalising names to alphanumerics, as references
 are, would merge the two.
 
-References and booking texts are canonicalised fully because they are codes:
-an IBAN with or without spaces is one IBAN.
+References are canonicalised fully because they are codes: an IBAN with or
+without spaces is one IBAN.
 
 ## 3. Validation on save
 
-A rule is refused when its regex does not compile, or when every condition is
-empty (also a schema CHECK). Conditions are stored as the user typed them;
-normalisation happens when comparing, so changing it is a code change, not a
-migration.
+A rule is refused when a condition names a field or an operator the plugin
+does not know, when a `regex` value is longer than 200 characters or does not
+compile (on any field), when a condition's value is blank, when a `payee` condition's operator is not
+`is`, its value is not a positive integer id, or its rule does not set a
+category, when it has no condition (also a schema CHECK), or when its name is
+blank or already used (case-insensitively; also a schema CHECK and unique
+index). That a payee exists is checked at write time by core, not by the plugin. A message names the field and never quotes the value. Conditions are
+stored as the user typed them; normalisation happens when comparing, so
+changing it is a code change, not a migration.
 
 ## 4. Basis
 

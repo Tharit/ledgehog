@@ -7,11 +7,13 @@ are `spec.md` §5.7 and §6; the contracts are `architecture.md` §4.1 and §6.5
 
 ---
 
-**Order by shape, not date.** Most units are recurring — the same proposed
-values from the same evidence — and sit next to each other, each confirmed
-with one keystroke that moves to the next. A flat chronological list demands
-full attention on the boring ones, which is why people abandon these queues.
-A unit appears once, with all its entries. Units decided entirely by own
+**Three sections, each by date.** Pending review, needs an account and
+waiting (below), and within each section units are ordered by booked date,
+then by anchor entry id. Most units are recurring — the same proposed values
+from the same evidence — and each is committed with one keystroke that moves
+to the next. Whether the queue should also group such units, and what makes
+two units alike, is open until the first month of real units has been seen;
+nothing here defines a shape. A unit appears once, with all its entries. Units decided entirely by own
 accounts and rules arrive confirmed once complete (`spec.md` §5.9), and appear
 only in the waiting bucket while a partner or a document is still to come: a
 recurring unit leaves the queue for good once a rule decides it.
@@ -27,21 +29,24 @@ merchant gives the other twenty-nine a proposal by the time the cursor reaches
 them. The queue itself stays as it was fetched for the session (architecture
 §6.5).
 
-**Buckets.**
+**Sections.** The queue is the units not confirmed (`spec.md` §6), each in one
+section, with the count per section.
 
-- **Waiting** — entries expecting information that has not had its chance to
-  arrive (`spec.md` §6): a partner leg, which cannot be confirmed until
-  paired, and a document, which can. Waiting is a hint; the unit stays
-  editable.
+- **Pending review** — the units that have what they need and await a
+  decision.
 - **Needs an account** — unmatched legs whose counter-account does not exist,
-  grouped by the currency they need, with one create action per group:
+  grouped by the currency they need, with one add action per group:
 
   ```
-  3 withdrawals need an account in USD          [ create account … ]
+  3 withdrawals need an account in USD          [ Add account ]
   ```
 
   The new account is then offered first on each, and each is confirmed on
   its own (`spec.md` §5.7).
+- **Waiting** — entries expecting information that has not had its chance to
+  arrive (`spec.md` §6): a partner leg, which cannot be confirmed until
+  paired, and a document, which can. Waiting is a hint; the unit stays
+  editable.
 
 **Unpaired legs show their offers** (`spec.md` §5.7) — unpaired legs and
 entries on the counter-account first, exact matches leading, then legs paired
@@ -53,6 +58,11 @@ elsewhere is never preselected, and a "load more candidates"
 action widens the window for one pick. An unmatched leg whose counter-account
 is synced says so: its partner is missing from the import, so the remedy is to
 import what is missing, or to convert the leg if it is not a transfer.
+
+**Open for the first month.** Whether and how to group units by what they
+share (type, counter-account or payee, category, the evidence behind them),
+whether grouping is wanted beyond the three sections, and how it would be
+drawn: decided only after the queue has been used on real units.
 
 **Keyboard-first.** The bindings are a cross-view convention and belong in
 `ux/patterns.md`.

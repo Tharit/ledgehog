@@ -72,16 +72,32 @@ says so; those are revisited after the first month of use, not per view.
 
 ### 4.1 Rows
 
-An entry row shows, in this order: date, account (where several are listed),
-description (the entry's `description`, else the source's counterparty name or
-purpose), payee, category or the transfer's destination ("→ Cash"), tags,
-amount. Derived entries (opening, valuation, reconciliation) render in the same
-row shape with their type in place of a category and no review affordances
-(spec §3.9).
+An entry row shows, in this order: date, account (always in the ledger list; a
+view of one account may leave it out), category or the transfer's destination
+("→ Cash"), payee, tags, description (the entry's own `description` only; the one column that takes the remaining
+width), the review badges (§4.2) and the amount. Derived entries (opening,
+valuation, reconciliation) render in the same row shape with their type in
+place of a category and no review affordances (spec §3.9).
+
+The description column shows the entry's `description` and nothing borrowed
+from its source transaction: the source fields are shown where they belong, in
+the work panel and in the rule preview's source columns. An entry with no
+description shows an empty cell. Whether imports get a description at creation
+is open (§10). The API's derived `display_text` is not used by the column.
 
 The entries of one unit (spec §6) are shown together wherever a unit is shown:
-a split's entries under their source, a pair's two legs side by side. In the
-ledger list, a split shows as one row that expands.
+a split's entries under their source, a pair's two legs side by side.
+
+**In the ledger list, every entry is a row, and a unit is never a row of its
+own.** Filtering, counting, paging and tagging all act on entries
+(architecture §4.1); anything grouped is only how rows are drawn. The entries
+of a split are adjacent, because the list's order keeps them together. There
+is no parent row and no expander. The whole unit opens in the panel. The entries of a split are
+also visually joined, with a marker on the first row whose tooltip gives the
+unit's total. A transfer leg shows its partner —
+account, date and amount — from a read-only summary the row carries, so it
+works when a filter hides the partner; the partner's own row is highlighted
+when it is in view.
 
 ### 4.2 Review state
 
@@ -108,18 +124,24 @@ Every derived value can show its basis, rendered from the derivation key
 | Key | Rendered as |
 |---|---|
 | `own_account` | "own account (IBAN match)" |
-| `rule` | "rule: *rule name or conditions*", linking to the rule |
+| `rule` | "rule: *its name*", linking to the rule; "rule deleted" where the rule is gone |
 | `history` | "history: 3 of 4 since Mar 2026" |
 | `llm` | "suggested by the model", rationale on demand |
 | `matcher_decision` | "matched automatically" |
 | `matcher_proposal` | "document matched — check the split" |
 | `user` with a basis | "confirmed by you, proposed by *…*" |
 | `user` without one | "set by you" |
+| `user` on an empty payee | "No payee" shown muted, with "set by you" |
 
 Proposals (history, model, matcher proposal) are visually distinct from
 decided values — e.g. italic or a lighter weight — and the distinction is the
 same in every view. Thin evidence is shown as such ("1 of 1"), never rounded
 into a percentage.
+
+The clear control on a type, category or counter-account is offered only on a
+value the user decided; it means "remove my choice", and the passes propose
+again. On a payee it means "no payee" (spec §5.9, state 3). "Reset to
+proposal" is offered only when the value shown differs from the value stored.
 
 ### 4.4 Account facts
 
@@ -146,19 +168,62 @@ A starting set, to be revisited after real use:
 
 | Key | Action |
 |---|---|
-| `↑` / `↓` (also `k` / `j`) | move the cursor in a list |
-| `Enter` | open the row: the unit panel for an entry |
-| `Esc` | close the panel or dialog, discarding its draft (asking first if the draft has changes) |
+| `↑` / `↓` (also `k` / `j`) | move the cursor in a list; `↓` in the filter bar's text box moves it to the first row |
+| `Enter` | open the row: the unit panel for an entry; on a derived entry a quiet notice, "Derived from a balance record — correct the record", with a link to the record |
+| `Enter` in a form | submits a form dialog or an in-place edit; never submits a draft editor or confirms a decision dialog (§11.2) |
+| `Esc` | closes the innermost open surface (popover, dialog, panel), discarding its draft; a panel whose draft has changes asks first |
 | `Ctrl/⌘ + Enter` | commit the panel as previewed |
 | `Tab` / `Shift + Tab` | move between fields of the panel |
-| `/` | focus the filter bar |
-| `t` | tag the row (or the filter's result, after a confirmation, spec §3.7) |
+| `/` | focus the filter bar's text box |
+| `t` | tag the row under the cursor |
 | `p` | open provenance |
-| `?` | show the bindings |
+| `?` | show or hide the bindings (a panel fixed to the corner of the view, not a dialog) |
 
-The cursor is the selection; there is no multi-select for interpretation,
-because there is no batch confirmation (spec §6). After a commit the cursor
-moves to the next row; a resolved row stays in place, marked (§7).
+`t` opens a searchable list of tags: `Enter` toggles the one under the
+highlight, and a name no tag has can be created in place; on a derived entry
+it refuses with a quiet notice. In the work panel `t` edits the focused entry's
+draft tags instead (below).
+
+**The panel's keys** act when focus is not in a field, and only in the panel
+(the ledger's `r` stays removed, D208):
+
+| Key | Action |
+|---|---|
+| `[` / `]` | step to the previous or next unit |
+| `c` / `y` | category / payee |
+| `s` | split |
+| `x` | flow ↔ transfer |
+| `r` | re-resolve |
+| `t` | edit the focused entry's draft tags |
+
+**The panel is addressed by `?unit=<anchor entry id>`** on any page: opening it
+adds a history entry, stepping replaces one, so reload and a shared link
+work. The queue is the page `/review`, with a Review item in the navigation.
+After `Ctrl/⌘ + Enter` the panel stays open and advances to the next unopened
+unit, skipping resolved ones; at the end it closes with a notice and the
+cursor on the last row. "One keystroke" means that chord with the panel open:
+the panel must be open to show the preview. `Esc`, or stepping, with a dirty
+draft asks in a decision dialog nested over the panel, Cancel focused. "Edit
+entry" is disabled while the draft is dirty, with the reason as tooltip, and
+opening a consequence row from a dirty panel asks first. Tags are part of
+the draft: each entry block has a Tags row like its other fields, without a
+clear control and without proposals, and a tag edit makes the draft dirty. The
+`t` picker lists the tags; a name no tag has is created at once through the tag
+endpoint (creating a tag is not an entry write) and added to the draft, and
+cancelling the draft leaves the tag, which can be deleted in the tag settings.
+Re-resolve (`r`) applies to the whole unit as a draft edit that
+Cancel undoes, with "Reset to proposal" on each field.
+
+The cursor is the selection; there is no multi-select, for interpretation
+because there is no batch confirmation (spec §6), and for tagging because a
+filter's result is tagged through the filter. That is a visible action of the
+filter bar, "Tag all…", never a key: it is unavailable, with its reason as
+tooltip, while the list loads, when the filter restricts nothing and when
+there is nothing to tag. It opens a dialog that shows the preview of
+architecture §4.1 (how many would be tagged, how many already carry the tag,
+how many are skipped, the accounts affected, the tag's span before and after)
+and asks before it writes (§6). After a commit the cursor moves to the next
+row; a resolved row stays in place, marked (§7).
 
 ## 6. Previews, consequences and confirmation
 
@@ -168,11 +233,16 @@ moves to the next row; a resolved row stays in place, marked (§7).
   spec §6), then a consequence list grouped by effect: *created*, *changed*,
   *returns to review*, *deleted*, *left behind*. Each item is a row in the
   shape of §4.1 and can be opened.
+- **A rule's preview rows carry their source.** Each row is an entry with its
+  `source` (architecture §4.1); beside the entry's own fields the row shows the
+  source fields that the rule's conditions read, always the counterparty, under
+  their own headers. Rows open the review panel once units exist.
 - **Confirmation scales with cost.** An operation that only writes what the
   user sees in the panel commits with one key. An operation that removes
   confirmed entries or returns entries to review asks explicitly, naming how
   many (spec §6). An entry-form edit of a user-authored row always shows the
-  general warning the spec requires (spec §5.6).
+  general warning the spec requires (spec §5.6), static above Save; that
+  warning is its confirmation.
 - **Skipping a document wait is explicit.** Where documents are suggested or
   awaited, committing without one is a deliberate choice ("commit without a
   document"), not the default key (spec §5.8, §6).
@@ -184,13 +254,30 @@ moves to the next row; a resolved row stays in place, marked (§7).
 ## 7. Lists, patching and freshness
 
 - **Patch, don't refetch.** After an operation the client patches every entity
-  in its affected set (architecture §4.1). Rows resolved by the user's action
-  are marked resolved; rows changed as a *consequence* are marked differently
-  ("changed by your last action"), so nothing changes silently.
+  in its affected set (architecture §4.1). Rows the user has committed
+  are muted, and a committed unit that is confirmed also carries a check; a
+  committed unit that stays in review keeps its review badge. Rows changed as a
+  *consequence* are marked differently ("changed by your last action"), so
+  nothing changes silently. A commit can refresh dozens of proposals: those are
+  patched silently, and only state changes and returns to review are marked.
+  The consequence mark fades when the cursor visits the row; the muting and the
+  check stay until the list is refreshed.
 - **Snapshots stay snapshots.** A list fetched for a session (the review queue,
-  architecture §6.5) does not add or reorder rows; new data from another sync
-  appears as a passive count ("12 new — refresh") that refetches only on
-  request.
+  architecture §6.5; the ledger list, whose filter is in its address) does not
+  add or reorder rows; new data from another sync appears as a passive count
+  ("12 new — refresh") that refetches only on request. An action patches the rows it touched in place and
+  never removes or moves one: a row that the action takes out of the list's
+  filter (a tag removed under a tag filter) stays, marked, until the list is
+  fetched again. The one exception to never adding a row: the entries a split
+  creates are inserted next to their anchor.
+- **A filter's result is the server's, not the list's.** An action on a
+  filter's result (spec §3.7) states how many entries it will touch from the
+  server's count for the filter as it stands, not from the rows the list holds,
+  which may be a snapshot, and it captures the filter when it opens. If the
+  result has moved when the user confirms, nothing is written and the action
+  shows the new number and asks again. Rows the user changed that the filter no
+  longer matches are not in the result: the action says so, and offers to
+  include those that are still shown as a choice that is off by default.
 - **Optimistic echo only.** A view may show the expected result of an
   operation it has sent, and rolls it back on error; it never shows a domain
   outcome it computed itself (architecture §6.3).
@@ -202,7 +289,10 @@ moves to the next row; a resolved row stays in place, marked (§7).
   - *validation* — inline at the field or the draft, as in §6;
   - *conflict* (someone changed this) — a non-blocking notice naming what
     moved, the affected rows refetched in place, the draft kept where it can
-    be previewed again; never an automatic overwrite;
+    be previewed again; never an automatic overwrite. A `stale_reference`
+    (the write named a category, payee or account that no longer exists, for
+    instance after a merge) is such a conflict whose notice names the field,
+    and the category, payee and account lists are reloaded in place;
   - *try again* (a write aborted twice, architecture §5.2) — a notice with a
     retry action, the draft kept;
   - *importer errors* (architecture §5.5) — on the run, in the sync view, with
@@ -227,6 +317,141 @@ moves to the next row; a resolved row stays in place, marked (§7).
 ## 10. Open for the first month
 
 - the badge glyphs and the proposal styling of §4.2–§4.3;
-- the key bindings of §5, especially commit and tag;
+- the key bindings of §5, especially commit and tag, and the panel's;
+- whether and how the review queue groups units by what they share, beyond its
+  three sections (`ux/views/review-queue.md`); open until real units have
+  been seen;
 - whether resolved rows in a snapshot collapse after a while (architecture
-  §6.5 leaves it to the view).
+  §6.5 leaves it to the view);
+- the ledger list's columns: their order (in particular whether the amount
+  comes before the description) and which columns give way first at a narrow
+  width (the prototype's table simply overflows);
+- how the ledger list counts what is new since it was fetched ("12 new"), and
+  how a joined split and a transfer's partner are drawn (§4.1);
+- whether the ledger list shows the account's facts (§4.4) when one account is
+  filtered; the prototype leaves them to the account view;
+- where a quiet notice appears (the prototype reserves one line under the
+  filter bar, so that it never moves a row; the alternative is a floating
+  notice) and how a partly failed action is worded and styled (the prototype
+  reports it inside the dialog in plain text);
+- whether the filter-bar action "Tag all…", its dialog and the opt-in to tag
+  the marked rows suit real use;
+- the rule editor: its layout, the find box that picks its example entry and
+  the example's source table beside the conditions (which conditions one
+  reaches for on real descriptors);
+- how rules are ordered by priority, and whether the editor needs to show
+  that at all;
+- whether imports get a description at creation (the list shows an entry's own
+  `description` only, §4.1), and if so how it is filled and reviewed;
+- the starter categories offered on an empty tree (the author's tree);
+
+all of them to be tried on real data.
+
+## 11. Interaction standards
+
+A view picks one of these patterns for each situation; it does not invent a
+variant. The components that realise them are listed in `architecture.md`
+§6.2; how they look is `design.md` §5 and §7.
+
+### 11.1 Surfaces
+
+An interaction has one surface. A **dialog** is modal and centred; a
+**popover** is anchored to its trigger and does not block the page; the **work
+panel** is the unit panel (§4.1, §5): a large overlay (roughly half to four
+fifths of the viewport), addressable by URL, the list dimmed behind it,
+stepping to the next and previous unit by key, and asking on Esc when its
+draft has changes; a **page** has its own route. Take the first rule that
+applies:
+
+1. Choosing among known options, or toggling: a **popover** from a visible
+   trigger; a **dialog** when it starts from a menu item.
+2. Editing one text value of a thing that is shown right there: **in place**.
+   Nothing else is inline.
+3. Working one item of a list the user steps through, with draft, preview and
+   commit, the list kept in view: the **work panel**.
+4. More than five fields, a preview, a table, fields that depend on others,
+   or a thing other screens link to: a **page**.
+5. Otherwise, up to five single-line fields or a decision about
+   consequences: a **dialog**.
+
+An interaction that needs the page it started from (its snapshot, its cursor,
+an unsaved draft) is a dialog, a popover or a new tab, never a page. A task
+that must outlive navigation lives on a page and in a store that outlives it.
+A popover never makes a write that needs a decision; choosing or toggling is
+its only write. **There is no inline form**: adding, and editing more than one
+field, are dialogs or pages. The entry form is a form dialog; once it has created the transaction the work panel opens on it. It offers a secondary "Add and add another" beside "Add", which clears the form for the next transaction instead.
+
+### 11.2 Forms and keys
+
+| Kind | Buttons | Enter | Esc | Ctrl/⌘ + Enter |
+|---|---|---|---|---|
+| In place | none | commits a changed, non-empty value; otherwise cancels | cancels | as Enter |
+| Popover choice | none | chooses the highlighted item | closes | — |
+| Popover form (view settings) | Clear, Apply | applies | closes, discarding | — |
+| Form dialog | the verb, Cancel | submits | cancels | — |
+| Decision dialog | the verb, Cancel | never confirms | cancels | not bound |
+| Pick dialog | Cancel | chooses the highlighted item | cancels | — |
+| Draft editor (page, panel) | Save *thing* or Commit, Cancel | never submits | page: not bound; panel: closes, asking if the draft has changes | saves or commits |
+| Standalone form (login) | one primary | submits | — | — |
+
+Blur commits an in-place edit; a refusal keeps the field open with the error.
+A decision dialog about a destructive action starts with focus on Cancel.
+Leaving a draft editor with changes asks first. Esc acts on the innermost open
+surface. A surface cannot be dismissed while its write runs. When a surface
+closes, focus returns to what opened it.
+
+### 11.3 Row actions
+
+A row has one primary action, what a click means, and secondary actions. A row
+of the ledger or the queue has no action buttons: its actions are keys (§5)
+and the panel, and each key action also has a mouse path. A row of a settings
+list or a tree shows at most two icon actions, the edit action and the
+add-in-context action, and puts the rest in one `⋯` menu: reorder (Move up,
+Move down), move, merge, then delete, last and in the destructive style. Where
+a row has two actions or fewer they are all shown and there is no menu.
+Actions are revealed on hover and keyboard focus and are always focusable. An
+icon action's accessible name is "*Verb* *name*" and its tooltip "*Verb*", the
+same words as the menu item.
+
+### 11.4 Wording
+
+Buttons are verbs in sentence case without a full stop. Things are *added*,
+never "created" or "new": "Add category", "Add rule", "Add tag “x”"; a page
+that adds is titled "Add rule". An add dialog ends with "Add", an edit with
+"Save", a page editor with "Save *thing*", a popover that only changes the view
+with "Apply", a decision dialog with the verb of the action, with the count
+where there is one ("Delete", "Merge", "Tag 214 entries"). "OK", "Yes" and
+"Confirm" are not used: *confirm* is a unit's review state. Cancelling is
+"Cancel". A verb that acts on existing data and opens a decision first ends
+with "…" ("Delete…", "Merge…", "Move to…", "Tag all…"); "Add …", "Edit" and
+navigation do not. While a write runs the button names it ("Saving…") and is
+disabled; a disabled action stays visible and gives its reason (§5, §6). Text
+buttons carry no icon. A placeholder is allowed only in a find or filter box
+and is an imperative ("Find a category…"), never an example value; every other
+field has a visible label.
+
+### 11.5 Feedback
+
+A field's validation message stands under the field. A failure of a write
+started in a dialog stands in the dialog, above its buttons, as an *error*
+(nothing was written), a *conflict* (the world moved; the new numbers are shown
+and the user asks again, §8) or a *report* (partly done). A direct write that
+fails, and every structural success (delete, merge, tag all, saving a page), is
+one notice on the reserved line under the page header; a plain direct write
+(add, rename, a look) says nothing, because the list shows it. A failure to
+load shows the error with "Try again" (§8): the page's own state for a page or
+list, a notice for a part.
+
+### 11.6 Empty, loading and error states
+
+An empty list says what is missing and what to do (§9): "No categories yet",
+one sentence, the page's add action; an empty filter result says so and offers
+"Clear filters". A list loads as skeleton rows, a part as one muted line, a
+preview as "Checking what would change…". A picker's empty state is one line
+inside it.
+
+### 11.7 Page header
+
+Every page has a title, a one-sentence description and at most one primary
+action, at the right of the title row. A page's primary action is its "Add"; a
+page that has no add has no primary action.

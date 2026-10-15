@@ -138,7 +138,7 @@ Two panes. **Left:** the queue, grouped with small section labels in
 secondary text: "Recurring", "Waiting", "Needs an account". Compact rows with
 badges (`circle-dashed`, `clock`, `unlink`). The cursor row is highlighted as
 in the ledger. One group header reads "3 withdrawals need an account in USD"
-with a small outlined button "Create account…".
+with a small outlined button "Add account…".
 
 **Right:** the unit panel for the cursor row — "REWE, −€47.31, Giro, 9 Oct".
 Fields as labelled rows: Type "Flow", Payee "REWE", Category "Groceries" (with

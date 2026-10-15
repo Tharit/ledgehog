@@ -58,9 +58,9 @@ strict majority wins (`spec.md` §5.9).
   never change the result.
 - **Payee**, then **category** — only for a flow; every matching vote that is a
   flow counts. A vote without a payee votes for *no payee*, which can win; it then
-  ends the field — nothing is proposed, and neither a later key nor the model
-  is tried (`spec.md` §5.9) — payees are optional (`spec.md` §3.6), so most
-  matches carrying none is evidence. Confirmed flows always carry a category.
+  ends the search with the payee undecided (`spec.md` §5.9, the three states of
+  the payee) — payees are optional (`spec.md` §3.6), so most matches carrying
+  none is evidence. Confirmed flows always carry a category.
   Key 3 applies to the category only, and only once the payee is resolved.
 
 *Of how many* is the number of votes counted for that field under that key,

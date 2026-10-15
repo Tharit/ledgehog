@@ -3315,3 +3315,472 @@ review queue, pickers and the report scannable, which is how they are read.
   `custom:<id>` naming an uploaded image, which needs the storage attachments
   need. Rejected for good: *logos fetched by domain* — they send the
   household's merchants to a third party.
+
+## D192 The ledger list pages by offset and sorts so a split stays together
+
+Architecture §4.1, spec §8. The list answers one page of the entries a filter selects, with the count.
+
+- **Offset and limit, with `total`** (limit 1 to 500, default 100). The count is needed anyway: "Tag all…"
+  confirms a number, and the list says "N of M". Keyset paging is correct under concurrent inserts, but the
+  list is a snapshot patched in place (patterns §7), so no row appears or moves under a page, and two users
+  rarely write at once. A page of 100 plus the count stayed within its budget on 8,000 entries, a deep page
+  included. Rejected: *keyset* — it buys an insert-stability the list does not need and cannot give `total`
+  or a jump to a place cheaply.
+- **Order `booked_on` descending, source transaction descending (none last), id descending.** The siblings of
+  a split share a date and a source transaction, so they are adjacent without any grouping; derived entries
+  have no source transaction and come first within their day, above its movements, because a balance record
+  states the balance at the end of its day (spec §5); an opening, dated the day before the first movement, is
+  the oldest row of its account (I13). Rejected: *derived entries last in their day* (the first build) — in
+  a newest-first list it reads as if the balance were taken before the day's movements. The order is total, so pages never overlap. Rejected: *`booked_on` and id only* — siblings
+  would be adjacent only when their ids happen to be, and an entry from another source could fall between
+  them; *sorting by `value_on`* — the domain buckets by `booked_on` (spec §8). Changing the order later
+  would change what a page holds, so it is part of the contract.
+- A split that straddles a page edge is rare and acceptable (D196).
+
+## D193 Filter semantics: OR within a dimension, descendants by default, amounts by magnitude
+
+Spec §8, architecture §4.1. One filter serves the list, the tag operation and the report drill-downs, so
+what it means is stated once.
+
+- **Several values of one dimension are alternatives, dimensions combine.** Picking two accounts or two tags
+  widens; adding a dimension narrows. Rejected: *AND within a dimension* — an entry has one account and one
+  payee, so two of them would match nothing, and "either of these tags" is the useful question.
+- **A category includes its descendants by default;** `category_descendants=false` asks for exactly one.
+  Choosing "Groceries" and seeing only the entries filed directly under it would hide most of them.
+  Rejected: *exact by default* — a parent would then be a category of its own rather than a group, which is not how a tree of categories is read (spec §3.5).
+- **Amounts are compared by magnitude, in one currency named with the bounds,** with an optional direction.
+  A signed range reads wrongly for spending (−50 to −10), and a range over currencies is meaningless; the
+  currency is required and nothing is converted, because only reporting converts (I27). Rejected: *a signed
+  range* — "between 10 and 50" would match refunds but not purchases; *converting to the base currency* —
+  a rate-dependent filter would change as rates arrive.
+- **Text is a case-insensitive substring match, every word required, over the entry's description and note,
+  the source's counterparty, purpose, end-to-end id and mandate reference, the payee's and the category's
+  name.** These are the places a user remembers a transaction by. Rejected: *description only* — the
+  counterparty is often the only text; *full-text search* — an unindexed scan took under 30 ms on 8,000
+  entries, so no index is needed yet (architecture §11 keeps the scale caveat).
+- **`uncategorised` selects the entries that could have a category and have none: type `flow` or no type yet,
+  and no category; never a transfer or a derived entry.** It is an alternative to the categories chosen beside
+  it. Rejected: *flows only* (option A) — entries that an import has produced and nothing has typed yet are
+  the first thing a user wants to find, and they are the "no type yet" half of the report's Unclassified
+  line (§8); *every entry with no category* (option C) — transfers and derived entries have none by nature
+  and would drown the result.
+- **Type and review flag are dimensions too,** because the dashboard's drill-downs need them. Derived entries
+  are listed unless the type excludes them (patterns §4.1 shows them).
+
+## D194 Tagging a filter's result is previewed, guarded by a count, and never a keystroke
+
+Spec §3.7, architecture §4.1, D137. Applying a tag to a filter can touch thousands of entries.
+
+- **Always previewed and confirmed.** The preview reports how many entries would be tagged, how many already
+  carry the tag, how many derived ones are skipped, the accounts affected and the tag's span before and
+  after. Confirmation scales with cost (patterns §6).
+- **`expected_count` guards what the preview counted, and a real run must carry it.** Tags move no
+  `ledger_entry.version` (they are not part of review), so the version rule cannot protect the selected set.
+  The confirming request carries the preview's number (422 without it), and a different one writes nothing
+  and answers 409. Rejected: *an optional guard* (the first build) — a real run without it would be the one
+  unguarded write over a filter, and the only client always has the number; *locking the set between
+  preview and confirm* — the user may think for a minute; *no guard* — another sync or the other user could
+  widen the set after the user looked; *a token for the preview* — more state for the same protection.
+- **An empty filter is refused.** Otherwise a cleared filter bar and one confirmation would tag the whole
+  ledger. With an empty filter the list's button is disabled ("Narrow the filter first"); a user who means
+  every entry gives a date range that covers them. Rejected: *an `all` flag that overrides the refusal*
+  (the first build) — the API has one client, which never sets it, so it was a parameter, a rule and an
+  error path that nothing used.
+- **Tagging moves no version and takes no account lock;** it takes the settle lock shared and settles after
+  commit, like every write. Derived entries are skipped and counted, not an error (I13).
+- **The `t` key tags the row under the cursor; "Tag all…" is a visible action of the filter bar,** with no
+  count on its label (the dialog states it, D195). The dangerous action is never one keystroke. `t` opens a
+  searchable list of tags for the row (`Enter` toggles through the single-entry operations, a new name is
+  created in place); a derived entry refuses with a quiet notice, as the API does. Rejected: *`t` for both, the second after a confirmation* (the
+  earlier patterns text) — the same key meaning two operations of very different reach.
+- **Untagging by filter and merging tags are deferred.** A tag comes off one entry, or goes with the tag
+  (the answer counts the memberships removed); neither was needed to try the list. Revisit after the
+  prototype.
+
+## D195 "Tag all…" states the server's numbers and leaves the rows you changed to an opt-in
+
+Patterns §5 and §7, D194, plan C10. A tag action leaves rows in the list that an active tag filter no longer
+matches: they stay, marked, until the list is fetched again (nothing moves under the cursor). The filter-based
+apply works on the server's result, and that result no longer holds those rows, so the dialog has two sets to
+account for.
+
+- **The numbers are live and the filter is captured when the dialog opens.** The preview is a dry run; its
+  headline ("Tag all N entries") is the server's `selected`, not the number of rows held nor the list's
+  `total`, which belong to a snapshot; the button carries no number for the same reason. The confirming
+  request carries the preview's `newly_tagged`; when the result has moved (409 `filter_result_changed`) the
+  dialog previews again, says what the number was and is now, and asks again. Rejected: *the list's total as
+  the headline* — it may be stale, and the user would confirm a number the server will not use; *a count on
+  the button* — it would need a request per filter change or show a stale number; *re-running silently
+  with the new number* — the user would confirm something they have not seen.
+- **Marked rows are explained, and tagging them is an opt-in that is off by default.** When the list holds
+  marked rows the dialog says that the filter does not include them; for those the chosen tag would still
+  change (not derived, not already tagged) it offers "Also tag the N rows you changed that are still shown".
+  They are tagged after the filter-based apply, through the single-entry operation, up to four at a time; a
+  failure for some is reported inside the dialog (what worked, how many failed and why), the preview is
+  taken again, and nothing already written is undone. Confirm is possible when the filter would tag nothing
+  but the opted-in rows would be. There is no new server operation (architecture §4.1: none works on a list
+  of ids). Rejected: *"Tag all" acting on the rows shown (a selection)* — the filter is the selection
+  (patterns §5), "all" would then mean two things, and the rows shown depend on how many pages were loaded;
+  *the explanation alone* — it leaves the user to tag those rows one by one, though they are exactly the
+  rows they just handled; *reloading the list when the dialog opens* — it would drop the marks and move
+  rows under the user (patterns §7) before they decided anything; *including the rows by default* — the
+  action would then do more than the filter says, which is the surprise the preview exists to prevent.
+- **The opt-in is the first candidate for removal.** It is the most involved part of the action (a second
+  set, a bounded fan-out, partial failure reported in the dialog). If the first month shows it unused, it
+  goes, and the explanation alone remains (patterns §10).
+
+## D196 The ledger list is a list of entries; units are drawn, never rows
+
+Spec §6, architecture §4.1, patterns §4.1, D192. A split's entries share a date and adjoin in the sort; a
+transfer's legs may be days apart.
+
+- **Every row is an entry.** Filter, order, count, page, tag and any later sum are defined on entries and
+  never change; grouping is presentation. A split's entries sit next to each other, visually joined, with a
+  marker on the first row; the unit opens in the panel.
+- **A transfer leg carries a read-only summary of its partner** (account, date, amount: one join, an additive
+  field). It works when an account filter hides the partner, and the partner's row is
+  highlighted when visible. Sorting cannot bring the legs together without lying about a date.
+- Rejected: *a parent row per unit with an expander* — a split's total is not an entry, so the row could not
+  be filtered, counted or tagged like one, and an expander moves rows under the cursor; *one row per
+  transfer pair* — it hides a leg from an account filter and needs a rule for which date the pair sorts by;
+  *sorting a pair by one of its dates* — the other leg's date would be wrong; *paging by units* — it breaks
+  the count and offsets. Where a page edge cuts a split badly, the server may extend a page to the end of the
+  unit; the paging stays by entry.
+
+## D197 The OpenAPI document is generated, committed and exposed only in development
+
+Architecture §4.4, §5.7, §6.7. The frontend's types should come from the API, not from a second hand-written
+copy.
+
+- **`EXPOSE_OPENAPI` (default off) serves `/api/openapi.json`; `/docs` and `/redoc` never exist.** They load
+  scripts from a third-party host, and the app loads nothing from one (§6.7). Rejected: *always on* — an
+  unauthenticated description of the API in a deployment for no need.
+- **`scripts/dump_openapi.py` writes `frontend/openapi.json` from the application object,** with no database
+  and no server, deterministically (sorted keys), and `--check` fails when it is stale. Rejected: *dumping from
+  a running server* — it would need a database and a started process just to refresh a file.
+- **The generated schema and `frontend/src/lib/types/api.d.ts` are committed.** A change to the API then shows
+  as a diff, and an agent or a CI job without network access can check them. Rejected: *generating on every
+  build* — it hides contract changes and needs the Python environment in the frontend build.
+- **The document says what the server does:** operation ids are the handlers' names, and the error envelope
+  (§4.4) replaces FastAPI's default validation error on every operation, so the generated error types are
+  right. Rejected: *FastAPI's default 422 schema* — it describes a body the API never sends.
+- **`openapi-typescript` generates the types, and the client stays a thin hand-written `request()`** that
+  routes on the error `code`. The generator's own TypeScript dependency is overridden by npm to the
+  project's (TypeScript 6). Rejected: *a generated client with a runtime* — one more dependency between the
+  views and `fetch`, which only `lib/api` may call (§6.2).
+
+## D198 A rule has a name; it has no enabled flag and no version
+
+Spec §5.9, schema `rule`, patterns §4.3. Evidence has to explain why a value was decided, and a rule's conditions
+are a poor explanation.
+
+- **`name` is required, trimmed, not blank and unique case-insensitively,** like a tag's or a payee's. Evidence
+  renders as "rule: its name", linking to the rule, whose own page shows the conditions. A key whose rule was
+  deleted renders as "rule deleted": the basis holds only `rule_id`. Rejected: *no name, the rule rendered as its
+  conditions* — a regex and three conditions do not say what the user meant; *an optional name* — evidence would
+  then fall back to something else half the time.
+- **There is no enabled flag and no version.** Deleting a rule is the off switch, and the last write wins: a rule
+  write changes no entry (I20), so there is nothing a stale editor could overwrite that matters. Rejected: *an
+  enabled flag* — a second way to turn a rule off, and a state every list and preview would have to explain.
+
+## D199 A rule's `sets` is fixed at creation
+
+Spec §5.9, D198. Like a category's kind (spec §3.5): a key's `{rule_id}` keeps its meaning, and the groups of the
+rule list do not change under the user. The target value, conditions, priority and name can be edited.
+Rejected: *changing what a rule sets* — a rule for a payee becoming a rule for a category is a different rule;
+delete and create it, with a preview each way.
+
+## D200 A merge bumps the versions of the entries it repoints, and a stale id is a `stale_reference` conflict
+
+Spec §3.5, §3.6, architecture §4.1, I18. A merge changes an entry's category or payee, which is a user-meaningful
+change: `trg_le_version` bumps the entry, an open panel showing the old value is refused and reloads (patterns §8).
+Settling does not bump because its rederiving is constant and would conflict every panel all the time; a merge is
+rare and explicit, so the conflicts it causes are cheap. A merge still decides nothing anew (I18): keys kept,
+nothing derived again, nothing returned to review.
+
+- **A stale id is a separate case the version does not cover.** A stale lookup list or a picker in another tab can
+  name a category, payee or account that no longer exists. Any write doing so is refused as 409 with the code
+  `stale_reference`, details naming the field, never as a generic validation error; the client reloads its lookups
+  on that code, with the refresh-in-place of other conflicts (patterns §8).
+- **A merged-away id is simply an id that no longer exists.** No redirect, no `merged_into`: it would be a second
+  mechanism for a case the one refusal covers.
+- Rejected: *merging under the settling flag so versions do not move*: it hides from an open panel that the value
+  it shows is gone, needs a special case in the trigger rules, and rests on a rationale (settling's) that does not
+  apply to a rare explicit operation.
+
+## D201 Merge details: into an ancestor, the target's attributes, payee delete
+
+Spec §3.5, §3.6. Settled where the spec was silent.
+
+- **A category may merge into its own ancestor.** Its children move under the ancestor; the source is left out
+  of the ancestor's children when same-named ones are matched, or it would collide with itself. Merging into a
+  descendant stays refused (I9).
+- **On a payee merge the target's attributes win** (name, note, icon, colour, `document_provider`); the preview
+  warns when the source's `document_provider` would be lost. Rejected: *merging attributes* — a rule for which
+  one wins per field is more than the occasion needs.
+- **Deleting a payee deletes the rules that set it or name it as a condition, and the preview lists them.**
+  Entry keys naming a deleted rule stay and render "rule deleted" (D198).
+
+## D202 Merges and rule writes are previewed and guarded by a count
+
+Architecture §4.1, D194. The tag convention is reused rather than a second one.
+
+- **Previewed:** category merge, payee merge, rule create, update and delete, payee delete and category delete.
+  The other dimension writes go directly. The real run of a merge or rule write carries `expected_count` from its
+  dry run; a moved number is 409 `conflict`, reason `filter_result_changed`, and nothing is written. Rejected:
+  *versions on rules* (D198) — the count is what the user confirmed.
+- **Rule writes return the rule, the preview's lists and the settle result,** so the client patches what changed
+  (architecture §4.1). `GET /payees` returns `document_provider`, which `PUT` and the editor need.
+
+## D203 Keys are typed, the rederive walk is stated, and names are compared per plugin
+
+Spec §5.9, rules and history plugin documents.
+
+- **The type carries its own key:** the pass that decided it, with the same basis as the value it came with;
+  a pass that proposes a payee or category thereby proposes `flow`, a counter-account `transfer`. Pass 0's basis
+  is `{"account_id": n}`, the account matched.
+- **Rederiving an unconfirmed entry** walks the fields in order: a standing field is kept and joins the fixed
+  set, a proposal or keyless field is resolved afresh, a changed value derives the later standing fields again,
+  and only differences are written. It is I18 made operational, so a second settle writes nothing.
+- **Names are compared per plugin:** rules by their normalisation (NFKC, casefold, collapse whitespace, trim,
+  punctuation kept), history key 2 by canonical text. Rejected: *one normalisation for both* — canonical text
+  drops punctuation and would make `PAYPAL *` match `PayPal Europe`, which the rules documentation relies on
+  telling apart.
+
+## D204 A rule's preview shows matches, confirmable units and the two lists; a regex is bounded
+
+Spec §5.9, D31. A rule confirms units without review, so what it would do is shown before it is written.
+
+- **The preview shows** (a) the entries the rule matches, each with the earlier rule that takes precedence, if
+  any; (b) the units it would confirm, computed per entry now (value complete, every key standing) and refined by
+  unit closure when units exist; (c) the two lists of "matches with a different value" and "carries its key, no
+  longer matches", as before.
+- **A rule starts from an example entry in the editor (D208);** nothing is written automatically (D31). The client
+  does no matching (architecture §6.3).
+- **A regex is at most 200 characters and must compile,** case-insensitive, `search`; it is refused on save
+  otherwise. Python's `re` has no timeout, and a bound keeps the obvious pathologies out; no sandbox. Rejected:
+  *no bound* — one pasted pattern could stall settling.
+
+## D205 Management lives under settings
+
+Architecture §6.2, patterns §5, §10. The ledger is where entries are worked; categories, payees and rules are
+configuration.
+
+- **Routes:** `/settings/categories`, `/settings/payees`, `/settings/rules`, `/settings/rules/new` (optionally
+  `?from=<entry id>`) and `/settings/rules/{id}`. The rule editor is a page, not a sheet over the list: its
+  preview needs the width, and `/settings/rules/{id}` is the stable link evidence points to (D198). Rejected:
+  *top-level navigation items* — three more entries for screens used rarely.
+- **The ledger links in:** a "Manage…" link on category and payee chips; it does not start rules (D208). Inline
+  classification and bulk classification stay out (spec §5.9: nothing is changed in bulk).
+- **Open and to be tried on real data:** the rule editor's layout and how conditions are built, rule ordering,
+  category reordering buttons, the starter categories (the author's tree) — patterns §10.
+
+## D206 Entries carry their source
+
+Architecture §4.1, spec §5.9. A rule's conditions read source fields, and the client cannot show or choose them
+from an entry that carries only a name and a purpose.
+
+- **Every entry read carries `source`:** the source transaction as one nested object, `null` only for derived
+  entries (every movement has a source transaction, imported or entered by hand: a hand-entered one has its amount
+  and purpose and no counterparty, reference, booking text or format), holding counterparty name, reference and BIC, purpose, booking text, end-to-end id,
+  mandate reference, instructed amount and currency and source format; never the raw record or the content hash.
+  It serves the list, a new `GET /api/ledger/entries/{id}` (200, 404 when missing, behind login) and a rule
+  preview's rows.
+- **The flat `counterparty_name` and `purpose` leave the entry;** the client reads them from `source`.
+  `display_text` stays, being derived. No id filter is added: the detail endpoint answers the one-entry case.
+
+## D207 Rule conditions are one uniform list
+
+Spec §5.9, rules plugin §2–3, schema `rule`. Supersedes the column-per-condition shape that D197–D205 and the
+earlier decision on combining conditions describe.
+
+- **A rule holds a list of conditions, all of which must hold,** plus, for category rules, the payee condition.
+  A condition is `{field, op, value}`: fields `counterparty_name`, `counterparty_ref`, `purpose`, `booking_text`,
+  `mandate_ref`; operators `equals`, `starts_with`, `contains`, `regex`, the same on every field. Codes (`counterparty_ref`,
+  `mandate_ref`) compare as canonical text (spec §5.2), names, purpose and booking text by the rules plugin's name
+  normalisation, a regex case-insensitively on the raw value. The same field may recur. The regex bound of
+  D204 applies on any field.
+- **Stored as `conditions jsonb`;** `condition_payee_id` stays a column, its foreign key carrying the
+  payee-delete cascade. Field and operator validity is the plugin's, not the database's. The list is an implicit
+  AND, and the format leaves room for grouping and negation without a schema change; neither is specified.
+- Rejected: *regex only, on every field* — an IBAN prefix or a plain name start would need regex escaping;
+  *a `name_contains` column* — one more column per wish, where a uniform list adds none.
+
+## D208 A rule starts from an example picked in the editor
+
+Architecture §6.2, patterns §5, spec §5.9. Supersedes the ledger key `r` and "Create rule from this entry".
+
+- **The editor starts from an example:** an entry picked in the editor with a find box (text search over
+  entries, rows showing date, amount and the source fields), or one it is opened with,
+  `/settings/rules/new?from=<entry id>`, which the review panel opens too. The example's source fields stand
+  beside the conditions as a read-only table; nothing is ticked or prefilled, because an example is enough and a
+  condition rarely wants a whole field.
+- **The ledger no longer starts rules:** it does not show the source fields a condition reads, so a rule begun
+  there would be written blind. Key `r` and the row action are removed; the "Manage…" links stay.
+
+## D209 Interaction standards: five surfaces, one decision rule, no inline forms
+
+Patterns §11 (new), §5, §10; design §2, §5, §7; architecture §6.2.
+
+- **Every interaction has one surface:** in place, popover, dialog, work panel or page, chosen by an ordered rule
+  (patterns §11.1). The work panel is the unit panel as a large overlay, addressable by URL, list dimmed behind
+  it; its geometry is left to design.md.
+- **Inline forms are retired.** Adding, and editing more than one field, are form dialogs (up to three fields) or
+  pages; only the rename of one text value stays in place, and blur commits it. Dialogs split into form dialogs
+  (Enter submits) and decision dialogs (Enter never confirms). A popover never makes a write that needs a
+  decision.
+- **Row actions:** at most two inline icon actions, the rest in one `⋯` menu with delete last; category order
+  (Move up, Move down) is menu items. The ledger and queue rows carry none.
+- **Wording is fixed:** *Add*, never "Create" or "New"; no "OK", "Yes" or "Confirm" (confirm is a unit's review
+  state); "…" only on verbs that open a decision; no icons on text buttons. One 32px button scale, Cancel is
+  `outline`.
+- **Validation messages under a field are red,** which amends design §2 (red for amounts, destructive
+  confirmations and field validation messages).
+- **The shared components are listed in architecture §6.2;** the key `r` and "Create rule from this entry" are
+  removed as D208 states.
+- Rejected: *inline add and multi-field edit* (inserts rows into lists, three behaviours today); *every create
+  as a page* (a page loses the origin's snapshot and draft); *a narrow side panel for units* (a unit with
+  splits, evidence, draft and preview needs width); *a component-library document* (the §6.2 list suffices).
+
+## D210 Flags are judged over the unit; the queue is the units not confirmed
+
+Spec §6 (flags rules), architecture §4.1 (rows), review-queue view.
+
+- **The flags of a unit apply to every entry of an unconfirmed unit,** so `unconfirmed` marks all of them, a
+  complete sibling of an unclassified split entry included. The queue is the units not confirmed.
+- **Entries carry what a unit needs to be drawn:** `derivation`, `unit_key` (the same for every entry of a unit),
+  `authored` (a user-authored entry has no `source`, so `source` cannot tell it was entered by hand) and the
+  partner summary.
+- **The entry form is allowed on a closed account,** like importing: entries after `closed_on` are accepted.
+- Rejected: *per-entry flags with the unit state computed only in the queue* (two definitions of "in review").
+
+## D211 The unit preview is an overlay; temporary ids, full-row write responses, one lock order
+
+Architecture §4.1, §6.3.
+
+- **`preview` is an in-memory overlay** over the functions settling uses and writes nothing; the entry form's
+  `PUT` and `DELETE` use `dry_run`. Both statements of the architecture hold, each for its own operations.
+- **Rows a draft creates carry client-issued negative integer ids,** echoed by the preview and mapped to real ids
+  in the commit response.
+- **Write responses carry full rows** for the unit, its consequences and the partners whose flags changed, ids
+  with a `truncated` flag for the rest, the removed ids and the unit states.
+- **A commit locks in one order:** settle shared, accounts ascending, entry rows ascending. It reads the unit
+  before the locks and checks again after: a changed closure is 409 `unit_moved`.
+- Rejected: *a dry-run commit in a rolled-back transaction* (settling opens its own); *server-issued ids for
+  draft rows* (the preview would have to persist the draft).
+
+## D212 A commit derives its keys from the values it is sent
+
+Spec §5.9, architecture §4.1.
+
+- **A value equal to a shown proposal becomes `user`** with the proposal's key nested as its basis; an unchanged
+  `user` stays; anything else is `user` without a basis. Empty fields carry no key. A commit does not confirm.
+- **The client may name a basis only for the passes `history`, `llm` and `matcher_proposal`;** it is stored
+  wrapped under `user` and never trusted as evidence. A client can never assert `rule` or `own_account`.
+- Rejected: *trusting the key the client sends* (a client could mint a standing key and confirm a unit).
+
+## D213 The queue has three sections, each by date; grouping by shape is open
+
+Review-queue view, architecture §4.1, §6.5, patterns §10. Supersedes the "order by shape" of D99 and D132.
+
+- **Sections:** pending review, needs an account, waiting; each ordered by `booked_on`, then anchor entry id.
+  The queue is a snapshot (architecture §6.5).
+- **"Shape" is not defined.** Whether units are grouped by what they share, and by what, stays open until the
+  author has seen real units in the first month.
+- Rejected: *defining shape now* (type, counter-account or payee, category, key passes; groups by size) — a
+  guess that is cheaper to make after seeing the units.
+
+## D214 The work panel: keys, address, advancing, marks
+
+Patterns §5, §6, §7, §10, §11.1, design §5.
+
+- **Keys** when focus is not in a field, panel-local: `[` `]` step units, `c` category, `y` payee, `s` split,
+  `x` flow ↔ transfer, `r` re-resolve; the ledger's `r` stays removed (D208). **URL** `?unit=<anchor entry id>`
+  on any page, opened with a new history entry and stepped with a replaced one; the queue is `/review`, with a
+  Review nav item.
+- **After `Ctrl/⌘ + Enter` the panel stays open and advances** to the next unopened unit; at the end it closes
+  with a notice and the cursor on the last row. "One keystroke" means that chord with the panel open.
+- **Created split entries are inserted next to the anchor,** the one exception to snapshots never adding rows.
+  Refreshed proposals are patched silently; only state changes and returns to review are marked, and a mark
+  fades when the cursor visits.
+- **Dirty drafts:** Esc or stepping asks in a nested decision dialog, Cancel focused; "Edit entry" is disabled
+  while dirty; opening a consequence row asks first. (The tags clause is superseded by D218.) Re-resolve is a draft edit of the whole unit, with "Reset to proposal" per
+  field. Enter on a derived entry gives a quiet notice with a link to the record.
+- **The entry-edit confirmation is the static §5.6 warning above Save;** the entry form offers "Add and add
+  another" beside "Add". **Form dialogs hold up to five fields** (amends D209's three).
+- Rejected: *a queue-row key that commits without opening* (defeats the preview; §11.3 forbids row buttons);
+  *a confirmation dialog on entry edit* (the warning is always shown); *a modal panel per step without
+  advancing* (a boring unit would cost three keystrokes).
+
+## D215 The payee condition is a normal condition
+
+Spec §3.6, §5.9, rules plugin §2–3, architecture §4.1, schema `rule`. Supersedes the payee-condition parts of D201
+("or name it as a condition"; payee delete takes such rules), D207 ("plus, for category rules, the payee condition";
+"`condition_payee_id` stays a column, its foreign key carrying the payee-delete cascade") and the line in D174
+"a payee's deletion takes the rules naming it as a condition too". D172 (a category rule's payee condition in the
+type decision) stays as history. D199 does not mention the column.
+
+- **The payee condition is one more kind of condition in the list:** `{"field":"payee","op":"is","value":"<payee id
+  as a digit string>"}`. Several may appear; the list stays an implicit AND. Only a category rule carries them, `is`
+  is the only operator, the value is a positive integer id; the rules plugin validates that, core checks at write
+  time that the payee exists. It is judged on the payee resolved so far in the same resolution, a proposed one
+  included (spec §5.9), and a category rule that has one never decides the type.
+- **No foreign key, so:** deleting a payee deletes only the rules that set it; a rule whose condition names it stays,
+  shows "Payee deleted" in the editor and never matches (ids are never reused). A merge rewrites such conditions to
+  the target. The delete's preview lists the rules it deletes and the rules left with a dangling condition.
+  The `condition_payee_id` column, `ck_rule_payee_condition` and its clause in `ck_rule_condition` are removed.
+- Rejected: *keeping the column* — a second shape for one idea, one condition at most, a special case in editor,
+  plugin and schema; *a payee delete that cascades to such rules* — it silently deletes rules the user wrote for
+  another purpose.
+
+## D216 The list's description column shows the entry's own description
+
+Patterns §4.1, §10; architecture §4.1. Supersedes the fallback in the row spec ("the entry's description, else the
+source's counterparty name or purpose") and the derived `display_text` as the column's text.
+
+- **The column shows `description` only;** nothing is borrowed from the source transaction, whose fields are shown
+  where they belong: the work panel and the rule preview's source columns. An entry without a description shows an
+  empty cell. The API keeps `display_text` (description, else counterparty name, else purpose) for other uses such as
+  the panel title and search results; the column does not use it.
+- **Open:** whether imports get a description at creation (patterns §10).
+- Rejected: *the fallback chain in the column* — it hides that an entry has no description of its own and
+  duplicates what the source columns show.
+
+## D217 The payee has three states
+
+Spec §5.9 (field order), architecture §4.1, history.md, patterns §4.3. Supersedes the "empty fields carry no key" part of D212, and the "ends the field" wording of the no-payee majority in D178, D179 and D180.
+
+- **A flow's payee is a payee, undecided, or no payee by the user's decision.** Undecided is empty with no key: the
+  passes may propose, and history's majority for *no payee* ends the search there, storing nothing. The user's
+  "no payee" is empty with the key `user`, no basis (`{"pass": "user"}`, `payee_id` NULL): standing, kept by
+  rederiving, never proposed over by any pass or payee rule (I18, I20), and not a reason for review. Clearing the
+  payee in the panel chooses it; picking a payee or re-resolving replaces it; converting to a transfer drops it (I9).
+- **Qualifies D212:** empty fields carry no key, except the payee a user decided to leave empty.
+- **The other fields have no empty decision.** Clearing a decided type, category or counter-account withdraws the
+  decision and the passes propose again; a flow without a category is unclassified. The commit treats a `fixed`
+  draft of those without a value as re-resolve.
+- **UX:** the clear control is offered only on values the user decided; "Reset to proposal" only when the shown value
+  differs from the stored one.
+- Rejected: *a stored "no payee" proposal from history* (it holds back units whose category a rule already decided);
+  *an explicit empty decision for every field* (a flow needs a category, so there is nothing to decide);
+  *the clear control as "make it empty"* (the passes re-propose it: it misled).
+
+## D218 Tags are part of the draft
+
+Spec §3.7, §6, authorship table; architecture §4.1; patterns §5. Supersedes the tags clause of D214.
+
+- **The draft carries a tag change per entry:** the tag ids added and removed, relative to the tags the entry had
+  when loaded, not the full set. A tag written elsewhere meanwhile is never overwritten and no version is
+  involved. A draft that does not touch tags carries nothing; re-resolve never touches tags; Reset drops them.
+- **A new split entry starts with the original's tags,** editable in the draft like any row's.
+- **Preview rows carry `tag_ids` with the draft applied;** tag changes are not consequences and affect no state,
+  flag or proposal.
+- **The commit applies them in its transaction after the entries exist,** idempotently, under its existing locks.
+  A commit that changes only tags is valid and bumps no version. A tag deleted meanwhile is refused as
+  409 `stale_reference` naming the tag. An entry the draft removes takes its tags with it.
+- **UX:** tag edits make the panel dirty. Each entry block has a Tags row without clear control or proposals; `t`
+  edits the focused entry's draft tags. A new tag is created at once through the tag endpoint and added to the
+  draft; cancelling leaves it (deletable in the tag settings). Elsewhere tags stay direct writes (ledger `t`, tag
+  all, settings).
+- Rejected: *the full tag set in the draft* (overwrites a concurrent change); *creating new tags only at commit*
+  (names in the draft, more validation); *tags outside the draft* (the author's UX tests found it restrictive).

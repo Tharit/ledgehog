@@ -229,7 +229,7 @@ changes at once: a closed account is unsynced, so it is no longer fetched and tr
 no longer wait (§5.7); account discovery no longer offers it, and
 pickers list it after the open accounts rather than hiding it. Nothing else
 changes: entries dated after `closed_on` — final interest, the payout of the
-remaining balance — are accepted, and the balance shows what is left. A
+remaining balance — are accepted, imported or entered by hand (§5.6), and the balance shows what is left. A
 remaining balance is settled like any other, with a transfer or a balance
 record. Its links stay, so reopening it — clearing `closed_on` — restores it as
 it was. A closed account appears in reports for every period in which it holds
@@ -318,9 +318,17 @@ may descend the tree; the preview shows every category it merges. Moving a
 category under one of its own descendants is refused: the tree has no cycles
 (I9). So is merging a category into one of its descendants, whose outcome
 would not be obvious: the user merges the descendants upwards instead, and
-renames. A merge repoints values without deciding them anew: entries and
+renames. Merging a category into one of its own ancestors is allowed: its
+children move under the ancestor, and the source itself is not counted among
+the ancestor's children when same-named children are matched. A merge repoints
+values without deciding them anew: entries and
 rules keep their keys, nothing is derived again, and nothing returns to
-review. The target keeps its own icon and colour. There is no archived state. Pickers rank
+review; the repointed entries' versions do bump, like any user-meaningful
+change, so an open panel on them is refused and reloads. A merged-away category is simply an id that no longer exists, with no
+redirect: a write that still names it (an open panel's draft, a stale picker)
+is refused as a conflict with the code `stale_reference`, never as a generic
+validation error, and the client reloads its lookups on that code. The target
+keeps its own icon and colour. There is no archived state. Pickers rank
 categories by recent use, so dormant ones sink without being hidden.
 
 ### 3.6 Payees
@@ -341,12 +349,20 @@ documents that describe its charges (PayPal, Amazon). That one attribute drives
 document matching and waiting for a document (§5.8). It may also carry an
 icon and a colour, presentation only (§3.5).
 
-Merging two payees repoints their entries and rules, then deletes the merged
-one; as for categories (§3.5), the repointed values keep their keys, the
-target keeps its own icon and colour, and nothing is derived again or
-returned to review. A payee no entry references can be deleted, together with its rules —
-those setting it and those naming it as a condition; one in use is merged
-instead, which repoints both.
+Merging two payees repoints their entries, the rules that set the payee and the
+payee conditions naming it, then deletes the merged
+one; as for categories (§3.5), the repointed values keep their keys, nothing is
+derived again or returned to review, and the entries' versions bump (§3.5).
+The target's attributes win: its name, note, icon, colour and
+`document_provider` are kept, and the preview warns when the source's
+`document_provider` would be lost. A write that names a merged-away payee, or
+a deleted category, payee or account, is refused as a `stale_reference`
+conflict (§3.5). A payee no entry references can be deleted, together with the rules that set it;
+a rule whose payee condition names it stays, shown as "Payee deleted" in the
+editor, and never matches (ids are never reused). The preview lists both the
+rules it deletes and the rules left with such a condition; a payee in use is
+merged instead, which repoints the rules and the conditions. Entry keys that name a
+deleted rule stay, and render as "rule deleted".
 
 ### 3.7 Tags
 
@@ -359,8 +375,18 @@ categories (§3.5), presentation only.
 
 Tagging every entry the ledger list's current filter selects is one action —
 a date range, perhaps narrowed to some accounts, is the usual filter — and it
-applies to every selected entry that can carry tags, reviewed or not. Tags are
-not part of review, so they stay editable on unreviewed entries (§6).
+applies to every selected entry that can carry tags, reviewed or not; derived
+entries in the selection are skipped and counted. It is previewed — how many
+entries it would tag, how many already carry the tag, how many were skipped —
+and confirmed before it runs, and if the filter's result has changed since
+the preview, nothing is written. A filter that restricts nothing would tag the
+whole ledger, and is refused. Elsewhere than in the work panel tags are
+direct writes, on unreviewed entries too; in the panel they are part of the
+draft (§6).
+
+A tag's name is unique, compared without regard to case. A tag comes off one
+entry at a time, or goes with the tag. Removing a tag from a filter's result
+and merging two tags are not in v1.
 
 Tags answer "which episode" — a trip, a project, a renovation; categories
 answer "what kind of spending". Keeping both dimensions intact is what makes
@@ -682,7 +708,7 @@ account. The entry is an unmatched transfer that needs an account in USD.
 The review queue groups such entries by the currency they need:
 
 ```
-3 withdrawals need an account in USD          [ create account … ]
+3 withdrawals need an account in USD          [ add account … ]
 ```
 
 Creating the account from there — prefilled with USD — creates the account
@@ -1652,7 +1678,7 @@ trip, with no cash account in that currency — stays unmatched. Nothing is
 created automatically: creating an account is a user action (§5.9). The review
 queue explains the leg when read — "needs an account in USD", derived from its
 instructed currency — and offers the existing accounts in that currency or
-"create account", prefilled with the currency. Creating the account creates
+"add account", prefilled with the currency. Adding the account creates
 nothing else; the legs that need it then offer it first — where the currency
 rule allows exactly one account, the preview proposes it — and each is
 confirmed on its own (§6).
@@ -1823,14 +1849,15 @@ it. Then:
 
 1. **Type**, by the first pass to decide it: pass 0 decides `transfer`; rules
    decide `transfer` when a counter-account rule matches and `flow` when
-   otherwise a payee rule, or a category rule without a payee condition,
+   otherwise a payee rule, or a category rule that has no payee condition,
    matches — counter-account rules come first (Pass 1, below); a category
-   rule with a payee condition cannot be judged before the payee is, so it
+   rule that has a payee condition cannot be judged before the payee is, so it
    never decides the type, and applies in the category field only; history proposes the type a strict
    majority of its matches share; the model decides `flow` when it proposes a
    category. A pass
    that proposes a payee or a category thereby proposes `flow`, one that
-   proposes a counter-account `transfer`, and the type's key names that pass.
+   proposes a counter-account `transfer`. The type carries its own key: the pass
+   that decided it, with the same basis as the value it came with.
 2. **Then the fields the type allows:**
    - for a transfer, the **counter-account**, from pass 0, rules or history,
      filtered by the currency rule (§5.7);
@@ -1838,12 +1865,41 @@ it. Then:
      history, then the model. The payee comes first because category rules and
      history may key on it.
 
+**A flow's payee, which is optional (§3.6), is in one of three states:**
+
+1. **A payee**, with the key of the pass that decided it, or `user`.
+2. **Undecided**: empty, with no key. The passes may propose. History's
+   majority for *no payee* ends the search in this state (Pass 2, below):
+   nothing is proposed, and no later key or the model is tried. It stores
+   nothing and carries no key, so it never keeps a unit unconfirmed — a stored
+   proposal would hold back units whose category a rule already decided.
+3. **No payee by the user's decision**: empty, with the key `user` and no
+   basis — the derivation is `{"pass": "user"}` on the payee field, the
+   `payee_id` column NULL. It is a standing key: rederiving keeps it, no pass
+   proposes over it, and a payee rule does not override it either — a
+   standing value stays until the user changes it (I18, I20). It does not make
+   a unit unconfirmed. A user chooses it by clearing the payee in the work
+   panel; picking a payee, or re-resolving the field, replaces it; changing
+   the entry's type to transfer drops it with the payee (I9).
+
+For the other derived fields — type, category, counter-account — an emptied
+field is not a decision: clearing one the user decided withdraws the decision,
+and the passes propose again. There is no deciding "no category": a flow
+without a category is unclassified (§3.4, §6).
+
 A field fixed by the review draft (§6) is taken as decided, and the fields
 after it are resolved around it.
 
+**Rederiving an unconfirmed entry** walks the fields in this order. A field
+with a standing key is kept and joins the fixed set the later fields are
+resolved around; a field with a proposal key, or no key, is resolved afresh.
+When a field's value changes, the later fields that are standing are derived
+again (I18). Settling writes only the differences, so a second settle writes
+nothing.
+
 For each field, the first pass to produce a value wins; a pass without the
 evidence it requires proposes nothing, and the next pass is tried — except
-that history's majority for *no payee* ends the payee field (Pass 2, below). Pass 0 and
+that history's majority for *no payee* ends the payee search, the payee staying undecided (above). Pass 0 and
 rules are certain when they match, history needs a majority (below), and the
 model always answers as a guess. Whatever wins carries its basis, shown in
 review (§6). What pass 0 and rules decide is **standing**: a fact or a
@@ -1859,7 +1915,8 @@ household's accounts, both canonicalised as in §5.2, the entry is a `transfer`
 to that account. The entry's own account is excluded, as is an account that
 would break the currency rule (§5.7). Closing is not: the match is a fact, and the payout of a closed
 account's remaining balance is still a transfer from it (§3.3). The pass
-writes keys like any other, and they are standing. Changing an account's
+writes keys like any other, and they are standing; their basis is
+`{"account_id": n}`, the account matched. Changing an account's
 `external_ref` therefore changes no standing value, like changing a rule
 (below): only an entry resolved after it — a new one, or a field not yet
 decided — sees the new reference.
@@ -1877,20 +1934,50 @@ that card". Its values need no review, so a rule is how a recurring entry —
 rent, salary, a subscription, a card payoff, a cash withdrawal — leaves the
 queue for good. Because rules confirm the units they decide completely, a rule
 is shown before it is saved with the entries it would match and the units it
-would confirm. A rule is applied when an entry is resolved — to a new entry,
+would confirm (the preview, below). A rule is applied when an entry is resolved — to a new entry,
 and to the fields of an unconfirmed one that neither a human nor a standing
 value has decided — and what it set stays as it was set (above).
 
+**A rule has a name**, trimmed, not blank and unique case-insensitively, as
+for tags and payees: the name is how evidence explains the rule ("rule: Rent")
+and how a user finds it again. A rule has no enabled flag and no version:
+deleting it is the off switch, and the last write wins, since a rule write
+changes no entry.
+
 **What a rule sets:** a payee, a category, or a counter-account, which makes
-the entry a transfer. A counter-account rule obeys the currency rule (§5.7):
+the entry a transfer. What it sets is fixed at creation, like a category's
+kind, so that a key's rule keeps its meaning; its target value, conditions,
+priority and name can be edited. A counter-account rule obeys the currency rule (§5.7):
 where its account is in the wrong currency for the entry — a withdrawal abroad
 against a rule for the euro wallet — it does not match, and the next rule or
 pass is tried. Nor does it match where its account is not open on the booking
 date (§3.3), so a closed wallet stops receiving withdrawals.
 
-**What a rule matches:** one or more conditions, all of which must hold —
-`counterparty_ref`, `mandate_ref`, the counterparty name (exact or prefix), a
-purpose regex, the booking text, and for a category rule the payee.
+**What a rule matches:** a list of conditions, all of which must hold (an
+implicit AND). A condition is `{field, op, value}`. The fields are
+`counterparty_name`, `counterparty_ref`, `purpose`, `booking_text` and
+`mandate_ref`, which take the operators `equals`, `starts_with`, `contains`
+and `regex`, and `payee`, which takes `is` only. The same field may appear in
+several conditions, and a condition on a field the entry lacks fails. At least
+one condition is required, and a blank value is refused. A
+`regex` is at most 200 characters and must compile (case-insensitive, `search`
+on the raw value); it is refused otherwise, on any field. Validation names the
+field and never quotes the value.
+
+**The payee condition** is `{"field":"payee","op":"is","value":"<payee id>"}`,
+the id as a digit string; several may appear, and only a category rule may
+carry them. It is judged on the payee resolved so far in the same resolution, a
+proposed one included (field order, above). Core checks at write time that the
+payee exists; a rule whose payee has since been deleted stays and never matches
+(§3.6). Rules are stored as a list of such objects;
+the format leaves room for grouping and negation later without a schema change.
+
+Values are compared per plugin: rules compare `counterparty_ref` and
+`mandate_ref` as canonical text on both sides (§5.2: spaces, case and
+punctuation ignored, so an IBAN prefix works), and `counterparty_name`,
+`purpose` and `booking_text` with the rules plugin's name normalisation (NFKC,
+casefolded, whitespace collapsed, trimmed, punctuation kept); history key 2
+compares canonical text (§5.2).
 
 **Rule order.** Rules are one kind of thing, told apart by what they set, and
 are evaluated by it: counter-account rules first, then payee rules, then
@@ -1902,7 +1989,7 @@ payee rule set. The preview of a rule shows where another rule takes
 precedence over it — a counter-account rule matching the same entries as a
 payee rule, say. Text
 conditions matter mainly for card payments, where the merchant is buried in
-the descriptor — `name_prefix 'PAYPAL *'` is the typical case.
+the descriptor — counterparty name starts with 'PAYPAL *' is the typical case.
 
 **Saving, changing or deleting a rule** changes no standing value (I20); the
 proposals of unconfirmed entries follow it, as they follow any change (above).
@@ -1910,12 +1997,32 @@ A rule is applied at a point in time: a standing key records the rule a value
 came from, which may since have changed or been deleted. The preview lists two
 sets of entries: those the rule matches that hold a different value, and those
 carrying its standing key that it no longer matches — all of them, for a
-deletion. Every unit in either list opens in the review panel, to be
+deletion. The first list holds only entries whose value the settle that
+follows will leave as it is — confirmed entries, and values under a standing
+key; an entry holding a mere proposal is rederived by that settle and is not
+listed. Every unit in either list opens in the review panel, to be
 corrected there one unit at a time. Nothing is changed in bulk. Re-resolving a unit in the review panel
 shows what the rules propose now.
 
+**The preview of a rule write** (create, change or delete) shows: (a) the
+entries the rule matches, each with the earlier rule that takes precedence
+over it, if any; (b) the units it would confirm, computed per entry — the
+value is complete and every key is standing — and refined by unit closure
+once units are added; (c) the two lists above, exactly as described.
+
+A preview row is an entry with its source (architecture §4.1): its own fields
+— booked date, account, amount, the current value and key of what the rule
+sets — and its source fields. The client shows the source fields that the
+rule's conditions read, always the counterparty, under their own headers. Rows
+open the review panel once units exist.
+
 **Nothing writes rules automatically.** A correction is not a rule; it is a
-confirmed value, and confirmed values are already the input to pass 2.
+confirmed value, and confirmed values are already the input to pass 2. A rule
+is written in the rule editor, which starts from an example: an entry the user
+picks there with a find box, or one the editor is opened with, as the review
+panel does. The editor shows the example's source fields beside the conditions;
+nothing is ticked or prefilled, and the user writes the conditions with the
+example in view.
 
 #### Pass 2 — history
 
@@ -1957,8 +2064,9 @@ For each key it counts the matches within a lookback period and proposes the
 value a strict majority of them share; the basis records how many agree, of
 how many, and since when — "3 of 4 since March". A key without a majority
 proposes nothing, and the next key is tried. For the payee, which is optional
-(§3.6), a majority for *no payee* is itself the result: nothing is proposed,
-and neither a later key nor the model is tried. The length of the lookback period
+(§3.6), a majority for *no payee* is itself the result: the payee stays
+undecided (§5.9, field order), nothing is proposed, and neither a later key nor
+the model is tried. The length of the lookback period
 is a tuning parameter of the history pass, not a rule of the ledger.
 
 **Hard constraints filter history's evidence; they never transform its
@@ -2071,6 +2179,10 @@ value. All other keys are **standing**, and a standing value is decided:
 lines (§5.8): a proposal, so that the unit is reviewed once and the split
 along the lines is seen.
 
+In review a `rule` key reads "rule: its name", linking to the rule; a key
+whose rule has since been deleted (its basis holds only `rule_id`) reads
+"rule deleted".
+
 The document link is a field like any other: `document_id` on the
 transaction's original entry, keyed `document`.
 Document suggestions are not keyed: like transfer offers, they are computed
@@ -2079,8 +2191,17 @@ when read and are not values.
 A **commit** keeps every standing key whose value it leaves unchanged. A
 proposal the user accepts unchanged becomes `user`, with the proposal's key as
 its basis — a snapshot of the evidence it was accepted on, shown as "confirmed
-by you, proposed by history (3 of 4)". A value the user sets or picks by hand
-becomes `user` without a basis. A counter-account a pair fills is the pair's,
+by you, proposed by history (3 of 4)". The basis is nested under the `user`
+key — `{"pass": "user", "basis": {"pass": "history", "basis": {…}}}` — and a
+commit derives every key itself from the values it is sent: a value equal to a
+shown proposal becomes `user` with the proposal's key as its basis, a `user`
+value left unchanged stays, anything else is `user` without a basis. The client
+may name a basis only of pass `history`, `llm` or `matcher_proposal`; it is
+stored wrapped under `user` and never trusted as evidence, and a client can
+never assert `rule`, `own_account` or any other standing key. A value the user
+sets or picks by hand becomes `user` without a basis, and an empty field carries no
+key — except the payee a user decided to leave empty (field order, state 3),
+which carries `user`. A counter-account a pair fills is the pair's,
 with the basis `{"from": "counterpart"}` (§5.7). A `user` key left unchanged by a later commit
 stays as it is, so one never wraps another. An entry without a `user` key is
 one on which no derived value was decided by a human: a unit confirmed by pass
@@ -2118,7 +2239,7 @@ Every field of a ledger entry falls into one of four groups:
 | **Copied** from its source transaction or account | `account_id`, `currency`, `booked_on`, `value_on`; the amounts, as a sum (I3) | Never — an amount only by a split; a user-authored source through the entry form or set to the sum of its entries by a commit (§5.6), or a user-authored single-entry leg on an unsynced account following its partner (§5.7) |
 | **Derived by a pass** — always carrying a key (below) | `document_id`, `type`, `payee_id`, `category_id`, `counter_account_id`, `counterpart_entry_id` | In the review panel |
 | **Derived from other rows** | the amount of a derived entry | Never directly — change the record |
-| **Authored** by a human | `description`, `note`, tags, the split allocation | In the review panel; tags everywhere |
+| **Authored** by a human | `description`, `note`, tags, the split allocation | In the review panel, tags too; tags also directly outside it |
 
 **Every change to an entry's interpretation is a commit of its unit** (§6),
 with two exceptions that work on many units at once: merging a payee (§3.6)
@@ -2127,7 +2248,7 @@ and repoints values with their keys, deciding nothing anew. The user edits
 in the review panel — values, split, a transfer's destination or partner, a
 document — sees the consequences previewed, and commits the whole state at
 once. The same panel edits confirmed units, which stay confirmed. Tags are
-not part of review and stay editable everywhere.
+part of the panel's draft and also stay editable directly everywhere else.
 
 This yields a useful way to state the split invariant to users: **an amount
 cannot be changed, only divided.** The total is what the bank said; what is
@@ -2162,12 +2283,15 @@ What the panel offers, each previewed before the commit:
   **residual**: it keeps its id, type and tags, and absorbs the remainder, so
   the invariant holds throughout the edit. A new entry copies account,
   currency and dates from the source and inherits the original's tags and
-  description. A new entry is always a flow: a source transaction has at most
+  description; the tags are editable in the draft like any entry's. A new entry is always a flow: a source transaction has at most
   one transfer entry (I31). Removing an entry returns its amount to the
   residual. The residual is never zero: an allocation that would leave it
   zero is refused in the preview, because an entry has a non-zero amount. Splitting a paired leg can leave a same-currency pair unequal; the
   preview shows it invalid and offers the remedies of §5.7.
 - **Picking a document** (§5.8).
+- **Clearing a value the user decided** — type, category, counter-account:
+  the choice is removed and the passes propose again. Clearing the payee
+  decides "no payee" (§5.9, field order, state 3).
 - **Re-resolving** a unit: a preview of what resolution proposes now, to keep
   or adjust — for values a human decided, what the passes would say instead.
 
@@ -2364,7 +2488,12 @@ user's choices for the unit, laid over its stored state:
 - a document, or "none of these" (§5.8);
 - a transfer's partner or destination (§5.7);
 - splits of any source transaction in the unit (§5.9), the partner's included;
-- field values.
+- field values;
+- a **tag change** per entry: the tag ids added and the tag ids removed,
+  relative to the tags the entry had when loaded, never the full set — so a
+  tag written elsewhere in the meantime is not overwritten. A draft that does
+  not touch an entry's tags carries nothing for it. Re-resolving never touches
+  tags, and Reset drops tag changes with everything else.
 
 Every function the panel shows — resolution (§5.9), allocation (§5.8), transfer
 offers (§5.7) and document suggestions (§5.8) — takes the stored state with the
@@ -2394,7 +2523,8 @@ committed with it.
 link decisions, the split, the values, a counter-leg where §5.7 creates one —
 with the keys of §5.9: every proposal shown is accepted, and every value left
 as it is is decided as it is. An empty field stays empty and carries no key,
-except the document: a commit without a document picked decides "none"
+except the payee a user decided to leave empty (§5.9, field order, state 3)
+and the document: a commit without a document picked decides "none"
 (§5.8), confirmed explicitly where documents are suggested or one is
 awaited. **A commit does not
 confirm**; confirmation is never an action. Settling then derives the unit's
@@ -2408,6 +2538,12 @@ unit's structure changed since the preview: the chosen partner was paired
 elsewhere, or the chosen document was linked elsewhere or has a newer
 version (§5.5). Proposals
 that changed in the meantime do not matter: the user commits what they saw.
+**Tag changes are applied in the same transaction, after the entries exist**,
+idempotently: adding a present tag and removing an absent one are no-ops. A
+commit that changes only tags is valid. A tag deleted meanwhile refuses the
+commit as a conflict naming the tag. An entry the draft removes takes its tags
+with it. Tag changes are never listed as consequences and affect no state,
+flag or proposal.
 The preview shows the state the commit leads to — "confirmed", "waits for its
 partner", "stays unclassified" — so the one keystroke is never a surprise.
 
@@ -2430,9 +2566,9 @@ propose now (§5.9).
 from the queue, the ledger list or a rule's preview — and for any unit,
 confirmed or not; the merges of §5.9 are the only other writers. Inline edits
 without a preview are not offered, because the preview is what shows a pair
-breaking or a partner returning to review. Tags are not part of review, so
-they stay editable everywhere, and tagging a filter's result applies to every selected
-entry that can carry tags (§3.7). A user-authored transaction can be edited
+breaking or a partner returning to review. Tags are part of the panel's draft;
+elsewhere they are direct writes, and tagging a filter's result applies to
+every selected entry that can carry tags (§3.7). A user-authored transaction can be edited
 or deleted through the entry form at any time (§5.6).
 
 `ledger_entry.review_flags` is a derived array of tokens from a closed set; an
@@ -2440,7 +2576,7 @@ entry is clean when it is empty:
 
 | Token | Meaning |
 |---|---|
-| `unconfirmed` | the entry's unit carries derivation keys other than standing ones — values awaiting a human (§5.9) |
+| `unconfirmed` | the entry's unit carries derivation keys other than standing ones: values awaiting a human (§5.9) |
 | `unclassified` | an entry not fully interpreted: `type` NULL, or a flow without a category (§3.4) |
 | `document_suggested` | the transaction has document suggestions awaiting a decision (§5.8) |
 | `waiting` | the entry waits for information that has not had its chance to arrive: a partner leg, or a document (below) |
@@ -2448,6 +2584,12 @@ entry is clean when it is empty:
 
 Rules:
 
+- **`unconfirmed` is judged over the unit.** It marks every entry of a unit
+  that carries a non-standing key, a complete sibling of an unclassified split
+  entry included. The other flags stay with the entry they describe:
+  `unclassified` marks the incomplete entry, and the pairing flags the
+  unpaired leg. The review queue is the units not confirmed, whether or not
+  any of their entries is flagged.
 - The array is rewritten wholesale by a single pure function derived from
   current state, as part of settling (§5), never by appending or stripping
   tokens at call sites.
@@ -2613,7 +2755,25 @@ Every conversion goes through one function, and only reporting calls it
 (I27).
 
 Filters are multiplicative: date ∩ account ∩ category ∩ payee ∩ tag ∩ amount
-range ∩ text. One good filter bar replaces most reports.
+range ∩ text, and the entry's type and review flag narrow it further. Several
+values of one dimension are alternatives; the dimensions combine. One good
+filter bar replaces most reports.
+
+- **Dates** select by `booked_on` and are inclusive at both ends.
+- **A category includes its descendants,** unless the filter asks for exactly
+  that category. **Uncategorised** selects the entries that could have a
+  category and have none — flows, and entries with no type yet, never
+  transfers or derived entries — and is an alternative to the categories
+  chosen beside it.
+- **An amount range compares magnitudes,** in the one currency it names: a
+  range across currencies is meaningless, and nothing is converted for it
+  (I27). A direction narrows it to money in or money out.
+- **Text** is searched in the entry's description and note, the source
+  transaction's counterparty, purpose, end-to-end id and mandate reference,
+  the payee's name and the category's name; every word of the text must be
+  found, in any of them.
+- **The list holds entries.** Derived entries are among them unless the type
+  excludes them; a duplicate has none (I3) and never appears.
 
 ---
 

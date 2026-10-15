@@ -214,9 +214,10 @@ CREATE UNIQUE INDEX ux_category_name
 -- to report on that merchant, not because a counterparty appeared. Most
 -- counterparties never become payees. Spec §3.6.
 --
--- Merging two payees repoints entries and moves rules, then deletes the
--- loser outright. ON DELETE RESTRICT below makes the FK enforce that order.
--- A payee no entry references can be deleted directly, its rules with it.
+-- Merging two payees repoints entries and moves rules (and the payee
+-- conditions naming it), then deletes the loser outright. ON DELETE RESTRICT
+-- below makes the FK enforce that order. A payee no entry references can be
+-- deleted directly, the rules that set it with it.
 CREATE TABLE payee (
     id                bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     name              text NOT NULL,
@@ -247,11 +248,17 @@ CREATE UNIQUE INDEX ux_payee_name ON payee (lower(name));
 -- rule may read the payee a payee rule set); within each, lower priority
 -- first, the id breaking a tie, so resolution stays deterministic. The type
 -- follows the first rule in that order that matches. Rules are few and
--- resolution reads them whole, so there is no lookup index.
+-- resolution reads them whole, so there is no lookup index. `sets` is fixed
+-- at creation (like a category's kind); the rest can be edited. There is no
+-- enabled flag and no version: deleting a rule is the off switch, and the
+-- last write wins, since a rule write changes no entry.
 --
--- CONDITIONS, all of which must hold; NULL means no condition on that field,
--- and at least one is required. The payee condition is for category rules
--- only, since it reads the output of payee rules.
+-- CONDITIONS, all of which must hold, and at least one is required. The payee
+-- condition, {"field":"payee","op":"is","value":"<payee id>"}, is one more
+-- kind of condition in the list, for category rules only (the rules plugin
+-- validates that), since it reads the output of payee rules. It is not a
+-- foreign key: a payee's deletion leaves a rule whose condition names it, and
+-- the condition never matches (ids are never reused).
 --
 -- A counter-account rule obeys the currency rule (spec §5.7): a rule whose
 -- account is in the wrong currency for an entry does not match it, nor does a
@@ -260,8 +267,8 @@ CREATE UNIQUE INDEX ux_payee_name ON payee (lower(name));
 -- card's by its mandate, or a withdrawal to the cash account.
 --
 -- A category a rule references cannot be deleted (spec §3.5); a merge
--- repoints its rules. Deleting a payee deletes the rules that set it or name
--- it as a condition; a merge repoints both (spec §3.6).
+-- repoints its rules. Deleting a payee deletes the rules that set it; a merge
+-- repoints those and the conditions naming it (spec §3.6).
 CREATE TABLE rule (
     id                 bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     sets               text NOT NULL CHECK (sets IN ('counter_account','payee','category')),
@@ -270,25 +277,26 @@ CREATE TABLE rule (
     payee_id           bigint REFERENCES payee(id)    ON DELETE CASCADE,
     category_id        bigint REFERENCES category(id) ON DELETE RESTRICT,
     -- conditions
-    condition_payee_id bigint REFERENCES payee(id)    ON DELETE CASCADE,
-    counterparty_ref   text,
-    mandate_ref        text,
-    name_exact         text,
-    name_prefix        text,
-    purpose_regex      text,
-    booking_text       text,
+    -- conditions: a list of {"field","op","value"}, all of which must hold (an implicit
+    -- AND; the format leaves room for grouping and negation). Which fields and
+    -- operators are valid is the rules plugin's to say, not the database's
+    -- (spec §5.9).
+    conditions         jsonb NOT NULL DEFAULT '[]',
     priority           integer NOT NULL DEFAULT 100,
+    -- trimmed, non-blank, unique case-insensitively like a tag's or payee's
+    -- name: the name is how evidence explains a rule (spec §5.9)
+    name               text NOT NULL CONSTRAINT ck_rule_name CHECK (btrim(name) <> ''),
     CONSTRAINT ck_rule_sets CHECK (
             (sets = 'counter_account') = (counter_account_id IS NOT NULL)
         AND (sets = 'payee')           = (payee_id IS NOT NULL)
         AND (sets = 'category')        = (category_id IS NOT NULL)),
-    CONSTRAINT ck_rule_payee_condition
-        CHECK (condition_payee_id IS NULL OR sets = 'category'),
     CONSTRAINT ck_rule_condition
-        CHECK (num_nonnulls(condition_payee_id, counterparty_ref, mandate_ref,
-                            name_exact, name_prefix, purpose_regex,
-                            booking_text) > 0)
+        CHECK (jsonb_array_length(conditions) > 0),
+    CONSTRAINT ck_rule_cond_array
+        CHECK (jsonb_typeof(conditions) = 'array')
 );
+
+CREATE UNIQUE INDEX ux_rule_name ON rule (lower(name));
 
 -- Spans (a holiday, a project) are DERIVED from min/max booked_on over the
 -- tagged entries, not stored. Spec §3.7.

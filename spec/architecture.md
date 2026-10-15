@@ -40,7 +40,7 @@ architecture.
 | UI components | shadcn-svelte, **copied into the repository**, on Bits UI primitives; Tailwind CSS, compiled at build time |
 | Database | PostgreSQL, external to the container |
 | Packaging | One container; local development in a venv against a separate external development database |
-| Tooling | uv with a hash-pinned lockfile; pytest and hypothesis; ruff; mypy in strict mode; import-linter for the module boundaries (§5.1); httpx for API tests; argon2-cffi for password hashing |
+| Tooling | uv with a hash-pinned lockfile, npm with a committed lockfile for the frontend; pytest and hypothesis; ruff; mypy in strict mode; import-linter for the module boundaries (§5.1); httpx for API tests; argon2-cffi for password hashing |
 
 ### Why pure Python
 
@@ -72,9 +72,9 @@ production and no HTML is generated at build time. Three settings, all
 required:
 
 ```
-adapter-static with fallback: 'index.html'   // shell, not per-route pages
-export const ssr = false                      // in the root layout
-export const prerender = false                // in the root layout
+adapter-static with fallback: 'index.html'   // shell, not per-route pages; in vite.config.ts
+export const ssr = false                      // in +layout.ts
+export const prerender = false                // in +layout.ts
 ```
 
 The adapter is named for its more common use — prerendering a static site —
@@ -196,9 +196,11 @@ exhaustive, and deliberately without field detail:
 
 ```
   ledger entries — the interpretation layer (spec §3.1), read here and
-  changed through the units group below (spec §5.9, I21). The exception
-  is tags, which are not part of review.
+  changed through the units group below (spec §5.9, I21). Tags also have
+  direct writes, and are part of the unit draft.
 GET    /api/ledger/entries                     filtered, paged list
+GET    /api/ledger/entries/{id}                one entry, in the row shape of
+                                               the list (200; 404 when missing)
 GET    /api/ledger/entries/{id}/source         provenance: the source transaction
 
   user-authored source transactions — the entry form (spec §3.9, §5.6), on
@@ -226,24 +228,28 @@ POST   /api/ledger/sources/{id}/not-duplicate  clear a row marked wrongly; it
 POST   /api/ledger/tags/{id}/apply             tag every entry a ledger-list
                                                filter selects, reviewed or not
                                                (the list's filter, not a range
-                                               of its own)
+                                               of its own); previewed
 
   units — creating, reviewing and editing an interpretation, one unit at a
   time: the entries of a source transaction and of a transfer pair (spec §6)
-GET    /api/units/queue                        unreviewed units, ordered by
-                                               shape; units decided entirely by
-                                               pass 0 and rules appear only
+GET    /api/units/queue                        the units not confirmed, in
+                                               three sections (pending review,
+                                               needs an account, waiting), each
+                                               by booked date, then anchor
+                                               entry id; units decided entirely
+                                               by pass 0 and rules appear only
                                                while they wait for a partner or
                                                a document
 GET    /api/units/{entry_id}                   a unit's stored state
 POST   /api/units/preview                      stored state + draft → the unit a
                                                commit would write: rows (with
                                                temporary ids for rows it would
-                                               create), values, derivations,
-                                               transfer offers and document
-                                               suggestions, consequences such as
-                                               a partner left behind. Writes
-                                               nothing.
+                                               create, issued by the client),
+                                               values, derivations, transfer
+                                               offers and document suggestions,
+                                               consequences such as a partner
+                                               left behind. An in-memory
+                                               overlay; writes nothing.
 POST   /api/units/commit                       the full state the user saw;
                                                saves any unit; settling
                                                decides whether it is confirmed
@@ -285,8 +291,8 @@ PUT    /api/ledger/payees/{id}                 name, note, icon, colour,
                                                matching and waiting read it, so
                                                it settles)
 DELETE /api/ledger/payees/{id}                 only while no entry references
-                                               it, taking its rules; otherwise
-                                               merge
+                                               it, taking the rules that set it;
+                                               otherwise merge
 POST   /api/ledger/payees/{id}/merge           into another payee; previewed
 POST   /api/ledger/payees/suggest-name         AI-assisted naming; returns a
                                                proposal, creates nothing
@@ -294,15 +300,21 @@ POST   /api/ledger/payees/suggest-name         AI-assisted naming; returns a
   rules — hand-written; what they decide is confirmed without review
   (spec §5.9), so every write is previewed first
 GET    /api/ledger/rules
-POST   /api/ledger/rules                       create; settling applies it to
-                                               what unconfirmed units have not
+POST   /api/ledger/rules                       create: name, sets (counter
+                                               account, payee or category, fixed
+                                               from now on), the target value,
+                                               the conditions, priority;
+                                               settling applies it to what
+                                               unconfirmed units have not
                                                decided. Like the change and the
                                                deletion below, previewed: the
                                                entries it would match, the
                                                units it would confirm, and the
                                                two lists of entries to check by
                                                hand (spec §5.9)
-PUT    /api/ledger/rules/{id}                  change; no existing value
+PUT    /api/ledger/rules/{id}                  change name, target value,
+                                               conditions, priority (never
+                                               `sets`); no existing value
                                                changes
 DELETE /api/ledger/rules/{id}                  likewise
 GET    /api/ledger/accounts
@@ -328,7 +340,7 @@ DELETE /api/ledger/balance-records/{id}        remove any record, reported ones
                                                included; derived entries are
                                                recomputed
 
-  tags — not part of review (spec §3.7)
+  tags — direct writes outside the panel (spec §3.7)
 GET    /api/ledger/tags
 POST   /api/ledger/tags
 PUT    /api/ledger/tags/{id}                   rename, colour
@@ -421,7 +433,42 @@ credential — not instances of some unnamed thing.
 — merges, marking a duplicate, a revert, a link, a rule change — takes a
 dry-run flag: with it, the operation returns everything it would change, in
 the shape of its real response (below), and writes nothing; without it, it
-writes. There is no separate preview path to drift from the real one.
+writes. The exception is the unit preview, which is an in-memory overlay over
+the functions settling uses (§6.3), not a rolled-back write; the entry form's
+`PUT` and `DELETE` (their effect on a unit is a real write) use the flag. Where the set it would change is a filter's result, counts stand for
+the list, and the real run carries the count it confirms. There is no separate preview path to drift from the real one.
+
+**Management writes.** Previewed are category merge, payee merge, rule create,
+update and delete, payee delete (it takes the rules that set the payee and
+leaves those whose condition names it dangling; the preview lists both) and
+category delete; the other writes of the
+dimension group go directly. Like applying a tag, the real run of a merge or
+a rule write carries `expected_count`, the count of entries its preview
+reported; when the number has moved nothing is written and the answer is 409
+`conflict`, reason `filter_result_changed`, with `expected` and `actual`. A
+rule write's request names the rule (`name`), what it sets (`sets`, on
+creation only), the target value, the conditions (a category rule's may include payee
+conditions, `{"field":"payee","op":"is","value":"<id>"}`; core checks that the
+payee exists) and `priority`; it returns
+the rule, the preview's lists (the entries matched, the units it would
+confirm, lists A and B, `spec.md` §5.9) and the settle result. It also carries `settle_breakdown` next to `settle` (null on a dry run and when settling failed): the entries settling touched, counted by the final derivation pass of the field the rule sets, as `{total, this_rule, history, other_rules, other}`: decided by this rule, proposed by history, decided by another rule, and everything else (no value for the field, flag-only changes, the user's own decisions, entries that still carry a deleted rule's key). The parts add up to `total`, so the client can say where the touched entries come from without changing the settle steps. A preview row is an entry with its
+`source` (above): its own fields (booked date, account, amount, the current value and key of what the rule
+sets) and the nested source.
+
+**A merge bumps the versions of the entries it repoints.** Their category or
+payee changed, which is a user-meaningful change like any other: an open
+panel showing the old value is refused and reloads, as for every conflict
+(`patterns.md` §8). A merge still decides nothing anew (`spec.md` I18): keys
+are kept, nothing is derived again, nothing returns to review. It is rare and
+explicit, unlike settling's constant rederiving, so the conflicts it causes
+are cheap. Independently, a client may still hold an old id — a stale lookup
+list, a picker in another tab — and must not write a dangling reference
+silently. A write that names a category, payee or account that no
+longer exists is therefore refused as a conflict: 409, code `stale_reference`,
+details naming the field, never a generic validation error. The client reloads
+the lookups on that code and keeps the draft where it can, as for other
+conflicts (`patterns.md` §8). A merged-away id is simply an id that no longer
+exists: there is no redirect and no `merged_into`.
 
 **Preview and commit are the whole write path for interpretation.** The
 client holds a draft — the user's choices for one unit — and asks
@@ -438,17 +485,126 @@ preview returns the state the commit leads to.
 
 **What a commit carries.** The draft; the value of every field as the preview
 showed it, with the basis of each proposal shown; temporary ids for the rows
-the preview would create; the version of every entry it writes or showed as a
+the draft creates — negative integers the client issues, echoed by the
+preview and mapped to real ids in the commit response; a **tag change** per entry, `tag_ids_added` and
+`tag_ids_removed` relative to the tags the entry had when loaded (never the full set), carried by the preview
+too and omitted for an entry whose tags the draft does not touch; the version of every entry it writes or showed as a
 consequence; and the version of a picked document. The server lays the draft
 over the stored state again and writes the values sent. It derives the keys
 itself (`spec.md` §5.9): a standing key is kept only where the stored value is
 unchanged and was standing, a value equal to a shown proposal becomes `user`
-with that proposal's basis, anything else `user` without one — so a client can
-never assert a `rule` or `own_account` key. A counter-account that a pick
+with that proposal's key nested as its basis, a `user` value left unchanged
+stays, anything else is `user` without one. The client may name a basis only
+for the passes `history`, `llm` and `matcher_proposal`; it is stored wrapped
+under `user`, never trusted as evidence, so a client can never assert a `rule`
+or `own_account` key. Empty fields carry no key, with one exception: a payee
+draft with `mode: fixed` and no value is the user's "no payee" decision
+(`spec.md` §5.9, state 3), stored as the key `user` with a NULL `payee_id`. A
+`fixed` draft of type, category or counter-account without a value is not a
+decision: it is treated as re-resolve. A commit does not confirm (`spec.md`
+§5.9, §6). A counter-account that a pick
 fills on a leg that had none is the pair's: it takes the pair's pass with the
 basis `{"from": "counterpart"}`, and leaves with the pair (`spec.md` §5.7). It refuses only on a structural
 divergence: a moved version, a partner or document taken, a row the draft
-relies on gone.
+relies on gone, or a closure that changed under the locks (409 `unit_moved`).
+A commit locks in one order: the settle lock shared, then the accounts it
+touches ascending, then the entry rows ascending; it reads the unit before the
+locks and checks it again after.
+
+**Tags in preview and commit.** Preview rows carry `tag_ids` with the draft applied (a new split entry starts
+with the original's); tag changes are never listed as consequences and affect no state, flag or proposal, and
+re-resolve never touches them. The commit applies the membership changes in the same transaction, after the
+entries exist (rows the draft creates have real ids by then), under the locks above and idempotently: adding a
+present tag and removing an absent one are no-ops. A tag deleted meanwhile refuses the commit as a conflict,
+409 `stale_reference`, details naming the tag. An entry the draft removes takes its tags with it. A commit
+that changes only tags is valid and, like any commit without a change, bumps no version; membership changes
+move no `ledger_entry.version` in any case, so no version is involved in them.
+
+#### The ledger list and tags
+
+**The list** is `GET /api/ledger/entries`: one page of the entries a filter selects, and the count of all of
+them. The filter is the dimensions of `spec.md` §8, one query parameter each; the generated schema names
+them all, these are the ones that carry a rule.
+
+- `from`, `to` select by `booked_on`, inclusive at both ends.
+- `account_id`, `category_id`, `payee_id`, `tag_id`, `type` and `flag` repeat. **Several values of one
+  dimension are alternatives (OR); dimensions combine (AND).** An entry matches `tag_id` by carrying any of
+  the tags, and `flag` by carrying any of the review tokens (`spec.md` §6). An entry with no type yet matches
+  no `type`.
+- `category_id` includes the category's descendants; `category_descendants=false` asks for the category
+  itself. `uncategorised=true` adds the entries that could have a category and have none (type `flow`, or no
+  type yet; never a transfer or a derived entry) to the category dimension, so with `category_id` it is an
+  alternative, not a restriction.
+- `amount_min` and `amount_max` bound the **magnitude** of the amount, in minor units, inclusive, never
+  negative. They require `currency`, and the list then holds only entries in that currency: a range across
+  currencies is meaningless and nothing is converted for it. `currency` alone selects that currency.
+  `direction` (`in` or `out`) keeps amounts above or below zero.
+- `q` is a text of 1 to 200 characters; every word of it must occur, case-insensitively and as a substring,
+  in at least one of the entry's description and note, the source transaction's counterparty name, purpose,
+  end-to-end id and mandate reference, the payee's name and the category's name.
+- `limit` (1 to 500, default 100) and `offset` page the result.
+
+A value that cannot be understood or a filter that contradicts itself (`from` after `to`, `amount_min` above
+`amount_max`, an amount bound without `currency`) is a 422 naming the parameter (§4.4).
+
+**Order and paging.** Newest first by `booked_on`, then by source transaction descending (entries without
+one, the derived entries, first: a balance record is the state at the end of its day, so it stands above
+the day's movements), then by id descending: the order is total, so pages do
+not overlap, and the entries of one split, which share a date and a source transaction, are adjacent. Paging
+is by offset. The answer is `entries`, `total` (every entry the filter selects, whatever the page), `limit`
+and `offset`.
+
+**Rows.** An entry as the interpretation layer holds it: id and version, account, `booked_on` and `value_on`,
+the signed amount with its currency (§4.5), type, description and note, `display_text` (derived: the
+description, else the counterparty name, else the purpose; offered for uses such as the
+panel title and search results, while the list's description column shows `description` alone, `patterns.md` §4.1), payee, category,
+counter-account and counterpart entry, source transaction, document, `derivation`, `unit_key` (the same for every
+entry of a unit), `authored` (true when its source transaction was entered by hand), review flags, tag ids and `source`. A row carries
+ids only; names, icons and colours come from the account, category, payee and tag lists the client already
+holds, and there is no running balance. A transfer leg also carries a read-only summary of its partner
+(account, date, amount), so the list can show the partner when a filter hides it.
+**`source`** is the entry's source transaction as one nested object, `null` only for derived entries, which
+have none (every movement has one, imported or entered by hand: spec §3). A source entered by hand carries its
+amount and purpose and no counterparty, reference, booking text or source format. It holds the fields rules read or the UI shows: counterparty name, reference and BIC, purpose,
+booking text, end-to-end id, mandate reference, instructed amount and currency, and source format. It never
+holds the raw record or the content hash. The client reads the counterparty name and purpose from it; there
+are no flat copies on the entry. Every entry read carries it: the list, `GET /api/ledger/entries/{id}`
+(behind login, like the list) and the rows of a rule's preview. There is no filter by id.
+The list includes every entry, derived ones too (`type` narrows it); a duplicate source transaction has no
+entries (`spec.md` I3) and so never appears. It is a read: it takes no lock, writes nothing and does not
+settle.
+
+**The lists.** `GET /api/ledger/categories` (flat, `parent_id` linking the tree, roots first, then
+`sort_order` and name) and `GET /api/ledger/payees` (by name, with `document_provider`) answer with identity and presentation as
+stored; the client resolves inherited icons and colours. Their writes are the dimension group's.
+
+**Tags.** `GET /api/ledger/tags` lists every tag by name with its derived span (`starts_on`, `ends_on`) and
+`entry_count`; a tag no entry carries has no span and a count of 0. A name is trimmed, not blank and unique
+case-insensitively (409 `conflict`, reason `duplicate_name`); a colour is stored as given. `PUT` renames or
+recolours (a field left out stays; `color: null` clears it). `DELETE` removes the tag with its memberships and
+answers `removed_memberships`; it has no dry run. Every tag write is one transaction, settles after it commits
+(§5.2) and answers with `settle`, whose `error` is a notice, never an HTTP error.
+
+**Tagging one entry** is `PUT` and `DELETE /api/ledger/entries/{id}/tags/{tag_id}`. Both are idempotent: 200
+either way, `changed` says whether anything was written. A derived entry is refused (409, reason
+`derived_entry`). The answer is `entry` (its `id` and `tag_ids` as they now stand), `changed` and `settle`.
+These direct writes (the ledger's picker, tag all, settings) move no `ledger_entry.version`, so they carry no
+`expected_versions`; the work panel's tags are part of its draft instead (below, *What a commit carries*). They are also the only way to tag an entry the filter does not select: there is no
+operation over a list of ids, and a client that wants to add some entries to a filter's result calls this
+one for each.
+
+**Tagging a filter's result** is `POST /api/ledger/tags/{id}/apply`. The body is the list's filter as JSON,
+with the same parameter names, repeatable ones as arrays and the same validation, plus `dry_run` and
+`expected_count`. It tags every selected entry that can carry tags, in one transaction, leaving an
+existing membership alone, and answers `selected`, `newly_tagged`, `already_tagged` and `skipped_derived`
+(derived entries are skipped and counted), `per_account` (the accounts with newly tagged entries, with their
+counts), the tag's span before and after and, for a real run, `entries` (id and `tag_ids` of every newly
+tagged entry as it now stands) and `settle`. With `dry_run` the same code runs and is rolled back: `entries`
+is empty and `settle` null. A filter that restricts nothing would select the whole ledger and is refused
+(422). Because a tag write moves no version, the rule of *Requests carry what the client believed* cannot
+guard the selected set; instead a real run must carry the preview's `newly_tagged` as `expected_count`
+(422 without it), and if the filter now tags another number nothing is written and the answer is 409
+`conflict`, reason `filter_result_changed`, with `expected` and `actual`.
 
 #### Operations return everything they touched
 
@@ -464,6 +620,12 @@ looking at has become stale, and will present as pending something the server
 considers resolved. With it, the client patches exactly what changed and
 needs no knowledge of which operations cascade — it applies whatever comes
 back.
+
+**What the response carries.** A write response holds full rows for the unit,
+its consequences and the partners whose flags changed, and ids with a
+`truncated` flag for the rest (settling can touch thousands); the ids of the
+entries it removed; the states of the units concerned; and, for a commit, the
+map from the client's temporary ids to the real ones.
 
 The alternative, refetching the list after every action, is simpler and wrong
 here: it reorders and removes rows beneath a keyboard cursor (§6.5).
@@ -1135,6 +1297,7 @@ returned by `GET /api/config`.
 | Household | `TIMEZONE` (required, an IANA zone; `spec.md` §5.4), `LOCALE` (`en`) |
 | Users | indexed groups `USER_<n>_LOGIN`, `USER_<n>_NAME`, `USER_<n>_PASSWORD`, `n` contiguous from 1, logins unique; none is allowed |
 | Model | `MODEL_ENDPOINT` and `MODEL_NAME` (both or neither), optional `MODEL_API_KEY`; absent means pass 3 does not run (§5.4) |
+| Development | `EXPOSE_OPENAPI` (`false`; `true` or `false`, anything else fails the start): serves the OpenAPI document at `/api/openapi.json`, without a session, so the frontend's types can be generated from a running server (§6.7); a deployment leaves it off. `/docs` and `/redoc` never exist, whatever the value: they load scripts from a third-party host |
 
 **Start is a fixed sequence, and the app binds only after it succeeds:**
 
@@ -1174,7 +1337,8 @@ the ledger's data does not change either way.
 ### 6.1 Structure and routing
 
 SvelteKit in SPA mode (§2): `adapter-static` with `fallback: 'index.html'`,
-`ssr = false` and `prerender = false` in the root layout. Client-side routing
+`ssr = false` and `prerender = false` in `+layout.ts` of the root layout (SvelteKit reads them from
+no other file). Client-side routing
 only, no Node process in production, no prerendered HTML.
 
 One consequence worth stating because it is easy to violate by copying an
@@ -1186,17 +1350,18 @@ would have nowhere to run.
 ### 6.2 Module boundaries
 
 ```
-src/
+frontend/src/
   routes/              SvelteKit pages. THIN: compose components, read
                        params, call a client module. No fetch, no business
                        logic, no formatting.
-    +layout.svelte     shell, nav, auth gate, ssr/prerender flags
+    +layout.svelte     shell, nav, auth gate
+    +layout.ts         ssr and prerender flags
     ledger/
     review/
     accounts/
     sync/
     reports/
-    settings/
+    settings/          management: categories, payees, rules (below)
   lib/
     api/               The ONLY place fetch is called. One module per
                        operation group in §4.1 (ledger, units, importers,
@@ -1211,14 +1376,17 @@ src/
                        Generic, no domain knowledge; the only place Bits UI
                        is imported
       common/          composites of ui/: tables, money and date displays,
-                       empty and error states
+                       and the interaction components of patterns §11:
+                       action dialog, row actions, icon and action
+                       buttons, field, picker, page header, empty and error
+                       states, notice
       ledger/          entry row, provenance widget
       units/           the unit panel — draft, preview, commit, split
-                       editor — and queue rows ordered by shape, flag
-                       badges, evidence
+                       editor — and queue rows, flag badges, evidence
       sync/            progress list, prompt modals
     format/            money, dates, locale (§6.6)
-    types/             shared types, generated from OpenAPI where possible
+    types/             shared types: api.d.ts is generated from OpenAPI
+                       (§6.7), the rest is what OpenAPI cannot say
 ```
 
 Four rules:
@@ -1235,7 +1403,24 @@ Four rules:
   directory changes.
 
 Component subfolders mirror the operation groups, so a change to the review
-API has an obvious frontend counterpart.
+API has an obvious frontend counterpart. Screens compose the interaction
+components of `common/` and do not restyle them; a new kind of interaction is
+first a pattern in `ux/patterns.md` §11.
+
+**Management lives under settings.** The routes are `/settings/categories`, `/settings/tags`,
+`/settings/payees`, `/settings/rules`, `/settings/rules/new` (optionally
+`?from=<entry id>`, which opens the editor on that entry as its example, read
+with `GET /api/ledger/entries/{id}`; nothing is matched or written by it) and
+`/settings/rules/{id}`, the page an evidence line's rule links to
+(`patterns.md` §4.3). The ledger reaches them through a "Manage…" link on
+category and payee chips. Rules are not started from the ledger, which does not
+show the source fields; the rule editor picks its example itself, with a text
+search over the entries (the list's `q`), and the review panel opens the same
+editor with `?from=`.
+
+The four rules are enforced mechanically, as import-linter enforces the backend's
+(§5.1): ESLint's `no-restricted-imports` and `no-restricted-globals` forbid Bits UI outside `components/ui/`,
+the API from `components/`, and `fetch` outside `lib/api/`.
 
 ### 6.3 Data loading and state
 
@@ -1258,8 +1443,10 @@ exceptions is what governs them.
 is the settle's own functions run on an *overlay*: resolution, matching, the
 allocation of document lines and the review state all take a unit's stored
 state with the draft laid over it, as an in-memory value, and return the
-resulting state without writing. `commit` writes that same result, and settling
-calls the same functions on stored state. This is the design's riskiest
+resulting state without writing; the rows a draft creates carry negative
+temporary ids the client issues, which the preview echoes. `commit` writes that same result, and settling
+calls the same functions on stored state. The entry form's `PUT` and `DELETE` are
+previewed with `dry_run` instead (§4.1). This is the design's riskiest
 component and is built before the panel's UI. The draft is the
 user's choices for one unit; what they imply — proposals, the split a
 document produces, offers, a counter-leg, a partner left behind — comes
@@ -1293,8 +1480,10 @@ closed tab.
 ### 6.5 Review queue
 
 The interaction model drives the API more than any other screen (§4.1).
-Ordered by shape rather than date, so recurring entries with the same
-proposed values sit next to each other, each confirmed with one keystroke that
+Three sections — pending review, needs an account, waiting — each ordered by
+booked date, then anchor entry id; whether and how to group units by shape
+within a section is open until real units have been seen
+(`ux/views/review-queue.md`). Each unit is committed with one keystroke, which
 moves to the next. There is no batch confirmation; units decided entirely by
 pass 0 and rules arrive confirmed once complete, and enter the queue only
 while they wait for a partner or a document (`spec.md` §5.9, §6). Keyboard-first; the
@@ -1304,7 +1493,7 @@ Review is per unit (`spec.md` §6): the user opens a unit in the panel, changes
 values, splits, converts, re-pairs or picks a document as draft edits, sees each
 previewed, and commits the whole state at once. A unit appears once, with all
 its entries — both legs of a pair, every entry of a split. The panel is the
-only place an entry's interpretation is edited, apart from tags and the merges,
+only place an entry's interpretation is edited, apart from the merges (tags are edited there too, and directly elsewhere),
 and it opens for any unit from the queue, the ledger list or a rule's preview.
 Each key's evidence is shown — "1 of 1", "12 of 12" — so a thin proposal stands
 out. A unit with open document suggestions, or a transfer without its partner,
@@ -1365,8 +1554,27 @@ its Vite plugin in the same build, so nothing CSS-related runs at run time.
 Fonts and the mascot artwork are files in the bundle; the app loads nothing
 from a third-party host. FastAPI mounts it with a
 catch-all that returns `index.html` for unknown paths, ordered so `/api` is
-never shadowed. In development, the Vite dev server proxies `/api` to a
-locally running uvicorn.
+never shadowed. In development, the Vite dev server proxies `/api` to a locally running uvicorn
+(`127.0.0.1:8000`, or the address in `LEDGEHOG_API`), so the page and the API
+share an origin and the `SameSite=Lax` session cookie is sent.
+
+**The frontend lives in `frontend/`**; its `src/` is the tree of §6.2, and the
+build's `frontend/build` is what the image carries (§10). Packages are managed
+with npm: the lockfile is committed, versions are saved exact and install
+scripts are off. SvelteKit 3 keeps its configuration (the adapter, the compiler
+options) in `vite.config.ts`.
+
+**Types are generated from the API.** `scripts/dump_openapi.py` writes
+`frontend/openapi.json` from the application object, with no database and no
+server; `--check` writes nothing and exits 1 when the file is stale.
+`npm run gen:api` turns it into `frontend/src/lib/types/api.d.ts` with
+openapi-typescript, and `npm run gen:api:check` fails when that file is stale.
+Both files are committed, so a change to the API shows as a diff in review, and
+both are excluded from formatting. Operation ids are the handlers' names, and
+the error envelope of §4.4 is declared on every operation, so the generated
+error types are what the server sends. What OpenAPI cannot say is written by
+hand (the upload body, the union of error codes, a calendar date as a plain
+string that is never parsed to a `Date`).
 
 ---
 
@@ -1629,7 +1837,7 @@ practical.
 
 ## 10. Deployment and data durability
 
-One image, multi-stage: a Node stage builds the frontend, a Python stage
+One image, multi-stage: a Node stage builds `frontend/`, a Python stage
 installs hash-pinned dependencies and copies the bundle in. Runs uvicorn with
 a single worker as a non-root user. Start is the sequence of §5.7:
 migrations, the base currency and users reconciled from the environment, then
@@ -1652,10 +1860,6 @@ not assume it can be recovered by re-importing.
 
 - **OIDC provider and library.** Deferred until the password path works; the
   session model already accommodates it.
-- **Pagination style** for the ledger list — offset is simpler, keyset is
-  correct under concurrent inserts. Probably offset, given two users.
-- **Whether the API models are the OpenAPI source**, or whether generated
-  client types are worth the build step for a single frontend.
 - **Natural-language querying** ("how much did I spend on shoes last month")
   is planned as a later feature with its own spec. Recorded here because the
   question of whether it needs accommodating *now* has been asked and
