@@ -50,7 +50,7 @@ class EntryRow:
     document_id: int | None
     review_flags: tuple[str, ...]  # sorted
     tag_ids: tuple[int, ...]  # sorted
-    source: SourceFields | None  # None for derived and user-authored entries
+    source: SourceFields | None  # None only for derived entries
     derivation: Mapping[str, Any]  # as stored: key name -> {"pass", "basis", ...}
     unit_key: int | None  # the unit it is reviewed in (core/units); None for a derived entry
     authored: bool  # a user-authored movement (its source has no importer)
@@ -207,8 +207,8 @@ def _build(conn: Connection, rows: Sequence[Any]) -> tuple[EntryRow, ...]:
 
 
 def _source(r: Any) -> SourceFields | None:
-    """The nested source: none for a derived entry or a user-authored row (no importer)."""
-    if r.source_transaction_id is None or r.importer is None:
+    """The nested source: none only for a derived entry (no source transaction)."""
+    if r.source_transaction_id is None:
         return None
     return SourceFields.of_row(r)
 

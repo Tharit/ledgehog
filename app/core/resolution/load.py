@@ -67,7 +67,7 @@ class UnconfirmedEntry:
     confirmed: bool = False  # its unit is confirmed (confirmed.py)
     unit_key: int = 0  # the unit it belongs to (confirmed.py: source transaction, or the pair's lower one)
     description: str | None = None
-    source: SourceFields | None = None  # None for a user-authored row; never the raw record
+    source: SourceFields | None = None  # never the raw record
 
 
 def _movements(where: str) -> TextClause:
@@ -134,7 +134,7 @@ def _load(conn: Connection, query: TextClause) -> list[UnconfirmedEntry]:
                 confirmed=r.confirmed,
                 unit_key=r.unit_key,
                 description=r.description,
-                source=None if r.user_authored else SourceFields.of_row(r),
+                source=SourceFields.of_row(r),
             )
         )
     return out

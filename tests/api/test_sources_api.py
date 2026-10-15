@@ -66,12 +66,23 @@ def test_create_answers_201_with_the_unit_then_200_for_a_repeat(anna: TestClient
     }
     (entry,) = out["entries"]
     assert out["anchor_entry_id"] == entry["id"]
-    assert (entry["amount"], entry["booked_on"], entry["authored"], entry["source"]) == (
+    assert (entry["amount"], entry["booked_on"], entry["authored"]) == (
         {"amount": -2500, "currency": "EUR"},
         "2026-03-10",
         True,
-        None,
     )
+    assert entry["source"] == {
+        "amount": {"amount": -2500, "currency": "EUR"},
+        "counterparty_name": None,
+        "counterparty_ref": None,
+        "counterparty_bic": None,
+        "purpose": "bread",
+        "booking_text": None,
+        "end_to_end_id": None,
+        "mandate_ref": None,
+        "instructed_amount": None,
+        "source_format": None,
+    }
     assert out["units"] == [
         {
             "anchor_entry_id": entry["id"],

@@ -58,6 +58,16 @@ def test_row_shape(db_conn: Connection, acct: int):
     assert row.review_flags == ("unconfirmed",) and row.tag_ids == (t,)
 
 
+def test_user_authored_entry_has_a_source_and_derived_has_none(db_conn: Connection, acct: int):
+    e = seed.entry(db_conn, acct, amount=-420, on=D, purpose="bread")  # user-authored by default
+    o = seed.derived(db_conn, acct)
+    by = {r.id: r for r in list_entries(db_conn, LedgerFilter(), limit=10, offset=0).entries}
+    assert by[e].authored and by[e].source is not None
+    assert (by[e].source.purpose, by[e].source.amount, by[e].source.currency) == ("bread", -420, "EUR")
+    assert by[e].source.counterparty_name is None and by[e].source.source_format is None
+    assert not by[o].authored and by[o].source is None
+
+
 def test_split_part_carries_the_whole_source_amount(db_conn: Connection, acct: int):
     whole = seed.entry(db_conn, acct, amount=-1000, on=D, imported=True)
     part = seed.entry(db_conn, acct, amount=-300, on=D, source_id=seed.source_of(db_conn, whole))

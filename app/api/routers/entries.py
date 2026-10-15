@@ -104,10 +104,10 @@ class EntryOut(BaseModel):
     document_id: int | None
     review_flags: list[ReviewFlag]
     tag_ids: list[int]
-    source: SourceTransactionOut | None  # null for derived and user-authored entries
+    source: SourceTransactionOut | None  # null only for derived entries
     derivation: dict[str, Any]  # as stored: derived field -> {"pass", "basis", ...}; `{}` when none
     unit_key: int | None  # the unit it is reviewed in (spec §6); null for a derived entry
-    authored: bool  # entered by the user (the entry form); `source` is null for these
+    authored: bool  # entered by the user (the entry form); its `source` is the authored row
     partner: PartnerOut | None  # the other leg of a paired transfer, null otherwise
 
     @staticmethod

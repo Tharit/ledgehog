@@ -180,7 +180,7 @@ class PreviewRowOut(BaseModel):
     current_key: dict[str, Any] | None  # and the key explaining it: {"pass", "basis"}
     shadowed_by_rule_id: int | None  # matches only: the earlier rule that wins this entry
     keyed_fields: list[str]  # lost-key list only: the fields carrying the rule's key
-    source: SourceTransactionOut | None  # as in the ledger list; null for a user-authored row
+    source: SourceTransactionOut | None  # as in the ledger list; null only for a derived entry
 
     @staticmethod
     def of(row: PreviewRow) -> PreviewRowOut:

@@ -71,7 +71,12 @@ def test_get_unit_shape_for_a_pair_with_a_split(anna: TestClient, api_engine: En
     assert {e["unit_key"] for e in body["entries"]} == {s1}
     assert by_id[sib]["review_flags"] == ["unclassified", "unconfirmed"]
     assert (by_id[x]["authored"], by_id[x]["source"] is None) == (False, False)  # imported
-    assert all(by_id[i]["authored"] and by_id[i]["source"] is None for i in (y, sib))  # entered by hand
+    for i in (y, sib):  # entered by hand: the authored row is the source (D206)
+        assert by_id[i]["authored"]
+        src = by_id[i]["source"]
+        assert src["amount"] == {"amount": 200, "currency": "EUR"}  # the whole row, split or not
+        assert src["purpose"] is None and src["source_format"] is None
+        assert all(src[k] is None for k in ("counterparty_name", "counterparty_ref", "counterparty_bic"))
     assert {"version", "tag_ids"} <= set(by_id[x])
     assert by_id[sib]["account_id"] == acct_b
 
@@ -107,6 +112,18 @@ def test_the_queue_shape_sections_and_order(anna: TestClient, api_engine: Engine
     assert pending["units"][1]["state"]["reasons"] == ["incomplete"]
     assert set(pending["units"][0]) == {"anchor_entry_id", "unit_key", "state", "entries"}
     assert body["sections"][1]["units"] == [] and body["sections"][2]["next_cursor"] is None
+
+
+def test_the_queue_carries_the_authored_source(anna: TestClient, api_engine: Engine, world: Bench) -> None:
+    def build(b: Bench) -> int:
+        return b.flow(b.source(authored=True, amount=-700), done=False)
+
+    e = _make(api_engine, world, build)
+    (unit,) = anna.get(QUEUE).json()["sections"][0]["units"]
+    (row,) = unit["entries"]
+    assert row["id"] == e and row["authored"]
+    assert row["source"]["amount"] == {"amount": -700, "currency": "EUR"}
+    assert row["source"]["counterparty_name"] is None
 
 
 def test_paging_with_limit_section_and_cursor(anna: TestClient, api_engine: Engine, world: Bench) -> None:

@@ -280,15 +280,20 @@ def test_operation_ids_are_unique(client: TestClient):
     assert len(ids) == len(set(ids))
 
 
-def test_derived_and_user_authored_entries_have_no_source(anna: TestClient, api_engine: Engine, acct: int):
+def test_user_authored_entries_carry_their_source_and_derived_have_none(
+    anna: TestClient, api_engine: Engine, acct: int
+):
     with api_engine.begin() as conn:
         user = seed.entry(conn, acct, purpose="Hand entered", description=None)  # user-authored
         derived = seed.derived(conn, acct)
     rows = {e["id"]: e for e in listed(anna)["entries"]}
-    assert rows[user]["source"] is None and rows[derived]["source"] is None
-    # the purpose still reaches display_text, and the single read agrees
-    assert rows[user]["display_text"] == "Hand entered"
-    assert anna.get(f"{URL}/{user}").json()["source"] is None
+    for got in (rows[user], anna.get(f"{URL}/{user}").json()):
+        assert got["authored"] is True and got["display_text"] == "Hand entered"
+        src = got["source"]
+        assert src["purpose"] == "Hand entered" and src["amount"] == {"amount": -1000, "currency": "EUR"}
+        assert src["source_format"] is None
+        assert all(src[k] is None for k in ("counterparty_name", "counterparty_ref", "counterparty_bic"))
+    assert rows[derived]["source"] is None and rows[derived]["authored"] is False
     assert anna.get(f"{URL}/{derived}").json()["source"] is None
     assert "counterparty_name" not in rows[user] and "purpose" not in rows[user]
 
@@ -369,7 +374,8 @@ def test_rows_carry_derivation_unit_key_authored_and_partner(
     assert (rows[x]["unit_key"], rows[y]["unit_key"], rows[sib]["unit_key"]) == (s1, s1, s1)  # via the pair
     assert rows[alone]["unit_key"] == rows[alone]["source_transaction_id"]
     assert (rows[x]["authored"], rows[y]["authored"], rows[alone]["authored"]) == (False, True, True)
-    assert rows[y]["source"] is None and rows[x]["source"] is not None
+    assert rows[y]["source"]["amount"] == {"amount": 200, "currency": "EUR"}  # the authored row
+    assert rows[x]["source"] is not None
     assert rows[x]["partner"] == {
         "entry_id": y,
         "account_id": b.b,

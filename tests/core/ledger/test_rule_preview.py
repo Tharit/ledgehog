@@ -411,12 +411,14 @@ def test_every_row_list_carries_the_entry_source_without_extra_queries(
         source_format="csv",
     )
     assert not hasattr(src, "raw") and not hasattr(src, "content_hash")
-    # a condition on the purpose matches the user-authored row too, and it has no source
+    # a condition on the purpose matches the user-authored row too; its source is the authored row
     only_purpose = cat_draft(w, name="by purpose", conditions=(rs.cond("purpose", "contains", "rewe"),))
     q = create_rule(isolated_engine, only_purpose, dry_run=True).preview
     by = {r.entry_id: r for r in q.matches.rows}
     assert set(by) == {user}  # the imported row's purpose is "Einkauf"
-    assert by[user].source is None
+    usrc = by[user].source
+    assert usrc is not None and usrc.purpose == "REWE Einkauf" and usrc.amount == -1000
+    assert usrc.counterparty_name is None and usrc.source_format is None
     # list B (the old rule's key on an entry it no longer matches) carries it too
     assert [r.entry_id for r in create_rule(isolated_engine, draft, dry_run=True).preview.lost_key.rows] == []
     narrowed = update_rule(
