@@ -17,21 +17,23 @@
 </script>
 
 <script lang="ts">
-	import { REVIEW_FLAG_INFO } from '#lib/ledger/review.js';
+	import { REVIEW_FLAG_INFO, reviewSentence, type BadgeSubject } from '#lib/ledger/review.js';
 
-	// The sentence is the tooltip; the name and the sentence are the accessible label.
-	let { flag }: { flag: string } = $props();
+	// The sentence is the tooltip; the name and the sentence are the accessible label. The entry,
+	// when given, decides the words of a token two things share (`waiting`: a partner or a document).
+	let { flag, entry = null }: { flag: string; entry?: BadgeSubject | null } = $props();
 
 	const Icon = $derived(REVIEW_BADGE_ICONS[flag]);
 	const info = $derived(REVIEW_FLAG_INFO[flag]);
+	const sentence = $derived(reviewSentence(flag, entry) ?? info?.sentence ?? '');
 </script>
 
 {#if Icon && info}
 	<span
 		class="inline-flex shrink-0 text-muted-foreground"
-		title={info.sentence}
+		title={sentence}
 		role="img"
-		aria-label={`${info.name}: ${info.sentence}`}
+		aria-label={`${info.name}: ${sentence}`}
 		data-flag={flag}
 	>
 		<Icon size={14} strokeWidth={1.75} />

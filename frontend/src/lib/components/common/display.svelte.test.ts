@@ -78,6 +78,23 @@ describe('ReviewBadge', () => {
 		expect(screen.getByTitle(sentence)).toHaveAttribute('data-flag', flag);
 	});
 
+	it('says a transfer leg without a partner is waiting for its partner', () => {
+		render(ReviewBadge, {
+			props: { flag: 'waiting', entry: { type: 'transfer', counterpart_entry_id: null } }
+		});
+
+		expect(screen.getByTitle('Its partner has probably not been imported yet')).toBeInTheDocument();
+	});
+
+	it.each([
+		{ type: 'transfer', counterpart_entry_id: 5 },
+		{ type: 'flow', counterpart_entry_id: null }
+	])('keeps the general words of the clock for %o', (entry) => {
+		render(ReviewBadge, { props: { flag: 'waiting', entry } });
+
+		expect(screen.getByTitle('Partner or document still expected')).toBeInTheDocument();
+	});
+
 	it('renders nothing for a token it does not know', () => {
 		const { container } = render(ReviewBadge, { props: { flag: 'mystery' } });
 

@@ -230,6 +230,77 @@ describe('previewRowEntry', () => {
 	});
 });
 
+describe('the evidence of a transfer leg’s counter-account', () => {
+	const partner = {
+		entry_id: 9,
+		account_id: 2,
+		booked_on: '2026-10-08',
+		amount: { amount: 100, currency: 'EUR' }
+	};
+	const leg = (over: Parameters<typeof entry>[0]) =>
+		unit({
+			anchor_entry_id: 1,
+			entries: [entry({ id: 1, unit_key: 1, type: 'transfer', counter_account_id: 2, ...over })]
+		});
+	const counter = (
+		base: ReturnType<typeof unit>,
+		accountName?: (id: number) => string | undefined
+	) =>
+		entryViews({
+			unit: base,
+			draft: Draft.of(base),
+			preview: null,
+			rules,
+			locale: 'en',
+			accountName
+		})[0].fields.counter_account;
+
+	it('says "paired with <account>" for a counter-account that only the pair key explains', () => {
+		const base = leg({
+			counterpart_entry_id: 9,
+			partner,
+			derivation: { counterpart: { pass: 'matcher_decision', basis: {} } }
+		});
+
+		expect(counter(base, (id) => (id === 2 ? 'Cash' : undefined)).evidence?.text).toBe(
+			'paired with Cash'
+		);
+		expect(counter(base).evidence?.text).toBe('matched automatically');
+	});
+
+	it('words a counter-account of the partner basis as "from its partner", and offers no X', () => {
+		const base = leg({
+			counterpart_entry_id: 9,
+			partner,
+			derivation: {
+				counter_account: { pass: 'user', basis: { from: 'counterpart' } },
+				counterpart: { pass: 'user', basis: {} }
+			}
+		});
+
+		expect(counter(base)).toMatchObject({
+			evidence: { text: 'from its partner' },
+			clearable: false
+		});
+	});
+
+	it('offers no X on a counter-account that the user’s pair explains', () => {
+		const base = leg({
+			counterpart_entry_id: 9,
+			partner,
+			derivation: { counterpart: { pass: 'user', basis: {} } }
+		});
+
+		expect(counter(base)).toMatchObject({ evidence: { text: 'set by you' }, clearable: false });
+	});
+
+	it('still offers the X on a counter-account the user chose themselves', () => {
+		const base = leg({ derivation: { counter_account: { pass: 'user' } } });
+
+		expect(counter(base)).toMatchObject({ evidence: { text: 'set by you' }, clearable: true });
+	});
+});
+
 describe('the X and "Reset to proposal" follow what the preview shows', () => {
 	const stored = (over: Parameters<typeof entry>[0]) =>
 		unit({ anchor_entry_id: 1, entries: [entry({ id: 1, unit_key: 1, ...over })] });

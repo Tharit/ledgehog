@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { account, category, entry, payee, tag } from '#lib/ledger/fixtures.js';
 import { buildLookups } from '#lib/ledger/lookups.js';
 import { rule, source } from '#lib/rules/fixtures.js';
+import { accounts as accountDialog } from '#lib/accounts/controller.svelte.js';
 import { lookupsStore } from '#lib/stores/lookups.svelte.js';
 import { ruleNames } from '#lib/stores/rule-names.svelte.js';
 import type { UnitDraftRequest } from '#lib/units/types.js';
@@ -577,6 +578,66 @@ describe('type', () => {
 			'aria-disabled',
 			'true'
 		);
+	});
+});
+
+describe('Add account in the counter-account picker', () => {
+	const transfer = unit({
+		anchor_entry_id: 1,
+		entries: [entry({ id: 1, unit_key: 1, type: 'transfer', counter_account_id: null })]
+	});
+
+	async function openPicker(problems: ReturnType<typeof problem>[] = []) {
+		vi.mocked(getUnit).mockResolvedValue(transfer);
+		vi.mocked(previewUnit).mockImplementation(async (draft: UnitDraftRequest) => ({
+			...fakePreview(transfer, draft),
+			problems
+		}));
+		const panel = new UnitPanel(nav());
+		render(UnitPanelView, { props: { panel, lookups } });
+		panel.open(1);
+		const dialog = await screen.findByRole('dialog');
+		await waitFor(() => expect(panel.flow.previewStatus).toBe('ready'));
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Counter account' }));
+		return dialog;
+	}
+
+	it('offers an Add account action instead of a link to another tab', async () => {
+		await openPicker();
+
+		expect(await screen.findByRole('button', { name: 'Add account' })).toBeInTheDocument();
+		expect(screen.queryByText(/opens in a new tab/)).toBeNull();
+	});
+
+	it('opens the dialog with no currency when the preview states none', async () => {
+		const open = vi.spyOn(accountDialog, 'openAdd').mockImplementation(() => {});
+		await openPicker();
+
+		await fireEvent.click(await screen.findByRole('button', { name: 'Add account' }));
+
+		expect(open).toHaveBeenCalledTimes(1);
+		expect(open.mock.calls[0][0]?.currency).toBeUndefined();
+		open.mockRestore();
+	});
+
+	it('locks the currency the currency rule requires, and chooses the new account', async () => {
+		const open = vi.spyOn(accountDialog, 'openAdd').mockImplementation(() => {});
+		await openPicker([
+			problem('currency_rule', {
+				entry_id: 1,
+				field: 'counter_account',
+				detail: { required: 'USD', actual: 'EUR' }
+			})
+		]);
+
+		await fireEvent.click(await screen.findByRole('button', { name: 'Add account' }));
+
+		expect(open.mock.calls[0][0]?.currency).toBe('USD');
+		open.mock.calls[0][0]?.onadded?.(account({ id: 8, name: 'Cash USD', currency: 'USD' }));
+		await waitFor(() =>
+			expect(lastRequest().entries![0].counter_account).toEqual({ mode: 'fixed', value: 8 })
+		);
+		open.mockRestore();
 	});
 });
 

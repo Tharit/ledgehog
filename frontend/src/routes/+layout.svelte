@@ -8,6 +8,7 @@
 	import SettingsIcon from '@lucide/svelte/icons/settings';
 	import favicon from '#lib/assets/favicon.svg';
 	import AppShell, { type NavItem } from '#lib/components/common/app-shell.svelte';
+	import AccountDialogs from '#lib/components/accounts/account-dialogs.svelte';
 	import ErrorState from '#lib/components/common/error-state.svelte';
 	import EntryFormDialogs from '#lib/components/entry-form/entry-form-dialogs.svelte';
 	import PanelNavigationGuard from '#lib/components/units/panel-navigation-guard.svelte';
@@ -104,6 +105,7 @@
 		}}
 	/>
 	<EntryFormDialogs />
+	<AccountDialogs />
 {:else if session.status === 'anonymous' && onLogin}
 	{@render children()}
 {:else if session.status === 'error' && session.error}

@@ -114,7 +114,8 @@
 					preview: flow.preview,
 					rules: panel.rules,
 					locale,
-					stale: flow.stale
+					stale: flow.stale,
+					accountName: (id) => lookups.accounts.get(id)?.name
 				})
 			: []
 	);

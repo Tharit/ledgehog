@@ -71,17 +71,44 @@ function historyDetail(basis: Record<string, unknown> | null, locale: string): s
 	return detail;
 }
 
+/** What a key's words depend on besides the key: the field it is on and the partner's account. */
+export type KeyContext = {
+	/** the entry field the key stands on; `counterpart` is the pair key (spec §5.7) */
+	field?: string;
+	/** the name of the partner's account, when it is known */
+	partnerAccount?: string;
+};
+
+/** The pass a pair decision was made with is its key's; the basis marks a value that follows the pair. */
+export function isPartnerBasis(key: DerivationKey | null | undefined): boolean {
+	return record(key?.basis)?.from === 'counterpart';
+}
+
 /**
  * The words for a key, or null when there is no key. `rules` names a rule; one a FRESH list
  * does not hold is "rule deleted"; when the list is old or has not arrived the line says "rule".
+ * `context` words the pair key (`counterpart`) and a value that follows its partner.
  */
 export function describeKey(
 	key: DerivationKey | null | undefined,
 	rules: RuleNames,
-	locale = 'en'
+	locale = 'en',
+	context: KeyContext = {}
 ): Evidence | null {
 	if (!key) return null;
 	const basis = record(key.basis);
+	// a counter-account the pair filled in: it is the partner's, whoever made the pair
+	if (isPartnerBasis(key)) return { text: 'from its partner', proposal: false };
+	if (context.field === 'counterpart') {
+		if (key.pass === 'matcher_decision')
+			return {
+				text: context.partnerAccount
+					? `paired with ${context.partnerAccount}`
+					: 'matched automatically',
+				proposal: false
+			};
+		if (key.pass === 'user') return { text: 'set by you', proposal: false };
+	}
 	switch (key.pass) {
 		case 'own_account':
 			return { text: 'own account', proposal: false };

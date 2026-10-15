@@ -2,6 +2,7 @@
 	import XIcon from '@lucide/svelte/icons/x';
 	import ChevronsUpDownIcon from '@lucide/svelte/icons/chevrons-up-down';
 	import RuleTarget from '#lib/components/rules/rule-target.svelte';
+	import ActionButton from '#lib/components/common/action-button.svelte';
 	import IconButton from '#lib/components/common/icon-button.svelte';
 	import Picker from '#lib/components/common/picker.svelte';
 	import * as Popover from '#lib/components/ui/popover/index.js';
@@ -12,7 +13,7 @@
 
 	// One derived value of an entry chosen from a searchable list (the shared picker in a popover):
 	// a category, a payee or a transfer's counter-account. Only existing things are offered; adding
-	// one is done in Settings. The X is not a plain clear (see `clearable`). An item may be disabled with its reason (an account the currency
+	// one is done in Settings, or, where the caller gives `add` (accounts), in a dialog from here. The X is not a plain clear (see `clearable`). An item may be disabled with its reason (an account the currency
 	// rule or the entry's own account rules out). A proposal is italic and muted.
 	let {
 		kind,
@@ -26,6 +27,7 @@
 		none,
 		disabled = false,
 		disabledReason,
+		add,
 		onchange
 	}: {
 		kind: RuleSets;
@@ -44,10 +46,13 @@
 		disabled?: boolean;
 		/** why an item cannot be chosen */
 		disabledReason?: (id: number) => string | undefined;
+		/** an action under the list that adds the thing wanted (a dialog); `trigger` takes the focus back */
+		add?: { label: string; run: (trigger: HTMLElement | null) => void };
 		onchange: (id: number | null) => void;
 	} = $props();
 
 	let open = $state(false);
+	let trigger = $state<HTMLElement | null>(null);
 
 	// the "No payee" item has no id of its own: 0 is no payee's
 	const NONE = 0;
@@ -75,6 +80,7 @@
 <div class="flex items-center gap-1" data-slot="field-picker">
 	<Popover.Root bind:open>
 		<Popover.Trigger
+			bind:ref={trigger}
 			aria-label={label}
 			aria-invalid={invalid || undefined}
 			data-picker={kind}
@@ -114,7 +120,21 @@
 					{/if}
 				{/snippet}
 			</Picker>
-			{#if manage}
+			{#if add}
+				<div class="border-t px-1 pt-1">
+					<ActionButton
+						variant="link"
+						class="h-auto justify-start p-1 text-xs"
+						data-slot="picker-add"
+						onclick={() => {
+							open = false;
+							add.run(trigger);
+						}}
+					>
+						{add.label}
+					</ActionButton>
+				</div>
+			{:else if manage}
 				<a
 					href={manage.href}
 					target="_blank"

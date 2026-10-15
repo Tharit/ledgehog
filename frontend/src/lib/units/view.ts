@@ -14,8 +14,10 @@ import {
 import {
 	asKey,
 	describeKey,
+	isPartnerBasis,
 	isProposalPass,
 	keyOf,
+	type DerivationKey,
 	type Evidence,
 	type RuleNames
 } from './evidence.js';
@@ -81,10 +83,25 @@ const STORED_VALUE: Record<FieldName, (e: Entry) => FieldValue> = {
 	counter_account: (e) => e.counter_account_id
 };
 
+/**
+ * The key a stored field shows. A counter-account with no key of its own shows the pair key
+ * (`viaPair`): the leg's counter-account is its partner's, and the pair says how it was made.
+ */
+function storedKeyOf(
+	entry: Entry,
+	name: FieldName
+): { key: DerivationKey | null; viaPair: boolean } {
+	if (name === 'counter_account') {
+		const own = keyOf(entry.derivation, 'counter_account');
+		if (own) return { key: own, viaPair: false };
+		const pair = keyOf(entry.derivation, 'counterpart');
+		return { key: pair, viaPair: pair !== null };
+	}
+	return { key: keyOf(entry.derivation, name), viaPair: false };
+}
+
 function storedKey(entry: Entry, name: FieldName) {
-	return name === 'counter_account'
-		? (keyOf(entry.derivation, 'counter_account') ?? keyOf(entry.derivation, 'counterpart'))
-		: keyOf(entry.derivation, name);
+	return storedKeyOf(entry, name).key;
 }
 
 /** A key as identity: the pass, and for a rule which rule (the basis of a proposal is not one). */
@@ -119,11 +136,13 @@ function fieldView(
 	rules: RuleNames,
 	locale: string,
 	row: PreviewRow | null,
-	stored: Entry | null
+	stored: Entry | null,
+	accountName: (id: number) => string | undefined
 ): FieldView {
 	const edit = draft.fieldEdit(id, name);
 	let value: FieldValue = null;
-	let key = null;
+	let key: DerivationKey | null = null;
+	let viaPair = false;
 	let proposal = false;
 	const out = row?.fields[name];
 	if (out) {
@@ -132,7 +151,7 @@ function fieldView(
 		proposal = out.is_proposal;
 	} else if (stored) {
 		value = STORED_VALUE[name](stored);
-		key = storedKey(stored, name);
+		({ key, viaPair } = storedKeyOf(stored, name));
 		proposal = key !== null && isProposalPass(key.pass);
 	} else if (edit?.mode === 'fixed') {
 		value = edit.value;
@@ -149,7 +168,17 @@ function fieldView(
 	return {
 		name,
 		value,
-		evidence: describeKey(key, rules, locale),
+		evidence: describeKey(
+			key,
+			rules,
+			locale,
+			viaPair
+				? {
+						field: 'counterpart',
+						partnerAccount: stored?.partner ? accountName(stored.partner.account_id) : undefined
+					}
+				: {}
+		),
 		proposal,
 		edit,
 		shown:
@@ -158,7 +187,10 @@ function fieldView(
 				: null,
 		canReset: edit !== undefined && (changed ?? fallback),
 		clearable:
-			value !== null && (name === 'payee' || key?.pass === 'user' || edit?.mode === 'fixed'),
+			value !== null &&
+			(name === 'payee' ||
+				(key?.pass === 'user' && !viaPair && !isPartnerBasis(key)) ||
+				edit?.mode === 'fixed'),
 		decidedNone: name === 'payee' && value === null && key?.pass === 'user'
 	};
 }
@@ -172,8 +204,18 @@ export function entryViews(args: {
 	locale: string;
 	/** the preview shown is not the draft's own yet: the draft's tags are the newer word */
 	stale?: boolean;
+	/** an account's name, for the evidence of a pair ("paired with Cash") */
+	accountName?: (id: number) => string | undefined;
 }): EntryView[] {
-	const { unit, draft, preview, rules, locale, stale = false } = args;
+	const {
+		unit,
+		draft,
+		preview,
+		rules,
+		locale,
+		stale = false,
+		accountName = () => undefined
+	} = args;
 	const stored = new Map(unit.entries.map((e) => [e.id, e]));
 	const sourceOf = (entryId: number) => stored.get(entryId)?.source_transaction_id ?? null;
 
@@ -226,7 +268,10 @@ export function entryViews(args: {
 		else if (isNew) amount = edit.amount == null ? null : { amount: edit.amount, currency };
 		else amount = entry?.amount ?? null;
 		const fields = Object.fromEntries(
-			FIELD_NAMES.map((name) => [name, fieldView(name, draft, b.id, rules, locale, b.row, entry)])
+			FIELD_NAMES.map((name) => [
+				name,
+				fieldView(name, draft, b.id, rules, locale, b.row, entry, accountName)
+			])
 		) as Record<FieldName, FieldView>;
 		const view: EntryView = {
 			id: b.id,

@@ -162,6 +162,64 @@ describe('EntryRow: transfers', () => {
 	});
 });
 
+describe('EntryRow: the partner summary', () => {
+	const partner = {
+		entry_id: 9,
+		account_id: 2,
+		booked_on: '2026-10-08',
+		amount: { amount: 10000, currency: 'EUR' }
+	};
+
+	it('gives a paired leg its partner (account, date, amount) as a tooltip on the cell', () => {
+		row({ type: 'transfer', counter_account_id: 2, counterpart_entry_id: 9, partner });
+
+		const categoryCell = within(screen.getByRole('row')).getAllByRole('gridcell')[cell('category')];
+		expect(categoryCell.getAttribute('title')).toMatch(/^↔ Cash · Oct 8, 2026 · \+100\.00\s+EUR$/);
+	});
+
+	it('names an account it does not know by its id', () => {
+		row({
+			type: 'transfer',
+			counter_account_id: 2,
+			counterpart_entry_id: 9,
+			partner: { ...partner, account_id: 77 }
+		});
+
+		const categoryCell = within(screen.getByRole('row')).getAllByRole('gridcell')[cell('category')];
+		expect(categoryCell.getAttribute('title')).toContain('↔ Account 77');
+	});
+
+	it('gives an unpaired leg no summary and keeps "→ ?"', () => {
+		row({ type: 'transfer', counter_account_id: null, partner: null });
+
+		const categoryCell = within(screen.getByRole('row')).getAllByRole('gridcell')[cell('category')];
+		expect(categoryCell).not.toHaveAttribute('title');
+		expect(screen.getByText('→ ?')).toBeInTheDocument();
+	});
+
+	it('gives a flow no summary', () => {
+		row({ type: 'flow', partner });
+
+		const categoryCell = within(screen.getByRole('row')).getAllByRole('gridcell')[cell('category')];
+		expect(categoryCell).not.toHaveAttribute('title');
+	});
+
+	it('words the clock on a transfer leg without a partner as a missing partner', () => {
+		row({ type: 'transfer', review_flags: ['waiting'] });
+
+		expect(screen.getByTitle('Its partner has probably not been imported yet')).toHaveAttribute(
+			'data-flag',
+			'waiting'
+		);
+	});
+
+	it('keeps the general words of the clock on a flow', () => {
+		row({ type: 'flow', review_flags: ['waiting'] });
+
+		expect(screen.getByTitle('Partner or document still expected')).toBeInTheDocument();
+	});
+});
+
 describe('EntryRow: derived entries', () => {
 	it.each([
 		['opening', 'Opening'],

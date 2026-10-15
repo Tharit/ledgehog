@@ -17,7 +17,7 @@
 	import { CHANGED_BY_YOU } from '#lib/ledger/patch.js';
 	import { ENTRY_TYPE_INFO, isDerivedType } from '#lib/ledger/types.js';
 	import { resolveAccount, resolveCategory, resolveTag } from '#lib/theme/resolve.js';
-	import { formatMoney } from '#lib/format/index.js';
+	import { formatDate, formatMoney } from '#lib/format/index.js';
 	import type { Entry, Money } from '#lib/types/domain.js';
 	import { cn } from '#lib/utils.js';
 	import { COLUMNS, GRID_TEMPLATE, ROW_GRID } from './columns.js';
@@ -86,6 +86,19 @@
 	);
 	const shownTags = $derived(tags.slice(0, VISIBLE_TAGS));
 	const hiddenTags = $derived(tags.slice(VISIBLE_TAGS));
+	// a paired leg shows its partner from the summary the row carries, so it works when a filter
+	// hides the partner (patterns §4.1): "↔ Cash · Oct 9, 2026 · +100.00 EUR"
+	const partnerTitle = $derived.by(() => {
+		const partner = entry.type === 'transfer' ? entry.partner : null;
+		if (!partner) return undefined;
+		const name = lookups.accounts.get(partner.account_id)?.name ?? `Account ${partner.account_id}`;
+		const amount = formatMoney(partner.amount.amount, partner.amount.currency, {
+			locale,
+			showCurrency: true,
+			showPlus: true
+		});
+		return `↔ ${name} · ${formatDate(partner.booked_on, locale)} · ${amount}`;
+	});
 	const totalTitle = $derived(
 		unitTotal
 			? `Split total ${formatMoney(unitTotal.amount, unitTotal.currency, { locale, showCurrency: true, showPlus: true })}`
@@ -138,7 +151,7 @@
 				{/if}
 			</div>
 		{:else if column.id === 'category'}
-			<div role="gridcell" class="flex min-w-0 items-center gap-2">
+			<div role="gridcell" class="flex min-w-0 items-center gap-2" title={partnerTitle}>
 				{#if fixed}
 					<DimensionIcon icon={fixed.icon} color="stone" />
 					<span class="truncate">{fixed.name}</span>
@@ -216,7 +229,7 @@
 					<CheckIcon size={14} strokeWidth={1.75} aria-label="Confirmed" role="img" />
 				{:else if !fixed}
 					{#each entry.review_flags as flag (flag)}
-						<ReviewBadge {flag} />
+						<ReviewBadge {flag} {entry} />
 					{/each}
 				{/if}
 			</div>

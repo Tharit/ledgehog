@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	asKey,
 	describeKey,
+	isPartnerBasis,
 	isProposalPass,
 	keyOf,
 	knownRules,
@@ -112,6 +113,52 @@ describe('describeKey', () => {
 		const e = describeIt({ pass: 'user', basis: { pass: 'llm', basis: { rationale: 'because' } } });
 		expect(e?.text).toBe('confirmed by you, proposed by the model');
 		expect(e?.rationale).toBe('because');
+	});
+
+	it('words the pair key: the partner account when known, else "matched automatically"', () => {
+		const key = { pass: 'matcher_decision', basis: {} };
+		expect(describeKey(key, rules, 'en', { field: 'counterpart', partnerAccount: 'Cash' })).toEqual(
+			{
+				text: 'paired with Cash',
+				proposal: false
+			}
+		);
+		expect(describeKey(key, rules, 'en', { field: 'counterpart' })?.text).toBe(
+			'matched automatically'
+		);
+		expect(
+			describeKey(key, rules, 'en', { field: 'counterpart', partnerAccount: undefined })?.text
+		).toBe('matched automatically');
+	});
+
+	it('words a pair the user picked as set by you', () => {
+		expect(
+			describeKey({ pass: 'user', basis: {} }, rules, 'en', {
+				field: 'counterpart',
+				partnerAccount: 'Cash'
+			})?.text
+		).toBe('set by you');
+	});
+
+	it('leaves the same pass on another field as it was', () => {
+		expect(
+			describeKey({ pass: 'matcher_decision' }, rules, 'en', { field: 'category' })?.text
+		).toBe('matched automatically');
+	});
+
+	it.each(['matcher_decision', 'user', 'rule'])(
+		'words a counter-account that follows its partner (%s) as "from its partner"',
+		(pass) => {
+			const key = { pass, basis: { from: 'counterpart' } };
+			expect(describeKey(key, rules, 'en')).toEqual({ text: 'from its partner', proposal: false });
+			expect(isPartnerBasis(key)).toBe(true);
+		}
+	);
+
+	it('tells a partner basis from any other', () => {
+		expect(isPartnerBasis({ pass: 'user', basis: {} })).toBe(false);
+		expect(isPartnerBasis({ pass: 'user' })).toBe(false);
+		expect(isPartnerBasis(null)).toBe(false);
 	});
 
 	it('shows an unknown pass as itself', () => {

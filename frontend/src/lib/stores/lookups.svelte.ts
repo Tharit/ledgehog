@@ -7,13 +7,14 @@ import { listAccounts, listCategories, listPayees, listTags } from '#lib/api/ind
 import {
 	buildLookups,
 	emptyLookups,
+	withAccount,
 	withCategories,
 	withPayees,
 	withTag,
 	withTags,
 	type Lookups
 } from '#lib/ledger/lookups.js';
-import type { Category, Payee, Tag } from '#lib/types/domain.js';
+import type { Account, Category, Payee, Tag } from '#lib/types/domain.js';
 
 const NAMES = ['accounts', 'categories', 'payees', 'tags'] as const;
 
@@ -68,6 +69,11 @@ export class LookupsStore {
 		} catch {
 			// the list held stays
 		}
+	}
+
+	/** An account added here joins the list (the pickers and the rows see it at once). */
+	addAccount(account: Account): void {
+		this.lookups = withAccount(this.lookups, account);
 	}
 
 	/** A tag created here joins the list. */

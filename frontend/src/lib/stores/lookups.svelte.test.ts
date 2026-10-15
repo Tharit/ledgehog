@@ -24,6 +24,21 @@ beforeEach(() => {
 	lists();
 });
 
+describe('LookupsStore: addAccount', () => {
+	it('adds the account to the shared list without a request and keeps the rest', async () => {
+		const store = new LookupsStore();
+		await store.ensure();
+		vi.mocked(listAccounts).mockClear();
+
+		store.addAccount(account({ id: 8, name: 'Cash USD', currency: 'USD' }));
+
+		expect(store.lookups.accounts.get(8)?.name).toBe('Cash USD');
+		expect(store.lookups.accounts.get(1)?.name).toBe('Giro');
+		expect(store.lookups.payees.get(20)?.name).toBe('REWE');
+		expect(listAccounts).not.toHaveBeenCalled();
+	});
+});
+
 describe('LookupsStore', () => {
 	it('loads the four lists once, however many screens ask', async () => {
 		const store = new LookupsStore();

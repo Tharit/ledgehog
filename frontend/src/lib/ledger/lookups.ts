@@ -49,3 +49,8 @@ export function withCategories(lookups: Lookups, categories: readonly Category[]
 export function withPayees(lookups: Lookups, payees: readonly Payee[]): Lookups {
 	return { ...lookups, payees: byId(payees) };
 }
+
+/** The lookups with one more account (just added), the rest untouched. */
+export function withAccount(lookups: Lookups, account: Account): Lookups {
+	return { ...lookups, accounts: new Map([...lookups.accounts, [account.id, account]]) };
+}

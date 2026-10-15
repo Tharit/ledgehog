@@ -7,6 +7,7 @@
 	import MoneyDisplay from '#lib/components/common/money-display.svelte';
 	import ReviewBadge from '#lib/components/common/review-badge.svelte';
 	import { Input } from '#lib/components/ui/input/index.js';
+	import { accounts as accountDialog } from '#lib/accounts/controller.svelte.js';
 	import type { Lookups } from '#lib/ledger/lookups.js';
 	import { resolveAccount } from '#lib/theme/resolve.js';
 	import { allocationText, type FieldName, type FieldValue } from '#lib/units/draft.js';
@@ -43,6 +44,12 @@
 	const partner = $derived(view.stored?.partner ?? null);
 	const partnerAccount = $derived(partner ? lookups.accounts.get(partner.account_id) : undefined);
 	const isTransfer = $derived(view.type === 'transfer');
+	const badgeSubject = $derived({
+		type: view.type,
+		counterpart_entry_id: view.row
+			? view.row.counterpart_entry_id
+			: (view.stored?.counterpart_entry_id ?? null)
+	});
 	// converting is for the entry that keeps the source: a split row is a flow (spec §5.9)
 	const canConvert = $derived(!view.isNew && view.original);
 	const invalid = (field: FieldName) =>
@@ -67,6 +74,16 @@
 		if (id === view.accountId) return 'Own account';
 		if (required && lookups.accounts.get(id)?.currency !== required) return `Needs ${required}`;
 		return undefined;
+	}
+
+	// "Add account" in the counter-account picker: the dialog opens locked to the currency the
+	// currency rule asks for, when the preview says one; the new account is chosen on success
+	function addAccount(trigger: HTMLElement | null) {
+		accountDialog.openAdd({
+			currency: required ?? undefined,
+			returnFocus: trigger,
+			onadded: (account) => pick(view.fields.counter_account, account.id)
+		});
 	}
 
 	function pick(field: FieldView, value: number | null) {
@@ -153,7 +170,7 @@
 			<AccountDot name={account.name} color={resolveAccount(account).color} />
 		{/if}
 		<span class="flex items-center gap-1">
-			{#each view.flags as flag (flag)}<ReviewBadge {flag} />{/each}
+			{#each view.flags as flag (flag)}<ReviewBadge {flag} entry={badgeSubject} />{/each}
 		</span>
 	</div>
 
@@ -222,6 +239,7 @@
 					proposal={view.fields.counter_account.proposal}
 					invalid={invalid('counter_account')}
 					disabledReason={accountReason}
+					add={{ label: 'Add account', run: addAccount }}
 					onchange={(id) => pick(view.fields.counter_account, id)}
 				/>
 				{@render evidenceOf(view.fields.counter_account)}

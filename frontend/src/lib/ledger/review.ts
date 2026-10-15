@@ -11,3 +11,13 @@ export const REVIEW_FLAG_INFO: Readonly<Record<string, { name: string; sentence:
 
 /** The tokens in the order the badges and the filter list them. */
 export const REVIEW_FLAG_ORDER: readonly string[] = REVIEW_FLAGS;
+
+/** The part of an entry a badge's sentence depends on. */
+export type BadgeSubject = { type: string | null; counterpart_entry_id: number | null };
+
+/** The sentence a badge carries: `waiting` on a transfer leg without a partner names the partner. */
+export function reviewSentence(flag: string, subject?: BadgeSubject | null): string | undefined {
+	if (flag === 'waiting' && subject?.type === 'transfer' && subject.counterpart_entry_id === null)
+		return 'Its partner has probably not been imported yet';
+	return REVIEW_FLAG_INFO[flag]?.sentence;
+}
