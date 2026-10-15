@@ -236,6 +236,7 @@ export function transferOut(over: Partial<UnitTransfer> = {}): UnitTransfer {
 		offers: [],
 		proposal: null,
 		proposed_pick: null,
+		proposed_counter_leg: false,
 		has_more: false,
 		...over
 	};

@@ -1090,6 +1090,8 @@ export interface components {
             collapsed_entry_ids: number[];
             /** Deleted Entry Ids */
             deleted_entry_ids: number[];
+            /** Followed Entry Ids */
+            followed_entry_ids: number[];
             /** Rederived Entry Ids */
             rederived_entry_ids: number[];
             /** Returned To Review Ids */
@@ -1977,6 +1979,20 @@ export interface components {
             version: number | null;
         };
         /**
+         * UnitCounterLegIn
+         * @description The counter-leg a draft creates (spec §5.7). `temp_id` is the client's NEGATIVE id for the entry it
+         *     creates (preview rows carry it; a commit's `created` maps it to the real one). `received_amount` is the
+         *     amount received, an unsigned magnitude in minor units of the counter-account's currency (greater than
+         *     zero); the leg fixes the sign. It is required where the leg's offer says `needs_received_amount`
+         *     (problem `received_amount_required`) and refused otherwise (`received_amount_not_needed`).
+         */
+        UnitCounterLegIn: {
+            /** Received Amount */
+            received_amount?: number | null;
+            /** Temp Id */
+            temp_id: number;
+        };
+        /**
          * UnitCounterLegOut
          * @description The counter-leg a commit would create on the offer's account (an unsynced one).
          */
@@ -2151,16 +2167,20 @@ export interface components {
          * @description What the draft says of a transfer leg's partner (spec §5.7). `keep` (also: absent) leaves it, and a
          *     commit accepts the proposal the preview shows. `pick` names a stored partner entry (`partner_entry_id`,
          *     positive): it must be an offer of the leg, else the preview lists the problem `partner_not_offered` or
-         *     `partner_in_unit`. `reresolve` drops the stored pair and lets the passes decide again. A `pairing` on an
-         *     entry that is not a transfer leg, or a negative id, is 422 `invalid_draft`.
+         *     `partner_in_unit`. `counter_leg` (with `counter_leg`) creates the other side on the leg's unsynced
+         *     counter-account: refused with `counter_leg_not_offered` for a leg that has a partner or no usable
+         *     counter-account, `counter_leg_account_synced` for a synced one. `reresolve` drops the stored pair and
+         *     lets the passes decide again. A `pairing` on an entry that is not a transfer leg, a negative partner id,
+         *     or a `counter_leg` object on another mode, is 422 `invalid_draft`.
          */
         UnitPairingIn: {
+            counter_leg?: components["schemas"]["UnitCounterLegIn"] | null;
             /**
              * Mode
              * @default keep
              * @enum {string}
              */
-            mode: "keep" | "pick" | "reresolve";
+            mode: "keep" | "pick" | "counter_leg" | "reresolve";
             /** Partner Entry Id */
             partner_entry_id?: number | null;
         };
@@ -2223,6 +2243,8 @@ export interface components {
              * Format: date
              */
             booked_on: string;
+            /** Counter Leg For */
+            counter_leg_for?: number | null;
             /** Counterpart Entry Id */
             counterpart_entry_id: number | null;
             /** Derivation */
@@ -2378,6 +2400,11 @@ export interface components {
             offers: components["schemas"]["UnitOfferOut"][];
             partner: components["schemas"]["UnitPartnerOut"] | null;
             proposal: components["schemas"]["UnitProposalOut"] | null;
+            /**
+             * Proposed Counter Leg
+             * @default false
+             */
+            proposed_counter_leg: boolean;
             proposed_pick?: components["schemas"]["UnitProposedPickOut"] | null;
             /**
              * State

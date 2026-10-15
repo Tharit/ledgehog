@@ -89,6 +89,7 @@ def test_the_original_cannot_be_removed(scene: Scene) -> None:
 
 
 def test_a_flow_converted_to_a_transfer_drops_payee_and_category(scene: Scene) -> None:
+    scene.sync(scene.savings)  # synced: no counter-leg is proposed, the leg waits (spec §5.7)
     pay, food = scene.payee("Shop"), scene.category("Food")
     _src, (e,) = scene.movement(-1000, type="flow", category_id=food, payee_id=pay)
     plan, _ = preview_then_commit(
@@ -101,7 +102,7 @@ def test_a_flow_converted_to_a_transfer_drops_payee_and_category(scene: Scene) -
     assert stored.type == "transfer" and stored.category_id is None and stored.payee_id is None
     assert stored.counter_account_id == scene.savings
     assert set(stored.derivation) == {"type", "counter_account"}
-    assert plan.anchor_unit.state.reasons == ("unmatched_transfer",)
+    assert plan.anchor_unit.state.reasons == ("waiting_for_partner",)
     assert not plan.anchor_unit.state.confirmed
 
 
@@ -159,6 +160,7 @@ def test_converting_a_paired_leg_to_a_flow_leaves_its_partner_behind(scene: Scen
 
 
 def test_redirecting_a_paired_leg_breaks_the_pair(scene: Scene) -> None:
+    scene.sync(scene.cash)  # a synced counter-account: no counter-leg takes the place of the pair
     (_sa, (a,)), (_sb, (b,)) = scene.transfer_pair()
     plan, _ = preview_then_commit(scene, scene.draft(a, DraftEntry(a, counter_account=fixed(scene.cash))))
     assert (b, "left_behind") in {(c.entry_id, c.kind) for c in plan.consequences}
@@ -167,6 +169,7 @@ def test_redirecting_a_paired_leg_breaks_the_pair(scene: Scene) -> None:
 
 def test_splitting_a_paired_leg_shows_the_pair_invalid_and_the_commit_is_refused(scene: Scene) -> None:
     (_sa, (a,)), (_sb, (b,)) = scene.transfer_pair(-500)
+    scene.sync(scene.savings)  # b's account is synced now: b no longer follows its partner (spec §5.7)
     plan = scene.preview(a, DraftEntry(-1, amount=-20, source_entry_id=a))
     assert codes(plan) == ["pair_unequal"]
     assert plan.problems[0].detail["difference"] == 20

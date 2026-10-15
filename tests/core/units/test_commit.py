@@ -95,6 +95,7 @@ def test_an_empty_field_carries_no_key(scene: Scene) -> None:
 
 
 def test_a_transfer_without_a_partner_is_committed_whole_and_stays_in_review(scene: Scene) -> None:
+    scene.sync(scene.cash)  # a synced counter-account has no counter-leg: the leg waits for its partner
     _s, (e,) = scene.movement(-1000, authored=True, description="withdrawal")
     result = scene.commit(
         e,
@@ -103,7 +104,7 @@ def test_a_transfer_without_a_partner_is_committed_whole_and_stays_in_review(sce
     row = scene.row(e)
     assert (row.type, row.counter_account_id, row.note) == ("transfer", scene.cash, None)
     assert row.derivation["counter_account"] == {"pass": "user"}
-    assert result.units[0].state.reasons == ("unmatched_transfer",)  # kept, not confirmed
+    assert result.units[0].state.reasons == ("waiting_for_partner",)  # kept, not confirmed
     assert scene.q("SELECT count(*) FROM ledger_entry WHERE counterpart_entry_id IS NOT NULL")[0][0] == 0
 
 
@@ -224,17 +225,17 @@ def test_a_deadlock_is_retried_once_then_named(scene: Scene, monkeypatch: pytest
     real = commit_module._commit_once
     attempts: list[int] = []
 
-    def flaky(engine: Any, draft: Any) -> Any:
+    def flaky(engine: Any, draft: Any, extra: Any = ()) -> Any:
         attempts.append(1)
         if len(attempts) == 1:
             raise psycopg.errors.DeadlockDetected("deadlock detected")
-        return real(engine, draft)
+        return real(engine, draft, extra)
 
     monkeypatch.setattr(commit_module, "_commit_once", flaky)
     scene.commit(e, DraftEntry(e, note="kept"))
     assert len(attempts) == 2 and scene.row(e).note == "kept"
 
-    def always(engine: Any, draft: Any) -> Any:
+    def always(engine: Any, draft: Any, extra: Any = ()) -> Any:
         raise psycopg.errors.DeadlockDetected("deadlock detected")
 
     monkeypatch.setattr(commit_module, "_commit_once", always)

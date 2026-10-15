@@ -6,6 +6,7 @@ import type { Entry, Money } from '#lib/types/domain.js';
 import {
 	Draft,
 	FIELD_NAMES,
+	type PairingEdit,
 	type FieldEdit,
 	type FieldName,
 	type FieldValue,
@@ -76,10 +77,17 @@ export type EntryView = {
 	flags: readonly string[];
 	/** a transfer leg's state, partner and offers as the preview left it (absent: not told) */
 	transfer: UnitTransfer | null;
-	/** how the pair was made, from the pair key ("paired with Savings"); null when there is none */
+	/** how the pair was made, from the pair key ("matched automatically", "set by you"); null when there is none */
 	pairEvidence: Evidence | null;
-	/** the user has picked a partner for this leg (the draft's pairing edit) */
+	/** the user has picked a partner for this leg, or the creation of its other side */
 	picked: boolean;
+	/** the draft's pairing edit of this leg, if any */
+	pairing: PairingEdit | null;
+	/**
+	 * The row is the counter-leg a commit creates (a synthetic row with a negative id the draft's
+	 * splits do not own): shown read-only as a ghost group.
+	 */
+	counterLeg: boolean;
 	/** its amount is an allocation the user sets: a split row or a stored entry of a split */
 	amountEditable: boolean;
 	removable: boolean;
@@ -252,6 +260,8 @@ export function entryViews(args: {
 	}
 	const sourceIds = base.map((b) => {
 		const split = draft.splits.find((s) => s.id === b.id);
+		// the counter-leg a commit creates belongs to no source of the unit
+		if (b.id < 0 && !split && b.row) return null;
 		return b.row?.source_transaction_id ?? (split ? sourceOf(split.sourceEntryId) : sourceOf(b.id));
 	});
 	const counts = new Map<number, number>();
@@ -260,11 +270,14 @@ export function entryViews(args: {
 	return base.map((b, i) => {
 		const entry = stored.get(b.id) ?? null;
 		const split = draft.splits.find((s) => s.id === b.id) ?? null;
-		const isNew = b.id < 0;
-		const sourceId = sourceIds[i];
-		const original = b.row
-			? b.row.original
-			: !isNew && sourceId !== null && lowest.get(sourceId) === b.id;
+		const counterLeg = b.id < 0 && split === null && b.row !== null;
+		const isNew = b.id < 0 && !counterLeg;
+		const sourceId = counterLeg ? null : sourceIds[i];
+		const original = counterLeg
+			? false
+			: b.row
+				? b.row.original
+				: !isNew && sourceId !== null && lowest.get(sourceId) === b.id;
 		const inSplit = sourceId !== null && (counts.get(sourceId) ?? 0) > 1;
 		const edit = draft.edit(b.id);
 		const sourceEntry = split ? (stored.get(split.sourceEntryId) ?? null) : entry;
@@ -308,16 +321,13 @@ export function entryViews(args: {
 				keyOf(b.row?.derivation ?? entry?.derivation, 'counterpart'),
 				rules,
 				locale,
-				{
-					field: 'counterpart',
-					partnerAccount: accountName(
-						b.row?.transfer?.partner?.account_id ?? entry?.partner?.account_id ?? 0
-					)
-				}
+				{ field: 'counterpart' }
 			),
-			picked: edit.pairing?.mode === 'pick',
-			amountEditable: !original,
-			removable: !original
+			picked: edit.pairing?.mode === 'pick' || edit.pairing?.mode === 'counter_leg',
+			pairing: edit.pairing ?? null,
+			counterLeg,
+			amountEditable: !original && !counterLeg,
+			removable: !original && !counterLeg
 		};
 		return view;
 	});

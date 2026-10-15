@@ -2,6 +2,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { entryForm } from '#lib/entry-form/controller.svelte.js';
+import { formatDate } from '#lib/format/index.js';
 import { authored, deleted, edited, signedIn } from '#lib/entry-form/fixtures.js';
 import { lookupsStore } from '#lib/stores/lookups.svelte.js';
 import { unitPanel } from '#lib/units/panel-instance.js';
@@ -90,7 +91,9 @@ describe('the panel and the entry form together', () => {
 
 		const dialog = await screen.findByRole('dialog', { name: 'Edit entry' });
 		expect((within(dialog).getByLabelText('Amount') as HTMLInputElement).value).toBe('\u221212.50');
-		expect((within(dialog).getByLabelText('Date') as HTMLInputElement).value).toBe('2026-10-09');
+		expect(within(dialog).getByRole('button', { name: 'Date' })).toHaveTextContent(
+			formatDate('2026-10-09')
+		);
 	});
 
 	it('is disabled while the draft is dirty, and says why', async () => {

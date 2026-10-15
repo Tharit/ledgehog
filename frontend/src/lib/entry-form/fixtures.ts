@@ -54,6 +54,7 @@ export const noEffects: SourceEditEffects = {
 	collapsed_entry_ids: [],
 	unpaired_entry_ids: [],
 	deleted_entry_ids: [],
+	followed_entry_ids: [],
 	rederived_entry_ids: [],
 	returned_to_review_ids: [],
 	versions: [{ entry_id: 5, version: 3 }]

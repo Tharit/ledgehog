@@ -15,11 +15,14 @@
 		flow,
 		lookups,
 		locale = 'en',
+		grouped = false,
 		onopen
 	}: {
 		flow: UnitDraftFlow;
 		lookups: Lookups;
 		locale?: string;
+		/** the panel has one group per source: the region is set apart from the last group */
+		grouped?: boolean;
 		/** open the unit of a consequence row (the panel asks first when the draft has changes) */
 		onopen: (entryId: number) => void;
 	} = $props();
@@ -46,8 +49,12 @@
 
 <section
 	aria-label="Preview"
-	class="flex flex-col gap-3 rounded-lg border bg-card p-4 text-[13px]"
+	class={cn(
+		'flex flex-col gap-3 rounded-lg border bg-card p-4 text-[13px]',
+		grouped && 'mt-2 border-t-2 bg-muted/40'
+	)}
 	data-slot="preview-region"
+	data-grouped={grouped || undefined}
 >
 	<!-- the status takes a row only while there is something to say; the live region stays -->
 	<div class={statusText ? 'flex flex-wrap items-baseline gap-x-3' : 'contents'}>

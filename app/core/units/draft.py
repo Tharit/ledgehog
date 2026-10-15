@@ -16,10 +16,12 @@ A derived field (`type`, `payee`, `category`, `counter_account`) is drafted as a
 `UnitDraft.reresolve_all` makes every ``keep`` field ``reresolve``: the whole unit resolved afresh (§5.9).
 
 A transfer leg's partner is drafted as a `PairingDraft` (spec §5.7): ``keep`` (not touched: the proposal the
-preview shows is accepted), ``pick`` (the stored entry the user chose; a pick is the user's decision) or
-``reresolve`` (drop the stored pair and let the passes decide again).
+preview shows is accepted), ``pick`` (the stored entry the user chose; a pick is the user's decision),
+``counter_leg`` (create the other side on the leg's unsynced counter-account: a new source transaction the
+client names with a temporary id, and for a cross-currency leg the amount received) or ``reresolve`` (drop
+the stored pair and let the passes decide again).
 
-Not modelled yet, on purpose: counter-legs and documents (steps 8f and 9).
+Not modelled yet, on purpose: documents (step 9).
 """
 
 from __future__ import annotations
@@ -93,22 +95,47 @@ class FieldDraft:
 
 KEEP: Final = FieldDraft()
 
-PairingMode = Literal["keep", "pick", "reresolve"]
-PAIRING_MODES: Final[tuple[PairingMode, ...]] = ("keep", "pick", "reresolve")
+PairingMode = Literal["keep", "pick", "counter_leg", "reresolve"]
+PAIRING_MODES: Final[tuple[PairingMode, ...]] = ("keep", "pick", "counter_leg", "reresolve")
+
+
+@dataclass(frozen=True, slots=True)
+class CounterLegDraft:
+    """The counter-leg a draft creates (spec §5.7): `temp_id` is the client's NEGATIVE id of the entry it
+    creates (the commit maps it to the real one). `received_amount` is the amount received, an unsigned
+    magnitude in minor units of the counter-account's currency; the leg fixes the sign. It is required of a
+    cross-currency leg that has no instructed amount in that currency and refused otherwise (plan problems
+    `received_amount_required`, `received_amount_not_needed`)."""
+
+    temp_id: int
+    received_amount: int | None = None
+
+    def __post_init__(self) -> None:
+        t = self.temp_id
+        if not isinstance(t, int) or isinstance(t, bool) or t >= 0:
+            raise DraftError("invalid_pairing", "a counter-leg carries the client's temporary (negative) id")
+        r = self.received_amount
+        if r is not None and (not isinstance(r, int) or isinstance(r, bool) or r <= 0):
+            raise DraftError(
+                "received_amount_sign",
+                "the amount received is a magnitude: greater than zero",
+                field="pairing",
+            )
 
 
 @dataclass(frozen=True, slots=True)
 class PairingDraft:
     """What the draft says of a transfer leg's partner (spec §5.7).
 
-    ``pick`` names `partner_entry_id`, a stored entry (positive). `is_proposal` is for the server only: a
-    pick derived from the exact open offer the preview showed (a client cannot send it); it is the user's
-    decision all the same once committed.
+    ``pick`` names `partner_entry_id`, a stored entry (positive); ``counter_leg`` carries `counter_leg`.
+    `is_proposal` is for the server only: a pick or counter-leg derived from the proposal the preview showed
+    (a client cannot send it); it is the user's decision all the same once committed.
     """
 
     mode: PairingMode = "keep"
     partner_entry_id: int | None = None
     is_proposal: bool = False
+    counter_leg: CounterLegDraft | None = None
 
     def __post_init__(self) -> None:
         if self.mode not in PAIRING_MODES:
@@ -119,8 +146,10 @@ class PairingDraft:
                 raise DraftError("invalid_pairing", "a pick names a stored partner entry (a positive id)")
         elif self.partner_entry_id is not None:
             raise DraftError("invalid_pairing", "only a pick names a partner")
-        if self.is_proposal and self.mode != "pick":
-            raise DraftError("invalid_pairing", "only a pick can be a proposal")
+        if (self.mode == "counter_leg") != (self.counter_leg is not None):
+            raise DraftError("invalid_pairing", "a counter-leg pairing, and only it, carries a counter-leg")
+        if self.is_proposal and self.mode not in ("pick", "counter_leg"):
+            raise DraftError("invalid_pairing", "only a pick or a counter-leg can be a proposal")
 
 
 KEEP_PAIRING: Final = PairingDraft()
@@ -224,6 +253,7 @@ class UnitDraft:
         if self.anchor_entry_id <= 0:
             raise DraftError("invalid_anchor", "the anchor is a stored entry")
         ids = [e.id for e in self.entries]
+        ids += [e.pairing.counter_leg.temp_id for e in self.entries if e.pairing.counter_leg is not None]
         if len(set(ids)) != len(ids):
             dup = sorted({i for i in ids if ids.count(i) > 1})
             raise DraftError("duplicate_entry", "an entry is listed twice", entry_id=dup[0])

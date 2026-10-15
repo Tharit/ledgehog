@@ -6,6 +6,7 @@ const none: SourceEditEffects = {
 	collapsed_entry_ids: [],
 	unpaired_entry_ids: [],
 	deleted_entry_ids: [],
+	followed_entry_ids: [],
 	rederived_entry_ids: [],
 	returned_to_review_ids: [],
 	versions: []
@@ -32,6 +33,15 @@ describe('EDIT_WARNING', () => {
 describe('summarizeEdit', () => {
 	it('says nothing when the dry run reports nothing', () => {
 		expect(summarizeEdit(none)).toEqual([]);
+	});
+
+	it('says how many linked counter-legs follow the new amount', () => {
+		expect(summarizeEdit({ ...none, followed_entry_ids: [7] })).toEqual([
+			'1 linked counter-leg follows the new amount'
+		]);
+		expect(summarizeEdit({ ...none, followed_entry_ids: [7, 8] })).toEqual([
+			'2 linked counter-legs follow the new amount'
+		]);
 	});
 
 	it('has one line per effect, counted', () => {

@@ -31,6 +31,7 @@
 		flow,
 		lookups,
 		problems = [],
+		partnerDirection = null,
 		locale = 'en'
 	}: {
 		view: EntryView;
@@ -38,6 +39,8 @@
 		lookups: Lookups;
 		/** the problems of the preview that name this entry */
 		problems?: { problem: UnitProblem; text: ProblemText }[];
+		/** where the partner's group sits relative to this leg's, when the panel shows it */
+		partnerDirection?: 'above' | 'below' | null;
 		locale?: string;
 	} = $props();
 
@@ -254,6 +257,7 @@
 					{flow}
 					{lookups}
 					{locale}
+					direction={partnerDirection}
 					counterAccountId={typeof view.fields.counter_account.value === 'number'
 						? view.fields.counter_account.value
 						: null}

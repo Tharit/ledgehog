@@ -3,8 +3,6 @@
 // source strip, its residual block, its splits in the order they were added, and its own "Split
 // entry". Pure: it orders and gathers what the views already say. A group is data, so a later
 // group that has no entry yet (a counter-leg offer, "created when you commit") can be appended.
-import type { Evidence, RuleNames } from './evidence.js';
-import { describeKey, keyOf } from './evidence.js';
 import { sourceGroups, type SourceGroup } from './describe.js';
 import type { Entry, Money } from '#lib/types/domain.js';
 import type { EntryView } from './view.js';
@@ -30,6 +28,11 @@ export type PanelGroup = {
 	views: EntryView[];
 	/** the stored entry "Split entry" splits: the group's original; null when it cannot be split */
 	splitEntryId: number | null;
+	/**
+	 * The group is the counter-leg a commit creates (patterns §4.5): one read-only block, no
+	 * editing, no split. `forAccountId` is the account of the leg it is created for.
+	 */
+	ghost: { forAccountId: number | null; purpose: string | null } | null;
 };
 
 /** The source group (strip data) holding any of these entries. */
@@ -45,7 +48,7 @@ function stripOf(strips: readonly SourceGroup[], ids: readonly number[]): Source
 export function groupsOf(views: readonly EntryView[], entries: readonly Entry[]): PanelGroup[] {
 	const strips = sourceGroups(entries);
 	const byKey = new Map<string, EntryView[]>();
-	for (const view of views) {
+	for (const view of views.filter((v) => !v.counterLeg)) {
 		const key = view.sourceId !== null ? `source-${view.sourceId}` : `entry-${view.fromEntryId}`;
 		const list = byKey.get(key) ?? [];
 		list.push(view);
@@ -75,7 +78,8 @@ export function groupsOf(views: readonly EntryView[], entries: readonly Entry[])
 			},
 			strip,
 			views: ordered,
-			splitEntryId: original?.id ?? null
+			splitEntryId: original?.id ?? null,
+			ghost: null
 		};
 		return { group, date: date(dated), id: Math.min(...storedIds, lead.fromEntryId) };
 	});
@@ -87,28 +91,48 @@ export function groupsOf(views: readonly EntryView[], entries: readonly Entry[])
 		}
 		return a.id - b.id;
 	});
-	return groups.map((g) => g.group);
+	return [...groups.map((g) => g.group), ...ghostGroups(views)];
 }
 
+/** The counter-legs a commit creates, each a group of its own after the real ones. */
+function ghostGroups(views: readonly EntryView[]): PanelGroup[] {
+	return views
+		.filter((v) => v.counterLeg)
+		.map((view) => {
+			const leg = views.find((v) => v.transfer?.partner?.entry_id === view.id);
+			return {
+				key: `counter-leg-${view.id}`,
+				sourceId: null,
+				header: {
+					accountId: view.accountId,
+					bookedOn: view.row?.booked_on ?? null,
+					amount: view.amount,
+					authored: false
+				},
+				strip: null,
+				views: [view],
+				splitEntryId: null,
+				ghost: { forAccountId: leg?.accountId ?? null, purpose: view.description }
+			};
+		});
+}
+
+export type PartnerDirection = 'above' | 'below';
+
 /**
- * The unit-level line of a pair: "Transfer between A and B" and how the pair was made, the pair
- * key's words ("paired with B", "matched automatically", "set by you"). Null for one group.
+ * Where each transfer leg's partner sits relative to the leg: its group above or below. Keyed by
+ * the leg's entry id; a leg whose partner is not in another group of the panel has no entry.
  */
-export function pairLine(
-	groups: readonly PanelGroup[],
-	entries: readonly Entry[],
-	args: { accountName: (id: number) => string | undefined; rules: RuleNames; locale: string }
-): { text: string; evidence: Evidence | null } | null {
-	if (groups.length < 2) return null;
-	const [a, b] = groups;
-	const name = (id: number) => args.accountName(id) ?? `Account ${id}`;
-	const key =
-		entries.map((e) => keyOf(e.derivation, 'counterpart')).find((k) => k !== null) ?? null;
-	return {
-		text: `Transfer between ${name(a.header.accountId)} and ${name(b.header.accountId)}`,
-		evidence: describeKey(key, args.rules, args.locale, {
-			field: 'counterpart',
-			partnerAccount: args.accountName(b.header.accountId)
-		})
-	};
+export function partnerDirections(groups: readonly PanelGroup[]): Map<number, PartnerDirection> {
+	const out = new Map<number, PartnerDirection>();
+	groups.forEach((group, at) => {
+		for (const view of group.views) {
+			const partnerId = view.transfer?.partner?.entry_id;
+			if (partnerId === undefined || partnerId === null) continue;
+			const there = groups.findIndex((g) => g.views.some((v) => v.id === partnerId));
+			if (there === -1 || there === at) continue;
+			out.set(view.id, there < at ? 'above' : 'below');
+		}
+	});
+	return out;
 }

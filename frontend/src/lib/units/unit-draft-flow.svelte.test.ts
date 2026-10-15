@@ -524,6 +524,133 @@ describe('affectedOf', () => {
 	});
 });
 
+describe('the counter-leg of a transfer leg', () => {
+	const calls = () => vi.mocked(previewUnit).mock.calls;
+
+	it('is previewed at once with a stable temp id, dirty, and gone with Reset', async () => {
+		const { flow } = setup();
+		await settle();
+		vi.mocked(previewUnit).mockClear();
+
+		flow.pickCounterLeg(1);
+		await settle();
+		flow.setField(1, 'category', 11);
+		await settle();
+
+		const pairing = (i: number) => calls()[i][0].entries!.find((e) => e.id === 1)!.pairing;
+		expect(pairing(0)).toEqual({
+			mode: 'counter_leg',
+			counter_leg: { temp_id: -1, received_amount: null }
+		});
+		expect(pairing(1)).toEqual(pairing(0));
+		expect(flow.isDirty).toBe(true);
+		flow.discard();
+		expect(flow.draft?.hasCounterLeg).toBe(false);
+		expect(flow.isDirty).toBe(false);
+	});
+
+	it('parses the amount received unsigned in the counter-account’s currency', async () => {
+		const { flow } = setup();
+		flow.pickCounterLeg(1);
+		await settle();
+		vi.mocked(previewUnit).mockClear();
+
+		flow.setReceivedAmountText(1, '90.50', 'USD');
+		vi.advanceTimersByTime(PREVIEW_DELAY_MS);
+		await settle();
+
+		expect(calls()[0][0].entries![0].pairing).toEqual({
+			mode: 'counter_leg',
+			counter_leg: { temp_id: -1, received_amount: 9050 }
+		});
+		expect(flow.receivedErrors).toEqual({});
+	});
+
+	it('rejects an ambiguous amount at the field, sends none and blocks the commit', async () => {
+		const { flow } = setup();
+		flow.pickCounterLeg(1);
+		await settle();
+
+		flow.setReceivedAmountText(1, '1,000', 'USD');
+		vi.advanceTimersByTime(PREVIEW_DELAY_MS);
+		await settle();
+
+		expect(flow.receivedErrors[1]).toContain('Write the decimals out');
+		expect(flow.draft?.edit(1).pairing).toMatchObject({ receivedAmount: null });
+		expect(flow.commitReason).toBe('An amount is not valid.');
+		// the typed text goes with the pick
+		flow.pickPartner(1, 77);
+		expect(flow.receivedErrors).toEqual({});
+		expect(flow.receivedTexts).toEqual({});
+		expect(flow.commitReason).not.toBe('An amount is not valid.');
+	});
+
+	it('a re-resolve drops the pick and the amount typed for it', async () => {
+		const { flow } = setup();
+		flow.pickCounterLeg(1);
+		flow.setReceivedAmountText(1, '90', 'USD');
+		await settle();
+
+		flow.reresolve();
+		await settle();
+
+		expect(flow.draft?.hasCounterLeg).toBe(false);
+		expect(flow.receivedTexts).toEqual({});
+	});
+
+	it('words received_amount_required with the counter-account’s currency', async () => {
+		const h = host();
+		h.accountCurrency = vi.fn(() => 'USD') as never;
+		const flow = new UnitDraftFlow(h);
+		flow.begin(loaded);
+		vi.mocked(previewUnit).mockImplementation(async (request) => {
+			const out = previewFor(loaded, request);
+			out.rows[0].transfer = {
+				state: 'unmatched',
+				waiting_for: null,
+				needs_account: null,
+				partner: null,
+				proposal: null,
+				proposed_pick: null,
+				proposed_counter_leg: false,
+				has_more: false,
+				offers: [
+					{
+						kind: 'counter_leg',
+						entry_id: null,
+						account_id: 3,
+						booked_on: '2026-10-12',
+						amount: null,
+						description: null,
+						exact: false,
+						proposed: false,
+						paired_with: null,
+						counter_leg: {
+							booked_on: '2026-10-12',
+							purpose: null,
+							amount: null,
+							needs_received_amount: true
+						},
+						effect: { types_as_transfer: false, fee: null, breaks_pair_with: [] }
+					}
+				]
+			};
+			out.problems = [problem('received_amount_required', { entry_id: 1 })];
+			return out;
+		});
+		flow.pickCounterLeg(1);
+		await settle();
+
+		expect(flow.problemTexts[0].text.text).toBe('Enter the amount received in USD.');
+		expect(flow.commitReason).toBe('Enter the amount received in USD.');
+	});
+
+	it('maps the temp id to the real entry in the commit result', () => {
+		const out = committed(loaded, { created: { '-1': 41 } });
+		expect(affectedOf(out, 1).created).toEqual([41]);
+	});
+});
+
 describe('when a commit fails', () => {
 	async function failWith(failure: ApiError) {
 		const ctx = setup();

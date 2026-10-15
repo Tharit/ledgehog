@@ -15,7 +15,15 @@ export type FieldValue = number | string | null;
 export type ShownBasis = { pass: string; basis: Record<string, unknown> };
 
 /** The partner of a transfer leg: the user's pick, or "pair it by the rules again". Absent: as it stands. */
-export type PairingEdit = { mode: 'pick'; partnerEntryId: number } | { mode: 'reresolve' };
+export type PairingEdit =
+	| { mode: 'pick'; partnerEntryId: number }
+	| { mode: 'reresolve' }
+	/**
+	 * The other side is created by the commit (an unsynced counter-account): `tempId` is the
+	 * client-issued negative id of the row the preview shows for it, stable for the draft's life;
+	 * `receivedAmount` is what a cross-currency counter-leg receives (unsigned minor units).
+	 */
+	| { mode: 'counter_leg'; tempId: number; receivedAmount: number | null };
 
 export type FieldEdit =
 	{ mode: 'fixed'; value: FieldValue; shown: ShownBasis | null } | { mode: 'reresolve' };
@@ -255,9 +263,12 @@ export class Draft {
 		return this.#s.splits.some((s) => s.id === id);
 	}
 
-	/** The temporary id the next split gets. */
+	/** The temporary id the next split (or counter-leg) gets: below every one in use. */
 	get nextTempId(): number {
-		return Math.min(0, ...this.#s.splits.map((s) => s.id)) - 1;
+		const legs = [...this.#s.edits.values()].flatMap((e) =>
+			e.pairing?.mode === 'counter_leg' ? [e.pairing.tempId] : []
+		);
+		return Math.min(0, ...this.#s.splits.map((s) => s.id), ...legs) - 1;
 	}
 
 	#edited(id: number, change: (edit: EntryEdit) => EntryEdit): Draft {
@@ -300,6 +311,32 @@ export class Draft {
 		return this.#edited(id, (e) => ({ ...e, pairing: { mode: 'pick', partnerEntryId } }));
 	}
 
+	/**
+	 * The other side of a leg is created by the commit (spec §5.7). The temporary id is issued once
+	 * and kept while the pick stands; picking again keeps it (and the amount received, unless one is given).
+	 */
+	pickCounterLeg(id: number, options: { receivedAmount?: number | null } = {}): Draft {
+		if (!this.#s.base.has(id)) return this;
+		const held = this.edit(id).pairing;
+		const kept = held?.mode === 'counter_leg' ? held : null;
+		const tempId = kept?.tempId ?? this.nextTempId;
+		const receivedAmount =
+			options.receivedAmount !== undefined
+				? options.receivedAmount
+				: (kept?.receivedAmount ?? null);
+		return this.#edited(id, (e) => ({
+			...e,
+			pairing: { mode: 'counter_leg', tempId, receivedAmount }
+		}));
+	}
+
+	/** The amount a counter-leg receives, unsigned minor units in the counter-account's currency. */
+	setReceivedAmount(id: number, minor: number | null): Draft {
+		const held = this.edit(id).pairing;
+		if (held?.mode !== 'counter_leg' || held.receivedAmount === minor) return this;
+		return this.#edited(id, (e) => ({ ...e, pairing: { ...held, receivedAmount: minor } }));
+	}
+
 	/** Pair the leg by the rules again, a standing pair included. */
 	reresolvePairing(id: number): Draft {
 		if (!this.#s.base.has(id)) return this;
@@ -313,6 +350,11 @@ export class Draft {
 
 	pairingEdit(id: number): PairingEdit | undefined {
 		return this.edit(id).pairing;
+	}
+
+	/** Does any leg hold a picked counter-leg? */
+	get hasCounterLeg(): boolean {
+		return [...this.#s.edits.values()].some((e) => e.pairing?.mode === 'counter_leg');
 	}
 
 	/** Does any leg hold a picked partner? */
@@ -610,10 +652,16 @@ export class Draft {
 		if (edit.note !== undefined) body.note = normaliseText(edit.note);
 		if (edit.tags) body.tags = { add: [...edit.tags.add], remove: [...edit.tags.remove] };
 		if (edit.pairing) {
+			const pairing = edit.pairing;
 			body.pairing =
-				edit.pairing.mode === 'pick'
-					? { mode: 'pick', partner_entry_id: edit.pairing.partnerEntryId }
-					: { mode: 'reresolve', partner_entry_id: null };
+				pairing.mode === 'pick'
+					? { mode: 'pick', partner_entry_id: pairing.partnerEntryId }
+					: pairing.mode === 'counter_leg'
+						? {
+								mode: 'counter_leg',
+								counter_leg: { temp_id: pairing.tempId, received_amount: pairing.receivedAmount }
+							}
+						: { mode: 'reresolve', partner_entry_id: null };
 		}
 		for (const name of FIELD_NAMES) {
 			const field = edit.fields[name];
@@ -657,6 +705,17 @@ export function parseAllocation(
 /** The allocation as the user types it: its magnitude, no sign. */
 export function allocationText(minor: number, currency: string, locale: string): string {
 	return formatMoney(Math.abs(minor), currency, { locale, showPlus: false });
+}
+
+/**
+ * What the user typed as the amount a counter-leg receives: unsigned (the server gives it the
+ * sign), in the counter-account's currency. Zero is no amount.
+ */
+export function parseReceivedAmount(text: string, currency: string, locale: string): Allocation {
+	const parsed = parseMoneyInput(text, currency, locale);
+	if (!parsed.ok) return parsed;
+	if (parsed.minor === 0) return { ok: false, error: 'zero' };
+	return { ok: true, minor: Math.abs(parsed.minor) };
 }
 
 const ALLOCATION_MESSAGES: Readonly<Record<AllocationError, string>> = {

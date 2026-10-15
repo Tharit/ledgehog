@@ -340,6 +340,15 @@ def test_plan_pairs():
     assert date_only.unpair == () and date_only.amounts == {}
 
 
+def test_plan_a_following_partner_keeps_the_pair_through_an_amount_change():
+    follow = plan_amounts(-100, -120, [(1, -100)], {1: "EUR"}, "EUR", following={1})
+    assert (follow.amounts, follow.unpair) == ({1: -120}, ())
+    sign = plan_amounts(-100, 120, [(1, -100)], {1: "EUR"}, "EUR", following={1})
+    assert sign.unpair == (1,)  # a changed sign breaks any pair, followers included
+    cross = plan_amounts(-100, -120, [(1, -100)], {1: "USD"}, "EUR", following={1})
+    assert cross.unpair == ()
+
+
 # ---- edit ---------------------------------------------------------------------------------------
 
 

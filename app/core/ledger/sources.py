@@ -127,6 +127,7 @@ class EditEffects:
     unpaired_entry_ids: tuple[int, ...] = ()  # surviving entries that lost their counterpart, partners too
     deleted_entry_ids: tuple[int, ...] = ()  # every entry the edit removes
     rederived_entry_ids: tuple[int, ...] = ()  # entries whose values or keys were derived again
+    followed_entry_ids: tuple[int, ...] = ()  # partners that followed the new amount (spec §5.7)
     returned_to_review_ids: tuple[int, ...] = ()  # confirmed before, not confirmed now
     # the versions a real run must carry: the source's entries and the partners it unpairs
     versions: tuple[tuple[int, int], ...] = ()
@@ -399,13 +400,16 @@ def plan_amounts(
     entries: Sequence[tuple[int, int]],
     paired: Mapping[int, str | None],
     currency: str,
+    following: Collection[int] = (),
 ) -> _Plan:
     """The edit's effect on the entries `[(id, amount)]` (ascending, the first is the original).
 
     The residual (the original) absorbs the change; where that would change its sign or reach zero the
     split collapses: the others go and the original takes the whole amount. A changed amount breaks a
     same-currency pair, a changed sign breaks any pair; `paired` maps the paired entries to their partner's
-    currency. A date change is not in the plan: it leaves pairs standing.
+    currency. A same-currency pair whose partner FOLLOWS (`following`: the entries whose partner is a
+    user-authored single-entry leg on an unsynced account, spec §5.7) stands through an amount change, the
+    partner taking the negated amount. A date change is not in the plan: it leaves pairs standing.
     """
     original_id, original_amount = entries[0]
     amounts: dict[int, int] = {}
@@ -423,7 +427,9 @@ def plan_amounts(
     survivors = [i for i, _ in entries if i not in collapse]
     sign_changed = (new_amount > 0) != (old_amount > 0)
     breaks = tuple(
-        i for i in survivors if i in paired and (sign_changed or (i in amounts and paired[i] == currency))
+        i
+        for i in survivors
+        if i in paired and (sign_changed or (i in amounts and paired[i] == currency and i not in following))
     )
     return _Plan(amounts, collapse, breaks)
 
@@ -505,8 +511,16 @@ def _value(resolved: Resolved, name: Any) -> int | None:
 
 _ENTRY_ROWS = text(
     "SELECT e.id, e.account_id, e.currency, e.amount, e.type, e.payee_id, e.category_id,"
-    " e.counter_account_id, e.derivation, e.version, e.counterpart_entry_id, p.currency AS partner_currency"
+    " e.counter_account_id, e.derivation, e.version, e.counterpart_entry_id, p.currency AS partner_currency,"
+    " p.account_id AS partner_account, p.source_transaction_id AS partner_source,"
+    " (ps.importer IS NULL) AS partner_authored,"
+    " (SELECT count(*) FROM ledger_entry x WHERE x.source_transaction_id = p.source_transaction_id)"
+    " AS partner_entries,"
+    " (pa.closed_on IS NULL AND EXISTS (SELECT 1 FROM account_source s WHERE s.account_id = pa.id))"
+    " AS partner_synced"
     " FROM ledger_entry e LEFT JOIN ledger_entry p ON p.id = e.counterpart_entry_id"
+    " LEFT JOIN source_transaction ps ON ps.id = p.source_transaction_id"
+    " LEFT JOIN account pa ON pa.id = p.account_id"
     " WHERE e.id = ANY(:ids) ORDER BY e.id"
 )
 
@@ -568,17 +582,32 @@ def _edit(
         lock_rows(conn, "ledger_entry", everything)
         return EditEffects(versions=tuple((i, int(rows[i].version)) for i in ids))
 
+    # a partner that follows (spec §5.7): user-authored, the only entry of its source, on an unsynced account
+    followable = {
+        int(r.id)
+        for r in own
+        if r.counterpart_entry_id is not None
+        and r.partner_currency == src.currency
+        and r.partner_authored
+        and int(r.partner_entries) == 1
+        and not r.partner_synced
+    }
     plan = plan_amounts(
         int(src.amount),
         int(new_amount),
         [(int(r.id), int(r.amount)) for r in own],
         {int(r.id): r.partner_currency for r in own if r.counterpart_entry_id is not None},
         str(src.currency),
+        following=followable,
+    )
+    followed = sorted(
+        i for i in followable if i in plan.amounts and i not in plan.unpair and i not in plan.collapse
     )
     scope_ids = [i for i in ids if i not in plan.collapse]
     _, partners_all = entry_scope(conn, ids)
     broken_partners = sorted(int(rows[i].counterpart_entry_id) for i in plan.unpair)
-    written = sorted({*ids, *broken_partners, *entry_scope(conn, plan.collapse)[1]})
+    followers = {i: int(rows[i].counterpart_entry_id) for i in followed}
+    written = sorted({*ids, *broken_partners, *followers.values(), *entry_scope(conn, plan.collapse)[1]})
     if dry_run:
         lock_rows(conn, "ledger_entry", everything)
     elif expected is None:
@@ -617,6 +646,17 @@ def _edit(
             text("UPDATE ledger_entry SET amount = :a WHERE id = :i"), {"a": entry_amount, "i": entry_id}
         )
 
+    for i, partner in followers.items():  # the partner follows (I2, I3): its source and its entry
+        follow = -plan.amounts[i]
+        conn.execute(
+            text(
+                "UPDATE source_transaction SET amount = :a, raw = raw || CAST(:patch AS jsonb) WHERE id = :s"
+            ),
+            {"a": follow, "patch": json.dumps({"amount": follow}), "s": int(rows[i].partner_source)},
+        )
+        conn.execute(text("UPDATE ledger_entry SET amount = :a WHERE id = :i"), {"a": follow, "i": partner})
+        recompute_derived(conn, int(rows[i].partner_account))
+
     current = list(conn.execute(_ENTRY_ROWS, {"ids": scope_ids}))
     still_paired = {int(r.id) for r in current if r.counterpart_entry_id is not None}
     resolvable = [r for r in current if int(r.id) not in still_paired]
@@ -633,6 +673,7 @@ def _edit(
         deleted_entry_ids=tuple(deleted.removed_entry_ids),
         rederived_entry_ids=tuple(sorted(rederived)),
         returned_to_review_ids=tuple(returned),
+        followed_entry_ids=tuple(sorted(followers.values())),
         versions=versions,
     )
 

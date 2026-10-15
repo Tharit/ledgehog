@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { formatDate } from '#lib/format/index.js';
 import { EDIT_WARNING } from '#lib/entry-form/effects.js';
 import { authored, edited, signedIn } from '#lib/entry-form/fixtures.js';
 import { lookupsStore } from '#lib/stores/lookups.svelte.js';
@@ -45,6 +46,15 @@ const call = (n: number) =>
 	];
 
 beforeEach(() => {
+	// jsdom has no ResizeObserver, which the popover's positioning looks for
+	vi.stubGlobal(
+		'ResizeObserver',
+		class {
+			observe() {}
+			unobserve() {}
+			disconnect() {}
+		}
+	);
 	vi.resetAllMocks();
 	panel.isOpen = true;
 	lookupsStore.reset();
@@ -55,7 +65,9 @@ describe('EditEntryDialog', () => {
 	it('is prefilled from the transaction, with the account fixed and the static warning above Save', async () => {
 		const { dialog } = await open();
 
-		expect(field(dialog, 'Date').value).toBe('2026-10-09');
+		expect(within(dialog).getByRole('button', { name: 'Date' })).toHaveTextContent(
+			formatDate('2026-10-09')
+		);
 		expect(field(dialog, 'Amount').value).toBe('\u221212.50');
 		expect(within(dialog).queryByRole('radio')).toBeNull();
 		expect(field(dialog, 'Purpose').value).toBe('groceries');
@@ -142,7 +154,14 @@ describe('EditEntryDialog', () => {
 		vi.mocked(api.updateSource).mockResolvedValue(edited());
 		const { dialog } = await open();
 
-		await fireEvent.input(field(dialog, 'Date'), { target: { value: '2026-10-01' } });
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Date' }));
+		await fireEvent.click(
+			await waitFor(() => {
+				const day = document.querySelector('[data-bits-day][data-value="2026-10-01"]');
+				expect(day).not.toBeNull();
+				return day as HTMLElement;
+			})
+		);
 		await fireEvent.input(field(dialog, 'Purpose'), { target: { value: '' } });
 
 		await waitFor(() => expect(api.updateSource).toHaveBeenCalled());

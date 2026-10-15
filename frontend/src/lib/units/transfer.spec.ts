@@ -5,6 +5,7 @@ import { offerOut, transferOut } from './fixtures.js';
 import {
 	offerGroups,
 	offerHints,
+	pendingCounterLeg,
 	proposalEvidence,
 	shownOffers,
 	shownPartner,
@@ -25,23 +26,26 @@ const lookups = buildLookups({
 const words = { lookups, locale: 'en' };
 
 describe('offerGroups', () => {
-	it('keeps the server’s order inside two groups: open (open legs, untyped entries), paired elsewhere', () => {
+	it('keeps the server’s order inside three groups: open (open legs, untyped entries), paired elsewhere, new', () => {
 		const offers = [
 			offerOut({ entry_id: 5, kind: 'untyped_entry', exact: false }),
 			offerOut({ entry_id: 4, kind: 'open_leg' }),
 			offerOut({ entry_id: 6, kind: 'paired_elsewhere' }),
-			offerOut({ entry_id: 3, kind: 'open_leg', exact: false })
+			offerOut({ entry_id: 3, kind: 'open_leg', exact: false }),
+			offerOut({ entry_id: null, kind: 'counter_leg' })
 		];
 		const groups = offerGroups(offers);
-		expect(groups.map((g) => g.label)).toEqual(['Open', 'Paired elsewhere']);
+		expect(groups.map((g) => g.label)).toEqual(['Open', 'Paired elsewhere', 'New']);
+		expect(groups[2].offers.map((o) => o.kind)).toEqual(['counter_leg']);
 		expect(groups[0].offers.map((o) => o.entry_id)).toEqual([5, 4, 3]);
 		expect(groups[1].offers.map((o) => o.entry_id)).toEqual([6]);
 	});
 
-	it('leaves out the counter-leg offer (a later wave) and empty groups', () => {
+	it('leaves out empty groups; the counter-leg alone is the group "New"', () => {
+		expect(offerGroups([])).toEqual([]);
 		const offers = [offerOut({ kind: 'counter_leg', entry_id: null })];
-		expect(offerGroups(offers)).toEqual([]);
-		expect(shownOffers(offers)).toEqual([]);
+		expect(offerGroups(offers).map((g) => g.key)).toEqual(['new']);
+		expect(shownOffers(offers)).toHaveLength(1);
 	});
 });
 
@@ -156,8 +160,10 @@ describe('stateSentence', () => {
 		);
 	});
 
-	it('says only "no partner" for an unsynced counter-account (the counter-leg comes later)', () => {
-		expect(stateSentence(transferOut({ state: 'unmatched' }), 3, words)).toBeNull();
+	it('says to create the other side on an unsynced counter-account', () => {
+		expect(stateSentence(transferOut({ state: 'unmatched' }), 3, words)).toBe(
+			'No partner. Create the other side on Cash.'
+		);
 	});
 
 	it('asks where the money went when there is no counter-account', () => {
@@ -174,5 +180,117 @@ describe('stateSentence', () => {
 				words
 			)
 		).toBe('Needs an account in USD');
+	});
+});
+
+describe('offerHints of the counter-leg', () => {
+	const none = transferOut();
+	const eur = (amount: number) => ({ amount, currency: 'EUR' });
+
+	it('says what a same-currency counter-leg receives, and when', () => {
+		const offer = offerOut({
+			kind: 'counter_leg',
+			entry_id: null,
+			account_id: 3,
+			booked_on: '2026-10-12',
+			amount: eur(10000),
+			counter_leg: {
+				booked_on: '2026-10-12',
+				purpose: null,
+				amount: eur(10000),
+				needs_received_amount: false
+			}
+		});
+		const [hint] = offerHints(offer, none, words);
+		expect(hint).toMatch(/^Receives\s\S?100\.00\sEUR\son Oct 12, 2026$/);
+	});
+
+	it('says the user enters the amount of a cross-currency counter-leg', () => {
+		const offer = offerOut({
+			kind: 'counter_leg',
+			entry_id: null,
+			account_id: 3,
+			amount: null,
+			counter_leg: {
+				booked_on: '2026-10-12',
+				purpose: null,
+				amount: null,
+				needs_received_amount: true
+			}
+		});
+		expect(offerHints(offer, none, words)).toEqual(['You enter the amount received']);
+	});
+});
+
+describe('pendingCounterLeg', () => {
+	const eur = (amount: number) => ({ amount, currency: 'EUR' });
+	const offer = offerOut({
+		kind: 'counter_leg',
+		entry_id: null,
+		account_id: 3,
+		booked_on: '2026-10-12',
+		amount: eur(5000),
+		proposed: true,
+		counter_leg: {
+			booked_on: '2026-10-12',
+			purpose: 'x',
+			amount: eur(5000),
+			needs_received_amount: false
+		}
+	});
+
+	it('is null when the leg has another partner, or none that is created', () => {
+		expect(pendingCounterLeg(transferOut({ offers: [offer] }), undefined)).toBeNull();
+		expect(
+			pendingCounterLeg(transferOut({ offers: [offer], proposed_counter_leg: true }), {
+				mode: 'pick',
+				partnerEntryId: 2
+			})
+		).toBeNull();
+	});
+
+	it('is a proposal when the server proposes it and the draft says nothing', () => {
+		const pending = pendingCounterLeg(
+			transferOut({ offers: [offer], proposed_counter_leg: true }),
+			undefined
+		)!;
+		expect(pending).toMatchObject({ accountId: 3, bookedOn: '2026-10-12', proposal: true });
+		expect(pending.amount).toEqual(eur(5000));
+	});
+
+	it('is the user’s own when picked, and keeps the amount received', () => {
+		const cross = {
+			...offer,
+			amount: null,
+			counter_leg: { ...offer.counter_leg!, amount: null, needs_received_amount: true }
+		};
+		const pending = pendingCounterLeg(transferOut({ offers: [cross] }), {
+			mode: 'counter_leg',
+			tempId: -1,
+			receivedAmount: 9000
+		})!;
+		expect(pending).toMatchObject({
+			proposal: false,
+			needsReceivedAmount: true,
+			receivedAmount: 9000
+		});
+		expect(pending.amount).toBeNull();
+	});
+
+	it('takes the synthetic row’s partner over the offer', () => {
+		const partner = {
+			entry_id: -1,
+			account_id: 3,
+			booked_on: '2026-10-13',
+			amount: eur(4900),
+			description: null
+		};
+		const pending = pendingCounterLeg(transferOut({ state: 'paired', partner, offers: [offer] }), {
+			mode: 'counter_leg',
+			tempId: -1,
+			receivedAmount: null
+		})!;
+		expect(pending.bookedOn).toBe('2026-10-13');
+		expect(pending.amount).toEqual(eur(4900));
 	});
 });

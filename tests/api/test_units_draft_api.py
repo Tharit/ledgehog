@@ -51,7 +51,7 @@ def test_preview_shape(anna: TestClient, scene: Scene) -> None:
     assert set(row) == set(
         "id version source_transaction_id unit_key in_unit original account_id booked_on value_on amount"
         " description note tag_ids counterpart_entry_id fields review_flags derivation stored".split()
-        + ["transfer"]
+        + ["transfer", "counter_leg_for"]
     )
     assert row["amount"] == {"amount": -700, "currency": "EUR"} and row["in_unit"] and row["original"]
     cat = row["fields"]["category"]
@@ -323,6 +323,7 @@ def test_a_transfer_row_carries_its_state_partner_and_offers(anna: TestClient, s
         "proposal",
         "has_more",
         "proposed_pick",
+        "proposed_counter_leg",
     }
     assert (t["state"], t["waiting_for"], t["needs_account"]) == ("paired", None, None)
     assert t["partner"]["entry_id"] == untyped and t["proposed_pick"] == {"entry_id": untyped}
@@ -529,3 +530,111 @@ def test_a_malformed_pairing_is_a_422(anna: TestClient, scene: Scene) -> None:
         PREVIEW, json={"anchor_entry_id": e, "entries": [{"id": e, "pairing": {"is_proposal": True}}]}
     )
     assert r.status_code == 422  # a client cannot mark a pick as a proposal
+
+
+# ---- counter-legs (spec §5.7) ---------------------------------------------------------------------------
+
+
+def _counter_leg_draft(e: int, temp: int = -1, received: int | None = None) -> dict[str, object]:
+    leg: dict[str, object] = {"temp_id": temp}
+    if received is not None:
+        leg["received_amount"] = received
+    return {
+        "anchor_entry_id": e,
+        "entries": [{"id": e, "pairing": {"mode": "counter_leg", "counter_leg": leg}}],
+    }
+
+
+def test_a_counter_leg_previews_as_a_row_and_commits_through_the_api(anna: TestClient, scene: Scene) -> None:
+    e = _leg(scene, -1000, scene.checking, counter=scene.cash)
+    draft = _counter_leg_draft(e, -5)
+    body = anna.post(PREVIEW, json=draft).json()
+    assert body["problems"] == [] and body["state"]["confirmed"] is True
+    ghost = next(r for r in body["rows"] if r["id"] == -5)
+    assert ghost["counter_leg_for"] == e and ghost["version"] is None and ghost["in_unit"]
+    assert ghost["account_id"] == scene.cash and ghost["amount"] == {"amount": 1000, "currency": "EUR"}
+    assert ghost["counterpart_entry_id"] == e and ghost["transfer"]["state"] == "paired"
+    assert ghost["fields"]["type"]["value"] == "transfer"
+    leg = next(r for r in body["rows"] if r["id"] == e)
+    assert leg["transfer"]["partner"]["entry_id"] == -5 and leg["transfer"]["proposed_counter_leg"] is False
+    assert any(c["entry_id"] == -5 and c["kind"] == "created" for c in body["consequences"])
+    r = anna.post(COMMIT, json={**draft, "versions": body["versions"]})
+    assert r.status_code == 200, r.text
+    out = r.json()
+    real = out["created"]["-5"]
+    assert scene.row(real).counterpart_entry_id == e and scene.row(e).counterpart_entry_id == real
+    assert real in {en["id"] for en in out["entries"]}
+    assert {"entry_id": real, "kind": "created"} in out["consequences"]
+
+
+def test_the_proposed_counter_leg_is_flagged_and_a_commit_accepts_it(anna: TestClient, scene: Scene) -> None:
+    e = _leg(scene, -1000, scene.checking, counter=scene.cash)
+    body = anna.post(PREVIEW, json={"anchor_entry_id": e}).json()
+    t = next(r for r in body["rows"] if r["id"] == e)["transfer"]
+    assert t["proposed_counter_leg"] is True and t["proposed_pick"] is None
+    assert t["proposal"] == {"kind": "counter_leg", "entry_id": None} and t["state"] == "paired"
+    ghost = t["partner"]["entry_id"]
+    assert ghost < 0 and any(r["id"] == ghost and r["counter_leg_for"] == e for r in body["rows"])
+    r = anna.post(COMMIT, json={"anchor_entry_id": e, "versions": body["versions"]})
+    assert r.status_code == 200, r.text
+    assert str(ghost) in r.json()["created"]
+
+
+def test_a_counter_leg_problem_is_listed_and_refuses_the_commit(anna: TestClient, scene: Scene) -> None:
+    e = _leg(scene, -1000, scene.checking, counter=scene.usd)
+    body = anna.post(PREVIEW, json=_counter_leg_draft(e)).json()
+    assert [p["code"] for p in body["problems"]] == ["received_amount_required"]
+    assert body["problems"][0]["entry_id"] == e
+    r = anna.post(COMMIT, json={**_counter_leg_draft(e), "versions": body["versions"]})
+    assert_envelope(r, 422, "received_amount_required")
+    ok = anna.post(PREVIEW, json=_counter_leg_draft(e, -1, 1234)).json()
+    assert ok["problems"] == []
+    row = next(r for r in ok["rows"] if r["id"] == -1)
+    assert row["amount"] == {"amount": 1234, "currency": "USD"}
+    assert (
+        anna.post(COMMIT, json={**_counter_leg_draft(e, -1, 1234), "versions": ok["versions"]}).status_code
+        == 200
+    )
+    scene.sync(scene.cash)
+    other = _leg(scene, -500, scene.checking, counter=scene.cash)
+    synced = anna.post(PREVIEW, json=_counter_leg_draft(other)).json()
+    assert [p["code"] for p in synced["problems"]] == ["counter_leg_account_synced"]
+
+
+def test_a_malformed_counter_leg_is_a_422(anna: TestClient, scene: Scene) -> None:
+    e = _leg(scene, -1000, scene.checking, counter=scene.cash)
+    for received in (0, -5):
+        r = anna.post(PREVIEW, json=_counter_leg_draft(e, -1, received))
+        assert r.status_code == 422 and r.json()["error"]["code"] == "validation_error"
+    for temp in (0, 3):
+        assert anna.post(PREVIEW, json=_counter_leg_draft(e, temp)).status_code == 422
+    r = anna.post(
+        PREVIEW, json={"anchor_entry_id": e, "entries": [{"id": e, "pairing": {"mode": "counter_leg"}}]}
+    )
+    assert_envelope(r, 422, "invalid_draft")
+    r = anna.post(
+        PREVIEW,
+        json={
+            "anchor_entry_id": e,
+            "entries": [{"id": e, "pairing": {"mode": "keep", "counter_leg": {"temp_id": -1}}}],
+        },
+    )
+    assert_envelope(r, 422, "invalid_draft")
+    r = anna.post(
+        PREVIEW,
+        json={
+            "anchor_entry_id": e,
+            "entries": [
+                {"id": e, "pairing": {"mode": "counter_leg", "counter_leg": {"temp_id": -1, "extra": 1}}}
+            ],
+        },
+    )
+    assert r.status_code == 422
+    clash = {
+        "anchor_entry_id": e,
+        "entries": [
+            {"id": e, "pairing": {"mode": "counter_leg", "counter_leg": {"temp_id": -1}}},
+            {"id": -1, "amount": -5, "source_entry_id": e},
+        ],
+    }
+    assert_envelope(anna.post(PREVIEW, json=clash), 422, "invalid_draft")

@@ -129,3 +129,31 @@ describe('suggestedSplitOf', () => {
 		).toBeNull();
 	});
 });
+
+describe('the counter-leg problems', () => {
+	it('names the currency of the amount received: from the detail, else from the counter-account', () => {
+		expect(words('received_amount_required', { detail: { currency: 'USD' } }).text).toBe(
+			'Enter the amount received in USD.'
+		);
+		const viaAccount = describeProblem(problem('received_amount_required', { entry_id: 1 }), {
+			...context,
+			counterCurrency: () => 'USD'
+		});
+		expect(viaAccount.text).toBe('Enter the amount received in USD.');
+		expect(words('received_amount_required').text).toBe('Enter the amount received.');
+	});
+
+	it.each([
+		['received_amount_not_needed', 'No amount is needed: both sides are in the same currency.'],
+		[
+			'counter_leg_not_offered',
+			'The other side cannot be created here: this leg already has a partner, or the counter-account is unknown.'
+		],
+		[
+			'counter_leg_account_synced',
+			'The other side cannot be created by hand on a synced account: it arrives with its import.'
+		]
+	])('words %s', (code, text) => {
+		expect(words(code).text).toBe(text);
+	});
+});

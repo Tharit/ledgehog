@@ -141,6 +141,7 @@ class EditEffectsOut(BaseModel):
     deleted_entry_ids: list[int]  # every entry the edit removes
     rederived_entry_ids: list[int]  # entries whose values or keys are derived again
     returned_to_review_ids: list[int]  # confirmed before the edit, not confirmed after it
+    followed_entry_ids: list[int]  # partners that took the negated new amount and stay paired (spec §5.7)
     versions: list[EntryVersionOut]  # what a real run must carry in `expected_versions`
 
     @staticmethod
@@ -151,6 +152,7 @@ class EditEffectsOut(BaseModel):
             deleted_entry_ids=list(e.deleted_entry_ids),
             rederived_entry_ids=list(e.rederived_entry_ids),
             returned_to_review_ids=list(e.returned_to_review_ids),
+            followed_entry_ids=list(e.followed_entry_ids),
             versions=[EntryVersionOut(entry_id=i, version=v) for i, v in e.versions],
         )
 

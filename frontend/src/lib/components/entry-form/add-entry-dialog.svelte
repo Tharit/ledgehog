@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { tick, untrack } from 'svelte';
+	import AccountSelect from '#lib/components/common/account-select.svelte';
+	import DateField from '#lib/components/common/date-field.svelte';
 	import ActionButton from '#lib/components/common/action-button.svelte';
 	import ActionDialog, { type DialogFeedback } from '#lib/components/common/action-dialog.svelte';
 	import EmptyState from '#lib/components/common/empty-state.svelte';
@@ -9,6 +11,7 @@
 	import { AddFlow } from '#lib/entry-form/add-flow.svelte.js';
 	import type { AddOptions } from '#lib/entry-form/controller.svelte.js';
 	import { lookupsStore } from '#lib/stores/lookups.svelte.js';
+	import { session } from '#lib/stores/session.svelte.js';
 
 	// "Add entry": a form dialog (patterns §11.1, §11.2) with the account, date, amount with its sign
 	// and the purpose. "Add" enters the transaction, closes and opens the work panel on it; "Add and
@@ -117,28 +120,25 @@
 		{/if}
 		<Field label="Account" error={flow.errors.account ?? null}>
 			{#snippet children(field)}
-				<select
+				<AccountSelect
 					{...field}
+					label="Account"
+					accounts={flow.accounts}
 					bind:value={flow.accountId}
 					onchange={() => flow.touch('account')}
 					disabled={flow.busy !== null || !lookupsStore.loaded}
-					class="h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive dark:bg-input/30"
-				>
-					{#if flow.accountId === null}<option value={null}></option>{/if}
-					{#each flow.accounts as account (account.id)}
-						<option value={account.id}>{account.name}</option>
-					{/each}
-				</select>
+				/>
 			{/snippet}
 		</Field>
 		<Field label="Date" error={flow.errors.date ?? null}>
 			{#snippet children(field)}
-				<Input
-					type="date"
-					bind:value={flow.date}
+				<DateField
 					{...field}
-					readonly={flow.busy !== null}
-					oninput={() => flow.touch('date')}
+					label="Date"
+					bind:value={flow.date}
+					locale={session.config?.locale}
+					onchange={() => flow.touch('date')}
+					disabled={flow.busy !== null}
 				/>
 			{/snippet}
 		</Field>

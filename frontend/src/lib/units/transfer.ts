@@ -5,20 +5,23 @@
 import { formatDate, formatMoney } from '#lib/format/index.js';
 import type { Lookups } from '#lib/ledger/lookups.js';
 import type { Money } from '#lib/types/domain.js';
+import type { PairingEdit } from './draft.js';
 import type { UnitOffer, UnitTransfer } from './types.js';
 
-export type OfferGroupKey = 'open' | 'paired_elsewhere';
+export type OfferGroupKey = 'open' | 'paired_elsewhere' | 'new';
 
 export type OfferGroup = { key: OfferGroupKey; label: string; offers: UnitOffer[] };
 
 const GROUP_LABEL: Readonly<Record<OfferGroupKey, string>> = {
 	open: 'Open',
-	paired_elsewhere: 'Paired elsewhere'
+	paired_elsewhere: 'Paired elsewhere',
+	new: 'New'
 };
 
 /**
  * The offers a leg can be given now, grouped as the server ordered them: open offers, then legs
- * paired elsewhere. The counter-leg offer is not shown yet. Within a group nothing is sorted.
+ * paired elsewhere, then the counter-leg a commit would create ("New"). Within a group nothing is
+ * sorted.
  */
 export function offerGroups(offers: readonly UnitOffer[]): OfferGroup[] {
 	const keyOf = (offer: UnitOffer): OfferGroupKey | null =>
@@ -26,16 +29,18 @@ export function offerGroups(offers: readonly UnitOffer[]): OfferGroup[] {
 			? 'open'
 			: offer.kind === 'paired_elsewhere'
 				? 'paired_elsewhere'
-				: null;
+				: offer.kind === 'counter_leg'
+					? 'new'
+					: null;
 	const groups: OfferGroup[] = [];
-	for (const key of ['open', 'paired_elsewhere'] as const) {
+	for (const key of ['open', 'paired_elsewhere', 'new'] as const) {
 		const members = offers.filter((offer) => keyOf(offer) === key);
 		if (members.length > 0) groups.push({ key, label: GROUP_LABEL[key], offers: members });
 	}
 	return groups;
 }
 
-/** The offers that are shown (everything but the counter-leg). */
+/** The offers that are shown. */
 export function shownOffers(offers: readonly UnitOffer[]): UnitOffer[] {
 	return offerGroups(offers).flatMap((g) => g.offers);
 }
@@ -71,6 +76,21 @@ export function offerHints(
 ): string[] {
 	const hints: string[] = [];
 	const { effect } = offer;
+	if (offer.kind === 'counter_leg') {
+		const leg = offer.counter_leg;
+		const amount = leg?.amount ?? offer.amount;
+		if (leg?.needs_received_amount) hints.push('You enter the amount received');
+		else if (amount) {
+			const text = formatMoney(Math.abs(amount.amount), amount.currency, {
+				locale: words.locale,
+				showCurrency: true,
+				showPlus: false
+			});
+			hints.push(
+				`Receives ${text} on ${formatDate(leg?.booked_on ?? offer.booked_on, words.locale)}`
+			);
+		}
+	}
 	if (effect.types_as_transfer) hints.push('will be typed as a transfer');
 	if (effect.fee) {
 		const { difference } = effect.fee;
@@ -99,6 +119,55 @@ export function proposedOffer(transfer: UnitTransfer): UnitOffer | null {
 		return transfer.offers.find((o) => o.entry_id === id) ?? null;
 	}
 	return transfer.offers.find((o) => o.proposed && o.entry_id !== null) ?? null;
+}
+
+/** The counter-leg offer of a leg, when it has one. */
+export function counterLegOffer(transfer: UnitTransfer): UnitOffer | null {
+	return transfer.offers.find((o) => o.kind === 'counter_leg') ?? null;
+}
+
+/**
+ * The other side a commit creates for a leg (spec §5.7): picked in the draft, or proposed by the
+ * server and effective in the preview. Null when the leg's partner is something else. The synthetic
+ * row the preview shows (a negative id) is the partner then; before it exists (an amount still to
+ * enter) the offer says what would be created.
+ */
+export type PendingCounterLeg = {
+	accountId: number;
+	bookedOn: string;
+	/** null: not known yet (a cross-currency leg whose amount received is still to enter) */
+	amount: Money | null;
+	/** the server proposed it: shown as a proposal, accepted on commit */
+	proposal: boolean;
+	/** the user enters the amount received (a cross-currency leg) */
+	needsReceivedAmount: boolean;
+	/** what the draft holds as the amount received (unsigned minor units) */
+	receivedAmount: number | null;
+};
+
+export function pendingCounterLeg(
+	transfer: UnitTransfer,
+	pairing: PairingEdit | null | undefined
+): PendingCounterLeg | null {
+	const picked = pairing?.mode === 'counter_leg' ? pairing : null;
+	const proposed = !picked && pairing?.mode !== 'pick' && transfer.proposed_counter_leg;
+	if (!picked && !proposed) return null;
+	const offer = counterLegOffer(transfer);
+	const synthetic = transfer.partner && transfer.partner.entry_id < 0 ? transfer.partner : null;
+	const accountId = synthetic?.account_id ?? offer?.account_id;
+	if (accountId === undefined) return null;
+	const bookedOn = synthetic?.booked_on ?? offer?.counter_leg?.booked_on ?? offer?.booked_on;
+	if (bookedOn === undefined) return null;
+	const receivedAmount = picked?.receivedAmount ?? null;
+	return {
+		accountId,
+		bookedOn,
+		amount: synthetic?.amount ?? offer?.counter_leg?.amount ?? offer?.amount ?? null,
+		proposal: proposed,
+		needsReceivedAmount:
+			(offer?.counter_leg?.needs_received_amount ?? false) || receivedAmount !== null,
+		receivedAmount
+	};
 }
 
 /** The partner a leg shows: a pair's partner, else the proposal the preview applies. */
@@ -168,7 +237,9 @@ export function stateSentence(
 			if (counterAccountId === null) return 'Choose where the money went.';
 			const counter = words.lookups.accounts.get(counterAccountId);
 			// an unsynced account has no import to wait for: the other side is made by hand
-			if (!counter || !counter.synced) return null;
+			if (!counter || !counter.synced) {
+				return counter ? `No partner. Create the other side on ${counter.name}.` : null;
+			}
 			return `The partner is missing from ${counter.name}’s import. Import what is missing, or convert this to a flow if it is not a transfer.`;
 		}
 	}

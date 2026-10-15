@@ -30,6 +30,14 @@ export function summarizeEdit(effects: SourceEditEffects): string[] {
 	if (rederived > 0) {
 		lines.push(`Values are derived again for ${plural(rederived, 'entry', 'entries')}.`);
 	}
+	const followed = effects.followed_entry_ids.length;
+	if (followed > 0) {
+		lines.push(
+			followed === 1
+				? '1 linked counter-leg follows the new amount'
+				: `${followed} linked counter-legs follow the new amount`
+		);
+	}
 	const returned = effects.returned_to_review_ids.length;
 	if (returned > 0) {
 		lines.push(`${plural(returned, 'entry returns', 'entries return')} to review.`);

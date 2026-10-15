@@ -13,6 +13,7 @@ import {
 	allocationMessage,
 	Draft,
 	parseAllocation,
+	parseReceivedAmount,
 	type FieldName,
 	type FieldValue,
 	type ShownBasis
@@ -52,6 +53,8 @@ export type FlowHost = {
 	addTag: (tag: Tag) => void;
 	/** a preview arrived (the panel loads what it names, like the rules' names) */
 	previewed?: (preview: UnitPreview) => void;
+	/** an account's currency (the problem texts name the counter-leg's) */
+	accountCurrency?: (accountId: number) => string | undefined;
 	/** the commit worked: move on (advance to the next unit, or close) */
 	committed: (out: UnitCommit, anchorId: number) => void;
 };
@@ -129,6 +132,9 @@ export class UnitDraftFlow {
 	/** what the user typed as the amount of each split row, and why it is not an amount */
 	amountTexts = $state.raw<Readonly<Record<number, string>>>({});
 	amountErrors = $state.raw<Readonly<Record<number, string>>>({});
+	/** what the user typed as the amount a counter-leg receives (by the leg's entry id), and why it is not one */
+	receivedTexts = $state.raw<Readonly<Record<number, string>>>({});
+	receivedErrors = $state.raw<Readonly<Record<number, string>>>({});
 	/** the split row added last: the panel puts focus in its amount */
 	lastAddedSplit = $state<number | null>(null);
 	/** a tag is being created for the picker: it offers nothing meanwhile */
@@ -183,7 +189,8 @@ export class UnitDraftFlow {
 			text: describeProblem(problem, {
 				locale: this.#host.locale(),
 				windowDays: this.previewWindow,
-				currency: (entryId) => this.#currency(entryId)
+				currency: (entryId) => this.#currency(entryId),
+				counterCurrency: (entryId) => this.#counterCurrency(entryId)
 			})
 		}));
 	}
@@ -192,7 +199,8 @@ export class UnitDraftFlow {
 	get commitReason(): string | null {
 		if (!this.unit || !this.draft) return 'The unit is still loading.';
 		if (this.committing) return 'The commit is under way.';
-		if (Object.keys(this.amountErrors).length > 0) return 'An amount is not valid.';
+		if (Object.keys(this.amountErrors).length > 0 || Object.keys(this.receivedErrors).length > 0)
+			return 'An amount is not valid.';
 		if (this.draft.pendingSplits.length > 0) return 'Enter the amount of the new split.';
 		if (this.previewStatus === 'error') return 'The preview could not be loaded.';
 		if (this.stale || this.previewStatus !== 'ready') return 'Checking what would change…';
@@ -214,6 +222,8 @@ export class UnitDraftFlow {
 		this.commitProblems = [];
 		this.amountTexts = {};
 		this.amountErrors = {};
+		this.receivedTexts = {};
+		this.receivedErrors = {};
 		this.lastAddedSplit = null;
 		this.tagBusy = false;
 		this.committing = false;
@@ -238,6 +248,8 @@ export class UnitDraftFlow {
 		this.commitProblems = [];
 		this.amountTexts = {};
 		this.amountErrors = {};
+		this.receivedTexts = {};
+		this.receivedErrors = {};
 		this.lastAddedSplit = null;
 		this.tagBusy = false;
 		this.#window = null;
@@ -267,6 +279,7 @@ export class UnitDraftFlow {
 		const next = change(draft);
 		if (next === draft) return;
 		this.draft = next;
+		this.#pruneReceived(next);
 		this.notice = this.notice?.kind === 'conflict' ? this.notice : null;
 		this.commitProblems = [];
 		this.#schedule(immediate);
@@ -357,6 +370,55 @@ export class UnitDraftFlow {
 		this.#window = this.previewWindow;
 		this.#feePending = true;
 		this.edit((d) => d.pickPartner(id, partnerEntryId));
+	}
+
+	/**
+	 * The other side of a leg is created by the commit (an unsynced counter-account): a draft edit
+	 * with a client-issued temporary id, stable while the pick stands. A cross-currency leg gets
+	 * its amount received next (`setReceivedAmountText`).
+	 */
+	pickCounterLeg(id: number): void {
+		if (!this.draft || this.committing) return;
+		this.edit((d) => d.pickCounterLeg(id));
+	}
+
+	/**
+	 * What the user typed as the amount received: unsigned, in the counter-account's `currency`.
+	 * Empty is no amount yet (the preview says it is required); anything else that is no amount is
+	 * said at the field and blocks the commit.
+	 */
+	setReceivedAmountText(id: number, text: string, currency: string): void {
+		const draft = this.draft;
+		if (!draft || draft.pairingEdit(id)?.mode !== 'counter_leg') return;
+		this.receivedTexts = { ...this.receivedTexts, [id]: text };
+		const parsed = parseReceivedAmount(text, currency, this.#host.locale());
+		if (parsed.ok) {
+			this.receivedErrors = omitKey(this.receivedErrors, id);
+			this.edit((d) => d.setReceivedAmount(id, parsed.minor), false);
+			return;
+		}
+		this.receivedErrors =
+			parsed.error === 'empty'
+				? omitKey(this.receivedErrors, id)
+				: { ...this.receivedErrors, [id]: allocationMessage(parsed.error) };
+		this.edit((d) => d.setReceivedAmount(id, null), false);
+	}
+
+	/** What the typed amounts of a leg no longer stand for is forgotten with the pick. */
+	#pruneReceived(draft: Draft): void {
+		const gone = (id: string) => draft.pairingEdit(Number(id))?.mode !== 'counter_leg';
+		const texts = Object.keys(this.receivedTexts).filter(gone);
+		const errors = Object.keys(this.receivedErrors).filter(gone);
+		if (texts.length > 0) {
+			const copy = { ...this.receivedTexts };
+			for (const id of texts) delete copy[Number(id)];
+			this.receivedTexts = copy;
+		}
+		if (errors.length > 0) {
+			const copy = { ...this.receivedErrors };
+			for (const id of errors) delete copy[Number(id)];
+			this.receivedErrors = copy;
+		}
 	}
 
 	/** Pair the leg by the rules again. */
@@ -699,6 +761,19 @@ export class UnitDraftFlow {
 			text: `The ${word} you chose no longer exists. The lists were reloaded: choose again.`
 		};
 		this.#schedule(true);
+	}
+
+	/** The currency of the account a leg's other side would be created in. */
+	#counterCurrency(entryId: number | null): string | null {
+		const transfer = this.preview?.rows.find((r) => r.id === entryId)?.transfer;
+		const offer = transfer?.offers.find((o) => o.kind === 'counter_leg');
+		if (!offer) return null;
+		return (
+			this.#host.accountCurrency?.(offer.account_id) ??
+			offer.counter_leg?.amount?.currency ??
+			offer.amount?.currency ??
+			null
+		);
 	}
 
 	#currency(entryId: number | null): string {

@@ -209,7 +209,9 @@ def test_preview_and_commit_of_a_pick_within_budget(backfill_transfers: Backfill
     for anchor in legs:
         opened = preview_unit(engine, UnitDraft(anchor), window_days=90)
         offers = [o for o in opened.transfers[anchor].offers if o.entry_id is not None]
-        if opened.transfers[anchor].state != "unmatched" or not offers:
+        t = opened.transfers[anchor]
+        # an unmatched leg, or one whose counter-leg is the proposal taken: a pick overrides either
+        if not (t.state == "unmatched" or t.proposed_counter_leg) or not offers:
             continue
         drafts.append(
             UnitDraft(
@@ -247,3 +249,41 @@ def test_preview_and_commit_of_a_pick_within_budget(backfill_transfers: Backfill
     took = time.perf_counter() - started
     print(f"[perf] unit commit of a pick + settle: {took * 1000:.0f} ms")
     assert result.settle.error is None and took <= BUDGET_SECONDS
+
+
+# ---- counter-legs (spec §5.7, step 8f) ---------------------------------------------------------------------
+
+
+def test_preview_and_commit_of_a_counter_leg_within_budget(backfill_transfers: Backfill) -> None:
+    """A leg on an unsynced counter-account with no open offer shows its counter-leg as the proposal taken;
+    the commit creates the source and its entry, locks the counter-account, recomputes its derived entries,
+    and settles: timed together against the settle budget (run this alone: it is a timing)."""
+    settle(backfill_transfers.engine)
+    engine = backfill_transfers.engine
+    legs = _unpaired_legs(backfill_transfers, 400, with_counter=True)
+    drafts: list[UnitDraft] = []
+    previews: list[float] = []
+    for anchor in legs:
+        started = time.perf_counter()
+        opened = preview_unit(engine, UnitDraft(anchor), window_days=90)
+        elapsed = time.perf_counter() - started
+        t = opened.transfers.get(anchor)
+        if t is None or not t.proposed_counter_leg or opened.problems:
+            continue
+        previews.append(elapsed)
+        drafts.append(UnitDraft(anchor, versions=dict(opened.versions), window_days=90))
+        if len(drafts) == REPEATS:
+            break
+    assert drafts, "no leg with a counter-leg proposed in the fixture"
+    stats = Stats.of(previews)
+    print(f"[perf] unit preview with a counter-leg proposed ({len(drafts)} legs): {stats}")
+    assert stats.max <= UNIT_PREVIEW_BUDGET_SECONDS, f"{stats}"
+    samples: list[float] = []
+    for draft in drafts:
+        started = time.perf_counter()
+        result = commit_unit(engine, draft)
+        samples.append(time.perf_counter() - started)
+        assert result.settle.error is None and result.created
+    stats = Stats.of(samples)
+    print(f"[perf] unit commit of a counter-leg + settle: {stats}")
+    assert stats.max <= BUDGET_SECONDS, f"{stats} exceeds {BUDGET_SECONDS} s"

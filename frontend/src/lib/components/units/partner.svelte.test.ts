@@ -151,7 +151,7 @@ describe('the partner row of a transfer leg', () => {
 		expect(row).toHaveTextContent('Paired with Savings');
 		expect(row).toHaveTextContent('Oct 10, 2026');
 		expect(row).toHaveTextContent('50.00');
-		expect(row).toHaveTextContent('paired with Savings'); // the evidence line
+		expect(row).toHaveTextContent('matched automatically'); // the evidence line
 		expect(row.querySelector('[data-proposal]')).toBeNull();
 		expect(trigger(dialog, 'Pick another partner…')).toBeInTheDocument();
 	});
@@ -206,14 +206,16 @@ describe('the partner row of a transfer leg', () => {
 		);
 	});
 
-	it('says only "No partner yet" for an unsynced counter-account', async () => {
+	it('says the other side is created, for an unsynced counter-account', async () => {
 		const { dialog } = await openTransfer({
 			entryOver: { counter_account_id: 3 },
 			transfer: transferOut({ state: 'unmatched' })
 		});
 
 		expect(partnerOf(dialog)).toHaveTextContent('No partner yet');
-		expect(partnerOf(dialog).querySelector('[data-slot="partner-state"]')).toBeNull();
+		expect(partnerOf(dialog).querySelector('[data-slot="partner-state"]')).toHaveTextContent(
+			'No partner. Create the other side on Dollar cash.'
+		);
 	});
 
 	it('says an account is needed and opens Add account locked to the currency', async () => {
@@ -307,7 +309,7 @@ describe('the partner popover', () => {
 			},
 			effect: { types_as_transfer: false, fee: null, breaks_pair_with: [9] }
 		}),
-		offerOut({ kind: 'counter_leg', entry_id: null, account_id: 3 })
+		offerOut({ kind: 'counter_leg', entry_id: null, account_id: 3, description: null })
 	];
 	const transfer = () => transferOut({ state: 'unmatched', offers });
 
@@ -319,11 +321,17 @@ describe('the partner popover', () => {
 		const headings = [...list.querySelectorAll('[data-slot="command-group"]')].map((g) =>
 			g.getAttribute('data-group')
 		);
-		expect(headings).toEqual(['open', 'paired_elsewhere']);
+		expect(headings).toEqual(['open', 'paired_elsewhere', 'new']);
 		expect(within(list).getByText('Open')).toBeInTheDocument();
 		expect(within(list).getByText('Paired elsewhere')).toBeInTheDocument();
 		const rows = within(list).getAllByRole('option');
-		expect(rows.map((r) => r.getAttribute('data-offer'))).toEqual(['3', '2', '5', '6']);
+		expect(rows.map((r) => r.getAttribute('data-offer'))).toEqual([
+			'3',
+			'2',
+			'5',
+			'6',
+			'counter-leg'
+		]);
 
 		// inexact: no tag, a fee hint
 		expect(rows[0]).toHaveTextContent('Card');
@@ -343,8 +351,10 @@ describe('the partner popover', () => {
 			/paired with Card · Oct 8, 2026 · \S?50\.00/
 		);
 		expect(rows[3]).toHaveTextContent('breaks the pair with Card');
-		// the counter-leg offer is not shown yet
-		expect(within(list).queryByText(/Dollar cash/)).toBeNull();
+		// the counter-leg: last, in its own group
+		expect(within(list).getByText('New')).toBeInTheDocument();
+		expect(rows[4]).toHaveTextContent('Create the other side in');
+		expect(rows[4]).toHaveTextContent('Dollar cash');
 	});
 
 	it('scrolls when long', async () => {

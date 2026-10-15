@@ -13,6 +13,13 @@ laid over the stored state AGAIN, under the locks, by the same `overlay.plan_uni
 result that would break an invariant is refused by code (`CommitRefused`, the preview's machine codes); the
 deferred triggers are a net, not the check.
 
+A counter-leg (spec §5.7) is created here and nowhere else: after the locks and the checks a user-authored
+source transaction on the counter-account (importer NULL, a random `source_id`, the leg's date and purpose, a
+`raw` naming the entry it was created for), its one entry typed `transfer` and paired with the leg, every key
+`user`. The counter-account is part of the lock set (the plan under the locks decides which accounts it is: a
+changed set takes the transaction again with more locks, as `ledger/sources.py` does), and its derived
+entries are recomputed. A source that follows its partner's amount is written with it.
+
 What is written: a pair the draft breaks is undone (`removal.unpair`, so a partner is left behind as
 the removal routine leaves it), removed entries go through `removal.remove_entries`, created entries are
 inserted with real ids and inherit the original's tags (the draft's tag change on top), the tag changes of
@@ -26,15 +33,18 @@ from __future__ import annotations
 
 import dataclasses
 import json
-from collections.abc import Mapping
+import uuid
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 
 import psycopg.errors
 from sqlalchemy import Connection, Engine, text
 from sqlalchemy.exc import DBAPIError
 
+from app.core.balance.derived import recompute_derived
 from app.core.domain.errors import VersionConflict
 from app.core.ingest.duplicates import _check_versions
+from app.core.ingest.entries import insert_entry
 from app.core.ingest.removal import remove_entries, unpair
 from app.core.ledger.entries import EntryRow, entries_by_ids
 from app.core.matching import MAX_WINDOW
@@ -55,7 +65,7 @@ from app.core.units.stored import (
     pick_partner_ids,
 )
 from app.utils.db.errors import constraint_name
-from app.utils.db.locks import lock_accounts, lock_rows, lock_settle_shared, retry_on_deadlock
+from app.utils.db.locks import WriteConflict, lock_accounts, lock_rows, lock_settle_shared, retry_on_deadlock
 
 # rows of settle-touched entries beyond the unit that the response carries in full; the rest are ids
 OTHER_ROWS_CAP = 200
@@ -139,6 +149,62 @@ _UPDATE = text(
 )
 
 
+_LOCK_ROUNDS = 3
+
+
+class _MoreLocks(Exception):
+    """The plan under the locks creates counter-legs on accounts that are not locked: run again with them."""
+
+    def __init__(self, accounts: set[int]) -> None:
+        super().__init__("accounts to lock: " + ", ".join(map(str, sorted(accounts))))
+        self.accounts = accounts
+
+
+def counter_leg_accounts(plan: Plan) -> set[int]:
+    """The accounts the counter-legs of `plan` are created on."""
+    return {r.account_id for r in plan.rows if r.counter_leg_for is not None}
+
+
+def _insert_counter_leg(conn: Connection, row: PlannedRow) -> int:
+    """The counter-leg (spec §5.7): a user-authored source transaction on the counter-account (I1, I40: the
+    trigger holds, the plan has checked it first), its entry, typed `transfer` and paired with the leg."""
+    leg = row.counter_leg_for
+    assert leg is not None
+    w = row.written
+    source_id = int(
+        conn.execute(
+            text(
+                "INSERT INTO source_transaction (account_id, source_id, amount, currency, booked_on,"
+                " purpose, raw) VALUES (:a, :s, :amount, :currency, :on, :purpose, CAST(:raw AS jsonb))"
+                " RETURNING id"
+            ),
+            {
+                "a": row.account_id,
+                "s": str(uuid.uuid4()),
+                "amount": row.amount,
+                "currency": row.currency,
+                "on": row.booked_on,
+                "purpose": row.purpose,
+                "raw": json.dumps({"counter_leg_for": leg}),
+            },
+        ).scalar_one()
+    )
+    entry_id = insert_entry(conn, source_id)
+    conn.execute(
+        text(
+            "UPDATE ledger_entry SET type = 'transfer', counter_account_id = :counter,"
+            " counterpart_entry_id = :leg, derivation = CAST(:derivation AS jsonb) WHERE id = :id"
+        ),
+        {
+            "counter": w.counter_account_id,
+            "leg": leg,
+            "derivation": json.dumps(w.derivation),
+            "id": entry_id,
+        },
+    )
+    return entry_id
+
+
 def _stale(plan: Plan) -> None:
     for p in plan.problems:
         if p.code == "stale_reference":
@@ -153,9 +219,19 @@ def _write(conn: Connection, plan: Plan) -> dict[int, int]:
         unpair(conn, plan.unpaired_entry_ids)
     if plan.removed:
         remove_entries(conn, [e.id for e in plan.removed])
+    for source_id, amount in sorted(plan.followed_sources.items()):  # I2, I3: a source follows its partner
+        conn.execute(
+            text(
+                "UPDATE source_transaction SET amount = :a, raw = raw || CAST(:patch AS jsonb) WHERE id = :i"
+            ),
+            {"a": amount, "patch": json.dumps({"amount": amount}), "i": source_id},
+        )
     created: dict[int, int] = {}
     for row in plan.rows:
         if row.stored is not None:
+            continue
+        if row.counter_leg_for is not None:
+            created[row.id] = _insert_counter_leg(conn, row)
             continue
         w = row.written
         created[row.id] = int(
@@ -201,7 +277,7 @@ def _write(conn: Connection, plan: Plan) -> dict[int, int]:
                 "amount": w.amount,
                 "description": w.description,
                 "note": w.note,
-                "counterpart": w.counterpart_entry_id,
+                "counterpart": created.get(w.counterpart_entry_id or 0, w.counterpart_entry_id),
                 "derivation": json.dumps(w.derivation),
             },
         )
@@ -235,6 +311,11 @@ def _apply_tags(conn: Connection, draft: UnitDraft) -> None:
                 raise StaleReference(f"entries[{i}].tags.add", "tag", stale.entity_id) from exc
 
 
+def _followers_accounts(plan: Plan) -> set[int]:
+    """The accounts of the sources that follow their partner: their balance moves with the amount."""
+    return {r.account_id for r in plan.rows if r.source_transaction_id in plan.followed_sources}
+
+
 def _differs(row: PlannedRow) -> bool:
     s, w = row.stored, row.written
     assert s is not None
@@ -246,7 +327,9 @@ def _differs(row: PlannedRow) -> bool:
     )
 
 
-def _commit_once(engine: Engine, draft: UnitDraft) -> tuple[Plan, dict[int, int], tuple[int, ...]]:
+def _commit_once(
+    engine: Engine, draft: UnitDraft, extra_accounts: Collection[int] = ()
+) -> tuple[Plan, dict[int, int], tuple[int, ...]]:
     closure: tuple[int, ...] = ()
     try:
         with engine.begin() as conn:
@@ -255,7 +338,8 @@ def _commit_once(engine: Engine, draft: UnitDraft) -> tuple[Plan, dict[int, int]
             if before is None:
                 raise UnitNotFound(draft.anchor_entry_id)
             closure = before
-            lock_accounts(conn, _accounts_of(conn, before))
+            locked = _accounts_of(conn, before) | set(extra_accounts)
+            lock_accounts(conn, locked)
             lock_rows(conn, "ledger_entry", before)
             after = _read_drafted_closure(conn, draft)
             if after != before:
@@ -268,8 +352,12 @@ def _commit_once(engine: Engine, draft: UnitDraft) -> tuple[Plan, dict[int, int]
                 raise StaleReference(f"entries[{gone[0]}].tags.add", "tag", gone[1])
             if plan.problems:
                 raise CommitRefused(plan.problems)
+            if not (needed := counter_leg_accounts(plan)) <= locked:
+                raise _MoreLocks(needed)
             created = _write(conn, plan)
             _apply_tags(conn, draft)
+            for account_id in sorted(needed | _followers_accounts(plan)):
+                recompute_derived(conn, account_id)
         return plan, created, before
     except DBAPIError as exc:
         orig = exc.orig
@@ -283,16 +371,34 @@ def _commit_once(engine: Engine, draft: UnitDraft) -> tuple[Plan, dict[int, int]
         raise
 
 
+def _commit_locking(engine: Engine, draft: UnitDraft, accounts: set[int]) -> tuple[Plan, dict[int, int]]:
+    """`_commit_once`, again with more account locks while the plan under the locks needs them."""
+
+    def attempt(extra: frozenset[int]) -> tuple[Plan, dict[int, int], tuple[int, ...]]:
+        return retry_on_deadlock(lambda: _commit_once(engine, draft, extra))
+
+    extra = frozenset(accounts)
+    for _round in range(_LOCK_ROUNDS):
+        try:
+            plan, created, _closure = attempt(extra)
+            return plan, created
+        except _MoreLocks as more:
+            extra |= more.accounts
+    raise WriteConflict()
+
+
 def commit_unit(engine: Engine, draft: UnitDraft) -> CommitResult:
     """Write `draft`, then settle. Raises `UnitNotFound`, `DraftError`, `UnitMoved`, `VersionConflict`,
     `StaleReference`, `CommitRefused` and `WriteConflict` (a deadlock lost twice); nothing is written then."""
     with engine.connect() as conn:
         conn.execute(text("SET TRANSACTION READ ONLY"))
-        effective = resolve_draft(conn, draft, seen=draft.versions).draft
+        resolved = resolve_draft(conn, draft, seen=draft.versions)
+    effective = resolved.draft
+    resolved_plan = resolved.plan
     # a pick is checked against the widest window (the cap): the user chose the partner, and every other
     # rule still applies; `window_days` only says which window the proposals were shown for
     effective = dataclasses.replace(effective, window_days=MAX_WINDOW)
-    plan, created, _closure = retry_on_deadlock(lambda: _commit_once(engine, effective))
+    plan, created = _commit_locking(engine, effective, counter_leg_accounts(resolved_plan))
     settled = settle(engine)
     return _result(engine, plan, created, settled)
 

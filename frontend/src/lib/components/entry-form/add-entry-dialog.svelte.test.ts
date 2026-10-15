@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { todayIso } from '#lib/format/index.js';
+import { formatDate, todayIso } from '#lib/format/index.js';
 import { entryForm } from '#lib/entry-form/controller.svelte.js';
 import { lookupsStore } from '#lib/stores/lookups.svelte.js';
 import { apiError } from '#lib/units/fixtures.js';
@@ -42,6 +42,25 @@ async function open(props: Record<string, unknown> = {}) {
 const field = (dialog: HTMLElement, label: string) =>
 	within(dialog).getByLabelText(label) as HTMLInputElement;
 
+// the account and date controls are buttons that open a popover
+const account = (dialog: HTMLElement) => within(dialog).getByRole('button', { name: 'Account' });
+const date = (dialog: HTMLElement) => within(dialog).getByRole('button', { name: 'Date' });
+
+async function chooseAccount(dialog: HTMLElement, name: string) {
+	await fireEvent.click(account(dialog));
+	await fireEvent.click(await screen.findByRole('option', { name: new RegExp(name) }));
+}
+
+async function chooseDay(dialog: HTMLElement, iso: string) {
+	await fireEvent.click(date(dialog));
+	const day = await waitFor(() => {
+		const found = document.querySelector(`[data-bits-day][data-value="${iso}"]`);
+		expect(found).not.toBeNull();
+		return found as HTMLElement;
+	});
+	await fireEvent.click(day);
+}
+
 async function fill(dialog: HTMLElement, amount: string, purpose = '') {
 	await fireEvent.input(field(dialog, 'Amount'), { target: { value: amount } });
 	if (purpose) await fireEvent.input(field(dialog, 'Purpose'), { target: { value: purpose } });
@@ -52,6 +71,15 @@ function body(call = 0): Record<string, unknown> {
 }
 
 beforeEach(() => {
+	// jsdom has no ResizeObserver, which the popover's positioning looks for
+	vi.stubGlobal(
+		'ResizeObserver',
+		class {
+			observe() {}
+			unobserve() {}
+			disconnect() {}
+		}
+	);
 	vi.resetAllMocks();
 	panel.isOpen = false;
 	lookupsStore.reset();
@@ -90,23 +118,23 @@ describe('AddEntryDialog: the form', () => {
 	it('offers only accounts without a bank connection', async () => {
 		const { dialog } = await open();
 
-		const options = within(field(dialog, 'Account')).queryAllByRole('option');
-		const names = options.map((o) => o.textContent?.trim()).filter(Boolean);
-		expect(names).toEqual(['Cash', 'Hand loan']);
+		await fireEvent.click(account(dialog));
+		const options = await screen.findAllByRole('option');
+		expect(options.map((o) => o.textContent?.trim())).toEqual(['Cash', 'Hand loan']);
 	});
 
 	it('starts on today, and on the account the ledger is filtered to when it is exactly one', async () => {
 		const { dialog } = await open({ options: { filtered: [3] } });
 
-		expect(field(dialog, 'Date').value).toBe(today);
-		await waitFor(() => expect(field(dialog, 'Account').value).toBe('3'));
+		expect(date(dialog)).toHaveTextContent(formatDate(today));
+		await waitFor(() => expect(account(dialog)).toHaveTextContent('Hand loan'));
 	});
 
 	it('starts on the last account used', async () => {
 		localStorage.setItem('ledgehog.entry-form.account.1', '3');
 		const { dialog } = await open();
 
-		await waitFor(() => expect(field(dialog, 'Account').value).toBe('3'));
+		await waitFor(() => expect(account(dialog)).toHaveTextContent('Hand loan'));
 	});
 
 	it('explains, and cannot add, when every account has a bank connection', async () => {
@@ -137,13 +165,56 @@ describe('AddEntryDialog: the form', () => {
 	});
 });
 
+describe('AddEntryDialog: account and date controls', () => {
+	it('chooses an account from the popover with the find box, and closes it', async () => {
+		signedIn([giro, loan, { ...loan, id: 9, name: 'Other loan' }]);
+		const { dialog } = await open();
+
+		await fireEvent.click(account(dialog));
+		await fireEvent.input(await screen.findByLabelText('Search account'), {
+			target: { value: 'other' }
+		});
+		expect(screen.queryByRole('option', { name: /Hand loan/ })).toBeNull();
+		await fireEvent.click(screen.getByRole('option', { name: /Other loan/ }));
+
+		expect(account(dialog)).toHaveTextContent('Other loan');
+		await waitFor(() => expect(screen.queryByRole('option')).toBeNull());
+	});
+
+	it('clears the account error when an account is chosen', async () => {
+		signedIn([giro, loan, { ...loan, id: 9, name: 'Other loan' }]);
+		const { dialog } = await open();
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
+		await within(dialog).findByText('Choose an account.');
+
+		await chooseAccount(dialog, 'Hand loan');
+
+		expect(within(dialog).queryByText('Choose an account.')).toBeNull();
+	});
+
+	it('chooses a day in the calendar: the date changes and the popover closes', async () => {
+		vi.mocked(api.createSource).mockResolvedValue(written());
+		const { dialog } = await open({ options: { filtered: [1] } });
+		await waitFor(() => expect(account(dialog)).toHaveTextContent('Cash'));
+
+		await chooseDay(dialog, today.slice(0, 8) + '01');
+		expect(date(dialog)).toHaveTextContent(formatDate(today.slice(0, 8) + '01'));
+		await waitFor(() => expect(document.querySelector('[data-bits-day]')).toBeNull());
+		await fill(dialog, '\u22125');
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
+
+		await waitFor(() => expect(api.createSource).toHaveBeenCalled());
+		expect(body()).toMatchObject({ booked_on: today.slice(0, 8) + '01' });
+	});
+});
+
 describe('AddEntryDialog: Add', () => {
 	it('enters the transaction with a signed amount, closes, and opens the panel on the new unit', async () => {
 		vi.mocked(api.createSource).mockResolvedValue(written({ anchor_entry_id: 77 }));
 		const created = vi.fn();
 		const stop = entryForm.listen({ created });
 		const { dialog, onclose } = await open({ options: { filtered: [1] } });
-		await waitFor(() => expect(field(dialog, 'Account').value).toBe('1'));
+		await waitFor(() => expect(account(dialog)).toHaveTextContent('Cash'));
 		await fill(dialog, '\u221212.50', ' groceries ');
 
 		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
@@ -164,7 +235,7 @@ describe('AddEntryDialog: Add', () => {
 	it('enters an income with a positive amount', async () => {
 		vi.mocked(api.createSource).mockResolvedValue(written());
 		const { dialog } = await open({ options: { filtered: [1] } });
-		await waitFor(() => expect(field(dialog, 'Account').value).toBe('1'));
+		await waitFor(() => expect(account(dialog)).toHaveTextContent('Cash'));
 		await fill(dialog, '+40');
 
 		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
@@ -176,7 +247,7 @@ describe('AddEntryDialog: Add', () => {
 	it('submits from Enter in a field: the form is submitted', async () => {
 		vi.mocked(api.createSource).mockResolvedValue(written());
 		const { dialog } = await open({ options: { filtered: [1] } });
-		await waitFor(() => expect(field(dialog, 'Account').value).toBe('1'));
+		await waitFor(() => expect(account(dialog)).toHaveTextContent('Cash'));
 		await fill(dialog, '\u22125');
 
 		await fireEvent.submit(field(dialog, 'Purpose').closest('form') as HTMLFormElement);
@@ -198,7 +269,7 @@ describe('AddEntryDialog: Add', () => {
 
 	it('asks for a sign when there is none, and sends nothing', async () => {
 		const { dialog } = await open({ options: { filtered: [1] } });
-		await waitFor(() => expect(field(dialog, 'Account').value).toBe('1'));
+		await waitFor(() => expect(account(dialog)).toHaveTextContent('Cash'));
 		await fill(dialog, '12.50');
 
 		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
@@ -211,7 +282,7 @@ describe('AddEntryDialog: Add', () => {
 
 	it('refuses the sign alone as no amount', async () => {
 		const { dialog } = await open({ options: { filtered: [1] } });
-		await waitFor(() => expect(field(dialog, 'Account').value).toBe('1'));
+		await waitFor(() => expect(account(dialog)).toHaveTextContent('Cash'));
 
 		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
 
@@ -221,7 +292,7 @@ describe('AddEntryDialog: Add', () => {
 
 	it('refuses an ambiguous amount instead of guessing', async () => {
 		const { dialog } = await open({ options: { filtered: [1] } });
-		await waitFor(() => expect(field(dialog, 'Account').value).toBe('1'));
+		await waitFor(() => expect(account(dialog)).toHaveTextContent('Cash'));
 		await fill(dialog, '\u22121,234');
 
 		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
@@ -235,8 +306,8 @@ describe('AddEntryDialog: Add and add another', () => {
 	it('keeps the dialog, resets the amount to its sign and clears the purpose, keeps account, date and sign, and says what was added', async () => {
 		vi.mocked(api.createSource).mockResolvedValue(written());
 		const { dialog, onclose } = await open({ options: { filtered: [1] } });
-		await waitFor(() => expect(field(dialog, 'Account').value).toBe('1'));
-		await fireEvent.input(field(dialog, 'Date'), { target: { value: '2026-10-01' } });
+		await waitFor(() => expect(account(dialog)).toHaveTextContent('Cash'));
+		await chooseDay(dialog, '2026-10-01');
 		await fill(dialog, '+12.50', 'refund');
 
 		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add and add another' }));
@@ -244,8 +315,8 @@ describe('AddEntryDialog: Add and add another', () => {
 		expect(await within(dialog).findByText(/^Added .*12\.50.*EUR · refund\.$/)).toBeInTheDocument();
 		expect(field(dialog, 'Amount').value).toBe('+');
 		expect(field(dialog, 'Purpose').value).toBe('');
-		expect(field(dialog, 'Account').value).toBe('1');
-		expect(field(dialog, 'Date').value).toBe('2026-10-01');
+		expect(account(dialog)).toHaveTextContent('Cash');
+		expect(date(dialog)).toHaveTextContent(formatDate('2026-10-01'));
 		await waitFor(() => expect(field(dialog, 'Amount')).toHaveFocus());
 		expect(field(dialog, 'Amount').selectionStart).toBe(1);
 		expect(onclose).not.toHaveBeenCalled();
@@ -256,7 +327,7 @@ describe('AddEntryDialog: Add and add another', () => {
 	it('enters the next one with a new id', async () => {
 		vi.mocked(api.createSource).mockResolvedValue(written());
 		const { dialog } = await open({ options: { filtered: [1] } });
-		await waitFor(() => expect(field(dialog, 'Account').value).toBe('1'));
+		await waitFor(() => expect(account(dialog)).toHaveTextContent('Cash'));
 		await fill(dialog, '\u22125');
 		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add and add another' }));
 		await within(dialog).findByText(/^Added/);
@@ -276,7 +347,7 @@ describe('AddEntryDialog: idempotency and failures', () => {
 			.mockRejectedValueOnce(apiError(0, 'network_error'))
 			.mockResolvedValue(written());
 		const { dialog } = await open({ options: { filtered: [1] } });
-		await waitFor(() => expect(field(dialog, 'Account').value).toBe('1'));
+		await waitFor(() => expect(account(dialog)).toHaveTextContent('Cash'));
 		await fill(dialog, '\u221212.50');
 		const add = () => fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
 
@@ -297,7 +368,7 @@ describe('AddEntryDialog: idempotency and failures', () => {
 	it('says a lost connection in the dialog, with Try again, and keeps the dialog open and filled', async () => {
 		vi.mocked(api.createSource).mockRejectedValue(apiError(0, 'network_error'));
 		const { dialog, onclose } = await open({ options: { filtered: [1] } });
-		await waitFor(() => expect(field(dialog, 'Account').value).toBe('1'));
+		await waitFor(() => expect(account(dialog)).toHaveTextContent('Cash'));
 		await fill(dialog, '\u221212.50');
 
 		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
@@ -311,7 +382,7 @@ describe('AddEntryDialog: idempotency and failures', () => {
 	it('puts account_synced under Account', async () => {
 		vi.mocked(api.createSource).mockRejectedValue(apiError(422, 'account_synced'));
 		const { dialog } = await open({ options: { filtered: [1] } });
-		await waitFor(() => expect(field(dialog, 'Account').value).toBe('1'));
+		await waitFor(() => expect(account(dialog)).toHaveTextContent('Cash'));
 		await fill(dialog, '\u221212.50');
 
 		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
@@ -329,14 +400,14 @@ describe('AddEntryDialog: idempotency and failures', () => {
 		);
 		vi.mocked(api.listAccounts).mockResolvedValue([giro, loan]);
 		const { dialog } = await open({ options: { filtered: [1] } });
-		await waitFor(() => expect(field(dialog, 'Account').value).toBe('1'));
+		await waitFor(() => expect(account(dialog)).toHaveTextContent('Cash'));
 		await fill(dialog, '\u221212.50');
 
 		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
 
 		expect(await within(dialog).findByText(/no longer exists/)).toBeInTheDocument();
 		await waitFor(() => expect(api.listAccounts).toHaveBeenCalled());
-		await waitFor(() => expect(field(dialog, 'Account').value).toBe(''));
+		await waitFor(() => expect(account(dialog)).toHaveTextContent('Choose an account…'));
 	});
 
 	it('puts a server validation error under the field it names', async () => {
@@ -346,7 +417,7 @@ describe('AddEntryDialog: idempotency and failures', () => {
 			})
 		);
 		const { dialog } = await open({ options: { filtered: [1] } });
-		await waitFor(() => expect(field(dialog, 'Account').value).toBe('1'));
+		await waitFor(() => expect(account(dialog)).toHaveTextContent('Cash'));
 		await fill(dialog, '\u221212.50');
 
 		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));

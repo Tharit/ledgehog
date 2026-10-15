@@ -176,6 +176,17 @@ def _effect(leg: Leg, p: PoolEntry, kind: OfferKind, exact: bool, partner_id: in
     )
 
 
+def counter_leg_amount(leg: Leg, account: AccountFact) -> int | None:
+    """The amount of the counter-leg of `leg` on `account` (spec §5.7 "Its amount"): the negated amount in
+    one currency; across currencies the negated instructed amount where `leg` has one in the account's
+    currency; else None: the user types the amount received."""
+    if account.currency == leg.currency:
+        return -leg.amount
+    if leg.instructed_currency == account.currency and leg.instructed_amount is not None:
+        return -leg.instructed_amount
+    return None
+
+
 def _counter_leg(leg: Leg, partner_id: int | None, world: OfferWorld, purpose: str | None) -> Offer | None:
     """The counter-leg a commit would create: for a leg without a partner whose C is unsynced and open."""
     c = leg.counter_account_id
@@ -188,11 +199,7 @@ def _counter_leg(leg: Leg, partner_id: int | None, world: OfferWorld, purpose: s
         return None
     if leg.instructed_currency is not None and account.currency != leg.instructed_currency:
         return None  # I11: the money arrived in another currency
-    amount: int | None = None
-    if account.currency == leg.currency:
-        amount = -leg.amount
-    elif leg.instructed_currency == account.currency and leg.instructed_amount is not None:
-        amount = -leg.instructed_amount
+    amount = counter_leg_amount(leg, account)
     shown_purpose = purpose if purpose is not None else leg.purpose
     return Offer(
         kind="counter_leg",

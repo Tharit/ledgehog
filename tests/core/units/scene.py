@@ -22,7 +22,7 @@ from app.core.units.draft import (
 from app.core.units.lookup import unit_ids_of
 from app.core.units.plan import Plan
 from app.core.units.preview import preview_unit
-from tests.invariants.helpers import make_category, make_entry, make_source, pair
+from tests.invariants.helpers import link_account, make_category, make_entry, make_instance, make_source, pair
 
 D = date(2026, 3, 10)
 
@@ -146,6 +146,10 @@ class Scene:
             derivation=json.dumps({"type": {"pass": "user"}, "category": {"pass": "user"}}),
         )
         return e
+
+    def sync(self, account: int) -> None:
+        """Link an importer to `account`: it is synced (I40: no user-authored row is entered on it after)."""
+        self.tx(lambda c: link_account(c, account, make_instance(c)))
 
     def pair_up(self, a: int, b: int) -> None:
         def go(c: Connection) -> None:

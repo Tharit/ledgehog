@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import ActionDialog, { type DialogFeedback } from '#lib/components/common/action-dialog.svelte';
+	import DateField from '#lib/components/common/date-field.svelte';
 	import Field from '#lib/components/common/field.svelte';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import type { EditTarget } from '#lib/entry-form/controller.svelte.js';
@@ -8,6 +9,7 @@
 	import { EditFlow } from '#lib/entry-form/edit-flow.svelte.js';
 	import { EDIT_WARNING } from '#lib/entry-form/effects.js';
 	import { lookupsStore } from '#lib/stores/lookups.svelte.js';
+	import { session } from '#lib/stores/session.svelte.js';
 
 	// "Edit entry": the same fields as adding, the account fixed (spec §5.6). The static warning above
 	// Save is the confirmation (D214); the dry run lists what this edit would do before Save is
@@ -75,7 +77,13 @@
 	</Field>
 	<Field label="Date" error={flow.errors.date ?? null}>
 		{#snippet children(field)}
-			<Input type="date" bind:value={flow.date} {...field} readonly={flow.busy} />
+			<DateField
+				{...field}
+				label="Date"
+				bind:value={flow.date}
+				locale={session.config?.locale}
+				disabled={flow.busy}
+			/>
 		{/snippet}
 	</Field>
 	<Field label="Amount" hint={AMOUNT_HINT} error={flow.errors.amount ?? null}>

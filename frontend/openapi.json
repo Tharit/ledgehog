@@ -924,6 +924,13 @@
             "title": "Deleted Entry Ids",
             "type": "array"
           },
+          "followed_entry_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Followed Entry Ids",
+            "type": "array"
+          },
           "rederived_entry_ids": {
             "items": {
               "type": "integer"
@@ -959,6 +966,7 @@
           "deleted_entry_ids",
           "rederived_entry_ids",
           "returned_to_review_ids",
+          "followed_entry_ids",
           "versions"
         ],
         "title": "EditEffectsOut",
@@ -3867,6 +3875,36 @@
         "title": "UnitConsequenceOut",
         "type": "object"
       },
+      "UnitCounterLegIn": {
+        "additionalProperties": false,
+        "description": "The counter-leg a draft creates (spec \u00a75.7). `temp_id` is the client's NEGATIVE id for the entry it\ncreates (preview rows carry it; a commit's `created` maps it to the real one). `received_amount` is the\namount received, an unsigned magnitude in minor units of the counter-account's currency (greater than\nzero); the leg fixes the sign. It is required where the leg's offer says `needs_received_amount`\n(problem `received_amount_required`) and refused otherwise (`received_amount_not_needed`).",
+        "properties": {
+          "received_amount": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 4.611686018427388e+18,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Received Amount"
+          },
+          "temp_id": {
+            "exclusiveMaximum": 0.0,
+            "minimum": -9007199254740992.0,
+            "title": "Temp Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "temp_id"
+        ],
+        "title": "UnitCounterLegIn",
+        "type": "object"
+      },
       "UnitCounterLegOut": {
         "description": "The counter-leg a commit would create on the offer's account (an unsynced one).",
         "properties": {
@@ -4390,13 +4428,24 @@
       },
       "UnitPairingIn": {
         "additionalProperties": false,
-        "description": "What the draft says of a transfer leg's partner (spec \u00a75.7). `keep` (also: absent) leaves it, and a\ncommit accepts the proposal the preview shows. `pick` names a stored partner entry (`partner_entry_id`,\npositive): it must be an offer of the leg, else the preview lists the problem `partner_not_offered` or\n`partner_in_unit`. `reresolve` drops the stored pair and lets the passes decide again. A `pairing` on an\nentry that is not a transfer leg, or a negative id, is 422 `invalid_draft`.",
+        "description": "What the draft says of a transfer leg's partner (spec \u00a75.7). `keep` (also: absent) leaves it, and a\ncommit accepts the proposal the preview shows. `pick` names a stored partner entry (`partner_entry_id`,\npositive): it must be an offer of the leg, else the preview lists the problem `partner_not_offered` or\n`partner_in_unit`. `counter_leg` (with `counter_leg`) creates the other side on the leg's unsynced\ncounter-account: refused with `counter_leg_not_offered` for a leg that has a partner or no usable\ncounter-account, `counter_leg_account_synced` for a synced one. `reresolve` drops the stored pair and\nlets the passes decide again. A `pairing` on an entry that is not a transfer leg, a negative partner id,\nor a `counter_leg` object on another mode, is 422 `invalid_draft`.",
         "properties": {
+          "counter_leg": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UnitCounterLegIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "mode": {
             "default": "keep",
             "enum": [
               "keep",
               "pick",
+              "counter_leg",
               "reresolve"
             ],
             "title": "Mode",
@@ -4564,6 +4613,17 @@
             "format": "date",
             "title": "Booked On",
             "type": "string"
+          },
+          "counter_leg_for": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Counter Leg For"
           },
           "counterpart_entry_id": {
             "anyOf": [
@@ -5094,6 +5154,11 @@
                 "type": "null"
               }
             ]
+          },
+          "proposed_counter_leg": {
+            "default": false,
+            "title": "Proposed Counter Leg",
+            "type": "boolean"
           },
           "proposed_pick": {
             "anyOf": [

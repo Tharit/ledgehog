@@ -10,6 +10,7 @@ from app.core.matching.offers import (
     PoolEntry,
     Proposal,
     Summary,
+    counter_leg_amount,
     offers,
 )
 from app.core.matching.pairing import PAIR_BASIS, Pair, pair_all
@@ -27,6 +28,7 @@ __all__ = [
     "Proposal",
     "Summary",
     "candidates",
+    "counter_leg_amount",
     "is_candidate",
     "leg_of",
     "offers",

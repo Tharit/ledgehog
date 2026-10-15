@@ -4,7 +4,7 @@ import { account, category, entry, payee, tag } from '#lib/ledger/fixtures.js';
 import { buildLookups } from '#lib/ledger/lookups.js';
 import { rule, source } from '#lib/rules/fixtures.js';
 import { ruleNames } from '#lib/stores/rule-names.svelte.js';
-import { apiError, preview, unit } from '#lib/units/fixtures.js';
+import { apiError, preview, transferOut, unit } from '#lib/units/fixtures.js';
 import { UnitPanel, type PanelNav } from '#lib/units/panel.svelte.js';
 import { registerUnitSource } from '#lib/units/sources.js';
 import UnitPanelView from './unit-panel.svelte';
@@ -44,9 +44,13 @@ function nav(start = '/ledger'): PanelNav {
 	};
 }
 
-async function openPanel(shown: ReturnType<typeof unit>, id = shown.anchor_entry_id) {
+async function openPanel(
+	shown: ReturnType<typeof unit>,
+	id = shown.anchor_entry_id,
+	answer: ReturnType<typeof preview> = preview(shown)
+) {
 	vi.mocked(getUnit).mockResolvedValue(shown);
-	vi.mocked(previewUnit).mockResolvedValue(preview(shown));
+	vi.mocked(previewUnit).mockResolvedValue(answer);
 	const panel = new UnitPanel(nav());
 	render(UnitPanelView, { props: { panel, lookups, locale: 'en' } });
 	panel.open(id);
@@ -526,22 +530,99 @@ describe('UnitPanel: grouped by source transaction', () => {
 			entries: [leg(1, 1, 5, '2026-10-10', over), leg(2, 2, 6, '2026-10-09')]
 		});
 
-	it('shows the pair line, a header per source ordered by date, and a strip under each header', async () => {
+	// the preview as the server answers it for a matched pair: each leg names the other
+	function pairedPreview(shown: ReturnType<typeof unit>) {
+		const answer = preview(shown);
+		for (const row of answer.rows) {
+			const other = shown.entries.find((e) => e.id !== row.id)!;
+			row.transfer = transferOut({
+				state: 'paired',
+				partner: {
+					entry_id: other.id,
+					account_id: other.account_id,
+					booked_on: other.booked_on,
+					amount: other.amount,
+					description: 'Other side'
+				}
+			});
+		}
+		return answer;
+	}
+
+	it('shows a header per source ordered by date, a strip under each, and no pair line', async () => {
 		const { dialog } = await openPanel(pair());
 
-		const line = dialog.querySelector('[data-slot="pair-line"]')!;
-		expect(line).toHaveTextContent('Transfer between Savings and Giro');
-		expect(line).toHaveTextContent('Waiting for its partner');
-		expect(line).toHaveTextContent('paired with Giro');
+		expect(dialog.querySelector('[data-slot="pair-line"]')).toBeNull();
+		expect(dialog).not.toHaveTextContent('Transfer between');
 		const groups = [...dialog.querySelectorAll('[data-slot="source-group"]')];
 		expect(groups).toHaveLength(2);
 		const headers = groups.map((g) => g.querySelector('[data-slot="group-header"]')!);
 		expect(headers[0]).toHaveTextContent('Savings');
-		expect(headers[0]).toHaveTextContent('50.00');
 		expect(headers[1]).toHaveTextContent('Giro');
 		expect(groups[0]).toHaveTextContent('Source 6');
 		expect(groups[1]).toHaveTextContent('Source 5');
 		expect(within(dialog).queryByRole('button', { name: 'Pick another partner…' })).toBeNull();
+	});
+
+	it('makes each header a divider band that names only the account', async () => {
+		const { dialog } = await openPanel(pair());
+
+		const headers = [...dialog.querySelectorAll<HTMLElement>('[data-slot="group-header"]')];
+		for (const header of headers) {
+			expect(header.className).toContain('bg-muted');
+			expect(header.className).toContain('border-b');
+			expect(header.className).toContain('font-semibold');
+			expect(header).not.toHaveTextContent('50.00');
+			expect(header).not.toHaveTextContent('2026');
+		}
+		expect(headers[0].className).not.toContain('border-t');
+		expect(headers[1].className).toContain('border-t');
+	});
+
+	it('indents the content of each group under a rule and leaves the preview region full width', async () => {
+		const { dialog } = await openPanel(pair());
+
+		const contents = dialog.querySelectorAll<HTMLElement>('[data-slot="group-content"]');
+		expect(contents).toHaveLength(2);
+		for (const content of contents) {
+			expect(content.className).toContain('pl-3');
+			expect(content.className).toContain('border-l');
+			expect(content.querySelector('[data-slot="source-strip"]')).not.toBeNull();
+			expect(content.querySelector('[data-slot="entry-editor"]')).not.toBeNull();
+			expect(within(content).getByRole('button', { name: 'Split entry' })).toBeInTheDocument();
+		}
+		const region = dialog.querySelector<HTMLElement>('[data-slot="preview-region"]')!;
+		expect(region.className).toContain('border-t-2');
+		expect(region.className).not.toContain('pl-3');
+		expect(region.closest('[data-slot="group-content"]')).toBeNull();
+		expect(region.closest('[data-slot="source-group"]')).toBeNull();
+		expect(region.className).toContain('bg-muted');
+	});
+
+	it('says in the partner row only where the partner is and how it came', async () => {
+		const shown = pair();
+		const { dialog } = await openPanel(shown, undefined, pairedPreview(shown));
+
+		const rows = [...dialog.querySelectorAll<HTMLElement>('[data-slot="partner"]')];
+		expect(rows).toHaveLength(2);
+		// the groups run Savings (entry 2), then Giro (entry 1)
+		expect(rows[0]).toHaveTextContent('Paired with the entry below');
+		expect(rows[0].querySelector('[data-slot="partner-leg"]')).toHaveAttribute(
+			'data-direction',
+			'below'
+		);
+		expect(rows[1]).toHaveTextContent('Paired with the entry above');
+		for (const row of rows) {
+			expect(row).toHaveTextContent('matched automatically');
+			expect(row).not.toHaveTextContent('Giro');
+			expect(row).not.toHaveTextContent('Savings');
+			expect(row).not.toHaveTextContent('2026');
+			expect(row).not.toHaveTextContent('50.00');
+			expect(row.querySelector('[aria-hidden="true"]')).toHaveTextContent(/^[↓↑]$/);
+			expect(
+				within(row).getByRole('button', { name: 'Pick another partner…' })
+			).toBeInTheDocument();
+		}
 	});
 
 	it('has a Split entry per group, and a split lands under the leg it was split from', async () => {
@@ -569,7 +650,7 @@ describe('UnitPanel: grouped by source transaction', () => {
 		expect(headers[0].querySelector('[data-slot="authored-hint"]')).toBeNull();
 	});
 
-	it('keeps a single source plain: no header, no pair line, the strip on top', async () => {
+	it('keeps a single source plain: no header, no indent, the strip on top', async () => {
 		const src = source({ counterparty_name: 'Amazon' });
 		const { dialog } = await openPanel(
 			unit({
@@ -582,6 +663,13 @@ describe('UnitPanel: grouped by source transaction', () => {
 		);
 		expect(dialog.querySelector('[data-slot="group-header"]')).toBeNull();
 		expect(dialog.querySelector('[data-slot="pair-line"]')).toBeNull();
+		for (const content of dialog.querySelectorAll('[data-slot="group-content"]')) {
+			expect(content.className).not.toContain('pl-3');
+			expect(content.className).not.toContain('border-l');
+		}
+		expect(dialog.querySelector('[data-slot="preview-region"]')!.className).not.toContain(
+			'border-t-2'
+		);
 		expect(within(dialog).getAllByRole('button', { name: 'Split entry' })).toHaveLength(1);
 		const body = dialog.querySelector('[data-slot="unit-body"]')!;
 		expect(body.querySelector('[data-slot="source-strip"]')).not.toBeNull();

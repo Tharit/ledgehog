@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { entry } from '#lib/ledger/fixtures.js';
-import { allocationMessage, allocationText, Draft, parseAllocation } from './draft.js';
+import {
+	allocationMessage,
+	allocationText,
+	Draft,
+	parseAllocation,
+	parseReceivedAmount
+} from './draft.js';
 import { unit } from './fixtures.js';
 
 const loaded = unit({
@@ -649,5 +655,76 @@ describe('the partner of a transfer leg', () => {
 		expect(draft.rebase(loaded).hasPick).toBe(true);
 		const gone = unit({ anchor_entry_id: 2, entries: [loaded.entries[1]] });
 		expect(draft.rebase(gone).hasPick).toBe(false);
+	});
+});
+
+describe('the counter-leg of a transfer leg', () => {
+	const picked = () => empty().pickCounterLeg(1);
+
+	it('is a draft edit with a client-issued negative id, in the request of that entry', () => {
+		const draft = picked();
+		expect(draft.isDirty).toBe(true);
+		expect(draft.hasOtherChanges).toBe(true);
+		expect(draft.hasCounterLeg).toBe(true);
+		expect(draft.hasPick).toBe(false);
+		expect(draft.toRequest().entries).toEqual([
+			{
+				id: 1,
+				pairing: { mode: 'counter_leg', counter_leg: { temp_id: -1, received_amount: null } }
+			}
+		]);
+	});
+
+	it('keeps its id for the draft’s life, and a split never takes it', () => {
+		const draft = picked();
+		expect(draft.pickCounterLeg(1).edit(1).pairing).toMatchObject({ tempId: -1 });
+		const withSplit = draft.addSplit(1);
+		expect(withSplit.splits[0].id).toBe(-2);
+		expect(withSplit.pickCounterLeg(1).edit(1).pairing).toMatchObject({ tempId: -1 });
+		// the counter-leg after a split gets the next id too
+		expect(empty().addSplit(1).pickCounterLeg(1).edit(1).pairing).toMatchObject({ tempId: -2 });
+	});
+
+	it('holds the amount received, unsigned, and picking again keeps it', () => {
+		const draft = picked().setReceivedAmount(1, 9000);
+		expect(first(draft).pairing).toEqual({
+			mode: 'counter_leg',
+			counter_leg: { temp_id: -1, received_amount: 9000 }
+		});
+		expect(draft.pickCounterLeg(1).edit(1).pairing).toMatchObject({ receivedAmount: 9000 });
+		expect(draft.pickCounterLeg(1, { receivedAmount: null }).edit(1).pairing).toMatchObject({
+			receivedAmount: null
+		});
+		expect(picked().setReceivedAmount(1, null)).toBeTruthy();
+		// no amount without a counter-leg
+		const plain = empty();
+		expect(plain.setReceivedAmount(1, 100)).toBe(plain);
+	});
+
+	it('is gone with Reset (a fresh draft), a re-resolve, another pick, a flow or another counter-account', () => {
+		expect(picked().reresolve().toRequest()).toMatchObject({ reresolve_all: true, entries: [] });
+		expect(picked().pickPartner(1, 77).hasCounterLeg).toBe(false);
+		expect(picked().convertToFlow(1).hasCounterLeg).toBe(false);
+		expect(picked().setField(1, 'counter_account', 3).hasCounterLeg).toBe(false);
+		expect(picked().clearPairing(1).isDirty).toBe(false);
+	});
+
+	it('is for a stored entry only', () => {
+		const draft = empty().addSplit(1);
+		expect(draft.pickCounterLeg(-1)).toBe(draft);
+	});
+});
+
+describe('parseReceivedAmount', () => {
+	it('reads an unsigned amount in the currency, whatever sign is typed', () => {
+		expect(parseReceivedAmount('90.00', 'USD', 'en')).toEqual({ ok: true, minor: 9000 });
+		expect(parseReceivedAmount('-90.00', 'USD', 'en')).toEqual({ ok: true, minor: 9000 });
+	});
+
+	it('rejects what is ambiguous, empty or nothing, with the allocation messages', () => {
+		expect(parseReceivedAmount('1,000', 'USD', 'en')).toEqual({ ok: false, error: 'ambiguous' });
+		expect(parseReceivedAmount('', 'USD', 'en')).toEqual({ ok: false, error: 'empty' });
+		expect(parseReceivedAmount('0', 'USD', 'en')).toEqual({ ok: false, error: 'zero' });
+		expect(allocationMessage('ambiguous')).toContain('Write the decimals out');
 	});
 });

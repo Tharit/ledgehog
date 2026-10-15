@@ -61,10 +61,12 @@ def test_flows_and_untyped_rows_carry_no_transfer_view(scene: Scene) -> None:
 
 
 def test_an_unpaired_leg_on_an_unsynced_account_is_unmatched(scene: Scene) -> None:
-    e = leg(scene, -1000, scene.checking, counter=scene.savings)
+    # a counter-leg with no amount to create it with (cross-currency, none instructed) is offered, not taken
+    e = leg(scene, -1000, scene.checking, counter=scene.usd)
     plan = scene.preview(e)
     t = view(plan, e)
     assert (t.state, t.waiting_for, t.needs_account, t.partner) == ("unmatched", None, None, None)
+    assert t.proposal is not None and t.proposal.kind == "counter_leg" and not t.proposed_counter_leg
     assert plan.anchor_unit.state.reasons == ("unmatched_transfer",)
     assert "unmatched_transfer" in plan.row(e).flags
 
@@ -183,6 +185,7 @@ def test_a_paired_leg_gets_offers_but_no_proposal(scene: Scene) -> None:
 def test_a_leg_the_draft_frees_is_offered_as_planned_not_as_stored(scene: Scene) -> None:
     (_sa, (a,)), (_sb, (b,)) = scene.transfer_pair(-1000)
     other = leg(scene, -1000, scene.checking)
+    scene.sync(scene.cash)  # a synced counter-account has no counter-leg to pair `a` with
     # the draft sends `a` to the cash account: the pair breaks and `b` is an unpaired leg again
     plan = scene.preview(a, DraftEntry(a, counter_account=fixed(scene.cash)))
     assert not plan.problems or all(p.code != "pair_unequal" for p in plan.problems)
@@ -221,6 +224,7 @@ def test_a_leg_outside_the_window_or_with_another_counter_account_is_not_pulled_
     e = leg(scene, -1000, scene.checking, counter=scene.savings)
     leg(scene, 1000, scene.savings, on=D + timedelta(days=60))
     leg(scene, 1000, scene.savings, counter=scene.cash)
+    scene.sync(scene.savings)  # no open offer at all on an unsynced account would propose a counter-leg
     plan = scene.preview(e)
     assert {r.id for r in plan.rows} == {e} and set(plan.versions) == {e}
 

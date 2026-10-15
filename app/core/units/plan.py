@@ -128,6 +128,10 @@ PROBLEM_CODES = (
     "stale_reference",
     "partner_not_offered",
     "partner_in_unit",
+    "counter_leg_not_offered",
+    "counter_leg_account_synced",
+    "received_amount_required",
+    "received_amount_not_needed",
 )
 
 
@@ -221,6 +225,10 @@ class TransferView:
     # the entry the preview took the leg's proposal to be (an exact open offer, effective in the preview and
     # accepted by a commit as the user's decision); the leg then shows its partner
     proposed_pick: int | None = None
+    # the same for a counter-leg: the leg has no open offer at all, its counter-account is unsynced, and the
+    # preview took the counter-leg proposal to be the pairing (the leg then shows the synthetic row as its
+    # partner); a commit creates it as the user's decision
+    proposed_counter_leg: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -247,6 +255,9 @@ class PlannedRow:
     original: bool  # the residual of its source
     leg: Leg | None = None  # the matcher's view of the row as planned (offers are made for it)
     purpose: str | None = None  # the source's purpose as stored
+    # a counter-leg the draft creates (spec §5.7): the entry it was created for. The row is a new source
+    # transaction on the leg's counter-account with this one entry
+    counter_leg_for: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -283,6 +294,8 @@ class Plan:
     # legs outside the closure that the simulation of settling paired with a row of the plan: the preview
     # reads their units and plans again (a commit never has any: its world holds no ledger legs)
     pulled_entry_ids: tuple[int, ...] = ()
+    # user-authored single-entry sources whose amount follows their partner's (spec §5.7): source -> amount
+    followed_sources: Mapping[int, int] = dataclasses.field(default_factory=dict)
     transfers: Mapping[int, TransferView] = dataclasses.field(default_factory=dict)  # by row id
 
     def row(self, entry_id: int) -> PlannedRow:

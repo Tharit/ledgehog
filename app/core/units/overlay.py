@@ -26,7 +26,15 @@ A drafted partner (`DraftEntry.pairing`, spec §5.7) is applied after the walk: 
 offer (`picks.check_pick`), breaks the leg's pair and the picked leg's, types an untyped partner as a
 transfer, sets a missing counter-account as the pair's and writes the pair with the keys `user`;
 `reresolve` drops the stored pair. The partner's closure is part of the stored unit
-(`stored.load_drafted_unit`).
+(`stored.load_drafted_unit`). A `counter_leg` is validated as the offer it is (the leg unpaired, its
+counter-account known, open and unsynced; its amount from the leg or from the amount received) and adds a
+SYNTHETIC ROW: a new source transaction on the counter-account with its single entry, paired with the leg,
+all keys `user`. Its source id is above every real one (`SYNTHETIC_SOURCE_BASE`), so the unit key stays the
+stored source's, as it will after the commit.
+
+A leg paired in one currency with a user-authored single-entry source on an unsynced account whose amount the
+draft changes (a split moves the residual) makes that source FOLLOW: its amount, and its entry's, become the
+negated new amount (spec §5.7, I2, I3). The follower keeps its values and keys: following is not an input.
 
 Only the anchor's unit (after the draft) and the entries the draft lists are written; the rest of the
 closure is a consequence (a partner left behind, the other side of a pair that no longer exists).
@@ -39,10 +47,11 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from app.core.matching import Leg, leg_of, pair_all, unmatched, waiting
+from app.core.matching import Leg, counter_leg_amount, leg_of, pair_all, unmatched, waiting
 from app.core.plugins.classifier import (
     FIELD_ORDER,
     STANDING_PASSES,
+    AccountFact,
     EntryInput,
     Field,
     Vote,
@@ -85,6 +94,7 @@ MAX_ROUNDS = 20
 RERESOLVE = FieldDraft(mode="reresolve")
 _USER: Mapping[str, Any] = {"pass": "user"}
 PAIR_COUNTER_BASIS: Mapping[str, str] = {"from": "counterpart"}
+SYNTHETIC_SOURCE_BASE = 2**52  # the source ids of the counter-legs a draft creates: above every real id
 
 
 @dataclass(slots=True)
@@ -116,6 +126,8 @@ class _Row:
     # what a commit writes, kept to tell what settling changed after it
     s1_values: dict[Field, int | str | None] | None = None
     s1_derivation: dict[str, Any] | None = None
+    # a counter-leg the draft creates: the entry it is the other side of
+    counter_leg_for: int | None = None
 
     @property
     def is_new(self) -> bool:
@@ -627,6 +639,7 @@ class _Picks:
 
     pairs: list[tuple[int, int, bool]]
     broken: set[int]
+    counter_legs: list[_Row] = dataclasses.field(default_factory=list)  # the synthetic rows, in draft order
 
     def partners(self) -> dict[int, int]:
         out: dict[int, int] = {}
@@ -680,6 +693,19 @@ def _apply_pairing(
                 if links.get(old) == r.id:
                     links[old] = None
             continue
+        if d.pairing.mode == "counter_leg":
+            # a proposal is not the user's choice: one the plan cannot make (the draft moved the leg since
+            # the preview proposed it) is dropped, never a problem that refuses the commit
+            found: list[Problem] = []
+            row = _counter_leg_row(d, r, first, links, used, accounts, world, found, len(out.counter_legs))
+            if not d.pairing.is_proposal:
+                problems.extend(found)
+            if row is not None:
+                out.counter_legs.append(row)
+                links[r.id], links[row.id] = row.id, r.id
+                used.add(r.id)
+                out.pairs.append((r.id, row.id, d.pairing.is_proposal))
+            continue
         partner_id = d.pairing.partner_entry_id
         assert partner_id is not None
         if s.counterpart_entry_id == partner_id:
@@ -727,6 +753,87 @@ def _apply_pairing(
     return out
 
 
+def _counter_leg_row(
+    d: DraftEntry,
+    leg: _Row,
+    first: Mapping[int, Mapping[Field, Decided | None]],
+    links: Mapping[int, int | None],
+    used: set[int],
+    accounts: Mapping[int, AccountFact],
+    world: World,
+    problems: list[Problem],
+    index: int,
+) -> _Row | None:
+    """The synthetic row of a counter-leg (spec §5.7), or None with the problem that refuses it.
+
+    The leg must be a stored transfer without a partner (once the draft's own changes are applied), whose
+    counter-account is known, exists, is open on the leg's date and is unsynced (I40), and takes the leg's
+    instructed currency (I11). Its amount is `counter_leg_amount`, or the user's amount received."""
+    spec = d.pairing.counter_leg
+    assert spec is not None
+    c = _own_counter(first[leg.id]["counter_account"])
+    acc = accounts.get(c) if c is not None else None
+    not_offered = Problem("counter_leg_not_offered", leg.id, "pairing", {"account": c})
+    if (
+        links.get(leg.id) is not None
+        or leg.id in used
+        or c is None
+        or c == leg.account_id
+        or acc is None
+        or (acc.closed_on is not None and leg.src.booked_on > acc.closed_on)
+        or (leg.src.instructed_currency is not None and acc.currency != leg.src.instructed_currency)
+    ):
+        problems.append(not_offered)
+        return None
+    if world.account_sync.get(c, (True, None))[0]:
+        problems.append(Problem("counter_leg_account_synced", leg.id, "pairing", {"account": c}))
+        return None
+    amount = counter_leg_amount(leg_of(_entry_input(leg), type="transfer", counter_account_id=c), acc)
+    detail: dict[str, int | str | None] = {"account": c, "currency": acc.currency}
+    if amount is None:
+        if spec.received_amount is None:
+            problems.append(Problem("received_amount_required", leg.id, "pairing", detail))
+            return None
+        amount = -_sign(leg.amount) * spec.received_amount
+    elif spec.received_amount is not None:
+        problems.append(Problem("received_amount_not_needed", leg.id, "pairing", detail))
+        return None
+    src = StoredSource(
+        id=SYNTHETIC_SOURCE_BASE + index + 1,
+        amount=amount,
+        account_id=c,
+        currency=acc.currency,
+        booked_on=leg.src.booked_on,
+        value_on=None,
+        user_authored=True,
+        purpose=leg.src.purpose,
+    )
+    return _Row(
+        id=spec.temp_id,
+        stored=None,
+        src=src,
+        original=True,
+        # a placeholder: the row is not walked, and nothing reads a draft of it
+        draft=DraftEntry(spec.temp_id, amount=amount, source_entry_id=leg.id),
+        explicit=True,
+        amount=amount,
+        description=None,
+        note=None,
+        tag_ids=(),
+        account_id=c,
+        type="transfer",
+        counter_account_id=leg.account_id,
+        counterpart=leg.id,
+        derivation={
+            "type": dict(_USER),
+            "counter_account": {"pass": "user", "basis": dict(PAIR_COUNTER_BASIS)},
+            "counterpart": {"pass": "user", "basis": {}},
+        },
+        accepted=True,
+        counter_leg_for=leg.id,
+    )
+
+
 def _pick_decisions(
     dec: Mapping[Field, Decided | None], other_account: int
 ) -> tuple[dict[Field, Decided | None], bool]:
@@ -766,7 +873,7 @@ def _problems(rows: Sequence[_Row], world: World) -> list[Problem]:
     for r in rows:
         if r.type == "transfer":
             transfers.setdefault(r.src.id, []).append(r)
-            if r.is_new:
+            if r.is_new and r.counter_leg_for is None:
                 out.append(Problem("new_entry_not_flow", r.id, "type"))
         if (r.category_id is not None or r.payee_id is not None) and r.type != "flow":
             out.append(Problem("type_conflict", r.id, "category" if r.category_id is not None else "payee"))
@@ -839,6 +946,40 @@ def _problems(rows: Sequence[_Row], world: World) -> list[Problem]:
             out.append(
                 Problem("split_sum", None, detail={"source": src_id, "difference": total - src.amount})
             )
+    return out
+
+
+# ---- following the partner ----------------------------------------------------------------------
+
+
+def _follow(rows: Mapping[int, _Row], links: Mapping[int, int | None], world: World) -> dict[int, int]:
+    """A counter-leg follows its partner (spec §5.7): where the draft changes the amount of a leg whose
+    stored pair stands, in one currency, with a user-authored source that is the only entry of its source, on
+    an unsynced account, that source's amount and its entry's become the negated new amount, in place on
+    the follower's row. Returns source id -> its new amount. The follower keeps its values and keys."""
+    out: dict[int, int] = {}
+    for r in list(rows.values()):
+        s = r.stored
+        if s is None or s.counterpart_entry_id is None or r.amount == s.amount:
+            continue
+        if links.get(r.id) != s.counterpart_entry_id:
+            continue  # the pair does not stand: nothing follows
+        p = rows.get(s.counterpart_entry_id)
+        if (
+            p is None
+            or p.stored is None
+            or not p.src.user_authored
+            or p.src.currency != r.src.currency
+            or sum(1 for x in rows.values() if x.src.id == p.src.id) != 1
+            or world.account_sync.get(p.account_id, (True, None))[0]
+        ):
+            continue
+        follower = -r.amount
+        if _sign(follower) != _sign(p.stored.amount):
+            continue  # a sign flip is a different movement: the pair breaks, as an edit of it does
+        p.amount = follower
+        p.src = dataclasses.replace(p.src, amount=follower)
+        out[p.src.id] = follower
     return out
 
 
@@ -982,7 +1123,11 @@ def plan_unit(stored: StoredUnit, draft: UnitDraft, world: World) -> Plan:
         )
     links = _pairs_that_stand(ordered, rows, first)
     picks = _apply_pairing(stored, draft, rows, first, links, world, problems)
+    for row in picks.counter_legs:  # the synthetic rows: after the stored ones, in draft order
+        rows[row.id] = row
+        ordered.append(row)
     picked = picks.partners()
+    followed = _follow(rows, links, world)
     unpaired = sorted(
         e.id for e in stored.entries if e.counterpart_entry_id is not None and links.get(e.id) is None
     )
@@ -1000,7 +1145,10 @@ def plan_unit(stored: StoredUnit, draft: UnitDraft, world: World) -> Plan:
     # a source the draft splits or lists is committed whole: the residual's new amount is part of it
     touched = {r.src.id for r in ordered if r.explicit}
     touched |= {e.source_transaction_id for e in stored.entries if e.id in set(draft.removed_entry_ids)}
+    touched |= set(followed)
     for r in ordered:
+        if r.counter_leg_for is not None:
+            continue  # a counter-leg is made whole: decided by the user, every key standing
         r.accepted = r.id in members or r.src.id in touched
         if not r.accepted:
             _write_stored(r)
@@ -1065,6 +1213,7 @@ def plan_unit(stored: StoredUnit, draft: UnitDraft, world: World) -> Plan:
             original=r.original,
             leg=leg_of(_entry_input(r), type=r.type, counter_account_id=r.counter_account_id),
             purpose=r.src.purpose,
+            counter_leg_for=r.counter_leg_for,
         )
         for r in ordered
     )
@@ -1081,10 +1230,11 @@ def plan_unit(stored: StoredUnit, draft: UnitDraft, world: World) -> Plan:
         )
         for key, (unit_rows, st) in sorted(final_states.items())
     )
+    now = {r.src.id: r.src for r in ordered}  # a source that follows its partner has its new amount
     splits = tuple(
         Split(
             source_transaction_id=src.id,
-            source_amount=src.amount,
+            source_amount=now[src.id].amount,
             residual_entry_id=stored.original_of(src.id),
             residual_amount=rows[stored.original_of(src.id)].amount,
             entry_ids=tuple(r.id for r in ordered if r.src.id == src.id),
@@ -1105,6 +1255,7 @@ def plan_unit(stored: StoredUnit, draft: UnitDraft, world: World) -> Plan:
         versions={e.id: e.version for e in stored.entries},
         created_ids=tuple(r.id for r in ordered if r.is_new),
         pulled_entry_ids=tuple(sorted(pulled)),
+        followed_sources=followed,
     )
 
 

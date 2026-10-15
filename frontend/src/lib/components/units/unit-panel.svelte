@@ -3,8 +3,6 @@
 	import EllipsisIcon from '@lucide/svelte/icons/ellipsis';
 	import ActionButton from '#lib/components/common/action-button.svelte';
 	import AccountDot from '#lib/components/common/account-dot.svelte';
-	import DateDisplay from '#lib/components/common/date-display.svelte';
-	import MoneyDisplay from '#lib/components/common/money-display.svelte';
 	import { resolveAccount } from '#lib/theme/resolve.js';
 	import ActionDialog from '#lib/components/common/action-dialog.svelte';
 	import ErrorState from '#lib/components/common/error-state.svelte';
@@ -26,11 +24,11 @@
 	} from '#lib/units/describe.js';
 	import { PANEL_GEOMETRY } from '#lib/units/geometry.js';
 	import type { UnitPanel } from '#lib/units/panel.svelte.js';
-	import { groupsOf, pairLine } from '#lib/units/groups.js';
+	import { groupsOf, partnerDirections } from '#lib/units/groups.js';
 	import { entryViews, type EntryView } from '#lib/units/view.js';
 	import { cn } from '#lib/utils.js';
+	import CounterLegBlock from './counter-leg-block.svelte';
 	import EntryEditor from './entry-editor.svelte';
-	import EvidenceLine from './evidence-line.svelte';
 	import PreviewRegion from './preview-region.svelte';
 	import SourceStrip from './source-strip.svelte';
 
@@ -131,15 +129,8 @@
 	// source keeps the plain layout (the strip on top, no header)
 	const panelGroups = $derived(unit ? groupsOf(views, unit.entries) : []);
 	const multi = $derived(panelGroups.length > 1);
-	const pair = $derived(
-		unit
-			? pairLine(panelGroups, unit.entries, {
-					accountName: (id) => lookups.accounts.get(id)?.name,
-					rules: panel.rules,
-					locale
-				})
-			: null
-	);
+	// where each leg's partner is shown, for the hint in its partner row
+	const directions = $derived(partnerDirections(panelGroups));
 	const reason = $derived(flow.commitReason);
 	// a user-authored transaction is edited and deleted through the entry form
 	const authored = $derived(unit?.entries.find((e) => e.authored) ?? null);
@@ -400,13 +391,7 @@
 				/>
 			{:else if unit}
 				<div class={cn('flex flex-col gap-3', panel.status === 'loading' && 'opacity-60')}>
-					{#if multi && pair}
-						<p class="flex flex-wrap items-baseline gap-x-3 text-sm" data-slot="pair-line">
-							<span class="font-medium">{pair.text}</span>
-							<span class="text-muted-foreground">{stateText(unit.state)}</span>
-							<EvidenceLine evidence={pair.evidence} class="inline" />
-						</p>
-					{:else}
+					{#if !multi}
 						<SourceStrip {groups} {locale} />
 					{/if}
 					{#if flow.draft?.reresolveAll}
@@ -415,64 +400,85 @@
 							now. Reset discards all changes.
 						</p>
 					{/if}
-					{#each panelGroups as group (group.key)}
-						<div class="flex flex-col gap-3" data-slot="source-group">
+					{#each panelGroups as group, index (group.key)}
+						<div
+							class={cn('flex flex-col gap-3', group.ghost && 'opacity-80')}
+							data-slot="source-group"
+							data-ghost={group.ghost ? '' : undefined}
+						>
 							{#if multi}
 								{@const account = lookups.accounts.get(group.header.accountId)}
+								<!-- a divider band: it starts the section of one source -->
 								<div
-									class="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-sm"
+									class={cn(
+										'flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 border-b border-border bg-muted px-3 py-2 text-sm font-semibold',
+										index > 0 && 'border-t'
+									)}
 									data-slot="group-header"
 								>
-									<span class="font-medium">
+									<span class="flex flex-wrap items-center gap-x-2">
 										{#if account}
 											<AccountDot name={account.name} color={resolveAccount(account).color} />
 										{:else}
 											Account {group.header.accountId}
 										{/if}
+										{#if group.ghost}
+											<span aria-hidden="true" class="font-normal text-muted-foreground">·</span>
+											<span class="font-normal text-muted-foreground" data-slot="ghost-hint"
+												>created when you commit</span
+											>
+										{/if}
 									</span>
-									{#if group.header.bookedOn}
-										<DateDisplay date={group.header.bookedOn} {locale} />
-									{/if}
-									{#if group.header.amount}
-										<MoneyDisplay
-											minor={group.header.amount.amount}
-											currency={group.header.amount.currency}
-											{locale}
-											showCurrency
-											class="inline"
-										/>
-									{/if}
 									{#if group.header.authored}
-										<span class="text-xs text-muted-foreground" data-slot="authored-hint"
-											>Entered by hand</span
+										<span
+											class="text-xs font-normal text-muted-foreground"
+											data-slot="authored-hint">Entered by hand</span
 										>
 									{/if}
 								</div>
-								{#if group.strip}<SourceStrip groups={[group.strip]} {locale} grouped />{/if}
 							{/if}
-							{#each group.views as view (view.id)}
-								<EntryEditor
-									{view}
-									{flow}
-									{lookups}
-									{locale}
-									problems={problemTexts.filter((item) => item.problem.entry_id === view.id)}
-								/>
-							{/each}
-							{#if group.splitEntryId !== null}
-								{@const splitEntryId = group.splitEntryId}
-								<ActionButton
-									variant="outline"
-									class="w-full border-dashed"
-									disabled={flow.committing}
-									onclick={() => flow.addSplit(splitEntryId)}
-								>
-									Split entry
-								</ActionButton>
-							{/if}
+							<div
+								class={cn('flex flex-col gap-3', multi && 'border-l border-border pl-3')}
+								data-slot="group-content"
+							>
+								{#if multi && group.strip}
+									<SourceStrip groups={[group.strip]} {locale} grouped />
+								{/if}
+								{#each group.views as view (view.id)}
+									{#if group.ghost}
+										<CounterLegBlock {view} ghost={group.ghost} {lookups} {locale} />
+									{:else}
+										<EntryEditor
+											{view}
+											{flow}
+											{lookups}
+											{locale}
+											partnerDirection={directions.get(view.id) ?? null}
+											problems={problemTexts.filter((item) => item.problem.entry_id === view.id)}
+										/>
+									{/if}
+								{/each}
+								{#if group.splitEntryId !== null}
+									{@const splitEntryId = group.splitEntryId}
+									<ActionButton
+										variant="outline"
+										class="w-full border-dashed"
+										disabled={flow.committing}
+										onclick={() => flow.addSplit(splitEntryId)}
+									>
+										Split entry
+									</ActionButton>
+								{/if}
+							</div>
 						</div>
 					{/each}
-					<PreviewRegion {flow} {lookups} {locale} onopen={(id) => panel.openEntry(id)} />
+					<PreviewRegion
+						{flow}
+						{lookups}
+						{locale}
+						grouped={multi}
+						onopen={(id) => panel.openEntry(id)}
+					/>
 				</div>
 			{/if}
 		</div>

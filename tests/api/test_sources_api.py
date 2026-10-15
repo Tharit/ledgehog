@@ -145,6 +145,7 @@ def test_edit_dry_run_reports_and_writes_nothing(anna: TestClient, cash: int, ap
         "deleted_entry_ids",
         "rederived_entry_ids",
         "returned_to_review_ids",
+        "followed_entry_ids",
         "versions",
     }
     assert effects["versions"] == [

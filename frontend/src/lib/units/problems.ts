@@ -16,6 +16,8 @@ export type ProblemContext = {
 	locale: string;
 	/** the window the offers were listed for when it was widened (days), else null */
 	windowDays?: number | null;
+	/** the currency of the account a leg's counter-leg would be created in, when known */
+	counterCurrency?: (entryId: number | null) => string | null;
 };
 
 const NUMBER_DETAIL = (detail: UnitProblem['detail'], key: string): number | null => {
@@ -94,6 +96,23 @@ export function describeProblem(problem: UnitProblem, context: ProblemContext): 
 			};
 		case 'partner_in_unit':
 			return { text: 'This entry is already part of this unit.' };
+		case 'received_amount_required': {
+			const named = typeof detail.currency === 'string' ? detail.currency : null;
+			const currency = named ?? context.counterCurrency?.(problem.entry_id) ?? null;
+			return {
+				text: currency ? `Enter the amount received in ${currency}.` : 'Enter the amount received.'
+			};
+		}
+		case 'received_amount_not_needed':
+			return { text: 'No amount is needed: both sides are in the same currency.' };
+		case 'counter_leg_not_offered':
+			return {
+				text: 'The other side cannot be created here: this leg already has a partner, or the counter-account is unknown.'
+			};
+		case 'counter_leg_account_synced':
+			return {
+				text: 'The other side cannot be created by hand on a synced account: it arrives with its import.'
+			};
 		case 'split_sum':
 			return {
 				text: `The entries do not add up to the transaction: they are off by ${money(NUMBER_DETAIL(detail, 'difference'))}.`

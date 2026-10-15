@@ -20,7 +20,15 @@ from app.api.routers.entries import EntryOut
 from app.api.routers.maintenance import SettleOut
 from app.core.matching import Offer
 from app.core.units.commit import CommitResult
-from app.core.units.draft import UNSET, DraftEntry, FieldDraft, PairingDraft, ShownBasis, UnitDraft
+from app.core.units.draft import (
+    UNSET,
+    CounterLegDraft,
+    DraftEntry,
+    FieldDraft,
+    PairingDraft,
+    ShownBasis,
+    UnitDraft,
+)
 from app.core.units.plan import (
     Consequence,
     FieldResult,
@@ -72,20 +80,44 @@ class UnitFieldDraftIn(BaseModel):
         return FieldDraft(self.mode, self.value, shown)
 
 
+class UnitCounterLegIn(BaseModel):
+    """The counter-leg a draft creates (spec §5.7). `temp_id` is the client's NEGATIVE id for the entry it
+    creates (preview rows carry it; a commit's `created` maps it to the real one). `received_amount` is the
+    amount received, an unsigned magnitude in minor units of the counter-account's currency (greater than
+    zero); the leg fixes the sign. It is required where the leg's offer says `needs_received_amount`
+    (problem `received_amount_required`) and refused otherwise (`received_amount_not_needed`)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    temp_id: int = Field(lt=0, ge=-MAX_ID)
+    received_amount: int | None = Field(default=None, gt=0, le=2**62)
+
+    def to_core(self) -> CounterLegDraft:
+        return CounterLegDraft(self.temp_id, self.received_amount)
+
+
 class UnitPairingIn(BaseModel):
     """What the draft says of a transfer leg's partner (spec §5.7). `keep` (also: absent) leaves it, and a
     commit accepts the proposal the preview shows. `pick` names a stored partner entry (`partner_entry_id`,
     positive): it must be an offer of the leg, else the preview lists the problem `partner_not_offered` or
-    `partner_in_unit`. `reresolve` drops the stored pair and lets the passes decide again. A `pairing` on an
-    entry that is not a transfer leg, or a negative id, is 422 `invalid_draft`."""
+    `partner_in_unit`. `counter_leg` (with `counter_leg`) creates the other side on the leg's unsynced
+    counter-account: refused with `counter_leg_not_offered` for a leg that has a partner or no usable
+    counter-account, `counter_leg_account_synced` for a synced one. `reresolve` drops the stored pair and
+    lets the passes decide again. A `pairing` on an entry that is not a transfer leg, a negative partner id,
+    or a `counter_leg` object on another mode, is 422 `invalid_draft`."""
 
     model_config = ConfigDict(extra="forbid")
 
-    mode: Literal["keep", "pick", "reresolve"] = "keep"
+    mode: Literal["keep", "pick", "counter_leg", "reresolve"] = "keep"
     partner_entry_id: TempOrStoredId | None = None
+    counter_leg: UnitCounterLegIn | None = None
 
     def to_core(self) -> PairingDraft:
-        return PairingDraft(self.mode, self.partner_entry_id)
+        return PairingDraft(
+            self.mode,
+            self.partner_entry_id,
+            counter_leg=None if self.counter_leg is None else self.counter_leg.to_core(),
+        )
 
 
 class UnitTagChangeIn(BaseModel):
@@ -347,6 +379,12 @@ class UnitTransferOut(BaseModel):
     # first); a commit accepts it as the user's decision. An explicit pick in the draft overrides it, and
     # `pairing: reresolve` takes the proposal afresh.
     proposed_pick: UnitProposedPickOut | None = None
+    # set where the leg has no open offer at all and its counter-account is unsynced: the preview took the
+    # counter-leg proposal to be the pairing. The leg is `paired` with the ghost row (a row of `rows` with a
+    # server-issued negative id and `counter_leg_for` = the leg); a commit creates it as the user's decision.
+    # An explicit `pick` or `counter_leg` in the draft overrides it, so do `pairing: reresolve` and making
+    # the leg a flow. A counter-leg that needs the amount received is never taken: the user types it.
+    proposed_counter_leg: bool = False
 
     @staticmethod
     def of(t: TransferView) -> UnitTransferOut:
@@ -373,6 +411,7 @@ class UnitTransferOut(BaseModel):
             else UnitProposalOut(kind=t.proposal.kind, entry_id=t.proposal.entry_id),
             has_more=t.has_more,
             proposed_pick=None if t.proposed_pick is None else UnitProposedPickOut(entry_id=t.proposed_pick),
+            proposed_counter_leg=t.proposed_counter_leg,
         )
 
 
@@ -396,6 +435,9 @@ class UnitPreviewRowOut(BaseModel):
     derivation: dict[str, Any]  # as stored once committed and settled
     stored: UnitStoredRowOut | None
     transfer: UnitTransferOut | None = None  # a row that is a transfer leg: its state, partner, offers
+    # the row is a counter-leg the draft creates (a new source transaction on `account_id`, its one entry):
+    # the entry it is the other side of. `id` is the client's (or the server's, for a proposal) temporary id
+    counter_leg_for: int | None = None
 
     @staticmethod
     def of(r: PlannedRow, transfer: TransferView | None = None) -> UnitPreviewRowOut:
@@ -415,6 +457,7 @@ class UnitPreviewRowOut(BaseModel):
             note=r.note,
             tag_ids=list(r.tag_ids),
             counterpart_entry_id=r.counterpart_entry_id,
+            counter_leg_for=r.counter_leg_for,
             fields={n: UnitFieldOut.of(f, stored=s is not None) for n, f in r.fields.items()},
             review_flags=list(r.flags),
             derivation=dict(r.derivation),
