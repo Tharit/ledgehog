@@ -133,6 +133,7 @@
 
 	// The ledger is where the panel steps (`[` `]`): to the next row of ANOTHER unit, the siblings
 	// of a split skipped. It knows entries, not units, so it knows no "12 of 214" either.
+	let quietId: number | null = null; // the cursor landed here without visiting (units just committed)
 	const source = {
 		neighbour: (id: number, dir: -1 | 1) => neighbourEntry(entries, id, dir),
 		patch: (affected: Affected) => onpatch?.(affected),
@@ -144,8 +145,9 @@
 			return entries.length > held;
 		},
 		// the cursor follows the unit the panel shows; the existing effect scrolls the row into view
-		reveal: (id: number) => {
+		reveal: (id: number, visit = true) => {
 			if (!entries.some((e) => e.id === id)) return false;
+			quietId = visit ? null : id;
 			cursorId = id;
 			return true;
 		}
@@ -212,7 +214,9 @@
 	// a mark fades when the cursor visits the row (patterns §7)
 	$effect(() => {
 		const id = cursorId;
-		if (id !== null) untrack(() => onvisit?.([id]));
+		const quiet = quietId === id;
+		quietId = null;
+		if (id !== null && !quiet) untrack(() => onvisit?.([id]));
 	});
 
 	// the cursor row scrolls into view
@@ -328,6 +332,7 @@
 							(mark !== undefined && !marks.resolved.has(entry.id))}
 						changedTitle={mark ?? (changedIds.has(entry.id) ? CHANGED_BY_YOU : CHANGED_ELSEWHERE)}
 						resolved={marks.resolved.has(entry.id)}
+						confirmed={marks.confirmed.has(entry.id)}
 						onselect={() => (cursorId = entry.id)}
 						onopen={() => openUnit(entry.id)}
 						ontags={() => {

@@ -74,9 +74,9 @@
 			items: [
 				{ keys: 'c', description: 'Category' },
 				{ keys: 'y', description: 'Payee' },
-				{ keys: 's', description: 'Add a split' },
-				{ keys: 'x', description: 'Flow or transfer' },
-				{ keys: 'r', description: 'Re-resolve the unit' }
+				{ keys: 's', description: 'Split entry' },
+				{ keys: 'x', description: 'Toggle flow ↔ transfer' },
+				{ keys: 'r', description: 'Re-resolve type, payee, category and counter account' }
 			]
 		}
 	];
@@ -111,6 +111,21 @@
 			: []
 	);
 	const problemTexts = $derived(flow.problemTexts);
+	// "Split entry" stands under the last block of each source and splits that source's original
+	const splitOf = $derived.by(() => {
+		const lastOf: Record<string, number> = {};
+		const originalOf: Record<string, number> = {};
+		for (const v of views) {
+			const key = v.sourceId === null ? `entry-${v.id}` : `source-${v.sourceId}`;
+			lastOf[key] = v.id;
+			if (v.original && !v.isNew) originalOf[key] = v.id;
+		}
+		const out: Record<number, number> = {};
+		for (const [key, last] of Object.entries(lastOf)) {
+			if (key in originalOf) out[last] = originalOf[key];
+		}
+		return out;
+	});
 	const reason = $derived(flow.commitReason);
 	// a user-authored transaction is edited and deleted through the entry form
 	const authored = $derived(unit?.entries.find((e) => e.authored) ?? null);
@@ -217,11 +232,16 @@
 	});
 </script>
 
+<!-- controlled: the panel's store decides whether it is open. A click outside, Esc and the close
+     button only ask to close (`panel.close()`: with changes, a decision dialog first), so the dialog
+     never closes under a store that still says open -->
 <Dialog.Root
-	open={panel.isOpen}
-	onOpenChange={(next) => {
-		if (!next) panel.close();
-	}}
+	bind:open={
+		() => panel.isOpen,
+		(next) => {
+			if (!next) panel.close();
+		}
+	}
 >
 	<Dialog.Content
 		bind:ref={content}
@@ -273,12 +293,15 @@
 						{/snippet}
 					</DropdownMenu.Trigger>
 					<DropdownMenu.Content align="end" class="min-w-52">
-						<DropdownMenu.Item
-							disabled={flow.draft?.reresolveAll || flow.committing}
-							onSelect={() => flow.reresolve(true)}
-						>
+						<DropdownMenu.Item disabled={flow.committing} onSelect={() => flow.reresolve(true)}>
 							Re-resolve
 							<DropdownMenu.Shortcut>r</DropdownMenu.Shortcut>
+						</DropdownMenu.Item>
+						<DropdownMenu.Item
+							disabled={!flow.isDirty || flow.committing}
+							onSelect={() => flow.discard()}
+						>
+							Reset
 						</DropdownMenu.Item>
 						{#if authored && (onEditEntry || onDeleteEntry)}
 							<DropdownMenu.Separator />
@@ -352,7 +375,8 @@
 					<SourceStrip {groups} {locale} />
 					{#if flow.draft?.reresolveAll}
 						<p class="text-sm text-muted-foreground" data-slot="reresolved">
-							Re-resolved: the values are what resolution proposes now. Cancel undoes it.
+							Re-resolved: type, payee, category and counter account are what resolution proposes
+							now. Reset discards all changes.
 						</p>
 					{/if}
 					{#each views as view (view.id)}
@@ -363,6 +387,16 @@
 							{locale}
 							problems={problemTexts.filter((item) => item.problem.entry_id === view.id)}
 						/>
+						{#if view.id in splitOf}
+							<ActionButton
+								variant="outline"
+								class="w-full border-dashed"
+								disabled={flow.committing}
+								onclick={() => flow.addSplit(splitOf[view.id])}
+							>
+								Split entry
+							</ActionButton>
+						{/if}
 					{/each}
 					<PreviewRegion {flow} {lookups} {locale} onopen={(id) => panel.openEntry(id)} />
 				</div>
@@ -389,6 +423,14 @@
 					{#if panel.stepNotice}<span class="italic">{panel.stepNotice}</span>{/if}
 				</div>
 				<div class="flex items-center gap-2">
+					<ActionButton
+						variant="outline"
+						disabled={!flow.isDirty || flow.committing}
+						reason={flow.committing ? undefined : 'Nothing to reset'}
+						onclick={() => flow.discard()}
+					>
+						Reset
+					</ActionButton>
 					<ActionButton variant="outline" disabled={flow.committing} onclick={() => panel.close()}>
 						Cancel
 					</ActionButton>

@@ -72,9 +72,32 @@ describe('entryViews: with a preview', () => {
 		expect(first.fields.category).toMatchObject({
 			value: 11,
 			proposal: false,
-			canReset: true
+			canReset: false // the user changed nothing: the draft holds no value of theirs
 		});
 		expect(first.fields.category.shown).toBeNull();
+	});
+
+	it('offers Reset only for a value the user chose that differs from the stored one', () => {
+		const answer = preview(split);
+		const untouched = views(Draft.of(split), answer)[0];
+		expect(untouched.fields.category.canReset).toBe(false);
+		expect(untouched.fields.payee.canReset).toBe(false);
+
+		const changed = views(Draft.of(split).setField(1, 'category', 11), answer)[0];
+		expect(changed.fields.category.canReset).toBe(true);
+		expect(changed.fields.payee.canReset).toBe(false);
+
+		// back to the stored value: no edit, so no link
+		const back = Draft.of(split).setField(1, 'category', 11).setField(1, 'category', 10);
+		expect(views(back, answer)[0].fields.category.canReset).toBe(false);
+	});
+
+	it('offers Reset on a proposal only after the user changed it', () => {
+		const [proposed] = views(Draft.of(split));
+		expect(proposed.fields.category.proposal).toBe(true);
+		expect(proposed.fields.category.canReset).toBe(false);
+		const [changed] = views(Draft.of(split).setField(1, 'category', 11));
+		expect(changed.fields.category.canReset).toBe(true);
 	});
 
 	it('shows only what is in the unit once the draft is applied', () => {

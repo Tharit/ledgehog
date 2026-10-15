@@ -219,7 +219,9 @@ describe('after a commit the panel moves on', () => {
 
 		expect(panel.isOpen).toBe(false);
 		expect(list.notice).toHaveBeenCalledWith('Review done');
-		expect(list.reveal).toHaveBeenCalledWith(1);
+		// the cursor lands on the unit just committed without visiting it: its marks stay
+		expect(list.reveal).toHaveBeenCalledWith(1, false);
+		expect(list.reveal).toHaveBeenCalledWith(1, true); // on open, it visited
 		expect(log).toContain('back');
 	});
 

@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { account, category, entry, payee } from '#lib/ledger/fixtures.js';
 import { buildLookups } from '#lib/ledger/lookups.js';
 import { ReviewQueueStore } from '#lib/stores/review-queue.svelte.js';
-import { rulesNamed } from '#lib/units/evidence.js';
 import { apiError, queue, section, unit } from '#lib/units/fixtures.js';
 import { unitPanel } from '#lib/units/panel-instance.js';
 import { activeUnitSource } from '#lib/units/sources.js';
@@ -27,7 +26,6 @@ const lookups = buildLookups({
 	categories: [category({ id: 10, name: 'Groceries' })],
 	payees: [payee({ id: 20, name: 'REWE' })]
 });
-const rules = rulesNamed([{ id: 3, name: 'Rewe' }]);
 
 const history = { pass: 'history', basis: { agree: 3, of: 4, since: '2026-03-14' } };
 function flow(id: number, text: string, over = {}) {
@@ -54,7 +52,7 @@ async function shown(
 	vi.mocked(getQueue).mockResolvedValue({ ...queue(sections), ...extra });
 	const store = new ReviewQueueStore();
 	await store.load();
-	render(ReviewQueue, { props: { store, lookups, rules, locale: 'en' } });
+	render(ReviewQueue, { props: { store, lookups, locale: 'en' } });
 	return store;
 }
 
@@ -76,7 +74,7 @@ describe('ReviewQueue', () => {
 		expect(screen.getByText(/Nothing is waiting/)).toBeInTheDocument();
 	});
 
-	it('lists units by date as given, in the entry-row shape, with the basis last, proposals italic', async () => {
+	it('lists units by date as given, in the entry-row shape, with no basis column', async () => {
 		await shown({
 			pending_review: [
 				flow(1, 'REWE'),
@@ -87,11 +85,9 @@ describe('ReviewQueue', () => {
 		});
 
 		const grid = screen.getByRole('grid', { name: 'Pending review' });
-		const bases = within(grid).getAllByText(/history 3 of 4|rule: Rewe/);
-		expect(bases.map((b) => b.textContent?.trim())).toEqual(['history 3 of 4', 'rule: Rewe']);
-		expect(bases[0]).toHaveClass('italic');
-		expect(bases[1]).not.toHaveClass('italic');
-		expect(within(grid).getByRole('columnheader', { name: 'Basis' })).toBeInTheDocument();
+		expect(within(grid).queryByRole('columnheader', { name: 'Basis' })).toBeNull();
+		expect(within(grid).queryByText(/history 3 of 4|rule: Rewe/)).toBeNull();
+		expect(within(grid).getAllByRole('row').length).toBeGreaterThanOrEqual(3);
 	});
 
 	it('joins the entries of a split and shows both legs of a pair, one block per unit', async () => {
@@ -149,7 +145,7 @@ describe('ReviewQueue', () => {
 		vi.mocked(getQueue).mockRejectedValue(apiError(0, 'network_error'));
 		const store = new ReviewQueueStore();
 		await store.load();
-		render(ReviewQueue, { props: { store, lookups, rules } });
+		render(ReviewQueue, { props: { store, lookups } });
 
 		expect(screen.getByRole('alert')).toHaveTextContent('review queue could not be loaded');
 		vi.mocked(getQueue).mockResolvedValue(queue({ pending_review: [flow(1, 'REWE')] }));
@@ -169,7 +165,7 @@ describe('ReviewQueue', () => {
 		});
 		const store = new ReviewQueueStore();
 		await store.load();
-		render(ReviewQueue, { props: { store, lookups, rules } });
+		render(ReviewQueue, { props: { store, lookups } });
 		expect(screen.getByText('1 of 3')).toBeInTheDocument();
 		vi.mocked(getQueue).mockResolvedValueOnce({
 			...queue(),
@@ -184,6 +180,59 @@ describe('ReviewQueue', () => {
 	});
 });
 
+describe('ReviewQueue: marks after a commit', () => {
+	const again = (id: number, text: string, flags: string[] = ['unconfirmed']) =>
+		entry({
+			id,
+			unit_key: id,
+			display_text: text,
+			category_id: 10,
+			derivation: { category: history },
+			review_flags: flags as never
+		});
+	const rowOf = (text: string) =>
+		screen.getAllByRole('row').find((r) => r.textContent?.includes(text))!;
+
+	async function committedRows() {
+		const store = await shown({
+			pending_review: [flow(1, 'REWE'), flow(2, 'Edeka'), flow(3, 'Lidl')]
+		});
+		store.source.patch({
+			entries: [again(1, 'REWE', []), again(2, 'Edeka'), again(3, 'Lidl', [])],
+			resolved: [1, 2],
+			confirmed: [1]
+		});
+		return store;
+	}
+
+	it('mutes every committed row; only the confirmed one has the check, the other keeps its badge', async () => {
+		await committedRows();
+
+		await waitFor(() => expect(rowOf('REWE')).toHaveAttribute('data-resolved'));
+		expect(within(rowOf('REWE')).getByRole('img', { name: 'Confirmed' })).toBeInTheDocument();
+		expect(rowOf('Edeka')).toHaveAttribute('data-resolved');
+		expect(within(rowOf('Edeka')).queryByRole('img', { name: 'Confirmed' })).toBeNull();
+		expect(rowOf('Edeka').querySelector('[data-flag="unconfirmed"]')).not.toBeNull();
+		// a row of a unit that was not committed, changed as a consequence: the ochre bar only
+		expect(rowOf('Lidl')).not.toHaveAttribute('data-resolved');
+		expect(rowOf('Lidl')).toHaveAttribute('data-changed');
+	});
+
+	it('keeps the muting and the check when the cursor visits; only the ochre bar fades', async () => {
+		await committedRows();
+		await waitFor(() => expect(rowOf('Lidl')).toHaveAttribute('data-changed'));
+
+		await key('j');
+		await key('j');
+		await key('j');
+
+		await waitFor(() => expect(rowOf('Lidl')).not.toHaveAttribute('data-changed'));
+		expect(rowOf('REWE')).toHaveAttribute('data-resolved');
+		expect(within(rowOf('REWE')).getByRole('img', { name: 'Confirmed' })).toBeInTheDocument();
+		expect(rowOf('Edeka')).toHaveAttribute('data-resolved');
+	});
+});
+
 describe('ReviewQueue: the keyboard', () => {
 	it('has the shared keyboard help: a button, and ? and Esc', async () => {
 		await shown({ pending_review: [flow(1, 'REWE')] });
@@ -191,7 +240,7 @@ describe('ReviewQueue: the keyboard', () => {
 		await fireEvent.click(screen.getByRole('button', { name: /Keyboard shortcuts/ }));
 		const help = screen.getByRole('region', { name: 'Keyboard shortcuts' });
 		expect(help).toHaveTextContent('Open the unit for review');
-		expect(help).toHaveTextContent('previous or next unit');
+		expect(help).not.toHaveTextContent('previous or next unit');
 		await key('Escape');
 		expect(screen.queryByRole('region', { name: 'Keyboard shortcuts' })).toBeNull();
 		await key('?');

@@ -258,6 +258,26 @@ describe('UnitPanel', () => {
 		expect(panel.isOpen).toBe(false);
 	});
 
+	it('asks for the rules again on every unit load, so a rule made since is not "deleted"', async () => {
+		vi.mocked(getUnit).mockResolvedValue(unit({ anchor_entry_id: 4 }));
+		const { nav } = fakeNav();
+		const panel = new UnitPanel(nav);
+		panel.open(4);
+		await flush();
+		expect(listRules).toHaveBeenCalledTimes(1);
+
+		vi.mocked(listRules).mockResolvedValue([
+			rule({ id: 3, name: 'Rewe' }),
+			rule({ id: 8, name: 'Lidl' })
+		]);
+		panel.open(5);
+		await flush();
+
+		expect(listRules).toHaveBeenCalledTimes(2);
+		expect(panel.rules.name(8)).toBe('Lidl');
+		expect(panel.rules.loaded).toBe(true);
+	});
+
 	it('does not load rules for a unit with none', () => {
 		expect(
 			unitReadsRules(

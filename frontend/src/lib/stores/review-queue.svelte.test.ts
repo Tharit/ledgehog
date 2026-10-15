@@ -218,8 +218,59 @@ describe('ReviewQueueStore', () => {
 		expect(store.units[1].entries[0].note).toBe('done');
 		expect(store.marks.resolved.get(2)).toBe(MARK_RESOLVED);
 
+		// the check stays when the cursor visits; only a refresh drops it
 		store.visited([2]);
+		expect(store.marks.resolved.get(2)).toBe(MARK_RESOLVED);
+	});
+
+	it('a consequence mark fades when the cursor visits, the muting and the check do not', async () => {
+		vi.mocked(getQueue).mockResolvedValue(
+			queue({ pending_review: [plain(1), plain(2), plain(3)] })
+		);
+		const store = new ReviewQueueStore();
+		await store.load();
+		store.source.patch({
+			entries: [
+				entry({ id: 1, unit_key: 1, review_flags: ['unconfirmed'] }),
+				entry({ id: 2, unit_key: 2 }),
+				entry({ id: 3, unit_key: 3 })
+			],
+			resolved: [2, 3],
+			confirmed: [2]
+		});
+		expect(store.marks.consequence.has(1)).toBe(true);
+
+		store.visited([1, 2, 3]);
+
+		expect(store.marks.consequence.has(1)).toBe(false);
+		expect(store.marks.resolved.has(2)).toBe(true);
+		expect(store.marks.resolved.has(3)).toBe(true);
+		expect(store.marks.confirmed.has(2)).toBe(true);
+		expect(store.marks.confirmed.has(3)).toBe(false);
+
+		vi.mocked(getQueue).mockResolvedValue(queue({ pending_review: [plain(1)] }));
+		await store.load();
 		expect(store.marks.resolved.size).toBe(0);
+	});
+
+	it('reveal visits the unit (its fading marks go) unless told not to (the units just committed)', async () => {
+		vi.mocked(getQueue).mockResolvedValue(queue({ pending_review: [plain(1), plain(2)] }));
+		const store = new ReviewQueueStore();
+		await store.load();
+		store.source.patch({
+			entries: [
+				entry({ id: 1, unit_key: 1, review_flags: ['unconfirmed'] }),
+				entry({ id: 2, unit_key: 2, review_flags: ['unconfirmed'] })
+			]
+		});
+
+		store.source.reveal?.(1, false);
+		expect(store.revealed).toBe(1);
+		expect(store.marks.consequence.has(1)).toBe(true);
+
+		store.source.reveal?.(2);
+		expect(store.marks.consequence.has(2)).toBe(false);
+		expect(store.marks.consequence.has(1)).toBe(true);
 	});
 
 	it('loads the rule names when a unit shows a rule key', async () => {
@@ -231,6 +282,17 @@ describe('ReviewQueueStore', () => {
 
 		expect(ruleNames.names.loaded).toBe(true);
 		expect(ruleNames.names.name(3)).toBe('Rewe');
+	});
+
+	it('asks for the rule names again on every load (a refresh included)', async () => {
+		vi.mocked(getQueue).mockResolvedValue(queue({ pending_review: [unit()] }));
+		const store = new ReviewQueueStore();
+
+		await store.load();
+		await store.load();
+		await flush();
+
+		expect(listRules).toHaveBeenCalledTimes(2);
 	});
 });
 

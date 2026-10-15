@@ -8,7 +8,6 @@
 	import { formatCount } from '#lib/format/index.js';
 	import { lookupsStore } from '#lib/stores/lookups.svelte.js';
 	import { ReviewQueueStore } from '#lib/stores/review-queue.svelte.js';
-	import { ruleNames } from '#lib/stores/rule-names.svelte.js';
 	import { session } from '#lib/stores/session.svelte.js';
 
 	const queue = new ReviewQueueStore();
@@ -70,5 +69,5 @@
 		{/snippet}
 	</NoticeLine>
 
-	<ReviewQueue store={queue} lookups={lookupsStore.lookups} rules={ruleNames.names} {locale} />
+	<ReviewQueue store={queue} lookups={lookupsStore.lookups} {locale} />
 </div>

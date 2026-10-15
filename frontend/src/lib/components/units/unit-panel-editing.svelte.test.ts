@@ -173,6 +173,20 @@ describe('the preview region', () => {
 		expect(status).toHaveAttribute('aria-live', 'polite');
 	});
 
+	it('has no status row while nothing is being checked; the live region stays for screen readers', async () => {
+		const { dialog } = await openPanel();
+		const region = within(dialog).getByRole('region', { name: 'Preview' });
+
+		const status = region.querySelector('[data-slot="preview-status"]')!;
+
+		expect(status).toHaveAttribute('aria-live', 'polite');
+		expect(status).toHaveClass('sr-only');
+		expect(status.textContent?.trim()).toBe('');
+		// the first thing in the box is the result, not an empty row
+		expect(region.firstElementChild).toBe(status.parentElement);
+		expect(status.parentElement).toHaveClass('contents');
+	});
+
 	it('groups the consequences by effect, each a row that can be opened', async () => {
 		const shown = unit({ anchor_entry_id: 1 });
 		const left = previewRowOf(
@@ -394,8 +408,8 @@ describe('editing a value', () => {
 		expect(screen.queryByLabelText('Search category')).toBeNull();
 	});
 
-	it('shows Reset to proposal on a decided value, and a click asks the passes again', async () => {
-		const { dialog } = await openPanel(
+	it('offers Reset to proposal only for a value the user changed; a click restores the stored one', async () => {
+		const { panel, dialog } = await openPanel(
 			unit({
 				anchor_entry_id: 1,
 				entries: [
@@ -412,15 +426,38 @@ describe('editing a value', () => {
 				]
 			})
 		);
+		// nothing was changed: no link, neither on the decided category nor on the proposed payee
+		expect(within(dialog).queryByRole('button', { name: 'Reset to proposal' })).toBeNull();
 
-		// only the decided category can be reset: the payee is a proposal already
-		const buttons = within(dialog).getAllByRole('button', { name: 'Reset to proposal' });
-		expect(buttons).toHaveLength(1);
-		await fireEvent.click(buttons[0]);
+		panel.flow.setField(1, 'category', 11);
+		const link = await within(dialog).findByRole('button', { name: 'Reset to proposal' });
+		expect(within(dialog).getAllByRole('button', { name: 'Reset to proposal' })).toHaveLength(1);
+		await fireEvent.click(link);
 
-		await waitFor(() =>
-			expect(lastRequest().entries).toEqual([{ id: 1, category: { mode: 'reresolve' } }])
+		// the stored value is back, as a draft with no edit: no "reresolve" asked of the server
+		await waitFor(() => expect(lastRequest().entries).toEqual([]));
+		expect(panel.flow.isDirty).toBe(false);
+		expect(within(dialog).queryByRole('button', { name: 'Reset to proposal' })).toBeNull();
+	});
+
+	it('picking the value that is stored makes no edit', async () => {
+		const { panel } = await openPanel(
+			unit({
+				anchor_entry_id: 1,
+				entries: [
+					entry({
+						id: 1,
+						unit_key: 1,
+						category_id: 10,
+						derivation: { category: { pass: 'rule', basis: { rule_id: 3 } } }
+					})
+				]
+			})
 		);
+
+		panel.flow.setField(1, 'category', 10);
+
+		expect(panel.flow.isDirty).toBe(false);
 	});
 
 	it('edits the description and the note with a debounced preview', async () => {
@@ -558,15 +595,13 @@ describe('splits', () => {
 		// the original is the residual: the server's figure, not computed here
 		const original = within(dialog).getByRole('region', { name: 'Entry 1' });
 		await waitFor(() => expect(original).toHaveTextContent('−35.31'));
-		expect(
-			within(original).getByText(/Residual: what the other entries leave of/)
-		).toHaveTextContent('47.31');
+		expect(within(original).getByText('Residual')).toBeInTheDocument();
 		await waitFor(() => expect(commitButton(dialog)).toBeEnabled());
 	});
 
 	it('refuses an amount that is not one, under the field, and blocks Commit', async () => {
 		const { dialog } = await openPanel(shown());
-		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add split' }));
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Split entry' }));
 		const amount = await within(dialog).findByLabelText('Amount of the new split');
 
 		await fireEvent.input(amount, { target: { value: 'twelve' } });
@@ -589,7 +624,7 @@ describe('splits', () => {
 		panel.open(1);
 		const dialog = await screen.findByRole('dialog', { name: /./ });
 		await waitFor(() => expect(panel.flow.previewStatus).toBe('ready'));
-		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add split' }));
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Split entry' }));
 		await fireEvent.input(await within(dialog).findByLabelText('Amount of the new split'), {
 			target: { value: '47.31' }
 		});
@@ -602,17 +637,50 @@ describe('splits', () => {
 
 	it('removes a split row', async () => {
 		const { dialog } = await openPanel(shown());
-		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add split' }));
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Split entry' }));
 		await within(dialog).findByLabelText('Amount of the new split');
 
-		await fireEvent.click(within(dialog).getByRole('button', { name: 'Remove this split' }));
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Remove split' }));
 
 		expect(within(dialog).queryByLabelText('Amount of the new split')).toBeNull();
 	});
 
+	it('lays a split block out: amount and label on the header line, the field on its own row, an icon-only remove in the corner', async () => {
+		const { dialog } = await openPanel(shown());
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Split entry' }));
+		const row = await within(dialog).findByRole('region', { name: 'New split entry' });
+		await fireEvent.input(within(row).getByLabelText('Amount of the new split'), {
+			target: { value: '12.00' }
+		});
+
+		await waitFor(() =>
+			expect(row.querySelector('[data-slot="split-label"]')).toHaveTextContent('Split')
+		);
+		// the amount is read-only in the header, and the label stands next to it
+		const header = row.querySelector('[data-slot="split-label"]')!.parentElement!;
+		expect(header).toHaveTextContent('12.00');
+		expect(within(header).queryByLabelText('Amount of the new split')).toBeNull();
+		const remove = within(row).getByRole('button', { name: 'Remove split' });
+		expect(remove.textContent?.trim()).toBe('');
+		expect(remove).toHaveClass('absolute', 'top-2', 'right-2');
+		expect(row).toHaveClass('relative');
+	});
+
+	it('puts "Split entry" in a full-width dashed row under the last block', async () => {
+		const { dialog } = await openPanel(shown());
+
+		const button = within(dialog).getByRole('button', { name: 'Split entry' });
+
+		expect(button).toHaveClass('w-full', 'border-dashed');
+		expect(button.previousElementSibling).toBe(
+			within(dialog).getByRole('region', { name: 'Entry 1' })
+		);
+		expect(within(dialog).queryByRole('button', { name: 'Add split' })).toBeNull();
+	});
+
 	it('shows a split row as a flow only: no type toggle, a dashed block', async () => {
 		const { dialog } = await openPanel(shown());
-		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add split' }));
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Split entry' }));
 		const row = await within(dialog).findByRole('region', { name: 'New split entry' });
 
 		expect(within(row).queryByRole('group', { name: 'Type' })).toBeNull();
@@ -621,19 +689,71 @@ describe('splits', () => {
 });
 
 describe('re-resolve', () => {
-	it('r re-resolves the whole unit as a draft edit that Cancel undoes', async () => {
+	it('r re-resolves the whole unit as a draft edit that Reset undoes', async () => {
 		const { panel, dialog } = await openPanel();
 
 		await fireEvent.keyDown(dialog, { key: 'r' });
 
 		await waitFor(() => expect(lastRequest().reresolve_all).toBe(true));
 		expect(
-			await within(dialog).findByText(/Re-resolved: the values are what resolution proposes now/)
+			await within(dialog).findByText(
+				/Re-resolved: type, payee, category and counter account are what resolution proposes now/
+			)
 		).toBeInTheDocument();
-		await fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
-		const asking = await screen.findByRole('dialog', { name: 'Discard changes?' });
-		await fireEvent.click(within(asking).getByRole('button', { name: 'Discard' }));
-		await waitFor(() => expect(panel.isOpen).toBe(false));
+		expect(within(dialog).queryByText(/Cancel undoes it/)).toBeNull();
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Reset' }));
+		await waitFor(() => expect(panel.flow.isDirty).toBe(false));
+		expect(panel.isOpen).toBe(true);
+		expect(within(dialog).queryByText(/Re-resolved:/)).toBeNull();
+	});
+
+	it('applies to the changes not yet committed too, and keeps the splits and the texts', async () => {
+		const { panel, dialog } = await openPanel(
+			unit({
+				anchor_entry_id: 1,
+				entries: [entry({ id: 1, unit_key: 1, source_transaction_id: 5 })]
+			})
+		);
+		panel.flow.setField(1, 'category', 11);
+		panel.flow.setText(1, 'note', 'mine');
+		panel.flow.addSplit(1);
+		panel.flow.setAmountText(-1, '5.00');
+		await waitFor(() => expect(panel.flow.previewStatus).toBe('ready'));
+
+		await fireEvent.keyDown(dialog, { key: 'r' });
+
+		await waitFor(() => expect(lastRequest().reresolve_all).toBe(true));
+		expect(lastRequest().entries).toEqual([
+			{ id: 1, note: 'mine' },
+			{ id: -1, source_entry_id: 1, amount: -500 }
+		]);
+		expect(panel.flow.draft?.fieldEdit(1, 'category')).toBeUndefined();
+	});
+
+	it('Reset discards every change without re-resolving, and the panel stays open', async () => {
+		const { panel, dialog } = await openPanel();
+		panel.flow.setField(1, 'category', 11);
+		panel.flow.setText(1, 'note', 'mine');
+		await waitFor(() => expect(panel.flow.isDirty).toBe(true));
+
+		await openMenu(dialog);
+		await fireEvent.click(await screen.findByRole('menuitem', { name: 'Reset' }));
+
+		await waitFor(() => expect(panel.flow.isDirty).toBe(false));
+		expect(panel.isOpen).toBe(true);
+		await waitFor(() => expect(panel.flow.previewStatus).toBe('ready'));
+		expect(lastRequest()).toMatchObject({ entries: [], reresolve_all: false });
+	});
+
+	it('Reset is disabled while there is nothing to reset', async () => {
+		const { panel, dialog } = await openPanel();
+		expect(within(dialog).getByRole('button', { name: 'Reset' })).toBeDisabled();
+
+		panel.flow.setField(1, 'category', 11);
+
+		await waitFor(() =>
+			expect(within(dialog).getByRole('button', { name: 'Reset' })).toBeEnabled()
+		);
 	});
 
 	it('is in the ⋯ menu too', async () => {
@@ -696,6 +816,128 @@ describe('keeping a draft', () => {
 		expect(await screen.findByRole('dialog', { name: 'Discard changes?' })).toBeInTheDocument();
 		expect(panel.unitId).toBe(1);
 		off();
+	});
+});
+
+/**
+ * A click on the dimmed page: the panel ignores outside clicks for a moment after it opened, and
+ * Bits only counts a click as outside when its coordinates are (jsdom lays nothing out: the
+ * content's box is empty at 0,0, so the click is placed off it).
+ */
+async function clickOutside() {
+	await new Promise((resolve) => setTimeout(resolve, 350));
+	for (const type of ['pointerdown', 'pointerup', 'click']) {
+		await fireEvent(
+			document.body,
+			new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX: -5, clientY: -5 })
+		);
+	}
+}
+
+describe('leaving a dirty panel by the dialog’s own ways out', () => {
+	async function dirtyPanel() {
+		const shown = unit({
+			anchor_entry_id: 1,
+			entries: [entry({ id: 1, unit_key: 1, source_transaction_id: 5 })]
+		});
+		const { panel, dialog } = await openPanel(shown);
+		panel.flow.reresolve();
+		await waitFor(() => expect(panel.flow.isDirty).toBe(true));
+		return { panel, dialog };
+	}
+
+	async function expectUsable(panel: UnitPanel, dialog: HTMLElement) {
+		expect(panel.isOpen).toBe(true);
+		expect(dialog.isConnected).toBe(true);
+		expect(dialog).toHaveAttribute('data-state', 'open');
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Split entry' }));
+		expect(await within(dialog).findByLabelText('Amount of the new split')).toBeInTheDocument();
+	}
+
+	it('a click outside asks first; Cancel keeps the panel open and usable; Discard closes it', async () => {
+		const { panel, dialog } = await dirtyPanel();
+
+		await clickOutside();
+
+		const asking = await screen.findByRole('dialog', { name: 'Discard changes?' });
+		expect(panel.isOpen).toBe(true);
+		expect(dialog.isConnected).toBe(true); // under the nested dialog, not closed beneath it
+		await fireEvent.click(within(asking).getByRole('button', { name: 'Cancel' }));
+		await waitFor(() =>
+			expect(screen.queryByRole('dialog', { name: 'Discard changes?' })).toBeNull()
+		);
+		await expectUsable(panel, dialog);
+
+		await clickOutside();
+		const again = await screen.findByRole('dialog', { name: 'Discard changes?' });
+		await fireEvent.click(within(again).getByRole('button', { name: 'Discard' }));
+		await waitFor(() => expect(panel.isOpen).toBe(false));
+		await waitFor(() => expect(dialog.isConnected).toBe(false));
+	});
+
+	it('Esc asks first, and after Cancel the panel is still open and usable', async () => {
+		const { panel, dialog } = await dirtyPanel();
+
+		await fireEvent.keyDown(dialog, { key: 'Escape' });
+		const asking = await screen.findByRole('dialog', { name: 'Discard changes?' });
+		await fireEvent.click(within(asking).getByRole('button', { name: 'Cancel' }));
+		await waitFor(() =>
+			expect(screen.queryByRole('dialog', { name: 'Discard changes?' })).toBeNull()
+		);
+
+		await expectUsable(panel, dialog);
+	});
+
+	it('the close button asks first, and after Cancel the panel is still open and usable', async () => {
+		const { panel, dialog } = await dirtyPanel();
+
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
+		const asking = await screen.findByRole('dialog', { name: 'Discard changes?' });
+		await fireEvent.click(within(asking).getByRole('button', { name: 'Cancel' }));
+		await waitFor(() =>
+			expect(screen.queryByRole('dialog', { name: 'Discard changes?' })).toBeNull()
+		);
+
+		await expectUsable(panel, dialog);
+	});
+
+	it('a clean panel closes at once by a click outside', async () => {
+		const { panel } = await openPanel();
+
+		await clickOutside();
+
+		await waitFor(() => expect(panel.isOpen).toBe(false));
+	});
+});
+
+describe('type buttons', () => {
+	it('mark the chosen type with a style that is not the hover of the others', async () => {
+		const { dialog } = await openPanel();
+		const flowButton = within(dialog).getByRole('button', { name: 'Flow' });
+		const transfer = within(dialog).getByRole('button', { name: 'Transfer' });
+
+		expect(flowButton).toHaveAttribute('aria-pressed', 'true');
+		expect(transfer).toHaveAttribute('aria-pressed', 'false');
+		expect(flowButton.className).toContain('border-primary');
+		expect(flowButton.className).not.toContain('bg-accent');
+		expect(transfer.className).not.toContain('border-primary');
+	});
+
+	it('Flow on an entry with no type yet makes a flow, Transfer a transfer', async () => {
+		const open = unit({
+			anchor_entry_id: 1,
+			entries: [entry({ id: 1, unit_key: 1, type: null })]
+		});
+		const { dialog } = await openPanel(open);
+
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Flow' }));
+		await waitFor(() =>
+			expect(lastRequest().entries![0].type).toEqual({ mode: 'fixed', value: 'flow' })
+		);
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Transfer' }));
+		await waitFor(() =>
+			expect(lastRequest().entries![0].type).toEqual({ mode: 'fixed', value: 'transfer' })
+		);
 	});
 });
 

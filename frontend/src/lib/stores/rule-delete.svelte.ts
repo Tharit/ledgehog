@@ -4,6 +4,7 @@
 
 import { classifyRuleError, deleteRule, type Rule, type RulePreview } from '#lib/api/index.js';
 import { describeRuleError } from '#lib/rules/messages.js';
+import { ruleNames } from './rule-names.svelte.js';
 
 export type RuleDeleteHost = {
 	/** the rule is gone; `touched` entries were settled */
@@ -58,6 +59,7 @@ export class RuleDeleteFlow {
 			if (token !== this.#token) return;
 			const failure = classifyRuleError(error);
 			if (failure.kind === 'not_found') {
+				ruleNames.invalidate();
 				this.close();
 				this.#host.gone(rule);
 				return;
@@ -77,6 +79,7 @@ export class RuleDeleteFlow {
 		this.conflict = null;
 		try {
 			const out = await deleteRule(rule.id, { expectedCount: preview.matches.total, limit: 1 });
+			ruleNames.invalidate(); // the names the panel and the queue hold are old
 			if (token !== this.#token) return;
 			this.close();
 			this.#host.deleted(rule, out.settle?.touched_entry_ids.length ?? 0, !!out.settle?.error);
@@ -84,6 +87,7 @@ export class RuleDeleteFlow {
 			if (token !== this.#token) return;
 			const failure = classifyRuleError(error);
 			if (failure.kind === 'not_found') {
+				ruleNames.invalidate();
 				this.close();
 				this.#host.gone(rule);
 				return;

@@ -713,12 +713,14 @@ describe('LedgerTable: marks of the unit panel (patterns §7, design §7)', () =
 		applyAffected(three, {
 			entries: [
 				entry({ id: 3, display_text: 'Third' }),
-				entry({ id: 2, display_text: 'Second', review_flags: ['unconfirmed'] })
+				entry({ id: 2, display_text: 'Second', review_flags: ['unconfirmed'] }),
+				entry({ id: 1, display_text: 'First', review_flags: ['unconfirmed'] })
 			],
-			resolved: [3]
+			resolved: [3, 1],
+			confirmed: [3]
 		}).marks;
 
-	it('mutes a resolved row, puts a check in its badge slot and gives the tooltip', () => {
+	it('mutes a committed row; one that is confirmed also gets a check in its badge slot', () => {
 		table({ marks: marked() });
 
 		const rows = screen.getAllByRole('row').slice(1);
@@ -726,8 +728,24 @@ describe('LedgerTable: marks of the unit panel (patterns §7, design §7)', () =
 		expect(resolved).toHaveAttribute('data-resolved');
 		expect(resolved).toHaveClass('text-muted-foreground');
 		expect(resolved).toHaveAttribute('title', MARK_RESOLVED);
-		expect(within(resolved).getByRole('img', { name: 'Resolved' })).toBeInTheDocument();
+		expect(within(resolved).getByRole('img', { name: 'Confirmed' })).toBeInTheDocument();
 		expect(resolved).not.toHaveAttribute('data-changed');
+	});
+
+	it('mutes a committed row that stays in review too, with its own badge and no check', () => {
+		const patched = [
+			entry({ id: 3, display_text: 'Third' }),
+			entry({ id: 2, display_text: 'Second' }),
+			entry({ id: 1, display_text: 'First', review_flags: ['unconfirmed'] })
+		];
+		table({ marks: marked(), entries: patched, total: patched.length });
+
+		const staying = document.querySelector('[data-entry-id="1"]')!;
+		expect(staying).toHaveAttribute('data-resolved');
+		expect(staying).toHaveClass('text-muted-foreground');
+		expect(within(staying as HTMLElement).queryByRole('img', { name: 'Confirmed' })).toBeNull();
+		expect(staying).not.toHaveAttribute('data-changed');
+		expect(staying.querySelector('[data-flag="unconfirmed"]')).not.toBeNull();
 	});
 
 	it('marks a row changed as a consequence with the ochre bar and its tooltip', () => {

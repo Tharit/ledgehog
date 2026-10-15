@@ -36,8 +36,10 @@ export const SECTION_ORDER: readonly SectionKind[] = ['pending_review', 'needs_a
 export type Affected = {
 	/** the rows as they are now */
 	entries: readonly Entry[];
-	/** entries the user's action resolved */
+	/** entries of the units the user's action committed: muted until the list is loaded again */
 	resolved?: readonly number[];
+	/** those of them whose unit is now confirmed: they also get the check */
+	confirmed?: readonly number[];
 	/** entries that returned to review */
 	returned_to_review?: readonly number[];
 	/** entries that no longer exist */

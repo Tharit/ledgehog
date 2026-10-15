@@ -37,7 +37,7 @@ export type FieldView = {
 	edit: FieldEdit | undefined;
 	/** the key of the proposal shown for this value: named when the user picks that very value */
 	shown: ShownBasis | null;
-	/** "Reset to proposal" applies: the value is decided and not already reset */
+	/** "Reset to proposal" applies: the draft holds a value of the user's that differs from the stored one */
 	canReset: boolean;
 };
 
@@ -116,7 +116,8 @@ function fieldView(
 			key && proposal
 				? { pass: key.pass, basis: (key.basis as Record<string, unknown>) ?? {} }
 				: null,
-		canReset: value !== null && !proposal && edit?.mode !== 'reresolve'
+		canReset:
+			edit?.mode === 'fixed' && (stored === null || edit.value !== STORED_VALUE[name](stored))
 	};
 }
 

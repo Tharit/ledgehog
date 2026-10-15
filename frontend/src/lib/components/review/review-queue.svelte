@@ -27,13 +27,12 @@
 	import ErrorState from '#lib/components/common/error-state.svelte';
 	import KeyboardHelp, { type HelpGroup } from '#lib/components/common/keyboard-help.svelte';
 	import EntryRow from '#lib/components/ledger/entry-row.svelte';
-	import { gridTemplate, QUEUE_COLUMNS, ROW_GRID } from '#lib/components/ledger/columns.js';
+	import { COLUMNS, GRID_TEMPLATE, ROW_GRID } from '#lib/components/ledger/columns.js';
 	import { formatCount } from '#lib/format/index.js';
 	import { ledgerKey, moveCursor } from '#lib/ledger/keys.js';
 	import type { Lookups } from '#lib/ledger/lookups.js';
 	import type { ReviewQueueStore } from '#lib/stores/review-queue.svelte.js';
 	import { describeUnitLoadError } from '#lib/units/describe.js';
-	import { rowBasis, type RuleNames } from '#lib/units/evidence.js';
 	import { unitPanel } from '#lib/units/panel-instance.js';
 	import { markOf } from '#lib/units/patch.js';
 	import { registerUnitSource } from '#lib/units/sources.js';
@@ -42,15 +41,13 @@
 
 	// The review queue (views/review-queue.md): three sections (pending review, needs an account,
 	// waiting), each by date, as headed lists of unit rows. A unit is one block: its entries are
-	// joined, both legs of a pair shown, and the basis of what is proposed stands in the last
-	// column, proposals italic. The cursor is on a unit; Enter opens the panel, which then steps
-	// through the queue in this order. The queue is a snapshot: it changes only on request.
+	// joined, both legs of a pair shown. The cursor is on a unit; Enter opens the panel, which then
+	// steps through the queue in this order. The queue is a snapshot: it changes only on request.
 	let {
 		store,
 		lookups,
-		rules,
 		locale = 'en'
-	}: { store: ReviewQueueStore; lookups: Lookups; rules: RuleNames; locale?: string } = $props();
+	}: { store: ReviewQueueStore; lookups: Lookups; locale?: string } = $props();
 
 	let cursorId = $state<number | null>(null); // the anchor entry id of the unit under the cursor
 	let container = $state<HTMLElement | null>(null);
@@ -60,13 +57,12 @@
 			items: [
 				{ keys: '↑ ↓ / k j', description: 'Move the cursor over units' },
 				{ keys: 'Enter', description: 'Open the unit for review' },
-				{ keys: '[ ]', description: 'In the panel: previous or next unit' },
 				{ keys: 'Esc', description: 'Close this help, leave a field' },
 				{ keys: '?', description: 'Show or hide this help' }
 			]
 		}
 	];
-	const template = gridTemplate(QUEUE_COLUMNS);
+	const template = GRID_TEMPLATE;
 
 	const units = $derived(store.units);
 	const cursorIndex = $derived(
@@ -123,12 +119,9 @@
 	$effect(() => {
 		const id = store.revealed;
 		if (id === null) return;
-		// untracked: moving the cursor reads and writes the store's marks, which must not re-run this
+		// untracked: the cursor moves, and the store has done the visiting (its `reveal`)
 		untrack(() => {
-			const unit = units.find((u) => u.anchor_entry_id === id);
-			if (!unit) return;
-			cursorId = id;
-			store.visited(unit.entries.map((e) => e.id));
+			if (units.some((u) => u.anchor_entry_id === id)) cursorId = id;
 		});
 	});
 
@@ -199,7 +192,7 @@
 							)}
 							style:grid-template-columns={template}
 						>
-							{#each QUEUE_COLUMNS as column (column.id)}
+							{#each COLUMNS as column (column.id)}
 								<div
 									role="columnheader"
 									class={column.align === 'right' ? 'text-right' : undefined}
@@ -222,12 +215,11 @@
 										{lookups}
 										{locale}
 										{showCurrency}
-										columns={QUEUE_COLUMNS}
-										basis={rowBasis(entry, rules, locale)}
 										cursor={unit.anchor_entry_id === cursorId}
 										changed={mark !== undefined && !store.marks.resolved.has(entry.id)}
 										changedTitle={mark}
 										resolved={store.marks.resolved.has(entry.id)}
+										confirmed={store.marks.confirmed.has(entry.id)}
 										onselect={() => (cursorId = unit.anchor_entry_id)}
 										onopen={() => openUnit(unit)}
 										ontags={() => openUnit(unit)}

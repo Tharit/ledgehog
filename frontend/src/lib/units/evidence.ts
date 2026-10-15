@@ -14,7 +14,7 @@ export function isProposalPass(pass: string): boolean {
 	return PROPOSAL_PASSES.has(pass);
 }
 
-/** The rules a view knows by name; `loaded` is false until the list has arrived. */
+/** The rules a view knows by name; `loaded`: the list is fresh, so a rule it lacks is gone. */
 export type RuleNames = { loaded: boolean; name: (id: number) => string | undefined };
 
 /** Rule names from a plain lookup (the list is known). */
@@ -31,8 +31,6 @@ export function rulesNamed(rules: readonly { id: number; name: string }[]): Rule
 export type Evidence = {
 	/** the whole line: "history: 3 of 4 since Mar 2026" */
 	text: string;
-	/** the short form for a narrow column: "history 3 of 4", "rule: Rewe" */
-	short: string;
 	/** a proposal (non-standing key): shown italic and muted */
 	proposal: boolean;
 	/** where the rule is edited, for a `rule` key whose rule exists */
@@ -73,17 +71,9 @@ function historyDetail(basis: Record<string, unknown> | null, locale: string): s
 	return detail;
 }
 
-function shortHistory(basis: Record<string, unknown> | null): string {
-	const agree = basis?.agree;
-	const of = basis?.of;
-	return typeof agree === 'number' && typeof of === 'number'
-		? `history ${agree} of ${of}`
-		: 'history';
-}
-
 /**
- * The words for a key, or null when there is no key. `rules` names a rule; one the (loaded) list
- * does not hold is "rule deleted"; before the list has arrived the line says only "rule".
+ * The words for a key, or null when there is no key. `rules` names a rule; one a FRESH list
+ * does not hold is "rule deleted"; when the list is old or has not arrived the line says "rule".
  */
 export function describeKey(
 	key: DerivationKey | null | undefined,
@@ -94,17 +84,18 @@ export function describeKey(
 	const basis = record(key.basis);
 	switch (key.pass) {
 		case 'own_account':
-			return { text: 'own account', short: 'own account', proposal: false };
+			return { text: 'own account', proposal: false };
 		case 'rule': {
 			const id = typeof basis?.rule_id === 'number' ? basis.rule_id : null;
-			if (!rules.loaded && id !== null) return { text: 'rule', short: 'rule', proposal: false };
 			const name = id === null ? undefined : rules.name(id);
 			if (name === undefined || id === null) {
-				return { text: 'rule deleted', short: 'rule deleted', proposal: false };
+				// only a fresh list can say a rule is gone; an old or pending one says nothing
+				return rules.loaded || id === null
+					? { text: 'rule deleted', proposal: false }
+					: { text: 'rule', proposal: false };
 			}
 			return {
 				text: `rule: ${name}`,
-				short: `rule: ${name}`,
 				proposal: false,
 				href: ruleUrl(id)
 			};
@@ -113,7 +104,6 @@ export function describeKey(
 			const detail = historyDetail(basis, locale);
 			return {
 				text: detail ? `history: ${detail}` : 'history',
-				short: shortHistory(basis),
 				proposal: true
 			};
 		}
@@ -121,22 +111,20 @@ export function describeKey(
 			const rationale = typeof basis?.rationale === 'string' ? basis.rationale.trim() : '';
 			return {
 				text: 'suggested by the model',
-				short: 'model',
 				proposal: true,
 				...(rationale ? { rationale } : {})
 			};
 		}
 		case 'matcher_decision':
-			return { text: 'matched automatically', short: 'matched', proposal: false };
+			return { text: 'matched automatically', proposal: false };
 		case 'matcher_proposal':
 			return {
 				text: 'document matched — check the split',
-				short: 'document matched',
 				proposal: true
 			};
 		case 'user': {
 			const nested = asKey(key.basis);
-			if (!nested) return { text: 'set by you', short: 'you', proposal: false };
+			if (!nested) return { text: 'set by you', proposal: false };
 			const was = describeKey(nested, rules, locale);
 			const proposedBy = !was
 				? nested.pass
@@ -147,34 +135,11 @@ export function describeKey(
 						: was.text.replace(/^history: (.*)$/, 'history ($1)');
 			return {
 				text: `confirmed by you, proposed by ${proposedBy}`,
-				short: 'confirmed',
 				proposal: false,
 				...(was?.rationale ? { rationale: was.rationale } : {})
 			};
 		}
 		default:
-			return { text: key.pass, short: key.pass, proposal: false };
+			return { text: key.pass, proposal: false };
 	}
-}
-
-/** The fields of an entry whose key a queue row shows, most telling first, by entry type. */
-const BASIS_FIELDS: Readonly<Record<string, readonly string[]>> = {
-	transfer: ['counter_account', 'counterpart', 'type'],
-	flow: ['category', 'payee', 'type']
-};
-
-/**
- * The one key a compact row shows in its basis column: the first key among the fields that matter
- * for the entry's type (a flow: category, then payee; a transfer: its counter-account).
- */
-export function rowBasis(
-	entry: { type: string | null; derivation: unknown },
-	rules: RuleNames,
-	locale = 'en'
-): Evidence | null {
-	for (const field of BASIS_FIELDS[entry.type ?? 'flow'] ?? BASIS_FIELDS.flow) {
-		const evidence = describeKey(keyOf(entry.derivation, field), rules, locale);
-		if (evidence) return evidence;
-	}
-	return null;
 }

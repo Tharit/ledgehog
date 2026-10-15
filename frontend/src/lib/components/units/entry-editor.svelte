@@ -1,14 +1,15 @@
 <script lang="ts">
+	import XIcon from '@lucide/svelte/icons/x';
 	import AbsentValue from '#lib/components/common/absent-value.svelte';
 	import AccountDot from '#lib/components/common/account-dot.svelte';
 	import ActionButton from '#lib/components/common/action-button.svelte';
+	import IconButton from '#lib/components/common/icon-button.svelte';
 	import DateDisplay from '#lib/components/common/date-display.svelte';
 	import Field from '#lib/components/common/field.svelte';
 	import MoneyDisplay from '#lib/components/common/money-display.svelte';
 	import ReviewBadge from '#lib/components/common/review-badge.svelte';
 	import TagChip from '#lib/components/common/tag-chip.svelte';
 	import { Input } from '#lib/components/ui/input/index.js';
-	import { formatMoney } from '#lib/format/index.js';
 	import type { Lookups } from '#lib/ledger/lookups.js';
 	import { resolveAccount, resolveTag } from '#lib/theme/resolve.js';
 	import { allocationText, type FieldName, type FieldValue } from '#lib/units/draft.js';
@@ -58,15 +59,10 @@
 		flow.amountTexts[view.id] ??
 			(view.amount ? allocationText(view.amount.amount, view.amount.currency, locale) : '')
 	);
-	// the original of a split takes what the others leave: the server's figure, said in words
-	const residualText = $derived(
-		view.sourceAmount
-			? `Residual: what the other entries leave of ${formatMoney(
-					view.sourceAmount.amount,
-					view.sourceAmount.currency,
-					{ locale, showPlus: false }
-				)}`
-			: 'Residual: what the other entries leave'
+	// a block of a split says what its amount is: the original takes what the others leave (the
+	// server's figure), every other block is a share the user sets
+	const splitLabel = $derived(
+		view.original && view.inSplit ? 'Residual' : view.isNew || view.inSplit ? 'Split' : null
 	);
 	const amountError = $derived(flow.amountErrors[view.id] ?? null);
 	const required = $derived.by(() => {
@@ -97,7 +93,7 @@
 	const TYPES = ['flow', 'transfer'] as const;
 
 	function setType(next: 'flow' | 'transfer') {
-		if (view.type !== next) flow.convert(view.id, view.type);
+		if (view.type !== next) flow.setType(view.id, next);
 	}
 </script>
 
@@ -108,7 +104,7 @@
 			<ActionButton
 				variant="link"
 				class="h-auto p-0 text-xs"
-				onclick={() => flow.resetField(view.id, field.name)}
+				onclick={() => flow.revertField(view.id, field.name)}
 			>
 				Reset to proposal
 			</ActionButton>
@@ -119,15 +115,53 @@
 <section
 	aria-label={view.isNew ? 'New split entry' : `Entry ${view.id}`}
 	class={cn(
-		'flex flex-col gap-3 rounded-lg border bg-card p-4 text-[13px]',
+		'relative flex flex-col gap-3 rounded-lg border bg-card p-4 text-[13px]',
 		view.isNew && 'border-dashed'
 	)}
 	data-slot="entry-editor"
 	data-entry-id={view.id}
 	data-new={view.isNew || undefined}
 >
-	<div class="flex flex-wrap items-end gap-x-4 gap-y-2">
-		{#if view.amountEditable}
+	{#if view.removable}
+		<IconButton
+			verb="Remove split"
+			compact
+			class="absolute top-2 right-2"
+			onclick={() => flow.removeSplit(view.id)}
+		>
+			<XIcon aria-hidden="true" />
+		</IconButton>
+	{/if}
+	<div class={cn('flex flex-wrap items-baseline gap-x-4 gap-y-1', view.removable && 'pr-8')}>
+		{#if view.amount}
+			<span class="flex items-baseline gap-2">
+				<MoneyDisplay
+					minor={view.amount.amount}
+					currency={view.amount.currency}
+					{locale}
+					showCurrency
+					class="text-lg font-semibold"
+				/>
+				{#if splitLabel}
+					<span class="text-xs text-muted-foreground" data-slot="split-label">{splitLabel}</span>
+				{/if}
+			</span>
+		{:else if splitLabel}
+			<span class="text-xs text-muted-foreground" data-slot="split-label">{splitLabel}</span>
+		{/if}
+		{#if !view.isNew}
+			<DateDisplay date={view.row?.booked_on ?? view.stored?.booked_on ?? ''} {locale} />
+		{/if}
+		{#if account}
+			<AccountDot name={account.name} color={resolveAccount(account).color} />
+		{/if}
+		<span class="flex items-center gap-1">
+			{#each view.flags as flag (flag)}<ReviewBadge {flag} />{/each}
+		</span>
+	</div>
+
+	{#if view.amountEditable}
+		<div class="flex items-end gap-2">
 			<div class="w-40" data-slot="amount-field">
 				<Field label={view.isNew ? 'Amount of the new split' : 'Amount'} error={amountError}>
 					{#snippet children(control)}
@@ -144,42 +178,8 @@
 				</Field>
 			</div>
 			<span class="pb-1.5 text-muted-foreground">{view.amount?.currency ?? ''}</span>
-		{:else if view.amount}
-			<div class="flex flex-col">
-				<MoneyDisplay
-					minor={view.amount.amount}
-					currency={view.amount.currency}
-					{locale}
-					showCurrency
-					class="text-lg font-semibold"
-				/>
-				{#if view.inSplit && view.original}
-					<span class="text-xs text-muted-foreground" data-slot="residual">
-						{residualText}
-					</span>
-				{/if}
-			</div>
-		{/if}
-		{#if !view.isNew}
-			<DateDisplay date={view.row?.booked_on ?? view.stored?.booked_on ?? ''} {locale} />
-		{/if}
-		{#if account}
-			<AccountDot name={account.name} color={resolveAccount(account).color} />
-		{/if}
-		<span class="flex items-center gap-1">
-			{#each view.flags as flag (flag)}<ReviewBadge {flag} />{/each}
-		</span>
-		{#if view.removable}
-			<ActionButton
-				variant="outline"
-				class="ml-auto"
-				onclick={() => flow.removeSplit(view.id)}
-				aria-label={view.isNew ? 'Remove this split' : `Remove entry ${view.id} from the split`}
-			>
-				Remove split
-			</ActionButton>
-		{/if}
-	</div>
+		</div>
+	{/if}
 
 	<dl class="grid grid-cols-[8rem_1fr] items-start gap-x-4 gap-y-2">
 		{#if !view.isNew}
@@ -187,10 +187,11 @@
 			<dd class="min-w-0">
 				<div role="group" aria-label="Type" class="inline-flex gap-1">
 					{#each TYPES as kind (kind)}
+						<!-- the chosen one is tinted and bordered in the primary colour: it never looks like a hover -->
 						<ActionButton
-							variant="outline"
+							variant={view.type === kind ? 'secondary' : 'outline'}
 							aria-pressed={view.type === kind}
-							class={cn(view.type === kind && 'bg-accent')}
+							class={cn(view.type === kind && 'border-primary font-semibold text-primary')}
 							disabled={!canConvert}
 							reason="Only the original entry of a split can change its type"
 							onclick={() => setType(kind)}
@@ -302,11 +303,4 @@
 			</dd>
 		{/if}
 	</dl>
-
-	{#if view.original}
-		<div>
-			<ActionButton variant="outline" onclick={() => flow.addSplit(view.id)}>Add split</ActionButton
-			>
-		</div>
-	{/if}
 </section>

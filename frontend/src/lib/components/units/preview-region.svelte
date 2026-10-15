@@ -26,6 +26,13 @@
 
 	const preview = $derived(flow.preview);
 	const checking = $derived(flow.previewStatus === 'loading' || flow.stale);
+	const statusText = $derived(
+		flow.previewStatus === 'error'
+			? 'The preview could not be loaded.'
+			: checking
+				? 'Checking what would change…'
+				: ''
+	);
 	const groups = $derived(consequenceGroups(preview));
 	const problems = $derived(flow.problemTexts);
 	const showCurrency = $derived(
@@ -42,13 +49,15 @@
 	class="flex flex-col gap-3 rounded-lg border bg-card p-4 text-[13px]"
 	data-slot="preview-region"
 >
-	<div class="flex min-h-5 flex-wrap items-baseline gap-x-3">
-		<p role="status" aria-live="polite" class="text-muted-foreground" data-slot="preview-status">
-			{#if flow.previewStatus === 'error'}
-				The preview could not be loaded.
-			{:else if checking}
-				Checking what would change…
-			{/if}
+	<!-- the status takes a row only while there is something to say; the live region stays -->
+	<div class={statusText ? 'flex flex-wrap items-baseline gap-x-3' : 'contents'}>
+		<p
+			role="status"
+			aria-live="polite"
+			class={cn('text-muted-foreground', !statusText && 'sr-only')}
+			data-slot="preview-status"
+		>
+			{statusText}
 		</p>
 		{#if flow.previewStatus === 'error'}
 			<ActionButton variant="link" class="h-auto p-0" onclick={() => flow.retryPreview()}>

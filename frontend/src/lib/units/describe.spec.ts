@@ -78,7 +78,7 @@ describe('unitShape and title', () => {
 });
 
 describe('sourceGroups', () => {
-	it('groups a split under its one source and lists hand-entered entries apart', () => {
+	it('groups a split under its one source; hand-entered entries are listed like the others', () => {
 		const src = source({ counterparty_name: 'Acme' });
 		const groups = sourceGroups([
 			entry({ id: 1, source: src, source_transaction_id: 5 }),
@@ -87,7 +87,15 @@ describe('sourceGroups', () => {
 			entry({ id: 4 })
 		]);
 		expect(groups).toHaveLength(2);
-		expect(groups[0]).toMatchObject({ kind: 'source', entryIds: [1, 2] });
-		expect(groups[1]).toMatchObject({ kind: 'authored', entryIds: [3] });
+		expect(groups[0]).toMatchObject({ key: 5, authored: false, entryIds: [1, 2], source: src });
+		expect(groups[1]).toMatchObject({ key: 6, authored: true, entryIds: [3], source: src });
+	});
+
+	it('puts a hand-entered entry without a source in one group of its own', () => {
+		const groups = sourceGroups([
+			entry({ id: 1, authored: true, source: null }),
+			entry({ id: 2, authored: true, source: null })
+		]);
+		expect(groups).toEqual([{ key: null, source: null, authored: true, entryIds: [1, 2] }]);
 	});
 });

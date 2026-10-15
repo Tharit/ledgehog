@@ -18,8 +18,7 @@
 	import { resolveAccount, resolveCategory, resolveTag } from '#lib/theme/resolve.js';
 	import type { Entry } from '#lib/types/domain.js';
 	import { cn } from '#lib/utils.js';
-	import type { Evidence } from '#lib/units/evidence.js';
-	import { COLUMNS, gridTemplate, ROW_GRID, type Column } from './columns.js';
+	import { COLUMNS, GRID_TEMPLATE, ROW_GRID } from './columns.js';
 
 	// One entry as a compact row: 32px, one line, a divider below (design §5). The cursor row has
 	// the accent background and a 2px primary bar on its left edge (design §7).
@@ -28,12 +27,11 @@
 		lookups,
 		locale = 'en',
 		showCurrency = false,
-		columns = COLUMNS,
-		basis = null,
 		cursor = false,
 		changed = false,
 		changedTitle = CHANGED_BY_YOU,
 		resolved = false,
+		confirmed = false,
 		onselect,
 		onopen,
 		ontags
@@ -42,17 +40,15 @@
 		lookups: Lookups;
 		locale?: string;
 		showCurrency?: boolean;
-		/** the columns to show (the queue adds a basis column) */
-		columns?: readonly Column[];
-		/** the basis of what is proposed, for a `basis` column */
-		basis?: Evidence | null;
 		cursor?: boolean;
 		/** the user's last action took this row out of the filter; it stays until a refresh (§7) */
 		changed?: boolean;
 		/** why the row is marked (tooltip) */
 		changedTitle?: string;
-		/** the user's last action resolved this row: muted text and a check in the badge slot (design §7) */
+		/** the user committed this row's unit: muted text (design §7), until the list is loaded again */
 		resolved?: boolean;
+		/** and that unit is now confirmed: a check in the badge slot; an unconfirmed one keeps its badges */
+		confirmed?: boolean;
 		onselect?: () => void;
 		/** a click on the row (not on its tags cell): open the unit panel */
 		onopen?: () => void;
@@ -97,7 +93,7 @@
 		cursor ? 'bg-accent' : 'hover:bg-muted',
 		resolved && 'text-muted-foreground'
 	)}
-	style:grid-template-columns={gridTemplate(columns)}
+	style:grid-template-columns={GRID_TEMPLATE}
 	onclick={(event) => {
 		onselect?.();
 		// the tags cell has its own click (the mouse path for `t`)
@@ -114,7 +110,7 @@
 		></span>
 	{/if}
 
-	{#each columns as column (column.id)}
+	{#each COLUMNS as column (column.id)}
 		{#if column.id === 'date'}
 			<div role="gridcell"><DateDisplay date={entry.booked_on} {locale} /></div>
 		{:else if column.id === 'account'}
@@ -188,22 +184,13 @@
 			</div>
 		{:else if column.id === 'review'}
 			<div role="gridcell" class="flex items-center gap-1 overflow-hidden">
-				{#if resolved}
-					<CheckIcon size={14} strokeWidth={1.75} aria-label="Resolved" role="img" />
+				{#if confirmed}
+					<CheckIcon size={14} strokeWidth={1.75} aria-label="Confirmed" role="img" />
 				{:else if !fixed}
 					{#each entry.review_flags as flag (flag)}
 						<ReviewBadge {flag} />
 					{/each}
 				{/if}
-			</div>
-		{:else if column.id === 'basis'}
-			<div
-				role="gridcell"
-				class={cn('min-w-0 truncate text-xs text-muted-foreground', basis?.proposal && 'italic')}
-				title={basis?.text}
-				data-slot="row-basis"
-			>
-				{basis?.short ?? ''}
 			</div>
 		{:else if column.id === 'amount'}
 			<div role="gridcell">

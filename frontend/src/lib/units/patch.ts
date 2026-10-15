@@ -1,14 +1,17 @@
 // Patching the rows a list holds after an action (patterns §7), as pure functions: replace by id,
-// never add, remove or reorder, and say what changed with marks. Rows the user's action resolved
-// are marked resolved; rows that changed state as a consequence are marked differently; refreshed
+// never add, remove or reorder, and say what changed with marks. Rows of the units the user's action
+// committed are marked resolved (muted until the list is loaded again), those of a unit now
+// confirmed also confirmed (the check); rows that changed state as a consequence are marked differently; refreshed
 // proposals are patched silently (a commit can refresh dozens). The one exception to "never add":
 // the entries a split creates are inserted next to their anchor (`insertCreated`).
 import type { Entry } from '#lib/types/domain.js';
 import type { Affected } from './types.js';
 
 export type Marks = {
-	/** rows the user's action resolved */
+	/** rows of the units the user committed: muted, until the list is loaded again */
 	resolved: ReadonlyMap<number, string>;
+	/** those of them whose unit is confirmed: they also carry the check, until the list is loaded again */
+	confirmed: ReadonlyMap<number, string>;
 	/** rows that changed state as a consequence of it */
 	consequence: ReadonlyMap<number, string>;
 	/** rows that no longer exist: kept and marked */
@@ -18,6 +21,7 @@ export type Marks = {
 };
 
 export const MARK_RESOLVED = 'resolved by your last action';
+export const MARK_CONFIRMED = 'confirmed by your last action';
 export const MARK_CONSEQUENCE = 'changed by your last action';
 export const MARK_DELETED = 'deleted by your last action';
 export const MARK_RETURNED = 'returned to review by your last action';
@@ -25,6 +29,7 @@ export const MARK_RETURNED = 'returned to review by your last action';
 export function noMarks(): Marks {
 	return {
 		resolved: new Map(),
+		confirmed: new Map(),
 		consequence: new Map(),
 		deleted: new Map(),
 		returnedToReview: new Map()
@@ -87,37 +92,42 @@ export function applyAffected(
 			: entries;
 	const held = new Map(rows.map((e) => [e.id, e]));
 	const resolved = new Map(prior.resolved);
+	const confirmed = new Map(prior.confirmed);
 	const consequence = new Map(prior.consequence);
 	const deleted = new Map(prior.deleted);
 	const returnedToReview = new Map(prior.returnedToReview);
 
 	const resolvedIds = new Set(affected.resolved ?? []);
 	const returnedIds = new Set(affected.returned_to_review ?? []);
+	const confirmedIds = new Set(affected.confirmed ?? []);
 	for (const id of affected.removed_entry_ids ?? []) {
 		if (held.has(id)) deleted.set(id, MARK_DELETED);
 	}
 	for (const [id, next] of fresh) {
 		const before = held.get(id);
 		if (!before) continue;
-		if (resolvedIds.has(id)) resolved.set(id, MARK_RESOLVED);
-		else if (returnedIds.has(id)) returnedToReview.set(id, MARK_RETURNED);
+		if (resolvedIds.has(id)) {
+			resolved.set(id, MARK_RESOLVED);
+			if (confirmedIds.has(id)) confirmed.set(id, MARK_CONFIRMED);
+		} else if (returnedIds.has(id)) returnedToReview.set(id, MARK_RETURNED);
 		else if (!sameState(before, next)) consequence.set(id, MARK_CONSEQUENCE);
 	}
 
 	return {
 		entries: rows.map((entry) => fresh.get(entry.id) ?? entry),
-		marks: { resolved, consequence, deleted, returnedToReview }
+		marks: { resolved, confirmed, consequence, deleted, returnedToReview }
 	};
 }
 
-/** The marks without those of rows the cursor has visited (a mark fades when the cursor visits). */
+/**
+ * The marks without the fading ones of a row the cursor has visited: a consequence, a return to
+ * review, a deletion. The `resolved` (muted) and `confirmed` (check) marks stay: they are what the
+ * user did, until the list is loaded again.
+ */
 export function clearMarks(marks: Marks, id: number): Marks {
-	const marked =
-		marks.resolved.has(id) ||
-		marks.consequence.has(id) ||
-		marks.deleted.has(id) ||
-		marks.returnedToReview.has(id);
-	if (!marked) return marks;
+	if (!marks.consequence.has(id) && !marks.deleted.has(id) && !marks.returnedToReview.has(id)) {
+		return marks;
+	}
 	const without = (map: ReadonlyMap<number, string>) => {
 		if (!map.has(id)) return map;
 		const next = new Map(map);
@@ -125,7 +135,8 @@ export function clearMarks(marks: Marks, id: number): Marks {
 		return next;
 	};
 	return {
-		resolved: without(marks.resolved),
+		resolved: marks.resolved,
+		confirmed: marks.confirmed,
 		consequence: without(marks.consequence),
 		deleted: without(marks.deleted),
 		returnedToReview: without(marks.returnedToReview)

@@ -268,7 +268,59 @@ describe('UnitPanel: other units', () => {
 		expect(within(dialog).getAllByText('Partner leg')).toHaveLength(2);
 	});
 
-	it('says "Entered by hand" for an authored entry and shows no source columns', async () => {
+	it('shows the source of an authored entry like any other, with a small "Entered by hand"', async () => {
+		const { dialog } = await openPanel(
+			unit({
+				anchor_entry_id: 1,
+				entries: [
+					entry({
+						id: 1,
+						unit_key: 1,
+						authored: true,
+						source_transaction_id: 5,
+						display_text: 'Flea market',
+						source: source({
+							counterparty_name: 'Flea market',
+							purpose: 'Chair',
+							amount: { amount: -2500, currency: 'EUR' }
+						}),
+						derivation: {}
+					})
+				]
+			})
+		);
+
+		const strip = within(dialog).getByRole('region', { name: 'Source transaction' });
+		expect(strip).toHaveTextContent('Amount');
+		expect(strip).toHaveTextContent('25.00');
+		expect(strip).toHaveTextContent('Flea market');
+		expect(strip).toHaveTextContent('Chair');
+		expect(within(strip).getByText('Entered by hand')).toBeInTheDocument();
+		expect(within(dialog).queryByRole('region', { name: 'Entered by hand' })).toBeNull();
+	});
+
+	it('shows the amount of the source transaction in the strip, for an imported entry too', async () => {
+		const { dialog } = await openPanel(
+			unit({
+				anchor_entry_id: 1,
+				entries: [
+					entry({
+						id: 1,
+						unit_key: 1,
+						source_transaction_id: 5,
+						source: source({ amount: { amount: -4731, currency: 'EUR' } })
+					})
+				]
+			})
+		);
+
+		const strip = within(dialog).getByRole('region', { name: 'Source transaction' });
+		expect(strip).toHaveTextContent('Amount');
+		expect(strip).toHaveTextContent('47.31');
+		expect(within(strip).queryByText('Entered by hand')).toBeNull();
+	});
+
+	it('says "Entered by hand" for an authored entry without a source and shows no source columns', async () => {
 		const { dialog } = await openPanel(
 			unit({
 				anchor_entry_id: 1,

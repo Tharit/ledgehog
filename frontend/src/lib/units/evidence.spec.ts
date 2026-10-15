@@ -5,7 +5,6 @@ import {
 	isProposalPass,
 	keyOf,
 	knownRules,
-	rowBasis,
 	type RuleNames
 } from './evidence.js';
 
@@ -29,7 +28,6 @@ describe('describeKey', () => {
 	it('names a rule and links to it', () => {
 		expect(describeIt({ pass: 'rule', basis: { rule_id: 3 } })).toEqual({
 			text: 'rule: Rewe',
-			short: 'rule: Rewe',
 			proposal: false,
 			href: '/settings/rules/3'
 		});
@@ -46,6 +44,13 @@ describe('describeKey', () => {
 		expect(describeIt({ pass: 'rule', basis: { rule_id: 9 } }, loading)?.text).toBe('rule');
 	});
 
+	it('still names a rule it knows while the list is old, and says "deleted" only when fresh', () => {
+		const old: RuleNames = { loaded: false, name: (id) => (id === 3 ? 'Rewe' : undefined) };
+		expect(describeIt({ pass: 'rule', basis: { rule_id: 3 } }, old)?.text).toBe('rule: Rewe');
+		expect(describeIt({ pass: 'rule', basis: { rule_id: 9 } }, old)?.text).toBe('rule');
+		expect(describeIt({ pass: 'rule', basis: { rule_id: 9 } }, rules)?.text).toBe('rule deleted');
+	});
+
 	it('writes history as counts since a month, a proposal', () => {
 		const e = describeIt({
 			pass: 'history',
@@ -53,7 +58,6 @@ describe('describeKey', () => {
 		});
 		expect(e).toMatchObject({
 			text: 'history: 3 of 4 since Mar 2026',
-			short: 'history 3 of 4',
 			proposal: true
 		});
 	});
@@ -66,7 +70,7 @@ describe('describeKey', () => {
 
 	it('copes with a history basis it does not understand', () => {
 		expect(describeIt({ pass: 'history', basis: {} })?.text).toBe('history');
-		expect(describeIt({ pass: 'history' })?.short).toBe('history');
+		expect(describeIt({ pass: 'history' })?.text).toBe('history');
 	});
 
 	it('keeps the model rationale for a popover', () => {
@@ -128,28 +132,5 @@ describe('keys of a derivation', () => {
 	it('knows the proposal passes', () => {
 		expect(['history', 'llm', 'matcher_proposal'].every(isProposalPass)).toBe(true);
 		expect(['rule', 'own_account', 'user', 'matcher_decision'].some(isProposalPass)).toBe(false);
-	});
-});
-
-describe('rowBasis', () => {
-	const derivation = {
-		type: { pass: 'own_account' },
-		payee: { pass: 'rule', basis: { rule_id: 3 } },
-		category: { pass: 'history', basis: { agree: 3, of: 4, since: '2026-03-01' } }
-	};
-
-	it('shows the category key of a flow, else its payee key', () => {
-		expect(rowBasis({ type: 'flow', derivation }, rules)?.short).toBe('history 3 of 4');
-		const rest = { type: derivation.type, payee: derivation.payee };
-		expect(rowBasis({ type: 'flow', derivation: rest }, rules)?.short).toBe('rule: Rewe');
-	});
-
-	it('shows the counter-account key of a transfer', () => {
-		const d = { counter_account: { pass: 'own_account' } };
-		expect(rowBasis({ type: 'transfer', derivation: d }, rules)?.short).toBe('own account');
-	});
-
-	it('is null when nothing is derived', () => {
-		expect(rowBasis({ type: 'flow', derivation: {} }, rules)).toBeNull();
 	});
 });

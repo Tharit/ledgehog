@@ -16,8 +16,10 @@ export interface UnitSource {
 	 * Put the list's cursor on the row of this entry and scroll it into view, without touching the
 	 * list's filter, address or contents. True when the entry is in the list. The panel calls it
 	 * when it opens and on each step, so the list behind the overlay follows the unit shown.
+	 * `visit` false: the cursor lands there without "visiting": the marks of the row stay (the
+	 * units just committed, whose marks say what the commit did).
 	 */
-	reveal?(entryId: number): boolean;
+	reveal?(entryId: number, visit?: boolean): boolean;
 	/**
 	 * The list ends here and has more to load: load it and say whether rows were added, so the
 	 * panel can carry on advancing instead of stopping at the end of a page.

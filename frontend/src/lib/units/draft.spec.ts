@@ -57,10 +57,34 @@ describe('fields', () => {
 	});
 
 	it('leaves a field empty when fixed to null', () => {
-		expect(first(empty().setField(1, 'payee', null)).payee).toEqual({
+		const decided = Draft.of(
+			unit({ anchor_entry_id: 1, entries: [entry({ id: 1, unit_key: 1, payee_id: 20 })] })
+		);
+		expect(first(decided.setField(1, 'payee', null)).payee).toEqual({
 			mode: 'fixed',
 			value: null
 		});
+	});
+
+	it('is no edit to choose the value that is stored; back to it undoes the edit', () => {
+		const decided = Draft.of(
+			unit({
+				anchor_entry_id: 1,
+				entries: [entry({ id: 1, unit_key: 1, category_id: 10, payee_id: 20, type: 'flow' })]
+			})
+		);
+		expect(decided.setField(1, 'category', 10).isDirty).toBe(false);
+		expect(decided.setField(1, 'payee', 20).isDirty).toBe(false);
+		expect(decided.setField(1, 'type', 'flow').isDirty).toBe(false);
+		expect(decided.setField(1, 'category', 11).setField(1, 'category', 10).isDirty).toBe(false);
+	});
+
+	it('is an edit to choose the stored value of a proposal the user was shown: it confirms it', () => {
+		const shown = { pass: 'history', basis: { agree: 3, of: 4 } };
+		const proposed = Draft.of(
+			unit({ anchor_entry_id: 1, entries: [entry({ id: 1, unit_key: 1, category_id: 10 })] })
+		);
+		expect(proposed.setField(1, 'category', 10, shown).isDirty).toBe(true);
 	});
 
 	it('resets a field to the proposal: the passes decide again', () => {
@@ -170,9 +194,31 @@ describe('type', () => {
 	});
 
 	it('converts back to a flow, dropping the destination', () => {
-		const body = first(empty().convertToTransfer(1, 7).convertToFlow(1));
+		const pair = Draft.of(
+			unit({
+				anchor_entry_id: 1,
+				entries: [entry({ id: 1, unit_key: 1, type: 'transfer', counter_account_id: 7 })]
+			})
+		);
+		const body = first(pair.convertToFlow(1));
 		expect(body.type).toEqual({ mode: 'fixed', value: 'flow' });
 		expect(body.counter_account).toBeUndefined();
+	});
+
+	it('is no edit to convert to the type the entry has; converting and back is clean', () => {
+		expect(empty().convertToFlow(1).isDirty).toBe(false);
+		expect(empty().convertToTransfer(1, null).convertToFlow(1).isDirty).toBe(false);
+	});
+
+	it('converts an entry with no type yet to a flow when asked', () => {
+		const open = Draft.of(
+			unit({ anchor_entry_id: 1, entries: [entry({ id: 1, unit_key: 1, type: null })] })
+		);
+		expect(first(open.convertToFlow(1)).type).toEqual({ mode: 'fixed', value: 'flow' });
+		expect(first(open.convertToTransfer(1, null)).type).toEqual({
+			mode: 'fixed',
+			value: 'transfer'
+		});
 	});
 });
 
@@ -182,6 +228,44 @@ describe('re-resolve and stale picks', () => {
 		expect(draft.isDirty).toBe(true);
 		expect(draft.toRequest().reresolve_all).toBe(true);
 		expect(draft.reresolve(false).isDirty).toBe(false);
+	});
+
+	it('re-resolves pending changes too: the derived values the user chose are dropped', () => {
+		const draft = empty()
+			.setField(1, 'category', 10)
+			.setField(1, 'payee', 20)
+			.convertToTransfer(2, 7)
+			.resetField(2, 'payee')
+			.reresolve();
+		expect(draft.reresolveAll).toBe(true);
+		expect(draft.fieldEdit(1, 'category')).toBeUndefined();
+		expect(draft.fieldEdit(2, 'type')).toBeUndefined();
+		expect(draft.fieldEdit(2, 'payee')).toBeUndefined();
+		expect(draft.toRequest().entries).toEqual([]);
+	});
+
+	it('re-resolve keeps splits, their amounts and fields, removals, descriptions and notes', () => {
+		const draft = empty()
+			.addSplit(1)
+			.setSplitAmount(-1, -500)
+			.setField(-1, 'category', 11)
+			.removeSplit(2)
+			.setDescription(1, 'mine')
+			.setNote(1, 'a note')
+			.setField(1, 'category', 10)
+			.reresolve();
+		expect(draft.splits).toEqual([{ id: -1, sourceEntryId: 1 }]);
+		expect(draft.removed).toEqual([2]);
+		expect(draft.toRequest().entries).toEqual([
+			{ id: 1, description: 'mine', note: 'a note' },
+			{ id: -1, source_entry_id: 1, amount: -500 }
+		]);
+	});
+
+	it('re-resolving again changes nothing once nothing is left to drop', () => {
+		const once = empty().reresolve();
+		expect(once.reresolve()).toBe(once);
+		expect(once.setField(1, 'category', 10).reresolve().fieldEdit(1, 'category')).toBeUndefined();
 	});
 
 	it('forgets a pick whose category vanished, and only that pick', () => {
@@ -217,6 +301,15 @@ describe('rebase', () => {
 		const now = unit({
 			anchor_entry_id: 1,
 			entries: [entry({ id: 1, version: 5, unit_key: 1, note: 'moved' })]
+		});
+		expect(draft.rebase(now).isDirty).toBe(false);
+	});
+
+	it('drops a field edit that now equals what is stored', () => {
+		const draft = empty().setField(1, 'category', 10);
+		const now = unit({
+			anchor_entry_id: 1,
+			entries: [entry({ id: 1, version: 5, unit_key: 1, category_id: 10 })]
 		});
 		expect(draft.rebase(now).isDirty).toBe(false);
 	});

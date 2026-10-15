@@ -29,7 +29,13 @@ export type EntryEdit = {
 /** A row the draft creates: it splits the source of a stored entry. */
 export type NewSplit = { id: number; sourceEntryId: number };
 
-type Base = { description: string | null; note: string | null; amount: number };
+type Base = {
+	description: string | null;
+	note: string | null;
+	amount: number;
+	/** the values the entry stores for the derived fields */
+	fields: Readonly<Record<FieldName, FieldValue>>;
+};
 
 type State = {
 	anchorId: number;
@@ -47,7 +53,17 @@ function baseOf(unit: Pick<Unit, 'entries'>): Map<number, Base> {
 	return new Map(
 		unit.entries.map((e) => [
 			e.id,
-			{ description: e.description, note: e.note, amount: e.amount.amount }
+			{
+				description: e.description,
+				note: e.note,
+				amount: e.amount.amount,
+				fields: {
+					type: e.type,
+					payee: e.payee_id,
+					category: e.category_id,
+					counter_account: e.counter_account_id
+				}
+			}
 		])
 	);
 }
@@ -75,6 +91,21 @@ function isEmpty(edit: EntryEdit): boolean {
 		edit.note === undefined &&
 		edit.amount === undefined
 	);
+}
+
+/** `edit` with the field's value in place, or without it when that is the very value stored. */
+function withField(
+	fields: EntryEdit['fields'],
+	stored: Base | undefined,
+	field: FieldName,
+	value: FieldValue,
+	shown: ShownBasis | null
+): EntryEdit['fields'] {
+	// the stored value is no edit, unless it confirms a proposal the user was shown (`shown`)
+	if (stored !== undefined && shown === null && stored.fields[field] === value) {
+		return without(fields, field);
+	}
+	return { ...fields, [field]: { mode: 'fixed', value, shown } };
 }
 
 export class Draft {
@@ -172,9 +203,10 @@ export class Draft {
 		value: FieldValue,
 		shown: ShownBasis | null = null
 	): Draft {
+		const stored = this.#s.base.get(id);
 		return this.#edited(id, (e) => ({
 			...e,
-			fields: { ...e.fields, [field]: { mode: 'fixed', value, shown } }
+			fields: withField(e.fields, stored, field, value, shown)
 		}));
 	}
 
@@ -246,33 +278,47 @@ export class Draft {
 
 	/** Turn a flow into a transfer; `counterAccountId` null leaves the destination to be chosen. */
 	convertToTransfer(id: number, counterAccountId: number | null): Draft {
-		return this.#edited(id, (e) => ({
-			...e,
-			fields: {
-				...without(without(e.fields, 'payee'), 'category'),
-				type: { mode: 'fixed', value: 'transfer', shown: null },
-				...(counterAccountId === null
-					? {}
-					: { counter_account: { mode: 'fixed', value: counterAccountId, shown: null } })
+		const stored = this.#s.base.get(id);
+		return this.#edited(id, (e) => {
+			let fields = withField(
+				without(without(e.fields, 'payee'), 'category'),
+				stored,
+				'type',
+				'transfer',
+				null
+			);
+			if (counterAccountId !== null) {
+				fields = withField(fields, stored, 'counter_account', counterAccountId, null);
 			}
-		}));
+			return { ...e, fields };
+		});
 	}
 
 	/** Turn a transfer into a flow; the category and payee are proposed afresh. */
 	convertToFlow(id: number): Draft {
+		const stored = this.#s.base.get(id);
 		return this.#edited(id, (e) => ({
 			...e,
-			fields: {
-				...without(e.fields, 'counter_account'),
-				type: { mode: 'fixed', value: 'flow', shown: null }
-			}
+			fields: withField(without(e.fields, 'counter_account'), stored, 'type', 'flow', null)
 		}));
 	}
 
-	/** Resolve the whole unit afresh (spec §5.9); Cancel undoes it. */
+	/**
+	 * Resolve the whole unit afresh (spec §5.9). It applies to pending changes too: the derived
+	 * values the user chose (type, payee, category, counter account) are dropped, the passes decide
+	 * them again. Splits, their amounts, removals, descriptions and notes are kept. "Reset"
+	 * (`UnitDraftFlow.discard`) is what undoes it.
+	 */
 	reresolve(on = true): Draft {
-		if (on === this.#s.reresolveAll) return this;
-		return this.#with({ reresolveAll: on });
+		if (!on) return on === this.#s.reresolveAll ? this : this.#with({ reresolveAll: false });
+		let changed = !this.#s.reresolveAll;
+		const edits = new Map<number, EntryEdit>();
+		for (const [id, edit] of this.#s.edits) {
+			if (Object.keys(edit.fields).length > 0) changed = true;
+			const next = { ...edit, fields: {} };
+			if (!isEmpty(next)) edits.set(id, next);
+		}
+		return changed ? this.#with({ reresolveAll: true, edits }) : this;
 	}
 
 	/** Forget a pick whose category, payee or account no longer exists. */
@@ -305,6 +351,13 @@ export class Draft {
 				}
 				if (next.note !== undefined && normaliseText(next.note) === was.note) delete next.note;
 				if (next.amount === was.amount) delete next.amount;
+				// a value someone else has stored meanwhile is no longer a change
+				next.fields = Object.fromEntries(
+					Object.entries(next.fields).filter(
+						([name, f]) =>
+							!(f.mode === 'fixed' && f.shown === null && f.value === was.fields[name as FieldName])
+					)
+				) as EntryEdit['fields'];
 			}
 			if (!isEmpty(next)) edits.set(id, next);
 		}

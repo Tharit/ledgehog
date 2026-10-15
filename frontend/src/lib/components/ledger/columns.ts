@@ -4,15 +4,7 @@
 // other column has a fixed width so the rows align.
 
 export type ColumnId =
-	| 'date'
-	| 'account'
-	| 'category'
-	| 'payee'
-	| 'tags'
-	| 'description'
-	| 'review'
-	| 'amount'
-	| 'basis';
+	'date' | 'account' | 'category' | 'payee' | 'tags' | 'description' | 'review' | 'amount';
 
 export type Column = {
 	id: ColumnId;
@@ -33,12 +25,6 @@ export const COLUMNS: readonly Column[] = [
 	{ id: 'description', header: 'Description', width: 'minmax(0, 1fr)' },
 	{ id: 'review', header: 'Review', hiddenHeader: true, width: '4.5rem' },
 	{ id: 'amount', header: 'Amount', width: '7rem', align: 'right' }
-];
-
-/** The review queue's rows: the ledger's columns and, last, the basis of what is proposed. */
-export const QUEUE_COLUMNS: readonly Column[] = [
-	...COLUMNS,
-	{ id: 'basis', header: 'Basis', width: '10rem' }
 ];
 
 /** The grid-template-columns value of a column list, shared by its header and its rows. */

@@ -19,6 +19,7 @@ import {
 	type RuleWriteOut
 } from '#lib/api/index.js';
 import { emptyLookups, type Lookups } from '#lib/ledger/lookups.js';
+import { ruleNames } from './rule-names.svelte.js';
 import {
 	newConditionRow,
 	requestRows,
@@ -305,6 +306,7 @@ export class RuleEditorStore {
 		try {
 			const out = await this.#write(form, { expectedCount: held.matches.total, limit: 1 });
 			if (!out.rule) return null;
+			ruleNames.invalidate(); // the names the panel and the queue hold are old
 			return {
 				rule: out.rule,
 				touched: out.settle?.touched_entry_ids.length ?? 0,

@@ -12,6 +12,7 @@ import {
 import { newConditionRow, type ConditionField, type ConditionOp } from '#lib/rules/conditions.js';
 import { preview, previewList, previewRow, rule } from '#lib/rules/fixtures.js';
 import { PREVIEW_PAGE, RuleEditorStore } from './rule-editor.svelte.js';
+import { ruleNames } from './rule-names.svelte.js';
 
 vi.mock('#lib/api/index.js', async (importOriginal) => ({
 	...(await importOriginal<typeof import('#lib/api/index.js')>()),
@@ -371,6 +372,21 @@ describe('RuleEditorStore: saving', () => {
 			touched: 3,
 			settleFailed: false
 		});
+	});
+
+	it('marks the rule names held as old once a rule is written', async () => {
+		const store = await editing(preview({ matches: previewList([previewRow()], 12) }));
+		store.edit({ conditions: [cond('SEPA', 'booking_text', 'equals')] });
+		await vi.advanceTimersByTimeAsync(DEBOUNCE);
+		vi.mocked(updateRule).mockResolvedValue(
+			out(preview(), { dry_run: false, rule: rule({ id: 5 }), settle: null })
+		);
+		await ruleNames.refresh();
+		expect(ruleNames.names.loaded).toBe(true);
+
+		await store.save();
+
+		expect(ruleNames.names.loaded).toBe(false);
 	});
 
 	it('creates a new rule with the count of its preview', async () => {

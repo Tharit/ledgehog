@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, deleteRule } from '#lib/api/index.js';
 import { preview, previewList, previewRow, rule } from '#lib/rules/fixtures.js';
 import { RuleDeleteFlow } from '#lib/stores/rule-delete.svelte.js';
+import { ruleNames } from '#lib/stores/rule-names.svelte.js';
+import { rulesNamed } from '#lib/units/evidence.js';
 import RuleDeleteDialog from './rule-delete-dialog.svelte';
 
 vi.mock('#lib/api/index.js', async (importOriginal) => ({
@@ -78,6 +80,21 @@ describe('RuleDeleteDialog', () => {
 		expect(vi.mocked(deleteRule).mock.calls.at(-1)).toEqual([4, { expectedCount: 14, limit: 1 }]);
 		expect(host.deleted.mock.calls[0][1]).toBe(2);
 		expect(flow.open).toBe(false);
+	});
+
+	it('marks the rule names held as old once the rule is deleted', async () => {
+		vi.mocked(deleteRule).mockResolvedValueOnce(dry(14, 9));
+		const { flow } = setup();
+		await flow.start(rule({ id: 4 }));
+		await waitFor(() => expect(verb()).toBeEnabled());
+		ruleNames.names = rulesNamed([{ id: 4, name: 'Rewe' }]);
+		vi.mocked(deleteRule).mockResolvedValueOnce({ ...dry(14, 9), dry_run: false, deleted: true });
+
+		await fireEvent.click(verb());
+
+		await waitFor(() => expect(flow.open).toBe(false));
+		expect(ruleNames.names.loaded).toBe(false);
+		ruleNames.reset();
 	});
 
 	it('shows the new counts and asks again when the result moved', async () => {

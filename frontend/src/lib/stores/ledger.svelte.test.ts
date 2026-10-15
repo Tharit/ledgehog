@@ -706,17 +706,24 @@ describe('LedgerStore: what the unit panel does to the rows', () => {
 		expect(store.marks.resolved.has(12)).toBe(true);
 	});
 
-	it('fades a mark when the cursor visits the row, and keeps the others', async () => {
+	it('fades a consequence mark when the cursor visits the row, and keeps the others', async () => {
 		const store = await loaded();
 		store.patchAffected({
 			entries: [entry({ id: 3, unit_key: 3 }), entry({ id: 1, unit_key: 1 })],
-			resolved: [3, 1]
+			resolved: [1],
+			confirmed: [1]
 		});
+		expect(store.marks.consequence.has(3)).toBe(false); // flags unchanged: no mark
+		store.patchAffected({
+			entries: [entry({ id: 3, unit_key: 3, review_flags: ['unconfirmed'] })]
+		});
+		expect(store.marks.consequence.has(3)).toBe(true);
 
-		store.visited([3]);
+		store.visited([3, 1]);
 
-		expect(store.marks.resolved.has(3)).toBe(false);
+		expect(store.marks.consequence.has(3)).toBe(false);
 		expect(store.marks.resolved.has(1)).toBe(true);
+		expect(store.marks.confirmed.has(1)).toBe(true);
 	});
 
 	it('does not touch the marks when a visited row has none', async () => {

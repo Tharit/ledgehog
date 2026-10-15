@@ -248,7 +248,7 @@ export class UnitPanel {
 				this.#nav.replace(withUnit(this.#nav.url(), unit.anchor_entry_id));
 				this.unitId = unit.anchor_entry_id;
 			}
-			if (unitReadsRules(unit)) void ruleNames.ensure();
+			if (unitReadsRules(unit)) void ruleNames.refresh(); // fresh after this load
 		} catch (error) {
 			if (generation !== this.#generation) return;
 			this.unit = null;
@@ -281,10 +281,10 @@ export class UnitPanel {
 	}
 
 	/** Put the list's cursor on the unit shown (the source decides what that means). */
-	#reveal(ids: readonly number[]): void {
+	#reveal(ids: readonly number[], visit = true): void {
 		const source = activeUnitSource();
 		if (!source?.reveal) return;
-		for (const id of ids) if (source.reveal(id)) return;
+		for (const id of ids) if (source.reveal(id, visit)) return;
 	}
 
 	#candidates(unit: Unit): number[] {
@@ -332,7 +332,7 @@ export class UnitPanel {
 				this.#nav.replace(withUnit(this.#nav.url(), unit.anchor_entry_id));
 				this.unitId = unit.anchor_entry_id;
 			}
-			if (unitReadsRules(unit)) void ruleNames.ensure();
+			if (unitReadsRules(unit)) void ruleNames.refresh(); // fresh after this load
 		} catch (error) {
 			if (generation !== this.#generation) return;
 			this.unit = null;
@@ -371,7 +371,7 @@ export class UnitPanel {
 			return;
 		}
 		const source = activeUnitSource();
-		this.#reveal(committed);
+		this.#reveal(committed, false); // the marks of what was just committed stay
 		source?.notice?.(source.finishedText ?? 'No more units');
 		this.#close();
 	}

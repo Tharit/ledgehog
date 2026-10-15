@@ -53,7 +53,9 @@ function asApiError(error: unknown): ApiError {
 
 /** The commit's outcome as what the lists patch (patterns §7). */
 export function affectedOf(out: UnitCommit, anchorId: number): Affected {
-	const unit = out.units.find((u) => u.entry_ids.includes(anchorId));
+	// every unit of the response was committed (muted); only a confirmed one also gets the check
+	const resolved = out.units.flatMap((u) => u.entry_ids);
+	const confirmed = out.units.filter((u) => u.state.confirmed).flatMap((u) => u.entry_ids);
 	const returned = out.consequences
 		.filter(
 			(c) => c.kind === 'returns_to_review' || c.kind === 'left_behind' || c.kind === 'unpaired'
@@ -61,7 +63,8 @@ export function affectedOf(out: UnitCommit, anchorId: number): Affected {
 		.map((c) => c.entry_id);
 	return {
 		entries: out.entries,
-		resolved: unit?.entry_ids ?? [],
+		resolved,
+		confirmed,
 		returned_to_review: returned,
 		removed_entry_ids: out.removed_entry_ids,
 		created: Object.values(out.created),
@@ -179,7 +182,7 @@ export class UnitDraftFlow {
 		this.lastAddedSplit = null;
 	}
 
-	/** Throw the changes away: the unit as stored, previewed again. */
+	/** Reset: throw every change away (the panel stays open): the unit as stored, previewed again. */
 	discard(): void {
 		if (this.unit) this.begin(this.unit);
 	}
@@ -214,6 +217,11 @@ export class UnitDraftFlow {
 		this.edit((d) => d.resetField(id, field));
 	}
 
+	/** "Reset to proposal": the user's value is dropped, the stored one is shown again. */
+	revertField(id: number, field: FieldName): void {
+		this.edit((d) => d.revertField(id, field));
+	}
+
 	setText(id: number, key: 'description' | 'note', text: string): void {
 		this.edit(
 			(d) => (key === 'description' ? d.setDescription(id, text) : d.setNote(id, text)),
@@ -221,11 +229,14 @@ export class UnitDraftFlow {
 		);
 	}
 
-	/** `x`: a flow becomes a transfer (its destination chosen next), a transfer a flow. */
+	/** The type buttons: the entry becomes what was clicked (a transfer's destination is chosen next). */
+	setType(id: number, type: 'flow' | 'transfer'): void {
+		this.edit((d) => (type === 'flow' ? d.convertToFlow(id) : d.convertToTransfer(id, null)));
+	}
+
+	/** `x`: a transfer becomes a flow, anything else (a flow, an entry with no type yet) a transfer. */
 	convert(id: number, currentType: string | null): void {
-		this.edit((d) =>
-			currentType === 'transfer' ? d.convertToFlow(id) : d.convertToTransfer(id, null)
-		);
+		this.setType(id, currentType === 'transfer' ? 'flow' : 'transfer');
 	}
 
 	reresolve(on = true): void {

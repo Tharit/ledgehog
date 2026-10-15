@@ -79,10 +79,13 @@ export class ReviewQueueStore {
 			await this.loadMore(next.kind);
 			return this.units.length > before;
 		},
-		reveal: (id) => {
+		reveal: (id, visit = true) => {
 			const at = this.#indexOf(id);
 			if (at < 0) return false;
-			this.revealed = this.units[at].anchor_entry_id;
+			const unit = this.units[at];
+			this.revealed = unit.anchor_entry_id;
+			// the cursor follows; a mark fades when it visits (not for the units just committed)
+			if (visit) this.visited(unit.entries.map((e) => e.id));
 			return true;
 		},
 		position: (id) => {
@@ -129,7 +132,7 @@ export class ReviewQueueStore {
 			this.notice = null;
 			this.marks = noMarks();
 			this.status = 'ready';
-			if (this.units.some(unitReadsRules)) void ruleNames.ensure();
+			if (this.units.some(unitReadsRules)) void ruleNames.refresh(); // fresh after this load
 		} catch (error) {
 			if (generation !== this.#generation) return;
 			this.error = asApiError(error);

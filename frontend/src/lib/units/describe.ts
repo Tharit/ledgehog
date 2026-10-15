@@ -73,39 +73,46 @@ export function unitTitle(
 	return entryLabel(anchor);
 }
 
-export type SourceGroup =
-	| { kind: 'source'; key: number; source: SourceTransaction; entryIds: number[] }
-	| { kind: 'authored'; entryIds: number[] };
+/** One source transaction of the unit, with the entries that share it. */
+export type SourceGroup = {
+	/** the source transaction's id; null for an entry entered by hand that carries no source */
+	key: number | null;
+	source: SourceTransaction | null;
+	/** the entries were entered by hand: the strip says so */
+	authored: boolean;
+	entryIds: number[];
+};
 
 /**
  * Where the entries came from: one group per distinct source transaction (the entries of a split
- * share one), and one for the entries entered by hand (`authored`, which also carry a source of
- * their own). Derived entries (no source) are not listed.
+ * share one). An entry entered by hand carries its own source and is listed like any other, with
+ * `authored` set; one that carries none falls into a single hand-entered group without a source.
+ * Derived entries (no source) are not listed.
  */
 export function sourceGroups(entries: readonly Entry[]): SourceGroup[] {
 	const groups: SourceGroup[] = [];
-	const bySource = new Map<number, Extract<SourceGroup, { kind: 'source' }>>();
-	let authored: Extract<SourceGroup, { kind: 'authored' }> | null = null;
+	const bySource = new Map<number, SourceGroup>();
+	let bare: SourceGroup | null = null;
 	for (const entry of entries) {
-		if (entry.authored) {
-			if (!authored) {
-				authored = { kind: 'authored', entryIds: [] };
-				groups.push(authored);
-			}
-			authored.entryIds.push(entry.id);
-		} else if (entry.source && entry.source_transaction_id !== null) {
+		if (entry.source && entry.source_transaction_id !== null) {
 			let group = bySource.get(entry.source_transaction_id);
 			if (!group) {
 				group = {
-					kind: 'source',
 					key: entry.source_transaction_id,
 					source: entry.source,
+					authored: entry.authored,
 					entryIds: []
 				};
 				bySource.set(entry.source_transaction_id, group);
 				groups.push(group);
 			}
 			group.entryIds.push(entry.id);
+		} else if (entry.authored) {
+			if (!bare) {
+				bare = { key: null, source: null, authored: true, entryIds: [] };
+				groups.push(bare);
+			}
+			bare.entryIds.push(entry.id);
 		}
 	}
 	return groups;

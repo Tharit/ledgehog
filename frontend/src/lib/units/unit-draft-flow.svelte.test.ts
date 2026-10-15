@@ -346,8 +346,50 @@ describe('type and re-resolve', () => {
 			value: 'transfer'
 		});
 		expect(vi.mocked(previewUnit).mock.calls[1][0].reresolve_all).toBe(true);
-		flow.convert(1, 'transfer');
+		// the pending conversion was re-resolved away; converting again is a new edit
+		expect(vi.mocked(previewUnit).mock.calls[1][0].entries).toEqual([]);
+		flow.convert(1, 'flow');
 		expect(vi.mocked(previewUnit).mock.calls[2][0].entries![0].type).toEqual({
+			mode: 'fixed',
+			value: 'transfer'
+		});
+	});
+
+	it('setType makes the entry what was asked, whatever it is now (an entry with no type too)', async () => {
+		const { flow } = setup();
+		await settle();
+		vi.mocked(previewUnit).mockClear();
+
+		flow.setType(1, 'transfer');
+		flow.setType(1, 'flow'); // back to what is stored: no edit
+		flow.setType(1, 'transfer');
+
+		const types = vi.mocked(previewUnit).mock.calls.map((c) => c[0].entries?.[0]?.type);
+		expect(types).toEqual([
+			{ mode: 'fixed', value: 'transfer' },
+			undefined,
+			{ mode: 'fixed', value: 'transfer' }
+		]);
+	});
+
+	it('x on an entry with no type yet gives a transfer; Flow gives a flow', () => {
+		const open = unit({
+			anchor_entry_id: 1,
+			entries: [entry({ id: 1, version: 3, unit_key: 1, type: null })]
+		});
+		const flow = new UnitDraftFlow(host());
+		flow.begin(open);
+		vi.mocked(previewUnit).mockClear();
+
+		flow.convert(1, null);
+		expect(vi.mocked(previewUnit).mock.calls[0][0].entries![0].type).toEqual({
+			mode: 'fixed',
+			value: 'transfer'
+		});
+		flow.discard();
+		vi.mocked(previewUnit).mockClear();
+		flow.setType(1, 'flow');
+		expect(vi.mocked(previewUnit).mock.calls[0][0].entries![0].type).toEqual({
 			mode: 'fixed',
 			value: 'flow'
 		});
@@ -394,6 +436,7 @@ describe('committing', () => {
 		expect(h.patch).toHaveBeenCalledWith({
 			entries: loaded.entries,
 			resolved: [1, 2],
+			confirmed: [1, 2],
 			returned_to_review: [30, 31],
 			removed_entry_ids: [9],
 			created: [77],
@@ -442,8 +485,27 @@ describe('affectedOf', () => {
 		});
 	});
 
-	it('resolves nothing when the anchor is in no committed unit', () => {
-		expect(affectedOf(committed(loaded, { units: [] }), 1).resolved).toEqual([]);
+	it('resolves nothing, and confirms nothing, when the response has no unit', () => {
+		const affected = affectedOf(committed(loaded, { units: [] }), 1);
+		expect(affected.resolved).toEqual([]);
+		expect(affected.confirmed).toEqual([]);
+	});
+
+	it('mutes every unit of the response; only the confirmed ones also get the check', () => {
+		const out = committed(loaded, {
+			units: [
+				{
+					anchor_entry_id: 1,
+					entry_ids: [1, 2],
+					state: { confirmed: false, reasons: ['incomplete'] }
+				},
+				{ anchor_entry_id: 8, entry_ids: [8], state: { confirmed: true, reasons: [] } },
+				{ anchor_entry_id: 9, entry_ids: [9, 10], state: { confirmed: true, reasons: [] } }
+			]
+		});
+		const affected = affectedOf(out, 1);
+		expect(affected.resolved).toEqual([1, 2, 8, 9, 10]);
+		expect(affected.confirmed).toEqual([8, 9, 10]);
 	});
 });
 

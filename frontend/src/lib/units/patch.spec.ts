@@ -5,6 +5,7 @@ import {
 	clearMarks,
 	insertCreated,
 	markOf,
+	MARK_CONFIRMED,
 	MARK_CONSEQUENCE,
 	MARK_DELETED,
 	MARK_RESOLVED,
@@ -51,6 +52,20 @@ describe('applyAffected', () => {
 		expect(out.entries[1].category_id).toBe(10);
 	});
 
+	it('marks a committed row resolved (muted); only a confirmed one also gets the check', () => {
+		const out = applyAffected(rows, {
+			entries: [entry({ id: 1 }), entry({ id: 2, review_flags: ['unconfirmed'] })],
+			resolved: [1, 2],
+			confirmed: [1]
+		});
+		expect(out.marks.resolved.get(1)).toBe(MARK_RESOLVED);
+		expect(out.marks.resolved.get(2)).toBe(MARK_RESOLVED);
+		expect(out.marks.confirmed.get(1)).toBe(MARK_CONFIRMED);
+		expect(out.marks.confirmed.has(2)).toBe(false);
+		// a committed row that stays in review is not also a consequence
+		expect(out.marks.consequence.has(2)).toBe(false);
+	});
+
 	it('keeps deleted rows, marked', () => {
 		const out = applyAffected(rows, { entries: [], removed_entry_ids: [2, 77] });
 		expect(out.entries).toHaveLength(3);
@@ -70,11 +85,35 @@ describe('applyAffected', () => {
 });
 
 describe('marks', () => {
-	it('fade when the cursor visits the row', () => {
-		const { marks } = applyAffected(rows, { entries: [entry({ id: 1 })], resolved: [1] });
-		expect(markOf(marks, 1)).toBe(MARK_RESOLVED);
-		expect(markOf(clearMarks(marks, 1), 1)).toBeUndefined();
-		expect(clearMarks(noMarks(), 5).resolved.size).toBe(0);
+	const all = () =>
+		applyAffected(rows, {
+			entries: [entry({ id: 1 }), entry({ id: 2 }), entry({ id: 3 }), entry({ id: 4 })],
+			resolved: [1],
+			confirmed: [1],
+			returned_to_review: [3],
+			removed_entry_ids: [3]
+		}).marks;
+
+	it('the fading ones fade when the cursor visits the row', () => {
+		const marks = {
+			...all(),
+			consequence: new Map([[2, MARK_CONSEQUENCE]])
+		};
+		expect(markOf(clearMarks(marks, 2), 2)).toBeUndefined();
+		expect(markOf(clearMarks(marks, 3), 3)).toBeUndefined();
+		expect(clearMarks(marks, 3).deleted.has(3)).toBe(false);
+	});
+
+	it('the resolved and confirmed marks stay when the cursor visits the row (until a refresh)', () => {
+		const marks = all();
+		expect(clearMarks(marks, 1)).toBe(marks);
+		expect(markOf(clearMarks(marks, 1), 1)).toBe(MARK_RESOLVED);
+		expect(clearMarks(marks, 1).confirmed.has(1)).toBe(true);
+	});
+
+	it('is the same marks when the row has none', () => {
+		const marks = noMarks();
+		expect(clearMarks(marks, 5)).toBe(marks);
 	});
 });
 
