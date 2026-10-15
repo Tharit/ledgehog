@@ -137,3 +137,19 @@ def load_world(conn: Connection, stored: StoredUnit, draft: UnitDraft) -> World:
         categories=found_categories,
         payees=found_payees,
     )
+
+
+def missing_tag(conn: Connection, draft: UnitDraft) -> tuple[int, int] | None:
+    """The first `(index of the draft entry, tag id)` the draft adds that no longer exists, else None."""
+    named = sorted({t for e in draft.entries for t in e.tags_add})
+    if not named:
+        return None
+    found = {
+        int(i)
+        for i in conn.execute(text("SELECT id FROM tag WHERE id = ANY(:ids)"), {"ids": named}).scalars()
+    }
+    for i, e in enumerate(draft.entries):
+        for t in sorted(e.tags_add):
+            if t not in found:
+                return i, t
+    return None

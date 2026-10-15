@@ -11,10 +11,11 @@ deferred triggers are a net, not the check.
 
 What is written: a pair the draft breaks is undone (`removal.unpair`, so a partner is left behind as
 the removal routine leaves it), removed entries go through `removal.remove_entries`, created entries are
-inserted with real ids and inherit the original's tags, and every entry of the draft takes the values and the
-keys the plan derived (§5.9). An entry whose values already are the plan's is not written at all, so a commit
-that changes nothing bumps nothing and succeeds. A commit does not confirm (D165): `settle` runs after the
-commit and reports its own failure in the result, never raising into the committed write.
+inserted with real ids and inherit the original's tags (the draft's tag change on top), the tag changes of
+stored entries are membership writes that move no version, and every entry of the draft takes the values
+and the keys the plan derived (§5.9). An entry whose values already are the plan's is not written at all,
+so a commit that changes nothing bumps nothing and succeeds. A commit does not confirm (D165): `settle` runs
+after the commit and reports its own failure in the result, never raising into the committed write.
 """
 
 from __future__ import annotations
@@ -32,7 +33,7 @@ from app.core.ingest.duplicates import _check_versions
 from app.core.ingest.removal import remove_entries, unpair
 from app.core.ledger.entries import EntryRow, entries_by_ids
 from app.core.settle.settle import SettleResult, settle
-from app.core.stale import StaleReference
+from app.core.stale import StaleReference, stale_from_integrity
 from app.core.units.closure import UnitEntry, units_of
 from app.core.units.draft import UnitDraft
 from app.core.units.lookup import unit_ids_of
@@ -40,7 +41,7 @@ from app.core.units.overlay import plan_unit
 from app.core.units.plan import Consequence, Plan, PlannedRow, Problem
 from app.core.units.preview import UnitNotFound
 from app.core.units.state import UnitState, unit_state
-from app.core.units.stored import load_stored_entries, load_world
+from app.core.units.stored import load_stored_entries, load_world, missing_tag
 from app.utils.db.errors import constraint_name
 from app.utils.db.locks import lock_accounts, lock_rows, lock_settle_shared, retry_on_deadlock
 
@@ -186,6 +187,33 @@ def _write(conn: Connection, plan: Plan) -> dict[int, int]:
     return created
 
 
+_TAG_ADD = text(
+    "INSERT INTO ledger_entry_tag (ledger_entry_id, tag_id)"
+    " SELECT :e, unnest(CAST(:t AS bigint[])) ON CONFLICT DO NOTHING"
+)
+_TAG_REMOVE = text("DELETE FROM ledger_entry_tag WHERE ledger_entry_id = :e AND tag_id = ANY(:t)")
+
+
+def _apply_tags(conn: Connection, draft: UnitDraft) -> None:
+    """The draft's tag changes on stored entries, as membership changes (idempotent, composing with
+    any tagging made elsewhere since the unit was read). A created row got its tags, the change
+    included, with its insert.
+    `ledger_entry_tag` writes touch no entry row: no version moves."""
+    for i, e in enumerate(draft.entries):
+        if e.is_new:
+            continue
+        if e.tags_remove:
+            conn.execute(_TAG_REMOVE, {"e": e.id, "t": sorted(set(e.tags_remove))})
+        if e.tags_add:
+            try:
+                conn.execute(_TAG_ADD, {"e": e.id, "t": sorted(set(e.tags_add))})
+            except DBAPIError as exc:  # a tag deleted since the check: still one named conflict
+                stale = stale_from_integrity(exc)
+                if stale is None or stale.entity != "tag":
+                    raise
+                raise StaleReference(f"entries[{i}].tags.add", "tag", stale.entity_id) from exc
+
+
 def _differs(row: PlannedRow) -> bool:
     s, w = row.stored, row.written
     assert s is not None
@@ -215,9 +243,12 @@ def _commit_once(engine: Engine, draft: UnitDraft) -> tuple[Plan, dict[int, int]
             stored = load_stored_entries(conn, draft.anchor_entry_id, before)
             plan = plan_unit(stored, draft, load_world(conn, stored, draft))
             _stale(plan)
+            if (gone := missing_tag(conn, draft)) is not None:
+                raise StaleReference(f"entries[{gone[0]}].tags.add", "tag", gone[1])
             if plan.problems:
                 raise CommitRefused(plan.problems)
             created = _write(conn, plan)
+            _apply_tags(conn, draft)
         return plan, created, before
     except DBAPIError as exc:
         orig = exc.orig

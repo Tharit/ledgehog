@@ -67,6 +67,34 @@ class Scene:
             )
         return self.payees[name]
 
+    def tag(self, name: str) -> int:
+        return int(
+            self.tx(
+                lambda c: c.execute(
+                    text("INSERT INTO tag (name) VALUES (:n) RETURNING id"), {"n": name}
+                ).scalar_one()
+            )
+        )
+
+    def tag_entry(self, entry_id: int, *tag_ids: int) -> None:
+        self.tx(
+            lambda c: c.execute(
+                text(
+                    "INSERT INTO ledger_entry_tag (ledger_entry_id, tag_id)"
+                    " SELECT :e, unnest(CAST(:t AS bigint[])) ON CONFLICT DO NOTHING"
+                ),
+                {"e": entry_id, "t": list(tag_ids)},
+            )
+        )
+
+    def tags_of(self, entry_id: int) -> tuple[int, ...]:
+        return tuple(
+            r.tag_id
+            for r in self.q(
+                "SELECT tag_id FROM ledger_entry_tag WHERE ledger_entry_id = :i ORDER BY tag_id", i=entry_id
+            )
+        )
+
     def movement(
         self,
         *amounts: int,

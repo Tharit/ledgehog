@@ -98,6 +98,8 @@ class DraftEntry:
     (negative). `amount` is the entry's allocation of its source transaction; the source's original entry
     (its lowest id) is the residual and takes whatever the others leave, so its amount is never drafted.
     A new entry names `source_entry_id`, a stored entry of the source it splits.
+    `tags_add` / `tags_remove` are a change relative to the entry's stored tags (a new entry starts with the
+    original's): tags are never a consequence and never influence resolution, state or flags.
     """
 
     id: int
@@ -109,6 +111,8 @@ class DraftEntry:
     category: FieldDraft = KEEP
     counter_account: FieldDraft = KEEP
     source_entry_id: int | None = None
+    tags_add: tuple[int, ...] = ()
+    tags_remove: tuple[int, ...] = ()
 
     @property
     def is_new(self) -> bool:
@@ -138,6 +142,13 @@ class DraftEntry:
             )
         if self.is_new and self.amount is None:
             raise DraftError("amount_missing", "a new entry carries its amount", entry_id=self.id)
+        for tag in (*self.tags_add, *self.tags_remove):
+            if not isinstance(tag, int) or isinstance(tag, bool) or tag <= 0:
+                raise DraftError("invalid_tag", "a tag is an id", entry_id=self.id, field="tags")
+        if set(self.tags_add) & set(self.tags_remove):
+            raise DraftError(
+                "tag_conflict", "a tag is added and removed in one draft", entry_id=self.id, field="tags"
+            )
         for name in DERIVED_FIELDS:
             d = self.field(name)
             if d.mode != "fixed":

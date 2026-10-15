@@ -194,6 +194,11 @@ def _unit_entries(rows: Sequence[_Row]) -> list[UnitEntry]:
     ]
 
 
+def _tags(base: tuple[int, ...], draft: DraftEntry) -> tuple[int, ...]:
+    """The entry's tags with the draft's change applied, ascending."""
+    return tuple(sorted((set(base) | set(draft.tags_add)) - set(draft.tags_remove)))
+
+
 def _stored_entry_row(
     e: Stored, src: StoredSource, draft: DraftEntry, explicit: bool, original: bool
 ) -> _Row:
@@ -207,7 +212,7 @@ def _stored_entry_row(
         amount=e.amount,
         description=e.description if isinstance(draft.description, _Unset) else draft.description,
         note=e.note if isinstance(draft.note, _Unset) else draft.note,
-        tag_ids=e.tag_ids,
+        tag_ids=_tags(e.tag_ids, draft),
         account_id=e.account_id,
         type=e.type,
         payee_id=e.payee_id,
@@ -263,7 +268,7 @@ def _assemble(stored: StoredUnit, draft: UnitDraft) -> tuple[dict[int, _Row], li
                 amount=d.amount or 0,
                 description=origin.description if isinstance(d.description, _Unset) else d.description,
                 note=None if isinstance(d.note, _Unset) else d.note,
-                tag_ids=origin.tag_ids,
+                tag_ids=_tags(origin.tag_ids, d),
                 account_id=src.account_id,
                 type="flow",
                 derivation={"type": {"pass": "user"}},

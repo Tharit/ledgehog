@@ -222,3 +222,59 @@ def test_commit_accepts_a_proposal_and_the_unit_is_confirmed_by_settling(
     (row,) = r.json()["entries"]
     assert row["review_flags"] == [] and row["derivation"]["category"]["basis"]["pass"] == "history"
     assert r.json()["units"][0]["state"]["confirmed"] is True
+
+
+# ---- tags are part of the draft -----------------------------------------------------------------
+
+
+def test_a_tag_change_previews_and_commits_without_bumping_the_version(
+    anna: TestClient, scene: Scene
+) -> None:
+    scene.confirmed("REWE", "Food")
+    _s, (e,) = scene.movement(-700, counterparty="REWE")
+    t1, t2 = scene.tag("a"), scene.tag("b")
+    scene.tag_entry(e, t1)
+    scene.settle()
+    anna.post(COMMIT, json={"anchor_entry_id": e, "versions": {str(e): 1}})  # settled into its final state
+    v = scene.row(e).version
+    body = {
+        "anchor_entry_id": e,
+        "entries": [{"id": e, "tags": {"add": [t2, t2], "remove": [t1]}}],
+        "versions": {str(e): v},
+    }
+    p = anna.post(PREVIEW, json=body)
+    assert p.status_code == 200, p.text
+    assert p.json()["rows"][0]["tag_ids"] == [t2]
+    r = anna.post(COMMIT, json=body)
+    assert r.status_code == 200, r.text
+    (row,) = [x for x in r.json()["entries"] if x["id"] == e]
+    assert row["tag_ids"] == [t2] and row["version"] == v
+    assert scene.row(e).version == v and scene.tags_of(e) == (t2,)
+
+
+def test_a_tag_in_both_lists_is_invalid_draft_and_an_unknown_tag_is_stale(
+    anna: TestClient, scene: Scene
+) -> None:
+    _s, (e,) = scene.movement(-700)
+    t = scene.tag("a")
+    for url in (PREVIEW, COMMIT):
+        r = anna.post(
+            url,
+            json={"anchor_entry_id": e, "entries": [{"id": e, "tags": {"add": [t], "remove": [t]}}]},
+        )
+        assert_envelope(r, 422, "invalid_draft")
+        assert r.json()["error"]["details"]["code"] == "tag_conflict"
+    for url in (PREVIEW, COMMIT):
+        r = anna.post(
+            url,
+            json={
+                "anchor_entry_id": e,
+                "entries": [{"id": e, "tags": {"add": [9999]}}],
+                "versions": {str(e): 1},
+            },
+        )
+        assert_envelope(r, 409, "stale_reference")
+        assert r.json()["error"]["details"] == {"field": "entries[0].tags.add", "entity": "tag", "id": 9999}
+    assert scene.tags_of(e) == ()
+    r = anna.post(PREVIEW, json={"anchor_entry_id": e, "entries": [{"id": e, "tags": {"x": []}}]})
+    assert r.status_code == 422

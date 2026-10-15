@@ -3830,7 +3830,7 @@
       },
       "UnitDraftEntryIn": {
         "additionalProperties": false,
-        "description": "One entry the draft changes. `description` and `note` are left as stored when absent and emptied when\nnull. A new entry (negative `id`) names `source_entry_id`, a stored entry of the source it splits, and\ncarries its `amount`; the source's original entry is the residual and takes no amount of its own.",
+        "description": "One entry the draft changes. `description` and `note` are left as stored when absent and emptied when\nnull. A new entry (negative `id`) names `source_entry_id`, a stored entry of the source it splits, and\ncarries its `amount`; the source's original entry is the residual and takes no amount of its own. `tags`\nis a tag change on top of the stored (or inherited) tags; absent leaves them untouched.",
         "properties": {
           "amount": {
             "anyOf": [
@@ -3894,6 +3894,16 @@
               }
             ],
             "title": "Source Entry Id"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UnitTagChangeIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "type": {
             "$ref": "#/components/schemas/UnitFieldDraftIn"
@@ -4587,6 +4597,34 @@
           "note"
         ],
         "title": "UnitStoredRowOut",
+        "type": "object"
+      },
+      "UnitTagChangeIn": {
+        "additionalProperties": false,
+        "description": "A change of an entry's tags relative to its stored tags (a new entry's: the original's). A tag in both\nlists is 422 `invalid_draft` (`tag_conflict`); duplicates are tolerated.",
+        "properties": {
+          "add": {
+            "items": {
+              "exclusiveMinimum": 0.0,
+              "maximum": 9007199254740992.0,
+              "type": "integer"
+            },
+            "maxItems": 500,
+            "title": "Add",
+            "type": "array"
+          },
+          "remove": {
+            "items": {
+              "exclusiveMinimum": 0.0,
+              "maximum": 9007199254740992.0,
+              "type": "integer"
+            },
+            "maxItems": 500,
+            "title": "Remove",
+            "type": "array"
+          }
+        },
+        "title": "UnitTagChangeIn",
         "type": "object"
       },
       "UpdateBody": {

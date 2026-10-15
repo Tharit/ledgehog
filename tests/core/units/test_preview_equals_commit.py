@@ -7,6 +7,7 @@ nothing written, and any other must leave exactly the previewed rows, keys, flag
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from typing import Any
 
@@ -29,6 +30,7 @@ def world(scene: Scene) -> Scene:
     for name, cat in (("REWE", "Food"), ("REWE", "Food"), ("ALDI", "Groceries"), ("NEWCO", "Misc")):
         scene.confirmed(name, cat)
     payee = scene.payee("Landlord")
+    scene.tag("t1"), scene.tag("t2"), scene.tag("t3")
     for name in ("Fun", "Rent"):
         scene.category(name)
 
@@ -84,6 +86,11 @@ def categories(scene: Scene) -> st.SearchStrategy[FieldDraft]:
     )
 
 
+def tag_sets(scene: Scene) -> st.SearchStrategy[tuple[int, ...]]:
+    ids = [r.id for r in scene.q("SELECT id FROM tag ORDER BY id")]
+    return st.lists(st.sampled_from(ids), max_size=2, unique=True).map(tuple)
+
+
 @st.composite
 def entries_draft(
     draw: st.DrawFn, scene: Scene, ids: list[int], originals: set[int], flows_only: bool
@@ -120,9 +127,19 @@ def entries_draft(
             )
         )
     versions = scene.versions(ids[0])
+    entries = []
+    for e in [*edits, *new]:  # a tag change on top of whatever else the entry carries
+        add, remove = draw(tag_sets(scene)), draw(tag_sets(scene))
+        entries.append(
+            dataclasses.replace(e, tags_add=add, tags_remove=tuple(t for t in remove if t not in add))
+        )
+    for i in ids:  # and tag-only entries
+        if not any(e.id == i for e in entries) and i not in removed and draw(st.booleans()):
+            add, remove = draw(tag_sets(scene)), draw(tag_sets(scene))
+            entries.append(DraftEntry(i, tags_add=add, tags_remove=tuple(t for t in remove if t not in add)))
     return UnitDraft(
         ids[0],
-        [*edits, *new],
+        entries,
         removed_entry_ids=removed,
         reresolve_all=draw(st.booleans()),
         versions=versions,
@@ -145,6 +162,8 @@ def _build(scene: Scene, kind: str, who: str, confirmed: bool) -> tuple[list[int
         (_sa, a), (_sb, b) = scene.transfer_pair(-500, out_extra=[-100] if kind == "pair_split" else ())
         ents = [*a, *b]
         originals = {a[0], b[0]}
+    for i in ents:  # some stored tags to inherit, keep or remove
+        scene.tag_entry(i, *[r.id for r in scene.q("SELECT id FROM tag ORDER BY id")][: i % 3])
     scene.settle()
     if confirmed:
         try:

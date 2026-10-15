@@ -36,6 +36,7 @@ _ENTITY_OF = {
     "payee_id": "payee",
     "account_id": "account",
     "counter_account_id": "account",
+    "tag_id": "tag",
 }
 _FK_COLUMN = re.compile(r"_(" + "|".join(_ENTITY_OF) + r")_fkey$")
 _KEY_ID = re.compile(r"\)=\((\d+)\)")

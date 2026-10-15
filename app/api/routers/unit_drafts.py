@@ -68,10 +68,21 @@ class UnitFieldDraftIn(BaseModel):
         return FieldDraft(self.mode, self.value, shown)
 
 
+class UnitTagChangeIn(BaseModel):
+    """A change of an entry's tags relative to its stored tags (a new entry's: the original's). A tag in both
+    lists is 422 `invalid_draft` (`tag_conflict`); duplicates are tolerated."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    add: list[EntityId] = Field(default_factory=list, max_length=500)
+    remove: list[EntityId] = Field(default_factory=list, max_length=500)
+
+
 class UnitDraftEntryIn(BaseModel):
     """One entry the draft changes. `description` and `note` are left as stored when absent and emptied when
     null. A new entry (negative `id`) names `source_entry_id`, a stored entry of the source it splits, and
-    carries its `amount`; the source's original entry is the residual and takes no amount of its own."""
+    carries its `amount`; the source's original entry is the residual and takes no amount of its own. `tags`
+    is a tag change on top of the stored (or inherited) tags; absent leaves them untouched."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -84,6 +95,7 @@ class UnitDraftEntryIn(BaseModel):
     category: UnitFieldDraftIn = Field(default_factory=UnitFieldDraftIn)
     counter_account: UnitFieldDraftIn = Field(default_factory=UnitFieldDraftIn)
     source_entry_id: EntityId | None = None
+    tags: UnitTagChangeIn | None = None
 
     def to_core(self) -> DraftEntry:
         given = self.model_fields_set
@@ -97,6 +109,8 @@ class UnitDraftEntryIn(BaseModel):
             category=self.category.to_core(),
             counter_account=self.counter_account.to_core(),
             source_entry_id=self.source_entry_id,
+            tags_add=tuple(sorted(set(self.tags.add))) if self.tags else (),
+            tags_remove=tuple(sorted(set(self.tags.remove))) if self.tags else (),
         )
 
 

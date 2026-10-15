@@ -9,10 +9,11 @@ from __future__ import annotations
 
 from sqlalchemy import Engine, text
 
+from app.core.stale import StaleReference
 from app.core.units.draft import UnitDraft
 from app.core.units.overlay import plan_unit
 from app.core.units.plan import Plan
-from app.core.units.stored import load_stored_unit, load_world
+from app.core.units.stored import load_stored_unit, load_world, missing_tag
 
 
 class UnitNotFound(LookupError):
@@ -28,4 +29,8 @@ def preview_unit(engine: Engine, draft: UnitDraft) -> Plan:
         if stored is None:
             raise UnitNotFound(draft.anchor_entry_id)
         world = load_world(conn, stored, draft)
-    return plan_unit(stored, draft, world)
+        missing = missing_tag(conn, draft)
+    plan = plan_unit(stored, draft, world)
+    if missing is not None:  # after the plan: a draft that makes no sense is the 422 first
+        raise StaleReference(f"entries[{missing[0]}].tags.add", "tag", missing[1])
+    return plan
