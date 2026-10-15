@@ -694,12 +694,8 @@ def _apply_pairing(
                     links[old] = None
             continue
         if d.pairing.mode == "counter_leg":
-            # a proposal is not the user's choice: one the plan cannot make (the draft moved the leg since
-            # the preview proposed it) is dropped, never a problem that refuses the commit
-            found: list[Problem] = []
-            row = _counter_leg_row(d, r, first, links, used, accounts, world, found, len(out.counter_legs))
-            if not d.pairing.is_proposal:
-                problems.extend(found)
+            # committing accepts a proposal: one the plan cannot make is a problem, like a chosen counter-leg
+            row = _counter_leg_row(d, r, first, links, used, accounts, world, problems, len(out.counter_legs))
             if row is not None:
                 out.counter_legs.append(row)
                 links[r.id], links[row.id] = row.id, r.id

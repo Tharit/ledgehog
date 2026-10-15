@@ -311,6 +311,14 @@ def test_a_counter_leg_that_is_not_offered_is_refused(scene: Scene) -> None:
     assert exc.value.code == "pairing_not_transfer"
 
 
+def test_a_proposal_the_plan_cannot_make_is_a_problem_like_a_chosen_counter_leg(scene: Scene) -> None:
+    # committing accepts the proposal, so it is refused, never dropped silently
+    (_sa, (a,)), (_sb, _b) = scene.transfer_pair(-500)  # has a partner: no counter-leg is offered
+    proposal = PairingDraft("counter_leg", is_proposal=True, counter_leg=CounterLegDraft(-1))
+    plan = scene.preview(a, DraftEntry(a, pairing=proposal))
+    assert codes(plan) == ["counter_leg_not_offered"] and plan.problems[0].entry_id == a
+
+
 def test_a_closed_counter_account_is_not_offered_after_its_closing(scene: Scene) -> None:
     e = leg(scene, -1000, scene.checking, counter=scene.cash)
     scene.tx(
