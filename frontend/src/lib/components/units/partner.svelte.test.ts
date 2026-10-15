@@ -351,10 +351,8 @@ describe('the partner popover', () => {
 			/paired with Card · Oct 8, 2026 · \S?50\.00/
 		);
 		expect(rows[3]).not.toHaveTextContent('breaks');
-		// the caption: once, under the group heading
-		expect(
-			within(list).getAllByText('Paired elsewhere — picking one breaks its pair')
-		).toHaveLength(1);
+		// no caption under the heading: the heading and the row's "paired with" say it
+		expect(list.querySelector('[data-slot="group-caption"]')).toBeNull();
 		// the counter-leg: last, in its own group
 		expect(within(list).getByText('New')).toBeInTheDocument();
 		expect(rows[4]).toHaveTextContent('Create the other side in');
