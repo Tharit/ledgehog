@@ -502,3 +502,88 @@ describe('UnitPanel: keys', () => {
 		await waitFor(() => expect(panel.isOpen).toBe(false));
 	});
 });
+
+describe('UnitPanel: grouped by source transaction', () => {
+	function leg(id: number, account: number, src: number, booked: string, over = {}) {
+		const amount = { amount: account === 1 ? -5000 : 5000, currency: 'EUR' };
+		return entry({
+			id,
+			unit_key: 1,
+			type: 'transfer',
+			account_id: account,
+			booked_on: booked,
+			amount,
+			source_transaction_id: src,
+			source: source({ amount, counterparty_name: `Source ${src}` }),
+			derivation: { counterpart: { pass: 'matcher_decision' } },
+			...over
+		});
+	}
+	const pair = (over = {}) =>
+		unit({
+			anchor_entry_id: 1,
+			state: { confirmed: false, reasons: ['waiting_for_partner'] },
+			entries: [leg(1, 1, 5, '2026-10-10', over), leg(2, 2, 6, '2026-10-09')]
+		});
+
+	it('shows the pair line, a header per source ordered by date, and a strip under each header', async () => {
+		const { dialog } = await openPanel(pair());
+
+		const line = dialog.querySelector('[data-slot="pair-line"]')!;
+		expect(line).toHaveTextContent('Transfer between Savings and Giro');
+		expect(line).toHaveTextContent('Waiting for its partner');
+		expect(line).toHaveTextContent('paired with Giro');
+		const groups = [...dialog.querySelectorAll('[data-slot="source-group"]')];
+		expect(groups).toHaveLength(2);
+		const headers = groups.map((g) => g.querySelector('[data-slot="group-header"]')!);
+		expect(headers[0]).toHaveTextContent('Savings');
+		expect(headers[0]).toHaveTextContent('50.00');
+		expect(headers[1]).toHaveTextContent('Giro');
+		expect(groups[0]).toHaveTextContent('Source 6');
+		expect(groups[1]).toHaveTextContent('Source 5');
+		expect(within(dialog).queryByRole('button', { name: 'Pick another partner…' })).toBeNull();
+	});
+
+	it('has a Split entry per group, and a split lands under the leg it was split from', async () => {
+		const { dialog } = await openPanel(pair());
+		const buttons = within(dialog).getAllByRole('button', { name: 'Split entry' });
+		expect(buttons).toHaveLength(2);
+
+		await fireEvent.click(buttons[0]);
+
+		const counts = () =>
+			[...dialog.querySelectorAll('[data-slot="source-group"]')].map(
+				(g) => g.querySelectorAll('[data-slot="entry-editor"]').length
+			);
+		await waitFor(() => expect(counts()).toEqual([2, 1]));
+		const first = dialog.querySelector('[data-slot="source-group"]')!;
+		expect(first.querySelector('[data-new]')).not.toBeNull();
+	});
+
+	it('marks an authored source in its header with a small hint', async () => {
+		const { dialog } = await openPanel(pair({ authored: true }));
+		const headers = dialog.querySelectorAll('[data-slot="group-header"]');
+		expect(headers[1].querySelector('[data-slot="authored-hint"]')).toHaveTextContent(
+			'Entered by hand'
+		);
+		expect(headers[0].querySelector('[data-slot="authored-hint"]')).toBeNull();
+	});
+
+	it('keeps a single source plain: no header, no pair line, the strip on top', async () => {
+		const src = source({ counterparty_name: 'Amazon' });
+		const { dialog } = await openPanel(
+			unit({
+				anchor_entry_id: 1,
+				entries: [
+					entry({ id: 1, unit_key: 1, source: src, source_transaction_id: 5 }),
+					entry({ id: 2, unit_key: 1, source: src, source_transaction_id: 5 })
+				]
+			})
+		);
+		expect(dialog.querySelector('[data-slot="group-header"]')).toBeNull();
+		expect(dialog.querySelector('[data-slot="pair-line"]')).toBeNull();
+		expect(within(dialog).getAllByRole('button', { name: 'Split entry' })).toHaveLength(1);
+		const body = dialog.querySelector('[data-slot="unit-body"]')!;
+		expect(body.querySelector('[data-slot="source-strip"]')).not.toBeNull();
+	});
+});

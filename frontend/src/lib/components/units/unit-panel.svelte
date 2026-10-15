@@ -2,6 +2,10 @@
 	import { tick, untrack } from 'svelte';
 	import EllipsisIcon from '@lucide/svelte/icons/ellipsis';
 	import ActionButton from '#lib/components/common/action-button.svelte';
+	import AccountDot from '#lib/components/common/account-dot.svelte';
+	import DateDisplay from '#lib/components/common/date-display.svelte';
+	import MoneyDisplay from '#lib/components/common/money-display.svelte';
+	import { resolveAccount } from '#lib/theme/resolve.js';
 	import ActionDialog from '#lib/components/common/action-dialog.svelte';
 	import ErrorState from '#lib/components/common/error-state.svelte';
 	import IconButton from '#lib/components/common/icon-button.svelte';
@@ -22,9 +26,11 @@
 	} from '#lib/units/describe.js';
 	import { PANEL_GEOMETRY } from '#lib/units/geometry.js';
 	import type { UnitPanel } from '#lib/units/panel.svelte.js';
+	import { groupsOf, pairLine } from '#lib/units/groups.js';
 	import { entryViews, type EntryView } from '#lib/units/view.js';
 	import { cn } from '#lib/utils.js';
 	import EntryEditor from './entry-editor.svelte';
+	import EvidenceLine from './evidence-line.svelte';
 	import PreviewRegion from './preview-region.svelte';
 	import SourceStrip from './source-strip.svelte';
 
@@ -120,21 +126,19 @@
 			: []
 	);
 	const problemTexts = $derived(flow.problemTexts);
-	// "Split entry" stands under the last block of each source and splits that source's original
-	const splitOf = $derived.by(() => {
-		const lastOf: Record<string, number> = {};
-		const originalOf: Record<string, number> = {};
-		for (const v of views) {
-			const key = v.sourceId === null ? `entry-${v.id}` : `source-${v.sourceId}`;
-			lastOf[key] = v.id;
-			if (v.original && !v.isNew) originalOf[key] = v.id;
-		}
-		const out: Record<number, number> = {};
-		for (const [key, last] of Object.entries(lastOf)) {
-			if (key in originalOf) out[last] = originalOf[key];
-		}
-		return out;
-	});
+	// one group per source transaction: its blocks, with "Split entry" at its foot. A unit of one
+	// source keeps the plain layout (the strip on top, no header)
+	const panelGroups = $derived(unit ? groupsOf(views, unit.entries) : []);
+	const multi = $derived(panelGroups.length > 1);
+	const pair = $derived(
+		unit
+			? pairLine(panelGroups, unit.entries, {
+					accountName: (id) => lookups.accounts.get(id)?.name,
+					rules: panel.rules,
+					locale
+				})
+			: null
+	);
 	const reason = $derived(flow.commitReason);
 	// a user-authored transaction is edited and deleted through the entry form
 	const authored = $derived(unit?.entries.find((e) => e.authored) ?? null);
@@ -385,31 +389,77 @@
 				/>
 			{:else if unit}
 				<div class={cn('flex flex-col gap-3', panel.status === 'loading' && 'opacity-60')}>
-					<SourceStrip {groups} {locale} />
+					{#if multi && pair}
+						<p class="flex flex-wrap items-baseline gap-x-3 text-sm" data-slot="pair-line">
+							<span class="font-medium">{pair.text}</span>
+							<span class="text-muted-foreground">{stateText(unit.state)}</span>
+							<EvidenceLine evidence={pair.evidence} class="inline" />
+						</p>
+					{:else}
+						<SourceStrip {groups} {locale} />
+					{/if}
 					{#if flow.draft?.reresolveAll}
 						<p class="text-sm text-muted-foreground" data-slot="reresolved">
 							Re-resolved: type, payee, category and counter account are what resolution proposes
 							now. Reset discards all changes.
 						</p>
 					{/if}
-					{#each views as view (view.id)}
-						<EntryEditor
-							{view}
-							{flow}
-							{lookups}
-							{locale}
-							problems={problemTexts.filter((item) => item.problem.entry_id === view.id)}
-						/>
-						{#if view.id in splitOf}
-							<ActionButton
-								variant="outline"
-								class="w-full border-dashed"
-								disabled={flow.committing}
-								onclick={() => flow.addSplit(splitOf[view.id])}
-							>
-								Split entry
-							</ActionButton>
-						{/if}
+					{#each panelGroups as group (group.key)}
+						<div class="flex flex-col gap-3" data-slot="source-group">
+							{#if multi}
+								{@const account = lookups.accounts.get(group.header.accountId)}
+								<div
+									class="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-sm"
+									data-slot="group-header"
+								>
+									<span class="font-medium">
+										{#if account}
+											<AccountDot name={account.name} color={resolveAccount(account).color} />
+										{:else}
+											Account {group.header.accountId}
+										{/if}
+									</span>
+									{#if group.header.bookedOn}
+										<DateDisplay date={group.header.bookedOn} {locale} />
+									{/if}
+									{#if group.header.amount}
+										<MoneyDisplay
+											minor={group.header.amount.amount}
+											currency={group.header.amount.currency}
+											{locale}
+											showCurrency
+											class="inline"
+										/>
+									{/if}
+									{#if group.header.authored}
+										<span class="text-xs text-muted-foreground" data-slot="authored-hint"
+											>Entered by hand</span
+										>
+									{/if}
+								</div>
+								{#if group.strip}<SourceStrip groups={[group.strip]} {locale} grouped />{/if}
+							{/if}
+							{#each group.views as view (view.id)}
+								<EntryEditor
+									{view}
+									{flow}
+									{lookups}
+									{locale}
+									problems={problemTexts.filter((item) => item.problem.entry_id === view.id)}
+								/>
+							{/each}
+							{#if group.splitEntryId !== null}
+								{@const splitEntryId = group.splitEntryId}
+								<ActionButton
+									variant="outline"
+									class="w-full border-dashed"
+									disabled={flow.committing}
+									onclick={() => flow.addSplit(splitEntryId)}
+								>
+									Split entry
+								</ActionButton>
+							{/if}
+						</div>
 					{/each}
 					<PreviewRegion {flow} {lookups} {locale} onopen={(id) => panel.openEntry(id)} />
 				</div>

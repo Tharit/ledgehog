@@ -16,6 +16,8 @@ export const NO_REVIEW_TEXT =
 export const REASON_TEXT: Readonly<Record<UnitReason, string>> = {
 	incomplete: 'Incomplete',
 	unpaired_transfer: 'Waiting for its partner',
+	waiting_for_partner: 'Waiting for its partner',
+	unmatched_transfer: 'No partner yet',
 	non_standing_keys: 'Proposals to check'
 };
 

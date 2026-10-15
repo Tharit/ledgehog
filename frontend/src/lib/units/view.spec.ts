@@ -36,6 +36,17 @@ function views(draft: Draft, shown: ReturnType<typeof preview> | null = null, ba
 	return entryViews({ unit: base, draft, preview: shown, rules, locale: 'en' });
 }
 
+describe('resultText', () => {
+	it('words the new reasons', () => {
+		expect(resultText({ confirmed: false, reasons: ['waiting_for_partner'] })).toBe(
+			'Waits for its partner'
+		);
+		expect(resultText({ confirmed: false, reasons: ['unmatched_transfer'] })).toBe(
+			'Stays without a partner'
+		);
+	});
+});
+
 describe('entryViews: before a preview', () => {
 	it('shows the entries as stored, the lowest id of a source as its original', () => {
 		const [first, second] = views(Draft.of(split));
@@ -54,6 +65,7 @@ describe('entryViews: before a preview', () => {
 		const rows = views(Draft.of(split).addSplit(1));
 
 		const added = rows.at(-1)!;
+		expect(added.fromEntryId).toBe(1);
 		expect(added).toMatchObject({ id: -1, isNew: true, amount: null, amountEditable: true });
 		expect(added.sourceId).toBe(5);
 	});

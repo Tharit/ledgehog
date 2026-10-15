@@ -55,6 +55,8 @@ export type EntryView = {
 	original: boolean;
 	/** the source transaction the entry belongs to (of its source entry, for a new row) */
 	sourceId: number | null;
+	/** the stored entry whose source it belongs to: the entry itself, or for a new row the one it splits */
+	fromEntryId: number;
 	/** the source has more than one entry: a split */
 	inSplit: boolean;
 	stored: Entry | null;
@@ -278,6 +280,7 @@ export function entryViews(args: {
 			isNew,
 			original,
 			sourceId,
+			fromEntryId: split ? split.sourceEntryId : b.id,
 			inSplit,
 			stored: entry,
 			row: b.row,
@@ -304,6 +307,8 @@ export function entryViews(args: {
 export const RESULT_TEXT: Readonly<Record<UnitState['reasons'][number], string>> = {
 	incomplete: 'Stays unclassified',
 	unpaired_transfer: 'Waits for its partner',
+	waiting_for_partner: 'Waits for its partner',
+	unmatched_transfer: 'Stays without a partner',
 	non_standing_keys: 'Proposals to check'
 };
 

@@ -24,6 +24,10 @@ describe('stateText', () => {
 		expect(stateText({ confirmed: false, reasons: ['unpaired_transfer'] })).toBe(
 			'Waiting for its partner'
 		);
+		expect(stateText({ confirmed: false, reasons: ['waiting_for_partner'] })).toBe(
+			'Waiting for its partner'
+		);
+		expect(stateText({ confirmed: false, reasons: ['unmatched_transfer'] })).toBe('No partner yet');
 		expect(stateText({ confirmed: false, reasons: [] })).toBe('In review');
 	});
 });
