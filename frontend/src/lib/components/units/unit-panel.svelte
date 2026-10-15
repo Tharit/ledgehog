@@ -74,6 +74,7 @@
 			items: [
 				{ keys: 'c', description: 'Category' },
 				{ keys: 'y', description: 'Payee' },
+				{ keys: 't', description: 'Tags' },
 				{ keys: 's', description: 'Split entry' },
 				{ keys: 'x', description: 'Toggle flow ↔ transfer' },
 				{ keys: 'r', description: 'Re-resolve type, payee, category and counter account' }
@@ -107,7 +108,14 @@
 	);
 	const views = $derived<EntryView[]>(
 		unit && flow.draft
-			? entryViews({ unit, draft: flow.draft, preview: flow.preview, rules: panel.rules, locale })
+			? entryViews({
+					unit,
+					draft: flow.draft,
+					preview: flow.preview,
+					rules: panel.rules,
+					locale,
+					stale: flow.stale
+				})
 			: []
 	);
 	const problemTexts = $derived(flow.problemTexts);
@@ -197,6 +205,10 @@
 			case 'y':
 				event.preventDefault();
 				openPicker(editor(), 'payee');
+				break;
+			case 't':
+				event.preventDefault();
+				openPicker(editor(), 'tags');
 				break;
 			case 's':
 				event.preventDefault();

@@ -706,6 +706,28 @@ describe('LedgerStore: what the unit panel does to the rows', () => {
 		expect(store.marks.resolved.has(12)).toBe(true);
 	});
 
+	it('patches the tags a commit changed into the rows, and keeps a row the tag filter no longer matches', async () => {
+		vi.mocked(listEntries).mockResolvedValue({
+			entries: [entry({ id: 3, unit_key: 3, tag_ids: [7] }), entry({ id: 1, unit_key: 1 })],
+			total: 2,
+			limit: 100,
+			offset: 0
+		});
+		const store = new LedgerStore();
+		store.applyFilter({ ...emptyFilter(), tag_id: [7] });
+		await flush();
+
+		store.patchAffected({
+			entries: [entry({ id: 3, unit_key: 3, tag_ids: [] }), entry({ id: 1, unit_key: 1 })],
+			resolved: [3, 1]
+		});
+
+		expect(store.entries.map((e) => e.tag_ids)).toEqual([[], []]);
+		// the row that left the filter stays, marked as the row's own tag action marks it
+		expect([...store.changedIds]).toEqual([3]);
+		expect(store.entries.map((e) => e.id)).toEqual([3, 1]);
+	});
+
 	it('fades a consequence mark when the cursor visits the row, and keeps the others', async () => {
 		const store = await loaded();
 		store.patchAffected({

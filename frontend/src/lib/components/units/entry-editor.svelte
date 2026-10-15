@@ -1,16 +1,14 @@
 <script lang="ts">
 	import XIcon from '@lucide/svelte/icons/x';
-	import AbsentValue from '#lib/components/common/absent-value.svelte';
 	import AccountDot from '#lib/components/common/account-dot.svelte';
 	import ActionButton from '#lib/components/common/action-button.svelte';
 	import IconButton from '#lib/components/common/icon-button.svelte';
 	import DateDisplay from '#lib/components/common/date-display.svelte';
 	import MoneyDisplay from '#lib/components/common/money-display.svelte';
 	import ReviewBadge from '#lib/components/common/review-badge.svelte';
-	import TagChip from '#lib/components/common/tag-chip.svelte';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import type { Lookups } from '#lib/ledger/lookups.js';
-	import { resolveAccount, resolveTag } from '#lib/theme/resolve.js';
+	import { resolveAccount } from '#lib/theme/resolve.js';
 	import { allocationText, type FieldName, type FieldValue } from '#lib/units/draft.js';
 	import type { UnitDraftFlow } from '#lib/units/unit-draft-flow.svelte.js';
 	import type { ProblemText } from '#lib/units/problems.js';
@@ -19,6 +17,7 @@
 	import { cn } from '#lib/utils.js';
 	import EvidenceLine from './evidence-line.svelte';
 	import FieldPicker from './field-picker.svelte';
+	import TagField from './tag-field.svelte';
 
 	// One entry of the unit under the draft (patterns §4.1, §5): its amount, then each derived value
 	// with the basis it was derived on and "Reset to proposal", the type, the texts. A split shows
@@ -43,12 +42,6 @@
 	const account = $derived(lookups.accounts.get(view.accountId));
 	const partner = $derived(view.stored?.partner ?? null);
 	const partnerAccount = $derived(partner ? lookups.accounts.get(partner.account_id) : undefined);
-	const tags = $derived(
-		(view.row?.tag_ids ?? view.stored?.tag_ids ?? []).flatMap((id) => {
-			const tag = lookups.tags.get(id);
-			return tag ? [tag] : [];
-		})
-	);
 	const isTransfer = $derived(view.type === 'transfer');
 	// converting is for the entry that keeps the source: a split row is a flow (spec §5.9)
 	const canConvert = $derived(!view.isNew && view.original);
@@ -303,18 +296,15 @@
 			/>
 		</dd>
 
-		{#if !view.isNew}
-			<dt class="text-muted-foreground">Tags</dt>
-			<dd class="flex flex-wrap items-center gap-1">
-				{#each tags as tag (tag.id)}
-					<TagChip name={tag.name} color={resolveTag(tag).color} />
-				{:else}
-					<AbsentValue label="None" explanation="Tags are added from the ledger with t" />
-				{/each}
-				<span class="text-xs text-muted-foreground" data-slot="tags-note">
-					Saved immediately, outside this draft
-				</span>
-			</dd>
-		{/if}
+		<dt class="pt-0.5 text-muted-foreground">Tags</dt>
+		<dd class="min-w-0">
+			<TagField
+				tagIds={view.tagIds}
+				{lookups}
+				busy={flow.tagBusy || flow.committing}
+				ontoggle={(tagId) => flow.toggleTag(view.id, tagId)}
+				oncreate={(name) => void flow.createTag(view.id, name)}
+			/>
+		</dd>
 	</dl>
 </section>

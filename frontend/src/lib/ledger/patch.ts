@@ -18,6 +18,19 @@ export function withIds(touched: ReadonlySet<number>, ids: Iterable<number>): Re
 	return new Set([...touched, ...ids]);
 }
 
+/** The ids of the held rows whose tags differ in `fresh` (a commit of the unit panel changed them). */
+export function tagChangedIds(entries: readonly Entry[], fresh: readonly Entry[]): number[] {
+	const held = new Map(entries.map((e) => [e.id, e]));
+	return fresh.flatMap((e) => {
+		const before = held.get(e.id);
+		if (!before) return [];
+		const same =
+			before.tag_ids.length === e.tag_ids.length &&
+			before.tag_ids.every((t) => e.tag_ids.includes(t));
+		return same ? [] : [e.id];
+	});
+}
+
 /**
  * The touched rows that an active tag filter (`wanted`, OR) no longer matches: they stay where
  * they are and are marked until the list is refreshed (decision C10).

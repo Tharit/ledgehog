@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, commitUnit, getUnit, previewUnit } from '#lib/api/index.js';
-import { entry } from '#lib/ledger/fixtures.js';
+import { ApiError, commitUnit, createTag, getUnit, previewUnit } from '#lib/api/index.js';
+import { entry, tag } from '#lib/ledger/fixtures.js';
 import {
 	committed,
 	consequence,
@@ -22,6 +22,7 @@ vi.mock('#lib/api/index.js', async (importOriginal) => ({
 	...(await importOriginal<typeof import('#lib/api/index.js')>()),
 	previewUnit: vi.fn(),
 	commitUnit: vi.fn(),
+	createTag: vi.fn(),
 	getUnit: vi.fn()
 }));
 
@@ -45,6 +46,7 @@ function host(): FlowHost & { [K in keyof FlowHost]: ReturnType<typeof vi.fn> } 
 		unitChanged: vi.fn(),
 		patch: vi.fn(),
 		reloadLookups: vi.fn().mockResolvedValue(undefined),
+		addTag: vi.fn(),
 		previewed: vi.fn(),
 		committed: vi.fn()
 	} as never;
@@ -336,7 +338,7 @@ describe('split amounts', () => {
 
 		flow.splitOffDifference(unequal);
 
-		expect(flow.draft?.splits).toEqual([{ id: -1, sourceEntryId: 1 }]);
+		expect(flow.draft?.splits).toEqual([{ id: -1, sourceEntryId: 1, tags: [] }]);
 		expect(flow.draft?.edit(-1).amount).toBe(-100);
 	});
 });
@@ -743,5 +745,168 @@ describe('what counts as a change', () => {
 
 		flow.setText(1, 'note', 'x');
 		expect(flow.isDirty).toBe(true);
+	});
+});
+
+describe('tags', () => {
+	const tagged = unit({
+		anchor_entry_id: 1,
+		entries: [entry({ id: 1, version: 3, unit_key: 1, tag_ids: [30] })]
+	});
+
+	function begin() {
+		vi.mocked(previewUnit).mockImplementation(async (request) => previewFor(tagged, request));
+		const h = host();
+		const flow = new UnitDraftFlow(h);
+		flow.begin(tagged);
+		return { flow, h };
+	}
+
+	it('a tag change makes the draft dirty and goes into the preview request', async () => {
+		const { flow } = begin();
+		await settle();
+		expect(flow.isDirty).toBe(false);
+
+		flow.toggleTag(1, 30);
+
+		expect(flow.isDirty).toBe(true);
+		expect(vi.mocked(previewUnit).mock.calls.at(-1)![0].entries).toEqual([
+			{ id: 1, tags: { add: [], remove: [30] } }
+		]);
+		await settle();
+		expect(flow.isDirty).toBe(true); // a tag change is no derived-field edit: the preview cannot undo it
+	});
+
+	it('a tag-only commit is possible, and sends the change', async () => {
+		const { flow, h } = begin();
+		await settle();
+		flow.toggleTag(1, 99);
+		await settle();
+		expect(flow.commitReason).toBeNull();
+		vi.mocked(commitUnit).mockResolvedValueOnce(committed(tagged));
+
+		await flow.commit();
+
+		expect(vi.mocked(commitUnit).mock.calls[0][0].entries).toEqual([
+			{ id: 1, tags: { add: [99], remove: [] } }
+		]);
+		expect(h.committed).toHaveBeenCalled();
+	});
+
+	it('toggling a tag back is no change again', async () => {
+		const { flow } = begin();
+		await settle();
+		flow.toggleTag(1, 99);
+		flow.toggleTag(1, 99);
+		expect(flow.isDirty).toBe(false);
+	});
+
+	it('Reset drops the tag changes', async () => {
+		const { flow } = begin();
+		await settle();
+		flow.toggleTag(1, 30);
+		await settle();
+
+		flow.discard();
+
+		expect(flow.isDirty).toBe(false);
+		expect(flow.draft?.effectiveTagIds(1)).toEqual([30]);
+	});
+
+	it('re-resolve keeps the tag changes', async () => {
+		const { flow } = begin();
+		await settle();
+		flow.toggleTag(1, 30);
+		flow.reresolve();
+		expect(flow.draft?.tagEdit(1)).toEqual({ add: [], remove: [30] });
+	});
+
+	describe('creating a tag from the picker', () => {
+		it('creates it at once, lets the lists know and puts it on the entry', async () => {
+			const { flow, h } = begin();
+			await settle();
+			vi.mocked(createTag).mockResolvedValueOnce({ tag: tag({ id: 77, name: 'Lisbon' }) } as never);
+
+			const ok = await flow.createTag(1, 'Lisbon');
+
+			expect(ok).toBe(true);
+			expect(createTag).toHaveBeenCalledWith('Lisbon');
+			expect(h.addTag).toHaveBeenCalledWith(expect.objectContaining({ id: 77 }));
+			expect(flow.draft?.tagEdit(1)).toEqual({ add: [77], remove: [] });
+			expect(flow.tagBusy).toBe(false);
+		});
+
+		it('a refused creation says why, reloads the lists on a taken name, and changes nothing', async () => {
+			const { flow, h } = begin();
+			await settle();
+			vi.mocked(createTag).mockRejectedValueOnce(
+				error(409, 'conflict', { reason: 'duplicate_name' })
+			);
+
+			const ok = await flow.createTag(1, 'Lisbon');
+
+			expect(ok).toBe(false);
+			expect(h.addTag).not.toHaveBeenCalled();
+			expect(h.reloadLookups).toHaveBeenCalled();
+			expect(flow.notice).toMatchObject({ kind: 'error' });
+			expect(flow.notice?.text).toMatch(/already exists/);
+			expect(flow.isDirty).toBe(false);
+			expect(flow.tagBusy).toBe(false);
+		});
+
+		it('leaves the tag when the draft is cancelled meanwhile', async () => {
+			const { flow, h } = begin();
+			await settle();
+			let done!: (v: unknown) => void;
+			vi.mocked(createTag).mockReturnValueOnce(new Promise((r) => (done = r)) as never);
+
+			const pending = flow.createTag(1, 'Lisbon');
+			flow.reset();
+			done({ tag: tag({ id: 77, name: 'Lisbon' }) });
+
+			expect(await pending).toBe(false);
+			expect(h.addTag).toHaveBeenCalled(); // the tag exists now: the lists know it
+		});
+	});
+
+	describe('a tag that no longer exists', () => {
+		it('in a preview: reloads the lists, drops it from the draft, keeps the rest', async () => {
+			const { flow, h } = begin();
+			await settle();
+			flow.toggleTag(1, 30);
+			await settle();
+			vi.mocked(previewUnit)
+				.mockResolvedValueOnce(
+					preview(tagged, {
+						problems: [
+							problem('stale_reference', { field: 'entries[0].tags.add', detail: { id: 99 } })
+						]
+					})
+				)
+				.mockResolvedValueOnce(preview(tagged));
+			flow.toggleTag(1, 99);
+			await settle();
+
+			expect(h.reloadLookups).toHaveBeenCalled();
+			expect(flow.draft?.tagEdit(1)).toEqual({ add: [], remove: [30] });
+			expect(flow.notice?.kind).toBe('conflict');
+		});
+
+		it('on commit: the same, in the words of a tag', async () => {
+			const { flow, h } = begin();
+			await settle();
+			flow.toggleTag(1, 30);
+			flow.toggleTag(1, 99);
+			await settle();
+			vi.mocked(commitUnit).mockRejectedValueOnce(
+				error(409, 'stale_reference', { field: 'entries[0].tags.add', entity: 'tag', id: 99 })
+			);
+
+			await flow.commit();
+
+			expect(h.reloadLookups).toHaveBeenCalled();
+			expect(flow.draft?.tagEdit(1)).toEqual({ add: [], remove: [30] });
+			expect(flow.notice?.text).toMatch(/tag you chose no longer exists/);
+		});
 	});
 });

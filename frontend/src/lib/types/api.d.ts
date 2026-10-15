@@ -1959,7 +1959,8 @@ export interface components {
          * UnitDraftEntryIn
          * @description One entry the draft changes. `description` and `note` are left as stored when absent and emptied when
          *     null. A new entry (negative `id`) names `source_entry_id`, a stored entry of the source it splits, and
-         *     carries its `amount`; the source's original entry is the residual and takes no amount of its own.
+         *     carries its `amount`; the source's original entry is the residual and takes no amount of its own. `tags`
+         *     is a tag change on top of the stored (or inherited) tags; absent leaves them untouched.
          */
         UnitDraftEntryIn: {
             /** Amount */
@@ -1975,6 +1976,7 @@ export interface components {
             payee?: components["schemas"]["UnitFieldDraftIn"];
             /** Source Entry Id */
             source_entry_id?: number | null;
+            tags?: components["schemas"]["UnitTagChangeIn"] | null;
             type?: components["schemas"]["UnitFieldDraftIn"];
         };
         /**
@@ -2195,6 +2197,17 @@ export interface components {
             description: string | null;
             /** Note */
             note: string | null;
+        };
+        /**
+         * UnitTagChangeIn
+         * @description A change of an entry's tags relative to its stored tags (a new entry's: the original's). A tag in both
+         *     lists is 422 `invalid_draft` (`tag_conflict`); duplicates are tolerated.
+         */
+        UnitTagChangeIn: {
+            /** Add */
+            add?: number[];
+            /** Remove */
+            remove?: number[];
         };
         /**
          * UpdateBody

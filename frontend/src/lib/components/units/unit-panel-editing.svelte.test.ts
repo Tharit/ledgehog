@@ -1,8 +1,9 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { account, category, entry, payee } from '#lib/ledger/fixtures.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { account, category, entry, payee, tag } from '#lib/ledger/fixtures.js';
 import { buildLookups } from '#lib/ledger/lookups.js';
 import { rule, source } from '#lib/rules/fixtures.js';
+import { lookupsStore } from '#lib/stores/lookups.svelte.js';
 import { ruleNames } from '#lib/stores/rule-names.svelte.js';
 import type { UnitDraftRequest } from '#lib/units/types.js';
 import {
@@ -24,13 +25,14 @@ const api = vi.hoisted(() => ({
 	getUnit: vi.fn(),
 	listRules: vi.fn(),
 	previewUnit: vi.fn(),
-	commitUnit: vi.fn()
+	commitUnit: vi.fn(),
+	createTag: vi.fn()
 }));
 vi.mock('#lib/api/index.js', async (importOriginal) => ({
 	...(await importOriginal<typeof import('#lib/api/index.js')>()),
 	...api
 }));
-const { getUnit, listRules, previewUnit, commitUnit } = api;
+const { getUnit, listRules, previewUnit, commitUnit, createTag } = api;
 
 const lookups = buildLookups({
 	accounts: [
@@ -39,7 +41,8 @@ const lookups = buildLookups({
 		account({ id: 3, name: 'Dollar cash', currency: 'USD' })
 	],
 	categories: [category({ id: 10, name: 'Groceries' }), category({ id: 11, name: 'Dining' })],
-	payees: [payee({ id: 20, name: 'REWE' }), payee({ id: 21, name: 'Aldi' })]
+	payees: [payee({ id: 20, name: 'REWE' }), payee({ id: 21, name: 'Aldi' })],
+	tags: [tag({ id: 30, name: 'Lisbon trip' }), tag({ id: 31, name: 'Holiday' })]
 });
 
 function nav(): PanelNav {
@@ -69,6 +72,10 @@ function fakePreview(base: ReturnType<typeof unit>, draft: UnitDraftRequest) {
 			row.fields.payee = fieldOut(e.payee.value ?? null, { pass: 'user' });
 		if (e.type?.mode === 'fixed')
 			row.fields.type = fieldOut(e.type.value ?? null, { pass: 'user' });
+		if (e.tags) {
+			const { add = [], remove = [] } = e.tags;
+			row.tag_ids = [...row.tag_ids.filter((t) => !remove.includes(t)), ...add];
+		}
 		if (e.category?.mode === 'reresolve') {
 			row.fields.category = fieldOut(11, { pass: 'history', basis: { agree: 1, of: 1 } });
 		}
@@ -78,12 +85,21 @@ function fakePreview(base: ReturnType<typeof unit>, draft: UnitDraftRequest) {
 		const original = out.rows[0];
 		const taken = splits.reduce((sum, e) => sum + (e.amount ?? 0), 0);
 		for (const s of splits) {
+			// a new row starts with what the original stores, the change on top
+			const inherited = base.entries[0].tag_ids.filter((t) => !(s.tags?.remove ?? []).includes(t));
 			out.rows.push(
-				previewRowOf(entry({ id: s.id, amount: { amount: s.amount ?? 0, currency: 'EUR' } }), {
-					version: null,
-					original: false,
-					source_transaction_id: original.source_transaction_id
-				})
+				previewRowOf(
+					entry({
+						id: s.id,
+						amount: { amount: s.amount ?? 0, currency: 'EUR' },
+						tag_ids: [...inherited, ...(s.tags?.add ?? [])]
+					}),
+					{
+						version: null,
+						original: false,
+						source_transaction_id: original.source_transaction_id
+					}
+				)
 			);
 		}
 		original.amount = { amount: original.amount.amount - taken, currency: 'EUR' };
@@ -1212,5 +1228,173 @@ describe('Edit entry and Delete entry', () => {
 
 		await screen.findByRole('menuitem', { name: /Re-resolve/ });
 		expect(screen.queryByRole('menuitem', { name: 'Edit entry' })).toBeNull();
+	});
+});
+
+describe('tags', () => {
+	const tagged = () =>
+		unit({ anchor_entry_id: 1, entries: [entry({ id: 1, unit_key: 1, tag_ids: [30] })] });
+	const tagsButton = (dialog: HTMLElement) => within(dialog).getByRole('button', { name: 'Tags' });
+
+	it('shows the chips of the entry and a picker to change them; nothing is clearable', async () => {
+		const { dialog } = await openPanel(tagged());
+
+		const field = dialog.querySelector<HTMLElement>('[data-slot="tag-field"]')!;
+		expect(within(field).getByText('Lisbon trip')).toBeInTheDocument();
+		expect(within(dialog).queryByText(/Saved immediately/)).toBeNull();
+		// the trigger is the row's only control: no clear X, nothing proposed
+		expect(within(field).getAllByRole('button')).toHaveLength(1);
+		expect(within(dialog).getByText('Tags', { selector: 'dt' })).toBeInTheDocument();
+	});
+
+	it('shows "Add tag" for an entry without tags', async () => {
+		const { dialog } = await openPanel(
+			unit({ anchor_entry_id: 1, entries: [entry({ id: 1, unit_key: 1 })] })
+		);
+		expect(tagsButton(dialog)).toHaveTextContent('Add tag');
+	});
+
+	it('choosing puts a tag on and takes one off; the picker stays open; the change is relative', async () => {
+		const { dialog } = await openPanel(tagged());
+
+		await fireEvent.click(tagsButton(dialog));
+		await fireEvent.click(await screen.findByRole('option', { name: /Holiday/ }));
+
+		await waitFor(() =>
+			expect(lastRequest().entries).toEqual([{ id: 1, tags: { add: [31], remove: [] } }])
+		);
+		await waitFor(() => expect(within(dialog).getByText('Holiday')).toBeInTheDocument());
+		expect(screen.getByLabelText('Search tags')).toBeInTheDocument(); // still open
+		expect(screen.getByRole('option', { name: /Holiday/ })).toHaveAttribute('data-checked', 'true');
+
+		await fireEvent.click(screen.getByRole('option', { name: /Lisbon trip/ }));
+		await waitFor(() =>
+			expect(lastRequest().entries).toEqual([{ id: 1, tags: { add: [31], remove: [30] } }])
+		);
+		await waitFor(() => expect(within(dialog).queryByText('Lisbon trip')).toBeNull());
+	});
+
+	it('t opens the tags of the focused entry; a field keeps its t', async () => {
+		const { dialog } = await openPanel(tagged());
+
+		await fireEvent.keyDown(within(dialog).getByLabelText('Note'), { key: 't' });
+		expect(screen.queryByLabelText('Search tags')).toBeNull();
+
+		await fireEvent.keyDown(dialog, { key: 't' });
+		expect(await screen.findByLabelText('Search tags')).toBeInTheDocument();
+	});
+
+	it('lists t in the panel’s keyboard help', async () => {
+		const { dialog } = await openPanel(tagged());
+		await fireEvent.click(within(dialog).getByRole('button', { name: /Keyboard shortcuts/ }));
+		const help = within(dialog).getByRole('region', { name: 'Keyboard shortcuts' });
+		expect(help).toHaveTextContent('Tags');
+	});
+
+	it('a tag change alone is a change: Reset and Commit are enabled, and it commits', async () => {
+		const shown = tagged();
+		const { dialog } = await openPanel(shown);
+		expect(within(dialog).getByRole('button', { name: 'Reset' })).toBeDisabled();
+
+		await fireEvent.click(tagsButton(dialog));
+		await fireEvent.click(await screen.findByRole('option', { name: /Holiday/ }));
+		await waitFor(() => expect(lastRequest().entries).toHaveLength(1));
+		await waitFor(() => expect(commitButton(dialog)).toBeEnabled());
+		expect(within(dialog).getByRole('button', { name: 'Reset' })).toBeEnabled();
+		vi.mocked(commitUnit).mockResolvedValue(committed(shown));
+
+		await fireEvent.keyDown(dialog, { key: 'Enter', ctrlKey: true });
+
+		await waitFor(() => expect(commitUnit).toHaveBeenCalled());
+		expect(vi.mocked(commitUnit).mock.calls[0][0].entries).toEqual([
+			{ id: 1, tags: { add: [31], remove: [] } }
+		]);
+	});
+
+	it('Reset drops the tag changes', async () => {
+		const { dialog } = await openPanel(tagged());
+		await fireEvent.click(tagsButton(dialog));
+		await fireEvent.click(await screen.findByRole('option', { name: /Holiday/ }));
+		await waitFor(() => expect(within(dialog).getByText('Holiday')).toBeInTheDocument());
+
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Reset' }));
+
+		await waitFor(() => expect(within(dialog).queryByText('Holiday')).toBeNull());
+		expect(within(dialog).getByText('Lisbon trip')).toBeInTheDocument();
+		await waitFor(() => expect(lastRequest().entries).toEqual([]));
+	});
+
+	it('a new split row starts with the original’s tags and changes them on its own', async () => {
+		const { dialog } = await openPanel(tagged());
+
+		await fireEvent.keyDown(dialog, { key: 's' });
+		const block = await within(dialog).findByRole('region', { name: 'New split entry' });
+		expect(within(block).getByText('Lisbon trip')).toBeInTheDocument();
+		await fireEvent.input(within(block).getByLabelText('Amount of the new split'), {
+			target: { value: '5' }
+		});
+		await fireEvent.click(within(block).getByRole('button', { name: 'Tags' }));
+		await fireEvent.click(await screen.findByRole('option', { name: /Lisbon trip/ }));
+
+		await waitFor(() => {
+			const split = lastRequest().entries!.find((e) => e.id < 0);
+			expect(split?.tags).toEqual({ add: [], remove: [30] });
+		});
+		await waitFor(() => expect(within(block).queryByText('Lisbon trip')).toBeNull());
+		// the original keeps its tag
+		const original = within(dialog).getByRole('region', { name: 'Entry 1' });
+		expect(within(original).getByText('Lisbon trip')).toBeInTheDocument();
+	});
+
+	describe('adding a tag that does not exist', () => {
+		afterEach(() => lookupsStore.reset());
+
+		it('offers Add tag only for a new name, creates it at once and puts it on the entry', async () => {
+			const { dialog } = await openPanel(tagged());
+			vi.mocked(createTag).mockResolvedValue({ tag: tag({ id: 77, name: 'Trip' }) } as never);
+			await fireEvent.click(tagsButton(dialog));
+			const search = await screen.findByLabelText('Search tags');
+
+			await fireEvent.input(search, { target: { value: 'holiday' } });
+			expect(screen.queryByRole('option', { name: /Add tag/ })).toBeNull(); // taken: choose it
+
+			await fireEvent.input(search, { target: { value: 'Trip' } });
+			await fireEvent.click(await screen.findByRole('option', { name: 'Add tag “Trip”' }));
+
+			await waitFor(() => expect(createTag).toHaveBeenCalledWith('Trip'));
+			expect(lookupsStore.lookups.tags.get(77)?.name).toBe('Trip');
+			await waitFor(() =>
+				expect(lastRequest().entries).toEqual([{ id: 1, tags: { add: [77], remove: [] } }])
+			);
+		});
+
+		it('leaves the tag in place when the draft is reset', async () => {
+			const { panel, dialog } = await openPanel(tagged());
+			vi.mocked(createTag).mockResolvedValue({ tag: tag({ id: 77, name: 'Trip' }) } as never);
+			await fireEvent.click(tagsButton(dialog));
+			await fireEvent.input(await screen.findByLabelText('Search tags'), {
+				target: { value: 'Trip' }
+			});
+			await fireEvent.click(await screen.findByRole('option', { name: 'Add tag “Trip”' }));
+			await waitFor(() => expect(panel.flow.draft?.tagEdit(1)).toBeDefined());
+
+			panel.flow.discard();
+
+			expect(panel.flow.draft?.tagEdit(1)).toBeUndefined();
+			expect(lookupsStore.lookups.tags.get(77)).toBeDefined();
+		});
+
+		it('says so when the tag could not be created, and changes nothing', async () => {
+			const { dialog } = await openPanel(tagged());
+			vi.mocked(createTag).mockRejectedValue(apiError(500, 'internal_error'));
+			await fireEvent.click(tagsButton(dialog));
+			await fireEvent.input(await screen.findByLabelText('Search tags'), {
+				target: { value: 'Trip' }
+			});
+			await fireEvent.click(await screen.findByRole('option', { name: 'Add tag “Trip”' }));
+
+			expect(await within(dialog).findByText(/could not do this/)).toBeInTheDocument();
+			expect(lastRequest().entries).toEqual([]);
+		});
 	});
 });

@@ -164,6 +164,11 @@ export function previewFor(u: Unit, request: UnitDraftRequest): UnitPreview {
 			if (field?.mode === 'fixed')
 				row.fields[name] = fieldOut(field.value ?? null, { pass: 'user' });
 		}
+		// the row shows the tags with the change applied
+		if (edit.tags) {
+			const { add = [], remove = [] } = edit.tags;
+			row.tag_ids = [...row.tag_ids.filter((t) => !remove.includes(t)), ...add];
+		}
 	}
 	return answer;
 }

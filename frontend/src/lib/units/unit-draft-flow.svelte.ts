@@ -6,8 +6,9 @@
 // draft is never thrown away by one. Page-independent: the panel hands over what a commit's
 // outcome needs (patching the list, moving on) as a host.
 
-import { ApiError, commitUnit, getUnit, previewUnit } from '#lib/api/index.js';
-import type { Entry } from '#lib/types/domain.js';
+import { ApiError, commitUnit, createTag, getUnit, previewUnit } from '#lib/api/index.js';
+import { describeTagError } from '#lib/ledger/errors.js';
+import type { Entry, Tag } from '#lib/types/domain.js';
 import {
 	allocationMessage,
 	Draft,
@@ -31,6 +32,8 @@ export type FlowHost = {
 	patch: (affected: Affected) => void;
 	/** a category, payee or account vanished: the shared lists are loaded again */
 	reloadLookups: () => Promise<void>;
+	/** a tag was created from the panel: it joins the shared lists */
+	addTag: (tag: Tag) => void;
 	/** a preview arrived (the panel loads what it names, like the rules' names) */
 	previewed?: (preview: UnitPreview) => void;
 	/** the commit worked: move on (advance to the next unit, or close) */
@@ -82,6 +85,11 @@ const STALE_FIELD: Readonly<Record<string, Exclude<FieldName, 'type'>>> = {
 	counter_account: 'counter_account'
 };
 
+/** Does a stale reference name a tag (its entity, or a field like `entries[0].tags.add`)? */
+function isTagReference(entity: string | undefined, field: string | undefined): boolean {
+	return entity === 'tag' || /(^|\.)tags(\.|$)|^tag_id$/.test(field ?? '');
+}
+
 const STALE_WORD: Readonly<Record<string, string>> = {
 	category: 'category',
 	payee: 'payee',
@@ -107,9 +115,13 @@ export class UnitDraftFlow {
 	amountErrors = $state.raw<Readonly<Record<number, string>>>({});
 	/** the split row added last: the panel puts focus in its amount */
 	lastAddedSplit = $state<number | null>(null);
+	/** a tag is being created for the picker: it offers nothing meanwhile */
+	tagBusy = $state(false);
 
 	#timer: ReturnType<typeof setTimeout> | null = null;
 	#generation = 0;
+	/** counts the units begun and the panels closed: what an answer is still for */
+	#epoch = 0;
 	#controller: AbortController | null = null;
 
 	constructor(host: FlowHost) {
@@ -166,6 +178,7 @@ export class UnitDraftFlow {
 	/** A unit was loaded: an empty draft over it, previewed at once (proposals are fresh on open). */
 	begin(unit: Unit): void {
 		this.#stop();
+		this.#epoch++;
 		this.unit = unit;
 		this.draft = Draft.of(unit);
 		this.preview = null;
@@ -175,6 +188,7 @@ export class UnitDraftFlow {
 		this.amountTexts = {};
 		this.amountErrors = {};
 		this.lastAddedSplit = null;
+		this.tagBusy = false;
 		this.committing = false;
 		this.#request();
 	}
@@ -182,6 +196,7 @@ export class UnitDraftFlow {
 	/** The panel closed or moved on: nothing may land here any more. */
 	reset(): void {
 		this.#stop();
+		this.#epoch++;
 		this.unit = null;
 		this.draft = null;
 		this.preview = null;
@@ -194,6 +209,7 @@ export class UnitDraftFlow {
 		this.amountTexts = {};
 		this.amountErrors = {};
 		this.lastAddedSplit = null;
+		this.tagBusy = false;
 	}
 
 	/** Reset: throw every change away (the panel stays open): the unit as stored, previewed again. */
@@ -256,6 +272,40 @@ export class UnitDraftFlow {
 	/** `x`: a transfer becomes a flow, anything else (a flow, an entry with no type yet) a transfer. */
 	convert(id: number, currentType: string | null): void {
 		this.setType(id, currentType === 'transfer' ? 'flow' : 'transfer');
+	}
+
+	/** Put a tag on the entry or take it off (applied with the commit, like every other choice). */
+	toggleTag(id: number, tagId: number): void {
+		this.edit((d) => d.toggleTag(id, tagId));
+	}
+
+	/**
+	 * Create a tag from the picker at once (a tag is no part of the draft; cancelling leaves it)
+	 * and put it on the entry. True when both worked.
+	 */
+	async createTag(id: number, name: string): Promise<boolean> {
+		const draft = this.draft;
+		if (!draft || this.committing || this.tagBusy) return false;
+		const epoch = this.#epoch;
+		this.tagBusy = true;
+		this.notice = null;
+		let tag: Tag;
+		try {
+			tag = (await createTag(name)).tag;
+		} catch (error) {
+			if (epoch !== this.#epoch) return false;
+			this.tagBusy = false;
+			const failure = asApiError(error);
+			// a name that is taken: the list the picker shows was out of date
+			if (failure.code === 'conflict') void this.#host.reloadLookups();
+			this.notice = { kind: 'error', text: describeTagError(failure, 'entry', name) };
+			return false;
+		}
+		this.#host.addTag(tag);
+		if (epoch !== this.#epoch) return false; // the panel moved on; the tag stays
+		this.tagBusy = false;
+		this.toggleTag(id, tag.id);
+		return true;
 	}
 
 	reresolve(on = true): void {
@@ -395,7 +445,10 @@ export class UnitDraftFlow {
 		for (const problem of gone) {
 			const field = problem.field ? STALE_FIELD[problem.field] : undefined;
 			const id = problem.detail.id;
-			if (next && field && typeof id === 'number') next = next.dropReference(field, id);
+			if (next && typeof id === 'number') {
+				if (isTagReference(undefined, problem.field ?? undefined)) next = next.dropTag(id);
+				else if (field) next = next.dropReference(field, id);
+			}
 		}
 		if (next && next !== this.draft) {
 			this.draft = next;
@@ -513,13 +566,16 @@ export class UnitDraftFlow {
 
 	#staleReference(error: ApiError): void {
 		const details = (error.details ?? {}) as { field?: string; entity?: string; id?: number };
+		const tag = isTagReference(details.entity, details.field);
 		const field = STALE_FIELD[details.entity ?? ''] ?? STALE_FIELD[details.field ?? ''];
 		void this.#host.reloadLookups();
-		if (field && typeof details.id === 'number' && this.draft) {
-			const next = this.draft.dropReference(field, details.id);
+		if ((tag || field) && typeof details.id === 'number' && this.draft) {
+			const next = tag
+				? this.draft.dropTag(details.id)
+				: this.draft.dropReference(field!, details.id);
 			if (next !== this.draft) this.draft = next;
 		}
-		const word = field ? STALE_WORD[field] : 'value';
+		const word = tag ? 'tag' : field ? STALE_WORD[field] : 'value';
 		this.notice = {
 			kind: 'conflict',
 			text: `The ${word} you chose no longer exists. The lists were reloaded: choose again.`

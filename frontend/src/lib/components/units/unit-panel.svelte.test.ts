@@ -133,7 +133,7 @@ describe('UnitPanel: a flow unit', () => {
 		expect(strip).toHaveTextContent('USD');
 	});
 
-	it('shows the tags read-only, saved immediately and outside the draft', async () => {
+	it('shows the tags of an entry as chips, with a way to change them in the draft', async () => {
 		const { dialog } = await openPanel(
 			unit({
 				anchor_entry_id: 1,
@@ -142,7 +142,8 @@ describe('UnitPanel: a flow unit', () => {
 		);
 
 		expect(within(dialog).getByText('Lisbon trip')).toBeInTheDocument();
-		expect(within(dialog).getByText(/Saved immediately/)).toBeInTheDocument();
+		expect(within(dialog).getByRole('button', { name: 'Tags' })).toBeInTheDocument();
+		expect(within(dialog).queryByText(/Saved immediately/)).toBeNull();
 	});
 
 	it('has its own keyboard help: [ ] and Esc, opened by the button or by ? inside the panel', async () => {

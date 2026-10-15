@@ -25,10 +25,18 @@ export type EntryEdit = {
 	note?: string | null;
 	/** the entry's allocation; null: a new split whose amount has not been entered yet */
 	amount?: number | null;
+	/** the tag change, relative to the tags the entry had when loaded (a split row: inherited) */
+	tags?: TagEdit;
 };
 
-/** A row the draft creates: it splits the source of a stored entry. */
-export type NewSplit = { id: number; sourceEntryId: number };
+/** Tags the user added (the entry did not have them) and removed (it had). Never both, never empty. */
+export type TagEdit = { add: readonly number[]; remove: readonly number[] };
+
+/**
+ * A row the draft creates: it splits the source of a stored entry. `tags` are the tags it starts
+ * with (the stored ones of that entry: what the server copies); the tag change applies on top.
+ */
+export type NewSplit = { id: number; sourceEntryId: number; tags: readonly number[] };
 
 type Base = {
 	description: string | null;
@@ -38,6 +46,8 @@ type Base = {
 	fields: Readonly<Record<FieldName, FieldValue>>;
 	/** the entry stores "no payee" as the user's decision (an empty payee with the `user` key) */
 	noPayee: boolean;
+	/** the tags the entry stores */
+	tags: readonly number[];
 };
 
 type State = {
@@ -66,7 +76,8 @@ function baseOf(unit: Pick<Unit, 'entries'>): Map<number, Base> {
 					category: e.category_id,
 					counter_account: e.counter_account_id
 				},
-				noPayee: e.payee_id === null && keyOf(e.derivation, 'payee')?.pass === 'user'
+				noPayee: e.payee_id === null && keyOf(e.derivation, 'payee')?.pass === 'user',
+				tags: [...e.tag_ids]
 			}
 		])
 	);
@@ -93,8 +104,15 @@ function isEmpty(edit: EntryEdit): boolean {
 		Object.keys(edit.fields).length === 0 &&
 		edit.description === undefined &&
 		edit.note === undefined &&
-		edit.amount === undefined
+		edit.amount === undefined &&
+		edit.tags === undefined
 	);
+}
+
+/** The tag change in its normal form: sorted, and absent when it changes nothing. */
+function tagEdit(add: readonly number[], remove: readonly number[]): TagEdit | undefined {
+	if (add.length === 0 && remove.length === 0) return undefined;
+	return { add: [...add].sort((a, b) => a - b), remove: [...remove].sort((a, b) => a - b) };
 }
 
 /**
@@ -179,7 +197,12 @@ export class Draft {
 		if (this.#s.reresolveAll || this.#s.splits.length > 0 || this.#s.removed.length > 0)
 			return true;
 		for (const edit of this.#s.edits.values()) {
-			if (edit.description !== undefined || edit.note !== undefined || edit.amount !== undefined) {
+			if (
+				edit.description !== undefined ||
+				edit.note !== undefined ||
+				edit.amount !== undefined ||
+				edit.tags !== undefined
+			) {
 				return true;
 			}
 		}
@@ -309,10 +332,73 @@ export class Draft {
 	/** A new row splitting the source of `sourceEntryId` (a stored entry); its amount is entered next. */
 	addSplit(sourceEntryId: number): Draft {
 		const id = this.nextTempId;
+		const tags = this.#s.base.get(sourceEntryId)?.tags ?? [];
 		return this.#with({
-			splits: [...this.#s.splits, { id, sourceEntryId }],
+			splits: [...this.#s.splits, { id, sourceEntryId, tags }],
 			edits: new Map(this.#s.edits).set(id, { fields: {}, amount: null })
 		});
+	}
+
+	/** The tags an entry starts from: what it stores, or for a split row what it inherits. */
+	#startTags(id: number): readonly number[] {
+		return this.#s.base.get(id)?.tags ?? this.#s.splits.find((s) => s.id === id)?.tags ?? [];
+	}
+
+	/** The tag edit of an entry (undefined: untouched). */
+	tagEdit(id: number): TagEdit | undefined {
+		return this.edit(id).tags;
+	}
+
+	/** The tags the entry has with the draft applied: the ones it starts from, then the change. */
+	effectiveTagIds(id: number): number[] {
+		const change = this.tagEdit(id);
+		const start = this.#startTags(id);
+		if (!change) return [...start];
+		return [...start.filter((t) => !change.remove.includes(t)), ...change.add];
+	}
+
+	/**
+	 * Put a tag on the entry or take it off, whichever it is not now. The edit is kept relative to
+	 * the tags the entry starts from: toggling a tag back leaves no edit.
+	 */
+	toggleTag(id: number, tagId: number): Draft {
+		// an entry that is gone (a split row removed meanwhile) takes no change
+		if (!this.#s.base.has(id) && !this.isNew(id)) return this;
+		const start = this.#startTags(id);
+		const has = this.effectiveTagIds(id).includes(tagId);
+		const stored = start.includes(tagId);
+		return this.#edited(id, (e) => {
+			let add = [...(e.tags?.add ?? [])];
+			let remove = [...(e.tags?.remove ?? [])];
+			if (has) {
+				if (stored) remove = [...remove, tagId];
+				else add = add.filter((t) => t !== tagId);
+			} else if (stored) remove = remove.filter((t) => t !== tagId);
+			else add = [...add, tagId];
+			const next = tagEdit(add, remove);
+			return next ? { ...e, tags: next } : without(e, 'tags');
+		});
+	}
+
+	/** Forget a tag that no longer exists, wherever the draft names it. */
+	dropTag(tagId: number): Draft {
+		const edits = new Map<number, EntryEdit>();
+		let changed = false;
+		for (const [id, edit] of this.#s.edits) {
+			const change = edit.tags;
+			if (!change || !(change.add.includes(tagId) || change.remove.includes(tagId))) {
+				edits.set(id, edit);
+				continue;
+			}
+			changed = true;
+			const next = tagEdit(
+				change.add.filter((t) => t !== tagId),
+				change.remove.filter((t) => t !== tagId)
+			);
+			const copy = next ? { ...edit, tags: next } : without(edit, 'tags');
+			if (!isEmpty(copy)) edits.set(id, copy);
+		}
+		return changed ? this.#with({ edits }) : this;
 	}
 
 	/** Remove a split row (its amount returns to the residual) or a stored entry of a split. */
@@ -393,13 +479,26 @@ export class Draft {
 	rebase(unit: Pick<Unit, 'anchor_entry_id' | 'entries'>): Draft {
 		const ids = new Set(unit.entries.map((e) => e.id));
 		const base = baseOf(unit);
-		const splits = this.#s.splits.filter((s) => ids.has(s.sourceEntryId));
+		// a new row inherits what its source stores now
+		const splits = this.#s.splits
+			.filter((s) => ids.has(s.sourceEntryId))
+			.map((s) => ({ ...s, tags: base.get(s.sourceEntryId)?.tags ?? s.tags }));
 		const keep = new Set([...ids, ...splits.map((s) => s.id)]);
 		const edits = new Map<number, EntryEdit>();
 		for (const [id, edit] of this.#s.edits) {
 			if (!keep.has(id)) continue;
 			const next = { ...edit };
 			const was = base.get(id);
+			const start = was?.tags ?? splits.find((s) => s.id === id)?.tags;
+			if (start && next.tags) {
+				// a tag someone else has put on or taken off meanwhile is no longer a change
+				const tags = tagEdit(
+					next.tags.add.filter((t) => !start.includes(t)),
+					next.tags.remove.filter((t) => start.includes(t))
+				);
+				if (tags) next.tags = tags;
+				else delete next.tags;
+			}
 			if (was) {
 				if (next.description !== undefined && normaliseText(next.description) === was.description) {
 					delete next.description;
@@ -456,6 +555,7 @@ export class Draft {
 		if (edit.amount != null) body.amount = edit.amount;
 		if (edit.description !== undefined) body.description = normaliseText(edit.description);
 		if (edit.note !== undefined) body.note = normaliseText(edit.note);
+		if (edit.tags) body.tags = { add: [...edit.tags.add], remove: [...edit.tags.remove] };
 		for (const name of FIELD_NAMES) {
 			const field = edit.fields[name];
 			if (field) body[name] = fieldRequest(field);

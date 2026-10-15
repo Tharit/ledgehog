@@ -7,6 +7,7 @@ import {
 	NO_IDS,
 	patchTagIds,
 	rowsOutOfTagFilter,
+	tagChangedIds,
 	withIds
 } from './patch.js';
 
@@ -23,6 +24,21 @@ describe('patchTagIds', () => {
 
 	it('ignores an entry that is not held', () => {
 		expect(patchTagIds(rows, [{ id: 99, tag_ids: [1] }]).map((e) => e.id)).toEqual([3, 2, 1]);
+	});
+});
+
+describe('tagChangedIds', () => {
+	it('names the held rows whose tags differ, whatever the order', () => {
+		const fresh = [
+			entry({ id: 2, tag_ids: [7] }),
+			entry({ id: 1, tag_ids: [5] }),
+			entry({ id: 99, tag_ids: [1] })
+		];
+		expect(tagChangedIds(rows, fresh)).toEqual([1]);
+		expect(tagChangedIds(rows, [entry({ id: 2, tag_ids: [7, 8] })])).toEqual([2]);
+		expect(
+			tagChangedIds([entry({ id: 4, tag_ids: [1, 2] })], [entry({ id: 4, tag_ids: [2, 1] })])
+		).toEqual([]);
 	});
 });
 

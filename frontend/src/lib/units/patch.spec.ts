@@ -27,6 +27,12 @@ describe('applyAffected', () => {
 		]);
 	});
 
+	it('writes the tags a commit changed into the rows', () => {
+		const held = [entry({ id: 1, tag_ids: [7] }), entry({ id: 2 })];
+		const out = applyAffected(held, { entries: [entry({ id: 1, tag_ids: [7, 8] })] });
+		expect(out.entries.map((e) => e.tag_ids)).toEqual([[7, 8], []]);
+	});
+
 	it('never adds a row the list does not hold, nor marks it', () => {
 		const out = applyAffected(rows, { entries: [entry({ id: 9 })], resolved: [9] });
 		expect(out.entries.map((e) => e.id)).toEqual([1, 2, 3]);

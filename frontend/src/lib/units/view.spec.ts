@@ -341,3 +341,34 @@ describe('the X and "Reset to proposal" follow what the preview shows', () => {
 		expect(field(decided, same, preview(decided), 'payee').canReset).toBe(false);
 	});
 });
+
+describe('entryViews: tags', () => {
+	const tagged = unit({
+		anchor_entry_id: 1,
+		entries: [entry({ id: 1, unit_key: 1, source_transaction_id: 5, tag_ids: [30] })]
+	});
+	const withTags = (draft: Draft, shown: ReturnType<typeof preview> | null, stale = false) =>
+		entryViews({ unit: tagged, draft, preview: shown, rules, locale: 'en', stale })[0].tagIds;
+
+	it('shows the stored tags, then the draft applied, before any preview', () => {
+		expect(withTags(Draft.of(tagged), null)).toEqual([30]);
+		expect(withTags(Draft.of(tagged).toggleTag(1, 31), null)).toEqual([30, 31]);
+	});
+
+	it('takes the preview row’s tags when it is the draft’s own', () => {
+		const shown = preview(tagged);
+		shown.rows[0].tag_ids = [31];
+		expect(withTags(Draft.of(tagged).toggleTag(1, 31), shown)).toEqual([31]);
+	});
+
+	it('takes the draft’s tags while the preview is not its own yet', () => {
+		const shown = preview(tagged); // answers the draft before the toggle
+		expect(withTags(Draft.of(tagged).toggleTag(1, 30), shown, true)).toEqual([]);
+	});
+
+	it('gives a new split row the tags of its original, the change on top', () => {
+		const draft = Draft.of(tagged).addSplit(1).toggleTag(-1, 31);
+		const rows = entryViews({ unit: tagged, draft, preview: null, rules, locale: 'en' });
+		expect(rows.at(-1)!.tagIds).toEqual([30, 31]);
+	});
+});

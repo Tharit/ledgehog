@@ -33,6 +33,7 @@ import {
 	nextMoved,
 	patchTagIds,
 	rowsOutOfTagFilter,
+	tagChangedIds,
 	withIds
 } from '#lib/ledger/patch.js';
 import type { Lookups } from '#lib/ledger/lookups.js';
@@ -284,6 +285,10 @@ export class LedgerStore {
 
 	/** An action in the unit panel touched these entries: patch the rows held, in place (§7). */
 	patchAffected(affected: Affected): void {
+		// rows whose tags the commit changed are as touched as by the row's own tag action: under an
+		// active tag filter they stay, marked, until the list is refreshed (decision C10)
+		const retagged = tagChangedIds(this.entries, affected.entries);
+		if (retagged.length > 0) this.touchedIds = withIds(this.touchedIds, retagged);
 		const out = applyAffected(this.entries, affected, this.marks);
 		this.entries = out.entries;
 		this.marks = out.marks;

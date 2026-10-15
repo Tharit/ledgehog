@@ -66,6 +66,8 @@ export type EntryView = {
 	note: string | null;
 	type: string | null;
 	fields: Record<FieldName, FieldView>;
+	/** the tags the entry will have: the preview's row when it is the draft's own, else the draft applied */
+	tagIds: readonly number[];
 	flags: readonly string[];
 	/** its amount is an allocation the user sets: a split row or a stored entry of a split */
 	amountEditable: boolean;
@@ -168,8 +170,10 @@ export function entryViews(args: {
 	preview: UnitPreview | null;
 	rules: RuleNames;
 	locale: string;
+	/** the preview shown is not the draft's own yet: the draft's tags are the newer word */
+	stale?: boolean;
 }): EntryView[] {
-	const { unit, draft, preview, rules, locale } = args;
+	const { unit, draft, preview, rules, locale, stale = false } = args;
 	const stored = new Map(unit.entries.map((e) => [e.id, e]));
 	const sourceOf = (entryId: number) => stored.get(entryId)?.source_transaction_id ?? null;
 
@@ -242,6 +246,7 @@ export function entryViews(args: {
 			note: edit.note !== undefined ? edit.note : (b.row?.note ?? entry?.note ?? null),
 			type: fields.type.value === null ? null : String(fields.type.value),
 			fields,
+			tagIds: b.row && !stale ? b.row.tag_ids : draft.effectiveTagIds(b.id),
 			flags: b.row?.review_flags ?? entry?.review_flags ?? [],
 			amountEditable: !original,
 			removable: !original

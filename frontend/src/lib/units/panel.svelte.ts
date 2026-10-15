@@ -102,6 +102,7 @@ export class UnitPanel {
 			},
 			patch: (affected) => this.#patch(affected),
 			reloadLookups: () => lookupsStore.reload(),
+			addTag: (tag) => lookupsStore.addTag(tag),
 			previewed: (preview) => {
 				if (previewReadsRules(preview)) void ruleNames.ensure();
 			},

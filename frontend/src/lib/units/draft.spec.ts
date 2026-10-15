@@ -129,7 +129,7 @@ describe('texts', () => {
 describe('splits', () => {
 	it('adds a row with a temporary negative id; without an amount it is pending and not sent', () => {
 		const draft = empty().addSplit(1);
-		expect(draft.splits).toEqual([{ id: -1, sourceEntryId: 1 }]);
+		expect(draft.splits).toEqual([{ id: -1, sourceEntryId: 1, tags: [] }]);
 		expect(draft.pendingSplits).toHaveLength(1);
 		expect(draft.isDirty).toBe(true);
 		expect(draft.toRequest().entries).toEqual([]);
@@ -254,7 +254,7 @@ describe('re-resolve and stale picks', () => {
 			.setNote(1, 'a note')
 			.setField(1, 'category', 10)
 			.reresolve();
-		expect(draft.splits).toEqual([{ id: -1, sourceEntryId: 1 }]);
+		expect(draft.splits).toEqual([{ id: -1, sourceEntryId: 1, tags: [] }]);
 		expect(draft.removed).toEqual([2]);
 		expect(draft.toRequest().entries).toEqual([
 			{ id: 1, description: 'mine', note: 'a note' },
@@ -394,5 +394,141 @@ describe('clearField (the X)', () => {
 		expect(draft.hasOtherChanges).toBe(false);
 		expect(draft.setNote(1, 'x').hasOtherChanges).toBe(true);
 		expect(draft.reresolve().hasOtherChanges).toBe(true);
+	});
+});
+
+describe('tags', () => {
+	const tagged = unit({
+		anchor_entry_id: 1,
+		entries: [
+			entry({ id: 1, version: 3, unit_key: 1, source_transaction_id: 5, tag_ids: [30, 31] }),
+			entry({
+				id: 2,
+				version: 4,
+				unit_key: 1,
+				source_transaction_id: 5,
+				amount: { amount: -1000, currency: 'EUR' },
+				tag_ids: [32]
+			})
+		]
+	});
+	const base = () => Draft.of(tagged);
+
+	it('starts untouched: the stored tags, no edit, no tags in the request', () => {
+		const draft = base();
+		expect(draft.effectiveTagIds(1)).toEqual([30, 31]);
+		expect(draft.tagEdit(1)).toBeUndefined();
+		expect(draft.isDirty).toBe(false);
+		expect(draft.toRequest().entries).toEqual([]);
+	});
+
+	it('toggling a stored tag off removes it; toggling it back leaves no edit', () => {
+		const off = base().toggleTag(1, 30);
+		expect(off.tagEdit(1)).toEqual({ add: [], remove: [30] });
+		expect(off.effectiveTagIds(1)).toEqual([31]);
+		const back = off.toggleTag(1, 30);
+		expect(back.tagEdit(1)).toBeUndefined();
+		expect(back.isDirty).toBe(false);
+		expect(back.effectiveTagIds(1)).toEqual([30, 31]);
+	});
+
+	it('toggling a tag the entry does not have adds it; toggling it back leaves no edit', () => {
+		const on = base().toggleTag(1, 99);
+		expect(on.tagEdit(1)).toEqual({ add: [99], remove: [] });
+		expect(on.effectiveTagIds(1)).toEqual([30, 31, 99]);
+		expect(on.toggleTag(1, 99).tagEdit(1)).toBeUndefined();
+	});
+
+	it('keeps the change relative to the stored tags, add and remove side by side', () => {
+		const draft = base().toggleTag(1, 31).toggleTag(1, 98).toggleTag(1, 97);
+		expect(draft.tagEdit(1)).toEqual({ add: [97, 98], remove: [31] });
+		expect(first(draft)).toEqual({ id: 1, tags: { add: [97, 98], remove: [31] } });
+	});
+
+	it('is a change of its own: dirty, an other change, and committable on its own', () => {
+		const draft = base().toggleTag(1, 30);
+		expect(draft.isDirty).toBe(true);
+		expect(draft.hasOtherChanges).toBe(true);
+		expect(draft.fieldEdits()).toEqual([]);
+	});
+
+	it('leaves tags out of the request of an entry that has no tag change', () => {
+		const body = first(base().setNote(1, 'x'));
+		expect(body).not.toHaveProperty('tags');
+	});
+
+	it('starts a new split row with the tags of the original, the change on top', () => {
+		const draft = base().addSplit(1);
+		expect(draft.splits).toEqual([{ id: -1, sourceEntryId: 1, tags: [30, 31] }]);
+		expect(draft.effectiveTagIds(-1)).toEqual([30, 31]);
+		const off = draft.toggleTag(-1, 30).toggleTag(-1, 99).setSplitAmount(-1, -500);
+		expect(off.effectiveTagIds(-1)).toEqual([31, 99]);
+		expect(off.toRequest().entries).toEqual([
+			{ id: -1, source_entry_id: 1, amount: -500, tags: { add: [99], remove: [30] } }
+		]);
+		// toggling an inherited tag off and on again is no edit
+		expect(draft.toggleTag(-1, 30).toggleTag(-1, 30).tagEdit(-1)).toBeUndefined();
+	});
+
+	it('leaves the original’s tags alone when only the split row changes them', () => {
+		const draft = base().addSplit(1).toggleTag(-1, 30);
+		expect(draft.effectiveTagIds(1)).toEqual([30, 31]);
+	});
+
+	it('survives a re-resolve, which never touches tags', () => {
+		const draft = base().toggleTag(1, 30).setField(1, 'category', 10).reresolve();
+		expect(draft.tagEdit(1)).toEqual({ add: [], remove: [30] });
+		expect(draft.fieldEdit(1, 'category')).toBeUndefined();
+	});
+
+	it('rebases over the reloaded tags: an edit that became a no-op is dropped', () => {
+		const draft = base().toggleTag(1, 30).toggleTag(1, 99).toggleTag(2, 32);
+		const now = unit({
+			anchor_entry_id: 1,
+			entries: [
+				// 30 was taken off meanwhile, 99 put on: both edits are done already
+				entry({ id: 1, version: 8, unit_key: 1, source_transaction_id: 5, tag_ids: [31, 99, 40] }),
+				entry({ id: 2, version: 4, unit_key: 1, source_transaction_id: 5, tag_ids: [32] })
+			]
+		});
+		const next = draft.rebase(now);
+		expect(next.tagEdit(1)).toBeUndefined();
+		expect(next.tagEdit(2)).toEqual({ add: [], remove: [32] });
+		// a still-needed edit stays relative to the reloaded tags
+		const again = base().toggleTag(1, 31).toggleTag(1, 99).rebase(now);
+		expect(again.tagEdit(1)).toEqual({ add: [], remove: [31] });
+		expect(again.effectiveTagIds(1)).toEqual([99, 40]);
+	});
+
+	it('rebases a split row onto what its source stores now', () => {
+		const draft = base().addSplit(1).toggleTag(-1, 30).toggleTag(-1, 99);
+		const now = unit({
+			anchor_entry_id: 1,
+			entries: [entry({ id: 1, version: 8, unit_key: 1, source_transaction_id: 5, tag_ids: [99] })]
+		});
+		const next = draft.rebase(now);
+		expect(next.splits).toEqual([{ id: -1, sourceEntryId: 1, tags: [99] }]);
+		expect(next.tagEdit(-1)).toBeUndefined(); // 30 is not inherited any more, 99 is
+	});
+
+	it('forgets a tag that no longer exists, keeping the rest of the change', () => {
+		const draft = base().toggleTag(1, 30).toggleTag(1, 99).toggleTag(2, 99);
+		const next = draft.dropTag(99);
+		expect(next.tagEdit(1)).toEqual({ add: [], remove: [30] });
+		expect(next.tagEdit(2)).toBeUndefined();
+		expect(draft.dropTag(12345)).toBe(draft);
+	});
+
+	it('drops the change with the split row', () => {
+		const draft = base().addSplit(1).toggleTag(-1, 99).removeSplit(-1);
+		expect(draft.isDirty).toBe(false);
+	});
+});
+
+describe('tags of an entry that is gone', () => {
+	it('takes no change', () => {
+		const draft = Draft.of(loaded);
+		expect(draft.toggleTag(-4, 1)).toBe(draft);
+		expect(draft.toggleTag(99, 1)).toBe(draft);
 	});
 });
