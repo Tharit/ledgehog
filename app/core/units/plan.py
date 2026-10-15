@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any, Literal
 
+from app.core.matching import Leg, Offer, PoolEntry, Proposal
 from app.core.plugins.classifier import AccountFact, Classifier, Field
 from app.core.resolution.snapshot import HistorySnapshot
 from app.core.resolution.types import Decided
@@ -100,9 +101,14 @@ class World:
     categories: frozenset[int] = frozenset()
     payees: frozenset[int] = frozenset()
     # what `waiting` and `unmatched_transfer` read (spec §5.7): per account whether it is synced and its
-    # `synced_through`, and the matching window. Preview does not pair legs yet (step 8, wave 8d).
+    # `synced_through`, and the matching window.
     account_sync: Mapping[int, tuple[bool, date | None]] = dataclasses.field(default_factory=dict)
     matching_window: int = 0
+    # the preview only: every unpaired transfer leg of the ledger, so the simulation of settling pairs a leg
+    # of the plan with one outside it as settling will (a commit does not load them: settling follows it)
+    ledger_legs: Sequence[Leg] = ()
+    # the preview only: the movements offers are made of, read after the plan (`transfers.attach_transfers`)
+    pool: Sequence[PoolEntry] = ()
 
 
 # ---- what a draft implies -----------------------------------------------------------------------
@@ -171,6 +177,38 @@ class Written:
     accepted: bool  # the draft's entry: its values are written; False: only a pair released is written
 
 
+TransferState = Literal["paired", "waiting", "unmatched", "needs_account"]
+
+
+@dataclass(frozen=True, slots=True)
+class WaitingFor:
+    account_id: int
+    synced_through: date | None  # how far that account has been fetched; None = never
+
+
+@dataclass(frozen=True, slots=True)
+class PartnerView:
+    entry_id: int
+    account_id: int
+    booked_on: date
+    amount: int
+    currency: str
+    description: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class TransferView:
+    """What the preview says of a transfer leg (spec §5.7): its state, its partner and its offers."""
+
+    state: TransferState
+    waiting_for: WaitingFor | None
+    needs_account: str | None  # the currency it needs an account in
+    partner: PartnerView | None
+    offers: tuple[Offer, ...]
+    proposal: Proposal | None
+    has_more: bool
+
+
 @dataclass(frozen=True, slots=True)
 class PlannedRow:
     id: int  # stored, or the client's temporary (negative) id
@@ -193,6 +231,8 @@ class PlannedRow:
     flags: tuple[str, ...]
     written: Written
     original: bool  # the residual of its source
+    leg: Leg | None = None  # the matcher's view of the row as planned (offers are made for it)
+    purpose: str | None = None  # the source's purpose as stored
 
 
 @dataclass(frozen=True, slots=True)
@@ -226,6 +266,10 @@ class Plan:
     consequences: tuple[Consequence, ...]
     versions: Mapping[int, int]  # every stored entry of the closure: what a commit must carry
     created_ids: tuple[int, ...]  # the draft's temporary ids, in draft order
+    # legs outside the closure that the simulation of settling paired with a row of the plan: the preview
+    # reads their units and plans again (a commit never has any: its world holds no ledger legs)
+    pulled_entry_ids: tuple[int, ...] = ()
+    transfers: Mapping[int, TransferView] = dataclasses.field(default_factory=dict)  # by row id
 
     def row(self, entry_id: int) -> PlannedRow:
         for r in self.rows:

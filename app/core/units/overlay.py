@@ -12,9 +12,13 @@
 3. Keys are derived as a commit derives them (§5.9, D212): a value left as stored keeps a standing key, an
    accepted proposal becomes `user` with the proposal's key as its basis, anything else is `user` without one.
    That is `Written`, the state a commit writes.
-4. Settling is simulated over the result (`core.settle.resolution.rewrite_of`, the function step 1 calls):
-   every unit still not confirmed is rederived, units that became confirmed teach history, and the rounds
-   repeat until nothing more is confirmed. That is the state the user will find afterwards.
+4. Settling is simulated over the result (`core.settle.resolution.settle_rewrites`, the function step 1 calls,
+   and the pure `pair_all` of step 4): every unit still not confirmed is rederived, a paired leg whose guess
+   changed releases its pair, legs are paired, units that became confirmed teach history, and the rounds
+   repeat until nothing more is confirmed. Pairing runs over the plan's unpaired transfer legs and, in a
+   preview, every other unpaired transfer leg of the ledger (`World.ledger_legs`); a pair with a leg outside
+   the plan is reported (`Plan.pulled_entry_ids`) for the preview to bring that leg's unit in and plan again.
+   That is the state the user will find afterwards.
 5. The invariants the schema's deferred triggers would check are checked here (`Problem`), so a commit is
    refused by code with a machine code, not by an aborted transaction.
 
@@ -24,6 +28,7 @@ closure is a consequence (a partner left behind, the other side of a pair that n
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -38,9 +43,10 @@ from app.core.plugins.classifier import (
 )
 from app.core.resolution import Decided, Resolved, resolve
 from app.core.resolution.load import UnconfirmedEntry
+from app.core.resolution.snapshot import LayeredHistory
 from app.core.resolution.types import USER_NO_PAYEE, is_user_no_payee
 from app.core.settle.pairing import PAIR_COUNTER_KEY_VALUE, PAIR_KEY_VALUE
-from app.core.settle.resolution import rewrite_of, stored_decisions
+from app.core.settle.resolution import settle_rewrites, stored_decisions
 from app.core.units.closure import UnitEntry, units_of
 from app.core.units.draft import (
     DERIVED_FIELDS,
@@ -65,7 +71,7 @@ from app.core.units.plan import (
     World,
     Written,
 )
-from app.core.units.state import UnitState, unit_state
+from app.core.units.state import LegState, UnitState, unit_state
 
 MAX_ROUNDS = 20
 RERESOLVE = FieldDraft(mode="reresolve")
@@ -153,6 +159,7 @@ def _as_unconfirmed(row: _Row) -> UnconfirmedEntry:
         derivation=row.derivation or {},
         paired=row.counterpart is not None,
         original=row.original,
+        counterpart_id=row.counterpart,
     )
 
 
@@ -480,20 +487,10 @@ def _vote(row: _Row, rows: Mapping[int, _Row], world: World) -> Vote | None:
     )
 
 
-def _states(rows: Sequence[_Row]) -> dict[int, tuple[tuple[_Row, ...], UnitState]]:
-    """Per unit key: its rows and its state."""
-    by_id = {r.id: r for r in rows}
-    out: dict[int, tuple[tuple[_Row, ...], UnitState]] = {}
-    for key, unit in units_of(_unit_entries(rows)).items():
-        members = tuple(by_id[e.id] for e in unit)
-        out[key] = (members, unit_state(list(unit)))
-    return out
-
-
-def _with_matching_flags(flags: tuple[str, ...], row: _Row, world: World) -> tuple[str, ...]:
-    """`waiting` or `unmatched_transfer` for an unpaired transfer leg (the pure twin of the flags SQL)."""
+def _leg_state(row: _Row, world: World) -> LegState | None:
+    """`waiting` or `unmatched` for an unpaired transfer leg (the pure twin of the flags SQL), else None."""
     if row.type != "transfer" or row.counterpart is not None:
-        return flags
+        return None
     leg = Leg(
         entry_id=row.id,
         account_id=row.account_id,
@@ -505,27 +502,56 @@ def _with_matching_flags(flags: tuple[str, ...], row: _Row, world: World) -> tup
     synced, through = world.account_sync.get(row.counter_account_id or 0, (False, None))
     window = world.matching_window
     if waiting(leg, counter_synced=synced, synced_through=through, window=window):
-        return tuple(sorted((*flags, "waiting")))
+        return "waiting"
     if unmatched(leg, paired=False, counter_synced=synced, synced_through=through, window=window):
-        return tuple(sorted((*flags, "unmatched_transfer")))
-    return flags
+        return "unmatched"
+    return None
 
 
-def _pair(rows: Sequence[_Row], world: World) -> None:
-    """Settling's step 4 over the plan's own unpaired transfer legs (the same pure `pair_all`), in place.
+def _states(rows: Sequence[_Row], world: World) -> dict[int, tuple[tuple[_Row, ...], UnitState]]:
+    """Per unit key: its rows and its state (an unpaired leg's reason says whether it waits)."""
+    by_id = {r.id: r for r in rows}
+    out: dict[int, tuple[tuple[_Row, ...], UnitState]] = {}
+    for key, unit in units_of(_unit_entries(rows)).items():
+        members = tuple(by_id[e.id] for e in unit)
+        leg_states = {r.id: st for r in members if (st := _leg_state(r, world)) is not None}
+        out[key] = (members, unit_state(list(unit), leg_states))
+    return out
 
-    The legs outside the plan are not offered yet (offers and the pool are step 8, wave 8d), so a pair
-    settling makes with a leg elsewhere is not previewed.
+
+def _with_matching_flags(flags: tuple[str, ...], row: _Row, world: World) -> tuple[str, ...]:
+    """`waiting` or `unmatched_transfer` for an unpaired transfer leg, among the unit's flags."""
+    state = _leg_state(row, world)
+    if state is None:
+        return flags
+    return tuple(sorted((*flags, "waiting" if state == "waiting" else "unmatched_transfer")))
+
+
+def _pair(rows: Sequence[_Row], world: World) -> set[int]:
+    """Settling's step 4 (the same pure `pair_all`) over the plan's unpaired transfer legs and every other
+    unpaired transfer leg of the ledger (`world.ledger_legs`), in place on `rows`.
+
+    A pair of two rows is made. A pair of a row with a leg outside the plan is not (there is no row to
+    hold it): the leg's id is returned, so the preview can bring its unit in and plan again. A pair between
+    two legs outside the plan is none of the plan's business.
     """
     legs = [
         leg_of(_entry_input(r), type=r.type, counter_account_id=r.counter_account_id)
         for r in rows
         if r.type == "transfer" and r.counterpart is None
     ]
-    if len(legs) < 2:
-        return
     by_id = {r.id: r for r in rows}
-    for p in pair_all(legs, world.matching_window, {a.id: a for a in world.accounts}):
+    if not legs or (len(legs) < 2 and not world.ledger_legs):
+        return set()
+    outside = [leg for leg in world.ledger_legs if leg.entry_id not in by_id]
+    pulled: set[int] = set()
+    for p in pair_all([*legs, *outside], world.matching_window, {a.id: a for a in world.accounts}):
+        a, b = by_id.get(p.leg_id), by_id.get(p.partner_id)
+        if a is None and b is None:
+            continue
+        if a is None or b is None:
+            pulled.add(p.leg_id if a is None else p.partner_id)
+            continue
         for entry_id, partner_id, counter in (
             (p.leg_id, p.partner_id, p.leg_counter_account),
             (p.partner_id, p.leg_id, p.partner_counter_account),
@@ -538,19 +564,23 @@ def _pair(rows: Sequence[_Row], world: World) -> None:
                 r.counter_account_id = counter
                 derivation["counter_account"] = dict(PAIR_COUNTER_KEY_VALUE)
             r.derivation = derivation
+    return pulled
 
 
-def _settle(rows: Sequence[_Row], world: World, documented: frozenset[int]) -> None:
+def _settle(rows: Sequence[_Row], world: World, documented: frozenset[int]) -> set[int]:
     """Settling's rounds over the plan's units (step 1, the pairing of step 4 and the teaching of step 5),
-    in place on `rows`.
+    in place on `rows`; returns the legs outside the plan that pairing took a row to (`_pair`).
 
     A unit that is confirmed teaches history before the first round (the snapshot a settle loads holds the
-    committed state) and after each round that confirms it; a source with a document votes nothing.
+    committed state) and after each round that confirms it; a source with a document votes nothing. Step 1
+    is `settle_rewrites`, the function settling calls: a paired leg of an unconfirmed unit is rederived too,
+    and its pair falls on both legs when its type or its own counter-account changes (I18).
     """
     by_id = {r.id: r for r in rows}
     taught: set[int] = set()
+    pulled: set[int] = set()
     for _ in range(MAX_ROUNDS):
-        states = _states(rows)
+        states = _states(rows, world)
         for k, (members, st) in states.items():
             if st.confirmed and k not in taught:
                 taught.add(k)
@@ -559,23 +589,23 @@ def _settle(rows: Sequence[_Row], world: World, documented: frozenset[int]) -> N
                     for r in members
                     if r.src.id not in documented and (v := _vote(r, by_id, world)) is not None
                 )
-        for _k, (members, st) in states.items():
-            if st.confirmed:
-                continue
-            for r in members:
-                rw = rewrite_of(
-                    _as_unconfirmed(r),
-                    accounts=world.accounts,
-                    classifiers=world.classifiers,
-                    history=world.history,
-                )
-                if rw is None:
-                    continue
-                r.type, r.payee_id, r.category_id = rw.type, rw.payee_id, rw.category_id
-                r.counter_account_id, r.derivation = rw.counter_account_id, rw.derivation
-        _pair(rows, world)
-        if all(k in taught or not st.confirmed for k, (_m, st) in _states(rows).items()):
-            return
+        pending = [r for _k, (members, st) in states.items() if not st.confirmed for r in members]
+        rewrites = settle_rewrites(
+            [_as_unconfirmed(r) for r in pending],
+            reach=lambda _row: True,
+            accounts=world.accounts,
+            classifiers=world.classifiers,
+            history=world.history,
+        )
+        for entry_id, rw in rewrites.items():
+            r = by_id[entry_id]
+            r.type, r.payee_id, r.category_id = rw.type, rw.payee_id, rw.category_id
+            r.counter_account_id, r.derivation = rw.counter_account_id, rw.derivation
+            if rw.unpair:
+                r.counterpart = None
+        pulled |= _pair(rows, world)
+        if all(k in taught or not st.confirmed for k, (_m, st) in _states(rows, world).items()):
+            return pulled
     raise RuntimeError("the preview of settling did not converge")
 
 
@@ -779,6 +809,8 @@ def _field_results(r: _Row) -> dict[Field, FieldResult]:
 
 def plan_unit(stored: StoredUnit, draft: UnitDraft, world: World) -> Plan:
     """Lay `draft` over `stored` (module docstring). Raises `DraftError` for a draft that is nonsense."""
+    # the plan teaches history what its units confirm: into a layer of its own, so the world is left as it was
+    world = dataclasses.replace(world, history=LayeredHistory(world.history))
     rows, problems = _assemble(stored, draft)
     ordered = [*(rows[e.id] for e in stored.entries if e.id in rows), *(r for r in rows.values() if r.is_new)]
     walk = _Walk(world, draft.reresolve_all)
@@ -843,8 +875,8 @@ def plan_unit(stored: StoredUnit, draft: UnitDraft, world: World) -> Plan:
         r.s1_values, r.s1_derivation = dict(_values(r)), dict(r.derivation or {})
 
     # what settling leaves of it
-    _settle(ordered, world, documented)
-    final_states = _states(ordered)
+    pulled = _settle(ordered, world, documented)
+    final_states = _states(ordered, world)
     unit_of = {ur.id: key for key, (unit_rows, _st) in final_states.items() for ur in unit_rows}
     anchor_key = unit_of[draft.anchor_entry_id]
 
@@ -870,6 +902,8 @@ def plan_unit(stored: StoredUnit, draft: UnitDraft, world: World) -> Plan:
             flags=_with_matching_flags(final_states[unit_of[r.id]][1].flags[r.id], r, world),
             written=written[r.id],
             original=r.original,
+            leg=leg_of(_entry_input(r), type=r.type, counter_account_id=r.counter_account_id),
+            purpose=r.src.purpose,
         )
         for r in ordered
     )
@@ -909,6 +943,7 @@ def plan_unit(stored: StoredUnit, draft: UnitDraft, world: World) -> Plan:
         ),
         versions={e.id: e.version for e in stored.entries},
         created_ids=tuple(r.id for r in ordered if r.is_new),
+        pulled_entry_ids=tuple(sorted(pulled)),
     )
 
 

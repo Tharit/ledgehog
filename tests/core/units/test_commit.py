@@ -103,7 +103,7 @@ def test_a_transfer_without_a_partner_is_committed_whole_and_stays_in_review(sce
     row = scene.row(e)
     assert (row.type, row.counter_account_id, row.note) == ("transfer", scene.cash, None)
     assert row.derivation["counter_account"] == {"pass": "user"}
-    assert result.units[0].state.reasons == ("unpaired_transfer",)  # kept, not confirmed
+    assert result.units[0].state.reasons == ("unmatched_transfer",)  # kept, not confirmed
     assert scene.q("SELECT count(*) FROM ledger_entry WHERE counterpart_entry_id IS NOT NULL")[0][0] == 0
 
 

@@ -8,7 +8,6 @@ nothing written, and any other must leave exactly the previewed rows, keys, flag
 from __future__ import annotations
 
 import dataclasses
-import itertools
 import json
 from typing import Any
 
@@ -23,7 +22,6 @@ from app.core.units.preview import preview_unit
 from tests.core.units.equality import preview_then_commit
 from tests.core.units.scene import RERESOLVE, Scene, fixed
 
-_AMOUNTS = itertools.count(1)
 COUNTERPARTIES = ["REWE", "ALDI", "RENT", "NEWCO", "ATM"]
 
 
@@ -161,10 +159,10 @@ def _build(scene: Scene, kind: str, who: str, confirmed: bool) -> tuple[list[int
         _s, ents = scene.movement(-600, -400, counterparty=who)
         originals = {ents[0]}
     else:
-        # a pair of its own amount: the examples share one ledger, and a leg an earlier example left behind
-        # would be paired with by settling, which the preview does not simulate yet (spec §5.7, wave 8d)
-        amount = -(500 + next(_AMOUNTS))
-        (_sa, a), (_sb, b) = scene.transfer_pair(amount, out_extra=[-100] if kind == "pair_split" else ())
+        # the examples share one ledger and the same amounts: a leg an earlier example left behind is a
+        # candidate
+        # of this one, and the preview must pair with it exactly as settling will
+        (_sa, a), (_sb, b) = scene.transfer_pair(-500, out_extra=[-100] if kind == "pair_split" else ())
         ents = [*a, *b]
         originals = {a[0], b[0]}
     for i in ents:  # some stored tags to inherit, keep or remove
@@ -181,7 +179,7 @@ def _build(scene: Scene, kind: str, who: str, confirmed: bool) -> tuple[list[int
 @pytest.mark.parametrize("kind", ["plain", "split", "pair", "pair_split"])
 def test_preview_equals_commit_and_settle(world: Scene, kind: str) -> None:
     scene = world
-    outcomes = {"committed": 0, "refused": 0}
+    outcomes = {"committed": 0, "refused": 0, "pulled": 0}
 
     @SETTINGS
     @given(data=st.data(), who=st.sampled_from(COUNTERPARTIES), confirmed=st.booleans())
@@ -200,7 +198,10 @@ def test_preview_equals_commit_and_settle(world: Scene, kind: str) -> None:
             return
         preview_then_commit(scene, draft)
         outcomes["committed"] += 1
+        outcomes["pulled"] += set(plan.versions) != set(draft.versions)  # a leg outside the unit was paired
 
     run()
     print(kind, outcomes)
     assert outcomes["committed"] > 5, outcomes
+    # `pulled` counts the examples where settling paired a leg of the unit with one outside it (legs the
+    # earlier examples left behind); how often depends on the draw, test_preview_pairing_ledger_wide pins it

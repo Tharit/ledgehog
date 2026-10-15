@@ -151,6 +151,38 @@ class HistorySnapshot:
         return found
 
 
+class LayeredHistory(HistorySnapshot):
+    """A snapshot laid over another that it never changes: `add` goes to this layer only.
+
+    The unit preview teaches history the units a plan confirms (settling does the same to its own snapshot);
+    a layer makes that a property of one plan, so the base can serve the next plan unchanged.
+    """
+
+    def __init__(self, base: HistorySnapshot) -> None:
+        super().__init__()
+        self._base = base
+
+    def __len__(self) -> int:
+        return len(self._base) + super().__len__()
+
+    def add(self, votes: Iterable[Vote]) -> Grown:
+        return super().add(v for v in votes if v.entry_id not in self._base._ids)
+
+    def candidates(
+        self,
+        key: HistoryKey,
+        entry: EntryInput,
+        *,
+        payee_id: int | None = None,
+        exclude_entry_ids: frozenset[int] = frozenset(),
+    ) -> Sequence[Vote]:
+        below = self._base.candidates(key, entry, payee_id=payee_id, exclude_entry_ids=exclude_entry_ids)
+        here = super().candidates(key, entry, payee_id=payee_id, exclude_entry_ids=exclude_entry_ids)
+        if not here:
+            return below
+        return sorted([*below, *here], key=_sort_key)
+
+
 def touches(grown: Grown, entry: EntryInput, payee_id: int | None) -> bool:
     """Whether votes that added `grown` can change the history proposals for `entry`.
 

@@ -103,5 +103,12 @@ category and a re-resolved unit; ~70% confirmed (5,600 voters) 60-83 ms for the 
 s; the snapshot does not dominate, so it is built per request and not cached (nothing to invalidate). 2 x
 the largest (83 ms) is 0.17 s; the floor of 0.5 s is the budget.
 
+Step 8d (offers, `test_preview_of_transfer_legs_with_offers_within_budget`, the 800-leg transfer ledger): the
+preview also loads every unpaired transfer leg of the ledger, pairs over them in the simulation of settling
+and reads the pool of offers around the unit's legs (90 days, `ix_le_date` / `ix_le_account_date`, no
+sequential scan: the test EXPLAINs it). Measured, max of 7 samples, over three runs under a load average of
+5-8: legs with a counter-account (190 offers over the 7 units) 79-167 ms, legs without one (326 offers: every
+account the currency rule allows) 76-139 ms. Inside the same 0.5 s.
+
 A commit and the settle that follows (the same test, ~70% confirmed, after the first settle): median
 531-534 ms, max 558 ms, inside the settle budget (`BUDGET_SECONDS`)."""

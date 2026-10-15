@@ -3867,6 +3867,49 @@
         "title": "UnitConsequenceOut",
         "type": "object"
       },
+      "UnitCounterLegOut": {
+        "description": "The counter-leg a commit would create on the offer's account (an unsynced one).",
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "booked_on": {
+            "format": "date",
+            "title": "Booked On",
+            "type": "string"
+          },
+          "needs_received_amount": {
+            "title": "Needs Received Amount",
+            "type": "boolean"
+          },
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          }
+        },
+        "required": [
+          "booked_on",
+          "purpose",
+          "amount",
+          "needs_received_amount"
+        ],
+        "title": "UnitCounterLegOut",
+        "type": "object"
+      },
       "UnitDraftEntryIn": {
         "additionalProperties": false,
         "description": "One entry the draft changes. `description` and `note` are left as stored when absent and emptied when\nnull. A new entry (negative `id`) names `source_entry_id`, a stored entry of the source it splits, and\ncarries its `amount`; the source's original entry is the residual and takes no amount of its own. `tags`\nis a tag change on top of the stored (or inherited) tags; absent leaves them untouched.",
@@ -4127,6 +4170,171 @@
         "title": "UnitKeyOut",
         "type": "object"
       },
+      "UnitNeedsAccountOut": {
+        "properties": {
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "currency"
+        ],
+        "title": "UnitNeedsAccountOut",
+        "type": "object"
+      },
+      "UnitOfferEffectOut": {
+        "description": "What picking the offer would also do (the real consequences show after the pick).",
+        "properties": {
+          "breaks_pair_with": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Breaks Pair With",
+            "type": "array"
+          },
+          "fee": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UnitOfferFeeOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "types_as_transfer": {
+            "title": "Types As Transfer",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "types_as_transfer",
+          "fee",
+          "breaks_pair_with"
+        ],
+        "title": "UnitOfferEffectOut",
+        "type": "object"
+      },
+      "UnitOfferFeeOut": {
+        "properties": {
+          "difference": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "larger_entry_id": {
+            "title": "Larger Entry Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "larger_entry_id",
+          "difference"
+        ],
+        "title": "UnitOfferFeeOut",
+        "type": "object"
+      },
+      "UnitOfferOut": {
+        "description": "A partner a transfer leg may be given. The groups come in this order: open offers (`open_leg`,\n`untyped_entry`), legs paired elsewhere, the counter-leg; within the first two, exact amounts first,\nthen by date distance (earlier `booked_on`, then lower id on a tie).",
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "integer"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "booked_on": {
+            "format": "date",
+            "title": "Booked On",
+            "type": "string"
+          },
+          "counter_leg": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UnitCounterLegOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "effect": {
+            "$ref": "#/components/schemas/UnitOfferEffectOut"
+          },
+          "entry_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entry Id"
+          },
+          "exact": {
+            "title": "Exact",
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "open_leg",
+              "untyped_entry",
+              "paired_elsewhere",
+              "counter_leg"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "paired_with": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UnitPartnerOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "proposed": {
+            "title": "Proposed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "entry_id",
+          "account_id",
+          "booked_on",
+          "amount",
+          "description",
+          "exact",
+          "proposed",
+          "paired_with",
+          "effect",
+          "counter_leg"
+        ],
+        "title": "UnitOfferOut",
+        "type": "object"
+      },
       "UnitOut": {
         "properties": {
           "anchor_entry_id": {
@@ -4175,6 +4383,47 @@
           "entries"
         ],
         "title": "UnitOut",
+        "type": "object"
+      },
+      "UnitPartnerOut": {
+        "description": "A leg in a few words: the partner of a leg, or the one a leg paired elsewhere is paired with.",
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "integer"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "booked_on": {
+            "format": "date",
+            "title": "Booked On",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "entry_id": {
+            "title": "Entry Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "entry_id",
+          "account_id",
+          "booked_on",
+          "amount",
+          "description"
+        ],
+        "title": "UnitPartnerOut",
         "type": "object"
       },
       "UnitPlannedOut": {
@@ -4375,6 +4624,16 @@
             "title": "Tag Ids",
             "type": "array"
           },
+          "transfer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UnitTransferOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "unit_key": {
             "title": "Unit Key",
             "type": "integer"
@@ -4482,6 +4741,35 @@
         "title": "UnitProblemOut",
         "type": "object"
       },
+      "UnitProposalOut": {
+        "properties": {
+          "entry_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entry Id"
+          },
+          "kind": {
+            "enum": [
+              "entry",
+              "counter_leg"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "entry_id"
+        ],
+        "title": "UnitProposalOut",
+        "type": "object"
+      },
       "UnitRefOut": {
         "properties": {
           "anchor_entry_id": {
@@ -4573,6 +4861,8 @@
               "enum": [
                 "incomplete",
                 "unpaired_transfer",
+                "waiting_for_partner",
+                "unmatched_transfer",
                 "non_standing_keys"
               ],
               "type": "string"
@@ -4684,6 +4974,109 @@
           }
         },
         "title": "UnitTagChangeIn",
+        "type": "object"
+      },
+      "UnitTransferOut": {
+        "description": "A transfer leg as the draft leaves it (spec \u00a75.7): its state, partner and offers, computed now.",
+        "properties": {
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "needs_account": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UnitNeedsAccountOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "offers": {
+            "items": {
+              "$ref": "#/components/schemas/UnitOfferOut"
+            },
+            "title": "Offers",
+            "type": "array"
+          },
+          "partner": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UnitPartnerOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "proposal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UnitProposalOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "enum": [
+              "paired",
+              "waiting",
+              "unmatched",
+              "needs_account"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "waiting_for": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UnitWaitingForOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "state",
+          "waiting_for",
+          "needs_account",
+          "partner",
+          "offers",
+          "proposal",
+          "has_more"
+        ],
+        "title": "UnitTransferOut",
+        "type": "object"
+      },
+      "UnitWaitingForOut": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "integer"
+          },
+          "synced_through": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Synced Through"
+          }
+        },
+        "required": [
+          "account_id",
+          "synced_through"
+        ],
+        "title": "UnitWaitingForOut",
         "type": "object"
       },
       "UpdateBody": {
@@ -8995,8 +9388,28 @@
     },
     "/api/units/preview": {
       "post": {
-        "description": "The unit as a commit of the draft would leave it, resolved fresh: rows, keys, flags, the state it leads\nto, the problems that would refuse the commit and the consequences. An in-memory overlay: nothing is\nwritten.",
+        "description": "The unit as a commit of the draft would leave it, resolved fresh: rows, keys, flags, the state it leads\nto, the problems that would refuse the commit and the consequences. An in-memory overlay: nothing is\nwritten.\n\nSettling is simulated ledger-wide: a leg of the unit that settling would pair with a leg outside it brings\nthat leg's unit into the rows. Each transfer row carries `transfer`: its state, partner and offers.\n`window_days` (1 to 90, default the matching window) is the window the offers are shown for.",
         "operationId": "preview_unit",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "window_days",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 90,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Window Days"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {

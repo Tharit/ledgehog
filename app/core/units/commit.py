@@ -40,7 +40,7 @@ from app.core.units.lookup import unit_ids_of
 from app.core.units.overlay import plan_unit
 from app.core.units.plan import Consequence, Plan, PlannedRow, Problem
 from app.core.units.preview import UnitNotFound
-from app.core.units.state import UnitState, unit_state
+from app.core.units.state import UnitState, leg_states_of_flags, unit_state
 from app.core.units.stored import load_stored_entries, load_world, missing_tag
 from app.utils.db.errors import constraint_name
 from app.utils.db.locks import lock_accounts, lock_rows, lock_settle_shared, retry_on_deadlock
@@ -282,10 +282,13 @@ def _result(engine: Engine, plan: Plan, created: Mapping[int, int], settled: Set
         UnitEntry(r.id, r.source_transaction_id, r.type, r.category_id, r.counterpart_entry_id, r.derivation)
         for r in unit_rows
     ]
+    leg_states = leg_states_of_flags({r.id: r.review_flags for r in unit_rows})
     for unit in units_of(entries).values():
         units.append(
             CommittedUnit(
-                anchor_entry_id=unit[0].id, entry_ids=tuple(e.id for e in unit), state=unit_state(list(unit))
+                anchor_entry_id=unit[0].id,
+                entry_ids=tuple(e.id for e in unit),
+                state=unit_state(list(unit), leg_states),
             )
         )
     consequences = tuple(Consequence(created.get(c.entry_id, c.entry_id), c.kind) for c in plan.consequences)

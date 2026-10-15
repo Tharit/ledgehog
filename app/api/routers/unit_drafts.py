@@ -18,6 +18,7 @@ from app.api.ids import MAX_ID, EntityId, EntityVersion
 from app.api.routers.accounts import Money
 from app.api.routers.entries import EntryOut
 from app.api.routers.maintenance import SettleOut
+from app.core.matching import Offer
 from app.core.units.commit import CommitResult
 from app.core.units.draft import UNSET, DraftEntry, FieldDraft, ShownBasis, UnitDraft
 from app.core.units.plan import (
@@ -30,10 +31,13 @@ from app.core.units.plan import (
     Split,
     Stored,
     StoredUnit,
+    TransferView,
 )
 from app.core.units.state import UnitState
 
-UnitReason = Literal["incomplete", "unpaired_transfer", "non_standing_keys"]
+UnitReason = Literal[
+    "incomplete", "unpaired_transfer", "waiting_for_partner", "unmatched_transfer", "non_standing_keys"
+]
 FieldName = Literal["type", "payee", "category", "counter_account"]
 ConsequenceKind = Literal["created", "changed", "returns_to_review", "deleted", "unpaired", "left_behind"]
 TempOrStoredId = Annotated[int, Field(ge=-MAX_ID, le=MAX_ID)]
@@ -195,6 +199,154 @@ class UnitStoredRowOut(BaseModel):
     note: str | None
 
 
+class UnitPartnerOut(BaseModel):
+    """A leg in a few words: the partner of a leg, or the one a leg paired elsewhere is paired with."""
+
+    entry_id: int
+    account_id: int
+    booked_on: date
+    amount: Money
+    description: str | None
+
+
+class UnitOfferFeeOut(BaseModel):
+    larger_entry_id: int  # the leg the difference is split off, as a new flow entry
+    difference: Money  # positive, in the currency of both legs
+
+
+class UnitOfferEffectOut(BaseModel):
+    """What picking the offer would also do (the real consequences show after the pick)."""
+
+    types_as_transfer: bool  # an untyped entry becomes a transfer
+    fee: UnitOfferFeeOut | None  # a same-currency offer of another amount: the difference becomes a flow
+    breaks_pair_with: list[int]  # the entries whose pair the pick breaks (the leg's own, the picked leg's)
+
+
+class UnitCounterLegOut(BaseModel):
+    """The counter-leg a commit would create on the offer's account (an unsynced one)."""
+
+    booked_on: date
+    purpose: str | None
+    amount: Money | None  # null: the user types the amount received (`needs_received_amount`)
+    needs_received_amount: bool
+
+
+class UnitOfferOut(BaseModel):
+    """A partner a transfer leg may be given. The groups come in this order: open offers (`open_leg`,
+    `untyped_entry`), legs paired elsewhere, the counter-leg; within the first two, exact amounts first,
+    then by date distance (earlier `booked_on`, then lower id on a tie)."""
+
+    kind: Literal["open_leg", "untyped_entry", "paired_elsewhere", "counter_leg"]
+    entry_id: int | None  # null for the counter-leg: it does not exist yet
+    account_id: int
+    booked_on: date
+    amount: Money | None  # null only for a counter-leg that needs the amount received
+    description: str | None
+    exact: bool  # equal and opposite, or across currencies one leg's instructed amount
+    proposed: bool  # the preview's preselection (a `user` decision once committed; never stored)
+    paired_with: UnitPartnerOut | None  # the partner of a leg paired elsewhere
+    effect: UnitOfferEffectOut
+    counter_leg: UnitCounterLegOut | None
+
+    @staticmethod
+    def of(o: Offer) -> UnitOfferOut:
+        def money(amount: int | None) -> Money | None:
+            return None if amount is None else Money(amount=amount, currency=o.currency)
+
+        paired = o.paired_with
+        fee = o.effect.fee
+        cl = o.counter_leg
+        return UnitOfferOut(
+            kind=o.kind,
+            entry_id=o.entry_id,
+            account_id=o.account_id,
+            booked_on=o.booked_on,
+            amount=money(o.amount),
+            description=o.description,
+            exact=o.exact,
+            proposed=o.proposed,
+            paired_with=None
+            if paired is None
+            else UnitPartnerOut(
+                entry_id=paired.entry_id,
+                account_id=paired.account_id,
+                booked_on=paired.booked_on,
+                amount=Money(amount=paired.amount, currency=paired.currency),
+                description=paired.description,
+            ),
+            effect=UnitOfferEffectOut(
+                types_as_transfer=o.effect.types_as_transfer,
+                fee=None
+                if fee is None
+                else UnitOfferFeeOut(
+                    larger_entry_id=fee.larger_entry_id,
+                    difference=Money(amount=fee.difference, currency=fee.currency),
+                ),
+                breaks_pair_with=list(o.effect.breaks_pair_with),
+            ),
+            counter_leg=None
+            if cl is None
+            else UnitCounterLegOut(
+                booked_on=cl.booked_on,
+                purpose=cl.purpose,
+                amount=None if cl.amount is None else Money(amount=cl.amount, currency=cl.currency),
+                needs_received_amount=cl.needs_received_amount,
+            ),
+        )
+
+
+class UnitProposalOut(BaseModel):
+    kind: Literal["entry", "counter_leg"]
+    entry_id: int | None  # the offer's entry; null for the counter-leg
+
+
+class UnitWaitingForOut(BaseModel):
+    account_id: int  # the counter-account the partner is awaited from
+    synced_through: date | None  # how far that account has been fetched; null = never
+
+
+class UnitNeedsAccountOut(BaseModel):
+    currency: str  # the currency the leg needs an account in
+
+
+class UnitTransferOut(BaseModel):
+    """A transfer leg as the draft leaves it (spec §5.7): its state, partner and offers, computed now."""
+
+    state: Literal["paired", "waiting", "unmatched", "needs_account"]
+    waiting_for: UnitWaitingForOut | None  # state `waiting`
+    needs_account: UnitNeedsAccountOut | None  # state `needs_account`
+    partner: UnitPartnerOut | None  # state `paired`
+    offers: list[UnitOfferOut]
+    proposal: UnitProposalOut | None  # what the preview preselects; none for a leg that has a partner
+    has_more: bool  # more candidates exist beyond the window, up to the widest a pick may ask for (90)
+
+    @staticmethod
+    def of(t: TransferView) -> UnitTransferOut:
+        return UnitTransferOut(
+            state=t.state,
+            waiting_for=None
+            if t.waiting_for is None
+            else UnitWaitingForOut(
+                account_id=t.waiting_for.account_id, synced_through=t.waiting_for.synced_through
+            ),
+            needs_account=None if t.needs_account is None else UnitNeedsAccountOut(currency=t.needs_account),
+            partner=None
+            if t.partner is None
+            else UnitPartnerOut(
+                entry_id=t.partner.entry_id,
+                account_id=t.partner.account_id,
+                booked_on=t.partner.booked_on,
+                amount=Money(amount=t.partner.amount, currency=t.partner.currency),
+                description=t.partner.description,
+            ),
+            offers=[UnitOfferOut.of(o) for o in t.offers],
+            proposal=None
+            if t.proposal is None
+            else UnitProposalOut(kind=t.proposal.kind, entry_id=t.proposal.entry_id),
+            has_more=t.has_more,
+        )
+
+
 class UnitPreviewRowOut(BaseModel):
     id: int  # stored, or the client's temporary (negative) id
     version: int | None  # null for a row the draft creates
@@ -214,9 +366,10 @@ class UnitPreviewRowOut(BaseModel):
     review_flags: list[str]
     derivation: dict[str, Any]  # as stored once committed and settled
     stored: UnitStoredRowOut | None
+    transfer: UnitTransferOut | None = None  # a row that is a transfer leg: its state, partner, offers
 
     @staticmethod
-    def of(r: PlannedRow) -> UnitPreviewRowOut:
+    def of(r: PlannedRow, transfer: TransferView | None = None) -> UnitPreviewRowOut:
         s = r.stored
         return UnitPreviewRowOut(
             id=r.id,
@@ -236,6 +389,7 @@ class UnitPreviewRowOut(BaseModel):
             fields={n: UnitFieldOut.of(f, stored=s is not None) for n, f in r.fields.items()},
             review_flags=list(r.flags),
             derivation=dict(r.derivation),
+            transfer=None if transfer is None else UnitTransferOut.of(transfer),
             stored=None
             if s is None
             else UnitStoredRowOut(
@@ -378,7 +532,7 @@ class UnitPreviewOut(BaseModel):
         return UnitPreviewOut(
             state=UnitStateOut.of(plan.anchor_unit.state),
             units=[UnitPlannedOut.of(u) for u in plan.units],
-            rows=[UnitPreviewRowOut.of(r) for r in plan.rows],
+            rows=[UnitPreviewRowOut.of(r, plan.transfers.get(r.id)) for r in plan.rows],
             splits=[UnitSplitOut.of(s, currency[s.source_transaction_id]) for s in plan.splits],
             problems=[UnitProblemOut.of(p) for p in plan.problems],
             consequences=[UnitConsequenceOut.of(c, plan) for c in plan.consequences],

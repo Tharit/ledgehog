@@ -65,10 +65,19 @@ def preview_then_commit(scene: Scene, draft: UnitDraft) -> tuple[Plan, CommitRes
             "tag_ids": scene.tags_of(created_or_id(result.created, temp_or_id)),
         }
         assert actual == expected, f"entry {temp_or_id}"
-    assert {
-        c.entry_id if c.entry_id > 0 else result.created[c.entry_id]: c.kind for c in plan.consequences
-    } == {c.entry_id: c.kind for c in result.consequences} or sorted(
+    previewed_consequences = sorted(
         (result.created.get(c.entry_id, c.entry_id), c.kind) for c in plan.consequences
-    ) == sorted((c.entry_id, c.kind) for c in result.consequences)
+    )
+    committed_consequences = sorted((c.entry_id, c.kind) for c in result.consequences)
+    if set(plan.versions) != set(draft.versions):
+        # settling paired a leg of the unit with a leg outside it (the preview brought its unit in): the
+        # preview shows what that changes (the leg `changed`, a unit that returns to review or does not, a
+        # leg `unpaired` into the unit rather than `left_behind` it) and the commit's own plan, which holds
+        # no leg of the ledger, cannot know: the entries agree, the kinds may differ in those ways
+        both = set(previewed_consequences) ^ set(committed_consequences)
+        assert all(kind in ("changed", "returns_to_review", "unpaired", "left_behind") for _id, kind in both)
+        assert {i for i, _k in committed_consequences} <= {i for i, _k in previewed_consequences}
+    else:
+        assert previewed_consequences == committed_consequences
     assert set(result.removed_entry_ids) == {e.id for e in plan.removed}
     return plan, result

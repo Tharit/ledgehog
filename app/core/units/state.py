@@ -8,14 +8,19 @@ exactly as settling will judge the committed result.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
 from app.core.plugins.classifier import STANDING_PASSES
 from app.core.units.closure import UnitEntry
 
-Reason = Literal["incomplete", "unpaired_transfer", "non_standing_keys"]
+# `unpaired_transfer` is an unpaired leg of which nothing more is known (no sync facts were given);
+# `waiting_for_partner` and `unmatched_transfer` are its two states (spec §5.7), judged like the flags
+Reason = Literal[
+    "incomplete", "unpaired_transfer", "waiting_for_partner", "unmatched_transfer", "non_standing_keys"
+]
+LegState = Literal["waiting", "unmatched"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,18 +41,43 @@ def is_unclassified(entry: UnitEntry) -> bool:
     return entry.type is None or (entry.type == "flow" and entry.category_id is None)
 
 
-def unit_state(entries: Sequence[UnitEntry]) -> UnitState:
-    """The state of the unit made of `entries`, all movements (a derived entry is in no unit)."""
+def leg_states_of_flags(flags: Mapping[int, Sequence[str]]) -> dict[int, LegState]:
+    """The state of each leg from the review flags settling stored on it (`waiting`, `unmatched_transfer`)."""
+    out: dict[int, LegState] = {}
+    for entry_id, tokens in flags.items():
+        if "waiting" in tokens:
+            out[entry_id] = "waiting"
+        elif "unmatched_transfer" in tokens:
+            out[entry_id] = "unmatched"
+    return out
+
+
+def unit_state(entries: Sequence[UnitEntry], leg_states: Mapping[int, LegState] | None = None) -> UnitState:
+    """The state of the unit made of `entries`, all movements (a derived entry is in no unit).
+
+    `leg_states` says per unpaired transfer leg whether it is waiting or unmatched (spec §5.7); the reason
+    for it is then `waiting_for_partner` or `unmatched_transfer`. A leg it does not name is the generic
+    `unpaired_transfer`. A unit has at most one unpaired leg: a source has one transfer entry (I31) and an
+    unpaired leg's unit is its own source.
+    """
     if any(not e.movement for e in entries):
         raise ValueError("a derived entry is in no unit")
     nonstanding = any(has_nonstanding_key(e) for e in entries)
     incomplete = any(is_unclassified(e) for e in entries)
-    unpaired = any(e.type == "transfer" and e.counterpart_entry_id is None for e in entries)
+    unpaired_legs = [e for e in entries if e.type == "transfer" and e.counterpart_entry_id is None]
+    unpaired = bool(unpaired_legs)
     reasons: list[Reason] = []
     if incomplete:
         reasons.append("incomplete")
     if unpaired:
-        reasons.append("unpaired_transfer")
+        known = {(leg_states or {}).get(e.id) for e in unpaired_legs}
+        reasons.append(
+            "waiting_for_partner"
+            if "waiting" in known
+            else "unmatched_transfer"
+            if "unmatched" in known
+            else "unpaired_transfer"
+        )
     if nonstanding:
         reasons.append("non_standing_keys")
     flags = {

@@ -728,6 +728,10 @@ export interface paths {
          * @description The unit as a commit of the draft would leave it, resolved fresh: rows, keys, flags, the state it leads
          *     to, the problems that would refuse the commit and the consequences. An in-memory overlay: nothing is
          *     written.
+         *
+         *     Settling is simulated ledger-wide: a leg of the unit that settling would pair with a leg outside it brings
+         *     that leg's unit into the rows. Each transfer row carries `transfer`: its state, partner and offers.
+         *     `window_days` (1 to 90, default the matching window) is the window the offers are shown for.
          */
         post: operations["preview_unit"];
         delete?: never;
@@ -1970,6 +1974,22 @@ export interface components {
             version: number | null;
         };
         /**
+         * UnitCounterLegOut
+         * @description The counter-leg a commit would create on the offer's account (an unsynced one).
+         */
+        UnitCounterLegOut: {
+            amount: components["schemas"]["Money"] | null;
+            /**
+             * Booked On
+             * Format: date
+             */
+            booked_on: string;
+            /** Needs Received Amount */
+            needs_received_amount: boolean;
+            /** Purpose */
+            purpose: string | null;
+        };
+        /**
          * UnitDraftEntryIn
          * @description One entry the draft changes. `description` and `note` are left as stored when absent and emptied when
          *     null. A new entry (negative `id`) names `source_entry_id`, a stored entry of the source it splits, and
@@ -2056,6 +2076,60 @@ export interface components {
             /** Pass */
             pass: string;
         };
+        /** UnitNeedsAccountOut */
+        UnitNeedsAccountOut: {
+            /** Currency */
+            currency: string;
+        };
+        /**
+         * UnitOfferEffectOut
+         * @description What picking the offer would also do (the real consequences show after the pick).
+         */
+        UnitOfferEffectOut: {
+            /** Breaks Pair With */
+            breaks_pair_with: number[];
+            fee: components["schemas"]["UnitOfferFeeOut"] | null;
+            /** Types As Transfer */
+            types_as_transfer: boolean;
+        };
+        /** UnitOfferFeeOut */
+        UnitOfferFeeOut: {
+            difference: components["schemas"]["Money"];
+            /** Larger Entry Id */
+            larger_entry_id: number;
+        };
+        /**
+         * UnitOfferOut
+         * @description A partner a transfer leg may be given. The groups come in this order: open offers (`open_leg`,
+         *     `untyped_entry`), legs paired elsewhere, the counter-leg; within the first two, exact amounts first,
+         *     then by date distance (earlier `booked_on`, then lower id on a tie).
+         */
+        UnitOfferOut: {
+            /** Account Id */
+            account_id: number;
+            amount: components["schemas"]["Money"] | null;
+            /**
+             * Booked On
+             * Format: date
+             */
+            booked_on: string;
+            counter_leg: components["schemas"]["UnitCounterLegOut"] | null;
+            /** Description */
+            description: string | null;
+            effect: components["schemas"]["UnitOfferEffectOut"];
+            /** Entry Id */
+            entry_id: number | null;
+            /** Exact */
+            exact: boolean;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "open_leg" | "untyped_entry" | "paired_elsewhere" | "counter_leg";
+            paired_with: components["schemas"]["UnitPartnerOut"] | null;
+            /** Proposed */
+            proposed: boolean;
+        };
         /** UnitOut */
         UnitOut: {
             /** Anchor Entry Id */
@@ -2067,6 +2141,24 @@ export interface components {
             /** Unit Key */
             unit_key: number;
             waiting?: components["schemas"]["WaitingOut"] | null;
+        };
+        /**
+         * UnitPartnerOut
+         * @description A leg in a few words: the partner of a leg, or the one a leg paired elsewhere is paired with.
+         */
+        UnitPartnerOut: {
+            /** Account Id */
+            account_id: number;
+            amount: components["schemas"]["Money"];
+            /**
+             * Booked On
+             * Format: date
+             */
+            booked_on: string;
+            /** Description */
+            description: string | null;
+            /** Entry Id */
+            entry_id: number;
         };
         /** UnitPlannedOut */
         UnitPlannedOut: {
@@ -2136,6 +2228,7 @@ export interface components {
             stored: components["schemas"]["UnitStoredRowOut"] | null;
             /** Tag Ids */
             tag_ids: number[];
+            transfer?: components["schemas"]["UnitTransferOut"] | null;
             /** Unit Key */
             unit_key: number;
             /** Value On */
@@ -2158,6 +2251,16 @@ export interface components {
             entry_id: number | null;
             /** Field */
             field: string | null;
+        };
+        /** UnitProposalOut */
+        UnitProposalOut: {
+            /** Entry Id */
+            entry_id: number | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "entry" | "counter_leg";
         };
         /** UnitRefOut */
         UnitRefOut: {
@@ -2198,7 +2301,7 @@ export interface components {
             /** Confirmed */
             confirmed: boolean;
             /** Reasons */
-            reasons: ("incomplete" | "unpaired_transfer" | "non_standing_keys")[];
+            reasons: ("incomplete" | "unpaired_transfer" | "waiting_for_partner" | "unmatched_transfer" | "non_standing_keys")[];
         };
         /** UnitStoredFieldOut */
         UnitStoredFieldOut: {
@@ -2224,6 +2327,32 @@ export interface components {
             add?: number[];
             /** Remove */
             remove?: number[];
+        };
+        /**
+         * UnitTransferOut
+         * @description A transfer leg as the draft leaves it (spec §5.7): its state, partner and offers, computed now.
+         */
+        UnitTransferOut: {
+            /** Has More */
+            has_more: boolean;
+            needs_account: components["schemas"]["UnitNeedsAccountOut"] | null;
+            /** Offers */
+            offers: components["schemas"]["UnitOfferOut"][];
+            partner: components["schemas"]["UnitPartnerOut"] | null;
+            proposal: components["schemas"]["UnitProposalOut"] | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "paired" | "waiting" | "unmatched" | "needs_account";
+            waiting_for: components["schemas"]["UnitWaitingForOut"] | null;
+        };
+        /** UnitWaitingForOut */
+        UnitWaitingForOut: {
+            /** Account Id */
+            account_id: number;
+            /** Synced Through */
+            synced_through: string | null;
         };
         /**
          * UpdateBody
@@ -5197,7 +5326,9 @@ export interface operations {
     };
     preview_unit: {
         parameters: {
-            query?: never;
+            query?: {
+                window_days?: number | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;

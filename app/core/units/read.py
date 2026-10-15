@@ -28,7 +28,7 @@ from app.core.ledger.entries import EntryRow, entries_by_ids
 from app.core.resolution.confirmed import STANDING, units_sql
 from app.core.units.closure import UnitEntry
 from app.core.units.lookup import unit_ids_of
-from app.core.units.state import UnitState, unit_state
+from app.core.units.state import UnitState, leg_states_of_flags, unit_state
 
 SectionKind = Literal["pending_review", "needs_account", "waiting"]
 SECTIONS: tuple[SectionKind, ...] = ("pending_review", "needs_account", "waiting")
@@ -103,7 +103,9 @@ def _view(
     return UnitView(
         anchor_entry_id=ordered[0].id,
         unit_key=unit_key,
-        state=unit_state([unit_entry_of(r) for r in ordered]),
+        state=unit_state(
+            [unit_entry_of(r) for r in ordered], leg_states_of_flags({r.id: r.review_flags for r in ordered})
+        ),
         entries=ordered,
         needs_account=needs_account,
         waiting=waiting,

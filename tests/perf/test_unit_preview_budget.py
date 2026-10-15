@@ -8,10 +8,12 @@ with -s)."""
 
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import Callable
 
 import pytest
+from sqlalchemy import text
 
 from app.core.settle.settle import settle
 from app.core.units.commit import commit_unit
@@ -93,3 +95,101 @@ def test_commit_then_settle_within_the_settle_budget(backfill_settled: Backfill)
 
 
 __all__: list[Callable[..., object]] = []
+
+
+# ---- transfer legs: offers and the ledger-wide simulation of settling (spec §5.7, step 8d) ----------------
+
+
+def _unpaired_legs(backfill: Backfill, n: int, *, with_counter: bool) -> list[int]:
+    cond = "IS NOT NULL" if with_counter else "IS NULL"
+    with backfill.engine.connect() as conn:
+        return [
+            int(i)
+            for i in conn.exec_driver_sql(
+                "SELECT id FROM ledger_entry WHERE type = 'transfer' AND counterpart_entry_id IS NULL"
+                f" AND counter_account_id {cond} ORDER BY id LIMIT {int(n)}"
+            ).scalars()
+        ]
+
+
+def _measure_offers(backfill: Backfill, label: str, anchors: list[int]) -> float:
+    samples: list[float] = []
+    offered = 0
+    for anchor in anchors:
+        started = time.perf_counter()
+        plan = preview_unit(backfill.engine, UnitDraft(anchor), window_days=90)
+        samples.append(time.perf_counter() - started)
+        offered += sum(len(t.offers) for t in plan.transfers.values())
+        assert anchor in plan.transfers
+    stats = Stats.of(samples)
+    print(f"[perf] unit preview with offers, leg {label} ({offered} offers over {len(anchors)}): {stats}")
+    assert stats.max <= UNIT_PREVIEW_BUDGET_SECONDS, f"{label}: {stats}"
+    return stats.max
+
+
+def test_preview_of_transfer_legs_with_offers_within_budget(backfill_transfers: Backfill) -> None:
+    """The transfer ledger (800 legs: unpaired ones waiting and unmatched): a preview loads every unpaired
+    leg of the ledger, simulates pairing over them and reads the pool of offers around the unit's legs, the
+    widest window (90 days) included. Once for legs that know their counter-account, once for legs that do
+    not (offers on every account the currency rule allows: the widest pool); the latter are made by
+    clearing the counter-account of a few legs for the duration of the test."""
+    settle(backfill_transfers.engine)  # the fixture as a settled ledger: what the user opens units in
+    known = _unpaired_legs(backfill_transfers, REPEATS, with_counter=True)
+    assert known
+    worst = _measure_offers(backfill_transfers, "with a counter-account", known)
+    engine = backfill_transfers.engine
+    with engine.begin() as conn:
+        saved = conn.execute(
+            text("SELECT id, counter_account_id, derivation FROM ledger_entry WHERE id = ANY(:i)"),
+            {"i": known},
+        ).all()
+        conn.execute(text("SELECT set_config('ledger.settling', 'on', true)"))
+        conn.execute(
+            text(
+                "UPDATE ledger_entry SET counter_account_id = NULL,"
+                " derivation = derivation - 'counter_account' WHERE id = ANY(:i)"
+            ),
+            {"i": known},
+        )
+    try:
+        worst = max(worst, _measure_offers(backfill_transfers, "without a counter-account", known))
+    finally:
+        with engine.begin() as conn:
+            conn.execute(text("SELECT set_config('ledger.settling', 'on', true)"))
+            for r in saved:
+                conn.execute(
+                    text(
+                        "UPDATE ledger_entry SET counter_account_id = :c, derivation = CAST(:d AS jsonb)"
+                        " WHERE id = :i"
+                    ),
+                    {"c": r.counter_account_id, "d": json.dumps(r.derivation), "i": r.id},
+                )
+    print(
+        f"[perf] unit preview with offers: worst {worst * 1000:.0f} ms"
+        f" (budget {UNIT_PREVIEW_BUDGET_SECONDS} s)"
+    )
+
+
+def test_the_offers_pool_is_served_by_the_date_indexes(backfill_transfers: Backfill) -> None:
+    """EXPLAIN of the pool statement: no sequential scan of the ledger (ix_le_date, ix_le_account_date)."""
+    from app.core.units.stored import _POOL
+
+    with backfill_transfers.engine.connect() as conn:
+        row = conn.exec_driver_sql(
+            "SELECT booked_on, amount, account_id, counter_account_id FROM ledger_entry"
+            " WHERE type = 'transfer' AND counterpart_entry_id IS NULL ORDER BY id LIMIT 1"
+        ).one()
+        params = {
+            "dates": [row.booked_on, row.booked_on],
+            "signs": [-1 if row.amount < 0 else 1, 1],
+            "accounts": [row.account_id, row.account_id],
+            "counters": [row.counter_account_id, None],  # one leg with a counter-account, one without
+            "cap": 90,
+            "skip": [0],
+        }
+        plan = "\n".join(
+            str(r[0])
+            for r in conn.execute(text("EXPLAIN " + str(_POOL)), params).all()  # noqa: S608
+        )
+    print(f"[perf] pool plan:\n{plan}")
+    assert "Seq Scan on ledger_entry" not in plan, plan

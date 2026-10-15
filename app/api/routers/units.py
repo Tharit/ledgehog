@@ -23,6 +23,7 @@ from app.api.routers.unit_drafts import (
     UnitStateOut,
 )
 from app.api.session import CurrentUser, EngineDep
+from app.core.matching import MAX_WINDOW as MAX_OFFER_WINDOW
 from app.core.units.commit import CommitRefused, UnitMoved
 from app.core.units.commit import commit_unit as write_unit
 from app.core.units.draft import DraftError
@@ -187,11 +188,20 @@ map_error(UnitMoved, 409, "unit_moved", details=lambda e: {"anchor_entry_id": e.
 
 
 @router.post("/preview")
-def preview_unit(body: UnitDraftIn, user: CurrentUser, engine: EngineDep) -> UnitPreviewOut:
+def preview_unit(
+    body: UnitDraftIn,
+    user: CurrentUser,
+    engine: EngineDep,
+    window_days: Annotated[int | None, Query(ge=1, le=MAX_OFFER_WINDOW)] = None,
+) -> UnitPreviewOut:
     """The unit as a commit of the draft would leave it, resolved fresh: rows, keys, flags, the state it leads
     to, the problems that would refuse the commit and the consequences. An in-memory overlay: nothing is
-    written."""
-    return UnitPreviewOut.of(read_preview(engine, body.to_core()))
+    written.
+
+    Settling is simulated ledger-wide: a leg of the unit that settling would pair with a leg outside it brings
+    that leg's unit into the rows. Each transfer row carries `transfer`: its state, partner and offers.
+    `window_days` (1 to 90, default the matching window) is the window the offers are shown for."""
+    return UnitPreviewOut.of(read_preview(engine, body.to_core(), window_days=window_days))
 
 
 @router.post("/commit")

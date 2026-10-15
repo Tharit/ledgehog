@@ -101,7 +101,7 @@ def test_a_flow_converted_to_a_transfer_drops_payee_and_category(scene: Scene) -
     assert stored.type == "transfer" and stored.category_id is None and stored.payee_id is None
     assert stored.counter_account_id == scene.savings
     assert set(stored.derivation) == {"type", "counter_account"}
-    assert plan.anchor_unit.state.reasons == ("unpaired_transfer",)
+    assert plan.anchor_unit.state.reasons == ("unmatched_transfer",)
     assert not plan.anchor_unit.state.confirmed
 
 
