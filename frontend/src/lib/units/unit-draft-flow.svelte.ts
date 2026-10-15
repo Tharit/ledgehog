@@ -17,6 +17,7 @@ import {
 	type ShownBasis
 } from './draft.js';
 import { describeProblem, differenceOf, problemSentence, type ProblemText } from './problems.js';
+import { effectiveChanged } from './view.js';
 import type { Affected, Unit, UnitCommit, UnitPreview, UnitProblem } from './types.js';
 
 /** how long typing rests before the preview is asked for */
@@ -115,8 +116,21 @@ export class UnitDraftFlow {
 		this.#host = host;
 	}
 
+	/**
+	 * Does the draft change anything? A field edit counts only when the preview says it ends in
+	 * another value than the stored one (an X that lets a rule propose the stored category again is
+	 * no change); while the preview is not the draft's own, an edit counts.
+	 */
 	get isDirty(): boolean {
-		return this.draft?.isDirty ?? false;
+		const draft = this.draft;
+		if (!draft) return false;
+		if (draft.hasOtherChanges) return true;
+		const preview = !this.stale ? this.preview : null;
+		return draft.fieldEdits().some(({ id, field }) => {
+			const row = preview?.rows.find((r) => r.id === id && r.in_unit) ?? null;
+			const stored = this.unit?.entries.find((e) => e.id === id) ?? null;
+			return effectiveChanged(field, row, stored) !== false;
+		});
 	}
 
 	/** The problems that would refuse the commit: a refused commit's, else the last preview's. */
@@ -211,6 +225,11 @@ export class UnitDraftFlow {
 
 	setField(id: number, field: FieldName, value: FieldValue, shown: ShownBasis | null = null): void {
 		this.edit((d) => d.setField(id, field, value, shown));
+	}
+
+	/** The X of a field: no payee (the user's decision), or the passes propose again. */
+	clearField(id: number, field: FieldName): void {
+		this.edit((d) => d.clearField(id, field));
 	}
 
 	resetField(id: number, field: FieldName): void {

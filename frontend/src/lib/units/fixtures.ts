@@ -11,6 +11,7 @@ import type {
 	Unit,
 	UnitCommit,
 	UnitConsequence,
+	UnitDraftRequest,
 	UnitPreview,
 	UnitProblem
 } from './types.js';
@@ -147,6 +148,24 @@ export function preview(u: Unit, over: Partial<UnitPreview> = {}): UnitPreview {
 		versions: Object.fromEntries(u.entries.map((e) => [e.id, e.version])),
 		...over
 	};
+}
+
+/**
+ * The preview of a request, as the server answers it: the user's fixed values laid over the
+ * unit (each with the `user` key); a re-resolve leaves the stored state in the row.
+ */
+export function previewFor(u: Unit, request: UnitDraftRequest): UnitPreview {
+	const answer = preview(u);
+	for (const edit of request.entries ?? []) {
+		const row = answer.rows.find((r) => r.id === edit.id);
+		if (!row) continue;
+		for (const name of ['type', 'payee', 'category', 'counter_account'] as const) {
+			const field = edit[name];
+			if (field?.mode === 'fixed')
+				row.fields[name] = fieldOut(field.value ?? null, { pass: 'user' });
+		}
+	}
+	return answer;
 }
 
 export function problem(code: string, over: Partial<UnitProblem> = {}): UnitProblem {

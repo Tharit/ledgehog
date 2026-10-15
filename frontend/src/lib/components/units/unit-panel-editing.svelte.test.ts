@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { account, category, entry, payee } from '#lib/ledger/fixtures.js';
 import { buildLookups } from '#lib/ledger/lookups.js';
@@ -65,6 +65,8 @@ function fakePreview(base: ReturnType<typeof unit>, draft: UnitDraftRequest) {
 		if (!row) continue;
 		if (e.category?.mode === 'fixed')
 			row.fields.category = fieldOut(e.category.value ?? null, { pass: 'user' });
+		if (e.payee?.mode === 'fixed')
+			row.fields.payee = fieldOut(e.payee.value ?? null, { pass: 'user' });
 		if (e.type?.mode === 'fixed')
 			row.fields.type = fieldOut(e.type.value ?? null, { pass: 'user' });
 		if (e.category?.mode === 'reresolve') {
@@ -915,6 +917,158 @@ describe('leaving a dirty panel by the dialog’s own ways out', () => {
 		await clickOutside();
 
 		await waitFor(() => expect(panel.isOpen).toBe(false));
+	});
+});
+
+describe('taking a choice back (the X) and "No payee"', () => {
+	const oneOf = (over: Parameters<typeof entry>[0]) =>
+		unit({ anchor_entry_id: 1, entries: [entry({ id: 1, unit_key: 1, ...over })] });
+	const removeChoice = (dialog: HTMLElement) =>
+		within(dialog).queryByRole('button', { name: 'Remove my choice of category' });
+	const noPayee = (dialog: HTMLElement) =>
+		within(dialog).queryByRole('button', { name: 'No payee' });
+
+	it('shows the X on a value the user decided, not on one a rule or a proposal decided', async () => {
+		const { dialog } = await openPanel(); // category by history, payee by a rule
+		expect(removeChoice(dialog)).toBeNull();
+		expect(noPayee(dialog)).not.toBeNull(); // the payee's X: any value, it means "no payee"
+		cleanup();
+
+		const ruled = await openPanel(
+			oneOf({ category_id: 10, derivation: { category: { pass: 'rule', basis: { rule_id: 3 } } } })
+		);
+		expect(removeChoice(ruled.dialog)).toBeNull();
+		cleanup();
+
+		const own = await openPanel(
+			oneOf({ category_id: 10, derivation: { category: { pass: 'user' } } })
+		);
+		expect(removeChoice(own.dialog)).not.toBeNull();
+	});
+
+	it('a removed category choice is proposed again, and Reset to proposal brings the stored one back', async () => {
+		const { panel, dialog } = await openPanel(
+			oneOf({ category_id: 10, derivation: { category: { pass: 'user' } } })
+		);
+		expect(within(dialog).queryByRole('button', { name: 'Reset to proposal' })).toBeNull();
+
+		await fireEvent.click(removeChoice(dialog)!);
+
+		await waitFor(() =>
+			expect(lastRequest().entries).toEqual([{ id: 1, category: { mode: 'reresolve' } }])
+		);
+		await waitFor(() =>
+			expect(within(dialog).getByRole('button', { name: 'Category' })).toHaveTextContent('Dining')
+		);
+		await fireEvent.click(await within(dialog).findByRole('button', { name: 'Reset to proposal' }));
+
+		await waitFor(() => expect(lastRequest().entries).toEqual([]));
+		expect(panel.flow.draft?.fieldEdit(1, 'category')).toBeUndefined();
+		await waitFor(() =>
+			expect(within(dialog).getByRole('button', { name: 'Category' })).toHaveTextContent(
+				'Groceries'
+			)
+		);
+		expect(within(dialog).queryByRole('button', { name: 'Reset to proposal' })).toBeNull();
+	});
+
+	it('an X that ends in the stored value leaves no Reset link and no change to discard', async () => {
+		const shown = oneOf({
+			category_id: 10,
+			derivation: { category: { pass: 'rule', basis: { rule_id: 3 } } }
+		});
+		const { panel, dialog } = await openPanel(shown);
+		// the rule decides 10 again once the user's pick is taken back
+		vi.mocked(previewUnit).mockImplementation(async (draft: UnitDraftRequest) =>
+			draft.entries?.[0]?.category?.mode === 'reresolve'
+				? preview(shown)
+				: fakePreview(shown, draft)
+		);
+		panel.flow.setField(1, 'category', 11);
+		await waitFor(() => expect(removeChoice(dialog)).not.toBeNull()); // the pick is the user's
+
+		await fireEvent.click(removeChoice(dialog)!);
+
+		await waitFor(() => expect(panel.flow.stale).toBe(false));
+		await waitFor(() =>
+			expect(within(dialog).getByRole('button', { name: 'Category' })).toHaveTextContent(
+				'Groceries'
+			)
+		);
+		expect(within(dialog).queryByRole('button', { name: 'Reset to proposal' })).toBeNull();
+		expect(panel.flow.isDirty).toBe(false);
+		expect(within(dialog).getByRole('button', { name: 'Reset' })).toBeDisabled();
+		panel.close();
+		expect(panel.leave).toBeNull(); // nothing to discard: no question
+	});
+
+	it('the payee X is the decision "no payee": shown muted, set by you, standing', async () => {
+		const { dialog } = await openPanel();
+
+		await fireEvent.click(noPayee(dialog)!);
+
+		await waitFor(() =>
+			expect(lastRequest().entries).toEqual([{ id: 1, payee: { mode: 'fixed', value: null } }])
+		);
+		const field = within(dialog).getByRole('button', { name: 'Payee' });
+		await waitFor(() => expect(field).toHaveTextContent('No payee'));
+		expect(field.className).toMatch(/text-muted-foreground/);
+		expect(within(dialog).getByText('set by you')).toBeInTheDocument();
+		expect(noPayee(dialog)).toBeNull(); // nothing left to remove
+		expect(within(dialog).getByRole('button', { name: 'Reset to proposal' })).toBeInTheDocument();
+	});
+
+	it('an undecided empty payee keeps the prompt; a stored "no payee" shows the decision', async () => {
+		const open = await openPanel(oneOf({ payee_id: null }));
+		expect(within(open.dialog).getByRole('button', { name: 'Payee' })).toHaveTextContent(
+			'Choose a payee…'
+		);
+		cleanup();
+
+		const decided = await openPanel(
+			oneOf({ payee_id: null, derivation: { payee: { pass: 'user' } } })
+		);
+		expect(within(decided.dialog).getByRole('button', { name: 'Payee' })).toHaveTextContent(
+			'No payee'
+		);
+		expect(within(decided.dialog).getByText('set by you')).toBeInTheDocument();
+	});
+
+	it('the payee list starts with "No payee", which decides the same as the X', async () => {
+		const { dialog } = await openPanel();
+
+		await fireEvent.keyDown(dialog, { key: 'y' });
+		const options = await screen.findAllByRole('option');
+		expect(options[0]).toHaveTextContent('No payee');
+		expect(options[0]).toHaveAttribute('data-checked', 'false');
+		await fireEvent.click(options[0]);
+
+		await waitFor(() =>
+			expect(lastRequest().entries).toEqual([{ id: 1, payee: { mode: 'fixed', value: null } }])
+		);
+	});
+
+	it('shows "No payee" as selected while the decision stands, and a payee replaces it', async () => {
+		const { dialog } = await openPanel(
+			oneOf({ payee_id: null, derivation: { payee: { pass: 'user' } } })
+		);
+
+		await fireEvent.keyDown(dialog, { key: 'y' });
+		const options = await screen.findAllByRole('option');
+		expect(options[0]).toHaveTextContent('No payee');
+		expect(options[0]).toHaveAttribute('data-checked', 'true');
+		await fireEvent.click(screen.getByRole('option', { name: /Aldi/ }));
+
+		await waitFor(() =>
+			expect(lastRequest().entries).toEqual([{ id: 1, payee: { mode: 'fixed', value: 21 } }])
+		);
+	});
+
+	it('the undecided payee list marks nothing as selected', async () => {
+		const { dialog } = await openPanel(oneOf({ payee_id: null }));
+		await fireEvent.keyDown(dialog, { key: 'y' });
+		const options = await screen.findAllByRole('option');
+		expect(options[0]).toHaveAttribute('data-checked', 'false');
 	});
 });
 

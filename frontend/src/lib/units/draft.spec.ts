@@ -339,3 +339,60 @@ describe('allocations', () => {
 		expect(allocationText(-1250, 'EUR', 'en')).toBe('12.50');
 	});
 });
+
+describe('clearField (the X)', () => {
+	const flowEntry = (over: Parameters<typeof entry>[0] = {}) =>
+		Draft.of(unit({ anchor_entry_id: 1, entries: [entry({ id: 1, unit_key: 1, ...over })] }));
+
+	it('is the user’s "no payee" decision on a payee: fixed null, a standing value', () => {
+		const draft = flowEntry({ payee_id: 20 }).clearField(1, 'payee');
+		expect(draft.fieldEdit(1, 'payee')).toEqual({ mode: 'fixed', value: null, shown: null });
+		expect(first(draft).payee).toEqual({ mode: 'fixed', value: null });
+	});
+
+	it('is still a decision over an undecided empty payee (stored null with no key)', () => {
+		const draft = flowEntry({ payee_id: null }).clearField(1, 'payee');
+		expect(first(draft).payee).toEqual({ mode: 'fixed', value: null });
+		expect(draft.isDirty).toBe(true);
+	});
+
+	it('is no edit over a stored "no payee" decision, and drops an edit made over it', () => {
+		const decided = flowEntry({ payee_id: null, derivation: { payee: { pass: 'user' } } });
+		expect(decided.clearField(1, 'payee').isDirty).toBe(false);
+		expect(decided.setField(1, 'payee', 20).clearField(1, 'payee').isDirty).toBe(false);
+	});
+
+	it('asks the passes again for type, category and counter account, never fixed null', () => {
+		for (const field of ['type', 'category', 'counter_account'] as const) {
+			const draft = flowEntry({ category_id: 10 }).setField(1, field, null).clearField(1, field);
+			expect(draft.fieldEdit(1, field)).toEqual({ mode: 'reresolve' });
+			expect(first(draft)[field]).toEqual({ mode: 'reresolve' });
+		}
+	});
+
+	it('replaces a value the user picked in the draft', () => {
+		const draft = flowEntry({ category_id: 10 })
+			.setField(1, 'category', 11)
+			.clearField(1, 'category');
+		expect(draft.fieldEdit(1, 'category')).toEqual({ mode: 'reresolve' });
+	});
+
+	it('keeps a fixed null over an undecided payee through a rebase, and drops the stored decision', () => {
+		const open = unit({ anchor_entry_id: 1, entries: [entry({ id: 1, unit_key: 1 })] });
+		const draft = Draft.of(open).clearField(1, 'payee');
+		expect(draft.rebase(open).fieldEdit(1, 'payee')).toBeDefined();
+		const decided = unit({
+			anchor_entry_id: 1,
+			entries: [entry({ id: 1, unit_key: 1, derivation: { payee: { pass: 'user' } } })]
+		});
+		expect(draft.rebase(decided).fieldEdit(1, 'payee')).toBeUndefined();
+	});
+
+	it('lists its field edits and tells other changes apart', () => {
+		const draft = flowEntry({ category_id: 10 }).clearField(1, 'category');
+		expect(draft.fieldEdits()).toEqual([{ id: 1, field: 'category', edit: { mode: 'reresolve' } }]);
+		expect(draft.hasOtherChanges).toBe(false);
+		expect(draft.setNote(1, 'x').hasOtherChanges).toBe(true);
+		expect(draft.reresolve().hasOtherChanges).toBe(true);
+	});
+});

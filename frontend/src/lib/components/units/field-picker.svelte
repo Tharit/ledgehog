@@ -12,7 +12,7 @@
 
 	// One derived value of an entry chosen from a searchable list (the shared picker in a popover):
 	// a category, a payee or a transfer's counter-account. Only existing things are offered; adding
-	// one is done in Settings. An item may be disabled with its reason (an account the currency
+	// one is done in Settings. The X is not a plain clear (see `clearable`). An item may be disabled with its reason (an account the currency
 	// rule or the entry's own account rules out). A proposal is italic and muted.
 	let {
 		kind,
@@ -22,6 +22,8 @@
 		proposal = false,
 		invalid = false,
 		clearable = false,
+		emptyText,
+		none,
 		disabled = false,
 		disabledReason,
 		onchange
@@ -33,7 +35,12 @@
 		label: string;
 		proposal?: boolean;
 		invalid?: boolean;
+		/** show the X: the payee's means "no payee", the others' "remove my choice" */
 		clearable?: boolean;
+		/** what an empty field says instead of "Choose a …" ("No payee": the user's decision) */
+		emptyText?: string;
+		/** a first item "No payee": the user's decision that there is none; `selected` while it stands */
+		none?: { selected: boolean };
 		disabled?: boolean;
 		/** why an item cannot be chosen */
 		disabledReason?: (id: number) => string | undefined;
@@ -42,12 +49,15 @@
 
 	let open = $state(false);
 
-	const items = $derived(
-		targetOptions(kind, lookups, value).map((option) => ({
+	// the "No payee" item has no id of its own: 0 is no payee's
+	const NONE = 0;
+	const items = $derived([
+		...(none ? [{ id: NONE, label: 'No payee' }] : []),
+		...targetOptions(kind, lookups, value).map((option) => ({
 			...option,
 			disabled: disabledReason?.(option.id)
 		}))
-	);
+	]);
 	const manage = $derived(
 		kind === 'category'
 			? { href: '/settings/categories', text: 'Manage categories' }
@@ -58,7 +68,7 @@
 
 	function choose(next: number) {
 		open = false;
-		onchange(next);
+		onchange(next === NONE ? null : next);
 	}
 </script>
 
@@ -79,7 +89,7 @@
 				data-proposal={(proposal && value !== null) || undefined}
 			>
 				{#if value === null}
-					<span>Choose a {kindWord(kind)}…</span>
+					<span>{emptyText ?? `Choose a ${kindWord(kind)}…`}</span>
 				{:else}
 					<RuleTarget sets={kind} id={value} {lookups} full />
 				{/if}
@@ -89,7 +99,7 @@
 		<Popover.Content align="start" class="w-80 gap-0 p-1" aria-label={`Choose a ${kindWord(kind)}`}>
 			<Picker
 				{items}
-				selectedId={value}
+				selectedId={none?.selected ? NONE : value}
 				label="Choices"
 				findLabel={`Search ${kindWord(kind)}`}
 				placeholder={`Find a ${kindWord(kind)}…`}
@@ -97,7 +107,11 @@
 				onselect={choose}
 			>
 				{#snippet row(option)}
-					<RuleTarget sets={kind} id={option.id} {lookups} full />
+					{#if option.id === NONE}
+						<span>{option.label}</span>
+					{:else}
+						<RuleTarget sets={kind} id={option.id} {lookups} full />
+					{/if}
 				{/snippet}
 			</Picker>
 			{#if manage}
@@ -113,7 +127,11 @@
 		</Popover.Content>
 	</Popover.Root>
 	{#if clearable && value !== null && !disabled}
-		<IconButton verb="Clear" label={`Clear the ${kindWord(kind)}`} onclick={() => onchange(null)}>
+		<IconButton
+			verb={kind === 'payee' ? 'No payee' : 'Remove my choice'}
+			label={kind === 'payee' ? 'No payee' : `Remove my choice of ${kindWord(kind)}`}
+			onclick={() => onchange(null)}
+		>
 			<XIcon aria-hidden="true" />
 		</IconButton>
 	{/if}

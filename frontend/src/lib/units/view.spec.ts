@@ -3,7 +3,14 @@ import { entry } from '#lib/ledger/fixtures.js';
 import { Draft } from './draft.js';
 import { knownRules } from './evidence.js';
 import { consequence, fieldOut, preview, previewRowOf, unit } from './fixtures.js';
-import { consequenceGroups, entryViews, previewRowEntry, resultText, shownFor } from './view.js';
+import {
+	consequenceGroups,
+	effectiveChanged,
+	entryViews,
+	previewRowEntry,
+	resultText,
+	shownFor
+} from './view.js';
 
 const rules = knownRules(() => undefined);
 const split = unit({
@@ -83,7 +90,9 @@ describe('entryViews: with a preview', () => {
 		expect(untouched.fields.category.canReset).toBe(false);
 		expect(untouched.fields.payee.canReset).toBe(false);
 
-		const changed = views(Draft.of(split).setField(1, 'category', 11), answer)[0];
+		const picked = preview(split);
+		picked.rows[0].fields.category = fieldOut(11, { pass: 'user' });
+		const changed = views(Draft.of(split).setField(1, 'category', 11), picked)[0];
 		expect(changed.fields.category.canReset).toBe(true);
 		expect(changed.fields.payee.canReset).toBe(false);
 
@@ -218,5 +227,117 @@ describe('previewRowEntry', () => {
 	it('reads a transfer’s counter-account', () => {
 		const row = previewRowOf(entry({ id: 2, type: 'transfer', counter_account_id: 3 }));
 		expect(previewRowEntry(row)).toMatchObject({ type: 'transfer', counter_account_id: 3 });
+	});
+});
+
+describe('the X and "Reset to proposal" follow what the preview shows', () => {
+	const stored = (over: Parameters<typeof entry>[0]) =>
+		unit({ anchor_entry_id: 1, entries: [entry({ id: 1, unit_key: 1, ...over })] });
+	const field = (
+		base: ReturnType<typeof unit>,
+		draft: Draft,
+		answer: ReturnType<typeof preview> | null,
+		name: 'category' | 'payee' | 'counter_account' = 'category'
+	) => views(draft, answer, base)[0].fields[name];
+
+	it('offers no Reset when clearing lets the rule propose the stored category again', () => {
+		const base = stored({
+			category_id: 10,
+			derivation: { category: { pass: 'rule', basis: { rule_id: 3 } } }
+		});
+		const answer = preview(base); // the rule decides 10 again
+		const cleared = Draft.of(base).clearField(1, 'category');
+
+		expect(field(base, cleared, answer)).toMatchObject({ value: 10, canReset: false });
+		expect(effectiveChanged('category', answer.rows[0], base.entries[0])).toBe(false);
+	});
+
+	it('offers Reset when a cleared user decision is proposed otherwise or not at all', () => {
+		const base = stored({
+			category_id: 10,
+			derivation: { category: { pass: 'user' } }
+		});
+		const none = preview(base);
+		none.rows[0].fields.category = fieldOut(null);
+		const cleared = Draft.of(base).clearField(1, 'category');
+		expect(field(base, cleared, none)).toMatchObject({ value: null, canReset: true });
+
+		const history = preview(base);
+		history.rows[0].fields.category = fieldOut(10, { pass: 'history', basis: { agree: 2, of: 2 } });
+		// the same value under another key is a change: the user's decision is gone
+		expect(field(base, cleared, history).canReset).toBe(true);
+	});
+
+	it('offers Reset by the key alone when a pick confirms the stored proposal', () => {
+		const base = stored({
+			category_id: 10,
+			derivation: { category: { pass: 'history', basis: { agree: 3, of: 4 } } }
+		});
+		const answer = preview(base);
+		answer.rows[0].fields.category = fieldOut(10, { pass: 'user' });
+		const shown = { pass: 'history', basis: { agree: 3, of: 4 } };
+		const draft = Draft.of(base).setField(1, 'category', 10, shown);
+		expect(field(base, draft, answer).canReset).toBe(true);
+	});
+
+	it('shows the X only on the user’s own decision, by key pass', () => {
+		const clearable = (pass: string | null, value: number | null = 10) => {
+			const base = stored({
+				category_id: value,
+				derivation: pass ? { category: { pass, basis: pass === 'rule' ? { rule_id: 3 } : {} } } : {}
+			});
+			return field(base, Draft.of(base), preview(base)).clearable;
+		};
+		expect(clearable('user')).toBe(true);
+		expect(clearable('rule')).toBe(false);
+		expect(clearable('history')).toBe(false);
+		expect(clearable('llm')).toBe(false);
+		expect(clearable('matcher_decision')).toBe(false);
+		expect(clearable('own_account')).toBe(false);
+		expect(clearable(null)).toBe(false);
+		expect(clearable('user', null)).toBe(false); // nothing shown, nothing to remove
+
+		// a value the user just picked (not yet previewed) is theirs
+		const base = stored({ category_id: 10, derivation: { category: { pass: 'rule', basis: {} } } });
+		const picked = Draft.of(base).setField(1, 'category', 11);
+		expect(field(base, picked, null).clearable).toBe(true);
+	});
+
+	it('shows the X on a payee whenever one is shown, whatever its source', () => {
+		for (const pass of ['rule', 'history', 'llm', 'user']) {
+			const base = stored({ payee_id: 20, derivation: { payee: { pass, basis: {} } } });
+			expect(field(base, Draft.of(base), preview(base), 'payee').clearable).toBe(true);
+		}
+		const empty = stored({ payee_id: null });
+		expect(field(empty, Draft.of(empty), preview(empty), 'payee').clearable).toBe(false);
+	});
+
+	it('tells "no payee" (the user’s decision) from an undecided empty payee', () => {
+		const decided = stored({ payee_id: null, derivation: { payee: { pass: 'user' } } });
+		const open = stored({ payee_id: null });
+		expect(field(decided, Draft.of(decided), preview(decided), 'payee')).toMatchObject({
+			value: null,
+			decidedNone: true,
+			clearable: false,
+			evidence: { text: 'set by you' }
+		});
+		expect(field(open, Draft.of(open), preview(open), 'payee')).toMatchObject({
+			decidedNone: false,
+			evidence: null
+		});
+	});
+
+	it('offers Reset on "no payee" chosen over an undecided or a set payee, not over the same decision', () => {
+		const open = stored({ payee_id: null });
+		const answer = preview(open);
+		answer.rows[0].fields.payee = fieldOut(null, { pass: 'user' });
+		const none = Draft.of(open).clearField(1, 'payee');
+		expect(field(open, none, answer, 'payee')).toMatchObject({ decidedNone: true, canReset: true });
+		// before any preview, the fixed null still differs from an undecided payee
+		expect(field(open, none, null, 'payee').canReset).toBe(true);
+
+		const decided = stored({ payee_id: null, derivation: { payee: { pass: 'user' } } });
+		const same = Draft.of(decided).clearField(1, 'payee');
+		expect(field(decided, same, preview(decided), 'payee').canReset).toBe(false);
 	});
 });

@@ -37,8 +37,12 @@ export type FieldView = {
 	edit: FieldEdit | undefined;
 	/** the key of the proposal shown for this value: named when the user picks that very value */
 	shown: ShownBasis | null;
-	/** "Reset to proposal" applies: the draft holds a value of the user's that differs from the stored one */
+	/** "Reset to proposal" applies: the value shown (or its key) differs from the stored one, by an edit */
 	canReset: boolean;
+	/** the X applies: the value is the user's own decision (a payee: any value, X means "no payee") */
+	clearable: boolean;
+	/** an empty payee by the user's decision ("No payee"), not one still open to proposals */
+	decidedNone: boolean;
 };
 
 export type EntryView = {
@@ -81,6 +85,31 @@ function storedKey(entry: Entry, name: FieldName) {
 		: keyOf(entry.derivation, name);
 }
 
+/** A key as identity: the pass, and for a rule which rule (the basis of a proposal is not one). */
+function keyId(key: { pass: string; basis?: unknown } | null): string {
+	if (key === null) return '';
+	const basis = key.basis as { rule_id?: unknown } | null | undefined;
+	return key.pass === 'rule' ? `rule:${String(basis?.rule_id)}` : key.pass;
+}
+
+/**
+ * Does the preview's row end in another value (or another key) for the field than the entry
+ * stores? This, not the existence of a draft edit, is what a change is: an X that lets the rule
+ * propose the stored category again changes nothing. null: it cannot be told (no row, no entry).
+ */
+export function effectiveChanged(
+	name: FieldName,
+	row: PreviewRow | null,
+	stored: Entry | null
+): boolean | null {
+	const out = row?.fields[name];
+	if (!out || !stored) return null;
+	return (
+		out.value !== STORED_VALUE[name](stored) ||
+		keyId(asKey(out.key)) !== keyId(storedKey(stored, name))
+	);
+}
+
 function fieldView(
 	name: FieldName,
 	draft: Draft,
@@ -106,6 +135,15 @@ function fieldView(
 	} else if (edit?.mode === 'fixed') {
 		value = edit.value;
 	}
+	const changed = effectiveChanged(name, row, stored);
+	const storedNone =
+		stored !== null && stored.payee_id === null && storedKey(stored, 'payee')?.pass === 'user';
+	// without a preview only a fixed value can be compared with what is stored
+	const fallback =
+		edit?.mode === 'fixed' &&
+		(stored === null ||
+			edit.value !== STORED_VALUE[name](stored) ||
+			(name === 'payee' && edit.value === null && !storedNone));
 	return {
 		name,
 		value,
@@ -116,8 +154,10 @@ function fieldView(
 			key && proposal
 				? { pass: key.pass, basis: (key.basis as Record<string, unknown>) ?? {} }
 				: null,
-		canReset:
-			edit?.mode === 'fixed' && (stored === null || edit.value !== STORED_VALUE[name](stored))
+		canReset: edit !== undefined && (changed ?? fallback),
+		clearable:
+			value !== null && (name === 'payee' || key?.pass === 'user' || edit?.mode === 'fixed'),
+		decidedNone: name === 'payee' && value === null && key?.pass === 'user'
 	};
 }
 

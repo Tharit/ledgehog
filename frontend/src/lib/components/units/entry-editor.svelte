@@ -77,6 +77,11 @@
 	}
 
 	function pick(field: FieldView, value: number | null) {
+		// the X: the user takes their choice back (a payee: "no payee"; the rest is proposed again)
+		if (value === null) {
+			flow.clearField(view.id, field.name);
+			return;
+		}
 		flow.setField(view.id, field.name, value as FieldValue, shownFor(field, value));
 	}
 
@@ -220,6 +225,7 @@
 						? view.fields.counter_account.value
 						: null}
 					{lookups}
+					clearable={view.fields.counter_account.clearable}
 					proposal={view.fields.counter_account.proposal}
 					invalid={invalid('counter_account')}
 					disabledReason={accountReason}
@@ -251,7 +257,7 @@
 					label="Category"
 					value={typeof view.fields.category.value === 'number' ? view.fields.category.value : null}
 					{lookups}
-					clearable
+					clearable={view.fields.category.clearable}
 					proposal={view.fields.category.proposal}
 					invalid={invalid('category')}
 					onchange={(id) => pick(view.fields.category, id)}
@@ -265,7 +271,9 @@
 					label="Payee"
 					value={typeof view.fields.payee.value === 'number' ? view.fields.payee.value : null}
 					{lookups}
-					clearable
+					clearable={view.fields.payee.clearable}
+					emptyText={view.fields.payee.decidedNone ? 'No payee' : undefined}
+					none={{ selected: view.fields.payee.decidedNone }}
 					proposal={view.fields.payee.proposal}
 					invalid={invalid('payee')}
 					onchange={(id) => pick(view.fields.payee, id)}

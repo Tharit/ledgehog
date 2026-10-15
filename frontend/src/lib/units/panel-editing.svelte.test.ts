@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { commitUnit, getUnit, listRules, previewUnit } from '#lib/api/index.js';
 import { entry } from '#lib/ledger/fixtures.js';
 import { ruleNames } from '#lib/stores/rule-names.svelte.js';
-import { committed, preview, unit } from './fixtures.js';
+import { committed, previewFor, unit } from './fixtures.js';
 import { UnitPanel, type PanelNav } from './panel.svelte.js';
 import { registerUnitSource, type UnitSource } from './sources.js';
 
@@ -75,7 +75,7 @@ beforeEach(() => {
 	vi.mocked(listRules).mockResolvedValue([]);
 	vi.mocked(getUnit).mockImplementation(async (id) => oneEntry(id));
 	vi.mocked(previewUnit).mockImplementation(async (draft) =>
-		preview(oneEntry(draft.anchor_entry_id))
+		previewFor(oneEntry(draft.anchor_entry_id), draft)
 	);
 	vi.mocked(commitUnit).mockImplementation(async (draft) =>
 		committed(oneEntry(draft.anchor_entry_id))

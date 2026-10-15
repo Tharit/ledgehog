@@ -1,7 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, commitUnit, getUnit, previewUnit } from '#lib/api/index.js';
 import { entry } from '#lib/ledger/fixtures.js';
-import { committed, consequence, preview, previewRowOf, problem, unit } from './fixtures.js';
+import {
+	committed,
+	consequence,
+	fieldOut,
+	preview,
+	previewFor,
+	previewRowOf,
+	problem,
+	unit
+} from './fixtures.js';
 import {
 	affectedOf,
 	PREVIEW_DELAY_MS,
@@ -66,7 +75,7 @@ function error(status: number, code: string, details: unknown = null) {
 beforeEach(() => {
 	vi.useFakeTimers();
 	vi.resetAllMocks();
-	vi.mocked(previewUnit).mockImplementation(async () => preview(loaded));
+	vi.mocked(previewUnit).mockImplementation(async (request) => previewFor(loaded, request));
 	vi.mocked(getUnit).mockResolvedValue(loaded);
 });
 afterEach(() => vi.useRealTimers());
@@ -657,5 +666,82 @@ describe('consequences on the way', () => {
 		expect(flow.stale).toBe(true);
 		expect(flow.problems).toHaveLength(1);
 		expect(flow.preview?.consequences).toHaveLength(1);
+	});
+});
+
+describe('what counts as a change', () => {
+	const ruled = unit({
+		anchor_entry_id: 1,
+		entries: [
+			entry({
+				id: 1,
+				version: 3,
+				unit_key: 1,
+				category_id: 10,
+				derivation: { category: { pass: 'rule', basis: { rule_id: 3 } } }
+			})
+		]
+	});
+
+	function start() {
+		vi.mocked(previewUnit).mockImplementation(async (request) => previewFor(ruled, request));
+		const flow = new UnitDraftFlow(host());
+		flow.begin(ruled);
+		return flow;
+	}
+
+	it('an X whose preview ends in the stored value is no change, once the preview says so', async () => {
+		const flow = start();
+		await settle();
+
+		flow.clearField(1, 'category');
+		expect(flow.draft?.fieldEdit(1, 'category')).toEqual({ mode: 'reresolve' });
+		expect(flow.isDirty).toBe(true); // until the preview is the draft's own, an edit counts
+		await settle();
+
+		expect(flow.stale).toBe(false);
+		expect(flow.isDirty).toBe(false);
+	});
+
+	it('an X that ends in another value is a change', async () => {
+		const flow = start();
+		await settle();
+		vi.mocked(previewUnit).mockImplementation(async () => {
+			const answer = preview(ruled);
+			answer.rows[0].fields.category = fieldOut(null);
+			return answer;
+		});
+
+		flow.clearField(1, 'category');
+		await settle();
+
+		expect(flow.isDirty).toBe(true);
+	});
+
+	it('"no payee" over an undecided payee is a change; a pick back to the stored value is not', async () => {
+		const flow = start();
+		await settle();
+
+		flow.clearField(1, 'payee');
+		await settle();
+		expect(flow.isDirty).toBe(true);
+		expect(flow.draft?.toRequest().entries).toEqual([
+			{ id: 1, payee: { mode: 'fixed', value: null } }
+		]);
+
+		flow.revertField(1, 'payee');
+		await settle();
+		expect(flow.isDirty).toBe(false);
+	});
+
+	it('other changes stay changes whatever the preview says', async () => {
+		const flow = start();
+		await settle();
+		flow.clearField(1, 'category');
+		await settle();
+		expect(flow.isDirty).toBe(false);
+
+		flow.setText(1, 'note', 'x');
+		expect(flow.isDirty).toBe(true);
 	});
 });

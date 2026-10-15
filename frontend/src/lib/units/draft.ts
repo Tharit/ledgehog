@@ -4,6 +4,7 @@
 // user chose and turns it into the request. A field is `keep` (untouched), `fixed` (the user's
 // value) or `reresolve` (the passes decide again); a split row has a temporary (negative) id.
 import { formatMoney, parseMoneyInput, type MoneyParseError } from '#lib/format/index.js';
+import { keyOf } from './evidence.js';
 import type { DraftEntryRequest, FieldDraftRequest, Unit, UnitDraftRequest } from './types.js';
 
 export const FIELD_NAMES = ['type', 'payee', 'category', 'counter_account'] as const;
@@ -35,6 +36,8 @@ type Base = {
 	amount: number;
 	/** the values the entry stores for the derived fields */
 	fields: Readonly<Record<FieldName, FieldValue>>;
+	/** the entry stores "no payee" as the user's decision (an empty payee with the `user` key) */
+	noPayee: boolean;
 };
 
 type State = {
@@ -62,7 +65,8 @@ function baseOf(unit: Pick<Unit, 'entries'>): Map<number, Base> {
 					payee: e.payee_id,
 					category: e.category_id,
 					counter_account: e.counter_account_id
-				}
+				},
+				noPayee: e.payee_id === null && keyOf(e.derivation, 'payee')?.pass === 'user'
 			}
 		])
 	);
@@ -93,6 +97,15 @@ function isEmpty(edit: EntryEdit): boolean {
 	);
 }
 
+/**
+ * Is `value` what the entry stores for the field? An empty payee is two stored states: undecided
+ * and "no payee" (the user's decision); `null` equals only the one the entry is in.
+ */
+function isStored(stored: Base, field: FieldName, value: FieldValue): boolean {
+	if (stored.fields[field] !== value) return false;
+	return field !== 'payee' || value !== null || stored.noPayee;
+}
+
 /** `edit` with the field's value in place, or without it when that is the very value stored. */
 function withField(
 	fields: EntryEdit['fields'],
@@ -102,7 +115,7 @@ function withField(
 	shown: ShownBasis | null
 ): EntryEdit['fields'] {
 	// the stored value is no edit, unless it confirms a proposal the user was shown (`shown`)
-	if (stored !== undefined && shown === null && stored.fields[field] === value) {
+	if (stored !== undefined && shown === null && isStored(stored, field, value)) {
 		return without(fields, field);
 	}
 	return { ...fields, [field]: { mode: 'fixed', value, shown } };
@@ -148,13 +161,38 @@ export class Draft {
 		return this.#s.reresolveAll;
 	}
 
-	/** Has the user changed anything? A draft that has not is still committable (it accepts). */
+	/** Has the user edited anything? A draft that has not is still committable (it accepts). */
 	get isDirty(): boolean {
 		return (
 			this.#s.reresolveAll ||
 			this.#s.splits.length > 0 ||
 			this.#s.removed.length > 0 ||
 			this.#s.edits.size > 0
+		);
+	}
+
+	/**
+	 * Has the user changed anything but the derived fields? Whether a field edit changes anything
+	 * is for the preview to say (`effectiveChanged`, view.ts): an edit can end in the stored value.
+	 */
+	get hasOtherChanges(): boolean {
+		if (this.#s.reresolveAll || this.#s.splits.length > 0 || this.#s.removed.length > 0)
+			return true;
+		for (const edit of this.#s.edits.values()) {
+			if (edit.description !== undefined || edit.note !== undefined || edit.amount !== undefined) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** Every derived-field edit the draft holds. */
+	fieldEdits(): { id: number; field: FieldName; edit: FieldEdit }[] {
+		return [...this.#s.edits].flatMap(([id, e]) =>
+			FIELD_NAMES.flatMap((field) => {
+				const edit = e.fields[field];
+				return edit ? [{ id, field, edit }] : [];
+			})
 		);
 	}
 
@@ -215,6 +253,23 @@ export class Draft {
 		return this.#edited(id, (e) => ({
 			...e,
 			fields: { ...e.fields, [field]: { mode: 'reresolve' } }
+		}));
+	}
+
+	/**
+	 * The X of a field: the user takes their choice back. A payee is then empty by the user's
+	 * decision ("no payee": fixed null, a standing value that no pass proposes over), unless the
+	 * entry already stores that. Any other field has no empty decision: the passes propose again
+	 * (reresolve). Whether that ends in the stored value is the preview's to say, so the edit is
+	 * kept and the panel's dirtiness and "Reset to proposal" ask `effectiveChanged`.
+	 */
+	clearField(id: number, field: FieldName): Draft {
+		if (field !== 'payee') return this.resetField(id, field);
+		const stored = this.#s.base.get(id);
+		if (stored?.noPayee) return this.revertField(id, field);
+		return this.#edited(id, (e) => ({
+			...e,
+			fields: { ...e.fields, payee: { mode: 'fixed', value: null, shown: null } }
 		}));
 	}
 
@@ -355,7 +410,7 @@ export class Draft {
 				next.fields = Object.fromEntries(
 					Object.entries(next.fields).filter(
 						([name, f]) =>
-							!(f.mode === 'fixed' && f.shown === null && f.value === was.fields[name as FieldName])
+							!(f.mode === 'fixed' && f.shown === null && isStored(was, name as FieldName, f.value))
 					)
 				) as EntryEdit['fields'];
 			}

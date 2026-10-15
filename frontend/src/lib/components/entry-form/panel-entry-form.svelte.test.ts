@@ -6,7 +6,7 @@ import { authored, deleted, edited, signedIn } from '#lib/entry-form/fixtures.js
 import { lookupsStore } from '#lib/stores/lookups.svelte.js';
 import { unitPanel } from '#lib/units/panel-instance.js';
 import { registerUnitSource } from '#lib/units/sources.js';
-import { preview, unit } from '#lib/units/fixtures.js';
+import { previewFor, unit } from '#lib/units/fixtures.js';
 import UnitPanelView from '#lib/components/units/unit-panel.svelte';
 import EntryFormDialogs from './entry-form-dialogs.svelte';
 
@@ -66,7 +66,7 @@ beforeEach(() => {
 	signedIn();
 	api.listRules.mockResolvedValue([]);
 	api.getUnit.mockResolvedValue(shown);
-	api.previewUnit.mockImplementation(async () => preview(shown));
+	api.previewUnit.mockImplementation(async (request) => previewFor(shown, request));
 	api.updateSource.mockResolvedValue(edited());
 	api.deleteSource.mockResolvedValue(deleted());
 });
