@@ -335,6 +335,15 @@ describe('UnitPanel: other units', () => {
 
 		const strip = within(dialog).getByRole('region', { name: 'Source transaction' });
 		const link = within(strip).getByRole('link', { name: 'Add rule from this transaction' });
+		expect(link).toHaveAttribute('data-slot', 'add-rule-from-source');
+		expect(link.textContent?.trim()).toBe('');
+		const reveal = link.closest('[data-slot="add-rule-reveal"]')!;
+		expect(reveal).toHaveClass(
+			'opacity-0',
+			'group-hover:opacity-100',
+			'group-focus-within:opacity-100',
+			'[@media(hover:none)]:opacity-100'
+		);
 		expect(link).toHaveAttribute('href', '/settings/rules/new?from=7');
 		expect(link).toHaveAttribute('target', '_blank');
 		expect(link).toHaveAttribute('rel', 'noopener');
@@ -641,13 +650,17 @@ describe('UnitPanel: grouped by source transaction', () => {
 		expect(first.querySelector('[data-new]')).not.toBeNull();
 	});
 
-	it('marks an authored source in its header with a small hint', async () => {
+	it('marks an authored source in its strip, not in the group header', async () => {
 		const { dialog } = await openPanel(pair({ authored: true }));
 		const headers = dialog.querySelectorAll('[data-slot="group-header"]');
-		expect(headers[1].querySelector('[data-slot="authored-hint"]')).toHaveTextContent(
+		for (const header of headers) {
+			expect(header.querySelector('[data-slot="authored-hint"]')).toBeNull();
+		}
+		const strips = dialog.querySelectorAll('[data-slot="source-strip"]');
+		expect(strips[1].querySelector('[data-slot="authored-hint"]')).toHaveTextContent(
 			'Entered by hand'
 		);
-		expect(headers[0].querySelector('[data-slot="authored-hint"]')).toBeNull();
+		expect(strips[0].querySelector('[data-slot="authored-hint"]')).toBeNull();
 	});
 
 	it('keeps a single source plain: no header, no indent, the strip on top', async () => {

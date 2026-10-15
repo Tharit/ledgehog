@@ -350,7 +350,11 @@ describe('the partner popover', () => {
 		expect(rows[3].querySelector('[data-slot="offer-paired"]')).toHaveTextContent(
 			/paired with Card · Oct 8, 2026 · \S?50\.00/
 		);
-		expect(rows[3]).toHaveTextContent('breaks the pair with Card');
+		expect(rows[3]).not.toHaveTextContent('breaks');
+		// the caption: once, under the group heading
+		expect(
+			within(list).getAllByText('Paired elsewhere — picking one breaks its pair')
+		).toHaveLength(1);
 		// the counter-leg: last, in its own group
 		expect(within(list).getByText('New')).toBeInTheDocument();
 		expect(rows[4]).toHaveTextContent('Create the other side in');

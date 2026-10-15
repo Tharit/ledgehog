@@ -280,9 +280,14 @@
 						<Command.List aria-label="Partner candidates" class="max-h-72">
 							{#each filtered as group (group.key)}
 								<Command.Group heading={group.label} data-group={group.key}>
+									{#if group.key === 'paired_elsewhere'}
+										<p class="px-2 pb-1 text-xs text-muted-foreground" data-slot="group-caption">
+											Paired elsewhere — picking one breaks its pair
+										</p>
+									{/if}
 									{#each group.offers as offer (offer.entry_id ?? 'counter-leg')}
 										{@const account = lookups.accounts.get(offer.account_id)}
-										{@const hints = offerHints(offer, transfer, words)}
+										{@const hints = offerHints(offer, words)}
 										<Command.Item
 											value={`offer-${offer.entry_id ?? 'counter-leg'}`}
 											class="items-start"

@@ -50,13 +50,11 @@ describe('offerGroups', () => {
 });
 
 describe('offerHints', () => {
-	const none = transferOut();
-
 	it('says an untyped entry will be typed as a transfer', () => {
 		const offer = offerOut({
 			effect: { types_as_transfer: true, fee: null, breaks_pair_with: [] }
 		});
-		expect(offerHints(offer, none, words)).toEqual(['will be typed as a transfer']);
+		expect(offerHints(offer, words)).toEqual(['will be typed as a transfer']);
 	});
 
 	it('says what a fee does, in the amount of the difference', () => {
@@ -67,38 +65,21 @@ describe('offerHints', () => {
 				breaks_pair_with: []
 			}
 		});
-		expect(offerHints(offer, none, words)).toEqual([
+		expect(offerHints(offer, words)).toEqual([
 			'differs by 2.50: the difference becomes a separate flow'
 		]);
 	});
 
-	it('names the pair a pick breaks, from the partner of the leg or the offer’s own pair', () => {
-		const partner = {
-			entry_id: 9,
-			account_id: 2,
-			booked_on: '2026-10-03',
-			amount: { amount: 5000, currency: 'EUR' },
-			description: null
-		};
+	it('has no "breaks the pair" hint: the group caption says it once', () => {
 		const offer = offerOut({
 			kind: 'paired_elsewhere',
-			paired_with: { ...partner, entry_id: 8, account_id: 4 },
 			effect: { types_as_transfer: false, fee: null, breaks_pair_with: [9, 8] }
 		});
-		const [hint] = offerHints(offer, transferOut({ partner }), words);
-		expect(hint).toContain('breaks the pair with Savings · ');
-		expect(hint).toContain('Card · ');
-		expect(
-			offerHints(
-				offerOut({ effect: { types_as_transfer: false, fee: null, breaks_pair_with: [99] } }),
-				none,
-				words
-			)
-		).toEqual(['breaks the pair with its current partner']);
+		expect(offerHints(offer, words)).toEqual([]);
 	});
 
 	it('has no hint for a plain exact offer', () => {
-		expect(offerHints(offerOut(), none, words)).toEqual([]);
+		expect(offerHints(offerOut(), words)).toEqual([]);
 	});
 });
 
@@ -184,7 +165,6 @@ describe('stateSentence', () => {
 });
 
 describe('offerHints of the counter-leg', () => {
-	const none = transferOut();
 	const eur = (amount: number) => ({ amount, currency: 'EUR' });
 
 	it('says what a same-currency counter-leg receives, and when', () => {
@@ -201,7 +181,7 @@ describe('offerHints of the counter-leg', () => {
 				needs_received_amount: false
 			}
 		});
-		const [hint] = offerHints(offer, none, words);
+		const [hint] = offerHints(offer, words);
 		expect(hint).toMatch(/^Receives\s\S?100\.00\sEUR\son Oct 12, 2026$/);
 	});
 
@@ -218,7 +198,7 @@ describe('offerHints of the counter-leg', () => {
 				needs_received_amount: true
 			}
 		});
-		expect(offerHints(offer, none, words)).toEqual(['You enter the amount received']);
+		expect(offerHints(offer, words)).toEqual(['You enter the amount received']);
 	});
 });
 

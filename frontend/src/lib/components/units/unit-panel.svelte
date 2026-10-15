@@ -429,12 +429,6 @@
 											>
 										{/if}
 									</span>
-									{#if group.header.authored}
-										<span
-											class="text-xs font-normal text-muted-foreground"
-											data-slot="authored-hint">Entered by hand</span
-										>
-									{/if}
 								</div>
 							{/if}
 							<div
@@ -442,7 +436,7 @@
 								data-slot="group-content"
 							>
 								{#if multi && group.strip}
-									<SourceStrip groups={[group.strip]} {locale} grouped />
+									<SourceStrip groups={[group.strip]} {locale} />
 								{/if}
 								{#each group.views as view (view.id)}
 									{#if group.ghost}

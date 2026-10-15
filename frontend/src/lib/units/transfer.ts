@@ -69,11 +69,7 @@ export function legWords(
 }
 
 /** The short hints of an offer: what picking it will do (the real consequences follow the pick). */
-export function offerHints(
-	offer: UnitOffer,
-	transfer: Pick<UnitTransfer, 'partner'>,
-	words: Words
-): string[] {
+export function offerHints(offer: UnitOffer, words: Words): string[] {
 	const hints: string[] = [];
 	const { effect } = offer;
 	if (offer.kind === 'counter_leg') {
@@ -99,15 +95,6 @@ export function offerHints(
 			showPlus: false
 		});
 		hints.push(`differs by ${text}: the difference becomes a separate flow`);
-	}
-	if (effect.breaks_pair_with.length > 0) {
-		// the legs a pick would unpair, named where the offer or the leg's own partner says what they are
-		const known = new Map<number, string>();
-		if (transfer.partner) known.set(transfer.partner.entry_id, legWords(transfer.partner, words));
-		if (offer.paired_with)
-			known.set(offer.paired_with.entry_id, legWords(offer.paired_with, words));
-		const names = effect.breaks_pair_with.map((id) => known.get(id) ?? 'its current partner');
-		hints.push(`breaks the pair with ${[...new Set(names)].join(', ')}`);
 	}
 	return hints;
 }
