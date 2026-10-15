@@ -133,6 +133,56 @@ describe('ReviewQueue', () => {
 		expect(within(groups[1] as HTMLElement).getAllByRole('row')).toHaveLength(2);
 	});
 
+	it('draws each multi-entry unit in a bordered, jointly highlighted group, the split with its total marker', async () => {
+		await shown({
+			pending_review: [
+				unit({
+					anchor_entry_id: 1,
+					entries: [
+						entry({ id: 1, unit_key: 1, amount: { amount: -300, currency: 'EUR' } }),
+						entry({ id: 2, unit_key: 1, amount: { amount: -200, currency: 'EUR' } })
+					]
+				}),
+				unit({
+					anchor_entry_id: 3,
+					entries: [
+						entry({ id: 3, unit_key: 3, type: 'transfer', counterpart_entry_id: 4 }),
+						entry({ id: 4, unit_key: 3, type: 'transfer', counterpart_entry_id: 3 })
+					]
+				}),
+				flow(5, 'Single')
+			]
+		});
+
+		const groups = document.querySelectorAll<HTMLElement>('[role="rowgroup"]');
+		expect(groups).toHaveLength(3);
+		for (const group of [groups[0], groups[1]]) {
+			expect(group.className).toContain('border');
+			expect(group.className).toContain('group/unit');
+			for (const row of group.querySelectorAll('[role="row"]'))
+				expect(row.className).toContain('group-hover/unit:bg-muted');
+		}
+		expect(groups[2].className).not.toContain('group/unit');
+		const markers = document.querySelectorAll('[data-unit-marker]');
+		expect(markers).toHaveLength(1);
+		expect(groups[0].querySelector('[data-entry-id="1"]')!.contains(markers[0])).toBe(true);
+		expect(markers[0].getAttribute('title')).toMatch(/^Split total .*5\.00/);
+	});
+
+	it('the cursor highlights every row of its unit', async () => {
+		await shown({
+			pending_review: [
+				unit({
+					anchor_entry_id: 1,
+					entries: [entry({ id: 1, unit_key: 1 }), entry({ id: 2, unit_key: 1 })]
+				})
+			]
+		});
+		await key('j');
+
+		expect(document.querySelectorAll('[role="row"][data-cursor]')).toHaveLength(2);
+	});
+
 	it('is empty only when the whole queue is: "Nothing to review", with a link to the ledger', async () => {
 		await shown({});
 

@@ -30,6 +30,7 @@
 	import { COLUMNS, GRID_TEMPLATE, ROW_GRID } from '#lib/components/ledger/columns.js';
 	import { formatCount } from '#lib/format/index.js';
 	import { ledgerKey, moveCursor } from '#lib/ledger/keys.js';
+	import { UNIT_FRAME, unitTotal } from '#lib/ledger/unit-runs.js';
 	import type { Lookups } from '#lib/ledger/lookups.js';
 	import type { ReviewQueueStore } from '#lib/stores/review-queue.svelte.js';
 	import { describeUnitLoadError } from '#lib/units/describe.js';
@@ -206,11 +207,14 @@
 							<div
 								role="rowgroup"
 								data-unit={unit.anchor_entry_id}
-								class={cn(unit.entries.length > 1 && 'border-l-2 border-l-primary/30')}
+								class={unit.entries.length > 1 ? UNIT_FRAME : undefined}
 							>
 								{#each unit.entries as entry (entry.id)}
 									{@const mark = markOf(store.marks, entry.id)}
+									{@const total = unitTotal(unit.entries)}
 									<EntryRow
+										joined={unit.entries.length > 1}
+										unitTotal={entry.id === unit.entries[0].id ? total : null}
 										{entry}
 										{lookups}
 										{locale}

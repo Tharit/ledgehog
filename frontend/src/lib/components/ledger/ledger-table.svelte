@@ -9,6 +9,7 @@
 	import { describeLoadError } from '#lib/ledger/errors.js';
 	import { DERIVED_NOT_TAGGABLE } from '#lib/ledger/errors.js';
 	import { ledgerKey, moveCursor } from '#lib/ledger/keys.js';
+	import { UNIT_FRAME, unitRuns } from '#lib/ledger/unit-runs.js';
 	import type { Lookups } from '#lib/ledger/lookups.js';
 	import { CHANGED_BY_YOU, CHANGED_ELSEWHERE } from '#lib/ledger/patch.js';
 	import { isDerivedType } from '#lib/ledger/types.js';
@@ -85,6 +86,7 @@
 	let helpOpen = $state(false);
 	let container = $state<HTMLElement | null>(null);
 
+	const runs = $derived(unitRuns(entries));
 	const cursorIndex = $derived(
 		cursorId === null ? -1 : entries.findIndex((e) => e.id === cursorId)
 	);
@@ -319,27 +321,43 @@
 					</div>
 				{/each}
 			{:else}
-				{#each entries as entry (entry.id)}
-					{@const mark = markOf(marks, entry.id)}
-					<EntryRow
-						{entry}
-						{lookups}
-						{locale}
-						{showCurrency}
-						cursor={entry.id === cursorId}
-						changed={changedIds.has(entry.id) ||
-							movedIds.has(entry.id) ||
-							(mark !== undefined && !marks.resolved.has(entry.id))}
-						changedTitle={mark ?? (changedIds.has(entry.id) ? CHANGED_BY_YOU : CHANGED_ELSEWHERE)}
-						resolved={marks.resolved.has(entry.id)}
-						confirmed={marks.confirmed.has(entry.id)}
-						onselect={() => (cursorId = entry.id)}
-						onopen={() => openUnit(entry.id)}
-						ontags={() => {
-							cursorId = entry.id;
-							openPicker();
-						}}
-					/>
+				{#each runs as run (run.entries[0].id)}
+					{@const joined = run.entries.length > 1}
+					{#snippet rows()}
+						{#each run.entries as entry, i (entry.id)}
+							{@const mark = markOf(marks, entry.id)}
+							<EntryRow
+								{entry}
+								{lookups}
+								{locale}
+								{showCurrency}
+								cursor={entry.id === cursorId}
+								{joined}
+								unitCursor={joined &&
+									entry.id !== cursorId &&
+									run.entries.some((e) => e.id === cursorId)}
+								unitTotal={i === 0 ? run.total : null}
+								changed={changedIds.has(entry.id) ||
+									movedIds.has(entry.id) ||
+									(mark !== undefined && !marks.resolved.has(entry.id))}
+								changedTitle={mark ??
+									(changedIds.has(entry.id) ? CHANGED_BY_YOU : CHANGED_ELSEWHERE)}
+								resolved={marks.resolved.has(entry.id)}
+								confirmed={marks.confirmed.has(entry.id)}
+								onselect={() => (cursorId = entry.id)}
+								onopen={() => openUnit(entry.id)}
+								ontags={() => {
+									cursorId = entry.id;
+									openPicker();
+								}}
+							/>
+						{/each}
+					{/snippet}
+					{#if joined}
+						<div role="rowgroup" data-unit={run.key} class={UNIT_FRAME}>{@render rows()}</div>
+					{:else}
+						{@render rows()}
+					{/if}
 				{/each}
 			{/if}
 		</div>

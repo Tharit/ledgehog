@@ -785,3 +785,63 @@ describe('LedgerTable: marks of the unit panel (patterns §7, design §7)', () =
 		expect(onloadmore).toHaveBeenCalled();
 	});
 });
+
+describe('LedgerTable: the entries of a unit are drawn together (patterns §4.1)', () => {
+	const rows = [
+		entry({ id: 5, unit_key: null, description: 'Alone', display_text: 'Alone' }),
+		entry({ id: 4, unit_key: 10, amount: { amount: -300, currency: 'EUR' }, description: 'A' }),
+		entry({ id: 3, unit_key: 10, amount: { amount: -200, currency: 'EUR' }, description: 'B' }),
+		entry({ id: 2, unit_key: 11, type: 'transfer', description: 'Out' }),
+		entry({ id: 1, unit_key: 11, type: 'transfer', description: 'In' })
+	];
+
+	it('frames adjacent rows of one unit in one bordered group and leaves single rows alone', () => {
+		table({ entries: rows, total: rows.length });
+
+		const groups = document.querySelectorAll<HTMLElement>('[role="rowgroup"]');
+		expect(groups).toHaveLength(2);
+		expect(groups[0].dataset.unit).toBe('10');
+		expect(groups[0].className).toContain('border');
+		expect(groups[0].className).toContain('group/unit');
+		expect(
+			[...groups[0].querySelectorAll('[role="row"]')].map((r) => (r as HTMLElement).dataset.entryId)
+		).toEqual(['4', '3']);
+		expect(document.querySelector('[data-entry-id="5"]')!.closest('[role="rowgroup"]')).toBeNull();
+		expect(document.querySelector('[data-entry-id="4"]')).toHaveAttribute('data-joined');
+		expect(document.querySelector('[data-entry-id="5"]')).not.toHaveAttribute('data-joined');
+	});
+
+	it('joins rows of a unit only when they are adjacent', () => {
+		const apart = [
+			entry({ id: 3, unit_key: 7 }),
+			entry({ id: 2, unit_key: null }),
+			entry({ id: 1, unit_key: 7 })
+		];
+		table({ entries: apart, total: 3 });
+
+		expect(document.querySelectorAll('[role="rowgroup"]')).toHaveLength(0);
+	});
+
+	it('highlights the unit together: hover on the group, a lighter cursor on the siblings', async () => {
+		table({ entries: rows, total: rows.length });
+		await key('j'); // row 5
+		await key('j'); // row 4, first of the split
+
+		const first = document.querySelector('[data-entry-id="4"]')!;
+		const second = document.querySelector('[data-entry-id="3"]')!;
+		expect(first).toHaveAttribute('data-cursor');
+		expect(second).not.toHaveAttribute('data-cursor');
+		expect(second.className).toContain('bg-accent/60');
+		expect(second.className).toContain('group-hover/unit:bg-muted');
+		expect(document.querySelector('[data-entry-id="5"]')!.className).not.toContain('bg-accent');
+	});
+
+	it('marks the first row of a split with the unit total, and nothing on a pair', () => {
+		table({ entries: rows, total: rows.length });
+
+		const markers = document.querySelectorAll('[data-unit-marker]');
+		expect(markers).toHaveLength(1);
+		expect(document.querySelector('[data-entry-id="4"]')!.contains(markers[0])).toBe(true);
+		expect(markers[0].getAttribute('title')).toMatch(/^Split total .*5\.00/);
+	});
+});

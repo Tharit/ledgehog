@@ -5,6 +5,7 @@
 
 <script lang="ts">
 	import CheckIcon from '@lucide/svelte/icons/check';
+	import SplitIcon from '@lucide/svelte/icons/split';
 	import AbsentValue from '#lib/components/common/absent-value.svelte';
 	import AccountDot from '#lib/components/common/account-dot.svelte';
 	import DateDisplay from '#lib/components/common/date-display.svelte';
@@ -16,7 +17,8 @@
 	import { CHANGED_BY_YOU } from '#lib/ledger/patch.js';
 	import { ENTRY_TYPE_INFO, isDerivedType } from '#lib/ledger/types.js';
 	import { resolveAccount, resolveCategory, resolveTag } from '#lib/theme/resolve.js';
-	import type { Entry } from '#lib/types/domain.js';
+	import { formatMoney } from '#lib/format/index.js';
+	import type { Entry, Money } from '#lib/types/domain.js';
 	import { cn } from '#lib/utils.js';
 	import { COLUMNS, GRID_TEMPLATE, ROW_GRID } from './columns.js';
 
@@ -32,6 +34,9 @@
 		changedTitle = CHANGED_BY_YOU,
 		resolved = false,
 		confirmed = false,
+		joined = false,
+		unitCursor = false,
+		unitTotal = null,
 		onselect,
 		onopen,
 		ontags
@@ -49,6 +54,12 @@
 		resolved?: boolean;
 		/** and that unit is now confirmed: a check in the badge slot; an unconfirmed one keeps its badges */
 		confirmed?: boolean;
+		/** the row is one of several of a unit drawn together: it highlights with its siblings */
+		joined?: boolean;
+		/** the cursor is on another row of this row's unit: a lighter cursor background */
+		unitCursor?: boolean;
+		/** a split's total: the first row of the split shows a marker whose tooltip says it */
+		unitTotal?: Money | null;
 		onselect?: () => void;
 		/** a click on the row (not on its tags cell): open the unit panel */
 		onopen?: () => void;
@@ -75,6 +86,11 @@
 	);
 	const shownTags = $derived(tags.slice(0, VISIBLE_TAGS));
 	const hiddenTags = $derived(tags.slice(VISIBLE_TAGS));
+	const totalTitle = $derived(
+		unitTotal
+			? `Split total ${formatMoney(unitTotal.amount, unitTotal.currency, { locale, showCurrency: true, showPlus: true })}`
+			: undefined
+	);
 </script>
 
 <!-- the keyboard is handled for the whole list by LedgerTable; a click only moves the cursor -->
@@ -86,11 +102,13 @@
 	data-cursor={cursor || undefined}
 	data-changed={changed || undefined}
 	data-resolved={resolved || undefined}
+	data-joined={joined || undefined}
 	title={changed || resolved ? changedTitle : undefined}
 	class={cn(
 		ROW_GRID,
 		'group relative h-8 scroll-mt-10 border-b border-border px-3 text-[13px]',
-		cursor ? 'bg-accent' : 'hover:bg-muted',
+		cursor ? 'bg-accent' : unitCursor ? 'bg-accent/60' : 'hover:bg-muted',
+		joined && !cursor && 'group-hover/unit:bg-muted',
 		resolved && 'text-muted-foreground'
 	)}
 	style:grid-template-columns={GRID_TEMPLATE}
@@ -172,11 +190,26 @@
 				</button>
 			</div>
 		{:else if column.id === 'description'}
-			<div role="gridcell" class="min-w-0 truncate">
-				{#if entry.description}
-					<span title={entry.description}>{entry.description}</span>
-				{/if}
-			</div>
+			{#if totalTitle}
+				<div role="gridcell" class="flex min-w-0 items-center gap-1.5">
+					<span
+						data-unit-marker
+						class="shrink-0 text-muted-foreground"
+						title={totalTitle}
+						aria-label={totalTitle}
+						role="img"><SplitIcon size={14} strokeWidth={1.75} /></span
+					>
+					{#if entry.description}
+						<span class="truncate" title={entry.description}>{entry.description}</span>
+					{/if}
+				</div>
+			{:else}
+				<div role="gridcell" class="min-w-0 truncate">
+					{#if entry.description}
+						<span title={entry.description}>{entry.description}</span>
+					{/if}
+				</div>
+			{/if}
 		{:else if column.id === 'review'}
 			<div role="gridcell" class="flex items-center gap-1 overflow-hidden">
 				{#if confirmed}
