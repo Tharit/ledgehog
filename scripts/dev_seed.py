@@ -33,7 +33,8 @@ import json
 import os
 import random
 from collections.abc import Mapping
-from datetime import date
+from dataclasses import dataclass
+from datetime import date, timedelta
 from typing import Any
 
 from sqlalchemy import Engine, text
@@ -254,15 +255,75 @@ def classify(engine: Engine, seed: int, out: list[str]) -> None:
     )
 
 
-def transfer_cases(engine: Engine, out: list[str]) -> None:
-    """PROTOTYPE-ONLY dev data: two transfer legs that put units in the review queue's `needs_account` and
-    `waiting` sections (spec §5.7), written with direct SQL on the last day of the giro's data.
+@dataclass(frozen=True, slots=True)
+class _Leg:
+    """One transfer leg of `transfer_cases`: `ago` days before the giro's last day, `counter` the account key
+    the user named (or None); `proposal` leaves it untyped, for settling to
+    type from the history of `name` (the counterparty; a proposal, so the unit is unconfirmed) instead of
+    the standing `user` one; `instructed` is (minor units, currency)."""
 
-    * a cash withdrawal abroad on the giro, instructed in USD, typed a transfer with no counter-account: no
-      USD account exists, so it needs an account in USD;
-    * a leg the user entered on the (unsynced) cash account towards the giro, which is synced and not yet
-      synced through the matching window: its partner has not arrived, so it waits.
+    account: str
+    amount: int
+    purpose: str
+    ago: int = 0
+    counter: str | None = None
+    proposal: bool = False
+    name: str | None = None
+    instructed: tuple[int, str] | None = None
+
+
+# the accounts whose legs are imported (the others are entered by hand), by `dev_seed_data.ACCOUNTS` key
+_SYNCED = ("giro", "savings", "paypal", "visa")
+# key, name, kind, currency: created for the cross-currency legs
+_CASH_GBP = ("gbp", "Bargeld GBP", "cash", "GBP")
+
+# counterparties the history learns the transfer from (the confirmed pair below votes for them)
+_TO_SAVINGS, _FROM_GIRO = "Tagesgeld Urlaub", "Girokonto Urlaub"
+
+# Every scenario of the review queue and the partner popover (spec §5.7), by what settling makes of it
+_TRANSFERS: tuple[_Leg, ...] = (
+    # needs an account in USD: no USD account exists
+    _Leg("giro", -9_200, "ATM WITHDRAWAL NEW YORK USD 100.00 [seed]", instructed=(-10_000, "USD")),
+    # waiting: the partner on the (synced) giro has not arrived yet
+    _Leg("cash", -4_711, "Cash given to a friend [seed]", counter="giro"),
+    # an exact pair of two synced accounts, paired by settling, both legs unconfirmed (a proposed type)
+    _Leg("giro", -30_000, "Umbuchung Reisekasse [seed]", ago=4, proposal=True, name=_TO_SAVINGS),
+    _Leg("savings", 30_000, "Umbuchung Reisekasse [seed]", ago=4, proposal=True, name=_FROM_GIRO),
+    # an exact match with no counter-account on either leg: not paired (I33), each offers the other, proposed
+    _Leg("giro", -8_500, "Guthaben auf PayPal laden [seed]", ago=2),
+    _Leg("paypal", 8_500, "Aufladung vom Girokonto [seed]", ago=1),
+    # inexact: a fee of 1.50 sits between the legs, so they are not paired; the offer carries the fee
+    _Leg("giro", -15_000, "Auszahlung Verkaufserloes [seed]", ago=5, counter="paypal"),
+    _Leg("paypal", 14_850, "Auszahlung auf Girokonto [seed]", ago=5),
+    # a counter-leg proposal: the cash account is unsynced and holds nothing to pair with
+    _Leg("giro", -6_000, "Cash for the weekend [seed]", ago=1, counter="cash"),
+    # across currencies: with an instructed amount in the account's currency the counter-leg has an amount,
+    # without it the user types the amount received
+    _Leg(
+        "giro",
+        -23_000,
+        "Wechsel Reisekasse GBP 200.00 [seed]",
+        ago=2,
+        counter="gbp",
+        instructed=(-20_000, "GBP"),
+    ),
+    _Leg("giro", -11_500, "Wechsel Reisekasse GBP [seed]", ago=3, counter="gbp"),
+    # a confirmed pair (standing keys), whose savings leg then shows as paired elsewhere under the unpaired
+    # duplicate booking one day later on the giro
+    _Leg("giro", -4_000, "Sparrate Urlaub [seed]", ago=7, counter="savings", name=_TO_SAVINGS),
+    _Leg("savings", 4_000, "Sparrate Urlaub [seed]", ago=7, name=_FROM_GIRO),
+    _Leg("giro", -4_000, "Sparrate Urlaub doppelt gebucht [seed]", ago=6, counter="savings"),
+)
+
+
+def transfer_cases(engine: Engine, out: list[str]) -> None:
+    """PROTOTYPE-ONLY dev data: transfer legs for the review queue and the partner popover (spec §5.7),
+    written with direct SQL around the last day of the giro's data (`_TRANSFERS`; it says what each is):
+    needs account, waiting, an exact pair (unconfirmed), exact open legs, an inexact pair, a counter-leg
+    proposal, a counter-leg that needs the amount received and one that has it, a confirmed pair, and a
+    leg whose partner candidate is paired elsewhere. Settling then pairs what it can.
     """
+    gbp = create_account(engine, name=_CASH_GBP[1] + data.SUFFIX, kind=_CASH_GBP[2], currency=_CASH_GBP[3])
     with engine.begin() as conn:
         lock_settle_exclusive(conn)
         ids = {
@@ -272,82 +333,75 @@ def transfer_cases(engine: Engine, out: list[str]) -> None:
                 ).scalar_one()
             )
             for key, name, _kind, _ref in data.ACCOUNTS
-            if key in ("giro", "cash")
         }
-        day = conn.execute(
+        ids[_CASH_GBP[0]] = gbp
+        currency = {ids[k]: "EUR" for k in ids} | {gbp: _CASH_GBP[3]}
+        last = conn.execute(
             text(
                 "SELECT max(booked_on) FROM ledger_entry WHERE account_id = :a AND balance_record_id IS NULL"
             ),
             {"a": ids["giro"]},
         ).scalar_one()
-        run = conn.execute(
-            text("SELECT max(id) FROM import_run WHERE account_id = :a AND status = 'ok'"), {"a": ids["giro"]}
-        ).scalar_one()
-
-        def leg(account: int, amount: int, counter: int | None, **source: Any) -> None:
-            columns = {
-                "importer": None,
-                "import_run_id": None,
-                "source_format": None,
-                "source_id": None,
-                **source,
-            }
+        run = {
+            key: conn.execute(
+                text("SELECT max(id) FROM import_run WHERE account_id = :a AND status = 'ok'"),
+                {"a": ids[key]},
+            ).scalar_one()
+            for key in _SYNCED
+        }
+        for n, leg in enumerate(_TRANSFERS):
+            account, day, imported = ids[leg.account], last - timedelta(days=leg.ago), leg.account in _SYNCED
+            counter = ids[leg.counter] if leg.counter else None
             sid = conn.execute(
                 text(
                     "INSERT INTO source_transaction (importer, import_run_id, account_id, source_id,"
                     " content_hash, source_format, amount, currency, booked_on, purpose, raw,"
-                    " instructed_amount, instructed_currency)"
-                    " VALUES (:importer, :import_run_id, :account, :source_id, :content_hash,"
-                    " :source_format, :amount, 'EUR', :day, :purpose, '{}',"
-                    " :instructed_amount, :instructed_currency) RETURNING id"
+                    " counterparty_name, instructed_amount, instructed_currency)"
+                    " VALUES (:importer, :run, :account, :source_id, :content_hash, :source_format,"
+                    " :amount, :currency, :day, :purpose, '{}', :name, :instructed_amount,"
+                    " :instructed_currency)"
+                    " RETURNING id"
                 ),
                 {
+                    "importer": "csv" if imported else None,
+                    "run": run[leg.account] if imported else None,
                     "account": account,
-                    "amount": amount,
+                    "source_id": f"seed-transfer-{n}" if imported else None,
+                    "content_hash": None if imported else f"seed-transfer-{n}",
+                    "source_format": "csv" if imported else None,
+                    "amount": leg.amount,
+                    "currency": currency[account],
                     "day": day,
-                    "instructed_amount": None,
-                    "instructed_currency": None,
-                    "content_hash": None if columns["source_id"] else f"seed-{account}-{amount}",
-                    **columns,
+                    "purpose": leg.purpose,
+                    "name": leg.name,
+                    "instructed_amount": leg.instructed[0] if leg.instructed else None,
+                    "instructed_currency": leg.instructed[1] if leg.instructed else None,
                 },
             ).scalar_one()
+            derivation: dict[str, Any] = {}
+            if not leg.proposal:
+                derivation["type"] = {"pass": "user"}
+            if counter:
+                derivation["counter_account"] = {"pass": "user"}
             conn.execute(
                 text(
                     "INSERT INTO ledger_entry (source_transaction_id, account_id, currency, booked_on,"
                     " amount, type, counter_account_id, derivation)"
-                    " VALUES (:s, :account, 'EUR', :day, :amount, 'transfer', :counter, CAST(:d AS jsonb))"
+                    " VALUES (:s, :account, :currency, :day, :amount, :type, :counter,"
+                    " CAST(:d AS jsonb))"
                 ),
                 {
                     "s": sid,
                     "account": account,
+                    "currency": currency[account],
                     "day": day,
-                    "amount": amount,
+                    "amount": leg.amount,
+                    "type": None if leg.proposal else "transfer",
                     "counter": counter,
-                    "d": json.dumps(
-                        {
-                            "type": {"pass": "user"},
-                            **({"counter_account": {"pass": "user"}} if counter else {}),
-                        }
-                    ),
+                    "d": json.dumps(derivation),
                 },
             )
-
-        leg(
-            ids["giro"],
-            -9_200,
-            None,
-            importer="csv",
-            import_run_id=run,
-            source_format="csv",
-            source_id="seed-abroad-atm",
-            purpose="ATM WITHDRAWAL NEW YORK USD 100.00 [seed]",
-            instructed_amount=-10_000,
-            instructed_currency="USD",
-        )
-        leg(ids["cash"], -4_711, ids["giro"], purpose="Cash given to a friend [seed]")
-    out.append(
-        "PROTOTYPE-ONLY dev data (direct SQL): 2 transfer legs for the needs-account and waiting sections"
-    )
+    out.append(f"PROTOTYPE-ONLY dev data (direct SQL): {len(_TRANSFERS)} transfer legs for the review queue")
 
 
 def make_rules(engine: Engine, out: list[str]) -> None:
