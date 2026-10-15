@@ -9,7 +9,6 @@ from sqlalchemy import Connection, text
 
 from app.core.resolution.confirmed import STANDING, load_confirmed_ids, units_sql
 from app.core.settle.flags import recompute_review_flags
-from app.core.settle.settle import settle
 from tests.core.ingest.conftest import ledger  # noqa: F401  (fixture)
 from tests.core.ingest.dup_helpers import Ledger
 from tests.core.units.helpers import Bench, keys
@@ -26,7 +25,8 @@ def test_a_transfer_partner_of_an_unconfirmed_leg_is_unconfirmed_too(ledger: Led
             {"d": json.dumps({**pair_key, **history}), "i": a},
         )
     )
-    settle(ledger.engine)
+    # the flags alone: a settle would rederive the pair's legs, and a category key on a transfer has no value
+    ledger.tx(recompute_review_flags)
     flags = {r.id: list(r.review_flags) for r in ledger.q("SELECT id, review_flags FROM ledger_entry")}
     assert "unconfirmed" in flags[a]
     assert "unconfirmed" in flags[b]
@@ -72,13 +72,11 @@ def test_an_unclassified_sibling_does_not_mark_the_complete_one(
     assert load_confirmed_ids(db_conn) == set()
 
 
-def test_an_unpaired_transfer_carries_no_flag_but_is_not_confirmed(
-    db_conn: Connection, make_account: Any
-) -> None:
+def test_an_unpaired_transfer_is_unmatched_and_not_confirmed(db_conn: Connection, make_account: Any) -> None:
     b = Bench(db_conn, make_account)
     leg = b.transfer(b.source())
     recompute_review_flags(db_conn)
-    assert _flags(db_conn, leg) == [[]]
+    assert _flags(db_conn, leg) == [["unmatched_transfer"]]  # no counter-account: nothing to wait for
     assert not _unit(db_conn, leg).unit_ok
 
 

@@ -72,6 +72,16 @@ _INCOME: tuple[tuple[str, int, int, tuple[str, ...]], ...] = (
 )
 
 
+# `transfers > 0` adds that many transfer legs (about) on top of the plain rows, across the EUR accounts:
+# 40% of them in pairs that settling will still make (one leg decided with a counter-account, the other
+# only typed), 25% in pairs already made and confirmed, and 35% unpaired legs, half of them waiting on a
+# counter-account that is synced (an import instance linked to it, covered through the end of the year,
+# so a leg of the last days has not yet been delivered its partner) and half unmatched.
+_PAIR_TO_MAKE, _PAIR_MADE = 0.40, 0.25
+_USER = {"type": {"pass": "user"}, "counter_account": {"pass": "user"}}
+_USER_PAIR = {**_USER, "counterpart": {"pass": "user"}}
+
+
 @dataclass(frozen=True)
 class BackfillSummary:
     seed: int
@@ -82,6 +92,7 @@ class BackfillSummary:
     first_booked: date
     last_booked: date
     run_ids: tuple[int, ...]
+    transfer_count: int = 0  # the transfer legs `transfers` added (part of source_count and entry_count)
 
 
 def _fake_ref(name: str) -> str:
@@ -171,6 +182,125 @@ _INSERT_SOURCE = text(
 )
 
 
+_TRANSFER_SOURCE = text(
+    "INSERT INTO source_transaction (importer, import_run_id, account_id, source_id, source_format,"
+    " amount, currency, booked_on, counterparty_name, purpose, raw)"
+    " VALUES ('csv', :run, :account, :source_id, 'csv:backfill', :amount, 'EUR', :booked_on,"
+    " 'Umbuchung', :purpose, CAST('{}' AS jsonb))"
+)
+_TRANSFER_ENTRY = text(
+    "INSERT INTO ledger_entry (source_transaction_id, account_id, amount, currency, booked_on, type,"
+    " counter_account_id, derivation)"
+    " SELECT s.id, s.account_id, s.amount, s.currency, s.booked_on, 'transfer', v.counter,"
+    " CAST(v.derivation AS jsonb)"
+    " FROM unnest(CAST(:sids AS text[]), CAST(:counters AS bigint[]), CAST(:derivations AS text[]))"
+    " AS v(sid, counter, derivation) JOIN source_transaction s ON s.source_id = v.sid"
+)
+_PAIRED_LEGS = (
+    "SELECT ea.id AS ea, eb.id AS eb FROM unnest(CAST(:a AS text[]), CAST(:b AS text[])) AS v(a, b)"
+    " JOIN source_transaction sa ON sa.source_id = v.a"
+    " JOIN ledger_entry ea ON ea.source_transaction_id = sa.id"
+    " JOIN source_transaction sb ON sb.source_id = v.b"
+    " JOIN ledger_entry eb ON eb.source_transaction_id = sb.id"
+)
+_TRANSFER_PAIRS = text(
+    "UPDATE ledger_entry AS e SET counterpart_entry_id = m.partner FROM ("
+    f" SELECT ea AS id, eb AS partner FROM ({_PAIRED_LEGS}) AS p"
+    f" UNION ALL SELECT eb, ea FROM ({_PAIRED_LEGS}) AS q) AS m WHERE e.id = m.id"
+)
+
+
+def _add_transfers(
+    conn: Any,
+    rng: random.Random,
+    count: int,
+    accounts: list[int],
+    runs: list[int],
+    currencies: list[str],
+    first: date,
+    days: int,
+) -> int:
+    """Add about `count` transfer legs (see the comment above `BackfillSummary`); returns how many."""
+    eur = [i for i, c in enumerate(currencies) if c == "EUR"]
+    if len(eur) < 3:
+        raise ValueError("transfers need three EUR accounts (two to pair, one synced to wait on)")
+    synced = eur[-1]  # the account whose coverage legs wait on
+    instance = conn.execute(
+        text(
+            "INSERT INTO importer_instance (importer, label, access)"
+            " VALUES ('csv', 'Backfill sync', 'shared') RETURNING id"
+        )
+    ).scalar_one()
+    conn.execute(
+        text(
+            "INSERT INTO account_source (account_id, importer_instance_id, external_ref)"
+            " VALUES (:a, :i, 'backfill')"
+        ),
+        {"a": accounts[synced], "i": instance},
+    )
+    others = [i for i in eur if i != synced]
+    sources: list[dict[str, Any]] = []
+    entries: list[tuple[str, int | None, str]] = []  # (source id, counter-account, derivation)
+    made: list[tuple[str, str]] = []
+    n = 0
+
+    def leg(account: int, amount: int, on: date, counter: int | None, keys: dict[str, Any]) -> str:
+        nonlocal n
+        n += 1
+        sid = f"xfer-{n}"
+        sources.append(
+            {
+                "run": runs[account],
+                "account": accounts[account],
+                "source_id": sid,
+                "amount": amount,
+                "booked_on": on,
+                "purpose": f"Umbuchung {n}",
+            }
+        )
+        entries.append((sid, None if counter is None else accounts[counter], json.dumps(keys)))
+        return sid
+
+    def day() -> date:
+        return first + timedelta(days=rng.randrange(days))
+
+    to_make, already = round(count * _PAIR_TO_MAKE / 2), round(count * _PAIR_MADE / 2)
+    for k in range(to_make + already):
+        a, b = rng.sample(others, 2)
+        amount, on = rng.randint(1000, 500_000), day()
+        partner_on = on + timedelta(days=rng.randrange(4))
+        if k < to_make:
+            leg(a, -amount, on, b, _USER)  # decided; its partner is only typed, settling pairs them
+            leg(b, amount, partner_on, None, {"type": {"pass": "user"}})
+        else:
+            x = leg(a, -amount, on, b, _USER_PAIR)
+            y = leg(b, amount, partner_on, a, _USER_PAIR)
+            made.append((x, y))
+    for k in range(count - 2 * (to_make + already)):
+        a = rng.choice(others)
+        amount = rng.randint(1000, 500_000) + 7  # an amount no other leg has
+        if k % 2 == 0:  # waiting: its counter-account is synced and not yet past the leg's window
+            leg(a, -amount, END - timedelta(days=rng.randrange(5)), synced, _USER)
+        else:  # unmatched: the counter-account is unsynced, or there is none
+            counter = rng.choice([*others, None])
+            if counter is None or counter == a:
+                leg(a, -amount, day(), None, {"type": {"pass": "user"}})
+            else:
+                leg(a, -amount, day(), counter, _USER)
+    conn.execute(_TRANSFER_SOURCE, sources)
+    conn.execute(
+        _TRANSFER_ENTRY,
+        {
+            "sids": [e[0] for e in entries],
+            "counters": [e[1] for e in entries],
+            "derivations": [e[2] for e in entries],
+        },
+    )
+    if made:
+        conn.execute(_TRANSFER_PAIRS, {"a": [x for x, _ in made], "b": [y for _, y in made]})
+    return len(sources)
+
+
 def build_backfill(
     engine: Engine,
     *,
@@ -179,6 +309,7 @@ def build_backfill(
     months: int = 12,
     rows_per_account: int = 2000,
     confirmed_share: float = 0.0,
+    transfers: int = 0,
 ) -> BackfillSummary:
     """Load the fixture into an empty ledger in one transaction and return what was built."""
     if not 1 <= accounts <= len(ACCOUNT_PLAN):
@@ -260,6 +391,12 @@ def build_backfill(
             run_ids.append(run)
             currencies.append(currency)
             total += len(rows)
+        added = (
+            _add_transfers(conn, rng, transfers, account_ids, run_ids, currencies, first, days)
+            if transfers
+            else 0
+        )
+        total += added
     return BackfillSummary(
         seed=seed,
         account_ids=tuple(account_ids),
@@ -269,4 +406,5 @@ def build_backfill(
         first_booked=first,
         last_booked=END,
         run_ids=tuple(run_ids),
+        transfer_count=added,
     )

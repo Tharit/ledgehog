@@ -138,6 +138,15 @@ def test_same_purpose_beats_a_closer_date() -> None:
     assert pairs(a, near, far) == [(1, 3)]
 
 
+def test_two_empty_purposes_are_no_evidence_for_the_tie_break() -> None:
+    a = leg(1, counter_account_id=B, purpose="")
+    near = leg(2, B, 1000, on=D + timedelta(days=1), purpose="x")
+    far = leg(3, B, 1000, on=D + timedelta(days=3), purpose="")
+    assert pairs(a, near, far) == [(1, 2)]  # the empty purpose of 3 does not count as a match
+    b = leg(1, counter_account_id=B, purpose="")
+    assert pairs(b, far, leg(4, B, 1000, on=D + timedelta(days=1), purpose="")) == [(1, 4)]
+
+
 def test_without_a_purpose_match_the_closest_date_wins() -> None:
     a = leg(1, counter_account_id=B, purpose="rent")
     near = leg(2, B, 1000, on=D + timedelta(days=1), purpose="x")

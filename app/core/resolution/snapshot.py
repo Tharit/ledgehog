@@ -6,7 +6,8 @@ the lookback, so resolving thousands of entries issues no query. Between rounds 
 the entries a round confirmed, with no reload.
 
 Each entry is one vote. Only a paired transfer carries a counter-account (and that account's
-currency and closing date); before pairing exists (step 8) only flows vote, as the spec says.
+currency and closing date); a pair counts however it was made (a commit, or settling's step 4 once its
+unit is confirmed), and an unpaired transfer is never confirmed, so never a voter.
 Candidates come back ordered by (`booked_on`, entry id), so a proposal never depends on load order.
 """
 

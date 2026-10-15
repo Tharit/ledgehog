@@ -93,8 +93,11 @@ def test_pure_judgement_equals_sql(db_conn: Connection, make_account: Any, seed_
             text(f"WITH units AS ({units_sql()}) SELECT * FROM units"), {"standing": STANDING}
         )
     }
+    # the unit judgement: `waiting` and `unmatched_transfer` are the matcher's (test_flags_matching.py)
+    matching = {"waiting", "unmatched_transfer"}
     stored = {
-        r.id: list(r.review_flags) for r in db_conn.execute(text("SELECT id, review_flags FROM ledger_entry"))
+        r.id: [f for f in r.review_flags if f not in matching]
+        for r in db_conn.execute(text("SELECT id, review_flags FROM ledger_entry"))
     }
 
     movements = [e for e in entries if e.source_transaction_id is not None]

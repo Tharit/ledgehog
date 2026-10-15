@@ -6,13 +6,18 @@ resolved afresh, a changed value rederiving the standing ones after it), and onl
 are written: `type`, `payee_id`, `category_id`, `counter_account_id` and their `derivation` keys,
 in one set-based statement under `ledger.settling`, so no version moves. A second settle finds
 nothing to write (I37). Confirmed units are never read (I20).
+
+A paired leg of an unconfirmed unit is rederived like any other (spec §5.7, I18). When its `type` or its
+OWN counter-account changes the pair falls: it is released on both legs (`rewrite_released`) and step 4
+may make it again in the same round. A counter-account whose key basis is `{"from": "counterpart"}` is
+the pair's, not a guess: it is never compared and goes with the pair.
 """
 
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, replace
 from typing import Any
 
 from sqlalchemy import Connection, text
@@ -36,10 +41,12 @@ _WRITE = text(
     """
     UPDATE ledger_entry AS e
        SET type = v.type, payee_id = v.payee_id, category_id = v.category_id,
-           counter_account_id = v.counter_account_id, derivation = CAST(v.derivation AS jsonb)
+           counter_account_id = v.counter_account_id, derivation = CAST(v.derivation AS jsonb),
+           counterpart_entry_id = CASE WHEN v.unpair THEN NULL ELSE e.counterpart_entry_id END
       FROM unnest(CAST(:ids AS bigint[]), CAST(:types AS text[]), CAST(:payees AS bigint[]),
-                  CAST(:categories AS bigint[]), CAST(:counters AS bigint[]), CAST(:derivations AS text[]))
-           AS v(id, type, payee_id, category_id, counter_account_id, derivation)
+                  CAST(:categories AS bigint[]), CAST(:counters AS bigint[]), CAST(:derivations AS text[]),
+                  CAST(:unpair AS boolean[]))
+           AS v(id, type, payee_id, category_id, counter_account_id, derivation, unpair)
      WHERE e.id = v.id
     RETURNING e.id
     """
@@ -104,6 +111,29 @@ class Rewrite:
     category_id: int | None
     counter_account_id: int | None
     derivation: dict[str, Any]
+    unpair: bool = False  # the entry's pair is released with this write (the partner's is too)
+
+
+def _is_pair_set(key: object) -> bool:
+    """A counter-account key made by a pair (basis `{"from": "counterpart"}`): the pair's, not a guess."""
+    basis = key.get("basis") if isinstance(key, Mapping) else None
+    return isinstance(basis, Mapping) and basis.get("from") == "counterpart"
+
+
+def _value(d: Decided | None) -> int | None:
+    return int(d.value) if d is not None and not is_user_no_payee(d) else None
+
+
+def _rewrite(row: UnconfirmedEntry, new: Resolved, *, unpair: bool = False) -> Rewrite:
+    kind = new.get("type")
+    return Rewrite(
+        type=str(kind.value) if kind is not None else None,
+        payee_id=_value(new.get("payee")),
+        category_id=_value(new.get("category")),
+        counter_account_id=_value(new.get("counter_account")),
+        derivation=new_derivation(row.derivation, new),
+        unpair=unpair,
+    )
 
 
 def rewrite_of(
@@ -115,12 +145,35 @@ def rewrite_of(
 ) -> Rewrite | None:
     """What step 1 writes for one entry of an unconfirmed unit, or None when it writes nothing.
 
-    The one decision both settling and the unit preview take, so a preview cannot drift from the settle
-    that follows a commit. A paired leg is never rewritten (the pair owns its type and counter-account),
-    nor is a transfer on an entry that is not its source's original (I31).
+    The unit preview's decision (an unpaired entry's; settling takes the same for these), so a preview
+    cannot drift from the settle that follows a commit. A paired leg is not rewritten here: settling
+    rederives it too and releases the pair when it falls (`settle_rewrites`), which the preview does not
+    yet simulate. Nor is a transfer on an entry that is not its source's original (I31).
     """
-    if row.paired:  # a pair's type and counter-account belong to the pair (spec §5.7, step 8)
+    if row.paired:
         return None
+    current, new = _rederived(row, accounts=accounts, classifiers=classifiers, history=history)
+    if not diff(current, new) and not _stale_keys(row, current):
+        return None
+    return _checked(row, new)
+
+
+def _checked(row: UnconfirmedEntry, new: Resolved) -> Rewrite | None:
+    kind = new.get("type")
+    if kind is not None and kind.value == "transfer" and not row.original:
+        # a source transaction has at most one transfer entry (I31), and a split's other
+        # entries are flows: leave this one as it is rather than break the unique index
+        return None
+    return _rewrite(row, new)
+
+
+def _rederived(
+    row: UnconfirmedEntry,
+    *,
+    accounts: Sequence[AccountFact],
+    classifiers: Sequence[Classifier],
+    history: HistorySource | None,
+) -> tuple[dict[Field, Decided | None], Resolved]:
     current = stored_decisions(row)
     new = rederive(
         row.input,
@@ -130,60 +183,120 @@ def rewrite_of(
         history=history,
         exclude_entry_ids=frozenset({row.input.entry_id}),
     )
-    if not diff(current, new) and not _stale_keys(row, current):
-        return None
+    return current, new
+
+
+def pair_falls(row: UnconfirmedEntry, new: Resolved) -> bool:
+    """Whether the rederived values of a paired leg end its pair: its type or its own counter-account
+    differs from what is stored (§5.7, I18). A counter-account its pair set is not compared."""
     kind = new.get("type")
-    if kind is not None and kind.value == "transfer" and not row.original:
-        # a source transaction has at most one transfer entry (I31), and a split's other
-        # entries are flows: leave this one as it is rather than break the unique index
-        return None
+    if (str(kind.value) if kind is not None else None) != row.type:
+        return True
+    if _is_pair_set(row.derivation.get("counter_account")):
+        return False
+    return _value(new.get("counter_account")) != row.counter_account_id
 
-    def value(d: Decided | None) -> int | None:
-        return int(d.value) if d is not None and not is_user_no_payee(d) else None
 
-    return Rewrite(
-        type=str(kind.value) if kind is not None else None,
-        payee_id=value(new.get("payee")),
-        category_id=value(new.get("category")),
-        counter_account_id=value(new.get("counter_account")),
-        derivation=new_derivation(row.derivation, new),
-    )
+def _stripped(row: UnconfirmedEntry) -> UnconfirmedEntry:
+    """The leg as it is once its pair is released: no counterpart, no counter-account the pair set, no
+    pair key, every other value and key kept (what `removal._release` leaves)."""
+    derivation = {k: v for k, v in row.derivation.items() if k != "counterpart"}
+    counter = row.counter_account_id
+    if _is_pair_set(row.derivation.get("counter_account")):
+        derivation.pop("counter_account", None)
+        counter = None
+    return replace(row, paired=False, counterpart_id=None, counter_account_id=counter, derivation=derivation)
+
+
+def rewrite_released(
+    row: UnconfirmedEntry,
+    *,
+    accounts: Sequence[AccountFact],
+    classifiers: Sequence[Classifier],
+    history: HistorySource | None,
+) -> Rewrite:
+    """What step 1 writes for a leg whose pair is released (it or its partner fell): always a write.
+
+    The leg is rederived as the unpaired leg it now is, so a second settle finds it as it is left.
+    """
+    leg = _stripped(row)
+    _, new = _rederived(leg, accounts=accounts, classifiers=classifiers, history=history)
+    kind = new.get("type")
+    if kind is not None and kind.value == "transfer" and not leg.original:
+        return Rewrite(  # cannot happen for a leg that was paired; keep its values rather than break I31
+            leg.type, leg.payee_id, leg.category_id, leg.counter_account_id, dict(leg.derivation), True
+        )
+    return _rewrite(leg, new, unpair=True)
+
+
+def settle_rewrites(
+    rows: Sequence[UnconfirmedEntry],
+    *,
+    reach: Callable[[UnconfirmedEntry], bool],
+    accounts: Sequence[AccountFact],
+    classifiers: Sequence[Classifier],
+    history: HistorySource | None,
+) -> dict[int, Rewrite]:
+    """What step 1 writes, by entry id, for the entries of `rows` that `reach` selects.
+
+    An unpaired entry as `rewrite_of`. A paired leg is rederived: when its type or its own counter-account
+    changes, both legs of the pair are released (each is rederived as the unpaired leg it becomes and is
+    always written, the partner even if `reach` skipped it); otherwise its differences are written and
+    the pair stands (a changed basis writes the key only).
+    """
+    by_id = {r.input.entry_id: r for r in rows}
+    out: dict[int, Rewrite] = {}
+    released: set[int] = set()
+    for row in rows:
+        if not reach(row):
+            continue
+        if not row.paired:
+            if rewrite := rewrite_of(row, accounts=accounts, classifiers=classifiers, history=history):
+                out[row.input.entry_id] = rewrite
+            continue
+        current, new = _rederived(row, accounts=accounts, classifiers=classifiers, history=history)
+        if pair_falls(row, new):
+            released.add(row.input.entry_id)
+            if row.counterpart_id in by_id:
+                released.add(row.counterpart_id)
+        elif (diff(current, new) or _stale_keys(row, current)) and (rewrite := _checked(row, new)):
+            out[row.input.entry_id] = rewrite
+    for entry_id in released:
+        out[entry_id] = rewrite_released(
+            by_id[entry_id], accounts=accounts, classifiers=classifiers, history=history
+        )
+    return out
 
 
 def resolve_step(conn: Connection) -> StepOutcome:
     run = current_run()
     ctx = _context(conn, run)
-    ids: list[int] = []
-    types: list[str | None] = []
-    payees: list[int | None] = []
-    categories: list[int | None] = []
-    counters: list[int | None] = []
-    derivations: list[str] = []
-    for row in load_unconfirmed(conn):
+
+    def reach(row: UnconfirmedEntry) -> bool:
         # after the first pass only what the new votes can reach is resolved again: rules and accounts
         # do not change within a settle, and a second pass over unchanged inputs writes nothing
-        if ctx.grown is not None and not touches(ctx.grown, row.input, row.payee_id):
-            continue
-        rewrite = rewrite_of(row, accounts=ctx.accounts, classifiers=ctx.classifiers, history=ctx.snapshot)
-        if rewrite is None:
-            continue
-        ids.append(row.input.entry_id)
-        types.append(rewrite.type)
-        payees.append(rewrite.payee_id)
-        categories.append(rewrite.category_id)
-        counters.append(rewrite.counter_account_id)
-        derivations.append(json.dumps(rewrite.derivation))
-    if not ids:
+        return ctx.grown is None or touches(ctx.grown, row.input, row.payee_id)
+
+    rewrites = settle_rewrites(
+        load_unconfirmed(conn),
+        reach=reach,
+        accounts=ctx.accounts,
+        classifiers=ctx.classifiers,
+        history=ctx.snapshot,
+    )
+    if not rewrites:
         return StepOutcome()
+    ids = sorted(rewrites)
     written = conn.execute(
         _WRITE,
         {
             "ids": ids,
-            "types": types,
-            "payees": payees,
-            "categories": categories,
-            "counters": counters,
-            "derivations": derivations,
+            "types": [rewrites[i].type for i in ids],
+            "payees": [rewrites[i].payee_id for i in ids],
+            "categories": [rewrites[i].category_id for i in ids],
+            "counters": [rewrites[i].counter_account_id for i in ids],
+            "derivations": [json.dumps(rewrites[i].derivation) for i in ids],
+            "unpair": [rewrites[i].unpair for i in ids],
         },
     ).scalars()
     return StepOutcome(touched=[int(i) for i in written])

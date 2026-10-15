@@ -28,6 +28,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from app.core.matching import Leg, leg_of, pair_all, unmatched, waiting
 from app.core.plugins.classifier import (
     FIELD_ORDER,
     STANDING_PASSES,
@@ -38,6 +39,7 @@ from app.core.plugins.classifier import (
 from app.core.resolution import Decided, Resolved, resolve
 from app.core.resolution.load import UnconfirmedEntry
 from app.core.resolution.types import USER_NO_PAYEE, is_user_no_payee
+from app.core.settle.pairing import PAIR_COUNTER_KEY_VALUE, PAIR_KEY_VALUE
 from app.core.settle.resolution import rewrite_of, stored_decisions
 from app.core.units.closure import UnitEntry, units_of
 from app.core.units.draft import (
@@ -488,8 +490,59 @@ def _states(rows: Sequence[_Row]) -> dict[int, tuple[tuple[_Row, ...], UnitState
     return out
 
 
+def _with_matching_flags(flags: tuple[str, ...], row: _Row, world: World) -> tuple[str, ...]:
+    """`waiting` or `unmatched_transfer` for an unpaired transfer leg (the pure twin of the flags SQL)."""
+    if row.type != "transfer" or row.counterpart is not None:
+        return flags
+    leg = Leg(
+        entry_id=row.id,
+        account_id=row.account_id,
+        currency=row.src.currency,
+        amount=row.amount,
+        booked_on=row.src.booked_on,
+        counter_account_id=row.counter_account_id,
+    )
+    synced, through = world.account_sync.get(row.counter_account_id or 0, (False, None))
+    window = world.matching_window
+    if waiting(leg, counter_synced=synced, synced_through=through, window=window):
+        return tuple(sorted((*flags, "waiting")))
+    if unmatched(leg, paired=False, counter_synced=synced, synced_through=through, window=window):
+        return tuple(sorted((*flags, "unmatched_transfer")))
+    return flags
+
+
+def _pair(rows: Sequence[_Row], world: World) -> None:
+    """Settling's step 4 over the plan's own unpaired transfer legs (the same pure `pair_all`), in place.
+
+    The legs outside the plan are not offered yet (offers and the pool are step 8, wave 8d), so a pair
+    settling makes with a leg elsewhere is not previewed.
+    """
+    legs = [
+        leg_of(_entry_input(r), type=r.type, counter_account_id=r.counter_account_id)
+        for r in rows
+        if r.type == "transfer" and r.counterpart is None
+    ]
+    if len(legs) < 2:
+        return
+    by_id = {r.id: r for r in rows}
+    for p in pair_all(legs, world.matching_window, {a.id: a for a in world.accounts}):
+        for entry_id, partner_id, counter in (
+            (p.leg_id, p.partner_id, p.leg_counter_account),
+            (p.partner_id, p.leg_id, p.partner_counter_account),
+        ):
+            r = by_id[entry_id]
+            r.counterpart = partner_id
+            derivation = dict(r.derivation or {})
+            derivation["counterpart"] = dict(PAIR_KEY_VALUE)
+            if counter is not None:
+                r.counter_account_id = counter
+                derivation["counter_account"] = dict(PAIR_COUNTER_KEY_VALUE)
+            r.derivation = derivation
+
+
 def _settle(rows: Sequence[_Row], world: World, documented: frozenset[int]) -> None:
-    """Settling's rounds over the plan's units (step 1 and the teaching of step 5), in place on `rows`.
+    """Settling's rounds over the plan's units (step 1, the pairing of step 4 and the teaching of step 5),
+    in place on `rows`.
 
     A unit that is confirmed teaches history before the first round (the snapshot a settle loads holds the
     committed state) and after each round that confirms it; a source with a document votes nothing.
@@ -520,6 +573,7 @@ def _settle(rows: Sequence[_Row], world: World, documented: frozenset[int]) -> N
                     continue
                 r.type, r.payee_id, r.category_id = rw.type, rw.payee_id, rw.category_id
                 r.counter_account_id, r.derivation = rw.counter_account_id, rw.derivation
+        _pair(rows, world)
         if all(k in taught or not st.confirmed for k, (_m, st) in _states(rows).items()):
             return
     raise RuntimeError("the preview of settling did not converge")
@@ -813,7 +867,7 @@ def plan_unit(stored: StoredUnit, draft: UnitDraft, world: World) -> Plan:
             counterpart_entry_id=r.counterpart,
             fields=_field_results(r),
             derivation=dict(r.derivation or {}),
-            flags=final_states[unit_of[r.id]][1].flags[r.id],
+            flags=_with_matching_flags(final_states[unit_of[r.id]][1].flags[r.id], r, world),
             written=written[r.id],
             original=r.original,
         )

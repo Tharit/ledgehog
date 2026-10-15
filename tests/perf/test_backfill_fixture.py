@@ -82,3 +82,24 @@ def test_all_entries_are_unclassified_after_settle(isolated_engine: Engine):
     with isolated_engine.connect() as conn:
         flags = conn.execute(text("SELECT DISTINCT review_flags FROM ledger_entry")).scalars().all()
     assert flags == [["unclassified"]]
+
+
+def test_transfer_variant_is_clean_and_pairs_in_settle(isolated_engine: Engine):
+    s = build_backfill(isolated_engine, seed=5, accounts=4, rows_per_account=60, transfers=80)
+    assert s.transfer_count == 80 and s.source_count == s.entry_count == 4 * 60 + 80
+    with isolated_engine.connect() as conn:
+        paired = conn.execute(
+            text("SELECT count(*) FROM ledger_entry WHERE counterpart_entry_id IS NOT NULL")
+        ).scalar_one()
+    assert paired == 20  # 25% of 80 legs are already paired
+    result = settle(isolated_engine)
+    assert result.error is None
+    with isolated_engine.connect() as conn:
+        paired_after = conn.execute(
+            text("SELECT count(*) FROM ledger_entry WHERE counterpart_entry_id IS NOT NULL")
+        ).scalar_one()
+        for view in conn.execute(
+            text("SELECT viewname FROM pg_views WHERE schemaname = 'public' AND viewname ~ '^v_check_'")
+        ).scalars():
+            assert conn.execute(text(f"SELECT count(*) FROM {view}")).scalar_one() == 0, view  # noqa: S608
+    assert paired_after == 20 + 32  # 40% of 80 legs are pairs for settling to make

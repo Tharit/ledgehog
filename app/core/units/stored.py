@@ -10,6 +10,7 @@ from sqlalchemy import Connection, text
 from app.core.resolution.load import load_accounts, load_rules
 from app.core.resolution.registry import classifiers_for
 from app.core.resolution.snapshot import HistorySnapshot, load_votes
+from app.core.settle.window import matching_window_days
 from app.core.units.draft import UnitDraft
 from app.core.units.lookup import unit_ids_of
 from app.core.units.plan import Stored, StoredSource, StoredUnit, World
@@ -132,7 +133,18 @@ def load_world(conn: Connection, stored: StoredUnit, draft: UnitDraft) -> World:
         if payees
         else frozenset[int]()
     )
+    sync = {
+        int(r.account_id): (bool(r.synced), r.synced_through)
+        for r in conn.execute(
+            text(
+                "SELECT s.account_id, s.synced, c.synced_through FROM v_account_synced AS s"
+                " JOIN v_account_coverage AS c ON c.account_id = s.account_id"
+            )
+        )
+    }
     return World(
+        account_sync=sync,
+        matching_window=matching_window_days(conn),
         accounts=load_accounts(conn),
         classifiers=classifiers_for(load_rules(conn)),
         history=history,

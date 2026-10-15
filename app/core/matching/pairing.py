@@ -1,7 +1,7 @@
 """Date-ordered greedy pairing (spec §5.7 "Pairing"), pure.
 
 Legs are processed by (booked_on, entry id). A leg with candidates among the remaining legs prefers
-those whose canonical purpose equals its own, then the closest booked date, then the earlier
+those whose canonical purpose equals its own (a non-empty one), then the closest booked date, then the earlier
 booked_on, then the lower entry id. An automatic pair needs a known counter-account on one leg at
 least (I33). Lookups are keyed on the amount (and the instructed amount), so the work is
 proportional to the matches, not to the square of the legs.
@@ -51,7 +51,8 @@ def _pair_of(leg: Leg, partner: Leg) -> Pair:
 
 
 def _preferred(leg: Leg, options: list[Leg]) -> Leg:
-    same_purpose = [m for m in options if m.purpose == leg.purpose]
+    # no purpose is no evidence: two empty purposes do not count as equal
+    same_purpose = [m for m in options if leg.purpose and m.purpose == leg.purpose]
     chosen = same_purpose or options
     return min(
         chosen,

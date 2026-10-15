@@ -695,7 +695,7 @@ def test_delete_with_a_partner_returns_it_to_review(
     assert p.counterpart_entry_id is None and p.type == "transfer" and p.counter_account_id is None
     assert [x.id for x in out.partners] == [leg] and out.partners[0].counterpart_entry_id is None
     assert [u.anchor_entry_id for u in out.units.views] == [leg]
-    assert "unmatched_transfer" not in p.review_flags  # (no such flag before step 8) it is simply incomplete
+    assert p.review_flags == ["unmatched_transfer"]  # no counter-account left: unpaired, nothing to wait for
     assert out.units.views[0].state.confirmed is False
 
 

@@ -99,6 +99,10 @@ class World:
     history: HistorySnapshot
     categories: frozenset[int] = frozenset()
     payees: frozenset[int] = frozenset()
+    # what `waiting` and `unmatched_transfer` read (spec §5.7): per account whether it is synced and its
+    # `synced_through`, and the matching window. Preview does not pair legs yet (step 8, wave 8d).
+    account_sync: Mapping[int, tuple[bool, date | None]] = dataclasses.field(default_factory=dict)
+    matching_window: int = 0
 
 
 # ---- what a draft implies -----------------------------------------------------------------------

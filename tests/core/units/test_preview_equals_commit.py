@@ -8,6 +8,7 @@ nothing written, and any other must leave exactly the previewed rows, keys, flag
 from __future__ import annotations
 
 import dataclasses
+import itertools
 import json
 from typing import Any
 
@@ -22,6 +23,7 @@ from app.core.units.preview import preview_unit
 from tests.core.units.equality import preview_then_commit
 from tests.core.units.scene import RERESOLVE, Scene, fixed
 
+_AMOUNTS = itertools.count(1)
 COUNTERPARTIES = ["REWE", "ALDI", "RENT", "NEWCO", "ATM"]
 
 
@@ -159,7 +161,10 @@ def _build(scene: Scene, kind: str, who: str, confirmed: bool) -> tuple[list[int
         _s, ents = scene.movement(-600, -400, counterparty=who)
         originals = {ents[0]}
     else:
-        (_sa, a), (_sb, b) = scene.transfer_pair(-500, out_extra=[-100] if kind == "pair_split" else ())
+        # a pair of its own amount: the examples share one ledger, and a leg an earlier example left behind
+        # would be paired with by settling, which the preview does not simulate yet (spec §5.7, wave 8d)
+        amount = -(500 + next(_AMOUNTS))
+        (_sa, a), (_sb, b) = scene.transfer_pair(amount, out_extra=[-100] if kind == "pair_split" else ())
         ents = [*a, *b]
         originals = {a[0], b[0]}
     for i in ents:  # some stored tags to inherit, keep or remove

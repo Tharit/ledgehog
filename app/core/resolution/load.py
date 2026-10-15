@@ -60,9 +60,12 @@ class UnconfirmedEntry:
     category_id: int | None
     counter_account_id: int | None
     derivation: Mapping[str, Any]
-    paired: bool  # a transfer leg with a partner: pairing owns its counter-account (step 8)
+    paired: (
+        bool  # a transfer leg with a partner: a pair-set counter-account is the pair's, not a guess (§5.7)
+    )
     original: bool  # the lowest entry id of its source transaction: the only one that may be a transfer
     # what the rule preview shows and groups by; settling does not read them
+    counterpart_id: int | None = None  # the partner of a paired leg (settling releases a pair that falls)
     confirmed: bool = False  # its unit is confirmed (confirmed.py)
     unit_key: int = 0  # the unit it belongs to (confirmed.py: source transaction, or the pair's lower one)
     description: str | None = None
@@ -80,7 +83,8 @@ def _movements(where: str) -> TextClause:
            s.instructed_currency, s.counterparty_bic, s.end_to_end_id, s.instructed_amount,
            s.source_format, s.amount AS source_amount, s.currency AS source_currency,
            e.type, e.payee_id, e.category_id, e.counter_account_id, e.derivation,
-           (e.counterpart_entry_id IS NOT NULL) AS paired, (u.first_id = e.id) AS original
+           e.counterpart_entry_id AS counterpart_id, (e.counterpart_entry_id IS NOT NULL) AS paired,
+           (u.first_id = e.id) AS original
       FROM units AS u
       JOIN ledger_entry AS e ON e.id = u.id
       JOIN source_transaction AS s ON s.id = e.source_transaction_id
@@ -131,6 +135,7 @@ def _load(conn: Connection, query: TextClause) -> list[UnconfirmedEntry]:
                 counter_account_id=r.counter_account_id,
                 derivation=cast(Mapping[str, Any], r.derivation),
                 paired=r.paired,
+                counterpart_id=r.counterpart_id,
                 original=r.original,
                 confirmed=r.confirmed,
                 unit_key=r.unit_key,

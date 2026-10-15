@@ -9,9 +9,10 @@ Contract shared by every caller:
   rolls back, the write stands, and the failure is reported in ``SettleResult.error``.
 
 One round is the five ordered steps of architecture §5.2. Step 1 resolves every
-unconfirmed entry (core/settle/resolution.py) and step 5 is the review flags, which also
-report what the round newly confirmed; steps 2-4 are named no-op hooks that later work
-replaces with ``register_step(name, fn)``. The steps of one settle share a `SettleRun`
+unconfirmed entry (core/settle/resolution.py), step 4 pairs the unpaired transfer legs
+(core/settle/pairing.py) and step 5 is the review flags, which also report what the round
+newly confirmed; steps 2 and 3 are named no-op hooks that later work replaces with
+``register_step(name, fn)``. The steps of one settle share a `SettleRun`
 (core/settle/run.py). The settle baseline is a pass over every unconfirmed unit; narrowing
 to a dirty set is an optimisation to take only if the time budget is missed.
 """
@@ -26,6 +27,7 @@ from sqlalchemy import Connection, Engine, text
 
 from app.core.resolution.confirmed import load_confirmed_ids
 from app.core.settle.flags import review_flags_step
+from app.core.settle.pairing import pair_transfers_step
 from app.core.settle.resolution import resolve_step
 from app.core.settle.run import StepOutcome, settle_run
 from app.utils.db.locks import lock_settle_exclusive
@@ -56,7 +58,7 @@ _STEPS: list[tuple[str, Step]] = [
     ("resolve", resolve_step),
     ("match_documents", _noop),
     ("resolve_after_link", _noop),
-    ("pair_transfers", _noop),
+    ("pair_transfers", pair_transfers_step),
     ("review_flags", review_flags_step),
 ]
 

@@ -5,9 +5,15 @@ value differs, so settling twice touches nothing (I37). Tokens are stored sorted
 (opening, valuation, reconciliation: `balance_record_id` set) are complete by construction, are in
 no unit and never carry flags.
 
-Produced so far: `unclassified` and `unconfirmed`. `document_suggested`, `waiting` and
-`unmatched_transfer` belong to the closed set but need the matcher and pairing steps (8 and 9), which
-do not exist yet; an unpaired transfer leg therefore carries no flag, though its unit is not confirmed.
+Produced: `unclassified`, `unconfirmed`, `waiting` and `unmatched_transfer`. `document_suggested`
+belongs to the closed set but needs document matching (step 9), which does not exist yet.
+
+`waiting` and `unmatched_transfer` are per unpaired transfer leg (spec §5.7), from the leg's counter-
+account C (under any key), `v_account_synced`, `v_account_coverage` and the matching window (the
+`ledger.matching_window_days` setting): the leg is waiting iff C is set, synced, and its `synced_through`
+is NULL or before `booked_on` plus the window; otherwise (C unsynced or closed, synced through the
+window, or no C) it is unmatched. A paired leg has neither. `core/matching/states.py` is the same
+judgement in Python, pinned to this SQL by a test.
 
 The flags are judged over the UNIT (spec §6; the CTE of `core/resolution/confirmed.py`: the entries of
 one source transaction and of a transfer pair, transitively):
@@ -37,19 +43,32 @@ _RECOMPUTE = text(
     UPDATE ledger_entry AS e
        SET review_flags = f.flags
       FROM (
-            SELECT le.id,
+            SELECT x.id,
                    ARRAY(
                        SELECT t.token
                          FROM (VALUES
-                                ('unclassified', le.type IS NULL
-                                                 OR (le.type = 'flow' AND le.category_id IS NULL)),
-                                ('unconfirmed', u.unit_has_nonstanding)
+                                ('unclassified', x.type IS NULL
+                                                 OR (x.type = 'flow' AND x.category_id IS NULL)),
+                                ('unconfirmed', x.unit_has_nonstanding),
+                                ('unmatched_transfer', x.unpaired AND NOT x.is_waiting),
+                                ('waiting', x.is_waiting)
                               ) AS t(token, applies)
                         WHERE t.applies
                         ORDER BY t.token
                    ) AS flags
-              FROM ledger_entry AS le
-              JOIN units AS u ON u.id = le.id
+              FROM (
+                    SELECT le.id, le.type, le.category_id, u.unit_has_nonstanding,
+                           (le.type = 'transfer' AND le.counterpart_entry_id IS NULL) AS unpaired,
+                           COALESCE(le.type = 'transfer' AND le.counterpart_entry_id IS NULL
+                                    AND sy.synced
+                                    AND (cv.synced_through IS NULL
+                                         OR cv.synced_through < le.booked_on + w.days), false) AS is_waiting
+                      FROM ledger_entry AS le
+                      JOIN units AS u ON u.id = le.id
+                      CROSS JOIN (SELECT current_setting('ledger.matching_window_days')::int AS days) AS w
+                      LEFT JOIN v_account_synced AS sy ON sy.account_id = le.counter_account_id
+                      LEFT JOIN v_account_coverage AS cv ON cv.account_id = le.counter_account_id
+                   ) AS x
            UNION ALL
             SELECT le.id, '{{}}'::text[]
               FROM ledger_entry AS le

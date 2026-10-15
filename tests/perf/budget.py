@@ -20,9 +20,19 @@ unit key, and the flags now read it. Re-measured: baseline 405 ms, post-commit s
 `confirmed_share=0.7` resolving settle 753 ms (one run; 470-680 ms before), its idle second settle 439 ms.
 Still inside 1.0 s.
 
-Caveat: transfer pairing (step 8) and document matching (step 9) will register their steps; re-measure
-then. If the budget is missed, narrow the first round to a dirty set (architecture §5.2); rounds after
-the first are already narrowed to the entries the newly confirmed votes can reach.
+Step 8b (transfer pairing, `tests/perf/test_pairing_budget.py`, `confirmed_share=0.7` plus 800 transfer legs:
+160 pairs to make, 100 made, 280 unpaired of which 140 waiting): the `pair_transfers` step with real work
+(load the unpaired legs, `pair_all`, one write for 320 legs) 12-15 ms, 4 ms idle; the flag statement with the
+`waiting`/`unmatched_transfer` joins 46-49 ms idle and 137-219 ms rewriting every flag; the settle over that
+ledger 862-1056 ms first (two rounds: the made pairs confirm units, whose votes run a second round; the
+resolving step is 555 ms of it) and 495-510 ms idle; the plain resolving settle 818 ms, baseline 430 ms,
+post-commit 322-330 ms. Measured with load averages of 8-10 from other work on the machine. The first settle
+of this variant is the one that comes closest to the 1.0 s budget (one run in four of them exceeded it at
+that load): if it is missed on a quiet machine, narrow the first round (below).
+
+Caveat: document matching (step 9) will register its steps; re-measure then. If the budget is missed,
+narrow the first round to a dirty set (architecture §5.2); rounds after the first are already narrowed to
+the entries the newly confirmed votes can reach.
 """
 
 BUDGET_SECONDS = 1.0

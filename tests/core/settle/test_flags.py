@@ -55,7 +55,9 @@ def test_transfer_is_not_unclassified(db_conn: Connection, acct: int, make_accou
     other = make_account(db_conn, name="Other")
     e = make_entry(db_conn, make_source(db_conn, acct), type="transfer", counter_account_id=other)
     recompute_review_flags(db_conn)
-    assert _flags(db_conn, e) == []
+    assert _flags(db_conn, e) == [
+        "unmatched_transfer"
+    ]  # not unclassified; unpaired, its counter-account unsynced
 
 
 @pytest.mark.parametrize("pass_name", ["history", "llm", "matcher_proposal"])

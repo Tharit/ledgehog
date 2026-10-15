@@ -57,7 +57,7 @@ def reference(legs: list[Leg], window: int) -> list[Pair]:
         ]
         if not options:
             continue
-        pool = [m for m in options if m.purpose == leg.purpose] or options
+        pool = [m for m in options if leg.purpose and m.purpose == leg.purpose] or options
         best = min(pool, key=lambda m: (abs((m.booked_on - leg.booked_on).days), m.booked_on, m.entry_id))
         remaining.remove(best)
         out.append(
