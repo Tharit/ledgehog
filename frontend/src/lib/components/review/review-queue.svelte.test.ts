@@ -133,7 +133,7 @@ describe('ReviewQueue', () => {
 		expect(within(groups[1] as HTMLElement).getAllByRole('row')).toHaveLength(2);
 	});
 
-	it('draws each multi-entry unit in a bordered, jointly highlighted group, the split with its total marker', async () => {
+	it('draws each multi-entry unit as a group with a faint left bar and a joint highlight, the split with its total marker', async () => {
 		await shown({
 			pending_review: [
 				unit({
@@ -157,7 +157,7 @@ describe('ReviewQueue', () => {
 		const groups = document.querySelectorAll<HTMLElement>('[role="rowgroup"]');
 		expect(groups).toHaveLength(3);
 		for (const group of [groups[0], groups[1]]) {
-			expect(group.className).toContain('border');
+			expect(group.className).toContain('border-l-2');
 			expect(group.className).toContain('group/unit');
 			for (const row of group.querySelectorAll('[role="row"]'))
 				expect(row.className).toContain('group-hover/unit:bg-muted');

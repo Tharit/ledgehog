@@ -795,13 +795,13 @@ describe('LedgerTable: the entries of a unit are drawn together (patterns §4.1)
 		entry({ id: 1, unit_key: 11, type: 'transfer', description: 'In' })
 	];
 
-	it('frames adjacent rows of one unit in one bordered group and leaves single rows alone', () => {
+	it('groups adjacent rows of one unit with a faint left bar and leaves single rows alone', () => {
 		table({ entries: rows, total: rows.length });
 
 		const groups = document.querySelectorAll<HTMLElement>('[role="rowgroup"]');
 		expect(groups).toHaveLength(2);
 		expect(groups[0].dataset.unit).toBe('10');
-		expect(groups[0].className).toContain('border');
+		expect(groups[0].className).toContain('border-l-2');
 		expect(groups[0].className).toContain('group/unit');
 		expect(
 			[...groups[0].querySelectorAll('[role="row"]')].map((r) => (r as HTMLElement).dataset.entryId)

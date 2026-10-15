@@ -13,9 +13,8 @@ export type UnitRun = {
 	total: Money | null;
 };
 
-/** The classes of the frame around a joined run: a border, and a group for the joint highlight. */
-export const UNIT_FRAME =
-	'group/unit rounded-sm border border-primary/40 [&>[role=row]:last-child]:border-b-0';
+/** The classes of a joined run: a faint bar on the left, and a group for the joint highlight. */
+export const UNIT_FRAME = 'group/unit border-l-2 border-l-primary/30';
 
 /** A split's total: null for fewer than two entries, a transfer pair or mixed currencies. */
 export function unitTotal(entries: readonly Entry[]): Money | null {
