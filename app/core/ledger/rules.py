@@ -77,7 +77,6 @@ class RuleDraft:
     counter_account_id: int | None = None
     payee_id: int | None = None
     category_id: int | None = None
-    condition_payee_id: int | None = None
     conditions: tuple[Condition, ...] = ()
     priority: int = 100
 
@@ -92,7 +91,6 @@ class RuleRow:
     counter_account_id: int | None
     payee_id: int | None
     category_id: int | None
-    condition_payee_id: int | None
     conditions: tuple[Condition, ...]
     priority: int
 
@@ -109,7 +107,6 @@ class RuleRow:
             sets=self.sets,  # type: ignore[arg-type]
             target_id=self.target_id,
             priority=self.priority,
-            condition_payee_id=self.condition_payee_id,
             conditions=self.conditions,
         )
 
@@ -125,14 +122,12 @@ class RuleWritten:
     settle: SettleResult | None = None
 
 
-_COLUMNS = (
-    "id, name, sets, counter_account_id, payee_id, category_id, condition_payee_id, conditions, priority"
-)
+_COLUMNS = "id, name, sets, counter_account_id, payee_id, category_id, conditions, priority"
 
 
 def _row(r: Any) -> RuleRow:
     return RuleRow(
-        r.id, r.name, r.sets, r.counter_account_id, r.payee_id, r.category_id, r.condition_payee_id,
+        r.id, r.name, r.sets, r.counter_account_id, r.payee_id, r.category_id,
         conditions_of(r.conditions), r.priority,
     )  # fmt: skip
 
@@ -146,6 +141,14 @@ def list_rules(conn: Connection) -> list[RuleRow]:
     """Every rule in evaluation order: counter-account, payee, category; priority, then id."""
     rows = {r.id: r for r in (_row(x) for x in conn.execute(text(f"SELECT {_COLUMNS} FROM rule")))}  # noqa: S608
     return [rows[s.id] for s in rule_tools().precedence_order(r.spec() for r in rows.values())]
+
+
+def _canonical(cond: Condition) -> Condition:
+    """A payee condition's id as plain digits (`007` is `7`), so a merge finds it by its text. What
+    is not an id is left for the plugin to refuse."""
+    if cond.field == "payee" and cond.value.isascii() and cond.value.isdigit():
+        return replace(cond, value=str(int(cond.value)))
+    return cond
 
 
 def _checked(draft: RuleDraft, sets: str) -> RuleDraft:
@@ -163,6 +166,7 @@ def _checked(draft: RuleDraft, sets: str) -> RuleDraft:
         draft,
         name=clean_name(draft.name),
         sets=sets,
+        conditions=tuple(_canonical(c) for c in draft.conditions),
     )
     spec = RuleSpec(
         id=0,
@@ -170,7 +174,6 @@ def _checked(draft: RuleDraft, sets: str) -> RuleDraft:
         sets=sets,  # type: ignore[arg-type]
         target_id=given[wanted],
         priority=cleaned.priority,
-        condition_payee_id=cleaned.condition_payee_id,
         conditions=cleaned.conditions,
     )
     try:
@@ -192,8 +195,10 @@ def _check_references(conn: Connection, draft: RuleDraft) -> None:
     entity = _TARGET_ENTITY[draft.sets]
     if not _exists(conn, entity, target):
         raise StaleReference(field, entity, target)
-    if draft.condition_payee_id is not None and not _exists(conn, "payee", draft.condition_payee_id):
-        raise StaleReference("condition_payee_id", "payee", draft.condition_payee_id)
+    for i, cond in enumerate(draft.conditions):
+        # the plugin has validated the value as a positive integer id
+        if cond.field == "payee" and not _exists(conn, "payee", int(cond.value)):
+            raise StaleReference(f"conditions[{i}].value", "payee", int(cond.value))
 
 
 def _duplicate(exc: DBAPIError) -> bool:
@@ -207,7 +212,6 @@ def _params(draft: RuleDraft) -> dict[str, Any]:
         "ca": draft.counter_account_id,
         "p": draft.payee_id,
         "c": draft.category_id,
-        "cp": draft.condition_payee_id,
         "conds": json.dumps(
             [{"field": c.field, "op": c.op, "value": c.value} for c in draft.conditions],
             separators=(",", ":"),
@@ -271,14 +275,14 @@ def create_rule(
 
 
 _INSERT = (
-    "INSERT INTO rule (name, sets, counter_account_id, payee_id, category_id, condition_payee_id,"
+    "INSERT INTO rule (name, sets, counter_account_id, payee_id, category_id,"
     " conditions, priority)"
-    " VALUES (:n, :s, :ca, :p, :c, :cp, CAST(:conds AS jsonb), :pri) RETURNING id"
+    " VALUES (:n, :s, :ca, :p, :c, CAST(:conds AS jsonb), :pri) RETURNING id"
 )
 
 _UPDATE = (
     "UPDATE rule SET name = :n, counter_account_id = :ca, payee_id = :p, category_id = :c,"
-    " condition_payee_id = :cp, conditions = CAST(:conds AS jsonb), priority = :pri WHERE id = :id"
+    " conditions = CAST(:conds AS jsonb), priority = :pri WHERE id = :id"
 )
 
 

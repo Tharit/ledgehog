@@ -361,13 +361,12 @@ def giro_counterparty_iban(name: str) -> str:
 @dataclass(frozen=True)
 class SeedRule:
     """A named rule to click around in (spec §5.9). `target` is an account key (`sets` counter_account),
-    a payee name or a category name; `condition_payee` a payee name (category rules only)."""
+    a payee name or a category name; a `payee` condition (category rules only) names its payee."""
 
     name: str
     sets: str  # counter_account | payee | category
     target: str
     conditions: tuple[tuple[str, str, str], ...] = ()  # (field, op, value), all must hold
-    condition_payee: str | None = None
     priority: int = 100
 
 
@@ -395,7 +394,7 @@ RULES: tuple[SeedRule, ...] = (
         "Frischemarkt groceries",
         "category",
         "Groceries",
-        condition_payee="Frischemarkt Lindenhof",
+        conditions=(("payee", "is", "Frischemarkt Lindenhof"),),
         priority=50,
     ),
 )

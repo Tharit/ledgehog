@@ -2,12 +2,14 @@
 
 Same shape as categories: one transaction (settle lock shared, then the payee rows ascending), a
 settle after the commit, and a dry run that runs the real code and rolls it back. A merge repoints
-entries and rules (`payee_id` and `condition_payee_id`); the entries' versions bump (D200), nothing is
-derived again, keys stay. The target's attributes win.
+entries and rules (`payee_id`, and the payee conditions of rules, D215); the entries' versions bump
+(D200), nothing is derived again, keys stay. The target's attributes win. A delete takes the rules that
+set the payee; rules whose condition names it stay, dangling (the preview lists them).
 """
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, replace
 from types import EllipsisType
 from typing import Any
@@ -60,14 +62,15 @@ class RuleRef:
     id: int
     name: str
     sets: str
-    role: str  # "sets": the rule sets this payee; "condition": it names it as a condition
+    role: str  # "sets": the rule sets this payee; "condition": its condition names it (left dangling)
 
 
 @dataclass(frozen=True)
 class PayeeDeleteResult:
     payee: PayeeRow
     held: dict[str, int]  # `entries` when any entry references it
-    rules: tuple[RuleRef, ...]  # the rules that go with it (deleted only by a real run)
+    rules: tuple[RuleRef, ...]  # the rules that set it, which go with it (deleted only by a real run)
+    dangling_rules: tuple[RuleRef, ...]  # rules whose condition names it: they stay and never match
     deleted_rule_ids: tuple[int, ...]  # real run only
     deleted: bool
     settle: SettleResult | None
@@ -80,7 +83,7 @@ class PayeeMergeResult:
     entry_count: int  # what `expected_count` confirms
     entry_ids: tuple[int, ...]  # real run only
     setting_rule_ids: tuple[int, ...]  # rules repointed whose `payee_id` it was
-    condition_rule_ids: tuple[int, ...]  # rules repointed whose `condition_payee_id` it was
+    condition_rule_ids: tuple[int, ...]  # rules whose payee condition it was, rewritten to the target
     source_document_provider: str | None
     document_provider_lost: bool  # the source names a provider the target does not
     settle: SettleResult | None = None
@@ -181,15 +184,40 @@ def update_payee(
     return PayeeWritten(retry_on_deadlock(run), settle(engine))
 
 
+def _condition_probe(payee_id: int) -> str:
+    """The jsonb a rule's conditions contain when one of them is the payee condition on `payee_id`."""
+    return json.dumps([{"field": "payee", "op": "is", "value": str(payee_id)}], separators=(",", ":"))
+
+
 def _rules_of(conn: Connection, payee_id: int) -> tuple[RuleRef, ...]:
+    """The rules that set the payee."""
     rows = conn.execute(
-        text(
-            "SELECT id, name, sets, CASE WHEN payee_id = :p THEN 'sets' ELSE 'condition' END AS role"
-            " FROM rule WHERE payee_id = :p OR condition_payee_id = :p ORDER BY id FOR UPDATE"
-        ),
+        text("SELECT id, name, sets FROM rule WHERE payee_id = :p ORDER BY id FOR UPDATE"),
         {"p": payee_id},
     )
-    return tuple(RuleRef(int(r.id), r.name, r.sets, r.role) for r in rows)
+    return tuple(RuleRef(int(r.id), r.name, r.sets, "sets") for r in rows)
+
+
+def _dangling_of(conn: Connection, payee_id: int) -> tuple[RuleRef, ...]:
+    """The rules with a payee condition on the payee: the delete leaves them, never matching."""
+    rows = conn.execute(
+        text("SELECT id, name, sets FROM rule WHERE conditions @> CAST(:probe AS jsonb) ORDER BY id"),
+        {"probe": _condition_probe(payee_id)},
+    )
+    return tuple(RuleRef(int(r.id), r.name, r.sets, "condition") for r in rows)
+
+
+_REWRITE_CONDITIONS = """
+UPDATE rule SET conditions = (
+    SELECT jsonb_agg(
+        CASE WHEN e->>'field' = 'payee' AND e->>'value' = CAST(:s AS text)
+             THEN jsonb_set(e, '{value}', to_jsonb(CAST(:t AS text)))
+             ELSE e END
+        ORDER BY ord)
+    FROM jsonb_array_elements(conditions) WITH ORDINALITY AS x(e, ord))
+WHERE conditions @> CAST(:probe AS jsonb)
+RETURNING id
+"""
 
 
 def _entries_of(conn: Connection, payee_id: int) -> int:
@@ -205,9 +233,10 @@ class _Backstop(Exception):
 
 
 def delete_payee(engine: Engine, payee_id: int, *, dry_run: bool = False) -> PayeeDeleteResult:
-    """Delete a payee no entry references, with the rules that set it or name it as a condition.
+    """Delete a payee no entry references, with the rules that set it.
 
-    `dry_run` lists those rules and what stands in the way, and writes nothing. A real delete of a
+    Rules whose condition names it stay (ids are never reused, so they never match) and are listed as
+    dangling. `dry_run` lists both and what stands in the way, and writes nothing. A real delete of a
     payee entries still reference is `PayeeInUse`: it is merged instead.
     """
 
@@ -218,8 +247,9 @@ def delete_payee(engine: Engine, payee_id: int, *, dry_run: bool = False) -> Pay
         entries = _entries_of(conn, payee_id)
         held = {"entries": entries} if entries else {}
         rules = _rules_of(conn, payee_id)
+        dangling = _dangling_of(conn, payee_id)
         if dry_run:
-            return PayeeDeleteResult(row, held, rules, (), False, None)
+            return PayeeDeleteResult(row, held, rules, dangling, (), False, None)
         if held:
             raise PayeeInUse(payee_id, held)
         try:
@@ -229,7 +259,7 @@ def delete_payee(engine: Engine, payee_id: int, *, dry_run: bool = False) -> Pay
             if isinstance(exc.orig, psycopg.errors.ForeignKeyViolation | psycopg.errors.RestrictViolation):
                 raise _Backstop from exc
             raise
-        return PayeeDeleteResult(row, {}, rules, tuple(r.id for r in rules), True, None)
+        return PayeeDeleteResult(row, {}, rules, dangling, tuple(r.id for r in rules), True, None)
 
     try:
         result = retry_on_deadlock(lambda: previewable(engine, dry_run, work))
@@ -244,9 +274,9 @@ def merge_payee(
 ) -> PayeeMergeResult:
     """Merge `source_id` into `target_id` (spec §3.6); `dry_run` reports and writes nothing.
 
-    Entries (`payee_id`) and rules (`payee_id`, `condition_payee_id`) are repointed (the entries'
-    versions bump), then the source is deleted last. The target's attributes win; the result says
-    when that loses the source's `document_provider`. The real run carries the dry run's
+    Entries (`payee_id`) and rules (`payee_id`; payee conditions are rewritten in the jsonb) are repointed
+    (the entries' versions bump), then the source is deleted last. The target's attributes win; the
+    result says when that loses the source's `document_provider`. The real run carries the dry run's
     `entry_count`; another number writes nothing (`MergeCountChanged`).
     """
     require_count(dry_run, expected_count)
@@ -276,8 +306,8 @@ def merge_payee(
         condition = [
             int(i)
             for i in conn.execute(
-                text("UPDATE rule SET condition_payee_id = :t WHERE condition_payee_id = :s RETURNING id"),
-                params,
+                text(_REWRITE_CONDITIONS),
+                {**params, "probe": _condition_probe(source_id)},
             ).scalars()
         ]
         conn.execute(text("DELETE FROM payee WHERE id = :s"), {"s": source_id})

@@ -33,6 +33,10 @@ def one(field: str, op: str, value: str) -> RuleSpec:
     return rule(1, "payee", 10, cond(field, op, value))
 
 
+def pay(payee_id: int | str) -> Condition:
+    return cond("payee", "is", str(payee_id))
+
+
 def rx(pattern: str = "x") -> Condition:
     return cond("purpose", "regex", pattern)
 
@@ -92,7 +96,7 @@ def test_an_entry_value_without_alphanumerics_never_equals_an_identifier() -> No
 
 
 def test_payee_condition_equals_resolved_payee() -> None:
-    r = rule(1, "category", 10, condition_payee_id=7)
+    r = rule(1, "category", 10, pay(7))
     assert matches(r, entry(), 7)
     assert not matches(r, entry(), 8)
     assert not matches(r, entry(), None)
@@ -108,7 +112,7 @@ def test_missing_field_fails(field: str, op: str) -> None:
 
 
 def test_payee_condition_with_conditions_needs_both() -> None:
-    r = rule(1, "category", 10, cond("purpose", "contains", "miete"), condition_payee_id=7)
+    r = rule(1, "category", 10, cond("purpose", "contains", "miete"), pay(7))
     e = entry(purpose="Miete Juni")
     assert matches(r, e, 7)
     assert not matches(r, e, 8)
@@ -116,8 +120,21 @@ def test_payee_condition_with_conditions_needs_both() -> None:
 
 
 def test_payee_condition_alone() -> None:
-    r = rule(1, "category", 10, condition_payee_id=7)
+    r = rule(1, "category", 10, pay(7))
     assert matches(r, entry(), 7) and not matches(r, entry(), None)
+
+
+def test_several_payee_conditions_are_anded() -> None:
+    r = rule(1, "category", 10, pay(7), pay(8))
+    assert not matches(r, entry(), 7) and not matches(r, entry(), 8)  # one payee cannot be both
+    twice = rule(1, "category", 10, pay(7), pay("007"), cond("purpose", "contains", "x"))
+    assert matches(twice, entry(purpose="x"), 7) and not matches(twice, entry(purpose="y"), 7)
+
+
+def test_a_payee_condition_never_reads_the_entry_and_a_dangling_id_never_matches() -> None:
+    r = rule(1, "category", 10, pay(999))
+    assert not matches(r, entry(purpose="999", counterparty_name="999"), 7)
+    assert not matches(r, entry(), None)
 
 
 def test_conditions_are_anded() -> None:
@@ -201,7 +218,7 @@ def test_counter_account_rule_skipped_when_account_not_ok() -> None:
 
 
 def test_category_rule_with_payee_condition() -> None:
-    c = RulesClassifier([rule(1, "category", 50, condition_payee_id=7)])
+    c = RulesClassifier([rule(1, "category", 50, pay(7))])
     e = entry()
     with_payee = ClassifierContext(resolved={"payee": Proposal("payee", 7, {})})
     other = ClassifierContext(resolved={"payee": Proposal("payee", 8, {})})
@@ -255,8 +272,16 @@ def test_matching_rules_in_order_filtering_account() -> None:
         rule(1, "payee", 10, cond("counterparty_ref", "regex", "(")),  # a regex on any field is checked
         rule(1, "payee", 10, cond("amount", "equals", "5")),  # unknown field
         rule(1, "payee", 10, cond("purpose", "ends_with", "5")),  # unknown operator
-        rule(1, "payee", 10, rx(), condition_payee_id=3),
-        rule(1, "counter_account", 10, rx(), condition_payee_id=3),
+        rule(1, "payee", 10, rx(), pay(3)),  # a payee condition on a rule that does not set a category
+        rule(1, "counter_account", 10, rx(), pay(3)),
+        rule(1, "category", 10, cond("payee", "equals", "3")),  # only `is`
+        rule(1, "category", 10, cond("payee", "regex", "3")),
+        rule(1, "category", 10, cond("purpose", "is", "3")),  # `is` is for payee only
+        rule(1, "category", 10, pay("x")),
+        rule(1, "category", 10, pay("0")),
+        rule(1, "category", 10, pay("-3")),
+        rule(1, "category", 10, pay("3.0")),
+        rule(1, "category", 10, pay(" ")),
     ],
 )
 def test_validate_rule_refuses(r: RuleSpec) -> None:
@@ -266,8 +291,8 @@ def test_validate_rule_refuses(r: RuleSpec) -> None:
 
 def test_validate_rule_accepts() -> None:
     validate_rule(rule(1, "payee", 10, rx("a" * 200)))
-    validate_rule(rule(1, "category", 10, condition_payee_id=3))
-    validate_rule(rule(1, "category", 10, cond("purpose", "contains", "x"), condition_payee_id=3))
+    validate_rule(rule(1, "category", 10, pay(3)))  # a payee condition alone is a condition
+    validate_rule(rule(1, "category", 10, cond("purpose", "contains", "x"), pay(3), pay(4)))
     validate_rule(rule(1, "payee", 10, cond("counterparty_name", "starts_with", "PAYPAL *")))
     validate_rule(rule(1, "payee", 10, rx(), rx("y"), cond("purpose", "equals", "z")))
     # a long value is only bounded for a regex
@@ -315,7 +340,11 @@ def test_rule_order_does_not_change_result(specs: list[tuple[int, str]], rnd: ra
         ),
         (rule(1, "payee", 10, cond("SECRETFIELD", "equals", "x")), "conditions[0].field"),
         (rule(1, "payee", 10, cond("purpose", "SECRETOP", "x")), "conditions[0].op"),
-        (rule(1, "payee", 10, rx(), condition_payee_id=3), "condition_payee_id"),
+        (rule(1, "payee", 10, rx(), pay(3)), "conditions[1].field"),
+        (rule(1, "category", 10, cond("payee", "equals", "3")), "conditions[0].op"),
+        (rule(1, "category", 10, cond("purpose", "is", "SECRET")), "conditions[0].op"),
+        (rule(1, "category", 10, rx(), pay("SECRET")), "conditions[1].value"),
+        (rule(1, "category", 10, pay("0")), "conditions[0].value"),
         (rule(), "conditions"),
     ],
 )

@@ -69,9 +69,9 @@ RuleName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1,
 # an absurd size stops here
 ConditionValue = Annotated[str, StringConstraints(max_length=2000)]
 ConditionFieldName = Literal[
-    "counterparty_name", "counterparty_ref", "purpose", "booking_text", "mandate_ref"
+    "counterparty_name", "counterparty_ref", "purpose", "booking_text", "mandate_ref", "payee"
 ]
-ConditionOpName = Literal["equals", "starts_with", "contains", "regex"]
+ConditionOpName = Literal["equals", "starts_with", "contains", "regex", "is"]
 Priority = Annotated[int, Field(strict=True, ge=-(2**31), le=2**31 - 1)]
 Count = Annotated[int, Field(ge=0, le=MAX_ID)]
 Limit = Annotated[int, Query(ge=1, le=MAX_LIMIT)]
@@ -106,8 +106,7 @@ class RuleOut(BaseModel):
     counter_account_id: int | None
     payee_id: int | None
     category_id: int | None
-    condition_payee_id: int | None  # category rules only
-    conditions: list[ConditionOut]  # all must hold; may be empty only with a payee condition
+    conditions: list[ConditionOut]  # all must hold; a category rule's may include payee conditions
     priority: int
 
     @staticmethod
@@ -119,7 +118,6 @@ class RuleOut(BaseModel):
             counter_account_id=row.counter_account_id,
             payee_id=row.payee_id,
             category_id=row.category_id,
-            condition_payee_id=row.condition_payee_id,
             conditions=[ConditionOut(field=c.field, op=c.op, value=c.value) for c in row.conditions],
             priority=row.priority,
         )
@@ -134,7 +132,6 @@ class RuleBody(BaseModel):
     counter_account_id: EntityId | None = None
     payee_id: EntityId | None = None
     category_id: EntityId | None = None
-    condition_payee_id: EntityId | None = None  # category rules only
     conditions: list[ConditionBody] = Field(default_factory=list, max_length=50)  # all must hold
     priority: Priority = 100
     dry_run: bool = False
@@ -147,7 +144,6 @@ class RuleBody(BaseModel):
             counter_account_id=self.counter_account_id,
             payee_id=self.payee_id,
             category_id=self.category_id,
-            condition_payee_id=self.condition_payee_id,
             conditions=tuple(
                 Condition(c.field, c.op, c.value)  # type: ignore[arg-type]  # the plugin validates them
                 for c in self.conditions

@@ -99,7 +99,6 @@ def test_ids_are_bounded(anna: TestClient, w: dict[str, int], bad: int):
         ("put", f"{RULES}/{bad}", body(w, dry_run=True)),
         ("delete", f"{RULES}/{bad}?dry_run=true", None),
         ("post", RULES, body(w, category_id=bad, dry_run=True)),
-        ("post", RULES, body(w, condition_payee_id=bad, dry_run=True)),
     ):
         assert_envelope(anna.request(method, url, json=payload), 422, "validation_error")
 
@@ -139,7 +138,7 @@ def test_create_returns_the_rule_the_preview_and_the_settle_result(
     out = r.json()
     assert out["rule"] == {
         "id": out["rule"]["id"], "name": "Rewe", "sets": "category", "counter_account_id": None,
-        "payee_id": None, "category_id": w["food"], "condition_payee_id": None,
+        "payee_id": None, "category_id": w["food"],
         "conditions": [{"field": "counterparty_name", "op": "equals", "value": "REWE"}], "priority": 7,
     }  # fmt: skip
     assert out["settle"] == {"touched_entry_ids": [e], "error": None}  # settling applied it
@@ -182,9 +181,19 @@ def test_the_target_must_be_the_one_sets_names(anna: TestClient, w: dict[str, in
         ({"conditions": [c("SECRETFIELD", "equals", "x")]}, "conditions[0].field"),
         ({"conditions": [c("purpose", "SECRETOP", "x")]}, "conditions[0].op"),
         (
-            {"sets": "payee", "category_id": None, "payee_id": 1, "condition_payee_id": 1},
-            "condition_payee_id",
+            {"sets": "payee", "category_id": None, "payee_id": 1, "conditions": [c("payee", "is", "1")]},
+            "conditions[0].field",
         ),
+        ({"conditions": [c("payee", "equals", "1")]}, "conditions[0].op"),
+        ({"conditions": [c("payee", "regex", "1")]}, "conditions[0].op"),
+        ({"conditions": [c("purpose", "is", "1")]}, "conditions[0].op"),
+        (
+            {"conditions": [c("purpose", "contains", "x"), c("payee", "is", "SECRETPATTERN")]},
+            "conditions[1].value",
+        ),
+        ({"conditions": [c("payee", "is", "0")]}, "conditions[0].value"),
+        ({"conditions": [c("payee", "is", "-3")]}, "conditions[0].value"),
+        ({"conditions": [c("payee", "is", " ")]}, "conditions[0].value"),
     ],
 )
 def test_an_invalid_rule_is_422_invalid_rule_and_never_quotes_the_pattern(
@@ -196,31 +205,49 @@ def test_an_invalid_rule_is_422_invalid_rule_and_never_quotes_the_pattern(
     assert "SECRETPATTERN" not in r.text
 
 
-def test_conditions_round_trip_in_order_with_a_payee_condition_alone_and_with_conditions(
-    anna: TestClient, w: dict[str, int]
-):
+def test_conditions_round_trip_in_order_with_payee_conditions_among_them(anna: TestClient, w: dict[str, int]):
     conds = [
         c("purpose", "contains", " Miete "),  # stored as typed
+        c("payee", "is", str(w["rewe"])),
         c("purpose", "regex", "^m.*e$"),
         c("counterparty_ref", "starts_with", "DE89 3704"),
     ]
-    rid = create(anna, w, name="both", conditions=conds, condition_payee_id=w["rewe"])
+    rid = create(anna, w, name="both", conditions=conds)
     assert anna.get(f"{RULES}/{rid}").json()["conditions"] == conds
-    alone = create(anna, w, name="alone", conditions=[], condition_payee_id=w["rewe"])
-    got = anna.get(f"{RULES}/{alone}").json()
-    assert got["conditions"] == [] and got["condition_payee_id"] == w["rewe"]
-    # a PUT replaces the whole list; absent means none, which the payee condition alone allows
-    r = anna.put(
-        f"{RULES}/{rid}",
-        json=body(w, name="both", conditions=..., condition_payee_id=w["rewe"], expected_count=0),
-    )
-    assert r.status_code == 200 and r.json()["rule"]["conditions"] == []
-    # without a payee condition an empty list is refused
+    # a payee condition alone is a condition; several are allowed (they are ANDed)
+    alone = create(anna, w, name="alone", conditions=[c("payee", "is", str(w["rewe"]))])
+    assert anna.get(f"{RULES}/{alone}").json()["conditions"] == [c("payee", "is", str(w["rewe"]))]
+    twice = [c("payee", "is", str(w["rewe"])), c("payee", "is", str(w["rewe"]))]
+    assert create(anna, w, name="twice", conditions=twice)
+    # a PUT replaces the whole list; absent means none, which is refused now
+    r = anna.put(f"{RULES}/{rid}", json=body(w, name="both", conditions=[conds[1]], expected_count=0))
+    assert r.status_code == 200 and r.json()["rule"]["conditions"] == [conds[1]]
+    assert "condition_payee_id" not in r.json()["rule"]
     assert_envelope(
         anna.put(f"{RULES}/{rid}", json=body(w, name="both", conditions=[], dry_run=True)),
         422,
         "invalid_rule",
     )
+
+
+def test_the_preview_of_a_rule_with_a_payee_condition(
+    anna: TestClient, w: dict[str, int], api_engine: Engine
+):
+    with api_engine.begin() as conn:
+        hit = rs.confirmed_entry(
+            conn, w["acct"], category=w["food"], payee=w["rewe"], counterparty_name="REWE"
+        )
+        rs.confirmed_entry(conn, w["acct"], category=w["food"], counterparty_name="REWE")
+    r = anna.post(
+        RULES,
+        json=body(
+            w,
+            conditions=[c("payee", "is", str(w["rewe"])), c("counterparty_name", "equals", "REWE")],
+            dry_run=True,
+        ),
+    )
+    assert r.status_code == 200, r.text
+    assert [row["entry_id"] for row in r.json()["preview"]["matches"]["rows"]] == [hit]
 
 
 def test_a_payee_condition_on_a_rule_that_does_not_set_a_category_is_refused(
@@ -229,11 +256,16 @@ def test_a_payee_condition_on_a_rule_that_does_not_set_a_category_is_refused(
     r = anna.post(
         RULES,
         json=body(
-            w, sets="payee", category_id=None, payee_id=w["rewe"], condition_payee_id=w["rewe"], dry_run=True
+            w,
+            sets="payee",
+            category_id=None,
+            payee_id=w["rewe"],
+            conditions=[c("purpose", "contains", "x"), c("payee", "is", str(w["rewe"]))],
+            dry_run=True,
         ),
     )
     err = assert_envelope(r, 422, "invalid_rule")
-    assert err["details"][0]["location"] == ["body", "condition_payee_id"]
+    assert err["details"][0]["location"] == ["body", "conditions[1].field"]
 
 
 @pytest.mark.parametrize(
@@ -281,7 +313,11 @@ def test_stale_references_are_409_stale_reference_naming_the_field(anna: TestCli
             "counter_account_id",
             "account",
         ),
-        ({"condition_payee_id": 999_999}, "condition_payee_id", "payee"),
+        (
+            {"conditions": [c("purpose", "contains", "x"), c("payee", "is", "999999")]},
+            "conditions[1].value",
+            "payee",
+        ),
     ):
         err = assert_envelope(anna.post(RULES, json=body(w, dry_run=True, **kw)), 409, "stale_reference")
         assert err["details"] == {"field": field, "entity": entity, "id": 999_999}

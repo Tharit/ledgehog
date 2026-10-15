@@ -133,6 +133,25 @@ def test_a_flow_without_a_category_stays_unclassified(isolated_engine: Engine, a
     assert _row(isolated_engine, e).review_flags == ["unclassified"]
 
 
+def test_a_payee_condition_reads_the_payee_resolved_in_the_same_resolution(
+    isolated_engine: Engine, acct: int
+) -> None:
+    with isolated_engine.begin() as conn:
+        p, other, c = _payee(conn, "Rewe"), _payee(conn, "Other"), make_category(conn, "Food")
+        rp = rs.rule(conn, "rewe payee", "payee", p, conditions=(rs.name_is("REWE"),))
+        rc = rs.rule(conn, "cat", "category", c, conditions=(rs.payee_is(p), rs.name_is("REWE")))
+        dangling = rs.rule(conn, "gone", "category", c, conditions=(rs.payee_is(other + 1000),))
+        e = _new(conn, acct, counterparty_name="REWE")
+        unrelated = _new(conn, acct, counterparty_name="ELSE")
+    assert settle(isolated_engine).error is None
+    r = _row(isolated_engine, e)
+    assert (r.type, r.payee_id, r.category_id) == ("flow", p, c)
+    assert r.derivation["category"] == {"pass": "rule", "basis": {"rule_id": rc}}
+    assert r.derivation["type"] == {"pass": "rule", "basis": {"rule_id": rp}}  # the payee rule decides it
+    assert _row(isolated_engine, unrelated).category_id is None
+    assert dangling != rc
+
+
 def _history_world(conn: Connection, acct: int, n: int = 3) -> tuple[int, int, int]:
     p, c = _payee(conn, "Edeka"), make_category(conn, "Food")
     for i in range(n):

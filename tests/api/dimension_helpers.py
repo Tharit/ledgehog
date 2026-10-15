@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from sqlalchemy import Connection, text
@@ -15,20 +16,22 @@ def rule(
     payee_id: int | None = None,
     condition_payee_id: int | None = None,
 ) -> int:
-    """A rule that sets a category (optionally conditioned on a payee) or sets a payee."""
+    """A rule that sets a category (optionally with a payee condition) or sets a payee."""
+    conds = [{"field": "counterparty_ref", "op": "equals", "value": "ref"}]
+    if condition_payee_id is not None:
+        conds.append({"field": "payee", "op": "is", "value": str(condition_payee_id)})
     sets = "category" if category_id is not None else "payee"
     return int(
         conn.execute(
             text(
-                "INSERT INTO rule (sets, category_id, payee_id, condition_payee_id, conditions, name)"
-                " VALUES (:s, :c, :p, :cp, CAST(:conds AS jsonb), :n) RETURNING id"
+                "INSERT INTO rule (sets, category_id, payee_id, conditions, name)"
+                " VALUES (:s, :c, :p, CAST(:conds AS jsonb), :n) RETURNING id"
             ),
             {
                 "s": sets,
                 "c": category_id,
                 "p": payee_id,
-                "cp": condition_payee_id,
-                "conds": '[{"field": "counterparty_ref", "op": "equals", "value": "ref"}]',
+                "conds": json.dumps(conds),
                 "n": name,
             },
         ).scalar_one()

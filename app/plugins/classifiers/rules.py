@@ -14,6 +14,8 @@ from app.core.ingest.identity import canonical_text
 from app.core.plugins.classifier import (
     CONDITION_FIELDS,
     CONDITION_OPS,
+    PAYEE_FIELD,
+    TEXT_OPS,
     ClassifierContext,
     Condition,
     EntryInput,
@@ -26,6 +28,7 @@ from app.core.plugins.text import normalise_name
 from app.core.resolution.registry import RuleTools
 
 MAX_PATTERN_LENGTH = 200
+_DIGITS = re.compile(r"[0-9]+")
 
 _GROUP_RANK = {"counter_account": 0, "payee": 1, "category": 2}
 # fields compared as codes (canonical text) rather than as words (name normalisation)
@@ -51,9 +54,7 @@ def validate_rule(rule: RuleSpec) -> None:
         raise RuleError("the rule name must not be blank", "name")
     if rule.sets not in _GROUP_RANK:
         raise RuleError("a rule sets a counter-account, a payee or a category", "sets")
-    if rule.condition_payee_id is not None and rule.sets != "category":
-        raise RuleError("a payee condition is only for category rules", "condition_payee_id")
-    if not rule.conditions and rule.condition_payee_id is None:
+    if not rule.conditions:
         raise RuleError("a rule needs at least one condition", "conditions")
     for i, cond in enumerate(rule.conditions):
         at = f"conditions[{i}]"
@@ -61,8 +62,19 @@ def validate_rule(rule: RuleSpec) -> None:
             raise RuleError(f"{at}: the field is not one a rule can read", f"{at}.field")
         if cond.op not in CONDITION_OPS:
             raise RuleError(f"{at}: the operator is not one a rule knows", f"{at}.op")
+        if cond.field == PAYEE_FIELD:
+            if rule.sets != "category":
+                raise RuleError(f"{at}: a payee condition is only for category rules", f"{at}.field")
+            if cond.op != "is":
+                raise RuleError(f"{at}: a payee condition takes the operator `is` only", f"{at}.op")
+        elif cond.op not in TEXT_OPS:
+            raise RuleError(f"{at}: the operator is not one this field takes", f"{at}.op")
         if not isinstance(cond.value, str) or not cond.value.strip():
             raise RuleError(f"{at}: the value must not be blank", f"{at}.value")
+        if cond.field == PAYEE_FIELD:
+            if _payee_id(cond) is None:
+                raise RuleError(f"{at}: a payee condition's value is a payee id", f"{at}.value")
+            continue
         if cond.op == "regex":
             if len(cond.value) > MAX_PATTERN_LENGTH:
                 raise RuleError(
@@ -74,6 +86,14 @@ def validate_rule(rule: RuleSpec) -> None:
                 # the message of `re` can quote a piece of the pattern: only where it failed is said
                 where = f" (at position {exc.pos})" if exc.pos is not None else ""
                 raise RuleError(f"{at}: the regex does not compile{where}", f"{at}.value") from exc
+
+
+def _payee_id(cond: Condition) -> int | None:
+    """The id a `payee` condition names: a digit string of a positive integer, else None."""
+    if not _DIGITS.fullmatch(cond.value):
+        return None
+    wanted = int(cond.value)
+    return wanted if wanted > 0 else None
 
 
 def default_rule_tools() -> RuleTools:
@@ -96,7 +116,11 @@ def _wanted(field: str, value: str) -> str:
     return _comparable(field, value)
 
 
-def _holds(cond: Condition, entry: EntryInput) -> bool:
+def _holds(cond: Condition, entry: EntryInput, ctx_payee_id: int | None) -> bool:
+    if cond.field == PAYEE_FIELD:
+        # judged on the payee resolved so far; an id that no payee has any more never equals it
+        wanted = _payee_id(cond)
+        return wanted is not None and wanted == ctx_payee_id
     raw: str | None = getattr(entry, cond.field)
     if raw is None or not raw.strip():
         return False  # a condition on a field the entry lacks fails
@@ -114,11 +138,9 @@ def _holds(cond: Condition, entry: EntryInput) -> bool:
 
 
 def matches(rule: RuleSpec, entry: EntryInput, ctx_payee_id: int | None = None) -> bool:
-    """All of the rule's conditions hold, and the payee condition; a condition on a field the entry
-    lacks does not (rules.md §2)."""
-    if rule.condition_payee_id is not None and rule.condition_payee_id != ctx_payee_id:
-        return False
-    return all(_holds(c, entry) for c in rule.conditions)
+    """All of the rule's conditions hold, payee conditions judged on `ctx_payee_id`; a condition on a
+    field the entry lacks does not (rules.md §2)."""
+    return all(_holds(c, entry, ctx_payee_id) for c in rule.conditions)
 
 
 def _payee_in(ctx: ClassifierContext) -> int | None:
@@ -179,7 +201,7 @@ class RulesClassifier:
             return self._proposal("type", "transfer", r)
         r = self._first(self._payee, entry, ctx)
         if r is None:
-            plain = [c for c in self._category if c.condition_payee_id is None]
+            plain = [c for c in self._category if not any(k.field == PAYEE_FIELD for k in c.conditions)]
             r = self._first(plain, entry, ctx)
         return self._proposal("type", "flow", r) if r else None
 

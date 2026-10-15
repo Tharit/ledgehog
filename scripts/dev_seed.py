@@ -273,14 +273,17 @@ def make_rules(engine: Engine, out: list[str]) -> None:
         target = {"counter_account": account, "payee": payee, "category": category}[r.sets].get(r.target)
         if target is None:
             continue  # the vocabulary it names is not there (--no-classify, or already changed)
+        # a payee condition names its payee; the rule stores the id
+        conditions = [(f, o, str(payee.get(v)) if f == "payee" else v) for f, o, v in r.conditions]
+        if any(f == "payee" and v == "None" for f, _o, v in conditions):
+            continue  # the payee it names is not there
         draft = RuleDraft(
             name=r.name,
             sets=r.sets,
             counter_account_id=target if r.sets == "counter_account" else None,
             payee_id=target if r.sets == "payee" else None,
             category_id=target if r.sets == "category" else None,
-            condition_payee_id=payee.get(r.condition_payee) if r.condition_payee else None,
-            conditions=tuple(Condition(f, o, v) for f, o, v in r.conditions),  # type: ignore[arg-type]
+            conditions=tuple(Condition(f, o, v) for f, o, v in conditions),  # type: ignore[arg-type]
             priority=r.priority,
         )
         preview = create_rule(engine, draft, dry_run=True, limit=1).preview

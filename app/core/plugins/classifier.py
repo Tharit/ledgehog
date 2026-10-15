@@ -72,16 +72,22 @@ class AccountFact:
     closed_on: date | None = None
 
 
-ConditionField = Literal["counterparty_name", "counterparty_ref", "purpose", "booking_text", "mandate_ref"]
-ConditionOp = Literal["equals", "starts_with", "contains", "regex"]
+ConditionField = Literal[
+    "counterparty_name", "counterparty_ref", "purpose", "booking_text", "mandate_ref", "payee"
+]
+ConditionOp = Literal["equals", "starts_with", "contains", "regex", "is"]
 CONDITION_FIELDS: tuple[ConditionField, ...] = (
     "counterparty_name",
     "counterparty_ref",
     "purpose",
     "booking_text",
     "mandate_ref",
+    "payee",
 )
-CONDITION_OPS: tuple[ConditionOp, ...] = ("equals", "starts_with", "contains", "regex")
+CONDITION_OPS: tuple[ConditionOp, ...] = ("equals", "starts_with", "contains", "regex", "is")
+# `payee` (the id of the payee resolved so far, as a digit string) takes `is` only; the others the rest
+PAYEE_FIELD: ConditionField = "payee"
+TEXT_OPS: tuple[ConditionOp, ...] = ("equals", "starts_with", "contains", "regex")
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,7 +103,7 @@ class Condition:
 class RuleSpec:
     """One row of `rule`. `target_id` is the id of what the rule sets, by `sets`.
 
-    All `conditions` must hold, and the payee condition too, for a category rule.
+    All `conditions` must hold; a category rule's may include `payee` conditions.
     """
 
     id: int
@@ -105,7 +111,6 @@ class RuleSpec:
     sets: Literal["counter_account", "payee", "category"]
     target_id: int
     priority: int = 100
-    condition_payee_id: int | None = None  # category rules only
     conditions: tuple[Condition, ...] = ()
 
 

@@ -34,7 +34,6 @@ _ENTITY_OF = {
     "category_id": "category",
     "parent_id": "category",
     "payee_id": "payee",
-    "condition_payee_id": "payee",
     "account_id": "account",
     "counter_account_id": "account",
 }

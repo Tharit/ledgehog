@@ -250,9 +250,12 @@ def test_named_rules_exist_for_every_kind_and_the_regex_one(seeded: str, dev_eng
                 ).scalar_one()
                 >= 1
             ), (field, op)
-        assert (  # the payee-conditioned category rule: no condition list at all
+        assert (  # the payee-conditioned category rule: a payee condition in the list
             conn.execute(
-                text("SELECT count(*) FROM rule WHERE condition_payee_id IS NOT NULL AND conditions = '[]'")
+                text(
+                    "SELECT count(*) FROM rule WHERE sets = 'category'"
+                    ' AND conditions @> CAST(\'[{"field":"payee","op":"is"}]\' AS jsonb)'
+                )
             ).scalar_one()
             >= 1
         )

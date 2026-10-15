@@ -39,13 +39,12 @@ def load_rules(conn: Connection) -> list[RuleSpec]:
             sets=r.sets,
             target_id=r.target_id,
             priority=r.priority,
-            condition_payee_id=r.condition_payee_id,
             conditions=conditions_of(r.conditions),
         )
         for r in conn.execute(
             text(
                 "SELECT id, name, sets, COALESCE(counter_account_id, payee_id, category_id) AS target_id,"
-                " priority, condition_payee_id, conditions FROM rule ORDER BY id"
+                " priority, conditions FROM rule ORDER BY id"
             )
         )
     ]

@@ -170,9 +170,16 @@ def test_a_category_rule_with_a_payee_condition_reads_the_stored_payee(
         a = rs.confirmed_entry(conn, w["acct"], category=w["fun"], payee=w["rewe"], counterparty_name="X")
         rs.confirmed_entry(conn, w["acct"], category=w["fun"], payee=w["other"], counterparty_name="X")
         rs.new_entry(conn, w["acct"], counterparty_name="X")  # no payee stored
-    d = RuleDraft(name="by payee", sets="category", category_id=w["food"], condition_payee_id=w["rewe"])
+    d = RuleDraft(
+        name="by payee", sets="category", category_id=w["food"], conditions=(rs.payee_is(w["rewe"]),)
+    )
     p = create_rule(isolated_engine, d, dry_run=True).preview
     assert ids(p.matches.rows) == {a} and p.matches.total == 1
+    # next to another condition, and a payee condition naming no payee any more matches nothing
+    both = cat_draft(w, name="both", conditions=(rs.name_is("X"), rs.payee_is(w["rewe"])))
+    assert ids(create_rule(isolated_engine, both, dry_run=True).preview.matches.rows) == {a}
+    two = cat_draft(w, name="two", conditions=(rs.payee_is(w["rewe"]), rs.payee_is(w["other"])))
+    assert create_rule(isolated_engine, two, dry_run=True).preview.matches.total == 0
 
 
 # ---- (b) would_confirm -----------------------------------------------------------------------

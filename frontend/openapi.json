@@ -674,7 +674,8 @@
               "counterparty_ref",
               "purpose",
               "booking_text",
-              "mandate_ref"
+              "mandate_ref",
+              "payee"
             ],
             "title": "Field",
             "type": "string"
@@ -684,7 +685,8 @@
               "equals",
               "starts_with",
               "contains",
-              "regex"
+              "regex",
+              "is"
             ],
             "title": "Op",
             "type": "string"
@@ -1585,6 +1587,13 @@
       },
       "PayeeDeleteOut": {
         "properties": {
+          "dangling_rules": {
+            "items": {
+              "$ref": "#/components/schemas/RuleRefOut"
+            },
+            "title": "Dangling Rules",
+            "type": "array"
+          },
           "deletable": {
             "title": "Deletable",
             "type": "boolean"
@@ -1634,6 +1643,7 @@
           "deletable",
           "held",
           "rules",
+          "dangling_rules",
           "deleted_rule_ids",
           "deleted",
           "settle"
@@ -2242,19 +2252,6 @@
             ],
             "title": "Category Id"
           },
-          "condition_payee_id": {
-            "anyOf": [
-              {
-                "exclusiveMinimum": 0.0,
-                "maximum": 9007199254740992.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Condition Payee Id"
-          },
           "conditions": {
             "items": {
               "$ref": "#/components/schemas/ConditionBody"
@@ -2388,17 +2385,6 @@
             ],
             "title": "Category Id"
           },
-          "condition_payee_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Condition Payee Id"
-          },
           "conditions": {
             "items": {
               "$ref": "#/components/schemas/ConditionOut"
@@ -2457,7 +2443,6 @@
           "counter_account_id",
           "payee_id",
           "category_id",
-          "condition_payee_id",
           "conditions",
           "priority"
         ],
@@ -2538,19 +2523,6 @@
               }
             ],
             "title": "Category Id"
-          },
-          "condition_payee_id": {
-            "anyOf": [
-              {
-                "exclusiveMinimum": 0.0,
-                "maximum": 9007199254740992.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Condition Payee Id"
           },
           "conditions": {
             "items": {

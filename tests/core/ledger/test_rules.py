@@ -198,9 +198,12 @@ def test_names_are_unique_case_insensitively_and_not_blank(isolated_engine: Engi
         ({"conditions": (rs.cond("amount", "equals", "SECRETPATTERN"),)}, "conditions[0].field"),
         ({"conditions": (rs.cond("purpose", "matches", "SECRETPATTERN"),)}, "conditions[0].op"),
         (
-            {"sets": "payee", "category_id": None, "payee_id": 1, "condition_payee_id": 1},
-            "condition_payee_id",
+            {"sets": "payee", "category_id": None, "payee_id": 1, "conditions": (rs.payee_is(1),)},
+            "conditions[0].field",
         ),
+        ({"conditions": (rs.cond("payee", "equals", "1"),)}, "conditions[0].op"),
+        ({"conditions": (rs.name_is("x"), rs.cond("payee", "is", "SECRETPATTERN"))}, "conditions[1].value"),
+        ({"conditions": (rs.payee_is(0),)}, "conditions[0].value"),
         ({"payee_id": 1}, "payee_id"),  # a category rule naming a payee as well
         ({"category_id": None}, "category_id"),  # no target at all
         ({"sets": "nothing"}, "sets"),
@@ -231,7 +234,7 @@ def test_a_rule_that_cannot_be_saved_is_refused_without_quoting_it(
             "counter_account_id",
             "account",
         ),
-        ({"condition_payee_id": 999_999}, "condition_payee_id", "payee"),
+        ({"conditions": (rs.name_is("x"), rs.payee_is(999_999))}, "conditions[1].value", "payee"),
     ],
 )
 def test_a_missing_target_or_condition_is_a_stale_reference(
@@ -422,3 +425,52 @@ def test_unconfigured_rule_tools_fail_loudly(isolated_engine: Engine, world: dic
         create_rule(isolated_engine, draft(world), dry_run=True)
     with pytest.raises(RuleToolsNotConfigured), isolated_engine.connect() as conn:
         list_rules(conn)
+
+
+# ---- payee conditions (D215) -----------------------------------------------------------------
+
+
+def test_payee_conditions_are_stored_in_the_list_and_ids_are_canonical_digits(
+    isolated_engine: Engine, world: dict[str, Any]
+):
+    with isolated_engine.begin() as conn:
+        other = rs.payee(conn, "Other")
+    d = draft(world, conditions=(rs.payee_is(f"00{world['rewe']}"), rs.payee_is(other), rs.name_is("REWE")))
+    written = create_rule(isolated_engine, d, expected_count=0)
+    assert written.rule is not None
+    assert written.rule.conditions == (
+        rs.payee_is(world["rewe"]),
+        rs.payee_is(other),
+        rs.name_is("REWE"),
+    )
+    only = draft(world, name="only", conditions=(rs.payee_is(world["rewe"]),))
+    assert make(isolated_engine, only) > 0  # a payee condition alone is a condition
+
+
+def test_the_preview_of_a_rule_with_payee_conditions_judges_the_stored_payee(
+    isolated_engine: Engine, world: dict[str, Any]
+):
+    with isolated_engine.begin() as conn:
+        hit = rs.confirmed_entry(
+            conn, world["acct"], category=world["fun"], payee=world["rewe"], counterparty_name="REWE"
+        )
+        rs.confirmed_entry(conn, world["acct"], category=world["fun"], counterparty_name="REWE")
+    d = draft(world, conditions=(rs.payee_is(world["rewe"]), rs.name_is("REWE")))
+    p = create_rule(isolated_engine, d, dry_run=True).preview
+    assert [r.entry_id for r in p.matches.rows] == [hit]
+
+
+def test_a_payee_condition_on_a_rule_that_does_not_set_a_category_is_refused(
+    isolated_engine: Engine, world: dict[str, Any]
+):
+    for kw in (
+        {"sets": "payee", "category_id": None, "payee_id": world["rewe"]},
+        {"sets": "counter_account", "category_id": None, "counter_account_id": world["cash"]},
+    ):
+        with pytest.raises(InvalidRule) as info:
+            create_rule(
+                isolated_engine,
+                draft(world, conditions=(rs.name_is("x"), rs.payee_is(world["rewe"])), **kw),
+                dry_run=True,
+            )
+        assert info.value.field == "conditions[1].field"

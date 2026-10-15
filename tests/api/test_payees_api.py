@@ -132,7 +132,7 @@ def test_errors_duplicates_blank_and_unknown(anna: TestClient):
 
 @pytest.fixture
 def referenced(anna: TestClient, api_engine: Engine, acct: int) -> dict[str, int]:
-    """Payee `used` (entries), `ruled` (a rule sets it, another names it as a condition), `free`."""
+    """Payee `used` (entries), `ruled` (a rule sets it, another has a payee condition on it), `free`."""
     used, ruled, free = (make(anna, n)["id"] for n in ("Used", "Ruled", "Free"))
     with api_engine.begin() as conn:
         cat = seed.category(conn, "C")
@@ -153,9 +153,9 @@ def test_delete_dry_run_lists_the_rules_and_writes_nothing(
     assert r.status_code == 200
     d = r.json()
     assert (d["dry_run"], d["deletable"], d["deleted"], d["settle"]) == (True, True, False, None)
-    assert d["rules"] == [
-        {"id": referenced["sets"], "name": "sets-ruled", "sets": "payee", "role": "sets"},
-        {"id": referenced["cond"], "name": "cond-ruled", "sets": "category", "role": "condition"},
+    assert d["rules"] == [{"id": referenced["sets"], "name": "sets-ruled", "sets": "payee", "role": "sets"}]
+    assert d["dangling_rules"] == [  # left alone by the delete, and never matching afterwards
+        {"id": referenced["cond"], "name": "cond-ruled", "sets": "category", "role": "condition"}
     ]
     assert d["deleted_rule_ids"] == []
     d = anna.delete(f"{PAYEES}/{referenced['used']}", params={"dry_run": "true"}).json()
@@ -164,16 +164,18 @@ def test_delete_dry_run_lists_the_rules_and_writes_nothing(
         assert counts(conn) == before
 
 
-def test_delete_takes_its_rules_and_reports_their_ids(
+def test_delete_takes_the_rules_that_set_it_and_leaves_the_ones_whose_condition_names_it(
     anna: TestClient, api_engine: Engine, referenced: dict[str, int]
 ):
     r = anna.delete(f"{PAYEES}/{referenced['ruled']}")
     assert r.status_code == 200
     d = r.json()
     assert (d["deleted"], d["dry_run"], d["settle"]["error"]) == (True, False, None)
-    assert d["deleted_rule_ids"] == [referenced["sets"], referenced["cond"]]
+    assert d["deleted_rule_ids"] == [referenced["sets"]]
     assert [x["id"] for x in d["rules"]] == d["deleted_rule_ids"]
-    assert [r.id for r in q(api_engine, "SELECT id FROM rule ORDER BY id")] == [referenced["other"]]
+    assert [x["id"] for x in d["dangling_rules"]] == [referenced["cond"]]
+    left = [r.id for r in q(api_engine, "SELECT id FROM rule ORDER BY id")]
+    assert left == sorted([referenced["cond"], referenced["other"]])  # the condition rule stays
     assert referenced["ruled"] not in payee_ids(api_engine)
     assert anna.delete(f"{PAYEES}/{referenced['free']}").json()["deleted_rule_ids"] == []
     assert_envelope(anna.delete(f"{PAYEES}/{referenced['free']}"), 404, "not_found")
@@ -260,20 +262,25 @@ def test_merge_repoints_entries_and_rules_under_the_settling_flag(
         }
         after = conn.execute(text(ENTRY_STATE)).all()
         by_name = {
-            r.name: (r.payee_id, r.condition_payee_id)
-            for r in conn.execute(text("SELECT name, payee_id, condition_payee_id FROM rule"))
+            r.name: (r.payee_id, [c["value"] for c in r.conditions if c["field"] == "payee"])
+            for r in conn.execute(text("SELECT name, payee_id, conditions FROM rule"))
         }
         rules_after = conn.execute(text("SELECT id, name, sets, conditions FROM rule ORDER BY id")).all()
         versions_after = dict(conn.execute(text("SELECT id, version FROM ledger_entry")).all())
     assert after == before  # keys and flags untouched
     bumped = {i for i, v in versions_after.items() if v != versions_before[i]}
     assert bumped == set(d["entry_ids"]) and bumped  # the repointed entries bump, no others
-    assert rules_after == rules_before
-    assert by_name == {
-        "sets-src": (pair["tgt"], None),
-        "cond-src": (None, pair["tgt"]),
-        "cond-tgt": (None, pair["tgt"]),
+    # only the rule whose payee condition named the source changed: the element rewritten in place
+    tgt = str(pair["tgt"])
+    assert [(r.id, r.name, r.sets) for r in rules_after] == [(r.id, r.name, r.sets) for r in rules_before]
+    changed = {r.id: r.conditions for r in rules_after if r not in rules_before}
+    assert changed == {
+        pair["cond"]: [
+            {"field": "counterparty_ref", "op": "equals", "value": "ref"},
+            {"field": "payee", "op": "is", "value": tgt},
+        ]
     }
+    assert by_name == {"sets-src": (pair["tgt"], []), "cond-src": (None, [tgt]), "cond-tgt": (None, [tgt])}
     assert_checks_ok(anna)
 
 

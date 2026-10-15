@@ -90,6 +90,11 @@ def name_starts(value: str) -> Condition:
     return cond("counterparty_name", "starts_with", value)
 
 
+def payee_is(payee_id: int | str) -> Condition:
+    """A payee condition (D215): the payee id as a digit string."""
+    return cond("payee", "is", str(payee_id))
+
+
 def conditions_json(conditions: Sequence[Condition]) -> str:
     return json.dumps([{"field": c.field, "op": c.op, "value": c.value} for c in conditions])
 

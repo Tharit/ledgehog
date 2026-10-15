@@ -84,7 +84,7 @@ class RuleRefOut(BaseModel):
     id: int
     name: str
     sets: str  # what the rule sets: counter_account, payee or category
-    role: str  # "sets": it sets this payee; "condition": it names it as a condition
+    role: str  # "sets": it sets this payee; "condition": its condition names it (left dangling)
 
 
 class PayeeHeldOut(BaseModel):
@@ -96,7 +96,8 @@ class PayeeDeleteOut(BaseModel):
     payee: PayeeOut
     deletable: bool  # no entry references it
     held: PayeeHeldOut
-    rules: list[RuleRefOut]  # the rules that go with it: those setting it and those naming it as a condition
+    rules: list[RuleRefOut]  # the rules that go with it: those setting it
+    dangling_rules: list[RuleRefOut]  # rules whose payee condition names it: they stay and never match
     deleted_rule_ids: list[int]  # real run only
     deleted: bool
     settle: SettleOut | None  # null on a dry run
@@ -109,6 +110,7 @@ class PayeeDeleteOut(BaseModel):
             deletable=not result.held,
             held=PayeeHeldOut(entries=result.held.get("entries", 0)),
             rules=[RuleRefOut(**vars(r)) for r in result.rules],
+            dangling_rules=[RuleRefOut(**vars(r)) for r in result.dangling_rules],
             deleted_rule_ids=list(result.deleted_rule_ids),
             deleted=result.deleted,
             settle=None if result.settle is None else SettleOut.of(result.settle),
@@ -130,7 +132,7 @@ class PayeeMergeOut(BaseModel):
     entry_count: int
     entry_ids: list[int]  # ascending; empty on a dry run
     setting_rule_ids: list[int]  # rules repointed whose payee it was
-    condition_rule_ids: list[int]  # rules repointed whose payee condition it was
+    condition_rule_ids: list[int]  # rules whose payee condition it was, rewritten to the target
     source_document_provider: str | None
     document_provider_lost: bool  # the source names a provider the target does not
     settle: SettleOut | None  # null on a dry run
