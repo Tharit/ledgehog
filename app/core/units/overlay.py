@@ -307,10 +307,12 @@ class _Walk:
         """The row's decisions after the draft: spec §5.9 'Rederiving', with the draft's fields fixed."""
         entry = _entry_input(row)
         # a drafted payee or category makes the entry a flow, a drafted counter-account a transfer (§5.9)
+        # (a payee drafted as none is the user's decision of no payee: a drafted payee all the same)
         hints: dict[Field, Decided] = {
-            f: Decided(d.value, "user", {})
+            f: USER_NO_PAYEE if d.value is None else Decided(d.value, "user", {})
             for f in ("payee", "category", "counter_account")
-            if (d := _normalised(row.draft.field(f), f)).mode == "fixed" and d.value is not None
+            if (d := _normalised(row.draft.field(f), f)).mode == "fixed"
+            and (d.value is not None or f == "payee")
         }
         implied: str | None = None
         if any(f in hints for f in ("payee", "category")):

@@ -127,3 +127,32 @@ def test_an_emptied_counter_account_is_reresolved(scene: Scene) -> None:
     assert scene.row(e).counter_account_id == scene.savings
     preview_then_commit(scene, scene.draft(e, DraftEntry(e, counter_account=fixed(None))))
     assert scene.row(e).counter_account_id == scene.cash
+
+
+def test_a_payee_none_alone_on_an_untyped_entry_implies_a_flow(scene: Scene) -> None:
+    _s, (e,) = scene.movement(-700, counterparty="NOBODY")
+    assert scene.row(e).type is None
+    plan, _ = preview_then_commit(scene, scene.draft(e, DraftEntry(e, payee=fixed(None))))
+    row = plan.row(e)
+    assert row.fields["type"].value == "flow" and row.fields["type"].key == {"pass": "user"}
+    assert row.fields["payee"].value is None and row.fields["payee"].key == {"pass": "user"}
+    assert row.fields["payee"].evidence is not None and row.fields["payee"].evidence.pass_name == "user"
+    stored = scene.row(e)
+    assert stored.type == "flow" and stored.payee_id is None
+    assert stored.derivation["type"] == {"pass": "user"} and stored.derivation["payee"] == {"pass": "user"}
+    assert scene.settle().touched_entry_ids == ()
+
+
+def test_a_payee_none_with_a_drafted_transfer_is_dropped_without_error(scene: Scene) -> None:
+    _s, (e,) = scene.movement(-700, counterparty="NOBODY", authored=True)
+    plan, _ = preview_then_commit(
+        scene,
+        scene.draft(
+            e,
+            DraftEntry(e, type=fixed("transfer"), payee=fixed(None), counter_account=fixed(scene.savings)),
+        ),
+    )
+    stored = scene.row(e)
+    assert stored.type == "transfer" and stored.payee_id is None
+    assert "payee" not in stored.derivation
+    assert plan.row(e).fields["payee"].key is None
