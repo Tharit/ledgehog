@@ -95,12 +95,42 @@ def candidates(txn: DocTxn, documents: Iterable[DocInput], window: int) -> list[
     return sorted(found, key=lambda d: (_distance(txn, d), d.document_id))
 
 
+def _indexed(documents: Iterable[DocInput]) -> dict[tuple[str, str, int], list[DocInput]]:
+    """Uncarried documents by (provider, currency, total): where `amount_matches` can only hold."""
+    index: dict[tuple[str, str, int], list[DocInput]] = defaultdict(list)
+    for d in documents:
+        if not d.carried:
+            index[(d.provider, d.currency, d.total)].append(d)
+    return index
+
+
+def _candidates_indexed(
+    txn: DocTxn, index: dict[tuple[str, str, int], list[DocInput]], window: int
+) -> list[DocInput]:
+    """`candidates` over an index: the same rule, without scanning every document for every transaction."""
+    if not txn.considered or txn.payee_provider is None:
+        return []
+    keys = [(txn.payee_provider, txn.currency, txn.amount)]
+    if txn.instructed_currency is not None and txn.instructed_amount is not None:
+        keys.append((txn.payee_provider, txn.instructed_currency, txn.instructed_amount))
+    seen: dict[int, DocInput] = {}
+    for key in keys:
+        for d in index.get(key, ()):
+            if amount_matches(txn, d) and _within(txn, d, window):
+                seen[d.document_id] = d
+    return sorted(seen.values(), key=lambda d: (_distance(txn, d), d.document_id))
+
+
 def automatic_links(
     transactions: Iterable[DocTxn], documents: Sequence[DocInput], window: int
 ) -> dict[int, int]:
     """§4: {entry_id: document_id} where a transaction has exactly one candidate and that document is
-    a candidate of no other transaction (uniqueness both ways)."""
-    per_txn = {t.entry_id: candidates(t, documents, window) for t in transactions}
+    a candidate of no other transaction (uniqueness both ways).
+
+    Same answer as `candidates` per transaction, found through an index of the documents, so a settle over
+    thousands of each does not compare every pair."""
+    index = _indexed(documents)
+    per_txn = {t.entry_id: _candidates_indexed(t, index, window) for t in transactions}
     claimed: dict[int, int] = defaultdict(int)
     for found in per_txn.values():
         for d in found:

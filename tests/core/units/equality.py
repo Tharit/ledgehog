@@ -31,6 +31,7 @@ def previewed(plan: Plan) -> dict[int, dict[str, Any]]:
             "derivation": dict(r.derivation),
             "review_flags": list(r.flags),
             "tag_ids": tuple(r.tag_ids),
+            "document_id": r.document_id,
         }
         for r in plan.rows
     }
@@ -67,6 +68,7 @@ def preview_then_commit(scene: Scene, draft: UnitDraft) -> tuple[Plan, CommitRes
             "derivation": dict(row.derivation),
             "review_flags": list(row.review_flags),
             "tag_ids": scene.tags_of(created_or_id(result.created, temp_or_id)),
+            "document_id": row.document_id,
         }
         assert actual == expected, f"entry {temp_or_id}"
     previewed_consequences = sorted(

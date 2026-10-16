@@ -24,6 +24,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Documents View */
+        get: operations["list_documents_view"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{document_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Document View
+         * @description A document with its lines and, when no entry carries it, the transactions it would match.
+         */
+        get: operations["get_document_view"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/importers/instances": {
         parameters: {
             query?: never;
@@ -858,6 +895,24 @@ export interface components {
             /** Accounts */
             accounts: components["schemas"]["AccountOut"][];
         };
+        /**
+         * CarrierOut
+         * @description The transaction carrying a document: its original entry, which opens the review panel.
+         */
+        CarrierOut: {
+            /** Account Id */
+            account_id: number;
+            amount: components["schemas"]["Money"];
+            /**
+             * Booked On
+             * Format: date
+             */
+            booked_on: string;
+            /** Entry Id */
+            entry_id: number;
+            /** Source Transaction Id */
+            source_transaction_id: number;
+        };
         /** CategoriesOut */
         CategoriesOut: {
             /** Categories */
@@ -1083,6 +1138,110 @@ export interface components {
         /** DeleteOut */
         DeleteOut: {
             settle: components["schemas"]["SettleOut"];
+        };
+        /** DocumentDetailOut */
+        DocumentDetailOut: {
+            carrier: components["schemas"]["CarrierOut"] | null;
+            /** External Id */
+            external_id: string;
+            /** Id */
+            id: number;
+            /** Importer Instance Id */
+            importer_instance_id: number | null;
+            /** Line Count */
+            line_count: number;
+            /** Lines */
+            lines: components["schemas"]["DocumentLineOut"][];
+            /** Matches */
+            matches: components["schemas"]["DocumentMatchOut"][];
+            /** Merchant Name */
+            merchant_name: string | null;
+            /**
+             * Occurred On
+             * Format: date
+             */
+            occurred_on: string;
+            /** Provider */
+            provider: string;
+            /** Title */
+            title: string | null;
+            total: components["schemas"]["Money"];
+            /** Version */
+            version: number;
+        };
+        /** DocumentLineOut */
+        DocumentLineOut: {
+            amount: components["schemas"]["Money"];
+            /** Description */
+            description: string;
+            /** Line No */
+            line_no: number;
+            /** Qty */
+            qty: number | null;
+        };
+        /**
+         * DocumentMatchOut
+         * @description A transaction the document would match (documents.md §9), with its unit's state.
+         */
+        DocumentMatchOut: {
+            /** Account Id */
+            account_id: number;
+            amount: components["schemas"]["Money"];
+            /**
+             * Booked On
+             * Format: date
+             */
+            booked_on: string;
+            /** Confirmed */
+            confirmed: boolean;
+            /** Display Text */
+            display_text: string | null;
+            /** Document Id */
+            document_id: number | null;
+            /** Entry Id */
+            entry_id: number;
+            instructed_amount: components["schemas"]["Money"] | null;
+            /** Payee Id */
+            payee_id: number | null;
+            /** Source Transaction Id */
+            source_transaction_id: number;
+        };
+        /** DocumentOut */
+        DocumentOut: {
+            carrier: components["schemas"]["CarrierOut"] | null;
+            /** External Id */
+            external_id: string;
+            /** Id */
+            id: number;
+            /** Importer Instance Id */
+            importer_instance_id: number | null;
+            /** Line Count */
+            line_count: number;
+            /** Merchant Name */
+            merchant_name: string | null;
+            /**
+             * Occurred On
+             * Format: date
+             */
+            occurred_on: string;
+            /** Provider */
+            provider: string;
+            /** Title */
+            title: string | null;
+            total: components["schemas"]["Money"];
+            /** Version */
+            version: number;
+        };
+        /** DocumentPageOut */
+        DocumentPageOut: {
+            /** Documents */
+            documents: components["schemas"]["DocumentOut"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
         };
         /** EditEffectsOut */
         EditEffectsOut: {
@@ -2508,6 +2667,104 @@ export interface operations {
             };
             /** @description Not signed in (or wrong login or password). */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_documents_view: {
+        parameters: {
+            query?: {
+                provider?: string[] | null;
+                from?: string | null;
+                to?: string | null;
+                amount_min?: number | null;
+                amount_max?: number | null;
+                currency?: string | null;
+                q?: string | null;
+                linked?: boolean | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentPageOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_document_view: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDetailOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

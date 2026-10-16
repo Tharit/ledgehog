@@ -12,10 +12,10 @@ One round is the five ordered steps of architecture §5.2. Before the first roun
 document of every confirmed unit that has none (step 5 does it for what each round newly confirms).
 Step 1 resolves every unconfirmed entry (core/settle/resolution.py), step 4 pairs the unpaired transfer legs
 (core/settle/pairing.py) and step 5 is the review flags, which also report what the round
-newly confirmed; steps 2 and 3 are named no-op hooks that later work replaces with
-``register_step(name, fn)``. The steps of one settle share a `SettleRun`
-(core/settle/run.py). The settle baseline is a pass over every unconfirmed unit; narrowing
-to a dirty set is an optimisation to take only if the time budget is missed.
+newly confirmed; steps 2 and 3 are document matching and the resolution after a link
+(core/settle/documents.py); a step can be replaced with ``register_step(name, fn)``. The steps of one
+settle share a `SettleRun` (core/settle/run.py). The settle baseline is a pass over every unconfirmed
+unit; narrowing to a dirty set is an optimisation to take only if the time budget is missed.
 """
 
 from __future__ import annotations
@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from sqlalchemy import Connection, Engine, text
 
 from app.core.resolution.confirmed import load_confirmed_ids
+from app.core.settle.documents import match_documents_step, resolve_after_link_step
 from app.core.settle.flags import record_none_documents, review_flags_step
 from app.core.settle.pairing import pair_transfers_step
 from app.core.settle.resolution import resolve_step
@@ -51,14 +52,10 @@ class SettleResult:
 Step = Callable[[Connection], StepOutcome]
 
 
-def _noop(conn: Connection) -> StepOutcome:
-    return StepOutcome()
-
-
 _STEPS: list[tuple[str, Step]] = [
     ("resolve", resolve_step),
-    ("match_documents", _noop),
-    ("resolve_after_link", _noop),
+    ("match_documents", match_documents_step),
+    ("resolve_after_link", resolve_after_link_step),
     ("pair_transfers", pair_transfers_step),
     ("review_flags", review_flags_step),
 ]

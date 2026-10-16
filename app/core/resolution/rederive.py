@@ -58,10 +58,15 @@ def rederive(
     classifiers: Sequence[Classifier],
     history: HistorySource | None = None,
     exclude_entry_ids: frozenset[int] = frozenset(),
+    reopen: bool = False,
 ) -> Resolved:
-    """The values of an unconfirmed entry now, given what is stored (`current`)."""
+    """The values of an unconfirmed entry now, given what is stored (`current`).
+
+    `reopen` says a value BEFORE the first field changed (a document was linked, spec §5.9): every standing
+    value is derived again, as it is once a value changes along the walk. The user's decision of no payee
+    stays, as it does there."""
     fixed: dict[Field, Decided] = {}
-    changed = False
+    changed = reopen
     # The last afresh resolution. Resolving around values it decided itself gives the same answer,
     # so the next field reads it instead of resolving the entry again (one resolve, not one per field).
     last: Resolved | None = None

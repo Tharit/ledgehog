@@ -82,10 +82,10 @@ def unit_state(
     `unpaired_transfer`. A unit has at most one unpaired leg: a source has one transfer entry (I31) and an
     unpaired leg's unit is its own source.
 
-    `documents` says per entry whether its transaction awaits a document or has suggestions (what the SQL
-    reads as `doc_awaited`, `doc_suggested`). It counts only for the original entry of a source (the lowest
-    id of its source among `entries`, which holds every entry of each source) that has no `document` key:
-    the gate of documents.md §1.
+    `documents` says per entry whether its transaction awaits a document, has suggestions or a candidate
+    (what the SQL reads as `doc_awaited`, `doc_suggested`, `doc_candidate`). It counts only for the
+    original entry of a source (the lowest id of its source among `entries`, which holds every entry of
+    each source) that has no `document` key: the gate of documents.md §1.
     """
     if any(not e.movement for e in entries):
         raise ValueError("a derived entry is in no unit")
@@ -108,7 +108,10 @@ def unit_state(
         )
     if any(f.awaited for f in open_docs.values()):
         reasons.append("waiting_for_document")
-    if any(f.suggested for f in open_docs.values()):
+    if any(f.suggested or f.candidate for f in open_docs.values()):
+        # a candidate settling is about to link keeps the unit open too; it has no flag of its own and is
+        # normally gone before anyone reads it (the link is made in the same settle), so it reads as a
+        # suggestion
         reasons.append("document_suggested")
     if nonstanding:
         reasons.append("non_standing_keys")

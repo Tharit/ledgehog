@@ -136,13 +136,13 @@ def _category(flt: LedgerFilter) -> ColumnElement[bool]:
     return or_(*options)
 
 
-def _like_pattern(word: str) -> str:
+def like_pattern(word: str) -> str:
     escaped = word.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     return f"%{escaped}%"
 
 
 def _word(word: str) -> ColumnElement[bool]:
-    pattern = _like_pattern(word)
+    pattern = like_pattern(word)
     fields = (
         le.c.description,
         le.c.note,

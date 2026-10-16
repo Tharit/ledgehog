@@ -290,13 +290,14 @@ def reresolve_unconfirmed_carrier(conn: Connection, entry_ids: Sequence[int]) ->
     dropped (settling makes the link again), and every value, a user's included, is derived again
     (spec §5.5, §5.9). A confirmed entry is left alone (I20). Returns the entries rewritten.
 
-    SEAM: this is the existing afresh resolution (`resolve_afresh`, as the entry form uses it) on the
-    entry's stored input, plus the link drop. When resolution reads the document (enrichment), the
-    loader the entries come from carries it and the dropped link means it no longer does, so the
-    result is the document-free one; revisit it there.
+    The afresh resolution (`resolve_afresh`, as the entry form uses it) runs on the entry's input WITHOUT
+    the document: the link is dropped, so the input is the source row's, not the enrichment the old link (and
+    the old content of the document) gave, and history runs again. The loader is asked for exactly that
+    (`enrich=False`). Settling then links again where the changed document still matches uniquely, and its
+    step 3 derives the values once more from the document as it now is (documents.md §4, §5).
     """
     wanted = set(entry_ids)
-    rows = [r for r in load_unconfirmed(conn) if r.input.entry_id in wanted]
+    rows = [r for r in load_unconfirmed(conn, enrich=False) if r.input.entry_id in wanted]
     if not rows:
         return []
     accounts = load_accounts(conn)

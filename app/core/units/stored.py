@@ -3,17 +3,23 @@
 from __future__ import annotations
 
 from collections.abc import Collection, Iterable, Sequence
+from datetime import date
 from typing import Any, cast
 
 from sqlalchemy import Connection, text
 
+from app.core.importers.providers import document_providers
 from app.core.ingest.identity import canonical_text
 from app.core.matching import MAX_WINDOW, Leg, PoolEntry, Summary
+from app.core.matching.documents import DocInput, DocTxn
+from app.core.resolution.enrich import LinkedDocument
 from app.core.resolution.load import load_accounts, load_rules
 from app.core.resolution.registry import classifiers_for
 from app.core.resolution.snapshot import HistorySnapshot, load_votes
 from app.core.settle.pairing import load_unpaired_legs
-from app.core.settle.window import matching_window_days
+from app.core.settle.window import document_window, matching_window_days
+from app.core.units.doc_world import DocWorld
+from app.core.units.documents import DocumentSource
 from app.core.units.draft import UnitDraft
 from app.core.units.lookup import unit_ids_of
 from app.core.units.plan import Stored, StoredSource, StoredUnit, World
@@ -157,6 +163,110 @@ def load_world(conn: Connection, stored: StoredUnit, draft: UnitDraft, *, ledger
         categories=found_categories,
         payees=found_payees,
         ledger_legs=load_unpaired_legs(conn) if ledger_wide else (),
+        docs=load_doc_world(conn, stored),
+    )
+
+
+_PAYEE_PROVIDERS = text("SELECT id, document_provider FROM payee WHERE document_provider IS NOT NULL")
+
+_SOURCES_OF_DOCUMENTS = text(
+    "SELECT i.importer, i.disabled, i.settings ->> 'start_date' AS start_date, c.covered_through"
+    "  FROM importer_instance AS i LEFT JOIN v_document_coverage AS c ON c.importer_instance_id = i.id"
+)
+
+# the documents no entry OUTSIDE the unit carries and that can matter to it: those its entries carry, and
+# those whose total equals one of its sources' amounts (in the source's currency or its instructed one),
+# whatever payee a draft may give the entry (documents.md §3)
+_DOCUMENTS = text(
+    """
+    SELECT d.id, d.provider, d.occurred_on, d.total, d.currency, d.merchant_name,
+           (SELECT jsonb_agg(jsonb_build_array(l.line_no, l.amount, l.description) ORDER BY l.line_no)
+              FROM external_document_line AS l WHERE l.document_id = d.id) AS lines
+      FROM external_document AS d
+     WHERE NOT EXISTS (SELECT 1 FROM ledger_entry AS c
+                        WHERE c.document_id = d.id AND c.id <> ALL(CAST(:closure AS bigint[])))
+       AND (d.id = ANY(CAST(:carried AS bigint[]))
+            OR EXISTS (SELECT 1 FROM unnest(CAST(:currencies AS text[]), CAST(:totals AS bigint[]))
+                                 AS k(currency, total)
+                        WHERE k.currency = d.currency AND k.total = d.total))
+    """
+)
+
+# documents.md §1 outside the unit: the original entry (I31) of a non-duplicate transaction whose payee has a
+# provider and which has no decided document; the amounts are the transaction's, as the unit CTE reads them
+_OTHERS = text(
+    """
+    SELECT e.id, e.account_id, st.booked_on, st.amount, st.currency, st.instructed_amount,
+           st.instructed_currency, p.document_provider AS provider
+      FROM ledger_entry AS e
+      JOIN source_transaction AS st ON st.id = e.source_transaction_id
+      JOIN payee AS p ON p.id = e.payee_id
+     WHERE p.document_provider IS NOT NULL
+       AND st.duplicate_of IS NULL
+       AND NOT jsonb_exists(e.derivation, 'document')
+       AND e.id <> ALL(CAST(:closure AS bigint[]))
+       AND NOT EXISTS (SELECT 1 FROM ledger_entry AS lo
+                        WHERE lo.source_transaction_id = e.source_transaction_id AND lo.id < e.id)
+    """
+)
+
+
+def load_doc_world(conn: Connection, stored: StoredUnit) -> DocWorld:
+    """What the simulation of settle steps 2 and 3 reads outside `stored` (`doc_world.DocWorld`): a few
+    small queries, each cut to the transactions that have a provider payee or the documents that can match."""
+    payee_providers = {int(r.id): str(r.document_provider) for r in conn.execute(_PAYEE_PROVIDERS)}
+    closure = sorted(e.id for e in stored.entries)
+    carried = sorted({e.document_id for e in stored.entries if e.document_id is not None})
+    if not payee_providers and not carried:
+        return DocWorld(window=0)  # nothing can be matched, nothing is linked: judged without documents
+    currencies: list[str] = []
+    totals: list[int] = []
+    for src in stored.sources.values():
+        currencies.append(src.currency.strip())
+        totals.append(src.amount)
+        if src.instructed_currency is not None and src.instructed_amount is not None:
+            currencies.append(src.instructed_currency.strip())
+            totals.append(src.instructed_amount)
+    docs: list[DocInput] = []
+    details: dict[int, LinkedDocument] = {}
+    for r in conn.execute(
+        _DOCUMENTS, {"closure": closure, "carried": carried, "currencies": currencies, "totals": totals}
+    ):
+        docs.append(DocInput(int(r.id), r.provider, r.occurred_on, int(r.total), str(r.currency).strip()))
+        details[int(r.id)] = LinkedDocument(
+            merchant_name=r.merchant_name,
+            lines=tuple((int(n), int(a), str(d)) for n, a, d in (r.lines or ())),
+        )
+    others = [
+        DocTxn(
+            entry_id=int(r.id),
+            account_id=int(r.account_id),
+            booked_on=r.booked_on,
+            amount=int(r.amount),
+            currency=str(r.currency).strip(),
+            instructed_amount=r.instructed_amount,
+            instructed_currency=r.instructed_currency.strip() if r.instructed_currency else None,
+            payee_provider=r.provider,
+        )
+        for r in conn.execute(_OTHERS, {"closure": closure})
+    ]
+    sources = [
+        DocumentSource(
+            str(r.importer),
+            bool(r.disabled),
+            date.fromisoformat(r.start_date) if r.start_date else None,
+            r.covered_through,
+        )
+        for r in conn.execute(_SOURCES_OF_DOCUMENTS)
+    ]
+    return DocWorld(
+        window=document_window(conn),
+        providers=document_providers(),
+        sources=sources,
+        payee_providers=payee_providers,
+        documents=docs,
+        details=details,
+        others=others,
     )
 
 

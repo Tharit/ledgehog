@@ -16,6 +16,15 @@ PROTOTYPE-ONLY: categories, payees and tags have no create/edit API yet (step 6)
 transaction. That part, and the SQL cleanup in `reset`, is dev data plumbing, not a pattern for
 application code; it goes when step 6 lands (use its operations then). `--no-classify` skips it.
 
+Documents (`dev_seed_data.DOC_CHARGES`, `DOC_SCENARIOS`; with classification, `--no-classify` skips
+them): a `PayPal` payee carrying `document_provider`, two payee rules, card charges written with direct SQL
+(PROTOTYPE-ONLY), then a `testdocs` importer instance (`app/plugins/importers/testdocs`, which delivers
+what its settings list) run through the real `start_run` + `ingest_documents`: an exact one-line document
+that links, a multi-line one (matcher_proposal), an ambiguous pair (suggestions only), a refund, an
+instructed-currency one, a document for an already confirmed charge (stays unlinked), and a charge past
+the coverage (waiting). The script's composition root configures the document providers of its process
+(`core/importers/providers.py`).
+
 Named rules (`dev_seed_data.RULES`: a counter-account rule against the cash account, a payee rule, a
 category rule by counterparty reference, a regex rule, a category rule with a payee condition) are
 written through the real `create_rule`, previewed first, after the classification they name.
@@ -42,14 +51,19 @@ from sqlalchemy import Engine, text
 from app.core.accounts import create_account
 from app.core.balance.records import set_manual_record
 from app.core.importers.instances import create_instance, link_account
+from app.core.importers.providers import configure_document_providers
 from app.core.importers.upload import upload
+from app.core.ingest.documents import ingest_documents
+from app.core.ingest.run import start_run
 from app.core.integrity import check_integrity
+from app.core.ledger.payees import create_payee
 from app.core.ledger.rules import RuleDraft, create_rule
 from app.core.plugins.classifier import Condition
 from app.core.resolution.registry import configure_classifiers, configure_rule_tools
 from app.core.settle.settle import settle
 from app.plugins.classifiers import default_classifiers, default_rule_tools
 from app.plugins.importers.csv import CsvImporter, load_presets
+from app.plugins.importers.testdocs import TestDocumentImporter
 from app.utils import clock
 from app.utils.config import Config
 from app.utils.db.engine import make_engine
@@ -404,6 +418,188 @@ def transfer_cases(engine: Engine, out: list[str]) -> None:
     out.append(f"PROTOTYPE-ONLY dev data (direct SQL): {len(_TRANSFERS)} transfer legs for the review queue")
 
 
+def document_cases(engine: Engine, today: date, out: list[str]) -> None:
+    """Documents for the review queue and the document list (spec §5.5, §5.8, documents.md): the card
+    charges of `dev_seed_data.DOC_CHARGES` (direct SQL around the Visa's last day, like `transfer_cases`,
+    PROTOTYPE-ONLY), the `PayPal` payee carrying its `document_provider` and two rules through the real
+    operations, then a document importer instance (`TestDocumentImporter`, which delivers what its
+    settings list) run through the real `start_run` + `ingest_documents`, which settles.
+
+    The charges are settled first, with no document source yet, so the already-confirmed one is
+    confirmed; the instance covers everything but the last charge, which then waits.
+    """
+    last_on, run_id, visa, category = _document_anchor(engine)
+    provider_payee = create_payee(
+        engine, name=data.DOC_PAYEE, document_provider=data.DOC_PROVIDER, icon="credit-card", color="slate"
+    ).payee.id
+    merchant_payee = create_payee(engine, name=data.DOC_MERCHANT_PAYEE, icon="cpu", color="teal").payee.id
+    _document_rules(engine, provider_payee, merchant_payee)
+    _document_charges(engine, last_on, run_id, visa, provider_payee, category)
+    settle(engine)
+    covered = last_on - timedelta(days=3)
+    start = last_on - timedelta(days=60)
+    importer = TestDocumentImporter()
+    settings: dict[str, Any] = {
+        "start_date": start.isoformat(),
+        "covered_through": covered.isoformat(),
+        "documents": [_document_json(d, last_on) for d in data.DOC_SCENARIOS],
+    }
+    instance = create_instance(
+        engine,
+        importer=data.DOC_IMPORTER,
+        label=f"{data.DOC_IMPORTER}{data.SUFFIX}",
+        settings=settings,
+        emits=["documents"],
+        access="shared",
+        validate=importer.validate_settings,
+    )
+    delivery = importer.fetch(settings, since=start, today=today)
+    run = start_run(engine, None, "documents", importer=data.DOC_IMPORTER, importer_instance_id=instance)
+    result = ingest_documents(
+        engine,
+        run,
+        delivery.documents,
+        covered_through=delivery.covered_through,
+        covered_from=delivery.covered_from,
+    )
+    out.append(
+        f"{len(data.DOC_CHARGES)} document charges and {result.inserted} documents "
+        f"(importer instance, covered through {delivery.covered_through}), through the real ingest"
+    )
+
+
+def _document_anchor(engine: Engine) -> tuple[date, int, int, int]:
+    with engine.connect() as conn:
+        visa = int(
+            conn.execute(
+                text("SELECT id FROM account WHERE name = :n"), {"n": "Visa Karte" + data.SUFFIX}
+            ).scalar_one()
+        )
+        last_on = conn.execute(
+            text(
+                "SELECT max(booked_on) FROM ledger_entry WHERE account_id = :a AND balance_record_id IS NULL"
+            ),
+            {"a": visa},
+        ).scalar_one()
+        run = conn.execute(
+            text("SELECT max(id) FROM import_run WHERE account_id = :a AND status = 'ok'"), {"a": visa}
+        ).scalar_one()
+        category = conn.execute(
+            text("SELECT id FROM category WHERE name = :n"), {"n": data.DOC_CATEGORY}
+        ).scalar_one()
+    return last_on, int(run), visa, int(category)
+
+
+def _document_rules(engine: Engine, provider_payee: int, merchant_payee: int) -> None:
+    for name, payee, condition in (
+        (data.DOC_RULES[0], provider_payee, ("counterparty_name", "starts_with", "PAYPAL")),
+        (data.DOC_RULES[1], merchant_payee, ("counterparty_name", "equals", data.DOC_MERCHANT_PAYEE)),
+    ):
+        draft = RuleDraft(
+            name=name,
+            sets="payee",
+            payee_id=payee,
+            conditions=(Condition(*condition),),  # type: ignore[arg-type]
+            priority=100,
+        )
+        preview = create_rule(engine, draft, dry_run=True, limit=1).preview
+        create_rule(engine, draft, expected_count=preview.matches.total, limit=1)
+
+
+def _document_charges(
+    engine: Engine, last_on: date, run_id: int, visa: int, provider_payee: int, category: int
+) -> None:
+    with engine.begin() as conn:
+        lock_settle_exclusive(conn)
+        for n, c in enumerate(data.DOC_CHARGES):
+            day = last_on - timedelta(days=c.ago)
+            sid = conn.execute(
+                text(
+                    "INSERT INTO source_transaction (importer, import_run_id, account_id, source_id,"
+                    " source_format, amount, currency, booked_on, purpose, raw, counterparty_name,"
+                    " instructed_amount, instructed_currency)"
+                    " VALUES ('csv', :run, :account, :source_id, 'csv', :amount, 'EUR', :day, :purpose, '{}',"
+                    " :name, :instructed_amount, :instructed_currency) RETURNING id"
+                ),
+                {
+                    "run": run_id,
+                    "account": visa,
+                    "source_id": f"seed-document-{n}",
+                    "amount": c.amount,
+                    "day": day,
+                    "purpose": c.purpose,
+                    "name": c.name,
+                    "instructed_amount": c.instructed[0] if c.instructed else None,
+                    "instructed_currency": c.instructed[1] if c.instructed else None,
+                },
+            ).scalar_one()
+            keys = (
+                {k: {"pass": "user"} for k in ("type", "category", "payee", "document")}
+                if c.confirmed
+                else {}
+            )
+            conn.execute(
+                text(
+                    "INSERT INTO ledger_entry (source_transaction_id, account_id, currency, booked_on,"
+                    " amount, type, category_id, payee_id, derivation)"
+                    " VALUES (:s, :account, 'EUR', :day, :amount, :type, :category, :payee,"
+                    " CAST(:d AS jsonb))"
+                ),
+                {
+                    "s": sid,
+                    "account": visa,
+                    "day": day,
+                    "amount": c.amount,
+                    "type": "flow" if c.confirmed else None,
+                    "category": category if c.confirmed else None,
+                    "payee": provider_payee if c.confirmed else None,
+                    "d": json.dumps(keys),
+                },
+            )
+
+
+def _document_json(d: data.DocScenario, last_on: date) -> dict[str, Any]:
+    return {
+        "provider": d.provider,
+        "external_id": d.external_id,
+        "occurred_on": (last_on - timedelta(days=d.ago)).isoformat(),
+        "total_minor": d.total,
+        "currency": d.currency,
+        "merchant_name": d.merchant,
+        "title": d.title,
+        "lines": [{"description": x.description, "amount_minor": x.amount, "qty": x.qty} for x in d.lines],
+    }
+
+
+def document_report(engine: Engine) -> list[str]:
+    """What each document scenario came to, read back: the link and its key, the review flags, and for an
+    unlinked document how many transactions it would match."""
+    lines = ["document scenarios:"]
+    with engine.connect() as conn:
+        for c in data.DOC_CHARGES:
+            row = conn.execute(
+                text(
+                    "SELECT e.id, e.document_id, e.review_flags,"
+                    " e.derivation -> 'document' ->> 'pass' AS key,"
+                    " d.external_id FROM ledger_entry e"
+                    " JOIN source_transaction s ON s.id = e.source_transaction_id"
+                    " LEFT JOIN external_document d ON d.id = e.document_id"
+                    " WHERE s.source_id = :sid"
+                ),
+                {"sid": f"seed-document-{data.DOC_CHARGES.index(c)}"},
+            ).one()
+            linked = f"linked to {row.external_id} ({row.key})" if row.document_id else f"no link ({row.key})"
+            lines.append(f"  charge {c.key}: {linked}; flags {sorted(row.review_flags) or 'none'}")
+        unlinked = conn.execute(
+            text(
+                "SELECT d.external_id FROM external_document d"
+                " WHERE NOT EXISTS (SELECT 1 FROM ledger_entry e WHERE e.document_id = d.id) ORDER BY d.id"
+            )
+        ).scalars()
+        lines.append(f"  documents carried by no entry: {', '.join(unlinked)}")
+    return lines
+
+
 def make_rules(engine: Engine, out: list[str]) -> None:
     """The named rules of `dev_seed_data.RULES`, through the real operation: previewed first, then
     written with the preview's count (spec §5.9). Needs the categories and payees `classify` made."""
@@ -451,7 +647,10 @@ def reset(engine: Engine) -> None:
             int(r)
             for r in conn.execute(text("SELECT id FROM account WHERE right(name, :n) = :m"), marker).scalars()
         ]
-        conn.execute(text("DELETE FROM rule WHERE name = ANY(:n)"), {"n": [r.name for r in data.RULES]})
+        conn.execute(
+            text("DELETE FROM rule WHERE name = ANY(:n)"),
+            {"n": [r.name for r in data.RULES] + list(data.DOC_RULES)},
+        )
         if ids:
             for sql in (
                 "DELETE FROM ledger_entry_tag WHERE ledger_entry_id IN"
@@ -464,8 +663,17 @@ def reset(engine: Engine) -> None:
                 "DELETE FROM account WHERE id = ANY(:ids)",
             ):
                 conn.execute(text(sql), {"ids": ids})  # noqa: S608
+        # documents belong to no account: their entries are gone, so they, their runs and instance can go
+        instances = "SELECT id FROM importer_instance WHERE right(label, :n) = :m"
+        conn.execute(
+            text(f"DELETE FROM external_document WHERE importer_instance_id IN ({instances})"), marker
+        )  # noqa: S608
+        conn.execute(text(f"DELETE FROM import_run WHERE importer_instance_id IN ({instances})"), marker)  # noqa: S608
         conn.execute(text("DELETE FROM importer_instance WHERE right(label, :n) = :m"), marker)
-        conn.execute(text("DELETE FROM payee WHERE name = ANY(:n)"), {"n": [p.name for p in data.PAYEES]})
+        conn.execute(
+            text("DELETE FROM payee WHERE name = ANY(:n)"),
+            {"n": [p.name for p in data.PAYEES] + list(data.DOC_PAYEES)},
+        )
         conn.execute(text("DELETE FROM tag WHERE name = ANY(:n)"), {"n": [t.name for t in data.TAGS]})
         for children in (True, False):  # the tree has two levels: children, then roots
             names = [c.name for c in data.CATEGORIES if (c.parent is not None) == children]
@@ -529,6 +737,7 @@ def seed(engine: Engine, *, months: int, seed_value: int, do_classify: bool, tod
         classify(engine, seed_value, out)
         make_rules(engine, out)
         transfer_cases(engine, out)
+        document_cases(engine, today, out)
     settle(engine)  # review flags recomputed once, at the end
     with engine.connect() as conn:
         report = check_integrity(conn)
@@ -537,6 +746,8 @@ def seed(engine: Engine, *, months: int, seed_value: int, do_classify: bool, tod
         raise SystemExit(f"integrity check failed after seeding: {bad}")
     out.append("integrity check: clean")
     out.extend(summary(engine))
+    if do_classify:
+        out.extend(document_report(engine))
     return out
 
 
@@ -557,6 +768,7 @@ def main(argv: list[str] | None = None, environ: Mapping[str, str] | None = None
         parser.error("--months must be between 1 and 36")
     configure_classifiers(default_classifiers)  # the composition root of this script
     configure_rule_tools(default_rule_tools())
+    configure_document_providers({data.DOC_IMPORTER: TestDocumentImporter.providers})
     cfg = _env_config(environ)  # refuses a database that is not a dev_ one, before connecting
     engine = make_engine(cfg)
     try:

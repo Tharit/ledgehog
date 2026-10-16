@@ -56,7 +56,7 @@ from app.core.units.lookup import unit_ids_of
 from app.core.units.overlay import plan_unit
 from app.core.units.plan import Consequence, Plan, PlannedRow, Problem
 from app.core.units.preview import UnitNotFound, resolve_draft
-from app.core.units.state import UnitState, leg_states_of_flags, unit_state
+from app.core.units.state import UnitState, document_facts_of_flags, leg_states_of_flags, unit_state
 from app.core.units.stored import (
     load_closure_of,
     load_stored_entries,
@@ -416,12 +416,13 @@ def _result(engine: Engine, plan: Plan, created: Mapping[int, int], settled: Set
         for r in unit_rows
     ]
     leg_states = leg_states_of_flags({r.id: r.review_flags for r in unit_rows})
+    facts = document_facts_of_flags([(r.id, r.review_flags) for r in unit_rows if r.type == "flow"])
     for unit in units_of(entries).values():
         units.append(
             CommittedUnit(
                 anchor_entry_id=unit[0].id,
                 entry_ids=tuple(e.id for e in unit),
-                state=unit_state(list(unit), leg_states),
+                state=unit_state(list(unit), leg_states, facts),
             )
         )
     consequences = tuple(Consequence(created.get(c.entry_id, c.entry_id), c.kind) for c in plan.consequences)

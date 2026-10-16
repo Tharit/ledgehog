@@ -2,9 +2,9 @@
 
 A step is `fn(conn) -> StepOutcome`, so what the rounds carry from one step to the next lives
 here: the set of confirmed entries (to see what a round newly confirmed), the entries history has
-not learned from yet, and what resolution loaded once (accounts, classifiers for the rules, the
-history snapshot). `settle()` opens one per call in a context variable; a step called outside a
-settle gets a fresh one that nothing else sees.
+not learned from yet, the entries step 2 linked (for step 3), and what resolution loaded once (accounts,
+classifiers for the rules, the history snapshot). `settle()` opens one per call in a context variable; a
+step called outside a settle gets a fresh one that nothing else sees.
 """
 
 from __future__ import annotations
@@ -42,6 +42,11 @@ class SettleRun:
     # confirmed since the history snapshot was taken or last extended
     to_teach: list[int] = field(default_factory=list)
     resolution: ResolutionContext | None = None
+    # the original entries step 2 linked to a document since step 3 last ran (step 3 resolves them again)
+    linked: list[int] = field(default_factory=list)
+    # step 1 wrote something since step 2 last ran (true before the first round): a payee, the one thing
+    # document matching reads of an entry, may have changed. A round in which it did not leaves step 2 out.
+    documents_dirty: bool = True
 
 
 _RUN: ContextVar[SettleRun | None] = ContextVar("settle_run", default=None)

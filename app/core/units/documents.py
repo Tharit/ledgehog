@@ -1,6 +1,7 @@
 """Whether a unit has a document open (spec §5.8, §6; documents.md §1, §3, §4, §7), in pure Python.
 
-The twin of the `doc_awaited` and `doc_suggested` columns of the unit CTE (`core/resolution/confirmed.py`),
+The twin of the `doc_awaited`, `doc_suggested` and `doc_candidate` columns of the unit CTE
+(`core/resolution/confirmed.py`),
 pinned to that SQL by `tests/core/units/test_state_documents.py`. The candidate rule is the matcher's
 (`core/matching/documents.py`), not restated here; what is added is waiting (§7) and the gate: the test
 applies only to the original entry of a transaction whose payee has a provider, that has no `document` key.
@@ -12,20 +13,23 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from app.core.matching.documents import DocInput, DocTxn, suggestions
+from app.core.matching.documents import DocInput, DocTxn, candidates, suggestions
 
 
 @dataclass(frozen=True, slots=True)
 class DocumentFacts:
-    """What a transaction's original entry is open for: `awaited` (its document may still arrive) and
-    `suggested` (documents are offered and no automatic link is possible)."""
+    """What a transaction's original entry is open for: `awaited` (its document may still arrive),
+    `suggested` (documents are offered and no automatic link is possible) and `candidate` (some document
+    is a candidate, so settling may link it in step 2: the unit is not confirmed before that, `doc_candidate`
+    of the unit CTE; it is no flag, and a suggestion is a candidate too)."""
 
     awaited: bool = False
     suggested: bool = False
+    candidate: bool = False
 
     @property
     def open(self) -> bool:
-        return self.awaited or self.suggested
+        return self.awaited or self.suggested or self.candidate
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,4 +79,5 @@ def document_facts(
     return DocumentFacts(
         awaited=awaited(txn.payee_provider, txn.booked_on, window, sources, providers),
         suggested=bool(suggestions(txn, documents, window, others=others)),
+        candidate=bool(candidates(txn, documents, window)),
     )

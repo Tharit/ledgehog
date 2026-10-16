@@ -17,6 +17,7 @@ from app.core.matching import Leg, Offer, PoolEntry, Proposal
 from app.core.plugins.classifier import AccountFact, Classifier, Field
 from app.core.resolution.snapshot import HistorySnapshot
 from app.core.resolution.types import Decided
+from app.core.units.doc_world import DocWorld
 from app.core.units.state import UnitState
 
 # ---- what is stored -----------------------------------------------------------------------------
@@ -109,6 +110,9 @@ class World:
     ledger_legs: Sequence[Leg] = ()
     # the preview only: the movements offers are made of, read after the plan (`transfers.attach_transfers`)
     pool: Sequence[PoolEntry] = ()
+    # what the simulation of settle steps 2 and 3 reads of the ledger outside the unit (`doc_world.py`); None:
+    # no document matching (a world built by hand): the rows are judged without documents
+    docs: DocWorld | None = None
 
 
 # ---- what a draft implies -----------------------------------------------------------------------
@@ -258,6 +262,9 @@ class PlannedRow:
     # a counter-leg the draft creates (spec §5.7): the entry it was created for. The row is a new source
     # transaction on the leg's counter-account with this one entry
     counter_leg_for: int | None = None
+    # the document this entry carries (`ledger_entry.document_id`: the original entry of its source holds the
+    # link) as settling leaves it: stored, or linked by step 2 in the simulation; the key is in `derivation`
+    document_id: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

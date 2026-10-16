@@ -36,6 +36,15 @@ A leg paired in one currency with a user-authored single-entry source on an unsy
 draft changes (a split moves the residual) makes that source FOLLOW: its amount, and its entry's, become the
 negated new amount (spec §5.7, I2, I3). The follower keeps its values and keys: following is not an input.
 
+Settle steps 2 and 3 are simulated in each round too (`_link_documents`, `_rederive_linked`, over the
+`World.docs` the loader read): a unique candidate document is linked to the original entry of a transaction
+that has a provider payee and no decided document, and the transaction's values are derived again (the link
+is a change of the first value in field order). A document enriches the input resolution reads (`enrich.py`)
+and history does not run for a transaction with one (spec §5.9); a unit's confirmation counts its documents
+open (awaited, suggested, a candidate: `units/documents.py`), so a unit that waits for a document is not
+confirmed and no "none" is recorded for it. The link is NOT part of what a commit writes (`Written`): settling
+writes it, as it writes the "none" key.
+
 Only the anchor's unit (after the draft) and the entries the draft lists are written; the rest of the
 closure is a consequence (a partner left behind, the other side of a pair that no longer exists).
 """
@@ -49,6 +58,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.core.matching import Leg, counter_leg_amount, leg_of, pair_all, unmatched, waiting
+from app.core.matching.documents import DocTxn
 from app.core.plugins.classifier import (
     FIELD_ORDER,
     STANDING_PASSES,
@@ -58,13 +68,16 @@ from app.core.plugins.classifier import (
     Vote,
 )
 from app.core.resolution import Decided, Resolved, resolve
+from app.core.resolution.enrich import LinkedDocument, enriched_input
 from app.core.resolution.load import UnconfirmedEntry
 from app.core.resolution.snapshot import LayeredHistory
 from app.core.resolution.types import USER_NO_PAYEE, is_user_no_payee
 from app.core.settle.flags import NONE_KEY
 from app.core.settle.pairing import PAIR_COUNTER_KEY_VALUE, PAIR_KEY_VALUE
-from app.core.settle.resolution import settle_rewrites, stored_decisions
+from app.core.settle.resolution import Rewrite, settle_rewrites, stored_decisions
 from app.core.units.closure import UnitEntry, units_of
+from app.core.units.doc_world import facts_of, links_of
+from app.core.units.documents import DocumentFacts
 from app.core.units.draft import (
     DERIVED_FIELDS,
     PROPOSAL_PASSES,
@@ -130,6 +143,10 @@ class _Row:
     s1_derivation: dict[str, Any] | None = None
     # a counter-leg the draft creates: the entry it is the other side of
     counter_leg_for: int | None = None
+    # the document the row's TRANSACTION carries (the original entry holds the link; every row of the source
+    # shares it): the input is enriched with it and history does not run for it
+    document_id: int | None = None
+    linked: LinkedDocument | None = None
 
     @property
     def is_new(self) -> bool:
@@ -175,9 +192,15 @@ def _entry_input(row: _Row) -> EntryInput:
     )
 
 
+def _resolution_input(row: _Row) -> EntryInput:
+    """The input resolution reads: `_entry_input` enriched with the transaction's document (documents.md §5).
+    Pairing reads the source as it is (`_entry_input`), as `load_unpaired_legs` does."""
+    return enriched_input(_entry_input(row), row.linked)
+
+
 def _as_unconfirmed(row: _Row) -> UnconfirmedEntry:
     return UnconfirmedEntry(
-        input=_entry_input(row),
+        input=_resolution_input(row),
         type=row.type,
         payee_id=row.payee_id,
         category_id=row.category_id,
@@ -186,6 +209,7 @@ def _as_unconfirmed(row: _Row) -> UnconfirmedEntry:
         paired=row.counterpart is not None,
         original=row.original,
         counterpart_id=row.counterpart,
+        document_id=row.document_id,
     )
 
 
@@ -205,7 +229,7 @@ def _set_base(row: _Row, *, released: bool) -> None:
     counter, der = _release(e) if released else (e.counter_account_id, dict(e.derivation))
     row.s0_counter, row.s0_derivation = counter, der
     probe = UnconfirmedEntry(
-        input=_entry_input(row),
+        input=_resolution_input(row),
         type=e.type,
         payee_id=e.payee_id,
         category_id=e.category_id,
@@ -263,7 +287,7 @@ def _stored_entry_row(
 # ---- 1. assembling the rows ---------------------------------------------------------------------
 
 
-def _assemble(stored: StoredUnit, draft: UnitDraft) -> tuple[dict[int, _Row], list[Problem]]:
+def _assemble(stored: StoredUnit, draft: UnitDraft, world: World) -> tuple[dict[int, _Row], list[Problem]]:
     if stored.entry(draft.anchor_entry_id) is None:
         raise DraftError("unknown_entry", "the anchor is not in the unit", entry_id=draft.anchor_entry_id)
     removed = set(draft.removed_entry_ids)
@@ -314,8 +338,22 @@ def _assemble(stored: StoredUnit, draft: UnitDraft) -> tuple[dict[int, _Row], li
             raise DraftError("unknown_entry", "the entry is not in the unit", entry_id=d.id)
         elif d.id in removed:
             raise DraftError("removed_and_edited", "an entry is removed and edited", entry_id=d.id)
+    _carry_documents(stored, rows, world)
     problems = _allocate(stored, rows)
     return rows, problems
+
+
+def _carry_documents(stored: StoredUnit, rows: Mapping[int, _Row], world: World) -> None:
+    """Every row of a source shares the document its original entry carries (`v_entry_document`)."""
+    for src in stored.sources.values():
+        original = stored.entry(stored.original_of(src.id))
+        doc = original.document_id if original is not None else None
+        if doc is None:
+            continue
+        linked = world.docs.details.get(doc) if world.docs is not None else None
+        for r in rows.values():
+            if r.src.id == src.id:
+                r.document_id, r.linked = doc, linked
 
 
 def _allocate(stored: StoredUnit, rows: dict[int, _Row]) -> list[Problem]:
@@ -347,7 +385,8 @@ class _Walk:
         self, row: _Row, cur: Mapping[Field, Decided | None], *, owned: bool, rederive_ok: bool
     ) -> dict[Field, Decided | None]:
         """The row's decisions after the draft: spec §5.9 'Rederiving', with the draft's fields fixed."""
-        entry = _entry_input(row)
+        entry = _resolution_input(row)
+        history = None if row.document_id is not None else self.world.history  # spec §5.9
         # a drafted payee or category makes the entry a flow, a drafted counter-account a transfer (§5.9)
         # (a payee drafted as none is the user's decision of no payee: a drafted payee all the same)
         hints: dict[Field, Decided] = {
@@ -372,7 +411,7 @@ class _Walk:
                     entry,
                     accounts=self.world.accounts,
                     classifiers=self.world.classifiers,
-                    history=self.world.history,
+                    history=history,
                     fixed=hints,
                     exclude_entry_ids=frozenset({row.id}),
                 ).get("type")
@@ -381,7 +420,7 @@ class _Walk:
                     entry,
                     accounts=self.world.accounts,
                     classifiers=self.world.classifiers,
-                    history=self.world.history,
+                    history=history,
                     fixed=fixed,
                     exclude_entry_ids=frozenset({row.id}),
                 )
@@ -534,14 +573,50 @@ def _leg_state(row: _Row, world: World) -> LegState | None:
     return None
 
 
+def _doc_txn(r: _Row, world: World) -> DocTxn | None:
+    """The original entry of a stored source as document matching reads it (the source's amounts, the
+    entry's payee), None for any other row: only an original carries a link (I31)."""
+    if not r.original or r.stored is None or world.docs is None:
+        return None
+    s = r.src
+    return DocTxn(
+        entry_id=r.id,
+        account_id=s.account_id,
+        booked_on=s.booked_on,
+        amount=s.amount,
+        currency=s.currency.strip(),
+        instructed_amount=s.instructed_amount,
+        instructed_currency=s.instructed_currency.strip() if s.instructed_currency else None,
+        payee_provider=world.docs.payee_providers.get(r.payee_id) if r.payee_id is not None else None,
+        document_decided="document" in (r.derivation or {}),
+    )
+
+
+def _doc_txns(rows: Sequence[_Row], world: World) -> list[DocTxn]:
+    return [t for r in rows if (t := _doc_txn(r, world)) is not None]
+
+
+def _doc_facts(rows: Sequence[_Row], world: World) -> dict[int, DocumentFacts]:
+    """What each original entry of `rows` is open for (documents.md §1, §3, §4, §7), as the unit CTE reads it
+    over the state the rows are in, the ledger outside them as stored."""
+    if world.docs is None:
+        return {}
+    return facts_of(_doc_txns(rows, world), world.docs, {r.document_id for r in rows if r.document_id})
+
+
 def _states(rows: Sequence[_Row], world: World) -> dict[int, tuple[tuple[_Row, ...], UnitState]]:
-    """Per unit key: its rows and its state (an unpaired leg's reason says whether it waits)."""
+    """Per unit key: its rows and its state (an unpaired leg's reason says whether it waits; a document a
+    transaction awaits or is offered keeps its unit open)."""
     by_id = {r.id: r for r in rows}
+    facts = _doc_facts(rows, world)
     out: dict[int, tuple[tuple[_Row, ...], UnitState]] = {}
     for key, unit in units_of(_unit_entries(rows)).items():
         members = tuple(by_id[e.id] for e in unit)
         leg_states = {r.id: st for r in members if (st := _leg_state(r, world)) is not None}
-        out[key] = (members, unit_state(list(unit), leg_states))
+        out[key] = (
+            members,
+            unit_state(list(unit), leg_states, {r.id: facts[r.id] for r in members if r.id in facts}),
+        )
     return out
 
 
@@ -605,14 +680,70 @@ def _pair(rows: Sequence[_Row], world: World) -> set[int]:
     return pulled
 
 
-def _settle(rows: Sequence[_Row], world: World, documented: frozenset[int]) -> set[int]:
+def _apply(rewrites: Mapping[int, Rewrite], by_id: Mapping[int, _Row]) -> None:
+    """Settling's writes of resolution (steps 1 and 3), in place on the rows."""
+    for entry_id, rw in rewrites.items():
+        r = by_id[entry_id]
+        r.type, r.payee_id, r.category_id = rw.type, rw.payee_id, rw.category_id
+        r.counter_account_id, r.derivation = rw.counter_account_id, rw.derivation
+        if rw.unpair:
+            r.counterpart = None
+
+
+def _link_documents(rows: Sequence[_Row], world: World) -> list[_Row]:
+    """Settle step 2 (`settle/documents.py`): the original entry of each considered transaction that has
+    exactly one candidate no other transaction has (the ledger outside the plan counts) takes the document
+    and its key, `matcher_decision` for a document of one line, `matcher_proposal` for one of several."""
+    if world.docs is None:
+        return []
+    found = links_of(_doc_txns(rows, world), world.docs, {r.document_id for r in rows if r.document_id})
+    by_id = {r.id: r for r in rows}
+    linked: list[_Row] = []
+    for entry_id, doc_id in sorted(found.items()):
+        r = by_id[entry_id]
+        detail = world.docs.details[doc_id]
+        key = "matcher_proposal" if len(detail.lines) > 1 else "matcher_decision"
+        r.derivation = {**(r.derivation or {}), "document": {"pass": key, "basis": {}}}
+        for x in rows:
+            if x.src.id == r.src.id:
+                x.document_id, x.linked = doc_id, detail
+        linked.append(r)
+    return linked
+
+
+def _rederive_linked(rows: Sequence[_Row], linked: Sequence[_Row], world: World) -> None:
+    """Settle step 3 (`settle/documents.py`): every value of the transactions just linked is derived again
+    (`reopen`: the link is a change of the first value in field order), the link staying; the rest of their
+    units is read for the pairs that fall. History does not run for them (`history_for`)."""
+    by_id = {r.id: r for r in rows}
+    sources = {r.src.id for r in linked}
+    wanted = {r.id for r in rows if r.src.id in sources}
+    members = [
+        r
+        for unit_rows, _st in _states(rows, world).values()
+        if any(m.id in wanted for m in unit_rows)
+        for r in unit_rows
+    ]
+    rewrites = settle_rewrites(
+        [_as_unconfirmed(r) for r in members],
+        reach=lambda row: row.input.entry_id in wanted,
+        accounts=world.accounts,
+        classifiers=world.classifiers,
+        history=world.history,
+        reopen=True,
+    )
+    _apply(rewrites, by_id)
+
+
+def _settle(rows: Sequence[_Row], world: World) -> set[int]:
     """Settling's rounds over the plan's units (step 1, the pairing of step 4 and the teaching of step 5),
     in place on `rows`; returns the legs outside the plan that pairing took a row to (`_pair`).
 
     A unit that is confirmed teaches history before the first round (the snapshot a settle loads holds the
     committed state) and after each round that confirms it; a source with a document votes nothing. Step 1
     is `settle_rewrites`, the function settling calls: a paired leg of an unconfirmed unit is rederived too,
-    and its pair falls on both legs when its type or its own counter-account changes (I18).
+    and its pair falls on both legs when its type or its own counter-account changes (I18). Steps 2 and 3
+    follow it as settling runs them (`_link_documents`, `_rederive_linked`), before the pairing.
     """
     by_id = {r.id: r for r in rows}
     taught: set[int] = set()
@@ -623,9 +754,7 @@ def _settle(rows: Sequence[_Row], world: World, documented: frozenset[int]) -> s
             if st.confirmed and k not in taught:
                 taught.add(k)
                 world.history.add(
-                    v
-                    for r in members
-                    if r.src.id not in documented and (v := _vote(r, by_id, world)) is not None
+                    v for r in members if r.document_id is None and (v := _vote(r, by_id, world)) is not None
                 )
         pending = [r for _k, (members, st) in states.items() if not st.confirmed for r in members]
         rewrites = settle_rewrites(
@@ -635,12 +764,9 @@ def _settle(rows: Sequence[_Row], world: World, documented: frozenset[int]) -> s
             classifiers=world.classifiers,
             history=world.history,
         )
-        for entry_id, rw in rewrites.items():
-            r = by_id[entry_id]
-            r.type, r.payee_id, r.category_id = rw.type, rw.payee_id, rw.category_id
-            r.counter_account_id, r.derivation = rw.counter_account_id, rw.derivation
-            if rw.unpair:
-                r.counterpart = None
+        _apply(rewrites, by_id)
+        if linked := _link_documents(rows, world):
+            _rederive_linked(rows, linked, world)
         pulled |= _pair(rows, world)
         if all(k in taught or not st.confirmed for k, (_m, st) in _states(rows, world).items()):
             return pulled
@@ -1000,15 +1126,43 @@ def _follow(rows: Mapping[int, _Row], links: Mapping[int, int | None], world: Wo
 # ---- the plan -----------------------------------------------------------------------------------
 
 
-def _stored_confirmed(stored: StoredUnit) -> dict[int, bool]:
+def _stored_facts(stored: StoredUnit, world: World) -> dict[int, DocumentFacts]:
+    """What the original entries of the stored unit are open for, as stored (see `_doc_facts`)."""
+    if world.docs is None:
+        return {}
+    txns: list[DocTxn] = []
+    for e in stored.entries:
+        src = stored.sources[e.source_transaction_id]
+        if e.id != stored.original_of(src.id):
+            continue
+        txns.append(
+            DocTxn(
+                entry_id=e.id,
+                account_id=src.account_id,
+                booked_on=src.booked_on,
+                amount=src.amount,
+                currency=src.currency.strip(),
+                instructed_amount=src.instructed_amount,
+                instructed_currency=src.instructed_currency.strip() if src.instructed_currency else None,
+                payee_provider=world.docs.payee_providers.get(e.payee_id) if e.payee_id is not None else None,
+                document_decided="document" in e.derivation,
+            )
+        )
+    return facts_of(txns, world.docs, {e.document_id for e in stored.entries if e.document_id})
+
+
+def _stored_confirmed(stored: StoredUnit, world: World) -> dict[int, bool]:
     """Per stored entry: whether its unit was reviewed before the draft (left alone if so, I20)."""
     out: dict[int, bool] = {}
-    entries = (
+    entries = [
         UnitEntry(e.id, e.source_transaction_id, e.type, e.category_id, e.counterpart_entry_id, e.derivation)
         for e in stored.entries
-    )
+    ]
+    facts = _stored_facts(stored, world)
     for unit in units_of(entries).values():
-        confirmed = unit_state(list(unit)).confirmed
+        confirmed = unit_state(
+            list(unit), documents={e.id: facts[e.id] for e in unit if e.id in facts}
+        ).confirmed
         for ue in unit:
             out[ue.id] = confirmed
     return out
@@ -1120,11 +1274,10 @@ def plan_unit(stored: StoredUnit, draft: UnitDraft, world: World) -> Plan:
     """Lay `draft` over `stored` (module docstring). Raises `DraftError` for a draft that is nonsense."""
     # the plan teaches history what its units confirm: into a layer of its own, so the world is left as it was
     world = dataclasses.replace(world, history=LayeredHistory(world.history))
-    rows, problems = _assemble(stored, draft)
+    rows, problems = _assemble(stored, draft, world)
     ordered = [*(rows[e.id] for e in stored.entries if e.id in rows), *(r for r in rows.values() if r.is_new)]
     walk = _Walk(world, draft.reresolve_all)
-    stored_confirmed = _stored_confirmed(stored)
-    documented = frozenset(e.source_transaction_id for e in stored.entries if e.document_id is not None)
+    stored_confirmed = _stored_confirmed(stored, world)
 
     # phase 1: every entry walked, a paired leg's type and counter-account left to its pair
     first: dict[int, dict[Field, Decided | None]] = {}
@@ -1198,7 +1351,7 @@ def plan_unit(stored: StoredUnit, draft: UnitDraft, world: World) -> Plan:
         r.s1_values, r.s1_derivation = dict(_values(r)), dict(r.derivation or {})
 
     # what settling leaves of it
-    pulled = _settle(ordered, world, documented)
+    pulled = _settle(ordered, world)
     final_states = _states(ordered, world)
     _record_none_documents(final_states)
     unit_of = {ur.id: key for key, (unit_rows, _st) in final_states.items() for ur in unit_rows}
@@ -1229,6 +1382,7 @@ def plan_unit(stored: StoredUnit, draft: UnitDraft, world: World) -> Plan:
             leg=leg_of(_entry_input(r), type=r.type, counter_account_id=r.counter_account_id),
             purpose=r.src.purpose,
             counter_leg_for=r.counter_leg_for,
+            document_id=r.document_id if r.original else None,
         )
         for r in ordered
     )

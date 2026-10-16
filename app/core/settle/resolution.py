@@ -142,6 +142,7 @@ def rewrite_of(
     accounts: Sequence[AccountFact],
     classifiers: Sequence[Classifier],
     history: HistorySource | None,
+    reopen: bool = False,
 ) -> Rewrite | None:
     """What step 1 writes for one entry of an unconfirmed unit, or None when it writes nothing.
 
@@ -152,7 +153,7 @@ def rewrite_of(
     """
     if row.paired:
         return None
-    current, new = _rederived(row, accounts=accounts, classifiers=classifiers, history=history)
+    current, new = _rederived(row, accounts=accounts, classifiers=classifiers, history=history, reopen=reopen)
     if not diff(current, new) and not _stale_keys(row, current):
         return None
     return _checked(row, new)
@@ -167,12 +168,19 @@ def _checked(row: UnconfirmedEntry, new: Resolved) -> Rewrite | None:
     return _rewrite(row, new)
 
 
+def history_for(row: UnconfirmedEntry, history: HistorySource | None) -> HistorySource | None:
+    """History does not run for a transaction with a linked or picked document (spec §5.9): the bank's
+    fields then describe the provider, not the purchase. Every caller that rederives goes through here."""
+    return None if row.document_id is not None else history
+
+
 def _rederived(
     row: UnconfirmedEntry,
     *,
     accounts: Sequence[AccountFact],
     classifiers: Sequence[Classifier],
     history: HistorySource | None,
+    reopen: bool = False,
 ) -> tuple[dict[Field, Decided | None], Resolved]:
     current = stored_decisions(row)
     new = rederive(
@@ -180,8 +188,9 @@ def _rederived(
         current,
         accounts=accounts,
         classifiers=classifiers,
-        history=history,
+        history=history_for(row, history),
         exclude_entry_ids=frozenset({row.input.entry_id}),
+        reopen=reopen,
     )
     return current, new
 
@@ -214,13 +223,14 @@ def rewrite_released(
     accounts: Sequence[AccountFact],
     classifiers: Sequence[Classifier],
     history: HistorySource | None,
+    reopen: bool = False,
 ) -> Rewrite:
     """What step 1 writes for a leg whose pair is released (it or its partner fell): always a write.
 
     The leg is rederived as the unpaired leg it now is, so a second settle finds it as it is left.
     """
     leg = _stripped(row)
-    _, new = _rederived(leg, accounts=accounts, classifiers=classifiers, history=history)
+    _, new = _rederived(leg, accounts=accounts, classifiers=classifiers, history=history, reopen=reopen)
     kind = new.get("type")
     if kind is not None and kind.value == "transfer" and not leg.original:
         return Rewrite(  # cannot happen for a leg that was paired; keep its values rather than break I31
@@ -236,13 +246,15 @@ def settle_rewrites(
     accounts: Sequence[AccountFact],
     classifiers: Sequence[Classifier],
     history: HistorySource | None,
+    reopen: bool = False,
 ) -> dict[int, Rewrite]:
     """What step 1 writes, by entry id, for the entries of `rows` that `reach` selects.
 
     An unpaired entry as `rewrite_of`. A paired leg is rederived: when its type or its own counter-account
     changes, both legs of the pair are released (each is rederived as the unpaired leg it becomes and is
     always written, the partner even if `reach` skipped it); otherwise its differences are written and
-    the pair stands (a changed basis writes the key only).
+    the pair stands (a changed basis writes the key only). `reopen`: every value of the entries `reach`
+    selects is derived again (step 3, after a link).
     """
     by_id = {r.input.entry_id: r for r in rows}
     out: dict[int, Rewrite] = {}
@@ -251,10 +263,14 @@ def settle_rewrites(
         if not reach(row):
             continue
         if not row.paired:
-            if rewrite := rewrite_of(row, accounts=accounts, classifiers=classifiers, history=history):
+            if rewrite := rewrite_of(
+                row, accounts=accounts, classifiers=classifiers, history=history, reopen=reopen
+            ):
                 out[row.input.entry_id] = rewrite
             continue
-        current, new = _rederived(row, accounts=accounts, classifiers=classifiers, history=history)
+        current, new = _rederived(
+            row, accounts=accounts, classifiers=classifiers, history=history, reopen=reopen
+        )
         if pair_falls(row, new):
             released.add(row.input.entry_id)
             if row.counterpart_id in by_id:
@@ -263,7 +279,11 @@ def settle_rewrites(
             out[row.input.entry_id] = rewrite
     for entry_id in released:
         out[entry_id] = rewrite_released(
-            by_id[entry_id], accounts=accounts, classifiers=classifiers, history=history
+            by_id[entry_id],
+            accounts=accounts,
+            classifiers=classifiers,
+            history=history,
+            reopen=reopen and reach(by_id[entry_id]),  # a partner `reach` skipped keeps its standing values
         )
     return out
 
@@ -284,6 +304,13 @@ def resolve_step(conn: Connection) -> StepOutcome:
         classifiers=ctx.classifiers,
         history=ctx.snapshot,
     )
+    if rewrites:
+        run.documents_dirty = True  # a payee may have changed: step 2 looks again
+    return write_rewrites(conn, rewrites)
+
+
+def write_rewrites(conn: Connection, rewrites: Mapping[int, Rewrite]) -> StepOutcome:
+    """Write the rewrites in one set-based statement (under `ledger.settling`: no version moves)."""
     if not rewrites:
         return StepOutcome()
     ids = sorted(rewrites)

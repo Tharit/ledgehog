@@ -38,7 +38,7 @@ from app.core.resolution import counter_account_ok, rederive
 from app.core.resolution.load import UnconfirmedEntry, load_accounts, load_movements
 from app.core.resolution.registry import RuleTools, classifiers_for, rule_tools
 from app.core.resolution.snapshot import load_snapshot
-from app.core.settle.resolution import new_derivation, stored_decisions
+from app.core.settle.resolution import history_for, new_derivation, stored_decisions
 
 DEFAULT_LIMIT = 100
 MAX_LIMIT = 500
@@ -225,7 +225,7 @@ def _units_confirmed(
                     current,
                     accounts=accounts,
                     classifiers=classifiers,
-                    history=snapshot,
+                    history=history_for(row, snapshot),
                     exclude_entry_ids=frozenset({row.input.entry_id}),
                 )
                 kind = new.get("type")

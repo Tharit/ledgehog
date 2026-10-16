@@ -17,7 +17,10 @@ A unit is confirmed when every entry of it is complete and carries only standing
   document source has not covered `booked_on` plus the document window) and has no suggestions (documents
   that match it, with no automatic link possible). The test applies only to a transaction's original entry
   whose payee has a `document_provider` and which has no `document` key, so it is GATED to that small subset
-  and costs every other entry nothing. `doc_awaited` and `doc_suggested` are exposed per entry (the flags
+  and costs every other entry nothing. A candidate that settling is about to link (the only one, shared with
+  no other transaction) keeps the unit unconfirmed too, so that a unit whose payee rules are all standing is
+  not confirmed in the same settle that would link its document (`doc_candidate`, used here only).
+  `doc_awaited` and `doc_suggested` are exposed per entry (the flags
   `waiting` and `document_suggested` read them). Which importer provides which provider is the registry of
   `core/importers/providers.py`, bound as `units_binds()`.
 
@@ -39,15 +42,6 @@ STANDING = sorted(STANDING_PASSES)
 # The document window (spec §5.8), read from the connection like `ledger.matching_window_days`
 # (`core/settle/window.py: document_window`). Evaluated only inside the gated subqueries below.
 _DOC_WINDOW = "current_setting('ledger.document_window_days')::int"
-
-# A document of `{d}` matches the transaction `{st}` (a source_transaction alias) booked on `{on}`: exactly,
-# with its sign, in the transaction's currency or its instructed one (documents.md §3), within the window of
-# its booking date (§2).
-_DOC_MATCHES = (
-    "(({d}.currency = {st}.currency AND {d}.total = {st}.amount)"
-    " OR ({d}.currency = {st}.instructed_currency AND {d}.total = {st}.instructed_amount))"
-    " AND abs({d}.occurred_on - {on}) <= " + _DOC_WINDOW
-)
 
 # The original entry of a source transaction (I31), whose payee has a provider, with no `document` key:
 # the only entry the document test looks at (documents.md §1).
@@ -76,33 +70,42 @@ _AWAITED = (
     + """))"""
 )
 
-# suggested (documents.md §3, §4): the candidates (the provider's documents carried by no entry that match)
-# are several, or the one is also a candidate of another transaction no decision has been made on (an
-# original entry of a payee with that provider and no `document` key): no automatic link is possible.
-_SUGGESTED = (
-    """(SELECT count(*) > 1 OR COALESCE(bool_or(c.shared), false)
-                                  FROM (SELECT EXISTS (
-                                            SELECT 1
-                                              FROM ledger_entry AS o
-                                              JOIN payee AS op ON op.id = o.payee_id
-                                              JOIN source_transaction AS ost
-                                                ON ost.id = o.source_transaction_id
-                                             WHERE op.document_provider = d.provider AND o.id <> le.id
-                                               AND NOT jsonb_exists(o.derivation, 'document')
-                                               AND NOT EXISTS (
-                                                    SELECT 1 FROM ledger_entry AS oo
-                                                     WHERE oo.source_transaction_id = o.source_transaction_id
-                                                       AND oo.id < o.id)
-                                               AND """
-    + _DOC_MATCHES.format(d="d", st="ost", on="ost.booked_on")
-    + """) AS shared
-                                          FROM external_document AS d
-                                         WHERE d.provider = pp.document_provider
-                                           AND NOT EXISTS (SELECT 1 FROM ledger_entry AS cr
-                                                            WHERE cr.document_id = d.id)
-                                           AND """
-    + _DOC_MATCHES.format(d="d", st="st", on="st.booked_on")
-    + """) AS c)"""
+# The candidate pairs (documents.md §2, §3): (entry, document) for every original entry (I31) of a payee
+# with a provider and no `document` key, and every document of that provider that no entry carries, whose
+# total equals the transaction's amount in its currency, or its instructed amount in the instructed currency,
+# within the window of the booking date. Both ways are plain equality joins, so the pairs are found with one
+# hash join each and not by scanning the documents for every entry. From the pairs per entry:
+# `doc_candidate` (there is one, so settling may link it in step 2: the unit is not confirmed yet, or a unit
+# of standing values would be, and get "none", before step 2 could link the document) and `doc_suggested`
+# (documents.md §4: several candidates, or one that is also a candidate of another transaction no decision
+# has been made on, so no automatic link is possible).
+_PAIRS = (
+    """
+    SELECT o.id AS entry_id, d.id AS doc_id
+      FROM ledger_entry AS o
+      JOIN payee AS op ON op.id = o.payee_id AND op.document_provider IS NOT NULL
+      JOIN source_transaction AS ost ON ost.id = o.source_transaction_id
+      JOIN external_document AS d
+        ON d.provider = op.document_provider AND d.currency = ost.{cur} AND d.total = ost.{amt}
+     WHERE NOT jsonb_exists(o.derivation, 'document')
+       AND NOT EXISTS (SELECT 1 FROM ledger_entry AS oo
+                        WHERE oo.source_transaction_id = o.source_transaction_id AND oo.id < o.id)
+       AND NOT EXISTS (SELECT 1 FROM ledger_entry AS cr WHERE cr.document_id = d.id)
+       AND abs(d.occurred_on - ost.booked_on) <= """
+    + _DOC_WINDOW
+)
+
+_CANDIDATES = (
+    """
+    SELECT p.entry_id, count(*) AS n, bool_or(p.doc_entries > 1) AS shared
+      FROM (SELECT c.entry_id, c.doc_id, count(*) OVER (PARTITION BY c.doc_id) AS doc_entries
+              FROM ("""
+    + _PAIRS.format(cur="currency", amt="amount")
+    + """
+                    UNION"""
+    + _PAIRS.format(cur="instructed_currency", amt="instructed_amount")
+    + """) AS c) AS p
+     GROUP BY p.entry_id"""
 )
 
 # One row per movement entry: its id, source, `unit_key` (the unit), `unit_ok` (the unit is
@@ -113,13 +116,13 @@ _SUGGESTED = (
 # or to all.
 _UNITS = """
     SELECT m.id, m.src, m.unit_key,
-           bool_and(m.complete AND m.standing AND NOT (m.doc_awaited OR m.doc_suggested))
+           bool_and(m.complete AND m.standing AND NOT (m.doc_awaited OR m.doc_candidate))
                OVER (PARTITION BY m.unit_key) AS unit_ok,
            bool_or(NOT m.standing) OVER (PARTITION BY m.unit_key) AS unit_has_nonstanding,
            min(m.id) OVER (PARTITION BY m.src) AS first_id,
            m.doc_awaited, m.doc_suggested
       FROM (
-            SELECT k.id, k.src, k.complete, k.standing, k.doc_awaited, k.doc_suggested,
+            SELECT k.id, k.src, k.complete, k.standing, k.doc_awaited, k.doc_suggested, k.doc_candidate,
                    min(k.direct_key) OVER (PARTITION BY k.src) AS unit_key
               FROM (
                     SELECT le.id, le.source_transaction_id AS src,
@@ -132,13 +135,12 @@ _UNITS = """
                                SELECT 1 FROM jsonb_each(le.derivation) AS d
                                 WHERE COALESCE(d.value ->> 'pass', '') <> ALL (:standing)) AS standing,
                            CASE WHEN {gate} THEN {awaited} ELSE false END AS doc_awaited,
-                           CASE WHEN {gate}
-                                THEN (SELECT {suggested} FROM source_transaction AS st
-                                       WHERE st.id = le.source_transaction_id)
-                                ELSE false END AS doc_suggested
+                           COALESCE({gate} AND cd.n IS NOT NULL, false) AS doc_candidate,
+                           COALESCE({gate} AND (cd.n > 1 OR cd.shared), false) AS doc_suggested
                       FROM ledger_entry AS le
                       LEFT JOIN ledger_entry AS p ON p.id = le.counterpart_entry_id
                       LEFT JOIN payee AS pp ON pp.id = le.payee_id
+                      LEFT JOIN ({candidates}) AS cd ON cd.entry_id = le.id
                      WHERE le.source_transaction_id IS NOT NULL{scope}
                    ) AS k
            ) AS m
@@ -161,7 +163,10 @@ _OF_ENTRIES = """
 def units_sql(*, of_entries: bool = False) -> str:
     """The `units` CTE body (see above); bind `units_binds()` (and `ids` when `of_entries`)."""
     return _UNITS.format(
-        scope=_OF_ENTRIES if of_entries else _ALL, gate=_GATE, awaited=_AWAITED, suggested=_SUGGESTED
+        scope=_OF_ENTRIES if of_entries else _ALL,
+        gate=_GATE,
+        awaited=_AWAITED,
+        candidates=_CANDIDATES,
     )
 
 

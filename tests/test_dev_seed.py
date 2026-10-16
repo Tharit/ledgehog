@@ -19,6 +19,8 @@ from typing import Any
 import pytest
 from sqlalchemy import Engine, text
 
+from app.core.documents import DocumentFilter, get_document, list_documents
+from app.core.importers.providers import reset_document_providers
 from app.core.integrity import check_integrity
 from app.plugins.importers.csv import load_presets
 from app.utils.config import Config
@@ -116,6 +118,13 @@ def dev_cfg(admin_cfg: Config, template_db: str) -> Iterator[Config]:
         yield admin_cfg.with_database(name)
     finally:
         admin.drop_database(admin_cfg, name)
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _document_registry_is_restored() -> Iterator[None]:
+    """`dev_seed.main` configures the document providers of its process; later tests start without."""
+    yield
+    reset_document_providers()
 
 
 @pytest.fixture(scope="module")
@@ -289,6 +298,90 @@ def test_tags_span_a_week_and_the_ledger_is_intact(seeded: str, dev_engine: Engi
         assert report.ok, {k: v.rows for k, v in report.checks.items() if v.rows}
 
 
+def _scenario(engine: Engine, key: str) -> Any:
+    index = [c.key for c in dev_seed_data.DOC_CHARGES].index(key)
+    with engine.connect() as conn:
+        return conn.execute(
+            text(
+                "SELECT e.id, e.version, e.document_id, d.external_id, e.review_flags,"
+                " e.derivation -> 'document' ->> 'pass' AS key"
+                " FROM ledger_entry e JOIN source_transaction s ON s.id = e.source_transaction_id"
+                " LEFT JOIN external_document d ON d.id = e.document_id WHERE s.source_id = :sid"
+            ),
+            {"sid": f"seed-document-{index}"},
+        ).one()
+
+
+def test_the_document_scenarios_come_out_as_described(seeded: str, dev_engine: Engine):
+    exact = _scenario(dev_engine, "exact")
+    assert (exact.external_id, exact.key) == ("PP-1001", "matcher_decision")  # one line: standing
+    multi = _scenario(dev_engine, "multi")
+    assert (multi.external_id, multi.key) == ("PP-1002", "matcher_proposal")  # several lines: review once
+    assert "unconfirmed" in multi.review_flags
+    for key in ("twin-a", "twin-b"):  # identical charges and documents: suggestions only
+        twin = _scenario(dev_engine, key)
+        assert twin.document_id is None and twin.key is None
+        assert "document_suggested" in twin.review_flags and "waiting" not in twin.review_flags
+    refund = _scenario(dev_engine, "refund")
+    assert refund.external_id == "PP-1005"
+    instructed = _scenario(dev_engine, "instructed")
+    assert instructed.external_id == "PP-1006"
+    confirmed = _scenario(dev_engine, "confirmed")
+    assert confirmed.document_id is None and confirmed.key == "user" and list(confirmed.review_flags) == []
+    late = _scenario(dev_engine, "late")
+    assert (
+        late.document_id is None
+        and "waiting" in late.review_flags
+        and "document_suggested" not in late.review_flags
+    )
+    assert "document scenarios:" in seeded and "charge exact: linked to PP-1001" in seeded
+
+
+def test_the_documents_are_a_real_importer_instance_and_a_provider_payee(seeded: str, dev_engine: Engine):
+    assert (
+        _one(dev_engine, "SELECT emits::text FROM importer_instance WHERE importer = 'testdocs'")
+        == "{documents}"
+    )
+    assert (
+        _one(dev_engine, "SELECT count(*) FROM import_run WHERE emits = 'documents' AND status = 'ok'") == 1
+    )
+    assert _one(dev_engine, "SELECT count(*) FROM v_document_coverage") == 1
+    assert _one(dev_engine, "SELECT document_provider FROM payee WHERE name = 'PayPal'") == "paypal"
+    assert _one(dev_engine, "SELECT count(*) FROM external_document_line") >= 9
+
+
+def test_the_confirmed_charges_document_is_a_reverse_match_and_the_list_shows_the_rest(
+    seeded: str, dev_engine: Engine
+):
+    with dev_engine.connect() as conn:
+        page = list_documents(conn, DocumentFilter(), limit=100, offset=0)
+        by_id = {d.external_id: d for d in page.documents}
+        assert page.total == len(dev_seed_data.DOC_SCENARIOS) == len(by_id)
+        free = {d.external_id for d in page.documents if d.carrier is None}
+        assert free == {"PP-1003", "PP-1004", "PP-1007", "PP-1008", "AZ-2001"}
+        unlinked_paypal = list_documents(
+            conn, DocumentFilter(providers=("paypal",), linked=False), limit=100, offset=0
+        )
+        assert {d.external_id for d in unlinked_paypal.documents} == free - {"AZ-2001"}
+        renewal = get_document(conn, by_id["PP-1007"].id)
+        assert renewal is not None
+        confirmed = _scenario(dev_engine, "confirmed")
+        assert [(m.entry_id, m.confirmed) for m in renewal.matches] == [(confirmed.id, True)]
+        twin = get_document(conn, by_id["PP-1003"].id)
+        assert twin is not None and len(twin.matches) == 2 and not any(m.confirmed for m in twin.matches)
+        assert get_document(conn, by_id["PP-1008"].id).matches == ()  # type: ignore[union-attr]
+
+
+def test_the_late_charge_waits_in_the_review_queue_for_its_document(seeded: str, dev_engine: Engine):
+    from app.core.units.read import review_queue
+
+    late = _scenario(dev_engine, "late")
+    with dev_engine.connect() as conn:
+        waiting = {s.kind: s for s in review_queue(conn).sections}["waiting"]
+    unit = next(u for u in waiting.units if u.anchor_entry_id == late.id)
+    assert unit.waiting_document is not None and unit.waiting_document.provider == "paypal"
+
+
 def test_a_second_run_is_a_no_op(seeded: str, dev_cfg: Config, dev_engine: Engine):
     before = _one(dev_engine, "SELECT count(*) FROM ledger_entry")
     out = _run(dev_cfg, "--months", "3", "--seed", "11")
@@ -312,12 +405,17 @@ def test_reset_removes_everything_it_created_and_a_reseed_works(
         "tag",
         "ledger_entry_tag",
         "rule",
+        "external_document",
+        "external_document_line",
     ):
         assert _one(dev_engine, f"SELECT count(*) FROM {table}") == 0, table  # noqa: S608
     out = _run(dev_cfg, "--months", "2", "--seed", "12", "--no-classify")
     assert "PROTOTYPE-ONLY" not in out
     assert _one(dev_engine, "SELECT count(*) FROM ledger_entry") > 0
     assert _one(dev_engine, "SELECT count(*) FROM category") == 0
+    assert (
+        _one(dev_engine, "SELECT count(*) FROM external_document") == 0
+    )  # documents come with the vocabulary
     _run(dev_cfg, "--reset", "--months", "2")  # reset + seed in one go
     assert _one(dev_engine, "SELECT count(*) FROM category") > 0
     with dev_engine.connect() as conn:
@@ -332,4 +430,6 @@ def test_transfer_legs_fill_the_needs_account_and_waiting_sections(seeded: str, 
     by_kind = {s.kind: s for s in queue.sections}
     needs, waiting = by_kind["needs_account"], by_kind["waiting"]
     assert needs.total >= 1 and [(g.currency, g.count) for g in needs.groups] == [("USD", needs.total)]
-    assert waiting.total >= 1 and all(u.waiting is not None for u in waiting.units)
+    # a partner (a leg) or a document (a charge): each waiting unit says what it waits for
+    assert waiting.total >= 1 and all((u.waiting or u.waiting_document) is not None for u in waiting.units)
+    assert any(u.waiting is not None for u in waiting.units)

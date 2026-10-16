@@ -15,6 +15,11 @@ vocabulary is small and repeats, so a history key has something to group.
 seeded stream) is a confirmed flow of its merchant's category and payee with `user` keys, so
 history has voters; the rest stay unconfirmed, and a few merchants also get rules (a payee and a
 category rule each), so settling has standing decisions to make too.
+
+`documents > 0` is the documents variant (step 9): that many external documents, and 1,500 more unconfirmed
+transactions whose payee (a rule on the card text `PAYPAL *`, or `AMAZON *`) has a document provider
+(`_add_documents`: exact unique matches, ambiguous pairs, near misses outside the window, charges with no
+document, and an instance whose coverage is behind, so some charges wait).
 """
 
 from __future__ import annotations
@@ -85,6 +90,20 @@ _USER_PAIR = {**_USER, "counterpart": {"pass": "user"}, **_NO_DOCUMENT}
 
 
 @dataclass(frozen=True)
+class DocumentSummary:
+    """What the documents variant holds, for the test to assert against and to configure the registry."""
+
+    document_count: int
+    charge_count: int  # the provider-payee transactions added (part of source_count and entry_count)
+    unique: int  # charges with exactly one document nobody else can have (automatic links)
+    multi_line: int  # of those, how many have a document of several lines (a proposal)
+    ambiguous_charges: int  # charges that share two documents with another charge (no link)
+    no_document: int  # charges of a provider covered through the end, with no document, only near misses
+    waiting: int  # charges of the provider whose instance's coverage is behind them
+    providers: dict[str, frozenset[str]]  # importer name -> providers, as the registry takes it
+
+
+@dataclass(frozen=True)
 class BackfillSummary:
     seed: int
     account_ids: tuple[int, ...]
@@ -95,6 +114,7 @@ class BackfillSummary:
     last_booked: date
     run_ids: tuple[int, ...]
     transfer_count: int = 0  # the transfer legs `transfers` added (part of source_count and entry_count)
+    documents: DocumentSummary | None = None  # the documents variant: what `_add_documents` built
 
 
 def _fake_ref(name: str) -> str:
@@ -303,6 +323,166 @@ def _add_transfers(
     return len(sources)
 
 
+_DOC_PAYEES = (("PayPal (docs)", "paypal", "PAYPAL *"), ("Amazon (docs)", "amazon", "AMAZON *"))
+_DOC_IMPORTERS = {"doclab-paypal": "paypal", "doclab-amazon": "amazon"}
+_DOC_SOURCE = text(
+    "INSERT INTO source_transaction (importer, import_run_id, account_id, source_id, source_format, amount,"
+    " currency, booked_on, counterparty_name, purpose, raw) VALUES ('csv', :run, :account, :source_id,"
+    " 'csv:backfill', :amount, 'EUR', :booked_on, :name, :purpose, CAST('{}' AS jsonb))"
+)
+_DOC_ENTRY = text(
+    "INSERT INTO ledger_entry (source_transaction_id, account_id, amount, currency, booked_on)"
+    " SELECT id, account_id, amount, currency, booked_on FROM source_transaction"
+    " WHERE source_id LIKE 'docch-%' ORDER BY id"
+)
+_DOC_INSERT = text(
+    "INSERT INTO external_document (provider, external_id, importer_instance_id, occurred_on, total,"
+    " currency, merchant_name, title, raw) VALUES (:provider, :external_id, :instance, :occurred_on,"
+    " :total, 'EUR', :merchant, :title, CAST('{}' AS jsonb))"
+)
+_DOC_LINES = text(
+    "INSERT INTO external_document_line (document_id, line_no, description, amount)"
+    " SELECT d.id, v.n, v.t, v.a FROM unnest(CAST(:eids AS text[]), CAST(:ns AS int[]), CAST(:ts AS text[]),"
+    " CAST(:amounts AS bigint[])) AS v(eid, n, t, a) JOIN external_document d ON d.external_id = v.eid"
+)
+_SHOPS = ("Seeed Studio", "Digitec", "Conrad", "Thomann", "Notebooksbilliger", "Bergfreunde", "Zooplus")
+
+
+def _add_documents(
+    conn: Any, rng: random.Random, count: int, account: int, run: int, first: date, days: int
+) -> DocumentSummary:
+    """The documents variant (see the module docstring); `count` documents, 1,500 charges.
+
+    PayPal charges (1,200) in four kinds, in amount bands that cannot meet by chance: 600 unique (a document
+    a day or two either side, a sixth of them of three lines), 150 ambiguous pairs (two identical charges, two
+    identical documents: nothing links) as 300 charges, 300 with no document (one near miss 30 days off), and
+    300 Amazon charges, whose instance's coverage ends early, so those after it wait. The rest of the
+    `count` documents is noise nothing matches. The PayPal instance is covered through the end of the year,
+    the Amazon one 100 days into it."""
+    payee: dict[str, int] = {}
+    for name, provider, prefix in _DOC_PAYEES:
+        payee[provider] = conn.execute(
+            text("INSERT INTO payee (name, document_provider) VALUES (:n, :p) RETURNING id"),
+            {"n": name, "p": provider},
+        ).scalar_one()
+        conn.execute(
+            text(
+                "INSERT INTO rule (name, sets, payee_id, conditions)"
+                " VALUES (:n, 'payee', :p, CAST(:m AS jsonb))"
+            ),
+            {
+                "n": f"{name} card",
+                "p": payee[provider],
+                "m": json.dumps([{"field": "counterparty_name", "op": "starts_with", "value": prefix}]),
+            },
+        )
+    instances: dict[str, int] = {}
+    for importer, provider in _DOC_IMPORTERS.items():
+        instance = conn.execute(
+            text(
+                "INSERT INTO importer_instance (importer, label, access, emits, settings) VALUES"
+                " (:i, :i, 'shared', ARRAY['documents'], CAST(:s AS jsonb)) RETURNING id"
+            ),
+            {"i": importer, "s": json.dumps({"start_date": first.isoformat()})},
+        ).scalar_one()
+        through = END if provider == "paypal" else first + timedelta(days=100)
+        conn.execute(
+            text(
+                "INSERT INTO import_run (importer, importer_instance_id, emits, status, finished_at,"
+                " covered_from, covered_through) VALUES (:i, :inst, 'documents', 'ok', clock_timestamp(),"
+                " :f, :t)"
+            ),
+            {"i": importer, "inst": instance, "f": first, "t": through},
+        )
+        instances[provider] = instance
+
+    charges: list[dict[str, Any]] = []
+    documents: list[dict[str, Any]] = []
+    lines: list[tuple[str, int, str, int]] = []
+    counter = 0
+
+    def day(k: int) -> date:  # well inside the PayPal coverage, and after the Amazon coverage ended
+        return first + timedelta(days=130 + (k * 7) % (days - 170))
+
+    def charge(provider: str, amount: int, on: date) -> None:
+        nonlocal counter
+        counter += 1
+        prefix = "PAYPAL *" if provider == "paypal" else "AMAZON *"
+        charges.append(
+            {
+                "run": run,
+                "account": account,
+                "source_id": f"docch-{counter}",
+                "amount": -amount,
+                "booked_on": on,
+                "name": f"{prefix}{rng.choice(_SHOPS).upper()[:8]}",
+                "purpose": f"Zahlung {counter}",
+            }
+        )
+
+    def doc(provider: str, ext: str, amount: int, on: date) -> None:
+        documents.append(
+            {
+                "provider": provider,
+                "external_id": ext,
+                "instance": instances[provider],
+                "occurred_on": on,
+                "total": -amount,
+                "merchant": rng.choice(_SHOPS),
+                "title": f"Order {ext}",
+            }
+        )
+
+    unique, multi = 600, 100
+    for k in range(unique):
+        on, amount = day(k), 100_000 + k
+        charge("paypal", amount, on)
+        doc("paypal", f"u-{k}", amount, on + timedelta(days=k % 5 - 2))
+        if k < multi:
+            parts = (amount // 3, amount // 3, amount - 2 * (amount // 3))
+            lines += [(f"u-{k}", n, f"Item {n} of order {k}", -a) for n, a in enumerate(parts, start=1)]
+    pairs = 150
+    for k in range(pairs):
+        on, amount = day(k + 3), 200_000 + k
+        for twin in (1, 2):
+            charge("paypal", amount, on)
+            doc("paypal", f"a-{k}-{twin}", amount, on + timedelta(days=twin - 1))
+    nodoc = 300
+    for k in range(nodoc):
+        on, amount = day(k + 5), 300_000 + k
+        charge("paypal", amount, on)
+        doc("paypal", f"n-{k}", amount, on + timedelta(days=30))  # a near miss: outside the window
+    amazon = 300
+    waiting_from = first + timedelta(days=100)
+    for k in range(amazon):
+        charge("amazon", 400_000 + k, waiting_from + timedelta(days=1 + k % 200))
+    for k in range(max(0, count - len(documents))):  # noise: nobody's charge
+        doc("paypal" if k % 4 else "amazon", f"z-{k}", 500_000 + k, day(k))
+
+    conn.execute(_DOC_SOURCE, charges)
+    conn.execute(_DOC_ENTRY)
+    conn.execute(_DOC_INSERT, documents)
+    conn.execute(
+        _DOC_LINES,
+        {
+            "eids": [e for e, *_ in lines],
+            "ns": [n for _, n, *_ in lines],
+            "ts": [t for *_, t, _a in lines],
+            "amounts": [a for *_, a in lines],
+        },
+    )
+    return DocumentSummary(
+        document_count=len(documents),
+        charge_count=len(charges),
+        unique=unique,
+        multi_line=multi,
+        ambiguous_charges=2 * pairs,
+        no_document=nodoc,
+        waiting=amazon,
+        providers={importer: frozenset({provider}) for importer, provider in _DOC_IMPORTERS.items()},
+    )
+
+
 def build_backfill(
     engine: Engine,
     *,
@@ -312,6 +492,7 @@ def build_backfill(
     rows_per_account: int = 2000,
     confirmed_share: float = 0.0,
     transfers: int = 0,
+    documents: int = 0,
 ) -> BackfillSummary:
     """Load the fixture into an empty ledger in one transaction and return what was built."""
     if not 1 <= accounts <= len(ACCOUNT_PLAN):
@@ -399,6 +580,12 @@ def build_backfill(
             else 0
         )
         total += added
+        doc_summary = (
+            _add_documents(conn, rng, documents, account_ids[0], run_ids[0], first, days)
+            if documents
+            else None
+        )
+        total += doc_summary.charge_count if doc_summary else 0
     return BackfillSummary(
         seed=seed,
         account_ids=tuple(account_ids),
@@ -409,4 +596,5 @@ def build_backfill(
         last_booked=END,
         run_ids=tuple(run_ids),
         transfer_count=added,
+        documents=doc_summary,
     )

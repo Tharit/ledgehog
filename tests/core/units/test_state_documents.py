@@ -120,7 +120,9 @@ def test_a_unique_candidate_is_an_automatic_link_not_a_suggestion(
     make_document(db_conn, total=-100)
     entry = bench.flow(bench.source(), payee_id=make_payee(db_conn, "PayPal", "paypal"))
     row = _sql(db_conn)[entry]
-    assert (row.doc_suggested, row.unit_ok) == (False, True)  # step 2 of settling links it first
+    # not suggested (step 2 of settling links it) but the unit is not confirmed until it has: a unit of
+    # standing values would else be confirmed, and get "none", before step 2 could link the document
+    assert (row.doc_suggested, row.unit_ok) == (False, False)
 
 
 def test_two_candidates_are_suggested(db_conn: Connection, make_account: Any) -> None:
@@ -340,3 +342,12 @@ def test_awaited_is_pure_on_its_own() -> None:
     )
     assert awaited("paypal", day, 7, [DocumentSource("a")], providers) is True
     assert awaited("paypal", day, 7, [], providers) is False
+
+
+def test_a_candidate_alone_keeps_a_unit_open_without_a_flag() -> None:
+    """Settling is about to link it (`doc_candidate`): not confirmed, no flag, read as a suggestion."""
+    entry = UnitEntry(1, 1, "flow", 5, None, {})
+    state = unit_state([entry], documents={1: DocumentFacts(candidate=True)})
+    assert not state.confirmed and state.reasons == ("document_suggested",)
+    assert state.flags[1] == ()
+    assert unit_state([entry], documents={1: DocumentFacts()}).confirmed
