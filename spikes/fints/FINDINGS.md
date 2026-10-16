@@ -134,6 +134,23 @@ phone PIN, not the BestSign password); 2FA via (Miles & More) BestSign; FinTS fo
     TAN medium name entered = the device name shown in the app (the 'Seal One-ID' was not needed).
     Even then: transactions need HKKKU/G112, unsupported by python-fints.
 
+21. **Resolution of 9960: the TAN procedure must be activated on the bank's side, via the Deutsche Bank website/app
+    enrollment.** After starting it, the bank immediately lists 920 BestSign and 921 BestSign-Push for the ID
+    (the allowed-procedures list now exists), but full activation needs a **physical activation letter** by
+    post. So for a card-only Miles & More customer the FinTS setup has a multi-day offline step, and until it is
+    done the symptoms are: login OK (SCA-exempt), no 3920 list, `9960` on every request. The importer's
+    onboarding for this bank needs a clear "not activated yet" state and instructions, not a generic error.
+    The M&M-app BestSign alone does NOT make FinTS usable.
+
+### Resuming the Deutsche Bank experiment (after the activation letter)
+
+1. Activate per the letter. Check the bank now lists 920/921 with the probe.
+2. `uv run probe.py --blz 50070439 --url https://fints.deutsche-bank.de/ --user <Deutsche Bank ID> --product-id <ID> --hnshk-v2 --mechanism 921`
+   (PIN prompt = Deutsche Bank ID password, NOT the BestSign password; enter the device name when asked;
+   approve the BestSign push on the phone). Add `--tan-for HKSPA` if requests still get 9960.
+3. Expected next wall: the card's transactions are HKKKU (G112 data), which python-fints cannot do. Decide
+   then between a hand-built HKKKU segment + G112 parser, another library, or leaving cards out of FinTS.
+
 ## Open questions
 
 - Resolved: Consorsbank account-data access (full KTI1 + HKTAN on HKKAZ/HKSAL).
