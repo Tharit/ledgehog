@@ -178,6 +178,15 @@ def pick_tan_mechanism(client: FinTS3PinTanClient, preset: str | None = None) ->
     for code, m in mechs.items():
         print(f"  {code}: {m.name}  (type={getattr(m, 'tan_process', '?')}, "
               f"zka={getattr(m, 'zka_id', '?')}, decoupled={getattr(m, 'decoupled_max_poll_number', None) is not None})")
+    if preset and preset not in mechs:
+        # Experiment: the bank never sent its allowed-procedures list (3920), so the library filters
+        # every method out. The BPD still describes them, so declare the wanted one allowed ourselves.
+        client.allowed_security_functions.append(preset)
+        mechs = client.get_tan_mechanisms()
+        if preset in mechs:
+            print(f"\n!! {preset} ({mechs[preset].name}) was NOT offered for this user; forcing it anyway")
+        else:
+            raise SystemExit(f"\nMechanism {preset} is not described in the bank's parameter data either.")
     codes = [c for c in mechs if c != "999"] or list(mechs)
     if not codes:
         raise SystemExit(
