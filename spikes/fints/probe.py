@@ -179,6 +179,13 @@ def pick_tan_mechanism(client: FinTS3PinTanClient, preset: str | None = None) ->
         print(f"  {code}: {m.name}  (type={getattr(m, 'tan_process', '?')}, "
               f"zka={getattr(m, 'zka_id', '?')}, decoupled={getattr(m, 'decoupled_max_poll_number', None) is not None})")
     codes = [c for c in mechs if c != "999"] or list(mechs)
+    if not codes:
+        raise SystemExit(
+            "\nThe bank offers no TAN method for this user (it did not send its list of allowed procedures, "
+            "3920). The login itself worked, but no TAN procedure is active for this ID on the FinTS side; "
+            "the bank usually answers 9960 'Kein aktives TAN Verfahren ermittelt' next. Ask the bank to "
+            "enable FinTS/HBCI with a TAN procedure for this ID. Nothing further was sent."
+        )
     choice = preset or codes[0] if preset or len(codes) == 1 else input(f"Choose mechanism {codes}: ").strip()
     client.set_tan_mechanism(choice)
     # Some banks additionally require choosing a TAN medium (device name).

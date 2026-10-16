@@ -89,6 +89,22 @@ Probe: `probe.py`. Debug log `out/fints.log` is the ground truth (contains accou
     (MREF+, CRED+, ABWA+, ...): the importer should map all tags generically and treat these fields as optional.
     Only non-FinTS routes (bank CSV/PDF export) can give the missing fields for this bank.
 
+## Second bank: Deutsche Bank / Miles & More credit card (card-only customer)
+
+Per Deutsche Bank and Outbank docs: FinTS URL `https://fints.deutsche-bank.de/`; card-only customers use BLZ
+50070439 (BLZ 50070010 for customers with other DB products); login = Deutsche Bank ID + its password (not the
+phone PIN, not the BestSign password); 2FA via (Miles & More) BestSign; FinTS for the card exists since
+~2026-04-22. Credit cards have no IBAN: select accounts from UPD, not from HKSPA (probe does).
+
+16. **PIN accepted but no TAN procedure** (so far, not resolved): the bank's BPD lists photoTAN 902, BestSign 920,
+    photoTAN-Push 903, BestSign-Push 921, but for this user it never sends the allowed-procedures answer
+    (`3920`), and the next dialog is rejected with `9960 Kein aktives TAN Verfahren ermittelt. Bitte
+    Kundenservice kontaktieren.` `0940` says last login 1901 (never logged in via an online channel). Likely
+    cause: BestSign is registered for the Miles & More app/portal but not as a TAN procedure for FinTS under
+    this ID. The BPD's mechanism list is global, not per user: only the 3920 list says what a user may use.
+    Importer: treat "no allowed TAN method" as its own, user-facing state (needs bank-side activation), not a
+    generic failure.
+
 ## Open questions
 
 - Resolved: Consorsbank account-data access (full KTI1 + HKTAN on HKKAZ/HKSAL).
