@@ -105,6 +105,24 @@ phone PIN, not the BestSign password); 2FA via (Miles & More) BestSign; FinTS fo
     Importer: treat "no allowed TAN method" as its own, user-facing state (needs bank-side activation), not a
     generic failure.
 
+17. **The 9960 was caused by the empty method choice, not by a missing activation.** The bank never sends the
+    allowed-procedures list (3920) for this user, so the library lists no methods and, with an empty choice, falls
+    back to one-step (999) -> `9960`. Naming the method explicitly (`--mechanism 921`, BestSign-Push, forced past
+    the library's filter) works. The bank's own TAN-method list can't be trusted to be present; importer needs a
+    configured/remembered method per bank connection. Login credential here: the Deutsche Bank ID password (the
+    BestSign password is rejected with `9040 Anmeldung fehlgeschlagen`).
+18. **TAN medium name required at login (`9210`).** The init with HKTAN is rejected until the device name is
+    given, and the library's separate HKTAB dialog can't open for the same reason (it only works around this
+    for Postbank): ask for HKTAB inside the init message (`get_tan_media_via_init`).
+19. **Credit cards are a different product on the wire.** UPD account type 50 (`Lufthansa Senator Credit Card`),
+    no IBAN, account number = masked card number, allowed ops: HKKKU (transactions), HKKKS (balance), HKSPA,
+    HKTAB, HKPRO ... but **not HKKAZ/HKSAL**. BPD advertises HIKKUS/HIKKSS. Transactions come as G112 segment
+    data (not MT940); python-fints has no HKKKU/HKKKS support (a Rust crate `floatingpixels/fints` claims
+    it, verified live). So for cards the importer needs its own segment definitions + G112 parser, or another
+    library. Also: the UPD contains placeholder rows without account (ignore), and a library helper
+    (`KTV4.from_sepa_account`) crashes without a BIC.
+    The debug log and `information.txt` contain the full card number: keep `out/` private.
+
 ## Open questions
 
 - Resolved: Consorsbank account-data access (full KTI1 + HKTAN on HKKAZ/HKSAL).
