@@ -61,7 +61,7 @@ describe('DocumentsFilterBar', () => {
 		expect(screen.getByRole('button', { name: '≥ 50.00 EUR' })).toBeInTheDocument();
 	});
 
-	it('picks providers from the list of those payees name', async () => {
+	it('picks providers from the list it is given', async () => {
 		const { onchange } = bar();
 		await fireEvent.click(screen.getByRole('button', { name: 'All providers' }));
 		await fireEvent.click(await screen.findByRole('checkbox', { name: 'paypal' }));

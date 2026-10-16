@@ -24,6 +24,7 @@ from app.core.ledger.payees import (
     PayeeInUse,
     PayeeMergeResult,
     PayeeMissing,
+    UnknownDocumentProvider,
     create_payee,
     delete_payee,
     merge_payee,
@@ -40,6 +41,12 @@ map_error(
     422,
     "validation_error",
     details=lambda e: [{"location": ["body", e.parameter], "message": str(e), "type": "invalid_value"}],
+)
+map_error(
+    UnknownDocumentProvider,
+    422,
+    "unknown_document_provider",
+    details=lambda e: {"provider": e.provider},
 )
 map_error(
     ExpectedCountRequired,
@@ -65,7 +72,9 @@ class PayeeCreateBody(BaseModel):
     note: str | None = None
     icon: PresentationName | None = None
     color: PresentationName | None = None
-    document_provider: str | None = None  # free text; blank means none
+    document_provider: str | None = (
+        None  # a registered provider (`GET /api/documents/providers`); blank means none
+    )
 
 
 class PayeeUpdateBody(BaseModel):

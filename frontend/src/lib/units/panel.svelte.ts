@@ -9,7 +9,7 @@
 // itself and can be tested with a plain object.
 
 import { untrack } from 'svelte';
-import { ApiError, getUnit } from '#lib/api/index.js';
+import { ApiError, getDocument, getUnit } from '#lib/api/index.js';
 import { NO_IDS, withIds } from '#lib/ledger/patch.js';
 import { unitIdOf, withUnit } from './address.js';
 import { lookupsStore } from '#lib/stores/lookups.svelte.js';
@@ -17,7 +17,7 @@ import { ruleNames } from '#lib/stores/rule-names.svelte.js';
 import type { RuleNames } from './evidence.js';
 import { activeUnitSource, type StepDirection } from './sources.js';
 import type { Affected, Unit, UnitCommit, UnitPreview } from './types.js';
-import { UnitDraftFlow } from './unit-draft-flow.svelte.js';
+import { originalOf, UnitDraftFlow, type FlowNotice } from './unit-draft-flow.svelte.js';
 
 export type PanelNav = {
 	/** the address now */
@@ -37,6 +37,11 @@ function asApiError(error: unknown): ApiError {
 		? error
 		: new ApiError(0, 'network_error', 'The server could not be reached.');
 }
+
+const DOCUMENT_UNREAD: FlowNotice = {
+	kind: 'error',
+	text: 'The document could not be read, so it is not picked. Pick it from the document section.'
+};
 
 export class UnitPanel {
 	readonly #nav: PanelNav;
@@ -87,6 +92,8 @@ export class UnitPanel {
 
 	/** the entries of the units committed since the panel opened: advancing skips them */
 	#handled: ReadonlySet<number> = NO_IDS;
+	/** the document to pick in the draft of the unit being opened */
+	#pendingDocument: number | null = null;
 	#pushed = false;
 	/** the unit closed by a Back that has not completed yet */
 	#leaving: number | null = null;
@@ -166,12 +173,16 @@ export class UnitPanel {
 
 	/**
 	 * Open the panel on the unit of `entryId`: a new history entry. `documentId` is the document
-	 * the Documents view picked for the draft; accepted and ignored until the panel's document
-	 * section is wired (wave E2).
+	 * the Documents view picked for the draft: it becomes the pick of the transaction (the link is
+	 * written only by the commit, spec §5.8). The pick needs the document's version, so the
+	 * document is read first; when that fails the unit opens without the pick, and says so.
 	 */
 	open(entryId: number, origin?: HTMLElement | null, documentId?: number | null): void {
-		void documentId;
-		if (this.unitId === entryId && this.isOpen) return;
+		if (this.unitId === entryId && this.isOpen) {
+			if (documentId != null) void this.#pickDocument(entryId, documentId);
+			return;
+		}
+		this.#pendingDocument = documentId ?? null;
 		const wasOpen = this.isOpen;
 		this.origin =
 			origin ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
@@ -327,12 +338,23 @@ export class UnitPanel {
 		const generation = ++this.#generation;
 		this.status = 'loading';
 		this.error = null;
+		const documentId = this.#pendingDocument;
+		this.#pendingDocument = null;
 		try {
-			const unit = await getUnit(id, controller.signal);
+			const [unit, document] = await Promise.all([
+				getUnit(id, controller.signal),
+				documentId === null
+					? Promise.resolve(null)
+					: getDocument(documentId, controller.signal).catch(() => undefined)
+			]);
 			if (generation !== this.#generation) return;
 			this.unit = unit;
 			this.status = 'ready';
-			this.flow.begin(unit);
+			this.flow.begin(
+				unit,
+				document ? { entryId: id, id: document.id, version: document.version } : undefined
+			);
+			if (document === undefined) this.flow.notice = DOCUMENT_UNREAD;
 			this.#reveal(this.#candidates(unit));
 			// opened by any entry of the unit: the address names the anchor
 			if (unit.anchor_entry_id !== id) {
@@ -346,6 +368,22 @@ export class UnitPanel {
 			const failure = asApiError(error);
 			this.error = failure;
 			this.status = failure.code === 'not_found' ? 'missing' : 'error';
+		}
+	}
+
+	/** The panel is open on this unit already: the document the Documents view chose joins the draft. */
+	async #pickDocument(entryId: number, documentId: number): Promise<void> {
+		const generation = this.#generation;
+		try {
+			const document = await getDocument(documentId);
+			const unit = this.unit;
+			if (generation !== this.#generation || !unit) return;
+			this.flow.pickDocument(originalOf(unit, entryId), {
+				id: document.id,
+				version: document.version
+			});
+		} catch {
+			if (generation === this.#generation) this.flow.notice = DOCUMENT_UNREAD;
 		}
 	}
 

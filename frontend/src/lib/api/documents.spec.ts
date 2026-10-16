@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { documentQuery, getDocument, listDocuments } from './documents.js';
+import { documentQuery, getDocument, listDocumentProviders, listDocuments } from './documents.js';
 import type { DocumentFilter } from './types.js';
 
 const fetchMock = vi.fn();
@@ -70,5 +70,13 @@ describe('getDocument', () => {
 		fetchMock.mockImplementation(async () => reply({ id: 7 }));
 		await expect(getDocument(7)).resolves.toEqual({ id: 7 });
 		expect(lastUrl()).toBe('/api/documents/7');
+	});
+});
+
+describe('listDocumentProviders', () => {
+	it('returns the providers the server lists', async () => {
+		fetchMock.mockImplementation(async () => reply({ providers: ['amazon', 'paypal'] }));
+		expect(await listDocumentProviders()).toEqual(['amazon', 'paypal']);
+		expect(lastUrl()).toBe('/api/documents/providers');
 	});
 });

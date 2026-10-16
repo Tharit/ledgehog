@@ -1,6 +1,6 @@
 // Documents (spec §5.8): browsed here, never written; a link is made by a unit's commit.
 import { request, type Query } from './http.js';
-import type { DocumentDetail, DocumentFilter, DocumentPage } from './types.js';
+import type { DocumentDetail, DocumentFilter, DocumentPage, DocumentProviders } from './types.js';
 
 export const DOCUMENT_PAGE_SIZE = 100;
 
@@ -33,6 +33,12 @@ export function listDocuments(
 		query: { ...documentQuery(filter), limit, offset: offset > 0 ? offset : undefined },
 		signal
 	});
+}
+
+/** The providers of the registered document importers, sorted: what a payee can name. */
+export async function listDocumentProviders(signal?: AbortSignal): Promise<string[]> {
+	const out = await request<DocumentProviders>('GET', '/api/documents/providers', { signal });
+	return out.providers;
 }
 
 /** One document with its lines and, when no entry carries it, the transactions it would match. */

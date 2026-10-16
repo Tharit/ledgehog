@@ -5,6 +5,7 @@ import {
 	ApiError,
 	createPayee,
 	deletePayee,
+	listDocumentProviders,
 	listPayees,
 	mergePayee,
 	updatePayee
@@ -13,11 +14,13 @@ import {
 import { payee } from '#lib/ledger/fixtures.js';
 import { PayeesStore } from '#lib/payees/store.svelte.js';
 import type { Payee, PayeeDeleteOut, PayeeMergeOut } from '#lib/types/domain.js';
+import { documentProvidersStore } from '#lib/stores/document-providers.svelte.js';
 import PayeeManager from './payee-manager.svelte';
 
 vi.mock('#lib/api/index.js', async (importOriginal) => ({
 	...(await importOriginal<typeof import('#lib/api/index.js')>()),
 	listPayees: vi.fn(),
+	listDocumentProviders: vi.fn(),
 	createPayee: vi.fn(),
 	updatePayee: vi.fn(),
 	deletePayee: vi.fn(),
@@ -40,7 +43,15 @@ const written = (p: Payee) => ({ payee: p, settle: { error: null, touched_entry_
 
 beforeEach(() => {
 	vi.resetAllMocks();
+	vi.mocked(listDocumentProviders).mockResolvedValue(['amazon', 'paypal']);
+	documentProvidersStore.providers = [];
 });
+
+/** the provider select of an open dialog, once the providers have arrived */
+async function providerSelect(dialog: HTMLElement) {
+	await waitFor(() => expect(documentProvidersStore.providers).toEqual(['amazon', 'paypal']));
+	return within(dialog).getByRole('button', { name: 'Document provider' });
+}
 
 describe('PayeeManager: loading', () => {
 	it('shows skeleton rows while loading, not a text line', () => {
@@ -206,10 +217,10 @@ describe('PayeeManager: add and edit', () => {
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Edit REWE' }));
 		const dialog = await screen.findByRole('dialog', { name: 'Edit REWE' });
-		expect(within(dialog).getByLabelText('Document provider')).toHaveValue('amazon');
-		await fireEvent.input(within(dialog).getByLabelText('Document provider'), {
-			target: { value: ' paypal ' }
-		});
+		const select = await providerSelect(dialog);
+		expect(select).toHaveTextContent('amazon');
+		await fireEvent.click(select);
+		await fireEvent.click(await screen.findByRole('option', { name: 'paypal' }));
 		await fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
 
 		await waitFor(() =>
@@ -221,7 +232,7 @@ describe('PayeeManager: add and edit', () => {
 		);
 	});
 
-	it('clears the document provider with an empty field', async () => {
+	it('clears the document provider by choosing no provider', async () => {
 		vi.mocked(updatePayee).mockResolvedValue(
 			written(rewe) as Awaited<ReturnType<typeof updatePayee>>
 		);
@@ -229,9 +240,8 @@ describe('PayeeManager: add and edit', () => {
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Edit REWE' }));
 		const dialog = await screen.findByRole('dialog', { name: 'Edit REWE' });
-		await fireEvent.input(within(dialog).getByLabelText('Document provider'), {
-			target: { value: '' }
-		});
+		await fireEvent.click(await providerSelect(dialog));
+		await fireEvent.click(await screen.findByRole('option', { name: 'No provider' }));
 		await fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
 
 		await waitFor(() =>
@@ -252,9 +262,8 @@ describe('PayeeManager: add and edit', () => {
 		await fireEvent.click(headerAdd());
 		const dialog = await screen.findByRole('dialog', { name: 'Add payee' });
 		await fireEvent.input(within(dialog).getByLabelText('Name'), { target: { value: 'Amazon' } });
-		await fireEvent.input(within(dialog).getByLabelText('Document provider'), {
-			target: { value: 'amazon' }
-		});
+		await fireEvent.click(await providerSelect(dialog));
+		await fireEvent.click(await screen.findByRole('option', { name: 'amazon' }));
 		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
 
 		await waitFor(() =>
@@ -264,6 +273,29 @@ describe('PayeeManager: add and edit', () => {
 				document_provider: 'amazon'
 			})
 		);
+	});
+
+	it('disables the provider choice with a hint when no document importer is set up', async () => {
+		vi.mocked(listDocumentProviders).mockResolvedValue([]);
+		await setup();
+
+		await fireEvent.click(headerAdd());
+		const dialog = await screen.findByRole('dialog', { name: 'Add payee' });
+		const select = within(dialog).getByRole('button', { name: 'Document provider' });
+		await waitFor(() => expect(documentProvidersStore.loaded).toBe(true));
+		expect(select).toBeDisabled();
+		expect(within(dialog).getByText(/No document importer is set up/)).toBeInTheDocument();
+	});
+
+	it('keeps listing a provider the payee holds when its importer is gone', async () => {
+		vi.mocked(listDocumentProviders).mockResolvedValue([]);
+		await setup([{ ...rewe, document_provider: 'ebay' }, edeka]);
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Edit REWE' }));
+		const dialog = await screen.findByRole('dialog', { name: 'Edit REWE' });
+		const select = within(dialog).getByRole('button', { name: 'Document provider' });
+		expect(select).toHaveTextContent('ebay');
+		expect(select).toBeEnabled();
 	});
 
 	it('closes an unchanged edit without writing', async () => {

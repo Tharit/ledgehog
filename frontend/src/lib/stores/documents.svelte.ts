@@ -11,6 +11,10 @@ import {
 } from '#lib/documents/filter.js';
 import type { Lookups } from '#lib/ledger/lookups.js';
 import type { DocumentDetail, DocumentFilter, DocumentRow } from '#lib/types/domain.js';
+import {
+	documentProvidersStore,
+	type DocumentProvidersStore
+} from './document-providers.svelte.js';
 import { lookupsStore, type LookupsStore } from './lookups.svelte.js';
 import { session } from './session.svelte.js';
 
@@ -40,8 +44,14 @@ export class DocumentsStore {
 		return this.#lookups.failed;
 	}
 
-	constructor(lookups: LookupsStore = lookupsStore) {
+	readonly #providers: DocumentProvidersStore;
+
+	constructor(
+		lookups: LookupsStore = lookupsStore,
+		providers: DocumentProvidersStore = documentProvidersStore
+	) {
 		this.#lookups = lookups;
+		this.#providers = providers;
 	}
 
 	readonly locale = $derived(session.config?.locale ?? 'en');
@@ -50,17 +60,12 @@ export class DocumentsStore {
 	readonly activeFilters = $derived(
 		describeDocumentFilter(this.filter, this.locale).map((part) => part.label)
 	);
-	/** the providers payees name: what the provider chip offers to choose from */
-	readonly providers = $derived(
-		[
-			...[...this.lookups.payees.values()].flatMap((p) =>
-				p.document_provider ? [p.document_provider] : []
-			),
-			...this.filter.provider
-		]
+	/** the providers of the registered document importers, plus any chosen in the URL: what the provider chip offers */
+	get providers(): string[] {
+		return [...this.#providers.providers, ...this.filter.provider]
 			.filter((provider, i, all) => all.indexOf(provider) === i)
-			.sort()
-	);
+			.sort();
+	}
 
 	#controller: AbortController | null = null;
 	#generation = 0;
@@ -68,6 +73,10 @@ export class DocumentsStore {
 
 	loadLookups(): Promise<void> {
 		return this.#lookups.ensure();
+	}
+
+	loadProviders(): Promise<void> {
+		return this.#providers.load();
 	}
 
 	/** Show this filter. The same filter as the one held does nothing (a URL echo). */

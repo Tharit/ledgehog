@@ -41,6 +41,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/documents/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Document Providers
+         * @description The providers a payee can name and the documents list can filter by (empty: no document importer).
+         */
+        get: operations["list_document_providers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/documents/{document_id}": {
         parameters: {
             query?: never;
@@ -1244,6 +1264,11 @@ export interface components {
             offset: number;
             /** Total */
             total: number;
+        };
+        /** DocumentProvidersOut */
+        DocumentProvidersOut: {
+            /** Providers */
+            providers: string[];
         };
         /** EditEffectsOut */
         EditEffectsOut: {
@@ -2851,6 +2876,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentPageOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_document_providers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentProvidersOut"];
                 };
             };
             /** @description Not signed in (or wrong login or password). */

@@ -21,9 +21,12 @@ from typing import Any
 from anyio import to_thread
 from fastapi import FastAPI
 
+from app.core.importers.providers import register_document_importers
+from app.core.plugins.importer import DocumentImporter, FileImporter
 from app.core.resolution.registry import configure_classifiers, configure_rule_tools
 from app.plugins.classifiers import default_classifiers, default_rule_tools
 from app.plugins.importers.csv import CsvImporter
+from app.plugins.importers.testdocs import TestDocumentImporter
 from app.startup import start
 from app.utils.config import Config
 
@@ -34,6 +37,17 @@ Receive = Callable[[], Awaitable[MutableMapping[str, Any]]]
 Send = Callable[[MutableMapping[str, Any]], Awaitable[None]]
 
 
+def register_importers(config: Config) -> dict[str, FileImporter | DocumentImporter]:
+    """The importers this deployment offers (name -> implementation); also installs the document
+    providers of those that deliver documents, the one source of the providers a payee can name.
+    The deterministic test importer is registered only behind `ENABLE_TEST_IMPORTERS`."""
+    importers: dict[str, FileImporter | DocumentImporter] = {"csv": CsvImporter()}
+    if config.enable_test_importers:
+        importers["testdocs"] = TestDocumentImporter()
+    register_document_importers(importers)
+    return importers
+
+
 def build() -> FastAPI:
     """Read the configuration, run the start sequence and return the API.
 
@@ -41,7 +55,8 @@ def build() -> FastAPI:
     """
     configure_classifiers(default_classifiers)  # before start: the start sequence settles
     configure_rule_tools(default_rule_tools())
-    return start(Config.from_env(), importers={"csv": CsvImporter()}).app
+    config = Config.from_env()
+    return start(config, importers=register_importers(config)).app  # before start: it settles
 
 
 class LazyApp:

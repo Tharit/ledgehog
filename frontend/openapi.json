@@ -1289,6 +1289,22 @@
         "title": "DocumentPageOut",
         "type": "object"
       },
+      "DocumentProvidersOut": {
+        "properties": {
+          "providers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Providers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "providers"
+        ],
+        "title": "DocumentProvidersOut",
+        "type": "object"
+      },
       "EditEffectsOut": {
         "properties": {
           "collapsed_entry_ids": {
@@ -6413,6 +6429,48 @@
           }
         },
         "summary": "List Documents View",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/documents/providers": {
+      "get": {
+        "description": "The providers a payee can name and the documents list can filter by (empty: no document importer).",
+        "operationId": "list_document_providers",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentProvidersOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "List Document Providers",
         "tags": [
           "documents"
         ]

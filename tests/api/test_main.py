@@ -65,3 +65,38 @@ def test_http_before_startup_is_refused():
         assert "not started" in str(exc)
     else:
         raise AssertionError("expected RuntimeError")
+
+
+def test_the_test_importer_registers_only_behind_the_flag_and_fills_the_provider_registry():
+    from dataclasses import replace
+
+    from app.core.importers.providers import (
+        document_providers,
+        registered_providers,
+        reset_document_providers,
+    )
+    from app.main import register_importers
+    from app.plugins.importers.testdocs import TestDocumentImporter
+    from app.utils.config import Config
+
+    base = Config.from_env(
+        {
+            "POSTGRES_DB": "x",
+            "POSTGRES_USER": "u",
+            "POSTGRES_PASSWORD": "p",
+            "BASE_CURRENCY": "EUR",
+            "TIMEZONE": "Europe/Berlin",
+        }
+    )
+    reset_document_providers()
+    try:
+        assert set(register_importers(base)) == {"csv"}
+        assert document_providers() == {} and registered_providers() == []
+        on = register_importers(replace(base, enable_test_importers=True))
+        assert set(on) == {"csv", "testdocs"} and isinstance(on["testdocs"], TestDocumentImporter)
+        assert dict(document_providers()) == {"testdocs": TestDocumentImporter.providers}
+        assert registered_providers() == ["amazon", "paypal"]
+        register_importers(base)  # a later process configuration replaces it
+        assert registered_providers() == []
+    finally:
+        reset_document_providers()

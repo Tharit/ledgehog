@@ -27,6 +27,7 @@ from app.core.documents import (
     get_document,
     list_documents,
 )
+from app.core.importers.providers import registered_providers
 from app.core.ledger import InvalidFilter
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
@@ -161,6 +162,16 @@ class DocumentDetailOut(DocumentOut):
             lines=[DocumentLineOut.of(line, d.document.currency) for line in d.lines],
             matches=[DocumentMatchOut.of(m) for m in d.matches],
         )
+
+
+class DocumentProvidersOut(BaseModel):
+    providers: list[str]  # sorted; the providers of the registered document importers
+
+
+@router.get("/providers")
+def list_document_providers(user: CurrentUser) -> DocumentProvidersOut:
+    """The providers a payee can name and the documents list can filter by (empty: no document importer)."""
+    return DocumentProvidersOut(providers=registered_providers())
 
 
 @router.get("")

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	asKey,
+	describeDocumentKey,
 	describeKey,
 	isPartnerBasis,
 	isProposalPass,
@@ -179,5 +180,31 @@ describe('keys of a derivation', () => {
 	it('knows the proposal passes', () => {
 		expect(['history', 'llm', 'matcher_proposal'].every(isProposalPass)).toBe(true);
 		expect(['rule', 'own_account', 'user', 'matcher_decision'].some(isProposalPass)).toBe(false);
+	});
+});
+
+describe('describeDocumentKey', () => {
+	it('has nothing to say without a key', () => {
+		expect(describeDocumentKey(null, false)).toBeNull();
+	});
+
+	it('words the matcher’s decision and its proposal', () => {
+		expect(describeDocumentKey({ pass: 'matcher_decision' }, true)).toEqual({
+			text: 'document matched',
+			proposal: false
+		});
+		expect(describeDocumentKey({ pass: 'matcher_proposal' }, true)).toEqual({
+			text: 'document matched — check the split',
+			proposal: true
+		});
+	});
+
+	it('words the user’s word: a pick, or none', () => {
+		expect(describeDocumentKey({ pass: 'user' }, true)?.text).toBe('picked by you');
+		expect(describeDocumentKey({ pass: 'user' }, false)?.text).toBe('no document');
+	});
+
+	it('shows an unknown pass as itself', () => {
+		expect(describeDocumentKey({ pass: 'future' }, true)?.text).toBe('future');
 	});
 });

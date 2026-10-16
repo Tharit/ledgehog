@@ -110,8 +110,7 @@
 		heading="Providers"
 		options={providerOptions}
 		selected={filter.provider}
-		emptyText="No payee names a document provider yet"
-		manageHref="/settings/payees"
+		emptyText="No document importer is set up"
 		onchange={(provider) => update({ provider })}
 	/>
 	<DateChip

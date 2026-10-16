@@ -81,6 +81,7 @@ class Config:
     users: tuple[UserConfig, ...]
     model: ModelConfig | None
     expose_openapi: bool = False  # development only: serve /api/openapi.json
+    enable_test_importers: bool = False  # development only: register the deterministic test importers
 
     def with_database(self, name: str) -> Config:
         """A copy pointing at another database (test and dev contexts, architecture §9)."""
@@ -210,4 +211,5 @@ class _Reader:
             users=self.users(),
             model=self.model(),
             expose_openapi=self.boolean("EXPOSE_OPENAPI", False),
+            enable_test_importers=self.boolean("ENABLE_TEST_IMPORTERS", False),
         )

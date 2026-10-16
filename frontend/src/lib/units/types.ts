@@ -28,6 +28,14 @@ export type UnitProblem = Schemas['UnitProblemOut'];
 export type UnitConsequence = Schemas['UnitConsequenceOut'];
 export type ConsequenceKind = UnitConsequence['kind'];
 export type UnitSplit = Schemas['UnitSplitOut'];
+// The document part of the draft and of a preview row (spec §5.8, §6).
+export type DocumentDraftRequest = Schemas['UnitDocumentDraftIn'];
+export type DocumentLineRequest = Schemas['UnitDocumentLineIn'];
+export type RowDocument = Schemas['UnitRowDocumentOut'];
+export type DocumentSummary = Schemas['UnitDocumentSummaryOut'];
+export type RowDocumentLine = Schemas['UnitRowDocumentLineOut'];
+export type DocumentSplit = Schemas['UnitDocumentSplitOut'];
+export type DocumentWaiting = Schemas['UnitDocumentWaitingOut'];
 export type UnitCommit = Schemas['UnitCommitOut'];
 
 /** The sections in the order the queue shows them. */

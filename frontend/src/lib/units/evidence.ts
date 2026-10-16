@@ -170,3 +170,24 @@ export function describeKey(
 			return { text: key.pass, proposal: false };
 	}
 }
+
+/**
+ * The words for the `document` key of a transaction's original entry (spec §5.8, §5.9). `linked`:
+ * the transaction carries a document; a `user` key without one is the decision that there is none.
+ */
+export function describeDocumentKey(
+	key: DerivationKey | null | undefined,
+	linked: boolean
+): Evidence | null {
+	if (!key) return null;
+	switch (key.pass) {
+		case 'matcher_decision':
+			return { text: 'document matched', proposal: false };
+		case 'matcher_proposal':
+			return { text: 'document matched — check the split', proposal: true };
+		case 'user':
+			return { text: linked ? 'picked by you' : 'no document', proposal: false };
+		default:
+			return { text: key.pass, proposal: false };
+	}
+}

@@ -42,6 +42,7 @@
 		completableNotice,
 		groupHeading,
 		unitsOfGroup,
+		waitingDocumentReason,
 		waitingReason
 	} from '#lib/units/queue.js';
 	import type { QueueGroup, Unit } from '#lib/units/types.js';
@@ -295,6 +296,17 @@
 												data-slot="waiting-reason"
 											>
 												{waitingReason(unit.waiting, lookups, locale)}
+											</div>
+										</div>
+									{/if}
+									{#if unit.waiting_document}
+										<div role="row" class="border-b border-border px-3 py-1">
+											<div
+												role="gridcell"
+												class="text-xs text-muted-foreground"
+												data-slot="waiting-document-reason"
+											>
+												{waitingDocumentReason(unit.waiting_document, locale)}
 											</div>
 										</div>
 									{/if}

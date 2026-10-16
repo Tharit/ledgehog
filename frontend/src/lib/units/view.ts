@@ -22,9 +22,11 @@ import {
 	type Evidence,
 	type RuleNames
 } from './evidence.js';
+import { documentField, type DocumentFieldView } from './unit-document.js';
 import type {
 	ConsequenceKind,
 	PreviewRow,
+	RowDocumentLine,
 	Unit,
 	UnitConsequence,
 	UnitPreview,
@@ -88,6 +90,10 @@ export type EntryView = {
 	 * splits do not own): shown read-only as a ghost group.
 	 */
 	counterLeg: boolean;
+	/** the transaction's document under the draft (the original entry only; null: nothing to show) */
+	document: DocumentFieldView | null;
+	/** the line of the document the row was made from (a row of the split along the lines) */
+	documentLine: RowDocumentLine | null;
 	/** its amount is an allocation the user sets: a split row or a stored entry of a split */
 	amountEditable: boolean;
 	removable: boolean;
@@ -223,6 +229,8 @@ export function entryViews(args: {
 	stale?: boolean;
 	/** an account's name, for the evidence of a pair ("paired with Cash") */
 	accountName?: (id: number) => string | undefined;
+	/** the document provider of a payee, for finding a document by hand */
+	payeeProvider?: (id: number) => string | null | undefined;
 }): EntryView[] {
 	const {
 		unit,
@@ -231,7 +239,8 @@ export function entryViews(args: {
 		rules,
 		locale,
 		stale = false,
-		accountName = () => undefined
+		accountName = () => undefined,
+		payeeProvider = () => null
 	} = args;
 	const stored = new Map(unit.entries.map((e) => [e.id, e]));
 	const sourceOf = (entryId: number) => stored.get(entryId)?.source_transaction_id ?? null;
@@ -261,7 +270,7 @@ export function entryViews(args: {
 	const sourceIds = base.map((b) => {
 		const split = draft.splits.find((s) => s.id === b.id);
 		// the counter-leg a commit creates belongs to no source of the unit
-		if (b.id < 0 && !split && b.row) return null;
+		if (b.id < 0 && !split && b.row && !b.row.document_line) return null;
 		return b.row?.source_transaction_id ?? (split ? sourceOf(split.sourceEntryId) : sourceOf(b.id));
 	});
 	const counts = new Map<number, number>();
@@ -270,7 +279,8 @@ export function entryViews(args: {
 	return base.map((b, i) => {
 		const entry = stored.get(b.id) ?? null;
 		const split = draft.splits.find((s) => s.id === b.id) ?? null;
-		const counterLeg = b.id < 0 && split === null && b.row !== null;
+		// a row made from a line of a document is a new split row the draft has not taken over yet
+		const counterLeg = b.id < 0 && split === null && b.row !== null && !b.row.document_line;
 		const isNew = b.id < 0 && !counterLeg;
 		const sourceId = counterLeg ? null : sourceIds[i];
 		const original = counterLeg
@@ -326,6 +336,18 @@ export function entryViews(args: {
 			picked: edit.pairing?.mode === 'pick' || edit.pairing?.mode === 'counter_leg',
 			pairing: edit.pairing ?? null,
 			counterLeg,
+			document:
+				original && !isNew && !counterLeg
+					? documentField(
+							b.row,
+							draft,
+							b.id,
+							typeof fields.payee.value === 'number'
+								? (payeeProvider(fields.payee.value) ?? null)
+								: null
+						)
+					: null,
+			documentLine: b.row?.document_line ?? null,
 			amountEditable: !original && !counterLeg,
 			removable: !original && !counterLeg
 		};

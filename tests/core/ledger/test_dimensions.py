@@ -11,10 +11,17 @@ import pytest
 from sqlalchemy import Engine, text
 from sqlalchemy.exc import DBAPIError
 
+from app.core.importers.providers import configure_document_providers, reset_document_providers
 from app.core.ledger import categories as cat_mod
 from app.core.ledger.categories import create_category, delete_category, merge_category
 from app.core.ledger.dimensions import MergeCountChanged
-from app.core.ledger.payees import PayeeInUse, delete_payee
+from app.core.ledger.payees import (
+    PayeeInUse,
+    UnknownDocumentProvider,
+    create_payee,
+    delete_payee,
+    update_payee,
+)
 from app.core.settle.settle import SettleResult
 from app.core.stale import StaleReference, stale_from_integrity
 from tests.fixtures import ledger_seed as seed
@@ -128,3 +135,26 @@ def test_deleting_through_the_core_backstops_a_restricted_row(isolated_engine: E
     assert delete_category(isolated_engine, c, dry_run=False).deleted
     with pytest.raises(PayeeInUse):
         delete_payee(isolated_engine, p)
+
+
+@pytest.fixture
+def providers():
+    configure_document_providers({"testdocs": frozenset({"paypal"})})
+    yield
+    reset_document_providers()
+
+
+def test_payee_provider_must_be_registered_when_set_or_changed(isolated_engine: Engine, providers: None):
+    with pytest.raises(UnknownDocumentProvider) as info:
+        create_payee(isolated_engine, name="A", document_provider="ebay")
+    assert info.value.provider == "ebay"
+    made = create_payee(isolated_engine, name="B", document_provider=" paypal ").payee
+    assert made.document_provider == "paypal"
+    with pytest.raises(UnknownDocumentProvider):
+        update_payee(isolated_engine, made.id, document_provider="ebay")
+    # unchanged stays and may be re-sent after the importer is gone; clearing is always allowed
+    reset_document_providers()
+    assert update_payee(isolated_engine, made.id, document_provider="paypal", note="n").payee.note == "n"
+    assert update_payee(isolated_engine, made.id, document_provider=None).payee.document_provider is None
+    with pytest.raises(UnknownDocumentProvider):
+        update_payee(isolated_engine, made.id, document_provider="paypal")

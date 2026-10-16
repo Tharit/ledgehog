@@ -186,3 +186,21 @@ def test_detail_of_a_linked_document_names_its_carrier_and_has_no_matches(
 def test_an_unknown_document_is_a_404_in_the_envelope(anna: TestClient):
     assert_envelope(anna.get(f"{URL}/999999"), 404, "not_found")
     assert_envelope(anna.get(f"{URL}/0"), 422, "validation_error")
+
+
+def test_providers_lists_the_registered_providers_sorted(anna: TestClient):
+    from app.core.importers.providers import configure_document_providers, reset_document_providers
+
+    reset_document_providers()
+    assert anna.get(f"{URL}/providers").json() == {"providers": []}
+    try:
+        configure_document_providers(
+            {"b": frozenset({"paypal", "amazon"}), "a": frozenset({"amazon", "zalando"})}
+        )
+        assert anna.get(f"{URL}/providers").json() == {"providers": ["amazon", "paypal", "zalando"]}
+    finally:
+        reset_document_providers()
+
+
+def test_providers_requires_a_session(client: TestClient):
+    assert_envelope(client.get(f"{URL}/providers"), 401, "unauthenticated")

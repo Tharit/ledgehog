@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from app.core.plugins.importer import DocumentImporter
+
 _providers: dict[str, frozenset[str]] = {}
 
 
@@ -39,3 +41,16 @@ def provider_pairs() -> tuple[list[str], list[str]]:
     """The map as two parallel lists (importer, provider), sorted, for a SQL `unnest`."""
     pairs = sorted((name, p) for name, ps in _providers.items() for p in ps)
     return [n for n, _ in pairs], [p for _, p in pairs]
+
+
+def register_document_importers(importers: Mapping[str, object]) -> None:
+    """Install the map from the registered importers: each one that is a `DocumentImporter` contributes
+    its `providers`. The composition root and the dev seed call it with the importers they register."""
+    configure_document_providers(
+        {name: imp.providers for name, imp in importers.items() if isinstance(imp, DocumentImporter)}
+    )
+
+
+def registered_providers() -> list[str]:
+    """Every provider some registered document importer delivers for, sorted (the list a payee picks from)."""
+    return sorted({p for ps in _providers.values() for p in ps})

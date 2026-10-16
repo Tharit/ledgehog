@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
 
 from app.api import create_app
+from app.core.importers.providers import configure_document_providers, reset_document_providers
 from app.core.ledger import payees as payee_mod
 from app.core.settle.settle import SettleResult
 from app.utils.db.locks import WriteConflict
@@ -19,6 +20,14 @@ from tests.fixtures import ledger_seed as seed
 
 PAYEES = "/api/ledger/payees"
 BAD_IDS = [0, -1, 2**63, 10**20]
+
+
+@pytest.fixture(autouse=True)
+def _providers():
+    """A document importer is registered, so payees can name its providers; the registry is restored."""
+    configure_document_providers({"testdocs": frozenset({"amazon", "paypal"})})
+    yield
+    reset_document_providers()
 
 
 @pytest.fixture
@@ -373,3 +382,48 @@ def test_responses_are_typed_in_the_openapi_schema(api_config: Any, api_engine: 
     assert "document_provider" in schema["components"]["schemas"]["PayeeOut"]["properties"]
     ops = {schema["paths"][p][m]["operationId"] for (p, m) in expected if m != "get"}
     assert ops == {"create_ledger_payee", "update_ledger_payee", "delete_ledger_payee", "merge_ledger_payee"}
+
+
+def test_an_unknown_document_provider_is_refused_on_create_and_update(anna: TestClient, api_engine: Engine):
+    err = assert_envelope(
+        anna.post(PAYEES, json={"name": "X", "document_provider": "ebay"}), 422, "unknown_document_provider"
+    )
+    assert err["details"] == {"provider": "ebay"}
+    assert payee_ids(api_engine) == set()
+    p = make(anna, "Y")
+    r = anna.put(f"{PAYEES}/{p['id']}", json={"document_provider": "ebay"})
+    assert assert_envelope(r, 422, "unknown_document_provider")["details"] == {"provider": "ebay"}
+    assert anna.get(PAYEES).json()["payees"][0]["document_provider"] is None
+
+
+def test_an_empty_registry_refuses_every_provider(anna: TestClient):
+    reset_document_providers()
+    assert_envelope(
+        anna.post(PAYEES, json={"name": "X", "document_provider": "paypal"}), 422, "unknown_document_provider"
+    )
+
+
+def test_clearing_the_provider_is_always_allowed(anna: TestClient):
+    p = make(anna, "Z", document_provider="paypal")
+    reset_document_providers()
+    for cleared in (None, "", "  "):
+        r = anna.put(f"{PAYEES}/{p['id']}", json={"document_provider": cleared})
+        assert r.status_code == 200 and r.json()["payee"]["document_provider"] is None
+        r = anna.put(f"{PAYEES}/{p['id']}", json={"note": "n"})
+        assert r.status_code == 200
+    assert anna.post(PAYEES, json={"name": "W", "document_provider": ""}).status_code == 201
+
+
+def test_an_unchanged_provider_of_a_gone_importer_stays_and_may_be_resent(
+    anna: TestClient, api_engine: Engine
+):
+    p = make(anna, "Old", document_provider="paypal")
+    reset_document_providers()
+    r = anna.put(f"{PAYEES}/{p['id']}", json={"name": "Old2", "document_provider": "paypal"})
+    assert r.status_code == 200 and r.json()["payee"]["document_provider"] == "paypal"
+    assert_envelope(
+        anna.put(f"{PAYEES}/{p['id']}", json={"document_provider": "amazon"}),
+        422,
+        "unknown_document_provider",
+    )
+    assert q(api_engine, "SELECT document_provider FROM payee")[0].document_provider == "paypal"

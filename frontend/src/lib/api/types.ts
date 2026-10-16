@@ -42,6 +42,7 @@ type Schemas = import('../types/api.js').components['schemas'];
 
 export type Entry = Schemas['EntryOut'];
 export type DocumentRow = Schemas['DocumentOut'];
+export type DocumentProviders = Schemas['DocumentProvidersOut'];
 export type DocumentPage = Schemas['DocumentPageOut'];
 export type DocumentDetail = Schemas['DocumentDetailOut'];
 export type DocumentLine = Schemas['DocumentLineOut'];

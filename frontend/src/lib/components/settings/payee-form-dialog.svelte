@@ -1,13 +1,15 @@
 <script lang="ts">
 	import ActionDialog, { type DialogFeedback } from '#lib/components/common/action-dialog.svelte';
+	import ChoiceSelect from '#lib/components/common/choice-select.svelte';
 	import Field from '#lib/components/common/field.svelte';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import { describeFailure, isFieldFailure } from '#lib/dimensions/errors.js';
 	import type { PayeesStore } from '#lib/payees/store.svelte.js';
+	import { documentProvidersStore } from '#lib/stores/document-providers.svelte.js';
 	import type { Payee } from '#lib/types/domain.js';
 
 	// "Add payee" and "Edit REWE": one form dialog for both (patterns §11.2), name, note and the
-	// document provider (spec §3.6; empty means none), each
+	// document provider (spec §3.6; chosen from the registered importers' providers, empty means none), each
 	// with its label. A taken name is said under the name; any other refusal in the dialog. After
 	// an add the caller reveals the new row, so focus is not given back to the opener.
 	let {
@@ -44,7 +46,17 @@
 		nameError = null;
 		failure = null;
 		added = false;
+		void documentProvidersStore.load();
 	});
+
+	// the registered providers; the one the payee holds stays listed when its importer is gone
+	const providerOptions = $derived([
+		{ value: '', label: 'No provider' },
+		...[...new Set([...documentProvidersStore.providers, ...(provider ? [provider] : [])])]
+			.sort()
+			.map((p) => ({ value: p, label: p }))
+	]);
+	const noProviders = $derived(documentProvidersStore.providers.length === 0);
 
 	async function save() {
 		const trimmed = name.trim();
@@ -116,10 +128,19 @@
 	</Field>
 	<Field
 		label="Document provider"
-		hint="Optional: the provider of the documents that describe this merchant's charges. Its transactions are then matched to them."
+		hint={noProviders && provider === ''
+			? 'No document importer is set up, so there is no provider to choose.'
+			: "Optional: the provider of the documents that describe this merchant's charges. Its transactions are then matched to them."}
 	>
 		{#snippet children(field)}
-			<Input bind:value={provider} {...field} readonly={busy} autocomplete="off" />
+			<ChoiceSelect
+				{...field}
+				label="Document provider"
+				value={provider}
+				options={providerOptions}
+				disabled={busy || (noProviders && provider === '')}
+				onchange={(next) => (provider = next)}
+			/>
 		{/snippet}
 	</Field>
 </ActionDialog>

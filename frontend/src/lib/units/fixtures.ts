@@ -4,10 +4,12 @@ import { entry } from '#lib/ledger/fixtures.js';
 import type { Entry } from '#lib/types/domain.js';
 import { isProposalPass } from './evidence.js';
 import type {
+	DocumentSummary,
 	PreviewField,
 	PreviewRow,
 	QueueSection,
 	ReviewQueue,
+	RowDocument,
 	Unit,
 	UnitCommit,
 	UnitConsequence,
@@ -238,6 +240,36 @@ export function transferOut(over: Partial<UnitTransfer> = {}): UnitTransfer {
 		proposed_pick: null,
 		proposed_counter_leg: false,
 		has_more: false,
+		...over
+	};
+}
+
+/** A document as a suggestion or a link shows it: a 2-line Amazon order of 47.31 unless told otherwise. */
+export function documentSummary(over: Partial<DocumentSummary> = {}): DocumentSummary {
+	return {
+		id: 7,
+		version: 2,
+		provider: 'amazon',
+		external_id: 'A-7',
+		occurred_on: '2026-10-08',
+		total: { amount: -4731, currency: 'EUR' },
+		merchant_name: 'Amazon',
+		title: 'Order 304-7',
+		line_count: 2,
+		...over
+	};
+}
+
+/** What a preview row says of its document: nothing carried, nothing suggested, unless told otherwise. */
+export function rowDocument(over: Partial<RowDocument> = {}): RowDocument {
+	return {
+		stored_document_id: null,
+		document: null,
+		key: null,
+		suggestions: [],
+		waiting: null,
+		decision_required: false,
+		split: null,
 		...over
 	};
 }

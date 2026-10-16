@@ -51,7 +51,7 @@ from sqlalchemy import Engine, text
 from app.core.accounts import create_account
 from app.core.balance.records import set_manual_record
 from app.core.importers.instances import create_instance, link_account
-from app.core.importers.providers import configure_document_providers
+from app.core.importers.providers import register_document_importers
 from app.core.importers.upload import upload
 from app.core.ingest.documents import ingest_documents
 from app.core.ingest.run import start_run
@@ -768,7 +768,7 @@ def main(argv: list[str] | None = None, environ: Mapping[str, str] | None = None
         parser.error("--months must be between 1 and 36")
     configure_classifiers(default_classifiers)  # the composition root of this script
     configure_rule_tools(default_rule_tools())
-    configure_document_providers({data.DOC_IMPORTER: TestDocumentImporter.providers})
+    register_document_importers({data.DOC_IMPORTER: TestDocumentImporter()})
     cfg = _env_config(environ)  # refuses a database that is not a dev_ one, before connecting
     engine = make_engine(cfg)
     try:

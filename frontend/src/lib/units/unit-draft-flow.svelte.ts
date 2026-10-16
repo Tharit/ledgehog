@@ -95,6 +95,11 @@ export function affectedOf(out: UnitCommit, anchorId: number): Affected {
 	};
 }
 
+const DOCUMENT_TAKEN_TEXT =
+	'The document you picked is now carried by another transaction. It is no longer picked: choose another.';
+const DOCUMENT_CHANGED_TEXT =
+	'The document you picked changed after you saw it. It is no longer picked: pick it again.';
+
 const STALE_FIELD: Readonly<Record<string, Exclude<FieldName, 'type'>>> = {
 	category_id: 'category',
 	payee_id: 'payee',
@@ -107,6 +112,17 @@ const STALE_FIELD: Readonly<Record<string, Exclude<FieldName, 'type'>>> = {
 /** Does a stale reference name a tag (its entity, or a field like `entries[0].tags.add`)? */
 function isTagReference(entity: string | undefined, field: string | undefined): boolean {
 	return entity === 'tag' || /(^|\.)tags(\.|$)|^tag_id$/.test(field ?? '');
+}
+
+/** Does a stale reference name a document (its entity, or the field `document_id`)? */
+function isDocumentReference(entity: string | undefined, field: string | undefined): boolean {
+	return entity === 'document' || field === 'document_id' || field === 'document';
+}
+
+/** The document a problem or a refusal names: `document_id`, else `id`; null when it names none. */
+function documentIdOf(detail: Readonly<Record<string, unknown>> | null | undefined): number | null {
+	const named = detail?.document_id ?? detail?.id;
+	return typeof named === 'number' ? named : null;
 }
 
 const STALE_WORD: Readonly<Record<string, string>> = {
@@ -210,12 +226,19 @@ export class UnitDraftFlow {
 		return null;
 	}
 
-	/** A unit was loaded: an empty draft over it, previewed at once (proposals are fresh on open). */
-	begin(unit: Unit): void {
+	/**
+	 * A unit was loaded: an empty draft over it, previewed at once (proposals are fresh on open).
+	 * `document` is a document already picked in the draft (opened from the Documents pages): it is
+	 * the pick of the transaction of `entryId`.
+	 */
+	begin(unit: Unit, document?: { entryId: number; id: number; version: number }): void {
 		this.#stop();
 		this.#epoch++;
 		this.unit = unit;
-		this.draft = Draft.of(unit);
+		const empty = Draft.of(unit);
+		this.draft = document
+			? empty.pickDocument(originalOf(unit, document.entryId), document.id, document.version)
+			: empty;
 		this.preview = null;
 		this.previewError = null;
 		this.notice = null;
@@ -356,6 +379,46 @@ export class UnitDraftFlow {
 
 	reresolve(on = true): void {
 		this.edit((d) => d.reresolve(on));
+	}
+
+	// ---- the document of a transaction (spec §5.8, §6) -------------------------------------
+
+	/** Pick a document for the transaction whose original entry is `id` (the version is the one seen). */
+	pickDocument(id: number, document: { id: number; version: number }): void {
+		this.edit((d) => d.pickDocument(id, document.id, document.version));
+	}
+
+	/** "None of these", "Commit without a document": the user decides there is no document. */
+	noDocument(id: number): void {
+		this.edit((d) => d.noDocument(id));
+	}
+
+	/** Drop the decision and the link: matching decides afresh. */
+	reresolveDocument(id: number): void {
+		this.edit((d) => d.reresolveDocument(id));
+	}
+
+	/** Back to what the server proposes for the document. */
+	resetDocument(id: number): void {
+		this.edit((d) => d.resetDocument(id));
+	}
+
+	/** The rows of the split along the lines are the proposal again. */
+	resetSplit(id: number): void {
+		this.#forgetAmounts(this.draft?.lineRows.map((s) => s.id) ?? []);
+		this.edit((d) => d.resetSplit(id));
+	}
+
+	/** Split the transaction along the lines of a document (replacing an existing split). */
+	splitAlongLines(id: number, document: { id: number; version: number }): void {
+		this.#forgetAmounts(this.draft?.lineRows.map((s) => s.id) ?? []);
+		this.edit((d) => d.splitAlongLines(id, document.id, document.version));
+	}
+
+	/** "Keep one entry": the proposed split along the lines is refused. */
+	declineSplit(id: number): void {
+		this.#forgetAmounts(this.draft?.lineRows.map((s) => s.id) ?? []);
+		this.edit((d) => d.declineSplit(id));
 	}
 
 	// ---- the partner of a transfer leg (spec §5.7) ----------------------------------------
@@ -534,6 +597,10 @@ export class UnitDraftFlow {
 		if (split) this.edit((d) => d.setSplitAmount(id, null), false);
 	}
 
+	#forgetAmounts(ids: readonly number[]): void {
+		for (const id of ids) this.#forgetAmount(id);
+	}
+
 	#forgetAmount(id: number): void {
 		this.amountTexts = omitKey(this.amountTexts, id);
 		this.amountErrors = omitKey(this.amountErrors, id);
@@ -592,28 +659,75 @@ export class UnitDraftFlow {
 		this.#schedule(true);
 	}
 
-	/** A pick the lists no longer hold: they are loaded again and the pick forgotten. */
+	/**
+	 * The rows of the preview made from a line of the document (the proposed split along the lines)
+	 * become the draft's own: from now on it echoes them, and the split is the client's (spec §6).
+	 * Rows the server dropped (their document is no longer the transaction's) leave the draft. The
+	 * preview shown already says what the draft will say, so nothing is previewed again.
+	 */
+	#takeOverSplit(preview: UnitPreview): void {
+		const draft = this.draft;
+		if (!draft || this.committing) return;
+		const rows = preview.rows.flatMap((row) => {
+			if (row.id >= 0 || !row.document_line) return [];
+			const original = preview.rows.find(
+				(r) => r.id > 0 && r.original && r.source_transaction_id === row.source_transaction_id
+			);
+			if (!original) return [];
+			return [
+				{
+					id: row.id,
+					sourceEntryId: original.id,
+					amount: row.amount.amount,
+					documentLine: {
+						documentId: row.document_line.document_id,
+						lineNo: row.document_line.line_no
+					}
+				}
+			];
+		});
+		const next = draft.syncLineRows(rows);
+		if (next !== draft) this.draft = next;
+	}
+
+	/**
+	 * A pick the lists no longer hold: they are loaded again and the pick forgotten. A document
+	 * that changed or was taken since the user saw it is no longer picked either.
+	 */
 	#afterPreview(preview: UnitPreview): void {
+		this.#takeOverSplit(preview);
 		const gone = preview.problems.filter((p) => p.code === 'stale_reference');
-		if (gone.length === 0) {
+		const moved = preview.problems.filter(
+			(p) => p.code === 'document_changed' || p.code === 'document_taken'
+		);
+		if (gone.length === 0 && moved.length === 0) {
 			this.#suggestFee(preview);
 			return;
 		}
-		void this.#host.reloadLookups();
+		if (gone.length > 0) void this.#host.reloadLookups();
 		let next = this.draft;
+		let notice: string | null = null;
 		for (const problem of gone) {
 			const field = problem.field ? STALE_FIELD[problem.field] : undefined;
 			const id = problem.detail.id;
-			if (next && typeof id === 'number') {
+			if (isDocumentReference(undefined, problem.field ?? undefined)) {
+				if (next) next = next.dropDocument(documentIdOf(problem.detail) ?? undefined);
+				notice = 'The document you chose no longer exists. Choose again.';
+			} else if (next && typeof id === 'number') {
 				if (isTagReference(undefined, problem.field ?? undefined)) next = next.dropTag(id);
 				else if (field) next = next.dropReference(field, id);
 			}
+		}
+		for (const problem of moved) {
+			if (next) next = next.dropDocument(documentIdOf(problem.detail) ?? undefined);
+			notice = problem.code === 'document_taken' ? DOCUMENT_TAKEN_TEXT : DOCUMENT_CHANGED_TEXT;
 		}
 		if (next && next !== this.draft) {
 			this.draft = next;
 			this.notice = {
 				kind: 'conflict',
-				text: 'Something you chose no longer exists. The lists were reloaded: choose again.'
+				text:
+					notice ?? 'Something you chose no longer exists. The lists were reloaded: choose again.'
 			};
 			this.#schedule(true);
 		}
@@ -664,11 +778,22 @@ export class UnitDraftFlow {
 					'Someone changed this unit while you were editing. Your changes are kept: the preview shows what a commit does now.'
 				);
 				return;
-			case 'unit_moved':
+			case 'unit_moved': {
+				const details = error.details as { reason?: string; document_id?: number } | null;
+				// the document the user picked was taken, or changed: the unit is read again and the
+				// pick is gone (a document is decided on what the user saw)
+				if (details?.reason === 'taken' || details?.reason === 'version') {
+					await this.#moved(
+						details.reason === 'taken' ? DOCUMENT_TAKEN_TEXT : DOCUMENT_CHANGED_TEXT,
+						{ dropDocument: details.document_id ?? null }
+					);
+					return;
+				}
 				await this.#moved(
 					'This unit changed shape while you were editing. Your changes are kept where they still apply.'
 				);
 				return;
+			}
 			case 'stale_reference':
 				this.#staleReference(error);
 				return;
@@ -691,7 +816,11 @@ export class UnitDraftFlow {
 							? 'Only a transfer leg has a partner. Take the partner pick back, or make the entry a transfer.'
 							: code === 'invalid_pairing'
 								? 'The partner you picked cannot be used. Pick another partner.'
-								: 'This change cannot be committed as it stands. Review the amounts and values.'
+								: code === 'document_not_original'
+									? 'A document belongs to the original entry of a transaction, not to a split entry.'
+									: code === 'invalid_document'
+										? 'The document you chose cannot be used as it stands. Choose again.'
+										: 'This change cannot be committed as it stands. Review the amounts and values.'
 				};
 				return;
 			}
@@ -712,14 +841,18 @@ export class UnitDraftFlow {
 	}
 
 	/** The unit moved under the draft: read it again, keep what still applies, preview anew. */
-	async #moved(text: string): Promise<void> {
+	async #moved(text: string, options: { dropDocument?: number | null } = {}): Promise<void> {
 		const draft = this.draft;
 		if (!draft) return;
 		try {
 			const unit = await getUnit(draft.anchorId);
 			if (this.draft !== draft) return;
 			this.unit = unit;
-			this.draft = draft.rebase(unit);
+			const rebased = draft.rebase(unit);
+			this.draft =
+				options.dropDocument === undefined
+					? rebased
+					: rebased.dropDocument(options.dropDocument ?? undefined);
 			this.#host.unitChanged(unit);
 			this.#host.patch({ entries: unit.entries });
 			this.notice = {
@@ -739,13 +872,28 @@ export class UnitDraftFlow {
 				action:
 					failure.code === 'not_found'
 						? undefined
-						: { label: 'Try again', run: () => void this.#moved(text) }
+						: { label: 'Try again', run: () => void this.#moved(text, options) }
 			};
 		}
 	}
 
 	#staleReference(error: ApiError): void {
-		const details = (error.details ?? {}) as { field?: string; entity?: string; id?: number };
+		const details = (error.details ?? {}) as {
+			field?: string;
+			entity?: string;
+			id?: number;
+			document_id?: number;
+		};
+		if (isDocumentReference(details.entity, details.field)) {
+			void this.#host.reloadLookups();
+			if (this.draft) this.draft = this.draft.dropDocument(documentIdOf(details) ?? undefined);
+			this.notice = {
+				kind: 'conflict',
+				text: 'The document you chose no longer exists. The unit is previewed again: choose again.'
+			};
+			this.#schedule(true);
+			return;
+		}
 		const tag = isTagReference(details.entity, details.field);
 		const field = STALE_FIELD[details.entity ?? ''] ?? STALE_FIELD[details.field ?? ''];
 		void this.#host.reloadLookups();
@@ -785,6 +933,15 @@ export class UnitDraftFlow {
 			'EUR'
 		);
 	}
+}
+
+/** The original entry of the transaction `entryId` belongs to: the lowest stored id of its source. */
+export function originalOf(unit: Pick<Unit, 'entries'>, entryId: number): number {
+	const source = unit.entries.find((e) => e.id === entryId)?.source_transaction_id ?? null;
+	if (source === null) return entryId;
+	return Math.min(
+		...unit.entries.filter((e) => e.source_transaction_id === source).map((e) => e.id)
+	);
 }
 
 function omitKey<V>(record: Readonly<Record<number, V>>, id: number): Record<number, V> {

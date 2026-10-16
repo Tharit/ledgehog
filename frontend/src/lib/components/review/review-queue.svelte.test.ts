@@ -500,4 +500,31 @@ describe('ReviewQueue: needs an account and waiting', () => {
 		expect(reasons[1]).toBe('Waiting for Savings, not synced yet');
 		expect(screen.getByRole('heading', { name: /Waiting/ })).toHaveTextContent('(2)');
 	});
+
+	it('gives a unit waiting for a document its line, and the badges stay on the row', async () => {
+		await shown({
+			waiting: [
+				unit({
+					...flow(1, 'Out', { review_flags: ['unconfirmed', 'waiting'] }),
+					waiting_document: { provider: 'amazon', covered_through: '2026-10-12' }
+				}),
+				unit({
+					...flow(2, 'Out 2'),
+					waiting_document: { provider: 'amazon', covered_through: null }
+				})
+			],
+			pending_review: [
+				unit(flow(3, 'Suggested', { review_flags: ['unconfirmed', 'document_suggested'] }))
+			]
+		});
+
+		const lines = [...document.querySelectorAll('[data-slot="waiting-document-reason"]')].map((n) =>
+			n.textContent!.trim()
+		);
+		expect(lines).toHaveLength(2);
+		expect(lines[0]).toMatch(/^Waiting for a document from amazon, covered through .*12.*2026$/);
+		expect(lines[1]).toBe('Waiting for a document from amazon, not synced yet');
+		expect(document.querySelector('[data-flag="waiting"]')).not.toBeNull();
+		expect(document.querySelector('[data-flag="document_suggested"]')).not.toBeNull();
+	});
 });

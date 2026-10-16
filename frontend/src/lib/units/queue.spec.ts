@@ -11,6 +11,7 @@ import {
 	orderByGroups,
 	patchUnitEntries,
 	unitsOfGroup,
+	waitingDocumentReason,
 	waitingReason
 } from './queue.js';
 
@@ -93,6 +94,17 @@ describe('waitingReason', () => {
 		);
 		expect(waitingReason({ account_id: 2, synced_through: '2026-10-12' }, lookups)).toMatch(
 			/^Waiting for Savings, synced through .*2026$/
+		);
+	});
+});
+
+describe('waitingDocumentReason', () => {
+	it('names the provider and how far its documents are covered', () => {
+		expect(waitingDocumentReason({ provider: 'amazon', covered_through: null })).toBe(
+			'Waiting for a document from amazon, not synced yet'
+		);
+		expect(waitingDocumentReason({ provider: 'amazon', covered_through: '2026-10-12' })).toMatch(
+			/^Waiting for a document from amazon, covered through .*2026$/
 		);
 	});
 });

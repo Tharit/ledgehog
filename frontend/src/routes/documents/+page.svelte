@@ -25,7 +25,10 @@
 		untrack(() => documents.applyFilter(filter));
 	});
 
-	onMount(() => void documents.loadLookups());
+	onMount(() => {
+		void documents.loadLookups();
+		void documents.loadProviders();
+	});
 	onDestroy(() => documents.dispose());
 
 	async function show(filter: DocumentFilter) {

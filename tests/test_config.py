@@ -222,3 +222,21 @@ def test_expose_openapi_rejects_anything_else_naming_the_variable(raw):
         load(EXPOSE_OPENAPI=raw)
     assert err.value.variable == "EXPOSE_OPENAPI"
     assert "EXPOSE_OPENAPI" in str(err.value)
+
+
+def test_enable_test_importers_defaults_off():
+    assert load().enable_test_importers is False
+
+
+@pytest.mark.parametrize("raw", ["true", "TRUE", "True"])
+def test_enable_test_importers_reads_a_strict_boolean(raw):
+    assert load(ENABLE_TEST_IMPORTERS=raw).enable_test_importers is True
+    assert load(ENABLE_TEST_IMPORTERS="false").enable_test_importers is False
+
+
+@pytest.mark.parametrize("raw", ["1", "0", "yes", "no", "on", "", " true", "tru"])
+def test_enable_test_importers_rejects_anything_else_naming_the_variable(raw):
+    with pytest.raises(ConfigError) as err:
+        load(ENABLE_TEST_IMPORTERS=raw)
+    assert err.value.variable == "ENABLE_TEST_IMPORTERS"
+    assert "ENABLE_TEST_IMPORTERS" in str(err.value)

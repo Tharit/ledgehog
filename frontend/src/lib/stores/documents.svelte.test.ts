@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, getDocument, listDocuments } from '#lib/api/index.js';
 import { documentDetail, documentRow } from '#lib/documents/fixtures.js';
 import { emptyDocumentFilter } from '#lib/documents/filter.js';
+import { DocumentProvidersStore } from './document-providers.svelte.js';
 import { LookupsStore } from './lookups.svelte.js';
 import { DocumentDetailStore, DocumentsStore } from './documents.svelte.js';
 
@@ -9,6 +10,7 @@ vi.mock('#lib/api/index.js', async (importOriginal) => ({
 	...(await importOriginal<typeof import('#lib/api/index.js')>()),
 	listDocuments: vi.fn(),
 	getDocument: vi.fn(),
+	listDocumentProviders: vi.fn(),
 	listAccounts: vi.fn(async () => []),
 	listCategories: vi.fn(async () => []),
 	listPayees: vi.fn(async () => []),
@@ -101,18 +103,15 @@ describe('DocumentsStore', () => {
 		expect(store.documents.map((d) => d.id)).toEqual([9]);
 	});
 
-	it('offers the providers payees name, and those already chosen', async () => {
-		const lookups = new LookupsStore();
-		const { listPayees } = await import('#lib/api/index.js');
-		vi.mocked(listPayees).mockResolvedValue([
-			{ id: 1, name: 'Amazon', icon: null, color: null, note: null, document_provider: 'amazon' },
-			{ id: 2, name: 'REWE', icon: null, color: null, note: null, document_provider: null }
-		]);
-		await lookups.ensure();
+	it('offers the providers of the registered importers, and those already chosen', async () => {
+		const { listDocumentProviders } = await import('#lib/api/index.js');
+		vi.mocked(listDocumentProviders).mockResolvedValue(['paypal', 'amazon']);
 		vi.mocked(listDocuments).mockResolvedValue(page([], 0));
-		const store = new DocumentsStore(lookups);
-		store.applyFilter({ ...emptyDocumentFilter(), provider: ['paypal'] });
-		expect(store.providers).toEqual(['amazon', 'paypal']);
+		const store = new DocumentsStore(new LookupsStore(), new DocumentProvidersStore());
+		expect(store.providers).toEqual([]);
+		await store.loadProviders();
+		store.applyFilter({ ...emptyDocumentFilter(), provider: ['zalando', 'amazon'] });
+		expect(store.providers).toEqual(['amazon', 'paypal', 'zalando']);
 	});
 });
 

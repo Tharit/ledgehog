@@ -28,6 +28,7 @@ const NUMBER_DETAIL = (detail: UnitProblem['detail'], key: string): number | nul
 function stale(field: string | null): string {
 	if (field === 'category_id') return 'The category you chose no longer exists.';
 	if (field === 'payee_id') return 'The payee you chose no longer exists.';
+	if (field === 'document_id') return 'The document you chose no longer exists.';
 	return 'The account you chose no longer exists.';
 }
 
@@ -116,6 +117,31 @@ export function describeProblem(problem: UnitProblem, context: ProblemContext): 
 		case 'split_sum':
 			return {
 				text: `The entries do not add up to the transaction: they are off by ${money(NUMBER_DETAIL(detail, 'difference'))}.`
+			};
+		case 'document_decision_required':
+			return {
+				text: 'A document is suggested or expected for this transaction.',
+				remedy: 'Pick one, or commit without a document.'
+			};
+		case 'document_changed':
+			return {
+				text: 'The document you picked has changed since you saw it.',
+				remedy: 'Pick it again.'
+			};
+		case 'document_taken':
+			return {
+				text: 'The document you picked is carried by another transaction.',
+				remedy: 'Pick another document.'
+			};
+		case 'document_provider_mismatch':
+			return {
+				text: 'This document comes from another provider than the one of the payee.',
+				remedy: 'Pick a document of the payee provider.'
+			};
+		case 'document_split_unavailable':
+			return {
+				text: 'This document cannot split the transaction: it has a single line, or its lines do not add up to the total.',
+				remedy: 'Keep one entry, or pick another document.'
 			};
 		case 'stale_reference':
 			return { text: stale(problem.field), remedy: 'Choose again.' };
