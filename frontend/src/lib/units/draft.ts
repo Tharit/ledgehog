@@ -746,7 +746,10 @@ export class Draft {
 	): Draft {
 		const present = new Set(rows.map((r) => r.id));
 		const held = new Set(this.#s.splits.map((s) => s.id));
-		const missing = this.lineRows.filter((s) => !present.has(s.id));
+		// only what the server dropped: a row the client left out of the request (no amount) is its own
+		const missing = this.lineRows.filter(
+			(s) => !present.has(s.id) && this.#s.edits.get(s.id)?.amount != null
+		);
 		const fresh = rows.filter((r) => !held.has(r.id));
 		if (missing.length === 0 && fresh.length === 0) return this;
 		const gone = new Set(missing.map((s) => s.id));

@@ -569,32 +569,48 @@ export class UnitDraftFlow {
 		return this.unit?.entries.find((e) => e.source_transaction_id === sourceId);
 	}
 
-	/** What the user typed as the amount of a row, parsed: the sign is the split entry's own. */
+	/**
+	 * What the user is typing as the amount of a row: kept as text, and said at the field when it is
+	 * no amount. The draft is not touched: it takes the amount when the field is left
+	 * (`applyAmountText`), so a row never moves or goes while its amount is being typed.
+	 */
 	setAmountText(id: number, text: string): void {
-		const unit = this.unit;
-		const draft = this.draft;
-		if (!unit || !draft) return;
-		const split = draft.splits.find((s) => s.id === id);
-		const source = unit.entries.find((e) => e.id === (split ? split.sourceEntryId : id));
-		if (!source) return;
+		const parsed = this.#parseAmount(id, text);
+		if (!parsed) return;
 		this.amountTexts = { ...this.amountTexts, [id]: text };
-		const parsed = parseAllocation(
-			text,
-			source.amount.currency,
-			this.#host.locale(),
-			source.amount.amount
-		);
-		if (parsed.ok) {
-			this.amountErrors = omitKey(this.amountErrors, id);
-			this.edit((d) => d.setSplitAmount(id, parsed.minor), false);
-			return;
-		}
 		// a new split with nothing typed is only waiting for its amount; anything else is wrong
+		const waiting =
+			parsed.ok === false &&
+			parsed.error === 'empty' &&
+			(this.draft?.splits.some((s) => s.id === id) ?? false) &&
+			this.draft?.edit(id).amount == null;
 		this.amountErrors =
-			parsed.error === 'empty' && split
+			parsed.ok || waiting
 				? omitKey(this.amountErrors, id)
 				: { ...this.amountErrors, [id]: allocationMessage(parsed.error) };
-		if (split) this.edit((d) => d.setSplitAmount(id, null), false);
+	}
+
+	/**
+	 * The field was left, or Enter pressed: a valid amount is taken into the draft and previewed.
+	 * An amount that is none changes nothing in the draft: the row keeps its place and its last
+	 * amount, and the field says what is wrong (`amountErrors`, which holds the commit back).
+	 */
+	applyAmountText(id: number): void {
+		const text = this.amountTexts[id];
+		if (text === undefined || this.committing) return;
+		const parsed = this.#parseAmount(id, text);
+		if (!parsed?.ok || this.draft?.edit(id).amount === parsed.minor) return;
+		this.edit((d) => d.setSplitAmount(id, parsed.minor));
+	}
+
+	#parseAmount(id: number, text: string): ReturnType<typeof parseAllocation> | null {
+		const unit = this.unit;
+		const draft = this.draft;
+		if (!unit || !draft) return null;
+		const split = draft.splits.find((s) => s.id === id);
+		const source = unit.entries.find((e) => e.id === (split ? split.sourceEntryId : id));
+		if (!source) return null;
+		return parseAllocation(text, source.amount.currency, this.#host.locale(), source.amount.amount);
 	}
 
 	#forgetAmounts(ids: readonly number[]): void {

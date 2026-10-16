@@ -281,6 +281,7 @@ describe('split amounts', () => {
 		flow.addSplit(1);
 
 		flow.setAmountText(-1, '12.50');
+		flow.applyAmountText(-1);
 		await vi.advanceTimersByTimeAsync(PREVIEW_DELAY_MS);
 
 		expect(vi.mocked(previewUnit).mock.calls.at(-1)![0].entries).toEqual([
@@ -292,6 +293,7 @@ describe('split amounts', () => {
 		const { flow } = setup();
 		await settle();
 		flow.setAmountText(2, '20');
+		flow.applyAmountText(2);
 		expect(flow.draft?.edit(2).amount).toBe(-2000);
 	});
 

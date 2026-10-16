@@ -446,3 +446,81 @@ describe('a commit refused for the document', () => {
 		expect(flow.notice?.text).toContain(text);
 	});
 });
+
+describe('editing the amount of a row of the split along the lines', () => {
+	const twoLines = () =>
+		answer(
+			rowDocument({
+				document: doc,
+				split: { document_id: 7, available: true, proposed: true, replaces_stored_split: false }
+			}),
+			{ rows: [lineRow(-900, 1, -2000), lineRow(-901, 2, -3000), lineRow(-902, 3, -1000)] }
+		);
+
+	/** A server that echoes the rows the request names once it names any, else proposes them. */
+	function echoing() {
+		vi.mocked(previewUnit).mockImplementation(async (request) => {
+			const named = request.entries!.filter((x) => x.document_line);
+			if (named.length === 0) return twoLines();
+			const base = twoLines();
+			base.rows = [base.rows[0], ...base.rows.filter((r) => named.some((x) => x.id === r.id))];
+			return base;
+		});
+	}
+
+	it('keeps the row, its place and its last amount through a preview when the text is cleared', async () => {
+		echoing();
+		const { flow } = setup();
+		await settle();
+		expect(flow.draft?.lineRows.map((r) => r.id)).toEqual([-900, -901, -902]);
+
+		flow.setAmountText(-901, '');
+		await vi.advanceTimersByTimeAsync(500); // typing alone previews nothing
+		await settle();
+		expect(flow.draft?.lineRows.map((r) => r.id)).toEqual([-900, -901, -902]);
+		flow.applyAmountText(-901);
+		await vi.advanceTimersByTimeAsync(500);
+		await settle();
+
+		expect(flow.draft?.lineRows.map((r) => r.id)).toEqual([-900, -901, -902]);
+		expect(flow.draft?.edit(-901).amount).toBe(-3000);
+		expect(flow.draft!.toRequest().entries!.map((x) => x.id)).toEqual([-900, -901, -902]);
+		expect(flow.commitReason).toBe('An amount is not valid.');
+
+		flow.setAmountText(-901, '35.00');
+		flow.applyAmountText(-901);
+		await settle();
+
+		expect(flow.draft?.edit(-901).amount).toBe(-3500);
+		expect(lastRequest().entries!.find((x) => x.id === -901)!.amount).toBe(-3500);
+		expect(flow.commitReason).not.toBe('An amount is not valid.');
+	});
+
+	it('drops a row the client left out of nothing: syncLineRows only forgets what the server dropped', async () => {
+		echoing();
+		const { flow } = setup();
+		await settle();
+
+		// the server drops a row of its own accord (the document is no longer the transaction’s)
+		vi.mocked(previewUnit).mockResolvedValue(answer(rowDocument({ document: doc })));
+		flow.pickDocument(1, { id: 8, version: 1 });
+		await settle();
+
+		expect(flow.draft?.lineRows).toEqual([]);
+	});
+
+	it('removes a row on the explicit action, and refuses the split when the last one goes', async () => {
+		echoing();
+		const { flow } = setup();
+		await settle();
+
+		flow.removeSplit(-901);
+		await settle();
+		expect(lastRequest().entries!.map((x) => x.id)).toEqual([-900, -902]);
+
+		flow.removeSplit(-900);
+		flow.removeSplit(-902);
+		expect(flow.draft?.lineRows).toEqual([]);
+		expect(original(lastRequest())!.document).toEqual({ mode: 'keep', decline_split: true });
+	});
+});

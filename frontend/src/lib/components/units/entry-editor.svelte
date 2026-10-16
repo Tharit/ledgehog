@@ -205,6 +205,10 @@
 						aria-describedby={amountError ? `amount-error-${view.id}` : undefined}
 						class="w-40 text-right tabular-nums"
 						oninput={(event) => flow.setAmountText(view.id, event.currentTarget.value)}
+						onblur={() => flow.applyAmountText(view.id)}
+						onkeydown={(event) => {
+							if (event.key === 'Enter') flow.applyAmountText(view.id);
+						}}
 					/>
 					<span class="text-muted-foreground">{view.amount?.currency ?? ''}</span>
 				</div>

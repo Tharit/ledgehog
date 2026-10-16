@@ -668,6 +668,7 @@ describe('splits', () => {
 		expect(await within(dialog).findByRole('button', { name: 'Commit' })).toBeDisabled();
 
 		await fireEvent.input(amount, { target: { value: '12.00' } });
+		await fireEvent.blur(amount);
 		await waitFor(() =>
 			expect(lastRequest().entries).toEqual([{ id: -1, source_entry_id: 1, amount: -1200 }])
 		);
@@ -704,9 +705,9 @@ describe('splits', () => {
 		const dialog = await screen.findByRole('dialog', { name: /./ });
 		await waitFor(() => expect(panel.flow.previewStatus).toBe('ready'));
 		await fireEvent.click(within(dialog).getByRole('button', { name: 'Split entry' }));
-		await fireEvent.input(await within(dialog).findByLabelText('Amount of the new split'), {
-			target: { value: '47.31' }
-		});
+		const typed = await within(dialog).findByLabelText('Amount of the new split');
+		await fireEvent.input(typed, { target: { value: '47.31' } });
+		await fireEvent.blur(typed);
 
 		const problems = await within(dialog).findByRole('list', { name: 'Problems' });
 		expect(problems).toHaveTextContent('The split leaves nothing for the original entry.');
@@ -728,9 +729,9 @@ describe('splits', () => {
 		const { dialog } = await openPanel(shown());
 		await fireEvent.click(within(dialog).getByRole('button', { name: 'Split entry' }));
 		const row = await within(dialog).findByRole('region', { name: 'New split entry' });
-		await fireEvent.input(within(row).getByLabelText('Amount of the new split'), {
-			target: { value: '12.00' }
-		});
+		const typed = within(row).getByLabelText('Amount of the new split');
+		await fireEvent.input(typed, { target: { value: '12.00' } });
+		await fireEvent.blur(typed);
 
 		await waitFor(() =>
 			expect(row.querySelector('[data-slot="split-label"]')).toHaveTextContent('Split')
@@ -805,6 +806,7 @@ describe('re-resolve', () => {
 		panel.flow.setText(1, 'note', 'mine');
 		panel.flow.addSplit(1);
 		panel.flow.setAmountText(-1, '5.00');
+		panel.flow.applyAmountText(-1);
 		await waitFor(() => expect(panel.flow.previewStatus).toBe('ready'));
 
 		await fireEvent.keyDown(dialog, { key: 'r' });
@@ -1434,14 +1436,17 @@ describe('tags', () => {
 	});
 
 	it('a new split row starts with the original’s tags and changes them on its own', async () => {
-		const { dialog } = await openPanel(tagged());
+		const { panel, dialog } = await openPanel(tagged());
 
 		await fireEvent.keyDown(dialog, { key: 's' });
-		const block = await within(dialog).findByRole('region', { name: 'New split entry' });
+		let block = await within(dialog).findByRole('region', { name: 'New split entry' });
 		expect(within(block).getByText('Lisbon trip')).toBeInTheDocument();
-		await fireEvent.input(within(block).getByLabelText('Amount of the new split'), {
-			target: { value: '5' }
-		});
+		const typed = within(block).getByLabelText('Amount of the new split');
+		await fireEvent.input(typed, { target: { value: '5' } });
+		await fireEvent.blur(typed);
+		// the amount is previewed when the field is left; the row is the preview's after that
+		await waitFor(() => expect(panel.flow.stale).toBe(false));
+		block = within(dialog).getByRole('region', { name: 'New split entry' });
 		await fireEvent.click(within(block).getByRole('button', { name: 'Add or remove tags' }));
 		await fireEvent.click(await screen.findByRole('option', { name: /Lisbon trip/ }));
 
