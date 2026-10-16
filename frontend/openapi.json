@@ -4415,6 +4415,16 @@
                 "type": "null"
               }
             ]
+          },
+          "waiting_document": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WaitingDocumentOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -4980,6 +4990,8 @@
                 "unpaired_transfer",
                 "waiting_for_partner",
                 "unmatched_transfer",
+                "waiting_for_document",
+                "document_suggested",
                 "non_standing_keys"
               ],
               "type": "string"
@@ -5386,6 +5398,32 @@
           "truncated"
         ],
         "title": "ViewCheckOut",
+        "type": "object"
+      },
+      "WaitingDocumentOut": {
+        "properties": {
+          "covered_through": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Covered Through"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "covered_through"
+        ],
+        "title": "WaitingDocumentOut",
         "type": "object"
       },
       "WaitingOut": {

@@ -65,6 +65,12 @@ class WaitingOut(BaseModel):
     synced_through: date | None  # how far that account has been fetched; null = never
 
 
+class WaitingDocumentOut(BaseModel):
+    provider: str  # the document provider of the unit's first (by entry id) entry that waits for a document
+    # how far the sources still holding it have covered (the earliest); null = one has never run
+    covered_through: date | None
+
+
 class CurrencyGroupOut(BaseModel):
     currency: str
     count: int  # units (not legs) that need an account in the currency, over the whole section
@@ -79,6 +85,8 @@ class UnitOut(BaseModel):
     needs_account: NeedsAccountOut | None = None
     # ... and for a unit in `waiting`
     waiting: WaitingOut | None = None
+    # ... for a document instead of a partner: set instead of `waiting`
+    waiting_document: WaitingDocumentOut | None = None
 
     @staticmethod
     def of(view: UnitView) -> UnitOut:
@@ -91,6 +99,14 @@ class UnitOut(BaseModel):
             waiting=(
                 WaitingOut(account_id=view.waiting.account_id, synced_through=view.waiting.synced_through)
                 if view.waiting
+                else None
+            ),
+            waiting_document=(
+                WaitingDocumentOut(
+                    provider=view.waiting_document.provider,
+                    covered_through=view.waiting_document.covered_through,
+                )
+                if view.waiting_document
                 else None
             ),
         )

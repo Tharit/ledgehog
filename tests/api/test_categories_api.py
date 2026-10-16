@@ -311,9 +311,10 @@ def test_merge_repoints_moves_children_keeps_keys_and_bumps_versions(
         conn.execute(
             text(
                 "UPDATE ledger_entry SET derivation ="
-                " jsonb_build_object('category_id', jsonb_build_object('pass', 'user'))"
+                " jsonb_build_object('category_id', jsonb_build_object('pass', 'user'),"
+                " 'document', jsonb_build_object('pass', 'matcher_decision'))"
             ),
-        )  # fmt: skip
+        )  # fmt: skip  (the document key: settling records it on a confirmed unit)
         before = conn.execute(text(ENTRY_STATE)).all()
         versions_before = dict(conn.execute(text("SELECT id, version FROM ledger_entry")).all())
     dry = merge(anna, ids["S"], ids["T"], dry_run=True).json()

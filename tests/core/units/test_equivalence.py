@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 from sqlalchemy import Connection, text
 
-from app.core.resolution.confirmed import STANDING, units_sql
+from app.core.resolution.confirmed import units_binds, units_sql
 from app.core.settle.flags import recompute_review_flags
 from app.core.units.closure import UnitEntry, unit_keys, units_of
 from app.core.units.state import unit_state
@@ -89,9 +89,7 @@ def test_pure_judgement_equals_sql(db_conn: Connection, make_account: Any, seed_
     states = {k: unit_state(v) for k, v in units_of(entries).items()}
     sql = {
         r.id: r
-        for r in db_conn.execute(
-            text(f"WITH units AS ({units_sql()}) SELECT * FROM units"), {"standing": STANDING}
-        )
+        for r in db_conn.execute(text(f"WITH units AS ({units_sql()}) SELECT * FROM units"), units_binds())
     }
     # the unit judgement: `waiting` and `unmatched_transfer` are the matcher's (test_flags_matching.py)
     matching = {"waiting", "unmatched_transfer"}

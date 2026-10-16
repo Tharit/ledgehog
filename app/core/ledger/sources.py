@@ -33,7 +33,7 @@ from app.core.ledger.dimensions import previewable
 from app.core.ledger.entries import EntryRow, entries_by_ids
 from app.core.plugins.classifier import EntryInput
 from app.core.resolution import Resolved, resolve_afresh
-from app.core.resolution.confirmed import STANDING, units_sql
+from app.core.resolution.confirmed import units_binds, units_sql
 from app.core.resolution.load import load_accounts, load_rules
 from app.core.resolution.registry import classifiers_for
 from app.core.resolution.snapshot import load_snapshot
@@ -195,7 +195,7 @@ def _ok_of(conn: Connection, entry_ids: Sequence[int]) -> dict[int, bool]:
         return {}
     rows = conn.execute(
         text(f"SELECT u.id, u.unit_ok FROM ({units_sql(of_entries=True)}) AS u WHERE u.id = ANY(:ids)"),
-        {"standing": STANDING, "ids": list(entry_ids)},
+        {**units_binds(), "ids": list(entry_ids)},
     )
     return {int(r.id): bool(r.unit_ok) for r in rows}
 

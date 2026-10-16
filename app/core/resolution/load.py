@@ -14,7 +14,7 @@ from sqlalchemy.sql.elements import TextClause
 
 from app.core.domain.source import SourceFields
 from app.core.plugins.classifier import AccountFact, Condition, EntryInput, RuleSpec
-from app.core.resolution.confirmed import STANDING, units_sql
+from app.core.resolution.confirmed import units_binds, units_sql
 
 
 def load_accounts(conn: Connection) -> list[AccountFact]:
@@ -110,7 +110,7 @@ def load_movements(conn: Connection) -> list[UnconfirmedEntry]:
 
 def _load(conn: Connection, query: TextClause) -> list[UnconfirmedEntry]:
     out: list[UnconfirmedEntry] = []
-    for r in conn.execute(query, {"standing": STANDING}):
+    for r in conn.execute(query, units_binds()):
         out.append(
             UnconfirmedEntry(
                 input=EntryInput(

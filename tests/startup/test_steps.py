@@ -148,3 +148,10 @@ def test_pool_matching_window_mismatch_is_refused(isolated_engine, make_config):
 
     with pytest.raises(StartupError, match="matching_window_days"):
         assert_pool_settings(isolated_engine, replace(make_config(), matching_window_days=9))
+
+
+def test_pool_document_window_mismatch_is_refused(isolated_engine, make_config):
+    from dataclasses import replace
+
+    with pytest.raises(StartupError, match="document_window_days"):
+        assert_pool_settings(isolated_engine, replace(make_config(), document_window_days=9))

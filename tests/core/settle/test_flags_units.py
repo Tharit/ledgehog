@@ -7,7 +7,7 @@ from typing import Any
 
 from sqlalchemy import Connection, text
 
-from app.core.resolution.confirmed import STANDING, load_confirmed_ids, units_sql
+from app.core.resolution.confirmed import load_confirmed_ids, units_binds, units_sql
 from app.core.settle.flags import recompute_review_flags
 from tests.core.ingest.conftest import ledger  # noqa: F401  (fixture)
 from tests.core.ingest.dup_helpers import Ledger
@@ -45,7 +45,7 @@ def _flags(conn: Connection, *ids: int) -> list[list[str]]:
 def _unit(conn: Connection, entry: int) -> Any:
     return conn.execute(
         text(f"WITH units AS ({units_sql()}) SELECT * FROM units WHERE id = :i"),
-        {"standing": STANDING, "i": entry},
+        {**units_binds(), "i": entry},
     ).one()
 
 
@@ -113,7 +113,7 @@ def test_derived_entries_are_in_no_unit(db_conn: Connection, make_account: Any) 
     assert (
         db_conn.execute(
             text(f"WITH units AS ({units_sql()}) SELECT count(*) FROM units WHERE id = :i"),
-            {"standing": STANDING, "i": d},
+            {**units_binds(), "i": d},
         ).scalar_one()
         == 0
     )

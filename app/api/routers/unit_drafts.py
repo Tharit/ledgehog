@@ -44,7 +44,13 @@ from app.core.units.plan import (
 from app.core.units.state import UnitState
 
 UnitReason = Literal[
-    "incomplete", "unpaired_transfer", "waiting_for_partner", "unmatched_transfer", "non_standing_keys"
+    "incomplete",
+    "unpaired_transfer",
+    "waiting_for_partner",
+    "unmatched_transfer",
+    "waiting_for_document",
+    "document_suggested",
+    "non_standing_keys",
 ]
 FieldName = Literal["type", "payee", "category", "counter_account"]
 ConsequenceKind = Literal["created", "changed", "returns_to_review", "deleted", "unpaired", "left_behind"]

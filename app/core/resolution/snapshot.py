@@ -25,7 +25,7 @@ from sqlalchemy import Connection, Row, text
 from app.core.ingest.identity import canonical_text
 from app.core.plugins.classifier import EntryInput, HistoryKey, Vote
 from app.core.plugins.text import jaccard, tokens
-from app.core.resolution.confirmed import STANDING, units_sql
+from app.core.resolution.confirmed import units_binds, units_sql
 
 LOOKBACK_DAYS = 365
 
@@ -254,14 +254,14 @@ def _votes(rows: Iterable[Row[Any]]) -> list[Vote]:
 
 def load_votes(conn: Connection) -> list[Vote]:
     """Every voter: the one query of a settle."""
-    return _votes(conn.execute(_ALL_VOTES, {"standing": STANDING}))
+    return _votes(conn.execute(_ALL_VOTES, units_binds()))
 
 
 def load_votes_of(conn: Connection, entry_ids: Sequence[int]) -> list[Vote]:
     """The votes among these entries (those that became confirmed in a round)."""
     if not entry_ids:
         return []
-    return _votes(conn.execute(_VOTES_OF, {"standing": STANDING, "ids": list(entry_ids)}))
+    return _votes(conn.execute(_VOTES_OF, {**units_binds(), "ids": list(entry_ids)}))
 
 
 def load_snapshot(conn: Connection) -> HistorySnapshot:

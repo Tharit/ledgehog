@@ -167,3 +167,54 @@ class FileImporter(Protocol):
         currency an amount is stated in (an instructed amount).
         """
         ...
+
+
+@dataclass(frozen=True, slots=True)
+class IncomingDocumentLine:
+    """One line of a document. `amount_minor` is signed like the document's total (a charge's lines
+    are negative, spec §5.5)."""
+
+    description: str
+    amount_minor: int
+    qty: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class IncomingDocument:
+    """One document (spec §5.5), keyed on `(provider, external_id)`. `total_minor` is signed integer
+    minor units of `currency`, negative for a charge, and never zero."""
+
+    provider: str
+    external_id: str
+    occurred_on: date
+    total_minor: int
+    currency: str
+    raw: Any
+    merchant_name: str | None = None
+    title: str | None = None
+    lines: tuple[IncomingDocumentLine, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class DocumentDelivery:
+    """A document importer's result. `covered_through` is the date up to which the provider's
+    documents are known complete, in its own dates (spec §5.5); `covered_from` where the data starts."""
+
+    documents: tuple[IncomingDocument, ...]
+    covered_through: date
+    covered_from: date | None = None
+
+
+@runtime_checkable
+class DocumentImporter(Protocol):
+    """Fetches documents from a provider. Reads neither the database nor the clock."""
+
+    providers: frozenset[str]  # the providers it delivers documents for, declared up front (spec §5.5)
+
+    def validate_settings(self, settings: Mapping[str, Any]) -> None:
+        """Raise `InvalidProfile` naming the setting that is wrong."""
+        ...
+
+    def fetch(self, settings: Mapping[str, Any], *, since: date, today: date) -> DocumentDelivery:
+        """Documents dated `since` or later (the instance's start date, spec §5.5)."""
+        ...

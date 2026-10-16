@@ -39,7 +39,7 @@ class RunRefused(IngestError):
 
     The checks before the locks can lose a race against an unlink, a close or a disable, so the
     shared write body repeats them inside the transaction. `reason` is one of `instance_missing`,
-    `not_a_file_source`, `instance_disabled`, `account_missing`, `account_closed`,
+    `not_a_file_source`, `not_a_document_source`, `instance_disabled`, `account_missing`, `account_closed`,
     `account_not_linked`. Nothing was written; a real run ends `failed`, a preview reports it.
     """
 

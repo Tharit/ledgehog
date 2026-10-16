@@ -43,6 +43,7 @@ closure is a consequence (a partner left behind, the other side of a pair that n
 from __future__ import annotations
 
 import dataclasses
+import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -60,6 +61,7 @@ from app.core.resolution import Decided, Resolved, resolve
 from app.core.resolution.load import UnconfirmedEntry
 from app.core.resolution.snapshot import LayeredHistory
 from app.core.resolution.types import USER_NO_PAYEE, is_user_no_payee
+from app.core.settle.flags import NONE_KEY
 from app.core.settle.pairing import PAIR_COUNTER_KEY_VALUE, PAIR_KEY_VALUE
 from app.core.settle.resolution import settle_rewrites, stored_decisions
 from app.core.units.closure import UnitEntry, units_of
@@ -132,6 +134,9 @@ class _Row:
     @property
     def is_new(self) -> bool:
         return self.stored is None
+
+
+NONE_DOCUMENT: dict[str, Any] = json.loads(NONE_KEY)  # the key settling records, not restated
 
 
 # ---- small helpers ------------------------------------------------------------------------------
@@ -538,6 +543,18 @@ def _states(rows: Sequence[_Row], world: World) -> dict[int, tuple[tuple[_Row, .
         leg_states = {r.id: st for r in members if (st := _leg_state(r, world)) is not None}
         out[key] = (members, unit_state(list(unit), leg_states))
     return out
+
+
+def _record_none_documents(states: Mapping[int, tuple[tuple[_Row, ...], UnitState]]) -> None:
+    """What settling records when it confirms a unit (spec §6): the "none" document key on the original
+    entry of each transaction that has no `document` key (`record_none_documents`, the same key). It is
+    derivation only: the commit writes none of it, settling does, and `version` does not move."""
+    for members, st in states.values():
+        if not st.confirmed:
+            continue
+        for r in members:
+            if r.original and "document" not in (r.derivation or {}):
+                r.derivation = {**(r.derivation or {}), **NONE_DOCUMENT}
 
 
 def _with_matching_flags(flags: tuple[str, ...], row: _Row, world: World) -> tuple[str, ...]:
@@ -1183,6 +1200,7 @@ def plan_unit(stored: StoredUnit, draft: UnitDraft, world: World) -> Plan:
     # what settling leaves of it
     pulled = _settle(ordered, world, documented)
     final_states = _states(ordered, world)
+    _record_none_documents(final_states)
     unit_of = {ur.id: key for key, (unit_rows, _st) in final_states.items() for ur in unit_rows}
     anchor_key = unit_of[draft.anchor_entry_id]
 

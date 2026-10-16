@@ -126,6 +126,7 @@ def test_a_leg_with_no_open_offer_shows_its_counter_leg_as_the_proposal_taken(sc
         "type": {"pass": "user"},
         "counter_account": PAIR_SET,
         "counterpart": USER_PAIR,
+        "document": {"pass": "matcher_decision"},  # the unit is confirmed: settling records "none"
     }
     assert plan.row(e).derivation["counterpart"] == USER_PAIR
     assert plan.row(e).counterpart_entry_id == ghost and plan.transfers[ghost].state == "paired"

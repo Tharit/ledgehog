@@ -8,8 +8,9 @@ Contract shared by every caller:
 * A failure after the caller's write committed does not raise: the settle transaction
   rolls back, the write stands, and the failure is reported in ``SettleResult.error``.
 
-One round is the five ordered steps of architecture §5.2. Step 1 resolves every
-unconfirmed entry (core/settle/resolution.py), step 4 pairs the unpaired transfer legs
+One round is the five ordered steps of architecture §5.2. Before the first round, "none" is recorded for the
+document of every confirmed unit that has none (step 5 does it for what each round newly confirms).
+Step 1 resolves every unconfirmed entry (core/settle/resolution.py), step 4 pairs the unpaired transfer legs
 (core/settle/pairing.py) and step 5 is the review flags, which also report what the round
 newly confirmed; steps 2 and 3 are named no-op hooks that later work replaces with
 ``register_step(name, fn)``. The steps of one settle share a `SettleRun`
@@ -26,7 +27,7 @@ from dataclasses import dataclass
 from sqlalchemy import Connection, Engine, text
 
 from app.core.resolution.confirmed import load_confirmed_ids
-from app.core.settle.flags import review_flags_step
+from app.core.settle.flags import record_none_documents, review_flags_step
 from app.core.settle.pairing import pair_transfers_step
 from app.core.settle.resolution import resolve_step
 from app.core.settle.run import StepOutcome, settle_run
@@ -81,6 +82,9 @@ def _run_rounds(conn: Connection) -> set[int]:
     touched: set[int] = set()
     with settle_run() as run:
         run.confirmed = load_confirmed_ids(conn)
+        # a unit confirmed before this settle (written complete and standing, such as an entry form's) has
+        # no document key yet either: "none" is recorded for it too, so no later document source reopens it
+        touched.update(record_none_documents(conn, sorted(run.confirmed)))
         for _ in range(MAX_ROUNDS):
             confirmed = 0
             for _name, step in list(_STEPS):

@@ -57,10 +57,15 @@ def confirmed_entry(
     keys: dict[str, Any] | None = None,
     **cols: Any,
 ) -> int:
-    """A confirmed flow: `user` keys unless `keys` gives the derivation."""
+    """A confirmed flow: `user` keys unless `keys` gives the derivation, and the "none" settling records for
+    the document of a confirmed unit (spec §6): a ledger as settling leaves it."""
     derivation = keys
     if derivation is None:
-        derivation = {"type": {"pass": "user"}, "category": {"pass": "user"}}
+        derivation = {
+            "type": {"pass": "user"},
+            "category": {"pass": "user"},
+            "document": {"pass": "matcher_decision"},
+        }
         if payee:
             derivation["payee"] = {"pass": "user"}
     return make_entry(

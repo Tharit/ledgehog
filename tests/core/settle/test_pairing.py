@@ -186,12 +186,19 @@ def test_the_pair_sets_the_counter_account_and_its_key_only_on_a_leg_that_had_no
     rx, ry = row(isolated_engine, x), row(isolated_engine, y)
     assert (rx.counterpart_entry_id, ry.counterpart_entry_id) == (y, x)
     assert (rx.counter_account_id, ry.counter_account_id) == (b, a)
+    none = {"pass": "matcher_decision"}  # recorded on each leg's original entry when the unit is confirmed
     assert rx.derivation == {
         "type": {"pass": "user"},
         "counter_account": {"pass": "user"},
         "counterpart": PAIR,
+        "document": none,
     }
-    assert ry.derivation == {"type": {"pass": "user"}, "counter_account": PAIR_COUNTER, "counterpart": PAIR}
+    assert ry.derivation == {
+        "type": {"pass": "user"},
+        "counter_account": PAIR_COUNTER,
+        "counterpart": PAIR,
+        "document": none,
+    }
     assert row(isolated_engine, x).type == row(isolated_engine, y).type == "transfer"
     # both keys standing: the unit is confirmed with no review
     assert rx.review_flags == ry.review_flags == []

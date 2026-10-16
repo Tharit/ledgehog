@@ -79,7 +79,9 @@ _INCOME: tuple[tuple[str, int, int, tuple[str, ...]], ...] = (
 # so a leg of the last days has not yet been delivered its partner) and half unmatched.
 _PAIR_TO_MAKE, _PAIR_MADE = 0.40, 0.25
 _USER = {"type": {"pass": "user"}, "counter_account": {"pass": "user"}}
-_USER_PAIR = {**_USER, "counterpart": {"pass": "user"}}
+# a confirmed unit carries the "none" settling records for its document (spec §6): as after migration 0006
+_NO_DOCUMENT = {"document": {"pass": "matcher_decision"}}
+_USER_PAIR = {**_USER, "counterpart": {"pass": "user"}, **_NO_DOCUMENT}
 
 
 @dataclass(frozen=True)
@@ -171,7 +173,7 @@ _CONFIRM = text(
     " FROM unnest(CAST(:ids AS bigint[]), CAST(:cats AS bigint[]), CAST(:payees AS bigint[]),"
     " CAST(:ds AS text[])) AS v(id, c, p, d) WHERE e.id = v.id"
 )
-_USER_KEYS = json.dumps({k: {"pass": "user"} for k in ("type", "payee", "category")})
+_USER_KEYS = json.dumps({**{k: {"pass": "user"} for k in ("type", "payee", "category")}, **_NO_DOCUMENT})
 
 
 _INSERT_SOURCE = text(

@@ -93,3 +93,37 @@ def test_matching_window_is_an_error_when_unset(isolated_db: Config):
             matching_window_days(conn)
     finally:
         plain.dispose()
+
+
+def test_every_pooled_connection_gets_document_window_days(isolated_db: Config):
+    import dataclasses
+
+    from app.core.settle.window import document_window
+
+    engine = make_engine(isolated_db, pool_size=2, max_overflow=0)
+    try:
+        with engine.connect() as a, engine.connect() as b:
+            assert document_window(a) == document_window(b) == 7
+    finally:
+        engine.dispose()
+    engine = make_engine(dataclasses.replace(isolated_db, document_window_days=0))
+    try:
+        with engine.connect() as conn:
+            assert document_window(conn) == 0
+    finally:
+        engine.dispose()
+
+
+def test_document_window_is_an_error_when_unset(isolated_db: Config):
+    from sqlalchemy import create_engine
+    from sqlalchemy.exc import DBAPIError
+
+    from app.core.settle.window import document_window
+    from app.utils.db.engine import database_url
+
+    plain = create_engine(database_url(isolated_db))
+    try:
+        with plain.connect() as conn, pytest.raises(DBAPIError):
+            document_window(conn)
+    finally:
+        plain.dispose()

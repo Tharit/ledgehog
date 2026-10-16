@@ -50,7 +50,8 @@ def test_a_user_key_left_unchanged_stays_and_one_never_wraps_another(scene: Scen
     before = scene.row(e)
     scene.commit(e, DraftEntry(e, category=fixed(food, ("history", {}))))
     after = scene.row(e)
-    assert after.derivation == before.derivation  # not wrapped again
+    # not wrapped again; settling's "none" for the confirmed unit's document is the one key that is new
+    assert after.derivation == {**before.derivation, "document": {"pass": "matcher_decision"}}
     assert after.version == before.version
 
 

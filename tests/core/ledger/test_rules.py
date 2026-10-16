@@ -354,7 +354,7 @@ def test_deleting_a_rule_leaves_its_keys_on_confirmed_entries(isolated_engine: E
             conn,
             world["acct"],
             category=world["food"],
-            keys={"type": rs.key(rid), "category": rs.key(rid)},
+            keys={"type": rs.key(rid), "category": rs.key(rid), "document": {"pass": "matcher_decision"}},
             counterparty_name="REWE",
         )
     before = _entry_state(isolated_engine)

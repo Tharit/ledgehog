@@ -64,31 +64,47 @@ class _Counts:
 
 def start_run(
     engine: Engine,
-    account_id: int,
+    account_id: int | None,
     kind: str,
     *,
     importer: str,
     importer_instance_id: int | None = None,
     started_by: int | None = None,
 ) -> int:
-    """Commit a `running` run before anything else, in its own transaction (spec §5.1)."""
-    if kind != "transactions":
-        raise ValueError(f"ingest_delivery writes transaction runs only, not {kind!r}")
+    """Commit a `running` run before anything else, in its own transaction (spec §5.1).
+
+    A `transactions` run belongs to one account, a `documents` run to none (spec §5.5).
+    """
+    if kind not in ("transactions", "documents"):
+        raise ValueError(f"start_run starts transaction and document runs only, not {kind!r}")
+    if (kind == "transactions") != (account_id is not None):
+        raise ValueError("a transactions run needs its account, a documents run has none")
     with engine.begin() as conn:
-        return _insert_running(conn, account_id, importer, importer_instance_id, started_by)
+        return _insert_running(conn, account_id, importer, importer_instance_id, started_by, kind)
 
 
 def _insert_running(
-    conn: Connection, account_id: int, importer: str, importer_instance_id: int | None, started_by: int | None
+    conn: Connection,
+    account_id: int | None,
+    importer: str,
+    importer_instance_id: int | None,
+    started_by: int | None,
+    kind: str = "transactions",
 ) -> int:
     return int(
         conn.execute(
             text(
                 "INSERT INTO import_run (importer, importer_instance_id, emits, account_id,"
-                " status, started_by) VALUES (:importer, :inst, 'transactions', :account, 'running', :by)"
+                " status, started_by) VALUES (:importer, :inst, :kind, :account, 'running', :by)"
                 " RETURNING id"
             ),
-            {"importer": importer, "inst": importer_instance_id, "account": account_id, "by": started_by},
+            {
+                "importer": importer,
+                "inst": importer_instance_id,
+                "account": account_id,
+                "by": started_by,
+                "kind": kind,
+            },
         ).scalar_one()
     )
 
@@ -375,6 +391,26 @@ def _write_delivery(
     )
 
 
+def recheck_instance(conn: Connection, instance_id: int | None, kind: str) -> None:
+    """The instance refusals of a run of `kind`: missing, not emitting the kind, disabled.
+
+    The row is read `FOR SHARE`: disabling the instance waits for this transaction. A run without an
+    instance skips the check.
+    """
+    if instance_id is None:
+        return
+    inst = conn.execute(
+        text("SELECT emits, disabled FROM importer_instance WHERE id = :i FOR SHARE"), {"i": instance_id}
+    ).one_or_none()
+    if inst is None:
+        raise RunRefused("instance_missing", f"importer instance {instance_id} does not exist")
+    if kind not in inst.emits:
+        reason = "not_a_file_source" if kind == "transactions" else "not_a_document_source"
+        raise RunRefused(reason, f"importer instance {instance_id} does not emit {kind}")
+    if inst.disabled:
+        raise RunRefused("instance_disabled", f"importer instance {instance_id} is disabled")
+
+
 def _recheck_refusals(conn: Connection, account_id: int, instance_id: int | None) -> None:
     """The refusals the caller made before any lock, made again now that the account lock is held.
 
@@ -383,18 +419,7 @@ def _recheck_refusals(conn: Connection, account_id: int, instance_id: int | None
     `FOR SHARE`: the disabling UPDATE waits for this transaction. A run without an instance (a
     delivery not made by a file upload) skips the instance and link checks.
     """
-    if instance_id is not None:
-        inst = conn.execute(
-            text("SELECT emits, disabled FROM importer_instance WHERE id = :i FOR SHARE"), {"i": instance_id}
-        ).one_or_none()
-        if inst is None:
-            raise RunRefused("instance_missing", f"importer instance {instance_id} does not exist")
-        if "transactions" not in inst.emits:
-            raise RunRefused(
-                "not_a_file_source", f"importer instance {instance_id} does not emit transactions"
-            )
-        if inst.disabled:
-            raise RunRefused("instance_disabled", f"importer instance {instance_id} is disabled")
+    recheck_instance(conn, instance_id, "transactions")
     closed = conn.execute(
         text("SELECT closed_on FROM account WHERE id = :a"), {"a": account_id}
     ).one_or_none()

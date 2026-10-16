@@ -61,7 +61,11 @@ def _confirmed(
 ) -> int:
     """A confirmed flow: values with `user` keys, a vote for history."""
     src = _src(conn, acct, counterparty_name=name, **cols)
-    d: dict[str, Any] = {"type": {"pass": "user"}, "category": {"pass": "user"}}
+    d: dict[str, Any] = {
+        "type": {"pass": "user"},
+        "category": {"pass": "user"},
+        "document": {"pass": "matcher_decision"},  # the "none" settling records on a confirmed unit
+    }
     if payee:
         d["payee"] = {"pass": "user"}
     return make_entry(conn, src, category_id=category, payee_id=payee, derivation=json.dumps(d))
@@ -120,6 +124,7 @@ def test_a_rule_resolves_a_confirmed_flow_with_no_flags(isolated_engine: Engine,
         "type": {"pass": "rule", "basis": {"rule_id": rp}},
         "payee": {"pass": "rule", "basis": {"rule_id": rp}},
         "category": {"pass": "rule", "basis": {"rule_id": rc}},
+        "document": {"pass": "matcher_decision"},  # recorded when settling confirmed the unit
     }
     assert r.version == 1
 
@@ -208,7 +213,12 @@ def test_a_confirmed_entry_is_never_touched(isolated_engine: Engine, acct: int) 
         c, c2 = make_category(conn, "Food"), make_category(conn, "Other")
         rs.rule(conn, "any", "category", c2, conditions=(rs.name_is("EDEKA Markt"),))
         reviewed = _confirmed(conn, acct, name="EDEKA Markt", category=c, payee=None)
-        keyless = make_entry(conn, _src(conn, acct, counterparty_name="EDEKA Markt"), category_id=c)
+        keyless = make_entry(
+            conn,
+            _src(conn, acct, counterparty_name="EDEKA Markt"),
+            category_id=c,
+            derivation=json.dumps({"document": {"pass": "matcher_decision"}}),
+        )
     before = [_row(isolated_engine, i) for i in (reviewed, keyless)]
     assert settle(isolated_engine).touched_entry_ids == ()
     assert [_row(isolated_engine, i) for i in (reviewed, keyless)] == before

@@ -36,7 +36,12 @@ def _seed(engine: Engine, make_account: MakeAccount) -> dict[str, int]:
         acct = make_account(conn)
         _, dirty = make_movement(conn, acct)
         cat = make_category(conn, "Food")
-        clean = make_entry(conn, make_source(conn, acct), category_id=cat)
+        clean = make_entry(
+            conn,
+            make_source(conn, acct),
+            category_id=cat,
+            derivation='{"document": {"pass": "matcher_decision"}}',  # as settling leaves a confirmed unit
+        )
     return {"dirty": dirty, "clean": clean}
 
 
