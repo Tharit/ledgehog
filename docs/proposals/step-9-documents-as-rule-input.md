@@ -83,7 +83,7 @@ reporting dimension (§3.6); most merchants reached through PayPal will never be
 | **Type** | not needed: a document implies `flow` | not needed | not needed |
 | **Payee** | the descriptor rule (provider), a merchant rule (curated merchant) | none for a documented charge | semantic fallback where no rule decides |
 | **Category** | on payee, merchant or lines | the merchant key, where one merchant has one habit (a subscription) | the line semantics |
-| **Lines** | keyword rules only | never | yes, one line per split entry |
+| **Lines** | keyword rules only | not now; an exact-line key is a tuning candidate (below) | yes, one line per split entry |
 
 **History changes in one way.** A documented transaction is still kept out of the raw-text keys (the
 bank text of a documented charge names the payment processor, and a split order's entries would each
@@ -103,6 +103,23 @@ vote under it). It is instead asked on one exact key, **for the category only**:
 
 The threshold stays as for every key (a single unanimous precedent is a majority). Raising it is part
 of the model's design, recorded as an open question (§3.13).
+
+**Lines stay out of history, for now.** Similarity over line text is rejected: product titles rarely
+repeat, and the words two titles share ("USB", "Pack", "2 Stück") agree for the wrong reasons, so it
+would propose on weak evidence and keep the model from being asked. What lines can teach with
+certainty is a **reorder**: the same line text, the same category every time. An exact-line key would
+capture that:
+
+- canonical equality of the line description (§5.2), for the category only, asked before the merchant
+  key as the more specific;
+- asked and counted only for an entry with exactly one line: one cut from a line (`document_line_id`),
+  or one whose document has a single line. An unsplit entry of several lines has one category for all
+  of them and says nothing about any one line;
+- it fails safe: a reworded title misses, and the merchant key or the model answers.
+
+Reorders are not expected to be frequent, so it is not part of this change. It is recorded in
+`history.md`'s tuning section, to be tried once real documents show how often lines repeat (§3.12).
+The line reference this proposal adds is all it needs.
 
 ### 1.5 Rule editor
 
@@ -144,8 +161,10 @@ evaluate the document fields through each entry's linked document and line.
 5. The payee of a documented charge is the provider, unless a rule on the document sets a curated
    merchant; the panel nudges toward that rule and the editor orders it first. Rejected: a provider
    payee that history may replace (a third value state).
-6. History: one new exact key (document merchant), **category only**; no lines in history; raw keys
-   unchanged and still closed to documented transactions. Threshold unchanged for now.
+6. History: one new exact key (document merchant), **category only**; raw keys unchanged and still
+   closed to documented transactions. Threshold unchanged for now. No lines in history now: similarity
+   over lines is rejected; an exact-line key, for reorders, is recorded in `history.md`'s tuning section
+   for later.
 7. "New input deserves a second look" stays: a link re-derives a user's values too.
 8. A document implies `flow`, as a field-order constraint; transfers cannot carry one; converting to a
    transfer drops the document.
@@ -327,6 +346,13 @@ unchanged.
   document …" by: "Keys 1 to 5 never see a document: a transaction with a document is not asked on them
   and does not vote for them; key 6 reads the merchant name only."
 - §4: `matched_on` also takes `document_merchant`.
+- §5 tuning, after the paragraph on key 5's stop list, add:
+  > An **exact-line key** for documented entries is the expected refinement once real documents show
+  > how often lines repeat: canonical equality of the line description, for the category only, asked
+  > before key 6, and asked and counted only for an entry with exactly one line — one cut from a line,
+  > or one whose document has a single line. It captures reorders (the same capsules, the same filter)
+  > with certainty and misses a reworded title safely. Similarity over line text stays out: titles
+  > rarely repeat, and shared filler words would propose on weak evidence ahead of the model.
 
 ### 3.13 `spec/spec.md` §9 open questions
 
@@ -364,7 +390,8 @@ Add:
 ### 3.15 `spec/decisions.md`: new D225
 
 "Documents are inputs to rules, not a rewrite" with the decisions of part 2, the rejected alternatives
-(enriching the counterparty text; tokenizing lines in history; no stored line; a stored line number
+(enriching the counterparty text; tokenizing lines in history, with the exact-line key deferred to
+tuning; no stored line; a stored line number
 cleared by every link write; a provider payee replaceable by history), and the supersession of the
 enrichment parts of D223 and `documents.md` §5.
 
