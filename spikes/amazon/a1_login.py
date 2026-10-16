@@ -57,6 +57,7 @@ def main() -> None:
     password = getpass.getpass("Amazon password: ")
 
     jar_dir = Path(tempfile.mkdtemp(prefix="amazon-spike-"))
+    session = None
     try:
         config = AmazonOrdersConfig(data={
             "domain": args.domain,
@@ -113,6 +114,12 @@ def main() -> None:
         print(f"fetched {len(orders)} orders -> out/orders-{args.domain}.json")
         summarize(dump)
     finally:
+        if session is not None and session.is_authenticated:
+            try:
+                session.logout()  # ends the session on Amazon's side too, not just locally
+                print("signed out")
+            except Exception as e:
+                print(f"sign-out failed ({e}); sign out of all devices in your Amazon account")
         shutil.rmtree(jar_dir, ignore_errors=True)
         print("cookie jar deleted")
 
