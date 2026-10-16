@@ -280,6 +280,9 @@ def main() -> int:
     ap.add_argument("--yes", action="store_true", help="skip the 'about to connect' confirmation")
     ap.add_argument("--force-tan", action="store_true",
                     help="attach a TAN request to balance calls (the bank answers 9075 otherwise)")
+    ap.add_argument("--tan-for", default="",
+                    help="comma list of request types that get an HKTAN (with the TAN medium name) from the "
+                         "start, e.g. HKSPA,HKKKU (Deutsche Bank answers 9960 to requests without one)")
     args = ap.parse_args()
     if not (args.blz and args.url and args.user):
         ap.error("blz, url and user are required (flags or FINTS_* env)")
@@ -294,6 +297,7 @@ def main() -> int:
     patch_full_account_kti1()
     if args.force_tan:
         FORCE_TAN.add("HKSAL")
+    FORCE_TAN.update(s.strip().upper() for s in args.tan_for.split(",") if s.strip())
 
     # A wrong user id / PIN can lock the account at the bank: make the target explicit first.
     from urllib.parse import urlparse
