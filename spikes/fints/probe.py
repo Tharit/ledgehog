@@ -72,6 +72,16 @@ FORCE_TAN: set[str] = set()  # segment types that get an HKTAN (process 4) attac
 ACCOUNT_DATA_SEGS = {"HKKAZ", "HKSAL", "HKCAZ"}
 
 
+def raw_allowed(client: FinTS3PinTanClient, account_number) -> list[str]:
+    """Transaction names the bank's UPD lists for an account, as sent (the library maps only the few
+    operations it knows, e.g. not the credit-card ones)."""
+    out: set[str] = set()
+    for seg in client.upd.find_segments("HIUPD"):
+        if getattr(seg.account_information, "account_number", None) == account_number:
+            out |= {t.transaction for t in seg.allowed_transactions if t.transaction}
+    return sorted(out)
+
+
 def supports(info: dict, account, op: str) -> bool:
     """Ask the bank's own account permissions (UPD) whether an operation is available, instead of
     trying and failing. Unknown account / operation -> True (try it)."""
@@ -171,6 +181,26 @@ def patch_login_tan_detection() -> None:
     FinTSDialog.init = init
 
 
+def get_tan_media_via_init(client: FinTS3PinTanClient):
+    """Same as client.get_tan_media(), but sends HKTAB together with the dialog init (lazy init), as the
+    library does for Postbank. Needed when the init alone is rejected for lack of a TAN medium name."""
+    from fints.client import HKTAB4, HKTAB5
+    from fints.formals import TANMediaClass4, TANMediaType2
+
+    with client._new_dialog(lazy_init=True) as dialog:
+        seg = client._find_highest_supported_command(HKTAB4, HKTAB5)(
+            tan_media_type=TANMediaType2.ALL, tan_media_class=str(TANMediaClass4.ALL),
+        )
+        try:
+            client._bootstrap_mode = True
+            response = dialog.init(seg)
+        finally:
+            client._bootstrap_mode = False
+        for resp in response.response_segments(seg, "HITAB"):
+            return resp.tan_usage_option, list(resp.tan_media_list)
+    return None, []
+
+
 def pick_tan_mechanism(client: FinTS3PinTanClient, preset: str | None = None) -> None:
     client.fetch_tan_mechanisms()  # one anonymous dialog to read BPD; populates the mechanism list
     mechs = client.get_tan_mechanisms()
@@ -200,7 +230,14 @@ def pick_tan_mechanism(client: FinTS3PinTanClient, preset: str | None = None) ->
     # Some banks additionally require choosing a TAN medium (device name).
     try:
         if client.is_tan_media_required() and not client.selected_tan_medium:
-            _usage, media = client.get_tan_media()
+            result = client.get_tan_media()
+            if result is None:
+                # Deutsche Bank: dialog init itself fails with 9210 'Name des TAN-Medium erforderlich', so
+                # the library's separate HKTAB dialog never opens. Ask in the init message instead
+                # (the library only does this for Postbank).
+                print("  (bank wants a TAN medium name at login; asking for the list inside the init message)")
+                result = get_tan_media_via_init(client)
+            _usage, media = result
             for i, m in enumerate(media):
                 print(f"  medium [{i}]: {getattr(m, 'tan_medium_name', m)}")
             if media:
@@ -291,6 +328,8 @@ def main() -> int:
         # Candidates come from the UPD (what the bank says exists); fall back to HKSPA's if UPD is empty.
         accounts = []
         for a in info.get("accounts", []):
+            if not a.get("account_number"):
+                continue  # the bank also sends UPD rows without an account (placeholders); ignore them
             key = (a.get("account_number"), a.get("subaccount_number") or "")
             known = sepa.get(key)
             bi = a.get("bank_identifier")
@@ -315,16 +354,24 @@ def main() -> int:
 
     # Each data call gets its own dialog: a rejected request makes the bank close the dialog.
     # 4a. Transactions as MT940 (the classic format, parsed by the mt-940 lib).
-    print(f"\nFetching MT940 {start}..{end}")
-    txs = run(client, "HKKAZ", lambda: client.get_transactions(acc, start, end))
-    print(f"{len(txs)} transactions (MT940)")
-    dump = []
-    for t in txs:
-        d = t.data
-        dump.append({k: str(v) for k, v in d.items()})
-        print(f"{d.get('date')}  (val {d.get('entry_date')})  {d.get('amount')}  "
-              f"{d.get('applicant_name') or ''} | {d.get('purpose') or ''}")
-    (OUT / "transactions_mt940.json").write_text(json.dumps(dump, indent=2, ensure_ascii=False))
+    if not supports(info, acc, "GET_TRANSACTIONS"):
+        allowed = raw_allowed(client, acc.accountnumber)
+        print("\nMT940 (HKKAZ): not allowed for this account; skipping. Operations the bank lists for it: "
+              f"{allowed}")
+        if "HKKKU" in allowed:
+            print("  -> this is a credit card: transactions are HKKKU (G112 format), which python-fints "
+                  "does not implement.")
+    else:
+        print(f"\nFetching MT940 {start}..{end}")
+        txs = run(client, "HKKAZ", lambda: client.get_transactions(acc, start, end))
+        print(f"{len(txs)} transactions (MT940)")
+        dump = []
+        for t in txs:
+            d = t.data
+            dump.append({k: str(v) for k, v in d.items()})
+            print(f"{d.get('date')}  (val {d.get('entry_date')})  {d.get('amount')}  "
+                  f"{d.get('applicant_name') or ''} | {d.get('purpose') or ''}")
+        (OUT / "transactions_mt940.json").write_text(json.dumps(dump, indent=2, ensure_ascii=False))
 
     # 4b. Same range as camt.052/053 XML, only if the account permissions say the bank offers it.
     if not supports(info, acc, "GET_TRANSACTIONS_XML"):
