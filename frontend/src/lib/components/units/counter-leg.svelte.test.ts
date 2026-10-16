@@ -119,7 +119,12 @@ const ghostRow = (tempId: number, amount = eur(10000), accountId = 3) =>
 			source_transaction_id: tempId,
 			derivation: {}
 		}),
-		{ original: false, in_unit: true, transfer: transferOut({ state: 'paired' }) }
+		{
+			original: false,
+			in_unit: true,
+			counter_leg_for: 1,
+			transfer: transferOut({ state: 'paired' })
+		}
 	);
 
 const isCounterLeg = (request: UnitDraftRequest) =>

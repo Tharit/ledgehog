@@ -13,8 +13,6 @@ export type GroupHeader = {
 	bookedOn: string | null;
 	/** what the source transaction said */
 	amount: Money | null;
-	/** the source is user-authored: a small "Entered by hand" */
-	authored: boolean;
 };
 
 export type PanelGroup = {
@@ -73,8 +71,7 @@ export function groupsOf(views: readonly EntryView[], entries: readonly Entry[])
 				amount:
 					stored.find((v) => v.stored?.source)?.stored?.source?.amount ??
 					lead.sourceAmount ??
-					(original ?? lead).amount,
-				authored: strip?.authored ?? stored.some((v) => v.stored?.authored)
+					(original ?? lead).amount
 			},
 			strip,
 			views: ordered,
@@ -99,15 +96,14 @@ function ghostGroups(views: readonly EntryView[]): PanelGroup[] {
 	return views
 		.filter((v) => v.counterLeg)
 		.map((view) => {
-			const leg = views.find((v) => v.transfer?.partner?.entry_id === view.id);
+			const leg = views.find((v) => v.id === view.row?.counter_leg_for);
 			return {
 				key: `counter-leg-${view.id}`,
 				sourceId: null,
 				header: {
 					accountId: view.accountId,
 					bookedOn: view.row?.booked_on ?? null,
-					amount: view.amount,
-					authored: false
+					amount: view.amount
 				},
 				strip: null,
 				views: [view],

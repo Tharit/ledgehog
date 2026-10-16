@@ -60,7 +60,7 @@ describe('groupsOf', () => {
 		expect(groupsOf(viewsOf(tie), tie.entries).map((g) => g.sourceId)).toEqual([5, 6]);
 	});
 
-	it('says what the header shows: account, booked date, source amount, authored', () => {
+	it('says what the header shows: account, booked date, source amount', () => {
 		const authored = unit({
 			anchor_entry_id: 1,
 			entries: [leg(1, 1, 5, '2026-10-10', { authored: true }), leg(2, 2, 6, '2026-10-09')]
@@ -69,10 +69,9 @@ describe('groupsOf', () => {
 		expect(first.header).toEqual({
 			accountId: 2,
 			bookedOn: '2026-10-09',
-			amount: { amount: 5000, currency: 'EUR' },
-			authored: false
+			amount: { amount: 5000, currency: 'EUR' }
 		});
-		expect(second.header).toMatchObject({ accountId: 1, bookedOn: '2026-10-10', authored: true });
+		expect(second.header).toMatchObject({ accountId: 1, bookedOn: '2026-10-10' });
 	});
 
 	it('is one group for a single source: residual first, then the splits as added', () => {
@@ -140,7 +139,12 @@ describe('the ghost group of a counter-leg', () => {
 				source_transaction_id: -7,
 				derivation: {}
 			}),
-			{ original: false, in_unit: true, transfer: transferOut({ state: 'paired' }) }
+			{
+				original: false,
+				in_unit: true,
+				counter_leg_for: 1,
+				transfer: transferOut({ state: 'paired' })
+			}
 		);
 	function withGhost(extra: Partial<ReturnType<typeof preview>> = {}) {
 		const out = preview(single, extra);
@@ -188,8 +192,7 @@ describe('the ghost group of a counter-leg', () => {
 		expect(ghost.header).toEqual({
 			accountId: 2,
 			bookedOn: '2026-10-11',
-			amount: { amount: 5000, currency: 'EUR' },
-			authored: false
+			amount: { amount: 5000, currency: 'EUR' }
 		});
 		expect(ghost.splitEntryId).toBeNull();
 		expect(ghost.strip).toBeNull();

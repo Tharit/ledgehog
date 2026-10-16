@@ -972,7 +972,8 @@ def _follow(rows: Mapping[int, _Row], links: Mapping[int, int | None], world: Wo
             continue
         follower = -r.amount
         if _sign(follower) != _sign(p.stored.amount):
-            continue  # a sign flip is a different movement: the pair breaks, as an edit of it does
+            # a sign flip is a different movement: nothing follows, the pair shows pair_sign or pair_unequal
+            continue
         p.amount = follower
         p.src = dataclasses.replace(p.src, amount=follower)
         out[p.src.id] = follower

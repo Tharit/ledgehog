@@ -161,7 +161,9 @@ def test_a_full_run_fills_every_account_through_the_real_pipeline(seeded: str, d
                 )
             )
         }
-    assert len(per_account) == 6 and all(n > 0 for n in per_account.values()), per_account
+    # the unsynced GBP cash account stays empty on purpose: the cross-currency legs offer to fill it
+    empty = {name for name, n in per_account.items() if n == 0}
+    assert len(per_account) == 7 and empty == {"Bargeld GBP [seed]"}, per_account
     assert all(name.endswith("[seed]") for name in per_account)
     assert _one(dev_engine, "SELECT count(*) FROM balance_record WHERE kind = 'reported'") >= 3
     assert _one(dev_engine, "SELECT count(*) FROM balance_record WHERE kind = 'manual'") >= 2
