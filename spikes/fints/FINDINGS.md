@@ -78,6 +78,17 @@ Probe: `probe.py`. Debug log `out/fints.log` is the ground truth (contains accou
       synthetic key (account, booking date, amount, purpose/reference).
     - Booked items only by default (pending is a separate flag in the library).
 
+15. **Creditor ID / mandate reference are not available from this bank over FinTS** (the Consorsbank app shows
+    them, FinTS does not). Raw `:86:` uses the DK structured layout (`?00` text, `?20-?29` purpose lines with
+    `TAG+`, `?30` BIC, `?31` IBAN, `?32/33` name) but the bank sends only `EREF+`, `KREF+`, `SVWZ+`; never
+    `MREF+`/`CRED+`, even on the 10/17 direct debits (GVC 005 'Lastschrift (Einzugsermaechtigung)'). The
+    library maps what arrives (`applicant_creditor_id`, mandate etc. exist but are empty). Not in the free
+    text either (no `xx99ZZZ...` creditor ids, no 'Mandat'). The BPD advertises only HIKAZS (MT940, v3-7),
+    HISALS, HIWPDS, HICCSS, HIIPZS, HISPAS: no HICAZS (camt, which would carry MndtId/CdtrId), no statement
+    or PDF services. The mt-940 `?NN` layout is a per-bank convention, so other banks may populate more tags
+    (MREF+, CRED+, ABWA+, ...): the importer should map all tags generically and treat these fields as optional.
+    Only non-FinTS routes (bank CSV/PDF export) can give the missing fields for this bank.
+
 ## Open questions
 
 - Resolved: Consorsbank account-data access (full KTI1 + HKTAN on HKKAZ/HKSAL).
