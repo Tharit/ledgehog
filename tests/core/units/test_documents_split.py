@@ -32,17 +32,18 @@ def docs(scene: Scene) -> Docs:
 
 
 class Shop:
-    """Rules that read a line each: `USB cable` is Gadgets, `Case` is Accessories, the merchant is Seeed."""
+    """Rules that read an entry's line each: `USB cable` is Gadgets, `Case` is Accessories, the merchant is
+    Seeed (ordered before the card rule)."""
 
     def __init__(self, scene: Scene) -> None:
         def build(c: Connection) -> tuple[int, int, int]:
             seeed = make_payee(c, "Seeed", None)
             gadgets, accessories = make_category(c, "Gadgets"), make_category(c, "Accessories")
-            rs.rule(c, "seeed", "payee", seeed, conditions=(rs.name_is("Seeed Studio"),))
-            rs.rule(
-                c, "cables", "category", gadgets, conditions=(rs.cond("purpose", "contains", "USB cable"),)
-            )
-            rs.rule(c, "cases", "category", accessories, conditions=(rs.cond("purpose", "contains", "Case"),))
+            merchant = rs.cond("document_merchant", "equals", "Seeed Studio")
+            rs.rule(c, "seeed", "payee", seeed, conditions=(merchant,), priority=50)
+            line = "document_line"
+            rs.rule(c, "cables", "category", gadgets, conditions=(rs.cond(line, "contains", "USB cable"),))
+            rs.rule(c, "cases", "category", accessories, conditions=(rs.cond(line, "contains", "Case"),))
             return int(seeed), int(gadgets), int(accessories)
 
         self.seeed, self.gadgets, self.accessories = scene.tx(build)
@@ -105,9 +106,8 @@ def test_an_unsplit_linked_transaction_is_proposed_split_along_the_lines(
     # each row is resolved with its own line, the original with its first
     assert plan.row(entry).fields["category"].value == shop.gadgets
     assert plan.row(second).fields["category"].value == shop.accessories
-    # "Shipping": no rule reads that line alone, but settling reads an entry with every line once the unit is
-    # committed, so the preview shows the category it will then find (the first rule: `USB cable`)
-    assert plan.row(third).fields["category"].value == shop.gadgets
+    # "Shipping": no rule reads that line, and an entry has its own line only (never all of them): no category
+    assert plan.row(third).fields["category"].value is None
     assert all(r.fields["payee"].value == shop.seeed for r in plan.rows)
 
 

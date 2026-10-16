@@ -109,11 +109,12 @@ def test_a_pick_replaces_an_automatic_link_and_frees_it(scene: Scene, docs: Docs
     )  # the pick is a structural change; the link settling made was one too
 
 
-def test_a_pick_derives_every_standing_value_again_on_the_enriched_input(scene: Scene, docs: Docs) -> None:
+def test_a_pick_derives_every_standing_value_again_from_the_document_fields(scene: Scene, docs: Docs) -> None:
     def rules(c: Connection) -> tuple[int, int]:
         seeed, gadgets = make_payee(c, "Seeed", None), make_category(c, "Gadgets")
-        rs.rule(c, "seeed", "payee", seeed, conditions=(rs.name_is("Seeed Studio"),))
-        rs.rule(c, "cables", "category", gadgets, conditions=(rs.cond("purpose", "contains", "USB cable"),))
+        merchant = rs.cond("document_merchant", "equals", "Seeed Studio")
+        rs.rule(c, "seeed", "payee", seeed, conditions=(merchant,), priority=50)
+        rs.rule(c, "cables", "category", gadgets, conditions=(rs.cond("document_line", "contains", "USB"),))
         return int(seeed), int(gadgets)
 
     seeed, gadgets = scene.tx(rules)

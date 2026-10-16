@@ -23,8 +23,12 @@ NO_PAYEE = "none"
 # `derivation` pass names (spec §5.9). Standing: own_account, rule. Proposals: history, llm.
 STANDING_PASSES = frozenset({"own_account", "rule", "matcher_decision", "user"})
 
-# the five history keys of spec §5.9 / classifiers/history.md, in order
-HistoryKey = Literal["counterparty_ref", "counterparty_name", "payee", "booking_text", "tokens"]
+# the history keys of spec §5.9 / classifiers/history.md: the five raw-text keys, in order, which an entry
+# without a document is asked, and the sixth, the document's merchant, the only one an entry WITH a document
+# is asked (for the category only)
+HistoryKey = Literal[
+    "counterparty_ref", "counterparty_name", "payee", "booking_text", "tokens", "document_merchant"
+]
 HISTORY_KEYS: tuple[HistoryKey, ...] = (
     "counterparty_ref",
     "counterparty_name",
@@ -32,6 +36,7 @@ HISTORY_KEYS: tuple[HistoryKey, ...] = (
     "booking_text",
     "tokens",
 )
+DOCUMENT_KEY: HistoryKey = "document_merchant"
 
 
 # The value of a `payee` Proposal that says "the majority has no payee": the payee field ends with
@@ -62,6 +67,13 @@ class EntryInput:
     instructed_currency: str | None = None
     end_to_end_id: str | None = None
     instructed_amount: int | None = None  # signed minor units, in `instructed_currency`
+    # what the entry's transaction's linked or picked document adds (spec §5.8, §5.9): the source fields above
+    # stay as stored, whatever the document says. `documented` is true for any such document, a merchant
+    # name or none; `document_merchant` is its merchant name; `document_line` the description of the entry's
+    # OWN line of it (None: the entry has no line)
+    documented: bool = False
+    document_merchant: str | None = None
+    document_line: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,7 +87,14 @@ class AccountFact:
 
 
 ConditionField = Literal[
-    "counterparty_name", "counterparty_ref", "purpose", "booking_text", "mandate_ref", "payee"
+    "counterparty_name",
+    "counterparty_ref",
+    "purpose",
+    "booking_text",
+    "mandate_ref",
+    "document_merchant",
+    "document_line",
+    "payee",
 ]
 ConditionOp = Literal["equals", "starts_with", "contains", "regex", "is"]
 CONDITION_FIELDS: tuple[ConditionField, ...] = (
@@ -84,6 +103,8 @@ CONDITION_FIELDS: tuple[ConditionField, ...] = (
     "purpose",
     "booking_text",
     "mandate_ref",
+    "document_merchant",
+    "document_line",
     "payee",
 )
 CONDITION_OPS: tuple[ConditionOp, ...] = ("equals", "starts_with", "contains", "regex", "is")
@@ -157,6 +178,10 @@ class Vote:
     purpose: str | None = None
     booking_text: str | None = None
     mandate_ref: str | None = None
+    # the document its transaction carries (spec §5.9): `documented` (a merchant name or none), and its
+    # merchant name. A documented vote counts for key `document_merchant` only, never for the raw-text keys.
+    documented: bool = False
+    document_merchant: str | None = None
 
 
 class HistorySource(Protocol):
@@ -164,7 +189,8 @@ class HistorySource(Protocol):
 
     Returns the votes within the lookback (365 days either side of `entry.booked_on`), left out:
     `exclude_entry_ids` (the entry's own unit). For an equality key the candidates equal the entry
-    on that key's canonical value; for `tokens`, they share at least one token. Scoring and
+    on that key's canonical value (for `document_merchant`, the merchant of the entry's document); for
+    `tokens`, they share at least one token. Scoring and
     counting are the classifier's. `payee_id` is the payee resolved so far (key `payee`).
     """
 

@@ -272,6 +272,7 @@ _CANDIDATE_TXNS = text(
       FROM ledger_entry AS e
       JOIN source_transaction AS st ON st.id = e.source_transaction_id
      WHERE st.duplicate_of IS NULL
+       AND e.type IS DISTINCT FROM 'transfer'
        AND NOT EXISTS (SELECT 1 FROM ledger_entry AS lo
                         WHERE lo.source_transaction_id = e.source_transaction_id AND lo.id < e.id)
        AND st.booked_on BETWEEN :lo AND :hi

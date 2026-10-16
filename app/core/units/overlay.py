@@ -39,8 +39,9 @@ negated new amount (spec §5.7, I2, I3). The follower keeps its values and keys:
 Settle steps 2 and 3 are simulated in each round too (`_link_documents`, `_rederive_linked`, over the
 `World.docs` the loader read): a unique candidate document is linked to the original entry of a transaction
 that has a provider payee and no decided document, and the transaction's values are derived again (the link
-is a change of the first value in field order). A document enriches the input resolution reads (`enrich.py`)
-and history does not run for a transaction with one (spec §5.9); a unit's confirmation counts its documents
+is a change of the first value in field order). A document adds the fields rules read to the input
+resolution reads (`enrich.py`: its merchant and the row's own line) and history asks a documented entry the
+merchant key only (spec §5.9); a unit's confirmation counts its documents
 open (awaited, suggested, a candidate: `units/documents.py`), so a unit that waits for a document is not
 confirmed and no "none" is recorded for it. The link is NOT part of what a commit writes (`Written`): settling
 writes it, as it writes the "none" key.
@@ -68,7 +69,7 @@ from app.core.plugins.classifier import (
     Vote,
 )
 from app.core.resolution import Decided, Resolved, resolve
-from app.core.resolution.enrich import LinkedDocument, enriched_input
+from app.core.resolution.enrich import LinkedDocument, with_document
 from app.core.resolution.load import UnconfirmedEntry
 from app.core.resolution.snapshot import LayeredHistory
 from app.core.resolution.types import USER_NO_PAYEE, is_user_no_payee
@@ -148,12 +149,13 @@ class _Row:
     # a counter-leg the draft creates: the entry it is the other side of
     counter_leg_for: int | None = None
     # the document the row's TRANSACTION carries (the original entry holds the link; every row of the source
-    # shares it): the input is enriched with it and history does not run for it
+    # shares it): the input carries its merchant and the row's own line
     document_id: int | None = None
     linked: LinkedDocument | None = None
     # the draft changed the link: every value after it is derived again (spec §5.9); what happens to the
-    # `document` key a commit writes (`doc_draft.KeyAction`); the line of the document the row is read with
-    # while the draft's values are decided (None: all lines, as once committed)
+    # `document` key a commit writes (`doc_draft.KeyAction`); the row's own line of the document (None: no
+    # line, spec §5.8): a row the draft made from a line, the original entry of a document of one line or of
+    # a split along the lines; the stored `document_line_id` of an existing entry is not read yet
     reopen: bool = False
     doc_key: str = "stored"
     line_no: int | None = None
@@ -203,10 +205,10 @@ def _entry_input(row: _Row) -> EntryInput:
 
 
 def _resolution_input(row: _Row) -> EntryInput:
-    """The input resolution reads: `_entry_input` enriched with the transaction's document (documents.md §5),
-    an entry the draft made from a line read with that line. Pairing reads the source as it is
-    (`_entry_input`), as `load_unpaired_legs` does."""
-    return enriched_input(_entry_input(row), row.linked, line_no=row.line_no)
+    """The input resolution reads: `_entry_input` plus the transaction's document, read through its merchant
+    and the row's own line (documents.md §5; `line_no`: the line the row has, None for none). The source
+    fields are as stored. Pairing reads the source as it is (`_entry_input`), as `load_unpaired_legs` does."""
+    return with_document(_entry_input(row), row.linked, line_no=row.line_no)
 
 
 def _as_unconfirmed(row: _Row) -> UnconfirmedEntry:
@@ -378,6 +380,8 @@ def _carry_documents(stored: StoredUnit, rows: Mapping[int, _Row], world: World,
         if original is not None:
             original.doc_key = decision.key
             original.line_no = docs.first_line.get(oid)
+            if original.line_no is None and linked is not None and len(linked.lines) == 1:
+                original.line_no = linked.lines[0][0]  # a document of one line: the original entry takes it
 
 
 def _allocate(stored: StoredUnit, rows: dict[int, _Row]) -> list[Problem]:
@@ -410,7 +414,7 @@ class _Walk:
     ) -> dict[Field, Decided | None]:
         """The row's decisions after the draft: spec §5.9 'Rederiving', with the draft's fields fixed."""
         entry = _resolution_input(row)
-        history = None if row.document_id is not None else self.world.history  # spec §5.9
+        history = self.world.history  # a documented entry is asked the merchant key only (the classifier)
         # a drafted payee or category makes the entry a flow, a drafted counter-account a transfer (§5.9)
         # (a payee drafted as none is the user's decision of no payee: a drafted payee all the same)
         hints: dict[Field, Decided] = {
@@ -573,6 +577,8 @@ def _vote(row: _Row, rows: Mapping[int, _Row], world: World) -> Vote | None:
         purpose=s.purpose,
         booking_text=s.booking_text,
         mandate_ref=s.mandate_ref,
+        documented=row.document_id is not None,
+        document_merchant=row.linked.merchant_name if row.linked is not None else None,
     )
 
 
@@ -613,6 +619,7 @@ def _doc_txn(r: _Row, world: World) -> DocTxn | None:
         instructed_currency=s.instructed_currency.strip() if s.instructed_currency else None,
         payee_provider=world.docs.payee_providers.get(r.payee_id) if r.payee_id is not None else None,
         document_decided="document" in (r.derivation or {}),
+        is_transfer=r.type == "transfer",
     )
 
 
@@ -731,6 +738,8 @@ def _link_documents(rows: Sequence[_Row], world: World) -> list[_Row]:
         for x in rows:
             if x.src.id == r.src.id:
                 x.document_id, x.linked = doc_id, detail
+        if len(detail.lines) == 1:
+            r.line_no = detail.lines[0][0]  # a document of one line: the original takes it with the link
         linked.append(r)
     return linked
 
@@ -738,7 +747,7 @@ def _link_documents(rows: Sequence[_Row], world: World) -> list[_Row]:
 def _rederive_linked(rows: Sequence[_Row], linked: Sequence[_Row], world: World) -> None:
     """Settle step 3 (`settle/documents.py`): every value of the transactions just linked is derived again
     (`reopen`: the link is a change of the first value in field order), the link staying; the rest of their
-    units is read for the pairs that fall. History does not run for them (`history_for`)."""
+    units is read for the pairs that fall."""
     by_id = {r.id: r for r in rows}
     sources = {r.src.id for r in linked}
     wanted = {r.id for r in rows if r.src.id in sources}
@@ -777,9 +786,7 @@ def _settle(rows: Sequence[_Row], world: World) -> set[int]:
         for k, (members, st) in states.items():
             if st.confirmed and k not in taught:
                 taught.add(k)
-                world.history.add(
-                    v for r in members if r.document_id is None and (v := _vote(r, by_id, world)) is not None
-                )
+                world.history.add(v for r in members if (v := _vote(r, by_id, world)) is not None)
         pending = [r for _k, (members, st) in states.items() if not st.confirmed for r in members]
         rewrites = settle_rewrites(
             [_as_unconfirmed(r) for r in pending],
@@ -1247,6 +1254,7 @@ def _stored_facts(stored: StoredUnit, world: World) -> dict[int, DocumentFacts]:
                 instructed_currency=src.instructed_currency.strip() if src.instructed_currency else None,
                 payee_provider=world.docs.payee_providers.get(e.payee_id) if e.payee_id is not None else None,
                 document_decided="document" in e.derivation,
+                is_transfer=e.type == "transfer",
             )
         )
     return facts_of(txns, world.docs, {e.document_id for e in stored.entries if e.document_id})
@@ -1478,8 +1486,7 @@ def plan_unit(stored: StoredUnit, draft: UnitDraft, world: World) -> Plan:
     document_lines = {
         r.id: (r.document_id, r.line_no) for r in ordered if r.line_no is not None and r.document_id
     }
-    for r in ordered:
-        r.line_no = None  # no line is stored with an entry: settling reads every entry with all lines
+    # (each row keeps its line through settling: an entry's line is stored with it once committed, spec §5.8)
 
     # what settling leaves of it
     pulled = _settle(ordered, world)

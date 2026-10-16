@@ -709,6 +709,8 @@
               "purpose",
               "booking_text",
               "mandate_ref",
+              "document_merchant",
+              "document_line",
               "payee"
             ],
             "title": "Field",

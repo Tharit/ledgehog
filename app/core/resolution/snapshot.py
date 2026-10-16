@@ -1,8 +1,11 @@
 """The history snapshot (architecture §5.4, spec §5.9, classifiers/history.md §1).
 
-One query per settle loads every voter - a confirmed entry with a source transaction and no
-document - into Python indexes; `candidates()` then answers each key by dictionary lookup, inside
-the lookback, so resolving thousands of entries issues no query. Between rounds `add()` takes
+One query per settle loads every voter - a confirmed entry with a source transaction - into Python
+indexes; `candidates()` then answers each key by dictionary lookup, inside the lookback, so resolving
+thousands of entries issues no query. An entry whose transaction carries a document votes for the key
+`document_merchant` only (its bank fields describe the provider, not the purchase: classifiers/history.md
+§1), an undocumented one for the other five; the merchant lookup is a grouping of that small subset by the
+canonical merchant name, with no index in the database. Between rounds `add()` takes
 the entries a round confirmed, with no reload.
 
 Each entry is one vote. Only a paired transfer carries a counter-account (and that account's
@@ -78,6 +81,7 @@ class HistorySnapshot:
             "booking_text": defaultdict(_Bucket),
             "payee": defaultdict(_Bucket),
             "tokens": defaultdict(_Bucket),
+            "document_merchant": defaultdict(_Bucket),
         }
         self._ids: set[int] = set()
         self.add(votes)
@@ -103,6 +107,11 @@ class HistorySnapshot:
                 continue
             self._ids.add(v.entry_id)
             k = _sort_key(v)
+            if v.documented:
+                merchant = canonical_text(v.document_merchant)
+                if merchant:
+                    put("document_merchant", merchant, k, v)
+                continue
             put("counterparty_ref", canonical_text(v.counterparty_ref), k, v)
             put("counterparty_name", canonical_text(v.counterparty_name), k, v)
             put("booking_text", canonical_text(v.booking_text), k, v)
@@ -138,6 +147,8 @@ class HistorySnapshot:
         else:
             if key == "payee":
                 value: str | int | None = payee_id
+            elif key == "document_merchant":
+                value = canonical_text(entry.document_merchant)
             elif key == "counterparty_ref":
                 value = canonical_text(entry.counterparty_ref)
             elif key == "counterparty_name":
@@ -191,6 +202,9 @@ def touches(grown: Grown, entry: EntryInput, payee_id: int | None) -> bool:
     the token key only a vote similar enough to the entry (`TOKEN_REACH`) can matter.
     """
     b = grown.buckets
+    if entry.documented:  # asked on the document's merchant only
+        merchant = canonical_text(entry.document_merchant)
+        return bool(merchant) and ("document_merchant", merchant) in b
     # a key whose value the entry lacks is never asked (history.md §2), so an empty value reaches nothing
     for key, raw in (
         ("counterparty_ref", entry.counterparty_ref),
@@ -212,15 +226,15 @@ _VOTES = """
            CASE WHEN e.counterpart_entry_id IS NOT NULL THEN e.counter_account_id END AS counter_account_id,
            CASE WHEN e.counterpart_entry_id IS NOT NULL THEN ca.currency END AS counter_account_currency,
            CASE WHEN e.counterpart_entry_id IS NOT NULL THEN ca.closed_on END AS counter_account_closed_on,
-           s.counterparty_ref, s.counterparty_name, s.purpose, s.booking_text, s.mandate_ref
+           s.counterparty_ref, s.counterparty_name, s.purpose, s.booking_text, s.mandate_ref,
+           (vd.document_id IS NOT NULL) AS documented, x.merchant_name AS document_merchant
       FROM units AS u
       JOIN ledger_entry AS e ON e.id = u.id
       JOIN source_transaction AS s ON s.id = e.source_transaction_id
       LEFT JOIN account AS ca ON ca.id = e.counter_account_id
+      LEFT JOIN v_entry_document AS vd ON vd.ledger_entry_id = e.id
+      LEFT JOIN external_document AS x ON x.id = vd.document_id
      WHERE u.unit_ok
-       AND NOT EXISTS (SELECT 1 FROM ledger_entry AS d
-                        WHERE d.source_transaction_id = e.source_transaction_id
-                          AND d.document_id IS NOT NULL)
        {only}
 """
 _ALL_VOTES = text(_VOTES.format(units=units_sql(), only=""))
@@ -247,6 +261,8 @@ def _votes(rows: Iterable[Row[Any]]) -> list[Vote]:
                 purpose=m["purpose"],
                 booking_text=m["booking_text"],
                 mandate_ref=m["mandate_ref"],
+                documented=bool(m["documented"]),
+                document_merchant=m["document_merchant"],
             )
         )
     return out

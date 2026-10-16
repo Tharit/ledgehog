@@ -192,6 +192,15 @@ def test_reverse_matches_include_confirmed_any_payee_any_account_and_state(db_co
     assert first.payee_id == plain_payee and first.document_id is None and first.display_text is None
 
 
+def test_a_transfer_is_not_a_reverse_match(db_conn: Connection, acct: int):
+    other = seed.account(db_conn, name="Savings")
+    d = make_document(db_conn, total=-1000, on=D)
+    flow = txn(db_conn, acct, on=D)
+    txn(db_conn, acct, on=D, type="transfer", category_id=None, counter_account_id=other)
+    detail = get_document(db_conn, d)
+    assert detail is not None and [m.entry_id for m in detail.matches] == [flow]
+
+
 def test_reverse_matches_respect_amount_sign_window_and_duplicates(db_conn: Connection, acct: int):
     d = make_document(db_conn, total=-1000, on=D)  # the window is 7 days
     inside = txn(db_conn, acct, on=date(2026, 3, 17))

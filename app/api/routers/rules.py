@@ -70,7 +70,14 @@ RuleName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1,
 # an absurd size stops here
 ConditionValue = Annotated[str, StringConstraints(max_length=2000)]
 ConditionFieldName = Literal[
-    "counterparty_name", "counterparty_ref", "purpose", "booking_text", "mandate_ref", "payee"
+    "counterparty_name",
+    "counterparty_ref",
+    "purpose",
+    "booking_text",
+    "mandate_ref",
+    "document_merchant",
+    "document_line",
+    "payee",
 ]
 ConditionOpName = Literal["equals", "starts_with", "contains", "regex", "is"]
 Priority = Annotated[int, Field(strict=True, ge=-(2**31), le=2**31 - 1)]

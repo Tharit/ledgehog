@@ -1084,7 +1084,7 @@ export interface components {
              * Field
              * @enum {string}
              */
-            field: "counterparty_name" | "counterparty_ref" | "purpose" | "booking_text" | "mandate_ref" | "payee";
+            field: "counterparty_name" | "counterparty_ref" | "purpose" | "booking_text" | "mandate_ref" | "document_merchant" | "document_line" | "payee";
             /**
              * Op
              * @enum {string}

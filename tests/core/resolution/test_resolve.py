@@ -229,3 +229,33 @@ def test_resolved_is_immutable_and_ordered() -> None:
     assert list(r) == ["type", "payee", "category"]
     with pytest.raises(TypeError):
         r["payee"] = Decided(1, "x", {})  # type: ignore[index]
+
+
+# ---- a document implies a flow (spec §5.9 field order) ----
+
+
+def test_a_documented_entry_is_never_proposed_a_transfer_by_the_own_account_pass() -> None:
+    accounts = [account(1), account(2, ref=OWN_REF)]
+    e = entry(counterparty_ref=OWN_REF, documented=True)
+    assert dict(resolve(e, accounts=accounts, classifiers=[])) == {}
+    undocumented = resolve(entry(counterparty_ref=OWN_REF), accounts=accounts, classifiers=[])
+    assert values(undocumented) == {"type": "transfer", "counter_account": 2}  # the control
+
+
+def test_a_transfer_type_proposal_is_dropped_for_a_documented_entry_and_the_next_pass_is_asked() -> None:
+    rules = Script("rule", {"type": "transfer", "counter_account": 2})
+    history = Script("history", {"type": "flow", "payee": 5})
+    r = run([rules, history], entry(documented=True))
+    assert r["type"] == Decided("flow", "history", {"by": "history", "v": "flow"})
+    assert "counter_account" not in r
+    assert run([rules, history])["type"].value == "transfer"  # without a document the rule decides
+
+
+def test_a_counter_account_proposal_makes_no_transfer_for_a_documented_entry() -> None:
+    assert dict(run([Script("rule", {"counter_account": 2})], entry(documented=True))) == {}
+    assert run([Script("rule", {"counter_account": 2})])["type"].value == "transfer"
+
+
+def test_a_documented_entry_still_resolves_a_flow_from_a_payee() -> None:
+    r = run([Script("rule", {"type": "transfer", "payee": 5})], entry(documented=True))
+    assert r["type"].value == "flow" and r["payee"].value == 5

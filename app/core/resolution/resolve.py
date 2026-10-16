@@ -93,13 +93,17 @@ class _Run:
             ):
                 kind = "transfer" if field == "counter_account" else "flow"
                 return Decided(kind, f.pass_name, f.basis)
-        if (p0 := self.own_account()) is not None:
+        # a document implies a flow (spec §5.9 field order): no pass proposes a transfer for a transaction
+        # with a linked or picked document, whichever it is (own account, rule, history): it is dropped
+        documented = self.entry.documented
+        if not documented and (p0 := self.own_account()) is not None:
             return p0[0]
         for c in self.classifiers:
-            if (p := self.ask(c, "type")) is not None:
+            p = self.ask(c, "type")
+            if p is not None and not (documented and p.value == "transfer"):
                 return Decided(str(p.value), c.pass_name, p.basis)
             # a pass that proposes a counter-account proposes a transfer, a payee or category a flow
-            if (p := self.counter_proposal(c)) is not None:
+            if not documented and (p := self.counter_proposal(c)) is not None:
                 return Decided("transfer", c.pass_name, p.basis)
             for field in _FLOW_FIELDS:
                 p = self.ask(c, field)

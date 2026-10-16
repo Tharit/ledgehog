@@ -8,17 +8,20 @@ resolved WITHOUT a document, which is what eligibility is judged on. The pure ma
 (`core/matching/documents.py`) finds the automatic links (exactly one candidate, a candidate of no other
 transaction) and ONE statement writes them on the original entry: `document_id` and the key `document`,
 `matcher_decision` for a document of one line, `matcher_proposal` for one of several (the unit is reviewed
-once and a commit makes it `user`). The `trg_le_version` bumps the version on a `document_id` change, as the
-schema says: a link is structural. Writing nothing for a transaction that has no automatic link is what makes
-a second settle write nothing (I37). A linked entry leaves the considered set, so rounds terminate. A later
-round runs the step only if step 1 wrote something since (`SettleRun.documents_dirty`): a payee is all
-matching reads of an entry.
+once and a commit makes it `user`); for a document of exactly one line the same statement writes the entry's
+`document_line_id` (spec §5.8: the line is applied with the link; a document of several lines gives none, the
+split along the lines is a commit's business). The `trg_le_version` bumps the version on a `document_id` or
+`document_line_id` change, as the schema says: a link is structural. Writing nothing for a transaction that
+has no automatic link is what makes a second settle write nothing (I37). A linked entry leaves the
+considered set, so rounds terminate. A later round runs the step only if step 1 wrote something since
+(`SettleRun.documents_dirty`): a payee is all matching reads of an entry.
 
 Step 3, `resolve_after_link`, derives again every standing value after the link for the transactions step 2
 linked in this settle (spec §5.9: the link is a change of the first value in field order), a targeted
 resolution of just those entries (all entries of the transaction: a split's other entries read the same
 document). The link itself stays: it is not a field of `rederive`'s walk but its input, read through the
-enrichment of `core/resolution/enrich.py`, which the loader applies; history does not run for them.
+fields `document_merchant` and `document_line` the loader fills (`core/resolution/load.py`); history asks a
+documented entry the merchant key only, for the category.
 """
 
 from __future__ import annotations
@@ -59,6 +62,7 @@ _GATED = text(
       JOIN source_transaction AS st ON st.id = e.source_transaction_id
       JOIN payee AS p ON p.id = e.payee_id
      WHERE p.document_provider IS NOT NULL
+       AND e.type IS DISTINCT FROM 'transfer'
        AND st.duplicate_of IS NULL
        AND NOT jsonb_exists(e.derivation, 'document')
        AND NOT EXISTS (SELECT 1 FROM ledger_entry AS lo
@@ -66,19 +70,21 @@ _GATED = text(
     """
 )
 
+# per document: how many lines it has and, for what matters of a document of one, that line's id
 _LINE_COUNTS = text(
-    "SELECT document_id, count(*) AS n FROM external_document_line WHERE document_id = ANY(:ids)"
-    " GROUP BY document_id"
+    "SELECT document_id, count(*) AS n, min(id) AS line_id FROM external_document_line"
+    " WHERE document_id = ANY(:ids) GROUP BY document_id"
 )
 
 _LINK = text(
     """
     UPDATE ledger_entry AS e
-       SET document_id = v.doc,
+       SET document_id = v.doc, document_line_id = v.line,
            derivation = e.derivation || jsonb_build_object(
                'document', jsonb_build_object('pass', v.pass, 'basis', '{}'::jsonb))
-      FROM unnest(CAST(:ids AS bigint[]), CAST(:docs AS bigint[]), CAST(:passes AS text[]))
-           AS v(id, doc, pass)
+      FROM unnest(CAST(:ids AS bigint[]), CAST(:docs AS bigint[]), CAST(:passes AS text[]),
+                  CAST(:lines AS bigint[]))
+           AS v(id, doc, pass, line)
      WHERE e.id = v.id
     RETURNING e.id
     """
@@ -147,9 +153,17 @@ def match_documents_step(conn: Connection) -> StepOutcome:
         return StepOutcome()
     ids = sorted(links)
     docs = [links[i] for i in ids]
-    lines = {int(r.document_id): int(r.n) for r in conn.execute(_LINE_COUNTS, {"ids": docs})}
-    passes = ["matcher_proposal" if lines.get(d, 0) > 1 else "matcher_decision" for d in docs]
-    written = [int(i) for i in conn.execute(_LINK, {"ids": ids, "docs": docs, "passes": passes}).scalars()]
+    counts = {
+        int(r.document_id): (int(r.n), int(r.line_id)) for r in conn.execute(_LINE_COUNTS, {"ids": docs})
+    }
+    passes = ["matcher_proposal" if counts.get(d, (0, 0))[0] > 1 else "matcher_decision" for d in docs]
+    # a document of exactly one line gives the original entry that line, in the same write as the link; one of
+    # none or of several gives none (the split along the lines is a commit's business, spec §5.8)
+    only = [counts[d][1] if d in counts and counts[d][0] == 1 else None for d in docs]
+    written = [
+        int(i)
+        for i in conn.execute(_LINK, {"ids": ids, "docs": docs, "passes": passes, "lines": only}).scalars()
+    ]
     run.linked.extend(written)
     return StepOutcome(touched=written)
 

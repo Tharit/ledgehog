@@ -19,7 +19,8 @@ class DocTxn:
     Amounts are signed minor units; `instructed_amount` is in `instructed_currency` (spec §3.8).
     `payee_provider` is the `document_provider` of the entry's payee, or None. The eligibility facts
     of §1 are those the caller judged: `duplicate`, `confirmed` (the unit, spec I20) and
-    `document_decided` (the original entry holds a link or the user's "none").
+    `document_decided` (the original entry holds a link or the user's "none"), and `is_transfer` (the original
+    entry is typed as a transfer: a document explains a flow, spec §5.8).
     """
 
     entry_id: int
@@ -33,12 +34,14 @@ class DocTxn:
     duplicate: bool = False
     confirmed: bool = False
     document_decided: bool = False
+    is_transfer: bool = False
 
     @property
     def considered(self) -> bool:
-        """§1: not a duplicate, unconfirmed, a payee with a provider, no decided document."""
+        """§1: not a duplicate, unconfirmed, a payee with a provider, no decided document, not a transfer."""
         return (
             not self.duplicate
+            and not self.is_transfer
             and not self.confirmed
             and self.payee_provider is not None
             and not self.document_decided
@@ -160,12 +163,16 @@ def suggestions(
 def reverse_matches(document: DocInput, transactions: Iterable[DocTxn], window: int) -> list[DocTxn]:
     """§9: for a document carried by no entry, the non-duplicate transactions on any account whose
     amount matches by §3 and whose booked_on is within the window of occurred_on; confirmed ones and
-    any payee included. Ordered by distance in days, then entry id."""
+    any payee included; a transaction typed as a transfer is not offered. Ordered by distance in days, then
+    entry id."""
     if document.carried:
         return []
     found = [
         t
         for t in transactions
-        if not t.duplicate and amount_matches(t, document) and _within(t, document, window)
+        if not t.duplicate
+        and not t.is_transfer
+        and amount_matches(t, document)
+        and _within(t, document, window)
     ]
     return sorted(found, key=lambda t: (_distance(t, document), t.entry_id))

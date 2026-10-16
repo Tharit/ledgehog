@@ -72,6 +72,22 @@ class World:
                     {"d": doc, "n": n, "t": description, "a": amount},
                 )
 
+    def line_ids(self, doc: int) -> list[int]:
+        with self.engine.connect() as conn:
+            return [
+                int(i)
+                for i in conn.execute(
+                    text("SELECT id FROM external_document_line WHERE document_id = :d ORDER BY line_no"),
+                    {"d": doc},
+                ).scalars()
+            ]
+
+    def line_of(self, entry: int) -> int | None:
+        with self.engine.connect() as conn:
+            return conn.execute(
+                text("SELECT document_line_id FROM ledger_entry WHERE id = :i"), {"i": entry}
+            ).scalar_one()
+
     def merchant(self, doc: int, name: str) -> None:
         with self.engine.begin() as conn:
             conn.execute(
@@ -228,13 +244,25 @@ def test_a_standing_unit_whose_document_is_covered_is_linked_not_confirmed_with_
     assert row.review_flags == []
 
 
-def test_the_link_derives_every_later_value_again_on_the_enriched_input(world: World) -> None:
-    """A rule on the card text gives way to rules on the merchant name and on a line's description."""
+def test_the_link_derives_every_later_value_again_from_the_document_fields(world: World) -> None:
+    """A rule on the card text keeps matching; rules on the merchant and on the entry's line, ordered before
+    it or in later fields, decide what they decide once the link gives the entry those fields."""
     with world.engine.begin() as conn:
         seeed, gadgets = make_payee(conn, "Seeed", None), make_category(conn, "Gadgets")
-        rs.rule(conn, "seeed", "payee", seeed, conditions=(rs.name_is("Seeed Studio"),))
         rs.rule(
-            conn, "cables", "category", gadgets, conditions=(rs.cond("purpose", "contains", "USB cable"),)
+            conn,
+            "seeed",
+            "payee",
+            seeed,
+            conditions=(rs.cond("document_merchant", "equals", "Seeed Studio"),),
+            priority=50,
+        )
+        rs.rule(
+            conn,
+            "cables",
+            "category",
+            gadgets,
+            conditions=(rs.cond("document_line", "contains", "USB cable"),),
         )
     entry, doc = world.charge(), world.document(total=-1000)
     world.lines(doc, ("USB cable", -1000))
@@ -249,52 +277,124 @@ def test_the_link_derives_every_later_value_again_on_the_enriched_input(world: W
     }
 
 
-def test_a_rule_on_the_merchant_beats_the_bank_text_and_the_card_rule_no_longer_matches(world: World) -> None:
+def test_the_card_rule_keeps_matching_after_the_link_and_a_merchant_rule_ordered_before_it_wins(
+    world: World,
+) -> None:
     with world.engine.begin() as conn:
         seeed = make_payee(conn, "Seeed", None)
-        rs.rule(conn, "seeed", "payee", seeed, conditions=(rs.name_is("Seeed Studio"),), priority=200)
+        rs.rule(
+            conn,
+            "seeed",
+            "payee",
+            seeed,
+            conditions=(rs.cond("document_merchant", "equals", "Seeed Studio"),),
+            priority=50,
+        )
     entry, doc = world.charge(), world.document(total=-1000)
     world.merchant(doc, "Seeed Studio")
     settle(world.engine)
     assert world.row(entry).payee_id == seeed
-    # without a merchant name the bank's text stays the input: the card rule still decides the payee
+    # another merchant: no rule on it, the descriptor rule decides after the link as it did before it
     other, doc2 = world.charge(amount=-555), world.document(total=-555, external_id="n")
+    world.merchant(doc2, "Somebody Else")
     settle(world.engine)
     assert world.row(other).document_id == doc2 and world.row(other).payee_id == world.provider
+    assert world.row(other).derivation["payee"]["basis"] == {"rule_id": world.rule}
 
 
-def test_history_does_not_run_for_a_documented_transaction(world: World) -> None:
-    """A confirmed voter on the merchant's name would propose a payee and category by history: not for a
-    transaction with a document; a control without one is proposed by history."""
+def test_the_source_text_is_not_rewritten_by_the_document(world: World) -> None:
+    """A rule on the merchant name as the source text sees it does not match a document's merchant."""
     with world.engine.begin() as conn:
-        seeed, gadgets = make_payee(conn, "Seeed", None), make_category(conn, "Gadgets")
+        seeed = make_payee(conn, "Seeed", None)
+        rs.rule(conn, "seeed", "payee", seeed, conditions=(rs.name_is("Seeed Studio"),), priority=50)
+    entry, doc = world.charge(), world.document(total=-1000)
+    world.merchant(doc, "Seeed Studio")
+    settle(world.engine)
+    assert world.row(entry).document_id == doc and world.row(entry).payee_id == world.provider
+
+
+def test_a_documented_transaction_is_asked_history_on_the_merchant_key_only(world: World) -> None:
+    """A confirmed voter with the same raw text would propose by history (the control gets it); the documented
+    transaction ignores the raw keys, and takes the category of the confirmed entry of the same merchant."""
+    with world.engine.begin() as conn:
+        gadgets, other = make_category(conn, "Gadgets"), make_category(conn, "Other")
         src = make_source(
             conn,
             world.account,
             amount=-4242,
             booked_on=D - timedelta(days=30),
-            columns={"counterparty_name": "Seeed Studio"},
+            columns={"counterparty_name": "PAYPAL *SEEEDDEVELO"},
         )
         make_entry(
             conn,
             src,
-            category_id=gadgets,
-            payee_id=seeed,
+            category_id=other,
+            payee_id=world.provider,
             derivation=json.dumps({**STANDING, "document": {"pass": "matcher_decision"}}),
         )
         control_src = make_source(
-            conn, world.account, amount=-999, booked_on=D, columns={"counterparty_name": "Seeed Studio"}
+            conn,
+            world.account,
+            amount=-999,
+            booked_on=D,
+            columns={"counterparty_name": "PAYPAL *SEEEDDEVELO"},
         )
         control = make_entry(conn, control_src, type=None)
+    # the voter above carries no document: it votes on the raw keys. Now a documented voter by merchant
+    voter_doc = world.document(total=-4000, external_id="v", on=D - timedelta(days=20))
+    world.merchant(voter_doc, "Seeed Studio")
+    with world.engine.begin() as conn:
+        src2 = make_source(
+            conn,
+            world.account,
+            amount=-4000,
+            booked_on=D - timedelta(days=20),
+            columns={"counterparty_name": "PAYPAL *OTHERTEXT"},
+        )
+        make_entry(
+            conn,
+            src2,
+            category_id=gadgets,
+            payee_id=world.provider,
+            document_id=voter_doc,
+            derivation=json.dumps({**STANDING, "document": {"pass": "user"}}),
+        )
     entry, doc = world.charge(), world.document(total=-1000)
     world.merchant(doc, "Seeed Studio")
     settle(world.engine)
     row = world.row(entry)
     assert row.document_id == doc
-    assert (row.type, row.payee_id, row.category_id) == (None, None, None)
-    assert (
-        world.row(control).derivation["category"]["pass"] == "history"
-    )  # history works, here it did not run
+    # the rule's payee (descriptor), the category from the merchant key, not from the raw-text voter
+    assert (row.type, row.payee_id, row.category_id) == ("flow", world.provider, gadgets)
+    assert row.derivation["category"]["pass"] == "history"
+    assert row.derivation["category"]["basis"]["matched_on"] == "document_merchant"
+    assert world.row(control).derivation["category"]["basis"]["matched_on"] != "document_merchant"
+
+
+def test_a_one_line_document_gives_the_original_entry_its_line_in_the_same_write(world: World) -> None:
+    entry, doc = world.charge(), world.document(total=-1000)
+    world.lines(doc, ("USB cable", -1000))
+    settle(world.engine)
+    assert world.line_of(entry) == world.line_ids(doc)[0]
+
+
+def test_a_document_of_several_lines_or_of_none_gives_no_line(world: World) -> None:
+    several, doc = world.charge(), world.document(total=-1000, external_id="s")
+    world.lines(doc, ("USB cable", -400), ("Case", -600))
+    none_, doc2 = world.charge(amount=-500), world.document(total=-500, external_id="n")
+    settle(world.engine)
+    assert world.row(several).document_id == doc and world.line_of(several) is None
+    assert world.row(none_).document_id == doc2 and world.line_of(none_) is None
+
+
+def test_the_line_and_the_link_bump_the_version_once_and_settle_is_idempotent(world: World) -> None:
+    entry, doc = world.charge(), world.document(total=-1000)
+    world.lines(doc, ("USB cable", -1000))
+    version = world.row(entry).version
+    settle(world.engine)
+    assert world.row(entry).version == version + 1
+    second = settle(world.engine)
+    assert second.touched_entry_ids == () and world.row(entry).version == version + 1
 
 
 def test_a_second_settle_writes_nothing_and_moves_no_version(world: World) -> None:

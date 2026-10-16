@@ -96,20 +96,6 @@ def test_none_writes_the_key_without_a_link(scene: Scene, docs: Docs) -> None:
     assert row.document_id is None and row.derivation["document"] == {"pass": "user"}
 
 
-def test_documents_move_between_the_entries_of_a_unit_in_one_commit(scene: Scene, docs: Docs) -> None:
-    (_a, (x,)), (_b, (y,)) = scene.transfer_pair()
-    d1, d2 = docs.document(total=-1000, external_id="one"), docs.document(total=-900, external_id="two")
-    scene.tx(
-        lambda c: [
-            c.execute(text("UPDATE ledger_entry SET document_id = :d WHERE id = :e"), {"d": doc, "e": entry})
-            for entry, doc in ((x, d1), (y, d2))
-        ]
-    )
-    plan, _ = preview_then_commit(scene, scene.draft(x, pick(scene, x, d2), pick(scene, y, d1)))
-    assert plan.row(x).document_id == d2 and plan.row(y).document_id == d1
-    assert (scene.row(x).document_id, scene.row(y).document_id) == (d2, d1)
-
-
 # ---- what a commit refuses ------------------------------------------------------------------------------
 
 

@@ -4,7 +4,8 @@ The twin of the `doc_awaited`, `doc_suggested` and `doc_candidate` columns of th
 (`core/resolution/confirmed.py`),
 pinned to that SQL by `tests/core/units/test_state_documents.py`. The candidate rule is the matcher's
 (`core/matching/documents.py`), not restated here; what is added is waiting (§7) and the gate: the test
-applies only to the original entry of a transaction whose payee has a provider, that has no `document` key.
+applies only to the original entry of a transaction whose payee has a provider, that has no `document` key
+and is not typed as a transfer (a document explains a flow).
 """
 
 from __future__ import annotations
@@ -108,7 +109,7 @@ def document_facts(
     """The facts of the original entry `txn`. `others` are the other original entries with a provider and
     no decided document (the transactions a document could be shared with); `txn.document_decided` and a
     missing provider close the gate."""
-    if txn.payee_provider is None or txn.document_decided:
+    if txn.payee_provider is None or txn.document_decided or txn.is_transfer:
         return DocumentFacts()
     return DocumentFacts(
         awaited=awaited(txn.payee_provider, txn.booked_on, window, sources, providers),

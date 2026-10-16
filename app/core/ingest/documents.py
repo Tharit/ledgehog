@@ -286,18 +286,20 @@ def _reresolve_carriers(conn: Connection, changed: Sequence[int]) -> list[int]:
 
 
 def reresolve_unconfirmed_carrier(conn: Connection, entry_ids: Sequence[int]) -> list[int]:
-    """Resolve the unconfirmed ones among `entry_ids` afresh: the link and its `document` key are
-    dropped (settling makes the link again), and every value, a user's included, is derived again
-    (spec §5.5, §5.9). A confirmed entry is left alone (I20). Returns the entries rewritten.
+    """Resolve the unconfirmed ones among `entry_ids` afresh: the link, its `document` key and the entry's
+    line of the document are dropped in the one statement (settling makes the link again, and the line with it
+    for a document of one line), and every value, a user's included, is derived again (spec §5.5, §5.9).
+    A confirmed entry is left alone (I20). Returns the entries rewritten.
 
     The afresh resolution (`resolve_afresh`, as the entry form uses it) runs on the entry's input WITHOUT
-    the document: the link is dropped, so the input is the source row's, not the enrichment the old link (and
-    the old content of the document) gave, and history runs again. The loader is asked for exactly that
-    (`enrich=False`). Settling then links again where the changed document still matches uniquely, and its
-    step 3 derives the values once more from the document as it now is (documents.md §4, §5).
+    the document: the link is dropped, so the input has no document merchant and no line (neither the old
+    link's nor the old content of the document's), and history asks its raw keys again. The loader is asked
+    for exactly that (`with_document=False`). Settling then links again where the changed document still
+    matches uniquely, and its step 3 derives the values once more from the document as it now is
+    (documents.md §4, §5).
     """
     wanted = set(entry_ids)
-    rows = [r for r in load_unconfirmed(conn, enrich=False) if r.input.entry_id in wanted]
+    rows = [r for r in load_unconfirmed(conn, with_document=False) if r.input.entry_id in wanted]
     if not rows:
         return []
     accounts = load_accounts(conn)
@@ -320,7 +322,8 @@ def reresolve_unconfirmed_carrier(conn: Connection, entry_ids: Sequence[int]) ->
         derivation = {k: v for k, v in new_derivation(row.derivation, resolved).items() if k != "document"}
         conn.execute(
             text(
-                "UPDATE ledger_entry SET document_id = NULL, type = :type, payee_id = :payee,"
+                "UPDATE ledger_entry SET document_id = NULL, document_line_id = NULL, type = :type,"
+                " payee_id = :payee,"
                 " category_id = :category, counter_account_id = :counter,"
                 " derivation = CAST(:d AS jsonb) WHERE id = :id"
             ),

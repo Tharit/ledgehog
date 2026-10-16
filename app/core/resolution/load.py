@@ -15,7 +15,6 @@ from sqlalchemy.sql.elements import TextClause
 from app.core.domain.source import SourceFields
 from app.core.plugins.classifier import AccountFact, Condition, EntryInput, RuleSpec
 from app.core.resolution.confirmed import units_binds, units_sql
-from app.core.resolution.enrich import LinkedDocument, enriched_input
 
 
 def load_accounts(conn: Connection) -> list[AccountFact]:
@@ -72,7 +71,7 @@ class UnconfirmedEntry:
     description: str | None = None
     source: SourceFields | None = None  # never the raw record
     # the document its TRANSACTION carries (the original entry holds the link, a split's other entries share
-    # it): `input` is enriched with it (enrich.py) and history does not run for the entry (spec §5.9)
+    # it): `input` carries its merchant and the entry's own line (spec §5.8, §5.9)
     document_id: int | None = None
 
 
@@ -90,13 +89,14 @@ def _movements(where: str, *, of_entries: bool = False) -> TextClause:
            e.counterpart_entry_id AS counterpart_id, (e.counterpart_entry_id IS NOT NULL) AS paired,
            (u.first_id = e.id) AS original,
            vd.document_id AS document_id, d.merchant_name AS doc_merchant,
-           (SELECT jsonb_agg(jsonb_build_array(l.line_no, l.amount, l.description) ORDER BY l.line_no)
-              FROM external_document_line AS l WHERE l.document_id = d.id) AS doc_lines
+           el.description AS doc_line
       FROM units AS u
       JOIN ledger_entry AS e ON e.id = u.id
       JOIN source_transaction AS s ON s.id = e.source_transaction_id
       LEFT JOIN v_entry_document AS vd ON vd.ledger_entry_id = e.id
       LEFT JOIN external_document AS d ON d.id = vd.document_id
+      LEFT JOIN external_document_line AS el
+        ON el.id = e.document_line_id AND el.document_id = vd.document_id
      {where}
      ORDER BY e.booked_on, e.id
     """
@@ -109,12 +109,13 @@ _ALL_MOVEMENTS = _movements("")
 _OF_ENTRIES = _movements("", of_entries=True)
 
 
-def load_unconfirmed(conn: Connection, *, enrich: bool = True) -> list[UnconfirmedEntry]:
+def load_unconfirmed(conn: Connection, *, with_document: bool = True) -> list[UnconfirmedEntry]:
     """The movement entries of every unconfirmed unit (I20: a confirmed unit is never read here).
 
-    The input of an entry whose transaction carries a document is enriched with it (`enrich.py`), unless
-    `enrich` is False: the input as the source row has it, for a caller that drops the link."""
-    return _load(conn, _UNCONFIRMED, enrich=enrich)
+    The input of an entry whose transaction carries a document has the document's merchant, and the entry's
+    own line where that line belongs to the carrier's document (spec §5.8), unless `with_document` is False:
+    the input without any document, for a caller that drops the link."""
+    return _load(conn, _UNCONFIRMED, with_document=with_document)
 
 
 def load_movements(conn: Connection) -> list[UnconfirmedEntry]:
@@ -129,20 +130,16 @@ def load_units_of(conn: Connection, entry_ids: Sequence[int]) -> list[Unconfirme
     return _load(conn, _OF_ENTRIES, extra={"ids": list(entry_ids)})
 
 
-def _linked(r: Any) -> LinkedDocument | None:
-    if r.document_id is None:
-        return None
-    return LinkedDocument(
-        merchant_name=r.doc_merchant,
-        lines=tuple((int(n), int(a), str(d)) for n, a, d in (r.doc_lines or ())),
-    )
+def _merchant(name: str | None) -> str | None:
+    return name if name is not None and name.strip() else None
 
 
 def _load(
-    conn: Connection, query: TextClause, *, enrich: bool = True, extra: Mapping[str, Any] | None = None
+    conn: Connection, query: TextClause, *, with_document: bool = True, extra: Mapping[str, Any] | None = None
 ) -> list[UnconfirmedEntry]:
     out: list[UnconfirmedEntry] = []
     for r in conn.execute(query, {**units_binds(), **(extra or {})}):
+        documented = with_document and r.document_id is not None
         raw = EntryInput(
             entry_id=r.id,
             account_id=r.account_id,
@@ -158,10 +155,13 @@ def _load(
             instructed_currency=r.instructed_currency,
             end_to_end_id=r.end_to_end_id,
             instructed_amount=r.instructed_amount,
+            documented=documented,
+            document_merchant=_merchant(r.doc_merchant) if documented else None,
+            document_line=r.doc_line if documented else None,
         )
         out.append(
             UnconfirmedEntry(
-                input=enriched_input(raw, _linked(r)) if enrich else raw,
+                input=raw,
                 type=r.type,
                 payee_id=r.payee_id,
                 category_id=r.category_id,

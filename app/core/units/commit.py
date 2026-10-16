@@ -170,9 +170,15 @@ _UPDATE = text(
     "UPDATE ledger_entry SET type = :type, payee_id = :payee, category_id = :category,"
     " counter_account_id = :counter, amount = :amount, description = :description, note = :note,"
     " counterpart_entry_id = :counterpart, document_id = :document,"
+    # a write that changes the link clears the entry's line of the old document in the same statement; the
+    # units build writes the new line with it (spec §5.8)
+    " document_line_id = CASE WHEN document_id IS DISTINCT FROM CAST(:document AS bigint)"
+    " THEN NULL ELSE document_line_id END,"
     " derivation = CAST(:derivation AS jsonb) WHERE id = :id"
 )
-_FREE_DOCUMENT = text("UPDATE ledger_entry SET document_id = NULL WHERE id = ANY(:ids)")
+_FREE_DOCUMENT = text(
+    "UPDATE ledger_entry SET document_id = NULL, document_line_id = NULL WHERE id = ANY(:ids)"
+)
 
 
 _LOCK_ROUNDS = 3

@@ -216,6 +216,7 @@ _OTHERS = text(
       JOIN source_transaction AS st ON st.id = e.source_transaction_id
       JOIN payee AS p ON p.id = e.payee_id
      WHERE p.document_provider IS NOT NULL
+       AND e.type IS DISTINCT FROM 'transfer'
        AND st.duplicate_of IS NULL
        AND NOT jsonb_exists(e.derivation, 'document')
        AND e.id <> ALL(CAST(:closure AS bigint[]))

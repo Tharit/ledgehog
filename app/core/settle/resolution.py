@@ -168,12 +168,6 @@ def _checked(row: UnconfirmedEntry, new: Resolved) -> Rewrite | None:
     return _rewrite(row, new)
 
 
-def history_for(row: UnconfirmedEntry, history: HistorySource | None) -> HistorySource | None:
-    """History does not run for a transaction with a linked or picked document (spec §5.9): the bank's
-    fields then describe the provider, not the purchase. Every caller that rederives goes through here."""
-    return None if row.document_id is not None else history
-
-
 def _rederived(
     row: UnconfirmedEntry,
     *,
@@ -188,7 +182,7 @@ def _rederived(
         current,
         accounts=accounts,
         classifiers=classifiers,
-        history=history_for(row, history),
+        history=history,
         exclude_entry_ids=frozenset({row.input.entry_id}),
         reopen=reopen,
     )

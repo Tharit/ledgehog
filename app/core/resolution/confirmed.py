@@ -13,7 +13,8 @@ A unit is confirmed when every entry of it is complete and carries only standing
   so an unpaired transfer is never confirmed);
 * no derivation key whose pass is not standing (`history`, `llm`, `matcher_proposal`, or a key
   without a pass);
-* no document open (spec §6, documents.md §1, §7): its original entry does not await a document (an active
+* no document open (spec §6, documents.md §1, §7; a transaction typed as a transfer is not considered, a
+  document explains a flow, spec §5.8): its original entry does not await a document (an active
   document source has not covered `booked_on` plus the document window) and has no suggestions (documents
   that match it, with no automatic link possible). The test applies only to a transaction's original entry
   whose payee has a `document_provider` and which has no `document` key, so it is GATED to that small subset
@@ -46,6 +47,7 @@ _DOC_WINDOW = "current_setting('ledger.document_window_days')::int"
 # The original entry of a source transaction (I31), whose payee has a provider, with no `document` key:
 # the only entry the document test looks at (documents.md §1).
 _GATE = """pp.document_provider IS NOT NULL
+                                AND le.type IS DISTINCT FROM 'transfer'
                                 AND NOT jsonb_exists(le.derivation, 'document')
                                 AND NOT EXISTS (SELECT 1 FROM ledger_entry AS lo
                                                  WHERE lo.source_transaction_id = le.source_transaction_id
@@ -88,6 +90,7 @@ _PAIRS = (
       JOIN external_document AS d
         ON d.provider = op.document_provider AND d.currency = ost.{cur} AND d.total = ost.{amt}
      WHERE NOT jsonb_exists(o.derivation, 'document')
+       AND o.type IS DISTINCT FROM 'transfer'
        AND NOT EXISTS (SELECT 1 FROM ledger_entry AS oo
                         WHERE oo.source_transaction_id = o.source_transaction_id AND oo.id < o.id)
        AND NOT EXISTS (SELECT 1 FROM ledger_entry AS cr WHERE cr.document_id = d.id)

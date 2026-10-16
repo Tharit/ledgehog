@@ -73,6 +73,7 @@ def test_ineligible_transactions_have_no_candidates() -> None:
         {"confirmed": True},
         {"document_decided": True},
         {"payee_provider": None},
+        {"is_transfer": True},  # a document explains a flow (spec §5.8)
     ):
         assert document_candidates(txn(**kw), [doc()], W) == []
 
@@ -132,6 +133,13 @@ def test_reverse_matches_include_confirmed_any_payee_and_any_account() -> None:
     ]
     assert [t.entry_id for t in reverse_matches(doc(), ts, W)] == [1, 6, 7, 2]
     assert reverse_matches(doc(carried=True), ts, W) == []
+
+
+def test_a_transfer_is_not_a_reverse_match_nor_does_it_block_a_link() -> None:
+    ts = [txn(1, is_transfer=True, payee_provider=None), txn(2)]
+    assert [t.entry_id for t in reverse_matches(doc(), ts, W)] == [2]
+    # the transfer is not among the transactions considered, so the other one has the document alone
+    assert automatic_links([txn(1, is_transfer=True), txn(2)], [doc()], W) == {2: 101}
 
 
 def test_reverse_matches_sign_and_instructed() -> None:

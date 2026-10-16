@@ -377,3 +377,74 @@ def test_a_tie_never_proposes(n: int, m: int) -> None:
     votes = [vote(counterparty_ref="CR", category_id=1) for _ in range(n)]
     votes += [vote(counterparty_ref="CR", category_id=2) for _ in range(n)]
     assert run("category", entry(counterparty_ref="CR"), votes) is None
+
+
+# ---- key 6: the document's merchant (spec §5.9, history.md §2) ----
+
+
+def documented(**kw: object) -> EntryInput:
+    kw.setdefault("documented", True)
+    kw.setdefault("document_merchant", "CloudNotes GmbH")
+    kw.setdefault("counterparty_name", "PAYPAL *CLOUDNOTES")
+    return entry(**kw)
+
+
+def doc_votes(n: int, **kw: object) -> list[Vote]:
+    kw.setdefault("documented", True)
+    kw.setdefault("document_merchant", "cloudnotes gmbh")
+    kw.setdefault("category_id", 5)
+    return flows(n, **kw)
+
+
+def test_key6_proposes_the_category_of_the_same_merchant_canonically() -> None:
+    p = run("category", documented(document_merchant="CloudNotes, GmbH"), doc_votes(2))
+    assert p == Proposal(
+        "category", 5, {"matched_on": "document_merchant", "agree": 2, "of": 2, "since": "2026-03-01"}
+    )
+
+
+def test_key6_is_for_the_category_only() -> None:
+    votes = doc_votes(3, payee_id=9)
+    assert run("category", documented(), votes) is not None
+    for f in ("type", "payee", "counter_account"):
+        assert run(f, documented(), votes) is None  # type: ignore[arg-type]
+
+
+def test_key6_needs_a_strict_majority() -> None:
+    votes = doc_votes(2, category_id=5) + doc_votes(2, category_id=6)
+    assert run("category", documented(), votes) is None  # a marketplace: no majority, history is silent
+    assert (
+        run("category", documented(), doc_votes(2, category_id=5) + doc_votes(1, category_id=6)) is not None
+    )
+
+
+def test_key6_counts_only_votes_of_the_same_merchant() -> None:
+    other = doc_votes(3, document_merchant="Somebody Else", category_id=8)
+    p = run("category", documented(), doc_votes(1) + other)
+    assert p is not None and (p.value, p.basis["agree"], p.basis["of"]) == (5, 1, 1)
+    assert run("category", documented(), other) is None
+
+
+def test_an_undocumented_entry_never_sees_key6_and_documented_votes_do_not_vote_for_keys_1_to_5() -> None:
+    # same raw text on both sides, so every raw key would match: only an undocumented voter counts for them
+    raw = {"counterparty_name": "PAYPAL *CLOUDNOTES", "counterparty_ref": "R1", "booking_text": "CARD"}
+    votes = doc_votes(3, **raw)
+    e = entry(counterparty_name="PAYPAL *CLOUDNOTES", counterparty_ref="R1", booking_text="CARD")
+    assert run("category", e, votes) is None
+    hist = ListHistory(votes)
+    H.propose("category", e, ClassifierContext(history=hist))
+    assert "document_merchant" not in hist.calls
+
+
+def test_a_documented_entry_is_not_asked_on_keys_1_to_5() -> None:
+    hist = ListHistory([vote(counterparty_ref="R1", counterparty_name="PAYPAL *CLOUDNOTES", category_id=7)])
+    e = documented(counterparty_ref="R1", booking_text="CARD")
+    assert H.propose("category", e, ClassifierContext(history=hist)) is None
+    assert hist.calls == ["document_merchant"]
+
+
+def test_a_document_without_a_merchant_asks_nothing() -> None:
+    hist = ListHistory(doc_votes(2))
+    e = documented(document_merchant=None)
+    assert H.propose("category", e, ClassifierContext(history=hist)) is None
+    assert hist.calls == []

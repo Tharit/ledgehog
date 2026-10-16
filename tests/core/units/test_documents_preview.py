@@ -14,7 +14,7 @@ from collections.abc import Iterator
 from datetime import timedelta
 
 import pytest
-from sqlalchemy import Connection
+from sqlalchemy import Connection, text
 
 from app.core.importers.providers import reset_document_providers
 from app.core.units.commit import CommitRefused
@@ -189,20 +189,21 @@ def test_a_confirmed_unit_is_left_alone(scene: Scene, docs: Docs) -> None:
     assert scene.row(entry).document_id is None
 
 
-# ---- enrichment and history ------------------------------------------------------------------------
+# ---- the document as an input, and history ------------------------------------------------------------
 
 
 def _seeed_rules(scene: Scene) -> tuple[int, int]:
     def go(c: Connection) -> tuple[int, int]:
         seeed, gadgets = make_payee(c, "Seeed", None), make_category(c, "Gadgets")
-        rs.rule(c, "seeed", "payee", seeed, conditions=(rs.name_is("Seeed Studio"),))
-        rs.rule(c, "cables", "category", gadgets, conditions=(rs.cond("purpose", "contains", "USB cable"),))
+        merchant = rs.cond("document_merchant", "equals", "Seeed Studio")
+        rs.rule(c, "seeed", "payee", seeed, conditions=(merchant,), priority=50)
+        rs.rule(c, "cables", "category", gadgets, conditions=(rs.cond("document_line", "contains", "USB"),))
         return int(seeed), int(gadgets)
 
     return scene.tx(go)  # type: ignore[no-any-return]
 
 
-def test_enrichment_changes_the_derived_values_the_preview_shows(scene: Scene, docs: Docs) -> None:
+def test_the_document_fields_change_the_derived_values_the_preview_shows(scene: Scene, docs: Docs) -> None:
     seeed, gadgets = _seeed_rules(scene)
     entry, doc = docs.charge(), docs.document(total=-1000)
     docs.lines(doc, ("USB cable", -1000))
@@ -221,7 +222,7 @@ def test_enrichment_changes_the_derived_values_the_preview_shows(scene: Scene, d
     assert (stored.payee_id, stored.category_id, stored.document_id) == (seeed, gadgets, doc)
 
 
-def test_a_stored_link_enriches_the_input_of_a_draft_walk(scene: Scene, docs: Docs) -> None:
+def test_a_stored_link_is_an_input_of_a_draft_walk(scene: Scene, docs: Docs) -> None:
     seeed, gadgets = _seeed_rules(scene)
     entry, doc = docs.charge(), docs.document(total=-1000)
     docs.lines(doc, ("USB cable", -1000))
@@ -234,17 +235,42 @@ def test_a_stored_link_enriches_the_input_of_a_draft_walk(scene: Scene, docs: Do
     preview_then_commit(scene, scene.draft(entry))
 
 
-def test_history_does_not_run_for_a_documented_transaction(scene: Scene, docs: Docs) -> None:
-    scene.confirmed("Seeed Studio", "Gadgets", amount=-4242, on=D - timedelta(days=30))
+def test_a_documented_transaction_is_asked_history_on_the_merchant_key_only(scene: Scene, docs: Docs) -> None:
+    # a confirmed entry of the same bank text and one of the same merchant, with a document
+    scene.confirmed("PAYPAL *SEEEDDEVELO", "Raw", amount=-4242, on=D - timedelta(days=30))
+    voter, voter_doc = (
+        docs.charge(-900, on=D - timedelta(days=20)),
+        docs.document(total=-900, external_id="v"),
+    )
+    docs.merchant(voter_doc, "Seeed Studio")
+    gadgets = scene.category("Gadgets")
+    scene.tx(
+        lambda c: c.execute(
+            text(
+                "UPDATE ledger_entry SET type = 'flow', category_id = :c, document_id = :d,"
+                " derivation = derivation || CAST(:k AS jsonb) WHERE id = :e"
+            ),
+            {
+                "c": gadgets,
+                "d": voter_doc,
+                "e": voter,
+                "k": json.dumps({k: {"pass": "user"} for k in ("type", "payee", "category", "document")}),
+            },
+        )
+    )
     entry, doc = docs.charge(), docs.document(total=-1000)
     docs.merchant(doc, "Seeed Studio")
-    _src, (control,) = scene.movement(-999, counterparty="Seeed Studio", on=D)
+    _src, (control,) = scene.movement(-999, counterparty="PAYPAL *SEEEDDEVELO", on=D)
     plan = scene.preview(entry)
     r = plan.row(entry)
     assert r.document_id == doc
-    assert r.fields["category"].value is None and r.fields["category"].evidence is None
+    # the category comes from the merchant key, not from the raw-text voter of the same bank text
+    assert r.fields["category"].value == gadgets
+    assert r.fields["category"].evidence is not None and r.fields["category"].evidence.pass_name == "history"
+    assert r.fields["category"].evidence.basis["matched_on"] == "document_merchant"
     control_plan = scene.preview(control)
-    assert control_plan.row(control).fields["category"].evidence is not None  # history works without one
+    control_evidence = control_plan.row(control).fields["category"].evidence
+    assert control_evidence is not None and control_evidence.basis["matched_on"] != "document_merchant"
     preview_then_commit(scene, scene.draft(entry))
 
 
