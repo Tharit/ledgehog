@@ -89,7 +89,10 @@ description shows an empty cell. Whether imports get a description at creation
 is open (§10). The API's derived `display_text` is not used by the column.
 
 The entries of one unit (spec §6) are shown together wherever a unit is shown:
-a split's entries under their source, a pair's two legs side by side.
+a split's entries under their source. In the work panel that is one group per
+source transaction, by date; a leg's partner is a one-line pointer to the group
+above or below, and a counter-leg the commit would create is a dashed,
+read-only ghost group after the others.
 
 **In the ledger list, every entry is a row, and a unit is never a row of its
 own.** Filtering, counting, paging and tagging all act on entries
@@ -127,7 +130,7 @@ Every derived value can show its basis, rendered from the derivation key
 
 | Key | Rendered as |
 |---|---|
-| `own_account` | "own account (IBAN match)" |
+| `own_account` | "own account" |
 | `rule` | "rule: *its name*", linking to the rule; "rule deleted" where the rule is gone |
 | `history` | "history: 3 of 4 since Mar 2026" |
 | `llm` | "suggested by the model", rationale on demand |
@@ -138,6 +141,9 @@ Every derived value can show its basis, rendered from the derivation key
 | `user` on an empty payee | "No payee" shown muted, with "set by you" |
 | `counterpart`, `matcher_decision` | "paired with *account*" / "matched automatically" |
 | `counterpart`, `user` | "paired with *account*" / "set by you" |
+| a partner or counter-leg picked in the draft | "picked by you" |
+| a partner the preview proposes | "proposed: exact match" / "proposed: closest candidate" |
+| a counter-leg the preview proposes | "proposed: no open offer" |
 | the counter-account a pair set (basis `{"from": "counterpart"}`) | "from its partner", with no clear control |
 
 Proposals (history, model, matcher proposal) are visually distinct from
@@ -165,7 +171,8 @@ source said, rendered from `source_transaction.raw` by an importer-specific
 widget (spec §3.1), with the normalised columns above it — counterparty and
 reference, purpose, booking text, end-to-end id, mandate reference, instructed
 amount — and the run it arrived in (importer, account, time). A user-authored
-row shows "entered by hand" instead, a counter-leg "created for *partner*". A
+row shows "entered by hand" instead, a stored counter-leg too. "Created for
+*partner*" appears only in the ghost block of a counter-leg not yet committed. A
 duplicate shows the row it duplicates. Provenance is read-only everywhere.
 
 ## 5. Keyboard model
@@ -236,9 +243,9 @@ row; a resolved row stays in place, marked (§7).
 
 - **One preview pattern.** The panel and every operation marked *previewed*
   (architecture §4.1) render the dry-run response the same way: the resulting
-  state first ("confirmed", "waits for its partner", "stays unclassified" —
-  spec §6), then a consequence list grouped by effect: *created*, *changed*,
-  *returns to review*, *deleted*, *left behind*. Each item is a row in the
+  state first ("confirmed", "waits for its partner", "stays unclassified", "stays without a
+  partner", "proposals to check" — spec §6), then a consequence list grouped by effect: *created*, *changed*,
+  *returns to review*, *deleted*, *unpaired*, *left behind*. Each item is a row in the
   shape of §4.1 and can be opened.
 - **A rule's preview rows carry their source.** Each row is an entry with its
   `source` (architecture §4.1); beside the entry's own fields the row shows the
@@ -333,8 +340,7 @@ row; a resolved row stays in place, marked (§7).
 - the ledger list's columns: their order (in particular whether the amount
   comes before the description) and which columns give way first at a narrow
   width (the prototype's table simply overflows);
-- how the ledger list counts what is new since it was fetched ("12 new"), and
-  how a joined split and a transfer's partner are drawn (§4.1);
+- how the ledger list counts what is new since it was fetched ("12 new");
 - whether the ledger list shows the account's facts (§4.4) when one account is
   filtered; the prototype leaves them to the account view;
 - where a quiet notice appears (the prototype reserves one line under the
@@ -393,8 +399,12 @@ counter-leg are fields of the draft editor, not inline forms. The transfer block
 partner summary — for an unpaired leg the proposed offer, preselected, or "no
 partner yet" — with a "Choose partner…" trigger (for a paired leg "Pick another
 partner…") that opens the **offers popover**; offers are never listed inline.
-The popover scrolls where there are many offers, and a pick is a draft edit.
-There is no "Unpair" control: the remedies are another partner, converting the
+The popover groups the offers as the server orders them (open, paired
+elsewhere, new), has a search box that filters them, and scrolls where there
+are many; "Load more candidates" widens the window for one pick, and a pick is
+a draft edit. A picked partner shows "Reset to proposal". Picking an offer of
+another amount splits the difference off the larger leg automatically, a fee
+shown in the preview, never a separate step. There is no "Unpair" control: the remedies are another partner, converting the
 leg to a flow, or changing its counter-account. "Add account" is a form dialog.
 
 ### 11.2 Forms and keys

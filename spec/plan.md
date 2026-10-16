@@ -147,7 +147,7 @@ Rough sequence:
    automatic links needing uniqueness both ways, suggestions, waiting by
    document coverage, enrichment, the split along a document's lines in the
    preview, and the document list with its reverse matches.
-10. FinTS importer: discovery, first-fetch start, PIN/TAN, per-account
+10. FinTS importer: discovery, first-fetch start, PIN/TAN; UI for importers, per-account
    fetches, sync task and SSE.
 11. Dashboard with data age, the one report, CSV export.
 

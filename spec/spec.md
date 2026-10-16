@@ -712,8 +712,9 @@ The review queue groups such entries by the currency they need:
 ```
 
 Creating the account from there — prefilled with USD — creates the account
-and nothing else. The preview of each of the three then proposes it, the only
-account the currency rule allows, and each is confirmed in one keystroke; each commit creates a counter-leg for the negated instructed
+and nothing else. The unit it was added from takes it as the user's choice;
+each of the others offers it in its counter-account picker, and is confirmed
+on its own. Each commit creates a counter-leg for the negated instructed
 amount, exactly the dollars received.
 
 ```
@@ -1582,7 +1583,8 @@ them:
 
 - **legs and entries on its counter-account** within the matching window,
   with the opposite sign and of any amount, its own partner aside: unpaired
-  transfer legs and untyped entries first, then legs paired elsewhere, shown
+  transfer legs and untyped entries first (an untyped entry only if it is its
+  source's original, I31), then legs paired elsewhere, shown
   with their partner; within each group exact matches first, then by distance
   in date;
 - for a leg without a counter-account, **every opposite-sign candidate in the
@@ -1590,7 +1592,8 @@ them:
   order; a pick sets the counter-account as the pair's (above), with a key of
   pass `user`;
 - for a leg without a partner whose counter-account is unsynced, **a
-  counter-leg**, which the commit creates (below).
+  counter-leg**, which the commit creates (below), on an account that is open
+  on the leg's date and takes the instructed currency.
 
 An **open offer** is an offer of the first group that could still be this
 leg's: an unpaired transfer leg or an untyped entry on the counter-account,
@@ -1600,7 +1603,9 @@ what the preview proposes (below).
 
 For a partner booked later than the window allows, the picker can **widen the
 window** for that one pick, by a bounded request parameter of at most 90 days
-that the server checks the pick against. Automatic pairing keeps the window.
+that the server checks the pick against: the preview against the window
+requested, the commit against the 90-day cap, so a pick the widened preview
+accepted commits. Automatic pairing keeps the window.
 
 A pick joins the picked row to the unit being reviewed. Picking a leg paired
 elsewhere breaks that pair too, so up to two former partners — the reviewed
@@ -1616,7 +1621,9 @@ The preview proposes an exact open offer where there is one, or else, where
 the leg has no open offer at all, the counter-leg where one is offered. Open
 offers of another amount are listed first but never proposed: where there are
 any and none is exact, nothing is proposed, and the user picks one of them or
-the counter-leg. A leg paired elsewhere is never proposed, only picked. The user may pick another. A pick is the user's
+the counter-leg. A leg paired elsewhere is never proposed, only picked. The user may pick another. **In the preview a
+proposal counts as the pick it proposes:** the pair, the resulting state and the keys are shown as if
+chosen, and an explicit pick, counter-leg or re-resolve overrides it. A pick is the user's
 choice and carries a key of pass `user`. An offer that is not a
 candidate by the filters above is never paired automatically. Two picks have
 further consequences, both previewed:
@@ -1658,8 +1665,10 @@ entry (§5.4).
 
 **Its amount.** In the same currency, the negated amount of its partner (I10).
 Across currencies, the partner's instructed amount, negated, where there is
-one; otherwise the user types the amount received: the counter-leg carries no
-estimate, because conversion happens only in reporting (I27). A cross-currency destination without an
+one; otherwise the user types the amount received, a positive magnitude whose sign
+is the opposite of the partner's, and which is refused where the amount is
+already known: the counter-leg carries no estimate, because conversion happens
+only in reporting (I27). A cross-currency destination without an
 instructed amount only ever comes from a user's choice — machine proposals obey
 the currency rule — so a user is always there to enter it. A later correction
 goes through the entry form, like any user-authored amount.
@@ -1668,8 +1677,10 @@ goes through the entry form, like any user-authored amount.
 leg paired in the same currency with a user-authored leg that is its source's
 only entry, on an unsynced account — a counter-leg, or a withdrawal typed by
 hand — the commit sets that source's amount, and so its entry's, to the
-negated new amount, and the pair stays equal. The preview shows it. Following
-is not a change of the row's input (§5.9): its values stay. On an account
+negated new amount, and the pair stays equal. The preview shows it, as a
+`changed` consequence of the follower. Nothing follows if the draft breaks the
+pair, or if the new amount has the other sign, where the pair shows invalid,
+as below. Following is not a change of the row's input (§5.9): its values stay. On an account
 that has since become synced the row is left as it is, and the remedies below
 apply.
 
@@ -1693,10 +1704,11 @@ created automatically: creating an account is a user action (§5.9). The review
 queue explains the leg when read — "needs an account in USD", derived from its
 instructed currency — and offers the existing accounts in that currency or
 "add account", prefilled with the currency. Adding the account creates
-nothing else; the legs that need it then offer it first — where the currency
-rule allows exactly one account, the preview preselects it, and it becomes a
-decision of pass `user` when the unit is committed, not a stored proposal —
-and each is confirmed on its own (§6).
+nothing else; the unit it was added from takes it as the user's choice, and
+the legs that need it offer it first in the counter-account picker. Nothing
+proposes it: a counter-account is proposed only from evidence (history, a
+rule), the same for every currency, and the first assignment is what history
+learns from. Each unit is confirmed on its own (§6).
 
 A leg **needs an account** when it is an unpaired transfer leg with no
 counter-account, has an instructed currency, and no open non-own account in
@@ -2259,7 +2271,7 @@ Every field of a ledger entry falls into one of four groups:
 | Group | Fields | Editable |
 |---|---|---|
 | **Copied** from its source transaction or account | `account_id`, `currency`, `booked_on`, `value_on`; the amounts, as a sum (I3) | Never — an amount only by a split; a user-authored source through the entry form or set to the sum of its entries by a commit (§5.6), or a user-authored single-entry leg on an unsynced account following its partner (§5.7) |
-| **Derived by a pass** — always carrying a key (below) | `document_id`, `type`, `payee_id`, `category_id`, `counter_account_id`, `counterpart_entry_id` | In the review panel |
+| **Derived by a pass** — carrying a key wherever they hold a value (below) | `document_id`, `type`, `payee_id`, `category_id`, `counter_account_id`, `counterpart_entry_id` | In the review panel |
 | **Derived from other rows** | the amount of a derived entry | Never directly — change the record |
 | **Authored** by a human | `description`, `note`, tags, the split allocation | In the review panel, tags too; tags also directly outside it |
 
@@ -2519,7 +2531,9 @@ user's choices for the unit, laid over its stored state:
 
 Every function the panel shows — resolution (§5.9), allocation (§5.8), transfer
 offers (§5.7) and document suggestions (§5.8) — takes the stored state with the
-draft over it, and nothing is written until the unit is committed. The draft is
+draft over it, and nothing is written until the unit is committed. The preview
+shows the unit as it will stand after settling, so a partner that settling would
+pair with a leg of the draft joins it. The draft is
 resolved top-down: the document determines every entry's input and, for a
 transaction that is not split, proposes the split along its lines (§5.8) —
 in the draft, an entry made from a line is resolved with that line, every
@@ -2537,7 +2551,7 @@ contradicts a choice above it.
 transaction, imported or user-authored. The draft's unit
 is the anchor's closure under the draft — picking a partner adds its whole
 source transaction, breaking a pair removes the partner's — and an entry that
-leaves it is shown as a consequence ("returns to review", "is deleted"), not
+leaves it is shown as a consequence ("returns to review", "is deleted", "is unpaired"), not
 as part of the unit. A split made on a partner's side leaves with it, and is
 committed with it.
 
@@ -2559,7 +2573,9 @@ missing. It is refused only where the result would be invalid, or where the
 unit's structure changed since the preview: the chosen partner was paired
 elsewhere, or the chosen document was linked elsewhere or has a newer
 version (§5.5). Proposals
-that changed in the meantime do not matter: the user commits what they saw.
+that changed in the meantime do not matter: the user commits what they saw. A partner or
+counter-leg the preview proposed is accepted as chosen: where the commit cannot make it, the
+commit is refused with the problem a chosen one would raise.
 **Tag changes are applied in the same transaction, after the entries exist**,
 idempotently: adding a present tag and removing an absent one are no-ops. A
 commit that changes only tags is valid. A tag deleted meanwhile refuses the
@@ -2567,7 +2583,7 @@ commit as a conflict naming the tag. An entry the draft removes takes its tags
 with it. Tag changes are never listed as consequences and affect no state,
 flag or proposal.
 The preview shows the state the commit leads to — "confirmed", "waits for its
-partner", "stays unclassified" — so the one keystroke is never a surprise.
+partner", "stays unclassified", "stays without a partner", "proposals to check" — so the one keystroke is never a surprise.
 
 Nothing in a draft outlives the panel except through a commit. Committing a
 waiting unit is how its work is kept: the leg, its split and its destination

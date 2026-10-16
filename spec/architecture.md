@@ -240,6 +240,9 @@ GET    /api/units/queue                        the units not confirmed, in
                                                by pass 0 and rules appear only
                                                while they wait for a partner or
                                                a document
+GET    /api/units/queue/new-count              how many units entered the queue
+                                               since a queue snapshot: one cheap
+                                               pass, for the passive "N new"
 GET    /api/units/{entry_id}                   a unit's stored state
 POST   /api/units/preview                      stored state + draft → the unit a
                                                commit would write: rows (with
@@ -523,17 +526,35 @@ move no `ledger_entry.version` in any case, so no version is involved in them.
 **Pairing in preview and commit** (`spec.md` §5.7). The draft carries a `pairing`
 field per transfer leg, with a mode: `keep`, `pick` (a partner entry id),
 `counter_leg` (a temporary id and the amount received) or `reresolve`. The
-preview response carries, per transfer leg, its **offers**: each with a kind
+preview response carries, on each row that is a transfer leg (`rows[].transfer`),
+its `state` (`paired`, `waiting`, `unmatched`, `needs_account`), the account waited
+for or the currency needed, its partner and its **offers**: each with a `kind`
 (`open_leg`, `untyped_entry`, `paired_elsewhere`, `counter_leg`), `exact`,
-`proposed`, its group order, the partner summary of a leg paired elsewhere and
-effect hints (typed as transfer, the difference that becomes a flow, the pair it
-breaks), and `has_more` where the list is cut. The window for one pick is a
-request parameter, at most 90 days, and the server validates the pick against
-it. The unit's state distinguishes `waiting` from `unmatched` and carries the
-account waited for; the queue's `needs_account` entries carry the currency
-needed. A pick or an offer the server does not recognise is refused with a
-problem code: `partner_not_offered`, `partner_in_unit`, `counter_leg_not_offered`,
-`received_amount_required`, `received_amount_sign`, `counter_leg_account_synced`.
+`proposed`, the partner summary of a leg paired elsewhere (`paired_with`) and an
+`effect` (typed as transfer, the difference that becomes a flow, the pairs it
+breaks), in group order; the counter-leg offer carries its date, purpose and
+amount, or that the amount received is needed. The leg also carries the
+`proposal` and `has_more` where candidates lie beyond the window. A proposal the
+preview takes as the pick it proposes is marked on the leg (`proposed_pick`, or
+`proposed_counter_leg`), and a counter-leg, proposed or drafted, is a row of its
+own with `counter_leg_for` naming the leg; the id of a proposed one is issued by
+the server, a negative far from those the client issues. The window for one pick is
+the request parameter `window_days`, at most 90 days, on preview and commit: the
+preview checks a pick against the window requested, the commit against the 90-day
+cap, and `window_days` on a commit names the window its proposals were shown for.
+The unit's state distinguishes `waiting` from `unmatched` and carries the account
+waited for; the queue's `needs_account` entries carry the currency needed. A pick
+or an offer the server does not recognise is refused with a problem code:
+`partner_not_offered`, `partner_in_unit`, `second_transfer`,
+`counter_leg_not_offered`, `counter_leg_account_synced`,
+`received_amount_required`, `received_amount_not_needed`. An amount received that
+is not positive (`received_amount_sign`) is a core error; over the API it is a 422
+validation error.
+
+A commit takes a proposal as the user's choice only where the request carries
+versions for the whole closure of the proposed partner; and where it cannot make a
+partner or counter-leg the preview proposed, it is refused with the problem a
+chosen one would raise.
 
 The commit's closure and locks extend to the pick: the closure includes the
 picked partner's own closure and the former partners, and the lock set the
@@ -1043,7 +1064,9 @@ Transaction boundaries:
   nor race document ingest, and writes still run alongside each other. After
   the settle lock come account locks, in ascending id order, then row locks,
   in ascending id order: a commit locks the accounts of every row its preview
-  showed, then the rows. Settling takes no account lock at all — it creates no
+  showed, then the rows. Where the plan under the locks needs accounts not yet
+  locked (a counter-leg's), the commit runs again with them, at most three
+  rounds, and then answers with the "try again" conflict. Settling takes no account lock at all — it creates no
   rows and recomputes no derived entries; the writes do that in their own
   transaction. `settle(engine)` opens its own transaction after the write it
   follows, and sets the transaction-local `ledger.settling` so that its
@@ -1058,8 +1081,7 @@ Transaction boundaries:
      the resolution without a document;
   3. resolution again of the fields after a link step 2 made;
   4. transfer pairing (`pair_transfers`), in booking-date order (`spec.md`
-     §5.7), over the unpaired transfer legs of the covered units and their
-     candidates; the matching window is the connection setting
+     §5.7), over every unpaired transfer leg, in every round; the matching window is the connection setting
      `ledger.matching_window_days`, which core reads from the connection like
      `ledger.max_rate_age` and never from configuration. A pair released by
      step 1 can be made again in the same round;

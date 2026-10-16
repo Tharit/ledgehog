@@ -2153,7 +2153,7 @@ holding only proposals it shows what is already there.
 on waiting units, booking lags beyond the matching window, unmatched legs on
 synced counter-accounts, and how much of the recurring load rules carry.
 
-## D158 Wrong pairs are corrected by picking the right one — *partly superseded by D161*
+## D158 Wrong pairs are corrected by picking the right one — *partly superseded by D161 and D221*
 
 Partly supersedes D157. Offers contained only unpaired legs, so a set of wrong
 pairs that blocked each other — A1 paired with B2, A2 with B3, A3 with B1 —
@@ -3798,9 +3798,11 @@ Spec §5.7, §5.9; architecture §4.1, §5.2.
 - **Placeholder end-to-end ids** `NOTPROVIDED`, `NONREF` and empty, case-insensitively, count as absent.
 - **Needs an account:** an unpaired transfer leg with no counter-account, an instructed currency and no open
   non-own account in that currency, by the one currency-rule function. A leg without an instructed currency and
-  without a counter-account stays in pending review.
-- **The one fitting account is a preselection** in the preview that becomes a `user` decision on commit, not a stored
-  proposal.
+  without a counter-account stays in pending review. The test is one function in core (the preview's), restated in
+  SQL for the queue's sections and covered by the section tests.
+- **No preselection of the one fitting account:** a counter-account is proposed only from evidence (history, a rule,
+  later the LLM pass), the same for every currency. The account just added is the user's choice for the unit it
+  was added from and is offered first on the others.
 - **A cross-currency counter-leg carries no estimate:** conversion happens only in reporting (I27); the user types
   the amount received.
 - **Widening the window for one pick** is a request parameter of at most 90 days, checked by the server.
@@ -3839,7 +3841,7 @@ inside Needs an account is the one defined grouping.
 
 ## D221 A swap takes one pick only where the freed legs keep their own counter-account
 
-Narrows the claim in D153 and D178 ("a swap takes one pick"). A counter-account a pair set is not an independent
+Narrows the claim in D158 ("a swap takes one pick"). A counter-account a pair set is not an independent
 decision: it was inferred from a partner that a pick now rejects, so it leaves with the pair (§5.7) and a leg left
 behind keeps only what it had before. Keeping it would pin the leg to a wrong account, so the matcher's counter-account
 filter (I33) could never offer the right partner, and a re-pair would clash with I10.

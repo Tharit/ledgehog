@@ -43,13 +43,17 @@ section, with the count per section.
   3 transfers need an account in USD          [ Add account ]
   ```
 
-  The new account is then offered first on each, and each is confirmed on
-  its own (`spec.md` §5.7).
+  One unit reads "A transfer needs an account in USD". The new account is then
+  offered first on each, and each is confirmed on its own (`spec.md` §5.7). The
+  queue stays a snapshot: after an account is added, the group shows a quiet
+  notice, "3 units can now be completed: Refresh", and refetches only on
+  request.
 - **Waiting** — entries expecting information that has not had its chance to
   arrive (`spec.md` §6): a partner leg, which cannot be confirmed until
   paired, and a document, which can. Waiting is a hint; the unit stays
   editable. A unit waiting for a partner gives its reason in one line:
-  "Waiting for <account>, synced through <date>".
+  "Waiting for <account>, synced through <date>", or "…, not synced yet" for
+  an account never fetched.
 
 **Unpaired legs show their offers** (`spec.md` §5.7) — unpaired legs and
 entries on the counter-account first, exact matches leading, then legs paired
