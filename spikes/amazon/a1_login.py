@@ -51,7 +51,8 @@ class RelayIO(IODefault):
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--domain", required=True)
-    ap.add_argument("--count", type=int, default=10)
+    ap.add_argument("--count", type=int, default=10,
+                    help="max orders to keep; history pages (~10 orders) are fetched until reached")
     ap.add_argument("--time-filter", default="months-3")
     args = ap.parse_args()
 
@@ -107,8 +108,12 @@ def main() -> None:
             return
         print("signed in (headless)")
 
-        orders = AmazonOrders(session).get_order_history(
-            time_filter=args.time_filter, full_details=True, keep_paging=False)[: args.count]
+        # limit: stop paging once enough orders are collected (whole pages of ~10), so details
+        # (one extra request per order) are only fetched for what we keep
+        page = AmazonOrders(session).get_order_history_page(
+            time_filter=args.time_filter, full_details=True, limit=args.count)
+        orders = page.items[: args.count]
+        print(f"more orders available beyond --count: {page.has_more or len(page.items) > args.count}")
         dump = [o.to_dict() for o in orders]
         out = HERE / "out"
         out.mkdir(exist_ok=True)
