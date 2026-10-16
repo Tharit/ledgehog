@@ -1,0 +1,123 @@
+"""A1b: headless login (container-compatible), credentials relayed like a web UI would.
+
+Models the real backend: AmazonSession.login() blocks in a worker thread; whenever Amazon asks
+something (OTP device choice, OTP code, captcha) the RelayIO turns it into a pending "question"
+event and blocks until an answer arrives. Here the main thread plays the web UI via the terminal;
+in the app it would be an SSE/WebSocket event out + a POST /answer in.
+
+Nothing is persisted: credentials come from getpass (never env/disk) and the cookie jar lives in
+a temp dir that is deleted at the end. JS challenges are handled by headless Playwright
+(PlaywrightAcicForm / PlaywrightJSAuthForm); an AWS WAF *puzzle* is NOT solved (needs a paid
+solver or a human) and surfaces as an error - that is one of the things this spike measures.
+
+    .venv/bin/python a1b_headless_login.py --domain amazon.de --count 10
+"""
+import argparse
+import getpass
+import json
+import queue
+import shutil
+import tempfile
+import threading
+from pathlib import Path
+
+from amazonorders.conf import AmazonOrdersConfig
+from amazonorders.orders import AmazonOrders
+from amazonorders.session import AmazonSession, IODefault
+
+from a1_browser_login import summarize
+
+HERE = Path(__file__).parent
+ANSWER_TIMEOUT = 300
+
+
+class RelayIO(IODefault):
+    """Turns the library's blocking echo()/prompt() calls into events + a blocking answer queue."""
+
+    def __init__(self) -> None:
+        self.events: queue.Queue = queue.Queue()
+        self.answers: queue.Queue = queue.Queue()
+
+    def echo(self, msg: str, **kwargs) -> None:
+        if msg:
+            self.events.put({"kind": "info", "msg": msg})
+
+    def prompt(self, msg: str, type=None, **kwargs):
+        self.events.put({"kind": "question", "msg": msg,
+                         "choices": kwargs.get("choices"), "img_url": kwargs.get("img_url")})
+        return self.answers.get(timeout=ANSWER_TIMEOUT)
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--domain", required=True)
+    ap.add_argument("--count", type=int, default=10)
+    ap.add_argument("--time-filter", default="months-3")
+    args = ap.parse_args()
+
+    username = input("Amazon e-mail: ")
+    password = getpass.getpass("Amazon password: ")
+
+    jar_dir = Path(tempfile.mkdtemp(prefix="amazon-spike-"))
+    try:
+        config = AmazonOrdersConfig(data={
+            "domain": args.domain,
+            "cookie_jar_path": str(jar_dir / "cookies.json"),
+            "auth_forms_classes": [
+                "amazonorders.contrib.browser.playwright.PlaywrightAcicForm",
+                "amazonorders.contrib.browser.playwright.PlaywrightJSAuthForm",
+            ],
+        })
+        relay = RelayIO()
+        session = AmazonSession(username=username, password=password, io=relay, config=config)
+        del password
+
+        result: dict = {}
+
+        def worker() -> None:
+            try:
+                session.login()
+            except Exception as e:  # surfaced to the "UI" below
+                result["error"] = e
+
+        t = threading.Thread(target=worker, daemon=True)
+        t.start()
+
+        while t.is_alive() or not relay.events.empty():
+            try:
+                ev = relay.events.get(timeout=0.5)
+            except queue.Empty:
+                continue
+            if ev["kind"] == "info":
+                print(f"[amazon] {ev['msg']}")
+                continue
+            if ev["img_url"]:  # captcha: the UI would render this image
+                img = session.session.get(ev["img_url"]).content
+                p = HERE / "out"
+                p.mkdir(exist_ok=True)
+                (p / "captcha.png").write_bytes(img)
+                print(f"[captcha image saved to {p / 'captcha.png'}]")
+            print(f"[question] {ev['msg']}" + (f" choices={ev['choices']}" if ev["choices"] else ""))
+            relay.answers.put(input("--> "))
+
+        if "error" in result:
+            print(f"LOGIN FAILED: {type(result['error']).__name__}: {result['error']}")
+            return
+        print("signed in (headless)")
+
+        orders = AmazonOrders(session).get_order_history(
+            time_filter=args.time_filter, full_details=True, keep_paging=False)[: args.count]
+        dump = [o.to_dict() for o in orders]
+        out = HERE / "out"
+        out.mkdir(exist_ok=True)
+        (out / f"orders-{args.domain}.json").write_text(
+            json.dumps(dump, indent=2, default=str, ensure_ascii=False))
+        print(f"fetched {len(orders)} orders -> out/orders-{args.domain}.json")
+        summarize(dump)
+    finally:
+        shutil.rmtree(jar_dir, ignore_errors=True)
+        print("cookie jar deleted")
+
+
+if __name__ == "__main__":
+    main()
