@@ -161,7 +161,7 @@ def main() -> int:
         for acc in info.get("accounts", []):
             print("  account:", {k: acc.get(k) for k in
                                  ("iban", "account_number", "subaccount_number", "product_name", "currency", "type", "owner_name_1")},
-                  "ops:", sorted(k for k, v in (acc.get("supported_operations") or {}).items() if v))
+                  "ops:", sorted(getattr(k, "name", str(k)) for k, v in (acc.get("supported_operations") or {}).items() if v))
 
         # 3. SEPA accounts (the objects get_transactions needs).
         accounts = ask_tan(client, client.get_sepa_accounts())
