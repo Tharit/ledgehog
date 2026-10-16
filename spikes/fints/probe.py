@@ -105,6 +105,28 @@ def patch_force_tan() -> None:
 
     C._need_twostep_tan_for_segment = need
 
+    # Experiment: Consorsbank answers HKKAZ+HKTAN with 9010 + 3076 ('no SCA needed') but keeps the
+    # dialog open. Treat that as "exempt, resend without HKTAN" and resend the plain job in the
+    # same dialog (the library would raise and give up).
+    from fints.exceptions import FinTSClientError
+
+    orig_send = C._send_with_possible_retry
+
+    def send_with_fallback(self, dialog, command_seg, resume_func):
+        if command_seg.header.type not in FORCE_TAN:
+            return orig_send(self, dialog, command_seg, resume_func)
+        try:
+            return orig_send(self, dialog, command_seg, resume_func)
+        except FinTSClientError as e:
+            if "could not fetch BPD" not in str(e) or not dialog.open:
+                raise
+            print(f"   (bank rejected {command_seg.header.type}+HKTAN with 9010; resending without HKTAN in the same dialog)")
+            with dialog:
+                response = dialog.send(command_seg)
+            return resume_func(command_seg, response)
+
+    C._send_with_possible_retry = send_with_fallback
+
 
 def patch_login_tan_detection() -> None:
     """Consorsbank attaches its 0030 'Sicherheitsfreigabe erforderlich' to the HKIDN segment, not
