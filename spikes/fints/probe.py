@@ -66,6 +66,34 @@ def patch_hnshk_profile_v2() -> None:
     M.sign_prepare = sign_prepare
 
 
+def patch_login_tan_detection() -> None:
+    """Consorsbank attaches its 0030 'Sicherheitsfreigabe erforderlich' to the HKIDN segment, not
+    to the HKTAN segment the library looks at, so the login TAN challenge (HITAN, process 4) is
+    ignored and the next request fails with 9120. Re-detect it from the init response."""
+    from fints.client import NeedTANResponse
+    from fints.dialog import FinTSDialog
+    from fints.segments.dialog import HIRMS2
+
+    orig = FinTSDialog.init
+
+    def init(self, *extra):
+        retval = orig(self, *extra)
+        client = self.client
+        if client.init_tan_response is None:
+            codes = {r.code for seg in retval.find_segments(HIRMS2) for r in seg.responses}
+            hitan = retval.find_segment_first("HITAN")
+            if hitan and codes & {"0030", "3955"}:
+                print("(login TAN challenge not flagged by library; detected from HITAN, codes:",
+                      sorted(codes & {"0030", "3955"}), ")")
+                client.init_tan_response = NeedTANResponse(
+                    None, hitan, "_continue_dialog_initialization",
+                    client.is_challenge_structured(), "3955" in codes,
+                )
+        return retval
+
+    FinTSDialog.init = init
+
+
 def pick_tan_mechanism(client: FinTS3PinTanClient, preset: str | None = None) -> None:
     client.fetch_tan_mechanisms()  # one anonymous dialog to read BPD; populates the mechanism list
     mechs = client.get_tan_mechanisms()
@@ -110,6 +138,7 @@ def main() -> int:
         logging.basicConfig(filename=OUT / "fints.log", filemode="w", level=logging.DEBUG)
     if args.hnshk_v2:
         patch_hnshk_profile_v2()
+    patch_login_tan_detection()
 
     pin = getpass.getpass("PIN: ")
     client = FinTS3PinTanClient(
