@@ -1,4 +1,4 @@
-"""A1b: headless login (container-compatible), credentials relayed like a web UI would.
+"""A1: headless login with credentials relayed like a web UI would; fetch recent orders.
 
 Models the real backend: AmazonSession.login() blocks in a worker thread; whenever Amazon asks
 something (OTP device choice, OTP code, captcha) the RelayIO turns it into a pending "question"
@@ -10,7 +10,7 @@ a temp dir that is deleted at the end. JS challenges are handled by headless Pla
 (PlaywrightAcicForm / PlaywrightJSAuthForm); an AWS WAF *puzzle* is NOT solved (needs a paid
 solver or a human) and surfaces as an error - that is one of the things this spike measures.
 
-    .venv/bin/python a1b_headless_login.py --domain amazon.de --count 10
+    .venv/bin/python a1_login.py --domain amazon.de --count 10
 """
 import argparse
 import getpass
@@ -24,8 +24,6 @@ from pathlib import Path
 from amazonorders.conf import AmazonOrdersConfig
 from amazonorders.orders import AmazonOrders
 from amazonorders.session import AmazonSession, IODefault
-
-from a1_browser_login import summarize
 
 HERE = Path(__file__).parent
 ANSWER_TIMEOUT = 300
@@ -117,6 +115,19 @@ def main() -> None:
     finally:
         shutil.rmtree(jar_dir, ignore_errors=True)
         print("cookie jar deleted")
+
+
+def summarize(orders: list[dict]) -> None:
+    """Which fields did we actually get?"""
+    fields = ["order_number", "order_date", "grand_total", "currency", "payment_method",
+              "invoice_link", "items", "shipments"]
+    print("\nfield coverage over orders:")
+    for f in fields:
+        print(f"  {f:16} {sum(1 for o in orders if o.get(f) not in (None, '', []))}/{len(orders)}")
+    items = [i for o in orders for i in (o.get("items") or [])]
+    print(f"\nfield coverage over {len(items)} items:")
+    for f in ["title", "quantity", "price", "tax", "shipping", "promotions"]:
+        print(f"  {f:16} {sum(1 for i in items if i.get(f) not in (None, '', []))}/{len(items)}")
 
 
 if __name__ == "__main__":
