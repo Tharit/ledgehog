@@ -21,18 +21,14 @@ import pprint
 import sys
 from pathlib import Path
 
-from fints.client import FinTS3PinTanClient, NeedRetryResponse, NeedTANResponse
+from fints.client import FinTS3PinTanClient, NeedTANResponse
 
 OUT = Path(__file__).parent / "out"
 
 
 def ask_tan(client: FinTS3PinTanClient, resp):
     """Drive any TAN challenge to completion and return the final response."""
-    while isinstance(resp, (NeedTANResponse, NeedRetryResponse)):
-        if isinstance(resp, NeedRetryResponse):
-            # Library asks to re-send the same request after the TAN medium/mechanism was chosen.
-            resp = resp.resume_func(resp) if hasattr(resp, "resume_func") else resp
-            continue
+    while isinstance(resp, NeedTANResponse):
         print("\n--- TAN required ---")
         print("challenge:      ", resp.challenge)
         print("decoupled:      ", getattr(resp, "decoupled", False))
@@ -56,24 +52,23 @@ def ask_tan(client: FinTS3PinTanClient, resp):
 
 
 def pick_tan_mechanism(client: FinTS3PinTanClient) -> None:
+    client.fetch_tan_mechanisms()  # one anonymous dialog to read BPD; populates the mechanism list
     mechs = client.get_tan_mechanisms()
     print("\nTAN mechanisms offered by bank:")
     for code, m in mechs.items():
         print(f"  {code}: {m.name}  (type={getattr(m, 'tan_process', '?')}, "
               f"zka={getattr(m, 'zka_id', '?')}, decoupled={getattr(m, 'decoupled_max_poll_number', None) is not None})")
-    if client.get_current_tan_mechanism():
-        print("current mechanism:", client.get_current_tan_mechanism())
-        return
-    codes = list(mechs)
+    codes = [c for c in mechs if c != "999"] or list(mechs)
     choice = codes[0] if len(codes) == 1 else input(f"Choose mechanism {codes}: ").strip()
     client.set_tan_mechanism(choice)
     # Some banks additionally require choosing a TAN medium (device name).
     try:
         if client.is_tan_media_required() and not client.selected_tan_medium:
-            media = client.get_tan_media()
-            print("TAN media:", [getattr(m, "tan_medium_name", m) for m in media[1]])
-            name = input("Choose medium name: ").strip()
-            client.set_tan_medium(name)
+            _usage, media = client.get_tan_media()
+            for i, m in enumerate(media):
+                print(f"  medium [{i}]: {getattr(m, 'tan_medium_name', m)}")
+            if media:
+                client.set_tan_medium(media[int(input("Choose medium index: ") or 0)])
     except Exception as e:  # media listing is bank-specific; keep going and learn from the error
         print("(tan media step failed:", repr(e), ")")
 
