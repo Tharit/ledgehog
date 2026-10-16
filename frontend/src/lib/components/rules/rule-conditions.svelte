@@ -1,5 +1,6 @@
 <script lang="ts">
 	import XIcon from '@lucide/svelte/icons/x';
+	import ChoiceSelect from '#lib/components/common/choice-select.svelte';
 	import IconButton from '#lib/components/common/icon-button.svelte';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Input } from '#lib/components/ui/input/index.js';
@@ -17,7 +18,6 @@
 		type RowField,
 		type RowOp
 	} from '#lib/rules/conditions.js';
-	import { SELECT_CLASS } from '#lib/rules/styles.js';
 	import TargetPicker from './target-picker.svelte';
 
 	// The conditions of a rule: a list of rows `[field] [operator] [value]`, all of which must hold,
@@ -53,6 +53,18 @@
 		return id !== null && !lookups.payees.has(id);
 	}
 
+	const opOptions = CONDITION_OPS.map((op) => ({ value: op, label: OP_LABELS[op] }));
+
+	/** the field list; the payee is offered on category rules and kept on a row that has it */
+	function fieldOptions(row: ConditionRow) {
+		const options: { value: string; label: string }[] = CONDITION_FIELDS.map((field) => ({
+			value: field,
+			label: FIELD_LABELS[field]
+		}));
+		if (takesPayee || isPayeeRow(row)) options.push({ value: PAYEE_FIELD, label: 'Payee' });
+		return options;
+	}
+
 	const hasBlank = $derived(rows.some((row) => row.value.trim() === ''));
 </script>
 
@@ -66,28 +78,22 @@
 			{@const n = index + 1}
 			<li class="flex flex-col gap-1" data-condition-row={index}>
 				<div class="flex flex-wrap items-center gap-2">
-					<select
-						class={`${SELECT_CLASS} w-52 max-w-full`}
-						aria-label={`Condition ${n}: field`}
+					<ChoiceSelect
+						class="w-52 max-w-full"
+						label={`Condition ${n}: field`}
 						value={row.field}
-						onchange={(event) => onchange(index, { field: event.currentTarget.value as RowField })}
-					>
-						{#each CONDITION_FIELDS as field (field)}
-							<option value={field}>{FIELD_LABELS[field]}</option>
-						{/each}
-						{#if takesPayee || isPayeeRow(row)}
-							<option value={PAYEE_FIELD}>Payee</option>
-						{/if}
-					</select>
+						options={fieldOptions(row)}
+						onchange={(next) => onchange(index, { field: next as RowField })}
+					/>
 					{#if isPayeeRow(row)}
-						<select
-							class={`${SELECT_CLASS} w-48 max-w-full`}
-							aria-label={`Condition ${n}: operator`}
+						<ChoiceSelect
+							class="w-48 max-w-full"
+							label={`Condition ${n}: operator`}
 							value="is"
+							options={[{ value: 'is', label: OP_LABELS_PAYEE }]}
 							disabled
-						>
-							<option value="is">{OP_LABELS_PAYEE}</option>
-						</select>
+							onchange={() => {}}
+						/>
 						<div class="flex min-w-48 flex-1 items-center gap-2" data-payee-value>
 							{#if payeeGone(row)}
 								<span
@@ -109,16 +115,13 @@
 							</div>
 						</div>
 					{:else}
-						<select
-							class={`${SELECT_CLASS} w-48 max-w-full`}
-							aria-label={`Condition ${n}: operator`}
+						<ChoiceSelect
+							class="w-48 max-w-full"
+							label={`Condition ${n}: operator`}
 							value={row.op}
-							onchange={(event) => onchange(index, { op: event.currentTarget.value as RowOp })}
-						>
-							{#each CONDITION_OPS as op (op)}
-								<option value={op}>{OP_LABELS[op]}</option>
-							{/each}
-						</select>
+							options={opOptions}
+							onchange={(next) => onchange(index, { op: next as RowOp })}
+						/>
 						<Input
 							class="w-auto min-w-40 flex-1"
 							aria-label={`Condition ${n}: value`}

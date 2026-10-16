@@ -25,6 +25,20 @@ function form(over: Partial<RuleForm> = {}): RuleForm {
 	};
 }
 
+/** Picks a value in a choice select: opens it by its name and clicks the option. */
+async function choose(name: string, option: string) {
+	await fireEvent.click(screen.getByRole('button', { name }));
+	await fireEvent.click(await screen.findByRole('option', { name: option }));
+}
+
+/** The options a choice select offers, read by opening it. */
+async function optionsOf(name: string) {
+	await fireEvent.click(screen.getByRole('button', { name }));
+	const labels = (await screen.findAllByRole('option')).map((o) => o.textContent?.trim());
+	await fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+	return labels;
+}
+
 function setup(props: Record<string, unknown> = {}) {
 	const handlers = {
 		onedit: vi.fn(),
@@ -46,12 +60,16 @@ describe('RuleForm: fields', () => {
 		setup();
 
 		expect(screen.getByLabelText('Name')).toHaveValue('Rent');
-		expect(screen.getByLabelText('Sets')).toHaveValue('category');
+		expect(screen.getByRole('button', { name: 'Sets' })).toHaveTextContent('Category');
 		expect(screen.getByRole('button', { name: 'The category this rule sets' })).toHaveTextContent(
 			'Rent'
 		);
-		expect(screen.getByLabelText('Condition 1: field')).toHaveValue('counterparty_name');
-		expect(screen.getByLabelText('Condition 1: operator')).toHaveValue('starts_with');
+		expect(screen.getByRole('button', { name: 'Condition 1: field' })).toHaveTextContent(
+			'Counterparty name'
+		);
+		expect(screen.getByRole('button', { name: 'Condition 1: operator' })).toHaveTextContent(
+			'starts with'
+		);
 		expect(screen.getByLabelText('Condition 1: value')).toHaveValue('Landlord');
 	});
 
@@ -72,12 +90,9 @@ describe('RuleForm: fields', () => {
 	});
 
 	const payeeRow = (value: string) => newConditionRow({ field: 'payee', op: 'is', value });
-	const fieldOptions = () =>
-		within(screen.getByLabelText('Condition 1: field'))
-			.getAllByRole('option')
-			.map((o) => o.textContent);
+	const fieldOptions = () => optionsOf('Condition 1: field');
 
-	it('offers the payee as a condition field on a category rule only', () => {
+	it('offers the payee as a condition field on a category rule only', async () => {
 		const { unmount } = render(RuleFormView, {
 			props: {
 				form: form(),
@@ -89,7 +104,7 @@ describe('RuleForm: fields', () => {
 				onsave: vi.fn()
 			}
 		});
-		expect(fieldOptions()).toContain('Payee');
+		expect(await fieldOptions()).toContain('Payee');
 		unmount();
 
 		render(RuleFormView, {
@@ -103,15 +118,13 @@ describe('RuleForm: fields', () => {
 				onsave: vi.fn()
 			}
 		});
-		expect(fieldOptions()).not.toContain('Payee');
+		expect(await fieldOptions()).not.toContain('Payee');
 	});
 
 	it('chooses the payee field through the condition callback', async () => {
 		const { oncondition } = setup();
 
-		await fireEvent.change(screen.getByLabelText('Condition 1: field'), {
-			target: { value: 'payee' }
-		});
+		await choose('Condition 1: field', 'Payee');
 
 		expect(oncondition).toHaveBeenCalledWith(0, { field: 'payee' });
 	});
@@ -119,9 +132,9 @@ describe('RuleForm: fields', () => {
 	it('shows a payee row with a fixed operator, the picker and its helper', async () => {
 		const { oncondition } = setup({ form: form({ conditions: [payeeRow('20')] }) });
 
-		const op = screen.getByLabelText('Condition 1: operator');
+		const op = screen.getByRole('button', { name: 'Condition 1: operator' });
 		expect(op).toBeDisabled();
-		expect(op).toHaveValue('is');
+		expect(op).toHaveTextContent('is');
 		const picker = screen.getByRole('button', { name: 'Condition 1: payee' });
 		expect(picker).toHaveTextContent('REWE');
 		expect(
@@ -163,7 +176,7 @@ describe('RuleForm: fields', () => {
 	it('changes what it sets at once, with the preview to follow', async () => {
 		const { onedit } = setup();
 
-		await fireEvent.change(screen.getByLabelText('Sets'), { target: { value: 'payee' } });
+		await choose('Sets', 'Payee');
 
 		expect(onedit).toHaveBeenCalledWith({ sets: 'payee' }, true);
 	});
@@ -171,7 +184,7 @@ describe('RuleForm: fields', () => {
 	it('fixes what it sets once the rule exists', () => {
 		setup({ editing: true });
 
-		expect(screen.getByLabelText('Sets')).toBeDisabled();
+		expect(screen.getByRole('button', { name: 'Sets' })).toBeDisabled();
 		expect(screen.getByText(/Fixed once the rule exists/)).toBeInTheDocument();
 	});
 
@@ -228,17 +241,18 @@ describe('RuleForm: the condition rows', () => {
 			})
 		});
 
-		expect(screen.getByLabelText('Condition 1: field')).toHaveValue('purpose');
-		expect(screen.getByLabelText('Condition 2: field')).toHaveValue('mandate_ref');
-		expect(screen.getByLabelText('Condition 2: operator')).toHaveValue('equals');
+		expect(screen.getByRole('button', { name: 'Condition 1: field' })).toHaveTextContent('Purpose');
+		expect(screen.getByRole('button', { name: 'Condition 2: field' })).toHaveTextContent(
+			'Mandate reference'
+		);
+		expect(screen.getByRole('button', { name: 'Condition 2: operator' })).toHaveTextContent('is');
 		expect(screen.getByLabelText('Condition 2: value')).toHaveValue('M1');
 	});
 
-	it('offers the plain field and operator labels', () => {
+	it('offers the plain field and operator labels', async () => {
 		setup();
 
-		const fields = within(screen.getByLabelText('Condition 1: field'));
-		expect(fields.getAllByRole('option').map((o) => o.textContent)).toEqual([
+		expect(await optionsOf('Condition 1: field')).toEqual([
 			'Counterparty name',
 			'Counterparty IBAN or reference',
 			'Purpose',
@@ -246,8 +260,7 @@ describe('RuleForm: the condition rows', () => {
 			'Mandate reference',
 			'Payee'
 		]);
-		const ops = within(screen.getByLabelText('Condition 1: operator'));
-		expect(ops.getAllByRole('option').map((o) => o.textContent)).toEqual([
+		expect(await optionsOf('Condition 1: operator')).toEqual([
 			'is',
 			'starts with',
 			'contains',
@@ -258,12 +271,8 @@ describe('RuleForm: the condition rows', () => {
 	it('reports a change of field, operator and value of one row', async () => {
 		const { oncondition } = setup();
 
-		await fireEvent.change(screen.getByLabelText('Condition 1: field'), {
-			target: { value: 'purpose' }
-		});
-		await fireEvent.change(screen.getByLabelText('Condition 1: operator'), {
-			target: { value: 'regex' }
-		});
+		await choose('Condition 1: field', 'Purpose');
+		await choose('Condition 1: operator', 'matches pattern (regex)');
 		await fireEvent.input(screen.getByLabelText('Condition 1: value'), {
 			target: { value: 'a|b' }
 		});

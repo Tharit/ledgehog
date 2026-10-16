@@ -55,13 +55,13 @@ describe('the Add account dialog', () => {
 	it('preselects cash', async () => {
 		const dialog = await open();
 
-		expect(within(dialog).getByLabelText('Kind')).toHaveValue('cash');
+		expect(within(dialog).getByRole('button', { name: 'Kind' })).toHaveTextContent('Cash');
 	});
 
 	it('preselects the kind the caller gave', async () => {
 		const dialog = await open({ kind: 'card' });
 
-		expect(within(dialog).getByLabelText('Kind')).toHaveValue('card');
+		expect(within(dialog).getByRole('button', { name: 'Kind' })).toHaveTextContent('Card');
 	});
 
 	it('shows a given currency as locked text, not a choice', async () => {
@@ -76,10 +76,12 @@ describe('the Add account dialog', () => {
 	it('lets the currency be chosen among the known ones when none is given', async () => {
 		const dialog = await open();
 
-		const currency = within(dialog).getByLabelText('Currency') as HTMLSelectElement;
-		expect(currency.tagName).toBe('SELECT');
-		expect([...currency.options].map((o) => o.value)).toEqual(['EUR']);
-		expect(currency).toHaveValue('EUR');
+		const currency = within(dialog).getByRole('button', { name: 'Currency' });
+		expect(currency).toHaveTextContent('EUR');
+		await fireEvent.click(currency);
+		expect((await screen.findAllByRole('option')).map((o) => o.textContent?.trim())).toEqual([
+			'EUR'
+		]);
 	});
 
 	it('adds the account, puts it in the lookups, tells the caller and closes', async () => {

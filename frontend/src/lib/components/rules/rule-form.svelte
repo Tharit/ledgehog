@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import ActionButton from '#lib/components/common/action-button.svelte';
+	import ChoiceSelect from '#lib/components/common/choice-select.svelte';
 	import Field from '#lib/components/common/field.svelte';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import type { Lookups } from '#lib/ledger/lookups.js';
@@ -8,7 +9,6 @@
 	import { SETS, SETS_INFO, takesPayeeCondition, type RuleForm } from '#lib/rules/form.js';
 	import { RULES_PATH } from '#lib/rules/links.js';
 	import type { FieldErrors } from '#lib/rules/messages.js';
-	import { SELECT_CLASS } from '#lib/rules/styles.js';
 	import { kindWord } from '#lib/rules/targets.js';
 	import type { RuleSets } from '#lib/rules/types.js';
 	import RuleConditions from './rule-conditions.svelte';
@@ -89,17 +89,14 @@
 			hint={`${SETS_INFO[form.sets].hint}${editing ? ' Fixed once the rule exists.' : ''}`}
 		>
 			{#snippet children(control)}
-				<select
+				<ChoiceSelect
 					{...control}
-					class={`${SELECT_CLASS} w-full`}
+					label="Sets"
 					value={form.sets}
+					options={SETS.map((sets) => ({ value: sets, label: SETS_INFO[sets].name }))}
 					disabled={editing}
-					onchange={(event) => onedit({ sets: event.currentTarget.value as RuleSets }, true)}
-				>
-					{#each SETS as sets (sets)}
-						<option value={sets}>{SETS_INFO[sets].name}</option>
-					{/each}
-				</select>
+					onchange={(next) => onedit({ sets: next as RuleSets }, true)}
+				/>
 			{/snippet}
 		</Field>
 		<Field label={SETS_INFO[form.sets].name} error={errors.target ?? null}>

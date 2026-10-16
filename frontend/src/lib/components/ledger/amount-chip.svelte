@@ -9,6 +9,7 @@
 
 <script lang="ts">
 	import { untrack } from 'svelte';
+	import ChoiceSelect from '#lib/components/common/choice-select.svelte';
 	import Field from '#lib/components/common/field.svelte';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Input } from '#lib/components/ui/input/index.js';
@@ -157,15 +158,14 @@
 		</Field>
 		<Field label="Currency">
 			{#snippet children(control)}
-				<select
+				<ChoiceSelect
 					id={control.id}
-					bind:value={chosenCurrency}
-					class="h-8 rounded-lg border border-input bg-card px-2 text-sm"
-				>
-					{#each choices as code (code)}
-						<option value={code}>{code}</option>
-					{/each}
-				</select>
+					label="Currency"
+					value={chosenCurrency}
+					options={choices.map((code) => ({ value: code, label: code }))}
+					class="w-24 bg-card"
+					onchange={(next) => (chosenCurrency = next)}
+				/>
 			{/snippet}
 		</Field>
 	</div>

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import ActionDialog, { type DialogFeedback } from '#lib/components/common/action-dialog.svelte';
+	import ChoiceSelect from '#lib/components/common/choice-select.svelte';
 	import Field from '#lib/components/common/field.svelte';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import { AddAccountFlow } from '#lib/accounts/add-flow.svelte.js';
@@ -67,16 +68,14 @@
 	</Field>
 	<Field label="Kind">
 		{#snippet children(field)}
-			<select
+			<ChoiceSelect
 				{...field}
-				bind:value={flow.kind}
+				label="Kind"
+				value={flow.kind}
+				options={ACCOUNT_KINDS.map((o) => ({ value: o.kind, label: o.label }))}
 				disabled={flow.busy}
-				class="h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive dark:bg-input/30"
-			>
-				{#each ACCOUNT_KINDS as option (option.kind)}
-					<option value={option.kind}>{option.label}</option>
-				{/each}
-			</select>
+				onchange={(next) => (flow.kind = next as typeof flow.kind)}
+			/>
 		{/snippet}
 	</Field>
 	<Field
@@ -88,16 +87,14 @@
 			{#if flow.locked}
 				<Input value={flow.currency} {...field} readonly autocomplete="off" />
 			{:else}
-				<select
+				<ChoiceSelect
 					{...field}
-					bind:value={flow.currency}
+					label="Currency"
+					value={flow.currency}
+					options={flow.currencies.map((code) => ({ value: code, label: code }))}
 					disabled={flow.busy}
-					class="h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive dark:bg-input/30"
-				>
-					{#each flow.currencies as code (code)}
-						<option value={code}>{code}</option>
-					{/each}
-				</select>
+					onchange={(next) => (flow.currency = next)}
+				/>
 			{/if}
 		{/snippet}
 	</Field>

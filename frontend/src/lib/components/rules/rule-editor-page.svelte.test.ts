@@ -169,8 +169,12 @@ describe('the rule editor page: changing a rule', () => {
 		await opened();
 
 		expect(screen.getByRole('heading', { name: 'Landlord' })).toBeInTheDocument();
-		expect(screen.getByLabelText('Condition 1: field')).toHaveValue('counterparty_name');
-		expect(screen.getByLabelText('Condition 1: operator')).toHaveValue('starts_with');
+		expect(screen.getByRole('button', { name: 'Condition 1: field' })).toHaveTextContent(
+			'Counterparty name'
+		);
+		expect(screen.getByRole('button', { name: 'Condition 1: operator' })).toHaveTextContent(
+			'starts with'
+		);
 		expect(screen.getByLabelText('Condition 1: value')).toHaveValue('Landlord');
 		const table = screen.getByRole('table', { name: 'Matched entries' });
 		expect(within(table).getByRole('columnheader', { name: 'Currently' })).toBeInTheDocument();
