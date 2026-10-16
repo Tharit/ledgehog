@@ -51,7 +51,22 @@ def ask_tan(client: FinTS3PinTanClient, resp):
     return resp
 
 
-def pick_tan_mechanism(client: FinTS3PinTanClient) -> None:
+def patch_hnshk_profile_v2() -> None:
+    """Experiment: the library signs two-step messages with PIN profile version 1 in HNSHK
+    (while HNVSK says 2). Strict banks may reject that as 9010 'Ungültiger Signaturaufbau'."""
+    from fints.formals import SecurityMethod, SecurityProfile
+    from fints.security import PinTanTwoStepAuthenticationMechanism as M
+
+    orig = M.sign_prepare
+
+    def sign_prepare(self, message):
+        orig(self, message)
+        self.pending_signature.security_profile = SecurityProfile(SecurityMethod.PIN, 2)
+
+    M.sign_prepare = sign_prepare
+
+
+def pick_tan_mechanism(client: FinTS3PinTanClient, preset: str | None = None) -> None:
     client.fetch_tan_mechanisms()  # one anonymous dialog to read BPD; populates the mechanism list
     mechs = client.get_tan_mechanisms()
     print("\nTAN mechanisms offered by bank:")
@@ -59,7 +74,7 @@ def pick_tan_mechanism(client: FinTS3PinTanClient) -> None:
         print(f"  {code}: {m.name}  (type={getattr(m, 'tan_process', '?')}, "
               f"zka={getattr(m, 'zka_id', '?')}, decoupled={getattr(m, 'decoupled_max_poll_number', None) is not None})")
     codes = [c for c in mechs if c != "999"] or list(mechs)
-    choice = codes[0] if len(codes) == 1 else input(f"Choose mechanism {codes}: ").strip()
+    choice = preset or codes[0] if preset or len(codes) == 1 else input(f"Choose mechanism {codes}: ").strip()
     client.set_tan_mechanism(choice)
     # Some banks additionally require choosing a TAN medium (device name).
     try:
@@ -81,15 +96,20 @@ def main() -> int:
     ap.add_argument("--product-id", default=os.environ.get("FINTS_PRODUCT_ID"),
                     help="DK-registered product id; banks may reject requests without one")
     ap.add_argument("--days", type=int, default=7)
-    ap.add_argument("--debug", action="store_true",
-                    help="log raw FinTS segments to out/fints.log (review before sharing!)")
+    ap.add_argument("--no-debug", action="store_true",
+                    help="don't log raw FinTS segments to out/fints.log (contains account data; PIN is masked)")
+    ap.add_argument("--mechanism", help="TAN mechanism code (skips the prompt), e.g. 900 / 901")
+    ap.add_argument("--hnshk-v2", action="store_true",
+                    help="experiment: sign two-step messages with PIN profile version 2 (library uses 1)")
     args = ap.parse_args()
     if not (args.blz and args.url and args.user):
         ap.error("blz, url and user are required (flags or FINTS_* env)")
 
     OUT.mkdir(exist_ok=True)
-    if args.debug:
-        logging.basicConfig(filename=OUT / "fints.log", level=logging.DEBUG)
+    if not args.no_debug:
+        logging.basicConfig(filename=OUT / "fints.log", filemode="w", level=logging.DEBUG)
+    if args.hnshk_v2:
+        patch_hnshk_profile_v2()
 
     pin = getpass.getpass("PIN: ")
     client = FinTS3PinTanClient(
@@ -97,7 +117,7 @@ def main() -> int:
     )
 
     # 1. Anonymous-ish dialog: bank parameter data (BPD) is available before login.
-    pick_tan_mechanism(client)
+    pick_tan_mechanism(client, args.mechanism)
 
     with client:
         # Strong customer authentication may already be demanded at dialog init.
