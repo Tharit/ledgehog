@@ -66,6 +66,22 @@ def patch_hnshk_profile_v2() -> None:
     M.sign_prepare = sign_prepare
 
 
+def patch_force_tan() -> None:
+    """Attach HKTAN (process 4) to account-data requests even though the bank's HIPINS says no TAN
+    is needed. Consorsbank answers 9075 'Starke Authentifizierung erforderlich' otherwise (and
+    closes the dialog), e.g. for HKSAL when the login itself was SCA-exempt (3076)."""
+    from fints.client import FinTS3PinTanClient as C
+
+    orig = C._need_twostep_tan_for_segment
+
+    def need(self, seg):
+        if seg.header.type in ("HKSAL", "HKKAZ", "HKCAZ") and self.get_current_tan_mechanism() not in (None, "999"):
+            return True
+        return orig(self, seg)
+
+    C._need_twostep_tan_for_segment = need
+
+
 def patch_login_tan_detection() -> None:
     """Consorsbank attaches its 0030 'Sicherheitsfreigabe erforderlich' to the HKIDN segment, not
     to the HKTAN segment the library looks at, so the login TAN challenge (HITAN, process 4) is
@@ -129,6 +145,8 @@ def main() -> int:
     ap.add_argument("--mechanism", help="TAN mechanism code (skips the prompt), e.g. 900 / 901")
     ap.add_argument("--hnshk-v2", action="store_true",
                     help="experiment: sign two-step messages with PIN profile version 2 (library uses 1)")
+    ap.add_argument("--force-tan", action="store_true",
+                    help="attach a TAN request to balance/transaction calls (use if the bank answers 9075)")
     args = ap.parse_args()
     if not (args.blz and args.url and args.user):
         ap.error("blz, url and user are required (flags or FINTS_* env)")
@@ -139,6 +157,8 @@ def main() -> int:
     if args.hnshk_v2:
         patch_hnshk_profile_v2()
     patch_login_tan_detection()
+    if args.force_tan:
+        patch_force_tan()
 
     pin = getpass.getpass("PIN: ")
     client = FinTS3PinTanClient(
@@ -173,12 +193,8 @@ def main() -> int:
         end = dt.date.today()
         start = end - dt.timedelta(days=args.days)
 
-        # 4a. Balance (informational; also tells us currency/booking conventions).
-        try:
-            bal = ask_tan(client, client.get_balance(acc))
-            print("\nBalance:", bal)
-        except Exception as e:
-            print("get_balance failed:", repr(e))
+        # NB: a rejected request (e.g. 9075 SCA required) makes the bank close the dialog, so the
+        # important call goes first and optional ones last.
 
         # 4b. Transactions as MT940 (the classic format, parsed by the mt-940 lib).
         print(f"\nFetching MT940 {start}..{end}")
@@ -204,6 +220,13 @@ def main() -> int:
                 print("saved", p)
         except Exception as e:
             print("camt fetch not available / failed:", repr(e))
+
+        # 4a. Balance (informational; also tells us currency/booking conventions). Last on purpose.
+        try:
+            bal = ask_tan(client, client.get_balance(acc))
+            print("\nBalance:", bal)
+        except Exception as e:
+            print("get_balance failed:", repr(e))
 
         # 5. Persist-able client state (what we'd store between runs: BPD/UPD, system id).
         (OUT / "client_state.bin").write_bytes(client.deconstruct())
