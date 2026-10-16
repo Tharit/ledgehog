@@ -154,9 +154,24 @@ phone PIN, not the BestSign password); 2FA via (Miles & More) BestSign; FinTS fo
     So the distinguishing signal for "not activated" is `9940`, not `9960`. The importer should map 9940 to a
     clear user-facing state, and treat a data-less 3010 as "empty", not as failure.
 
+23. **Two parallel setups seem to exist for the M&M card (from public sources; the StarMoney note was only
+    readable via search summaries, its page returned 404):**
+    - (B) Full Deutsche Bank online-banking customer with a *Deutsche Bank* BestSign (DB app, activated by SMS or
+      activation letter, 2-3 working days by post): the card is then queried 'über den Onlinebanking-Zugang der
+      Deutschen Bank' (StarMoney, since 2026-04-22). `9940 Kein aktives TAN-Geraet verfuegbar` is the known
+      symptom while no DB TAN device is active (cf. a Banking4 forum thread: fixed once the DB app device was
+      active and the connection set up correctly).
+    - (A) Card-only customer with only the BestSign inside the *Miles & More app* (separate registration, per
+      the M&M FAQ): StarMoney says for card-only 'wird an einer Loesung gearbeitet', BLZ 50070439; support
+      told the user 'not possible yet'. One forum user reports it works (ALF-BanCo, June 2026), Outbank
+      documents it. Evidence for (A) is mixed; for this ID the M&M BestSign was never offered as a FinTS TAN method.
+    The enrollment done in this spike moved the ID from (A) to (B). Untested: which BLZ the card appears under
+    after activation (50070010 for the regular DB access vs 50070439), and whether the card then shows up.
+
 ### Resuming the Deutsche Bank experiment (after the activation letter)
 
-1. Activate per the letter. Check the bank now lists 920/921 with the probe.
+1. Activate per the letter. Check the bank now lists 920/921 with the probe. Try BOTH `--blz 50070010` and
+   `--blz 50070439` (see 23) and compare which one lists the card.
 2. `uv run probe.py --blz 50070439 --url https://fints.deutsche-bank.de/ --user <Deutsche Bank ID> --product-id <ID> --hnshk-v2 --mechanism 921`
    (PIN prompt = Deutsche Bank ID password, NOT the BestSign password; enter the device name when asked;
    approve the BestSign push on the phone). Add `--tan-for HKSPA` if requests still get 9960.
