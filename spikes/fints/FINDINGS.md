@@ -34,7 +34,12 @@ Probe: `probe.py`. Debug log `out/fints.log` is the ground truth (contains accou
    bank answers `9075 Starke Authentifizierung erforderlich` and closes the dialog. Retrying with
    `HKTAN` (process 4, segment_type=HKKAZ) in a fresh dialog gets `9010 Verarbeitung nicht möglich` +
    `3076`. Same with mechanism 900 (photoTAN/SecurePlus) and 901 (decoupled app); the app never prompted.
-   Unresolved. Known-brittle: forum reports of identical 9075 on statement retrieval since the bank's
+   **Likely cause of the 9010: `KTI1.from_sepa_account` in 5.0.1 sends only IBAN+BIC; Consorsbank needs
+   account number, sub-account and bank identifier too** (python-fints PR #218, found by diffing hbci4j
+   traces; that PR also has our HNSHK-v2, HKIDN-login-TAN and forced-HKTAN-for-HKKAZ/HKSAL/HKCCS fixes,
+   i.e. Consorsbank needs HKTAN on these although HIPINS says N). Patched in `patch_full_account_kti1`;
+   not yet verified against the bank. A plain resend after the 9010 in the same dialog still gets 9075
+   (tried, no use). Older notes: forum reports of identical 9075 on statement retrieval since the bank's
    security changes (VoP, ~Nov 2025), and that HBCI still needs the SecurePlus app, not the new
    Consorsbank app. Another report: "a dialog can only be opened with HKTAN6 in dialog init, otherwise 9075".
 5. **Return codes.** 9010 is generic "processing not possible" (the library's "check BLZ" message is

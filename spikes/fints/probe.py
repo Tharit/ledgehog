@@ -105,27 +105,24 @@ def patch_force_tan() -> None:
 
     C._need_twostep_tan_for_segment = need
 
-    # Experiment: Consorsbank answers HKKAZ+HKTAN with 9010 + 3076 ('no SCA needed') but keeps the
-    # dialog open. Treat that as "exempt, resend without HKTAN" and resend the plain job in the
-    # same dialog (the library would raise and give up).
-    from fints.exceptions import FinTSClientError
 
-    orig_send = C._send_with_possible_retry
 
-    def send_with_fallback(self, dialog, command_seg, resume_func):
-        if command_seg.header.type not in FORCE_TAN:
-            return orig_send(self, dialog, command_seg, resume_func)
-        try:
-            return orig_send(self, dialog, command_seg, resume_func)
-        except FinTSClientError as e:
-            if "could not fetch BPD" not in str(e) or not dialog.open:
-                raise
-            print(f"   (bank rejected {command_seg.header.type}+HKTAN with 9010; resending without HKTAN in the same dialog)")
-            with dialog:
-                response = dialog.send(command_seg)
-            return resume_func(command_seg, response)
+def patch_full_account_kti1() -> None:
+    """The library's KTI1.from_sepa_account sends only IBAN+BIC. Consorsbank answers HKKAZ/HKSAL +
+    HKTAN with 9010 'Verarbeitung nicht möglich' unless account number, sub-account and bank
+    identifier are present too (cf. python-fints PR #218, found via hbci4j traces)."""
+    from fints.formals import KTI1, BankIdentifier
 
-    C._send_with_possible_retry = send_with_fallback
+    def from_sepa_account(cls, acc):
+        return cls(
+            iban=acc.iban,
+            bic=acc.bic,
+            account_number=acc.accountnumber,
+            subaccount_number=acc.subaccount or "",
+            bank_identifier=BankIdentifier(country_identifier="280", bank_code=acc.blz),
+        )
+
+    KTI1.from_sepa_account = classmethod(from_sepa_account)
 
 
 def patch_login_tan_detection() -> None:
@@ -204,6 +201,7 @@ def main() -> int:
         patch_hnshk_profile_v2()
     patch_login_tan_detection()
     patch_force_tan()
+    patch_full_account_kti1()
     if args.force_tan:
         FORCE_TAN.add("HKSAL")
 
