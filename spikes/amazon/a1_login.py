@@ -126,15 +126,16 @@ def main() -> None:
 
 def summarize(orders: list[dict]) -> None:
     """Which fields did we actually get?"""
-    fields = ["order_number", "order_date", "grand_total", "currency", "payment_method",
-              "invoice_link", "items", "shipments"]
+    fields = ["order_number", "order_placed_date", "grand_total", "subtotal", "total_before_tax",
+              "estimated_tax", "shipping_total", "promotion_applied", "payment_method",
+              "order_details_link", "items", "shipments"]
     print("\nfield coverage over orders:")
     for f in fields:
-        print(f"  {f:16} {sum(1 for o in orders if o.get(f) not in (None, '', []))}/{len(orders)}")
+        print(f"  {f:20} {sum(1 for o in orders if o.get(f) not in (None, '', []))}/{len(orders)}")
     items = [i for o in orders for i in (o.get("items") or [])]
     print(f"\nfield coverage over {len(items)} items:")
-    for f in ["title", "quantity", "price", "tax", "shipping", "promotions"]:
-        print(f"  {f:16} {sum(1 for i in items if i.get(f) not in (None, '', []))}/{len(items)}")
+    for f in ["title", "asin", "quantity", "price", "seller", "link"]:
+        print(f"  {f:20} {sum(1 for i in items if i.get(f) not in (None, '', []))}/{len(items)}")
 
 
 if __name__ == "__main__":
