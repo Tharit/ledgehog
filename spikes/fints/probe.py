@@ -187,17 +187,27 @@ def get_tan_media_via_init(client: FinTS3PinTanClient):
     from fints.client import HKTAB4, HKTAB5
     from fints.formals import TANMediaClass4, TANMediaType2
 
-    with client._new_dialog(lazy_init=True) as dialog:
-        seg = client._find_highest_supported_command(HKTAB4, HKTAB5)(
-            tan_media_type=TANMediaType2.ALL, tan_media_class=str(TANMediaClass4.ALL),
-        )
-        try:
-            client._bootstrap_mode = True
-            response = dialog.init(seg)
-        finally:
-            client._bootstrap_mode = False
-        for resp in response.response_segments(seg, "HITAB"):
-            return resp.tan_usage_option, list(resp.tan_media_list)
+    # The library appends HKTAN (process 4) to every init if it knows TAN methods. This bank answers that
+    # with 9210 and an empty HITAB, so hide the methods for this one dialog: init without HKTAN.
+    saved = list(client.allowed_security_functions)
+    client.allowed_security_functions = []
+    try:
+        with client._new_dialog(lazy_init=True) as dialog:
+            seg = client._find_highest_supported_command(HKTAB4, HKTAB5)(
+                tan_media_type=TANMediaType2.ALL, tan_media_class=str(TANMediaClass4.ALL),
+            )
+            try:
+                client._bootstrap_mode = True
+                response = dialog.init(seg)
+            finally:
+                client._bootstrap_mode = False
+            for resp in response.response_segments(seg, "HITAB"):
+                if not hasattr(resp, "tan_media_list"):
+                    print("  (HITAB came back empty/unparsable:", getattr(resp, "_additional_data", None), ")")
+                    return None, []
+                return resp.tan_usage_option, list(resp.tan_media_list)
+    finally:
+        client.allowed_security_functions = saved
     return None, []
 
 
@@ -242,6 +252,12 @@ def pick_tan_mechanism(client: FinTS3PinTanClient, preset: str | None = None) ->
                 print(f"  medium [{i}]: {getattr(m, 'tan_medium_name', m)}")
             if media:
                 client.set_tan_medium(media[int(input("Choose medium index: ") or 0)])
+            else:
+                # The bank gave no device list. Fall back to the name as shown in the bank's own app
+                # (Miles & More app > settings/security). Wrong names are rejected with 9210/9xxx.
+                name = input("TAN medium (device) name as shown in your app, or Enter to skip: ").strip()
+                if name:
+                    client.selected_tan_medium = name
     except Exception as e:  # media listing is bank-specific; keep going and learn from the error
         print("(tan media step failed:", repr(e), ")")
 
