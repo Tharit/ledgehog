@@ -2161,6 +2161,7 @@ export interface components {
             /** Unit Key */
             unit_key: number;
             waiting?: components["schemas"]["WaitingOut"] | null;
+            waiting_document?: components["schemas"]["WaitingDocumentOut"] | null;
         };
         /**
          * UnitPairingIn
@@ -2351,7 +2352,7 @@ export interface components {
             /** Confirmed */
             confirmed: boolean;
             /** Reasons */
-            reasons: ("incomplete" | "unpaired_transfer" | "waiting_for_partner" | "unmatched_transfer" | "non_standing_keys")[];
+            reasons: ("incomplete" | "unpaired_transfer" | "waiting_for_partner" | "unmatched_transfer" | "waiting_for_document" | "document_suggested" | "non_standing_keys")[];
         };
         /** UnitStoredFieldOut */
         UnitStoredFieldOut: {
@@ -2461,6 +2462,13 @@ export interface components {
             }[];
             /** Truncated */
             truncated: boolean;
+        };
+        /** WaitingDocumentOut */
+        WaitingDocumentOut: {
+            /** Covered Through */
+            covered_through: string | null;
+            /** Provider */
+            provider: string;
         };
         /** WaitingOut */
         WaitingOut: {

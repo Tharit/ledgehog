@@ -338,6 +338,8 @@ export const RESULT_TEXT: Readonly<Record<UnitState['reasons'][number], string>>
 	incomplete: 'Stays unclassified',
 	unpaired_transfer: 'Waits for its partner',
 	waiting_for_partner: 'Waits for its partner',
+	waiting_for_document: 'Waits for its document',
+	document_suggested: 'Documents to check',
 	unmatched_transfer: 'Stays without a partner',
 	non_standing_keys: 'Proposals to check'
 };
