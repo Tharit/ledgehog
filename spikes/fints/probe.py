@@ -22,7 +22,7 @@ import sys
 from pathlib import Path
 
 from fints.client import FinTS3PinTanClient, NeedTANResponse
-from fints.exceptions import FinTSSCARequiredError
+from fints.exceptions import FinTSNoResponseError, FinTSSCARequiredError
 from fints.models import SEPAAccount
 
 OUT = Path(__file__).parent / "out"
@@ -201,6 +201,11 @@ def get_tan_media_via_init(client: FinTS3PinTanClient):
                 response = dialog.init(seg)
             finally:
                 client._bootstrap_mode = False
+            # internal dialog sends don't reach the response callback: show the bank's own words
+            for hirm in (*response.find_segments("HIRMG"), *response.find_segments("HIRMS")):
+                for r in hirm.responses:
+                    if r.code[0] in "39" and r.code != "3060":
+                        print(f"   [bank {r.code}] {r.text}")
             for resp in response.response_segments(seg, "HITAB"):
                 if not hasattr(resp, "tan_media_list"):
                     print("  (HITAB came back empty/unparsable:", getattr(resp, "_additional_data", None), ")")
@@ -342,6 +347,11 @@ def main() -> int:
         try:
             for s in ask_tan(client, client.get_sepa_accounts()):
                 sepa[(s.accountnumber, s.subaccount or "")] = s
+        except FinTSNoResponseError:
+            # The bank answered, but with no SEPA account data (typically 3010 'Es liegen keine Eintraege vor'):
+            # normal for credit cards, which have no IBAN. Check the [bank ...] lines for anything else.
+            print("(HKSPA: the bank returned no SEPA accounts (expected for a card without IBAN); "
+                  "using the bank's own account list)")
         except Exception as e:
             print("(HKSPA failed or unsupported, using the bank's account list only:", repr(e), ")")
 

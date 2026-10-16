@@ -142,6 +142,18 @@ phone PIN, not the BestSign password); 2FA via (Miles & More) BestSign; FinTS fo
     onboarding for this bank needs a clear "not activated yet" state and instructions, not a generic error.
     The M&M-app BestSign alone does NOT make FinTS usable.
 
+22. **What "enrolled but not yet activated" looks like on the wire** (after starting the DB website enrollment):
+    - the login works (0020, 3076) and now returns the allowed-procedures list `3920` = 920, 921;
+    - a request that needs a TAN device is answered `9075 Dialog abgebrochen - starke Authentifizierung
+      erforderlich` plus `9940 Kein aktives TAN-Geraet verfuegbar. Die Freigabe von Auftraegen ist nicht moeglich`
+      / `9940 Melden Sie sich im Online-Banking an oder kontaktieren den Support`;
+    - the TAN-media request (HKTAB) then returns an empty HITAB without `tan_usage_option`, which python-fints'
+      parser rejects (`FinTSParserWarning ... HITAB4.tan_usage_option was not present`, generic object);
+    - HKSPA for a card is answered normally with `3010 Es liegen keine Eintraege vor` (no IBAN, no SEPA
+      accounts) and the library raises FinTSNoResponseError: that is not an auth failure.
+    So the distinguishing signal for "not activated" is `9940`, not `9960`. The importer should map 9940 to a
+    clear user-facing state, and treat a data-less 3010 as "empty", not as failure.
+
 ### Resuming the Deutsche Bank experiment (after the activation letter)
 
 1. Activate per the letter. Check the bank now lists 920/921 with the probe.
