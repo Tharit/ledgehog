@@ -16,11 +16,13 @@ import argparse
 import getpass
 import json
 import queue
+import re
 import shutil
 import tempfile
 import threading
 from pathlib import Path
 
+from amazonorders import util
 from amazonorders.conf import AmazonOrdersConfig
 from amazonorders.orders import AmazonOrders
 from amazonorders.session import AmazonSession, IODefault
@@ -113,6 +115,7 @@ def main() -> None:
             json.dumps(dump, indent=2, default=str, ensure_ascii=False))
         print(f"fetched {len(orders)} orders -> out/orders-{args.domain}.json")
         summarize(dump)
+        dump_labels(orders, config)
     finally:
         if session is not None and session.is_authenticated:
             try:
@@ -136,6 +139,30 @@ def summarize(orders: list[dict]) -> None:
     print(f"\nfield coverage over {len(items)} items:")
     for f in ["title", "asin", "quantity", "price", "seller", "link"]:
         print(f"  {f:20} {sum(1 for i in items if i.get(f) not in (None, '', []))}/{len(items)}")
+
+
+def dump_labels(orders, config) -> None:
+    """Print the wording of the order-summary rows (labels only, digits masked, no amounts),
+    plus what the quantity element contains - to see why tax/shipping/quantity parse as None."""
+    sel = config.selectors
+    labels: dict[str, int] = {}
+    quantities: dict[str, int] = {}
+    for o in orders:
+        for tag in util.select(o.parsed, sel.FIELD_ORDER_SUBTOTALS_TAG_ITERATOR_SELECTOR):
+            inner = util.select_one(tag, sel.FIELD_ORDER_SUBTOTALS_INNER_TAG_SELECTOR)
+            text = tag.get_text(" ", strip=True)
+            if inner:
+                text = text.replace(inner.get_text(" ", strip=True), "")
+            label = re.sub(r"\d+", "#", " ".join(text.split()))
+            labels[label] = labels.get(label, 0) + 1
+        for item in o.items:
+            for tag in util.select(item.parsed, sel.FIELD_ITEM_QUANTITY_SELECTOR):
+                q = re.sub(r"\d+", "#", " ".join(tag.get_text(" ", strip=True).split()))
+                quantities[q] = quantities.get(q, 0) + 1
+    print("\nsummary-row labels (count over orders):")
+    for label, n in sorted(labels.items(), key=lambda kv: -kv[1]):
+        print(f"  {n}x  {label!r}")
+    print("\nquantity element texts (digits masked):", quantities or "no quantity element found")
 
 
 if __name__ == "__main__":
