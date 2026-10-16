@@ -75,7 +75,9 @@ def patch_force_tan() -> None:
     orig = C._need_twostep_tan_for_segment
 
     def need(self, seg):
-        if seg.header.type in ("HKSAL", "HKKAZ", "HKCAZ") and self.get_current_tan_mechanism() not in (None, "999"):
+        # Only HKSAL: Consorsbank rejects a redundant HKTAN on SCA-exempt calls (HKKAZ within the
+        # exemption window answers 9010 + 3076 'Keine starke Authentifizierung erforderlich').
+        if seg.header.type in ("HKSAL",) and self.get_current_tan_mechanism() not in (None, "999"):
             return True
         return orig(self, seg)
 
@@ -146,7 +148,7 @@ def main() -> int:
     ap.add_argument("--hnshk-v2", action="store_true",
                     help="experiment: sign two-step messages with PIN profile version 2 (library uses 1)")
     ap.add_argument("--force-tan", action="store_true",
-                    help="attach a TAN request to balance/transaction calls (use if the bank answers 9075)")
+                    help="attach a TAN request to balance calls (the bank answers 9075 otherwise)")
     args = ap.parse_args()
     if not (args.blz and args.url and args.user):
         ap.error("blz, url and user are required (flags or FINTS_* env)")
