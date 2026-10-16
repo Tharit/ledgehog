@@ -346,7 +346,10 @@ one payee.
 
 A payee may name a `document_provider` — the provider of the external
 documents that describe its charges (PayPal, Amazon). That one attribute drives
-document matching and waiting for a document (§5.8). It may also carry an
+document matching and waiting for a document (§5.8). It is chosen from the
+providers of the registered document importers, never typed: a value that is
+not registered is refused when it is set, while a stored value whose importer
+is no longer registered stays until changed, and clearing is always allowed. It may also carry an
 icon and a colour, presentation only (§3.5).
 
 Merging two payees repoints their entries, the rules that set the payee and the
@@ -1323,7 +1326,7 @@ What a document importer delivers:
   (§5.8).
 
 **A start date**, chosen once when the instance is set up and kept in its
-settings, prefilled with the date of the oldest unreviewed entry. No document dated before it is imported. Documents are only
+settings under the key `start_date` (an ISO date), prefilled with the date of the oldest unreviewed entry. No document dated before it is imported. Documents are only
 matched to unconfirmed transactions (§5.8), so a start date inside reviewed
 history would only produce unmatched documents.
 
@@ -1773,16 +1776,36 @@ as a subsystem of their own. The core requires this of it:
   again for as long as it stands. An entry that is removed frees its document
   (§5.6); a document whose content changes resolves its transaction afresh
   (§5.5).
-- **A link is an input to resolution** (§5.9). While its transaction is
-  unconfirmed, the document's merchant name and line descriptions enrich its
-  entries' input — what resolution reads, never what is stored (§5.9) — so a rule keyed on a card descriptor such as `PAYPAL *` no
-  longer matches and one keyed on the merchant does. The enriched proposals
-  appear when a link is made and disappear with it.
+- **A link is an input to resolution** (§5.9). The source row is read as
+  stored; the document adds fields that rules read: its merchant name
+  (`document_merchant`) and the entry's own line (`document_line`), below. A
+  rule on the card descriptor, such as `PAYPAL *`, keeps matching, so the entry
+  first resolves as the descriptor says and waits for its document; once
+  linked, a rule on the merchant ordered before it wins. The resolved values
+  appear when a link is made and disappear with it. **The payee of a documented
+  charge is the provider unless such a rule names the merchant** (§3.6: a
+  payee is curated).
+- **A link gives its entries their lines.** An entry's line is the document
+  line it references (`document_line_id`). For a document of one line, the
+  original entry takes it with the link, in the same write, by settling or by
+  a commit; for a document of several, the split along the lines gives each
+  entry it makes its line, the original the first. Every other entry has no
+  line — an unsplit transaction of a document of several lines, a split made by
+  hand, an entry added by hand — and a rule's condition on it fails: a line
+  matched there would be any one of the order's items, for all of them. The
+  write that changes the link sets or clears the original entry's reference
+  with it; a changed document's lines are replaced (§5.5), which clears the
+  references to them, and a reference to a line of another document than the
+  transaction's is ignored when read.
 - **A link proposes a split** along the document's lines, in review: the
   preview of a linked transaction splits it, confirmed or not, one entry per line, the original entry
   taking the first line and the remainder (§5.9), and the commit writes the
   split. A document of one line proposes no split. Only a commit
-  splits (I7); a split is never stored as machine output.
+  splits (I7); a split is never stored as machine output. A multi-line
+  document's split is proposed only from a stored link or a pick: a link
+  settling has yet to make is shown in the preview but written by settling
+  after the commit, and only a stored `matcher_proposal` becomes `user` on a
+  commit.
 - **A transaction may wait for its document.** Documents match a transaction
   within the **document window** of its `booked_on`, a single ledger-wide
   setting in days. Where its payee names a `document_provider` (§3.6) and it
@@ -1793,14 +1816,20 @@ as a subsystem of their own. The core requires this of it:
   transaction too: with several instances there is no knowing which one would
   deliver it. That waiting holds automatic confirmation (§6); a
   commit ends it (below).
+- **A document explains a flow.** A transaction typed as a transfer is not a
+  candidate, a pick on it is refused, and the schema refuses a link on a
+  transfer. Converting a linked transaction to a transfer drops its document,
+  as it drops the payee (I9). Picking a document for an untyped transaction
+  types it `flow`, as a user decision, like a drafted payee.
 - **Picking a document in review** is part of the review draft (§6): one of
   the suggestions, a document found by hand, or "none of these". The preview
-  shows the enriched proposals and the split; the commit writes the pick, or
+  shows the values resolved with the document and the split; the commit writes the pick, or
   "none", as the entry's `document`, replacing an automatic link. A commit
   without a document picked decides "none", like every value a commit leaves
   as it is (§6); where documents are suggested or one is awaited, the preview
-  says so and the user confirms explicitly that the unit is committed without
-  a document.
+  says so and the server refuses the commit unless the draft decides: it picks
+  a document or says "none" explicitly. With an importer and a waiting entry,
+  the user must consciously decide not to wait.
 - **Documents can be browsed on their own**, each with the transaction that
   carries it, if any, and filtered to those no transaction carries. For such
   a document, the transactions it would match by the subsystem's amount and
@@ -1809,8 +1838,9 @@ as a subsystem of their own. The core requires this of it:
   suggestions, these are computed when read. This is how a document that
   arrived after its charge was committed is found and linked.
 
-Nothing else follows from a document: it never reopens a reviewed entry and
-never replaces a value a user confirmed.
+Nothing else follows from a document: it never reopens a reviewed entry. For
+an unreviewed transaction a link is new input, and re-derives the values after
+it as any new input does (§5.9).
 
 ### 5.9 Resolution
 
@@ -1822,9 +1852,8 @@ descending order of authority.
 and, where one is linked or picked, its document (§5.8) — the review draft if
 there is one (§6), rules, history and the model's stored answer (pass 3,
 below). Its input is built when resolving and never stored: the source row as
-stored, read together with a linked or picked document, whose merchant name
-stands in for the counterparty name and whose line descriptions are read with
-the purpose (§5.8); the source row itself is never changed. It returns values and how each was arrived at; writing them is a
+stored; a linked or picked document adds the fields `document_merchant` and
+`document_line`, which rules read (§5.8). The source row is never changed. It returns values and how each was arrived at; writing them is a
 separate step. Ingest, settling and the review preview all call it.
 
 **Proposals are rederived; decided values are not** (I18, I20). A proposal
@@ -1872,8 +1901,9 @@ On derived entries, which are complete at creation, resolution does nothing.
 
 #### Field order
 
-The fields constrain each other — a category implies a flow, a payee applies
-only to flows, a counter-account only to transfers — so they are resolved in a
+The fields constrain each other — a category implies a flow, a document
+implies a flow, a payee applies only to flows, a counter-account only to
+transfers — so they are resolved in a
 fixed order, and no pass proposes a value that contradicts a field already
 decided. The **document** comes first (§5.8): matching judges the
 transaction as resolved without one, and a link then changes everything after
@@ -1991,7 +2021,10 @@ date (§3.3), so a closed wallet stops receiving withdrawals.
 implicit AND). A condition is `{field, op, value}`. The fields are
 `counterparty_name`, `counterparty_ref`, `purpose`, `booking_text` and
 `mandate_ref`, which take the operators `equals`, `starts_with`, `contains`
-and `regex`, and `payee`, which takes `is` only. The same field may appear in
+and `regex`; `document_merchant` and `document_line`, which take the same
+operators and fail without a linked or picked document, or, for
+`document_line`, without a line of the entry (§5.8); and `payee`, which takes
+`is` only. The same field may appear in
 several conditions, and a condition on a field the entry lacks fails. At least
 one condition is required, and a blank value is refused. A
 `regex` is at most 200 characters and must compile (case-insensitive, `search`
@@ -2009,7 +2042,8 @@ the format leaves room for grouping and negation later without a schema change.
 Values are compared per plugin: rules compare `counterparty_ref` and
 `mandate_ref` as canonical text on both sides (§5.2: spaces, case and
 punctuation ignored, so an IBAN prefix works), and `counterparty_name`,
-`purpose` and `booking_text` with the rules plugin's name normalisation (NFKC,
+`purpose`, `booking_text`, `document_merchant` and `document_line` with the
+rules plugin's name normalisation (NFKC,
 casefolded, whitespace collapsed, trimmed, punctuation kept); history key 2
 compares canonical text (§5.2).
 
@@ -2054,20 +2088,22 @@ open the review panel once units exist.
 confirmed value, and confirmed values are already the input to pass 2. A rule
 is written in the rule editor, which starts from an example: an entry the user
 picks there with a find box, or one the editor is opened with, as the review
-panel does. The editor shows the example's source fields beside the conditions;
-nothing is ticked or prefilled, and the user writes the conditions with the
-example in view.
+panel does. The editor shows the example's fields beside the conditions in two groups,
+from the source transaction and from the entry (payee, document merchant,
+document line); nothing is ticked or prefilled, and the user writes the
+conditions with the example in view. A new payee rule with a document condition
+is given a priority before every payee rule without one.
 
 #### Pass 2 — history
 
 Reads past entries joined to their source transactions, so every source field
-of every past case is available. **It does not run for a transaction with a
-linked or picked document** (§5.8): the bank's fields then describe the
-provider — every PayPal charge alike — not the purchase, and a majority over
-them would be systematically wrong and keep the model from being asked. Rules
-and the model decide such a transaction, on its enriched input. For the same
-reason a confirmed transaction with a document does not vote. History keys on
-source signals, raw on both sides. **It learns only from confirmed entries with
+of every past case is available. A transaction with a linked or picked
+document is asked on one key only, the document's merchant name, for the
+category only, and votes only for that key (`history.md`); on every other key
+it is neither asked nor counted, since its bank fields describe the provider
+— every PayPal charge alike — and not the purchase, and a majority over them
+would be systematically wrong and keep the model from being asked. History
+keys on source signals, raw on both sides, and on the document's merchant name. **It learns only from confirmed entries with
 a source transaction** (I19) — confirmed by a human, or standing — because no
 other entry carries the source signals it keys on. A user-authored row brings
 only its purpose among the bank's fields, so of the keys on source fields only
@@ -2092,7 +2128,9 @@ outputs. Keys, most specific first:
    and counter-account are resolved before the payee; it pools evidence across
    a curated merchant's varying descriptors;
 4. `booking_text` alone, per account;
-5. normalised tokens of `counterparty_name` and `purpose`.
+5. normalised tokens of `counterparty_name` and `purpose`;
+6. the document's merchant name (canonicalised as in §5.2), for a transaction
+   with a document and for the category only.
 
 For each key it counts the matches within a lookback period and proposes the
 value a strict majority of them share; the basis records how many agree, of
@@ -2155,7 +2193,7 @@ Constraints on pass 3:
   write settles like any other.
 - **Limited payload.** The counterparty name, booking text and purpose, and
   for an entry with a linked or picked document, the document's merchant
-  name and line descriptions. Never the counterparty IBAN, BIC, end-to-end id
+  name, and the entry's line (§5.8) if it has one. Never the counterparty IBAN, BIC, end-to-end id
   or other reference fields, and never amounts, dates, accounts or balances.
   Where the payload would be empty, the pass does not run. Limited is not
   anonymous: counterparty names and purpose lines include **private persons'
@@ -2293,7 +2331,8 @@ reported balances (§5.10) meaningful indefinitely.
 What the panel offers, each previewed before the commit:
 
 - **Converting to a transfer.** A transfer needs a counter-account, which the
-  user supplies, and has no payee or category. The preview then applies §5.7 to
+  user supplies, and has no payee or category, nor a document, which is
+  dropped with them (§5.8). The preview then applies §5.7 to
   the unit: pair with a candidate where there is one; otherwise, on an
   unsynced counter-account, a counter-leg, which the commit creates; on a
   synced one the leg is committed with its destination and waits, and is
@@ -2328,6 +2367,10 @@ What the panel offers, each previewed before the commit:
   decides "no payee" (§5.9, field order, state 3).
 - **Re-resolving** a unit: a preview of what resolution proposes now, to keep
   or adjust — for values a human decided, what the passes would say instead.
+- **Creating a rule from a change.** Where the draft changes a value a rule
+  set, the panel offers to create a rule from the transaction (§5.9, rule
+  editor), with the document's fields available. Only values a rule set earn
+  the offer: there the rule is what keeps coming back.
 
 **Breaking a pair.** Re-pairing, converting to a flow and changing the
 counter-account can each leave a former partner behind, and re-pairing with a
@@ -2536,8 +2579,9 @@ shows the unit as it will stand after settling, so a partner that settling would
 pair with a leg of the draft joins it. The draft is
 resolved top-down: the document determines every entry's input and, for a
 transaction that is not split, proposes the split along its lines (§5.8) —
-in the draft, an entry made from a line is resolved with that line, every
-other entry with all of them; then
+every entry is resolved with its line (§5.8), in the draft as after the
+commit: an entry made from a line, the original entry of a document of one
+line; every other entry has none; then
 the split; then each entry's fields, in field order (§5.9). An existing split
 stays when a document is picked: the draft offers **split along the lines** as
 an explicit choice, which replaces it — the original entry stays, taking the
@@ -2561,16 +2605,16 @@ with the keys of §5.9: every proposal shown is accepted, and every value left
 as it is is decided as it is. An empty field stays empty and carries no key,
 except the payee a user decided to leave empty (§5.9, field order, state 3)
 and the document: a commit without a document picked decides "none"
-(§5.8), confirmed explicitly where documents are suggested or one is
-awaited. **A commit does not
+(§5.8), which the server requires to be said explicitly where documents are
+suggested or one is awaited. **A commit does not
 confirm**; confirmation is never an action. Settling then derives the unit's
 state like any other (above): it is confirmed when it meets every requirement
 of confirming, and otherwise stays in review — waiting for its partner,
 or unclassified — with everything the user committed kept. A commit needs the result to be valid, not complete: the
 invariants must hold (a split sums to its amount, a counter-account obeys the
 currency rule), but a category, a counter-account or a partner may still be
-missing. It is refused only where the result would be invalid, or where the
-unit's structure changed since the preview: the chosen partner was paired
+missing. It is refused only where the result would be invalid, where a document
+decision is missing (§5.8), or where the unit's structure changed since the preview: the chosen partner was paired
 elsewhere, or the chosen document was linked elsewhere or has a newer
 version (§5.5). Proposals
 that changed in the meantime do not matter: the user commits what they saw. A partner or
@@ -2648,7 +2692,9 @@ Rules:
     `matcher_decision`, for each of its transactions that has none, as a commit
     decides "none". Confirmation therefore stays put: a document source set up,
     enabled or given to a payee later cannot reopen a confirmed unit (I20); a
-    document arriving for it is linked by hand, if at all (§5.8).
+    document arriving for it is linked by hand, if at all (§5.8). A data
+    migration records the same "none" on every unit confirmed before documents
+    existed, so a source added later cannot reopen them.
 - **Units are confirmed one at a time.** There is no batch confirmation: a
   group of units cannot be confirmed without looking at each, and seeing each
   is the point of review. A unit whose keys are all standing arrives
@@ -2676,7 +2722,10 @@ transaction may also wait for its document (§5.8). For a person that waiting is
 advisory — a commit decides "no document", once the user confirms skipping
 the wait, after which the unit is confirmed as usual, giving up automatic
 attachment, because a reviewed entry is never changed by a document arriving —
-but settling does not confirm the unit while it lasts (above).
+but settling does not confirm the unit while it lasts (above). **The waiting
+flag wins:** a unit that waits for a document is in the queue's waiting
+section even while it has suggestions, because what it waits for may change the
+user's other decisions; it moves to pending review once nothing is awaited.
 
 **Review state never excludes an entry from balances or reports.** Unreviewed
 and unclassified entries count in balances and net worth, and appear in
@@ -2853,17 +2902,23 @@ filter bar replaces most reports.
   a different document does. What it would bring back: settling creating and
   deleting entries, which bumps their versions and refuses commits open during
   review; tags lost with machine-made entries; and a change of input
-  discarding a split the user adjusted, since standing is standing. Entries
-  split along the lines — by the panel today, or by settling then — could also
-  carry a reference to their line (`document_line_id`), unique, beside the
-  transaction's document on the original entry, for display ("line 2: LEGO
-  set"). Deferred until real documents show whether the panel's proposal is
-  enough. It would also let entries split along the lines keep their own line
-  as input when re-resolved after the commit; until then only the preview
-  resolves each such entry with its line (§6).
-- **History over enriched input.** History skips transactions with a linked
-  document (§5.9), so it cannot learn a pass-through merchant's payee; rules
-  or the model must. Reading each past vote with its own document would let it
-  learn "Seeed Studio" across descriptors, at the cost of a lookup by merchant
-  name and a rule for votes with and without documents. Deferred until real
-  document importers show whether descriptors repeat.
+  discarding a split the user adjusted, since standing is standing. Deferred
+  until real documents show whether the panel's proposal is enough.
+- **The model as the reviewer of weak history.** Today history proposes on a
+  single unanimous precedent, and whatever it proposes keeps the model from
+  being asked (§5.9, pass 3). Once the model runs, that is often the wrong way
+  round: a shop bought from once proposes the same category next time, while
+  the model, which has the purpose and a document's lines, would do better. A
+  sketch: rules decide first and are never reviewed by the model; history
+  proposes on its own only where its evidence is strong (a minimum number of
+  votes, all agreeing); below that it proposes nothing and hands its votes to
+  the model as context — per key, the values the user chose and how often
+  ("merchant CloudNotes: Software ×3"), never the text of past entries —
+  together with the categories and payees to choose from. The model answers as
+  a proposal, its basis naming the evidence it was given. Questions to settle
+  with the model: the threshold for history alone, and whether it depends on a
+  model being configured (without one, history must stand alone as today);
+  what of the evidence enters the payload's fingerprint, so a new confirmation
+  does not re-ask the model for every similar entry; and whether the counts
+  are within the limited payload. Decided with pass 3: it is the reason
+  history's threshold is left as it is in v1.

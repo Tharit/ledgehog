@@ -18,14 +18,17 @@ A source transaction is considered when all of the following hold:
 
 - it is not a duplicate;
 - its unit is unconfirmed (`spec.md` I20);
-- its entries have a payee with a `document_provider` (`spec.md` §3.6);
+- its original entry has a payee with a `document_provider` (`spec.md` §3.6);
+  the original entry's payee alone decides, since it carries the link, whatever
+  the payee of the other entries of a split;
 - its original entry has no decided `document`: neither a link nor a user's
-  "none".
+  "none";
+- it is not typed as a transfer (`spec.md` §5.8): a document explains a flow.
 
 Eligibility is judged on the transaction as resolved without a document. The
-link comes first in field order (`spec.md` §5.9), so a payee that the enriched
-input resolves differently — the real merchant instead of PayPal — does not
-undo it: a linked transaction is no longer considered at all.
+link comes first in field order (`spec.md` §5.9), so a payee that a rule on
+the document resolves differently — the real merchant instead of PayPal — does
+not undo it: a linked transaction is no longer considered at all.
 
 While a transaction waits for its document (§7), settling does not confirm
 its unit, however standing its values (`spec.md` §6), so rules on a provider
@@ -64,7 +67,9 @@ for each considered transaction t with at least one candidate:
        and d is a candidate of no other transaction
                        → set document_id = d on t's original entry, keyed
                          document with pass matcher_decision for a document
-                         of one line, matcher_proposal for one of several
+                         of one line, matcher_proposal for one of several;
+                         for a document of one line, in the same write set
+                         the entry's document_line_id to that line
     otherwise          → write nothing; the candidates are t's
                          suggestions, computed when read
 ```
@@ -78,7 +83,10 @@ rather than double it.
 
 **A link to a document of several lines is reviewed once** (`spec.md` §5.9):
 its key is `matcher_proposal`, so the panel shows the split along the lines,
-and the commit makes the key `user`, with or without the split. A link to a
+and the commit makes the key `user`, with or without the split. The draft
+knows only the stored link: a link settling has yet to make is shown in the
+preview but written by settling after the commit, and only a stored
+`matcher_proposal` becomes `user` on a commit. A link to a
 document of one line has nothing to split and is keyed `matcher_decision`,
 which is standing.
 
@@ -97,38 +105,35 @@ the link for settling to make again (`spec.md` §5.5, §5.9); an
 entry that is removed — its transaction marked as a duplicate or reverted, a
 user-authored transaction deleted — frees its document (`spec.md` §5.6).
 
-## 5. Enrichment
+## 5. The document as an input
 
-A linked or picked document enriches the input of its transaction's entries
-(`spec.md` §5.9) — in the preview of any unit, confirmed or not; automatic
-re-derivation reaches only unconfirmed transactions (`spec.md` I20): the document's merchant name stands in for the counterparty
-name, and its line descriptions are added to the purpose. Rules and the model
-run on that input — history does not run for a transaction with a document,
-whose bank fields describe the provider rather than the purchase (`spec.md`
-§5.9) — so a rule keyed on a card descriptor such as `PAYPAL *` no longer
-matches, while a rule keyed on the merchant name wins. Card lines for
-pass-through providers look alike — `PAYPAL *SEEEDDEVELO` — while the document
-names the real merchant, which is the point.
+A linked or picked document adds two fields to its transaction's entries, which
+rules read (`spec.md` §5.9): `document_merchant`, the merchant name, and
+`document_line`, the description of the entry's own line. The source row is not
+rewritten: `counterparty_name`, `purpose` and the other source fields are the
+bank's. A rule keyed on a card descriptor such as `PAYPAL *` therefore matches
+before and after the link. Its payee, the provider, stays the payee of every
+merchant the user has not curated; to make a merchant the payee, the user
+writes a rule on `document_merchant`, ordered before the descriptor rule.
 
-In the preview's draft of a split along the lines (§6), an entry made from a
-line is resolved with that line — the original entry with the first line it
-carries; every other entry, an unsplit one included, takes the document's
-merchant name and all its lines. No line is stored with an entry (`spec.md`
-§9), so once committed every entry of the transaction takes all lines when it
-is resolved again. The input is built when resolving
-and never stored (`spec.md` §5.9): the source row is not changed.
+An entry's line is the line it references (`document_line_id`). Applying a
+document's lines is one operation, whatever their number: for a document of one
+line, the original entry takes it in the same write as the link, by settling
+(§4) or a commit (§8), and nothing is split; for a document of several, the
+split along the lines (§6) gives each entry it makes its line, the original the
+first. Every other entry — an unsplit transaction of a document of several
+lines, a split made by hand — has no line, and a condition on `document_line`
+fails: a line matched there would be any one of the order's items, for all of
+them. The write that changes the link sets or clears the original entry's
+reference with it; a reference is read only while its line belongs to the
+transaction's document, and a changed document's lines are replaced, which
+clears it.
 
-Linking is a change of the first value in field order, so every standing
-value after it is derived again (`spec.md` §5.9), the link itself staying: a rule keyed on `PAYPAL *` gives way to one
-keyed on the merchant. The enriched proposals therefore appear as soon as a
-link is made and disappear when it is deleted or the transaction is linked to
-another document. A change to the linked document's total, currency,
-merchant or lines resolves the transaction afresh in the same way. A split
-along the lines (§6)
-exists only once a commit has written it; until then the transaction's entry
-takes the document's merchant name and all its lines as input, as an unsplit
-entry does. The model of pass 3 is asked
-again only because its payload changed (`spec.md` §5.9).
+Linking is a change of the first value in field order, so every standing value
+after it is derived again (`spec.md` §5.9), the link itself staying. A change
+to the linked document's total, currency, merchant or lines resolves the
+transaction afresh in the same way. Rules and the model run on these inputs;
+history asks one key, the merchant, for the category only (`history.md`).
 
 ## 6. Splitting along the lines
 
@@ -141,11 +146,15 @@ writes it; only a commit splits (`spec.md` I7). The proposal is:
   rounded half-even;
 - the original entry takes the first line and the remainder — shipping,
   discounts, rounding — so it is never zero when the lines add up exactly;
+  the commit writes `document_line_id` on each entry it creates, the original's
+  being the first line it carries; the panel shows the description of an
+  entry's line on its row;
 - no split for a document of one line, where the document's total does not
   match the transaction exactly by §3, or where the original entry's share
   would be zero or change sign; the link stands, unsplit.
 
-The proposal is made only for a transaction that is not split. An existing
+The proposal is made only for a transaction that is not split, and only
+from a stored link or a pick. An existing
 split stays, and the draft offers *split along the lines* as an explicit
 choice that replaces it (`spec.md` §6). The user may change the proposal
 before committing, like any split. Picking another document in the draft
@@ -168,19 +177,33 @@ A transaction waits for its document (`spec.md` §6) while:
   is no knowing which one would deliver the document, so the transaction
   waits until all of them have reached it.
 
-With no active document source, nothing waits. Waiting holds automatic
+With no active document source, nothing waits. Which instance provides a
+provider is learned from a registry the composition root configures, never by
+core importing a plugin; the instance's start date is its setting `start_date`
+(`spec.md` §5.5). **The waiting flag wins:** a waiting unit is in the queue's
+waiting section even while it has suggestions, since what it waits for may
+change the user's other decisions. The queue's line reads "Waiting for a
+document from <provider>, covered through <date>", or "…, not synced yet" where
+no instance has run. Waiting holds automatic
 confirmation: settling does not confirm a waiting transaction's unit
 (`spec.md` §6). For a person it is advisory: a commit with no document picked
-decides "no document", keyed `document: user` without a link, once the user
-has confirmed skipping the wait; that lets the unit be confirmed and gives up
-automatic attachment. When the coverage reaches the end of the window, the waiting ends.
+decides "no document", keyed `document: user` without a link; the server
+refuses a commit that leaves this unsaid while documents are suggested or one is
+awaited (422 `document_decision_required`), so skipping the wait is a conscious
+choice, and the panel offers it as "Commit without a document". That lets the unit be confirmed and gives up
+automatic attachment. A data migration records the same "none" on every unit
+confirmed before documents existed, so a source added later cannot reopen them
+(`spec.md` I20). When the coverage reaches the end of the window, the waiting ends.
 
 ## 8. Picking a document in review
 
 Part of the review draft (`spec.md` §6): the user picks one of the suggestions,
-or a document found by hand, or "none of these". The preview shows the enriched
-proposals and the split; the commit writes the pick, or "none", as the
-original entry's `document`, keyed `user`, replacing an automatic link. A
+or a document found by hand, or "none of these". The preview shows the values
+resolved with the document and the split; the commit writes the pick, or
+"none", as the original entry's `document`, keyed `user`, replacing an
+automatic link; the pick of a document of one line writes the line with it. A
+suggestion is no decision: where documents are suggested or one is awaited, a
+commit with neither a pick nor "none" is refused by the server. A
 document arriving after
 its charge was confirmed is linked this way, if at all; re-resolving the unit
 shows what it would change.
@@ -188,8 +211,8 @@ shows what it would change.
 ## 9. Transactions a document would match
 
 The reverse of §2, for a document carried by no entry (`spec.md` §5.8):
-the non-duplicate transactions on any account whose amount matches the
-document by §3 and whose `booked_on` is within the document window of its
+the non-duplicate transactions on any account, not typed as a transfer, whose
+amount matches the document by §3 and whose `booked_on` is within the document window of its
 `occurred_on`, confirmed or not, and whatever their payee. Computed when
 read, never stored, and never used by settling: confirmed transactions are
 only ever linked by a person. A transaction that already carries a document

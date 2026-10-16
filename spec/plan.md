@@ -149,7 +149,9 @@ Rough sequence:
    preview, and the document list with its reverse matches.
 10. FinTS importer: discovery, first-fetch start, PIN/TAN; UI for importers, per-account
    fetches, sync task and SSE.
-11. Dashboard with data age, the one report, CSV export.
+11. Dashboard with data age, the one report.
+12. Any "missing" UI not already built, e.g., manually reporting a balance.
+check what earlier steps already delivered, add the rest.
 
 Steps 3 to 9 are where the design is actually tested; everything before is
 scaffolding and everything after is comparatively mechanical.

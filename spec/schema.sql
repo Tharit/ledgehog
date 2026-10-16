@@ -701,6 +701,15 @@ CREATE TABLE ledger_entry (
     -- split carries it once. Derived like a field, keyed 'document'. Its
     -- foreign key and the I35 indexes follow external_document, below.
     document_id          bigint,
+    -- the entry's LINE of its transaction's document (spec §5.8): for a
+    -- document of one line, the original entry's, written with the link;
+    -- for one of several, written by the split along the lines on each
+    -- entry it makes. Null for every other entry. Read only while the line
+    -- belongs to the document its transaction carries; a reference to
+    -- another document's line is ignored. A changed document's lines are
+    -- replaced (spec §5.5), which clears it. Its foreign key and unique
+    -- index follow external_document_line, below.
+    document_line_id     bigint,
 
     description text,
     note        text,
@@ -747,6 +756,9 @@ CREATE TABLE ledger_entry (
     -- only a movement explains a document
     CONSTRAINT ck_document_on_movement
         CHECK (document_id IS NULL OR source_transaction_id IS NOT NULL),
+    -- a transfer is not explained by a document (spec §5.8)
+    CONSTRAINT ck_document_not_on_transfer
+        CHECK (document_id IS NULL OR type IS DISTINCT FROM 'transfer'),
     -- derived entries are exactly the openings, valuations and
     -- reconciliations, each tied to the record it is derived from
     CONSTRAINT ck_balance_types
@@ -895,6 +907,15 @@ CREATE UNIQUE INDEX ux_le_document
     ON ledger_entry (document_id) WHERE document_id IS NOT NULL;
 CREATE UNIQUE INDEX ux_le_document_per_transaction
     ON ledger_entry (source_transaction_id) WHERE document_id IS NOT NULL;
+
+-- An entry's line of the document (spec §5.8). SET NULL: a changed document's
+-- lines are replaced (spec §5.5), which clears the references to them.
+ALTER TABLE ledger_entry
+    ADD CONSTRAINT fk_le_document_line
+    FOREIGN KEY (document_line_id) REFERENCES external_document_line(id) ON DELETE SET NULL;
+-- a line is the line of at most one entry
+CREATE UNIQUE INDEX ux_le_document_line
+    ON ledger_entry (document_line_id) WHERE document_line_id IS NOT NULL;
 
 -- Every entry's document, read through its transaction's carrier: one join
 -- instead of a copy on each entry of a split.

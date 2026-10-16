@@ -1737,7 +1737,7 @@ changed, so it would mostly reproduce them; and review is per unit, so its
 split siblings — a fee split off, say — would be recomputed too, discarding
 work the broken pair has nothing to do with.
 
-## D142 Housekeeping after the second review — *partly superseded by D150 and D163*
+## D142 Housekeeping after the second review — *partly superseded by D150, D163 and D225*
 
 Consistency fixes after D133–D141, without new mechanisms:
 
@@ -1761,7 +1761,7 @@ Consistency fixes after D133–D141, without new mechanisms:
   paired; a rule confirms the units it decides completely, and one with both a
   payee and a text match counts as keyed on the payee; a link's document is
   "linked elsewhere", not confirmed; a document provider's category comes from
-  the enriched input.
+  the entry's own resolution.
 - Accepted: changing a manual entry's account to one in another currency
   keeps the number and changes its meaning. The panel shows the account's
   currency in the preview before the commit, which is enough.
@@ -2549,7 +2549,7 @@ Rejected: keeping the lifecycle as provenance, with counter-legs marked on their
 source and deleted with their pair. It would have kept the interpretation layer
 uniform, but made a generated counter-leg and a typed one behave differently.
 
-## D169 The document link is a field of the original entry — *partly superseded by D172 and D177*
+## D169 The document link is a field of the original entry — *partly superseded by D172, D177 and D225*
 
 Supersedes D138; partly supersedes D8, D11, D108, D131 and D166.
 
@@ -2586,8 +2586,8 @@ source, split if need be, one document.
   user's work. This replaces ingest's special writer.
 - **The document comes first in field order.** Matching judges a transaction
   as resolved without one, and a link then changes every field after it, as
-  the cascade of D163 already prescribes; a payee the enriched input resolves
-  differently cannot undo the link it came from.
+  the cascade of D163 already prescribes; a payee that a rule on the document
+  resolves differently cannot undo the link it came from.
 - **A removed entry frees its document**, so marking a duplicate, a revert or
   deleting a user-authored transaction needs no rule of its own for links.
 
@@ -2913,7 +2913,7 @@ writes a link) and D76 (waiting on a document source that has never run).
   says "standing values", which counter-legs' keys are; units decided by rules
   appear in the queue while they wait; link and unlink are operations.
 
-## D178 Second review before implementation: counter-legs, pairs, merges, documents, settling — *partly superseded by D179 and D181*
+## D178 Second review before implementation: counter-legs, pairs, merges, documents, settling — *partly superseded by D179, D181 and D225*
 
 Partly supersedes D141 (what a leg left behind keeps), D156 (counter-legs on a
 closed account) and D177 (settling's rounds).
@@ -2958,12 +2958,8 @@ closed account) and D177 (settling's rounds).
   included, so a commit cannot silently take a document settling linked or
   overwrite a link it never showed. The commit carries the document's version
   too.
-- **Enrichment lives only in resolution's input** (spec §5.9): the merchant
-  name stands in for the counterparty name, the lines are read with the
-  purpose, and the source row is never changed. Rejected: the merchant beside
-  the counterparty name, which would need a rule condition of its own.
 - **Settling** resolves with the current link, so an entry linked in an
-  earlier settle keeps its enriched input; it repeats rounds until none
+  earlier settle keeps the document fields its rules read; it repeats rounds until none
   confirms anything new, since a new confirmation can also remove a majority
   and let another unit confirm (correcting D177). `finished_at` is read with
   `clock_timestamp()` after the account lock, because `now()` is the
@@ -3045,7 +3041,7 @@ Partly supersedes D179 (which offers block a counter-leg).
   "try again". Crash recovery sets `finished_at`; the unreachable
   source-change clauses left by D179's trigger are removed.
 
-## D181 Full scan before implementation: settling creates no counter-legs; history and documents; locking
+## D181 Full scan before implementation: settling creates no counter-legs; history and documents; locking — *partly superseded by D225*
 
 Partly supersedes D161 (a decided counter-account completed by a counter-leg
 settling creates), its restatements in D162, D163, D168 and D172, and D178,
@@ -3074,21 +3070,20 @@ D179 and D180 as far as they concern automatic counter-legs.
   After an account kept by counter-legs was linked, the second fetch otherwise
   re-imported its last week as rows nothing deduplicates. Rejected: bounding
   by the first fetched day, which the domain does not read.
-- **History does not run for a transaction with a document**, and such a
-  transaction does not vote (spec §5.9). Its bank fields describe the
-  provider, so a majority over them was systematically wrong — every PayPal
-  charge alike — and kept the model from being asked; rules and the model
-  decide on the enriched input. Rejected: history on the payee alone for such
-  transactions, which keeps the systematic error for mixed payees such as
-  Amazon; and enriched votes, deferred (spec §9).
+- **Keys 1 to 5 of history do not run for a transaction with a document**, and
+  such a transaction does not vote for them (spec §5.9). Its bank fields
+  describe the provider, so a majority over them was systematically wrong —
+  every PayPal charge alike — and kept the model from being asked. Rejected:
+  history on the payee alone for such transactions, which keeps the
+  systematic error for mixed payees such as Amazon. The document's merchant
+  is asked on a key of its own, for the category (D225).
 - **History keeps its strict majority**, to be watched in the first month for
   mixed payees. Rejected for now: a threshold, which only trades a systematic
   error rate for another; and unanimity, which one slip disables for a whole
   lookback.
-- **Per-line input lives in the draft** (spec §6): the preview resolves each
-  entry it made from a line with that line, every other entry with all lines.
-  Nothing records the line once committed, so per-line input after the
-  commit waits for `document_line_id` (spec §9).
+- **An entry's line is stored with it** (spec §5.8, §6; D225): the entry
+  references its line of the document, so the preview and the commit resolve
+  an entry alike.
 - **Fixes.** A category is deleted only without entries, rules or children.
   The commit's set-to-sum joins I2, I3 and the copied-fields table. Entering
   and editing a user-authored transaction recompute derived entries under the
@@ -3864,3 +3859,95 @@ was a patterns choice.
   clearing it is the only way to omit it.
 - Rejected: *a neutral "Money out | Money in" control* (a mouse or extra key for a choice the sign already states,
   and more space than the field).
+
+## D223 Step 9: documents with a test importer
+
+Spec `features/documents.md`, spec §5.5, §5.8, §6, architecture §4.1. The decisions that shape how documents
+meet the existing machinery; D1 to D9 of the step's plan.
+
+- **D1 Documents are part of the one confirmed predicate.** `units_sql` and its Python twin test for an open
+  document, gated to originals with a provider payee and no document key, pinned by a test. Computing it only in
+  settling would let a unit decided by rules count as confirmed, never be loaded, and never match.
+- **D2 A registry the composition root configures** tells settling which instance provides which provider, as for the
+  classifiers; core never imports plugins and the schema is unchanged. The start date is the setting `start_date`.
+- **D3 A data migration records "none"** (`matcher_decision`) on every unit confirmed before documents existed, so a
+  later source cannot reopen it (I20).
+- **D4 Eligibility is judged on the original entry's payee only,** the entry that carries the link.
+- **D5 The waiting flag wins.** A unit waiting for a document is in the waiting section even while suggestions
+  exist, because what it waits for may change the user's other decisions. Rejected: *pending review while
+  suggestions exist* (a decision on a suggestion could be overtaken by the document that is awaited).
+- **D6 A lean documents view** (`ux/views/documents.md`) and a panel section, reusing the ledger table patterns.
+- **D7 Picking by hand reuses `GET /api/documents`** with provider and unlinked filters. Rejected: *a separate
+  endpoint*.
+- **D8 A changed document re-resolves an unconfirmed carrier afresh,** dropping the user's pick; the panel shows it as
+  a consequence. Rejected: *a guard that keeps the pick* (a document whose total changed may no longer be the one).
+- **D9 Replacing an existing split along the lines is built last,** with the tags it deletes listed. Rejected: *cutting
+  it from the first cut*.
+
+## D224 Step 9: the document decision is enforced; providers are registered
+
+Spec §3.6, §5.8, §6, `features/documents.md` §7, architecture §4.1, §5.2, patterns §6. D223 left "commit without a
+document" as something the panel asks for; the server did not check it, so a client could skip a wait unnoticed.
+
+- **The server enforces the explicit decision.** A commit where documents are suggested or one is awaited and the draft
+  has no document decision (a pick, `none`, `split_along_lines`) is refused, 422 `document_decision_required`; the
+  preview reports `decision_required` and the panel offers "Commit without a document" (draft mode `none`). With an
+  importer and a waiting entry the user must consciously decide not to wait. Rejected: *a convention the panel keeps*
+  (nothing a client sends then separates a decision from a default).
+- **Documents join the lock order:** settle shared, documents ascending, accounts, rows. Ingest takes documents,
+  accounts, rows in the same order, so the two never deadlock.
+- **Providers come from the registered document importers,** listed by `GET /api/documents/providers`. A payee's
+  `document_provider` is selected from that list; setting an unregistered value is 422 `unknown_document_provider`,
+  an unchanged stored value stays and clearing is always allowed. Rejected: *free text* (a typo silently matches
+  nothing and waits for nothing).
+- **`ENABLE_TEST_IMPORTERS`** (default off) registers the deterministic test importer `testdocs` in the composition root.
+- **A provider mismatch applies only where the payee has a different provider;** a payee with none takes any document
+  (documents.md §9 offers a document to any payee, found by hand).
+
+## D225 Documents are inputs to rules, not a rewrite
+
+Spec §5.8, §5.9, §6, §9, `features/documents.md` §1, §4 to §6, §8, `plugins/classifiers/rules.md`,
+`plugins/classifiers/history.md`, schema (`ledger_entry.document_line_id`). Partly supersedes D178 (enrichment in
+resolution's input) and D181 (history closed to documented transactions; per-line input only in the draft), and replaces
+the enrichment section of `features/documents.md` (§5, as step 9 built it, D223). Enriching the input made resolution
+intransparent: a rule on `PAYPAL *` silently stopped matching once a document linked, "create rule from this
+transaction" showed an example the rule no longer saw, history was switched off, a panel-wide re-resolve on a confirmed
+entry wiped its values with nothing to propose them again, a document could sit on a transfer, and a split entry resolved
+with its own line in the preview but with all lines after the commit.
+
+- **A document is an input rules can read; the source is never rewritten.** `counterparty_name`, `purpose` and the
+  other source fields are the bank's, with or without a document. Rejected: *enriching the counterparty text and the
+  purpose* (what was built).
+- **Two rule fields, entry-level:** `document_merchant` and `document_line`, failing without a document or, for the
+  line, without a line. The rule editor's example shows them with `payee`, in two groups (source transaction, entry).
+- **`document_line` is singular, the entry's own line, or none.** Rejected: *`document_lines`, matching any line*,
+  which on an unsplit order of several items matches one item for all of them.
+- **An entry's line is the line it was given, referenced from the entry** (`document_line_id`), so the preview and the
+  commit agree. Applying the lines is one operation: with one line, the original entry takes it in the same write as the
+  link (settling or a commit); with several, the commit's split along the lines gives each entry its line. Every other
+  entry has none. A reference rather than a number: lines have ids, a changed document's lines are replaced (which
+  clears the references), and another document's line is detectable when read. Rejected: *no stored line* (the preview
+  and the commit then resolve differently); *a stored line number*; *deriving a one-line document's line when read* (a
+  second definition of an entry's line, next to the stored one).
+- **The payee of a documented charge is the provider, unless a rule on the document sets a curated merchant.** The
+  descriptor rule stays standing and fires again after the link; a rule on `document_merchant`, ordered before it, is
+  the explicit act of curating the merchant. Two aids, both reusing the editor: the panel offers "Create rule from this
+  transaction" where the draft changes a value a *rule* set (not wherever a user changes a payee or category: only
+  there is the rule what keeps coming back), and the editor gives a new payee rule with a document condition a priority
+  before every payee rule without one. Rejected: *a provider payee that history may replace* (a third value state
+  between proposal and decided value, touching review state, confirmation and the commit).
+- **History asks one new exact key for a documented transaction: the document's merchant, for the category only.**
+  Raw keys 1 to 5 stay closed to documented transactions, which vote only for the merchant key. Threshold unchanged (a
+  single unanimous precedent is a majority); raising it belongs to the model's design (spec §9, the model as the
+  reviewer of weak history). Rejected: *tokenizing lines in history* (product titles rarely repeat and shared words
+  agree for the wrong reasons). Deferred to the tuning section of `history.md`: an exact-line key for reorders, asked
+  before the merchant key and only for an entry with a line.
+- **A link is new input and re-derives the standing values after it, a user's included** (§5.9: new input is when a
+  decision deserves a second look). Only the sentence "never replaces a value a user confirmed" goes. The panel-wide
+  "Re-resolve" keeps its meaning and gets no warning: its preview shows what changes.
+- **A document implies `flow`,** a field-order constraint like "a category implies a flow". A transfer is not a
+  candidate and a pick on it is refused (`document_not_for_transfer`); converting a linked transaction to a transfer
+  drops its document, as it drops the payee (I9); a pick on an untyped transaction types it `flow` as a user decision;
+  the schema refuses a document on a transfer (`ck_document_not_on_transfer`). Entries cut before this change are
+  dropped: there is no real data yet.
+- **The model as the reviewer of weak history** is recorded as an open question (spec §9), to be decided with pass 3.

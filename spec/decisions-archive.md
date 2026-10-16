@@ -733,3 +733,33 @@ source, split if need be, one document.
   blocked every rule-decided withdrawal. Only open offers keep settling from
   creating a counter-leg, and a counter-leg settling just made is paired, so
   it blocks nothing later in the same settle.
+
+## D178 Second review before implementation: counter-legs, pairs, merges, documents, settling, in part — *superseded by D225*
+
+- **Enrichment lives only in resolution's input** (spec §5.9): the merchant
+  name stands in for the counterparty name, the lines are read with the
+  purpose, and the source row is never changed. Rejected: the merchant beside
+  the counterparty name, which would need a rule condition of its own.
+
+## D181 Full scan before implementation: settling creates no counter-legs; history and documents; locking, in part — *superseded by D225*
+
+- **History does not run for a transaction with a document**, and such a
+  transaction does not vote (spec §5.9). Its bank fields describe the
+  provider, so a majority over them was systematically wrong — every PayPal
+  charge alike — and kept the model from being asked; rules and the model
+  decide on the enriched input. Rejected: history on the payee alone for such
+  transactions, which keeps the systematic error for mixed payees such as
+  Amazon; and enriched votes, deferred (spec §9).
+- **Per-line input lives in the draft** (spec §6): the preview resolves each
+  entry it made from a line with that line, every other entry with all lines.
+  Nothing records the line once committed, so per-line input after the
+  commit waits for `document_line_id` (spec §9).
+
+## D142 Housekeeping after the second review, in part — *superseded by D225*
+
+- A document provider's category comes from the enriched input.
+
+## D169 The document link is a field of the original entry, in part — *superseded by D225*
+
+- The document comes first in field order: a payee the enriched input resolves
+  differently cannot undo the link it came from.

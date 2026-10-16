@@ -120,7 +120,7 @@ spec §6), one consistent badge per token and nothing else:
 
 A confirmed entry shows no badge. Badges carry a tooltip with the sentence in
 the third column; the `waiting` tooltip names the partner's account when the
-entry is an unpaired transfer leg. Account and currency status (spec §3.11) is never shown as an
+entry is an unpaired transfer leg, and the provider when it waits for a document. Account and currency status (spec §3.11) is never shown as an
 entry badge; it belongs to the account (§4.4).
 
 ### 4.3 Derivation and evidence
@@ -259,7 +259,9 @@ row; a resolved row stays in place, marked (§7).
   warning is its confirmation.
 - **Skipping a document wait is explicit.** Where documents are suggested or
   awaited, committing without one is a deliberate choice ("commit without a
-  document"), not the default key (spec §5.8, §6).
+  document"), not the default key; the server enforces it and refuses a
+  commit that lacks it (spec §5.8, §6). A payee's document provider is
+  selected from the registered providers, never typed.
 - **Invalid is shown, not blocked.** A draft that would be invalid — an unequal
   same-currency pair, a residual of zero — stays editable and shows why it
   cannot be committed, with the remedies the spec offers (spec §5.7, §5.9);
@@ -350,8 +352,11 @@ row; a resolved row stays in place, marked (§7).
 - whether the filter-bar action "Tag all…", its dialog and the opt-in to tag
   the marked rows suit real use;
 - the rule editor: its layout, the find box that picks its example entry and
-  the example's source table beside the conditions (which conditions one
-  reaches for on real descriptors);
+  the example's table beside the conditions, in two groups (from the source
+  transaction; from the entry: payee, document merchant, document line), with
+  the condition picker grouped the same way, and the priority a new payee rule
+  with a document condition is given, before every payee rule without one
+  (which conditions one reaches for on real descriptors);
 - how rules are ordered by priority, and whether the editor needs to show
   that at all;
 - whether imports get a description at creation (the list shows an entry's own

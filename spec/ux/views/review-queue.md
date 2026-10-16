@@ -50,10 +50,14 @@ section, with the count per section.
   request.
 - **Waiting** — entries expecting information that has not had its chance to
   arrive (`spec.md` §6): a partner leg, which cannot be confirmed until
-  paired, and a document, which can. Waiting is a hint; the unit stays
+  paired, and a document, which can be committed once the user explicitly
+decides to commit without it. Waiting is a hint; the unit stays
   editable. A unit waiting for a partner gives its reason in one line:
   "Waiting for <account>, synced through <date>", or "…, not synced yet" for
-  an account never fetched.
+  an account never fetched; one waiting for a document reads "Waiting for a
+  document from <provider>, covered through <date>", or "…, not synced yet".
+  The waiting flag wins: a unit in this section stays here even while it has
+  document suggestions.
 
 **Unpaired legs show their offers** (`spec.md` §5.7) — unpaired legs and
 entries on the counter-account first, exact matches leading, then legs paired
@@ -71,6 +75,14 @@ import what is missing, or to convert the leg if it is not a transfer.
 share (type, counter-account or payee, category, the evidence behind them),
 whether grouping is wanted beyond the three sections, and how it would be
 drawn: decided only after the queue has been used on real units.
+
+**The panel offers a rule where a rule's value is changed.** Where the draft
+changes a value a rule set — a payee, say, from the provider's to the
+merchant's — the panel offers "Create rule from this transaction", with the
+document fields available in the editor (`spec.md` §5.9). A split row shows the
+description of its line. Converting a linked transaction to a transfer shows
+its document dropped (`spec.md` §5.8). The document section is in
+`ux/views/documents.md`.
 
 **Keyboard-first.** The bindings are a cross-view convention and belong in
 `ux/patterns.md`.

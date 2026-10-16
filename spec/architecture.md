@@ -259,14 +259,38 @@ POST   /api/units/commit                       the full state the user saw;
 
   documents — browsed on their own; linked only through a unit's commit
   (spec §5.8)
-GET    /api/documents                          filtered, paged list: provider,
-                                               date, amount, text, linked or
-                                               not; each with the transaction
-                                               carrying it
+GET    /api/documents                          filtered, paged list, newest
+                                               first: provider (repeatable),
+                                               from and to on the date,
+                                               amount_min and amount_max
+                                               (magnitudes in minor units,
+                                               with currency), q (word by
+                                               word over merchant, title and
+                                               line descriptions), linked
+                                               true or false; limit 1 to 500
+                                               (100), offset; each row with
+                                               the transaction carrying it,
+                                               as the source transaction's
+                                               own date, amount and
+                                               currency (the whole
+                                               transaction for a split);
+                                               picking by hand in the panel
+                                               reuses it with the provider
+                                               and linked=false
+GET    /api/documents/providers                the providers of the registered
+                                               document importers, sorted:
+                                               what a payee can name
 GET    /api/documents/{id}                     a document with its lines; for
                                                one carried by no entry, the
-                                               transactions it would match,
-                                               confirmed ones included
+                                               `matches`: the transactions it
+                                               would match, confirmed ones
+                                               included (entry, account,
+                                               booked date, amount,
+                                               instructed amount, display
+                                               text, payee, the document it
+                                               already carries, whether its
+                                               unit is confirmed); a linked
+                                               document has none
 
   dimensions — created only by explicit user action (spec §5.9)
 GET    /api/ledger/categories
@@ -290,9 +314,12 @@ POST   /api/ledger/categories/{id}/merge       into another category of the
 GET    /api/ledger/payees
 POST   /api/ledger/payees
 PUT    /api/ledger/payees/{id}                 name, note, icon, colour,
-                                               document_provider (a write:
-                                               matching and waiting read it, so
-                                               it settles)
+                                               document_provider (selected
+                                               from the registered providers,
+                                               422 unknown_document_provider
+                                               for any other being set; a
+                                               write: matching and waiting
+                                               read it, so it settles)
 DELETE /api/ledger/payees/{id}                 only while no entry references
                                                it, taking the rules that set it;
                                                otherwise merge
@@ -483,8 +510,9 @@ derived value (spec §6). Only a commit splits (spec I7): a document's lines
 reach the ledger as a split the preview proposes, never as machine output. A
 commit does not confirm: it writes what the user saw, and settling derives
 whether the unit is confirmed. It is refused, with the reason, only where the
-result would break an invariant or the unit moved underneath the panel; the
-preview returns the state the commit leads to.
+result would break an invariant, the unit moved underneath the panel, or a
+document decision is missing (below); the preview returns the state the commit
+leads to.
 
 **What a commit carries.** The draft; the value of every field as the preview
 showed it, with the basis of each proposal shown; temporary ids for the rows
@@ -507,10 +535,11 @@ draft with `mode: fixed` and no value is the user's "no payee" decision
 decision: it is treated as re-resolve. A commit does not confirm (`spec.md`
 §5.9, §6). A counter-account that a pick
 fills on a leg that had none is the pair's: it takes the pair's pass with the
-basis `{"from": "counterpart"}`, and leaves with the pair (`spec.md` §5.7). It refuses only on a structural
-divergence: a moved version, a partner or document taken, a row the draft
+basis `{"from": "counterpart"}`, and leaves with the pair (`spec.md` §5.7). Besides an invalid result and a missing document decision, it
+refuses only on a structural divergence: a moved version, a partner or document taken, a row the draft
 relies on gone, or a closure that changed under the locks (409 `unit_moved`).
-A commit locks in one order: the settle lock shared, then the accounts it
+A commit locks in one order: the settle lock shared, then the documents it
+picks or its unit carries ascending, then the accounts it
 touches ascending, then the entry rows ascending; it reads the unit before the
 locks and checks it again after.
 
@@ -522,6 +551,34 @@ present tag and removing an absent one are no-ops. A tag deleted meanwhile refus
 409 `stale_reference`, details naming the tag. An entry the draft removes takes its tags with it. A commit
 that changes only tags is valid and, like any commit without a change, bumps no version; membership changes
 move no `ledger_entry.version` in any case, so no version is involved in them.
+
+**Documents in preview and commit** (`spec.md` §5.8, §6). The draft entry carries
+`document: {mode, document_id, document_version, decline_split}`, mode one of
+`keep` (also absent), `pick`, `none`, `reresolve`, `split_along_lines`; valid only
+on a transaction's original entry (422 `invalid_draft`, `document_not_original`).
+Entries made from a line carry `document_line {document_id, line_no}`. Unknown
+fields are rejected: nothing a client sends can mark a suggestion as taken. The
+preview's row block `document` holds the stored document, the link after commit and
+settle, its key, the suggestions nearest first (only while undecided),
+`waiting {provider, covered_through | null}`, `decision_required` and
+`split {document_id, proposed, available, replaces_stored_split}`. Problem codes:
+`stale_reference` (`document_id`), `document_changed`, `document_taken`,
+`document_provider_mismatch` (only where the payee has a different provider; a
+payee with none takes any document), `document_decision_required`,
+`document_split_unavailable`. A commit is refused with 422
+`document_decision_required` where documents are suggested or one is awaited and
+the draft has no explicit decision (a pick, `none`, `split_along_lines`; the server
+enforces it, the panel offers "Commit without a document" as mode `none`), with 409
+`unit_moved` (`reason` `taken` or `version`) for a picked document taken or changed
+since the preview, and 409 `stale_reference` for one that is gone. The proposed
+split rows are ordinary new rows with server-issued ids. Once the client echoes
+any row carrying a `document_line`, the split is the client's: nothing is
+regenerated, and every kept row must be echoed, a row left out being removed.
+`split_along_lines` replaces an existing split, listing the deleted entries and
+their tags as consequences, and needs the draft anchored on the original entry;
+`decline_split` refuses the proposal. A link settling has yet to make is shown in
+the preview but written by settling after the commit; the split is proposed only
+from a stored link or a pick.
 
 **Pairing in preview and commit** (`spec.md` §5.7). The draft carries a `pairing`
 field per transfer leg, with a mode: `keep`, `pick` (a partner entry id),
@@ -1062,9 +1119,11 @@ Transaction boundaries:
   first; settling takes it **exclusively**. A settle therefore never overlaps
   a write: it cannot write proposals it read before a commit over that commit,
   nor race document ingest, and writes still run alongside each other. After
-  the settle lock come account locks, in ascending id order, then row locks,
-  in ascending id order: a commit locks the accounts of every row its preview
-  showed, then the rows. Where the plan under the locks needs accounts not yet
+  the settle lock come the documents, in ascending id order, then account
+  locks, in ascending id order, then row locks, in ascending id order: a
+  commit locks the documents it picks or its unit carries, then the accounts
+  of every row its preview showed, then the rows. Document ingest takes
+  documents, then accounts, then rows, so the two never deadlock. Where the plan under the locks needs accounts not yet
   locked (a counter-leg's), the commit runs again with them, at most three
   rounds, and then answers with the "try again" conflict. Settling takes no account lock at all — it creates no
   rows and recomputes no derived entries; the writes do that in their own
@@ -1075,10 +1134,14 @@ Transaction boundaries:
   write answers with a named "try again" conflict and writes nothing.
 - **The order of a settle.** One settle runs, over the units it covers:
   1. resolution, with each transaction's current link — so a linked
-     transaction keeps its enriched input — and without one where none is;
+     transaction keeps the document fields its rules read — and without one
+     where none is;
   2. document matching, for transactions with no decided document — no link
      of any key, and no "none" — judged on step 1's result, which for them is
-     the resolution without a document;
+     the resolution without a document. Which instance provides which
+     provider is read from a registry the composition root configures, as
+     with the classifiers (core never imports plugins); there is no schema
+     change;
   3. resolution again of the fields after a link step 2 made;
   4. transfer pairing (`pair_transfers`), in booking-date order (`spec.md`
      §5.7), over every unpaired transfer leg, in every round; the matching window is the connection setting
@@ -1096,7 +1159,8 @@ Transaction boundaries:
   history key value with a unit newly confirmed, until a round confirms
   nothing new. It terminates, because settling never unconfirms a unit —
   the "none" it records keeps a document source added later from doing so
-  (`spec.md` I20) — so the confirmed set only grows; two rounds are the
+  (`spec.md` I20; a data migration records it for the units confirmed before
+  documents existed) — so the confirmed set only grows; two rounds are the
   ordinary case, and a maximum round count turns a step that never converges
   into a reported failure. The five steps are an ordered list. Step 1 re-derives a paired leg of an
   unconfirmed unit like any other and releases its pair on both legs when its
@@ -1350,7 +1414,7 @@ returned by `GET /api/config`.
 | Household | `TIMEZONE` (required, an IANA zone; `spec.md` §5.4), `LOCALE` (`en`) |
 | Users | indexed groups `USER_<n>_LOGIN`, `USER_<n>_NAME`, `USER_<n>_PASSWORD`, `n` contiguous from 1, logins unique; none is allowed |
 | Model | `MODEL_ENDPOINT` and `MODEL_NAME` (both or neither), optional `MODEL_API_KEY`; absent means pass 3 does not run (§5.4) |
-| Development | `EXPOSE_OPENAPI` (`false`; `true` or `false`, anything else fails the start): serves the OpenAPI document at `/api/openapi.json`, without a session, so the frontend's types can be generated from a running server (§6.7); a deployment leaves it off. `/docs` and `/redoc` never exist, whatever the value: they load scripts from a third-party host |
+| Development | `ENABLE_TEST_IMPORTERS` (`false`; `true` or `false`, anything else fails the start): registers the deterministic test document importer `testdocs` in the composition root, so documents can be exercised before a real document importer exists (`features/documents.md`); a deployment leaves it off. `EXPOSE_OPENAPI` (`false`; `true` or `false`, anything else fails the start): serves the OpenAPI document at `/api/openapi.json`, without a session, so the frontend's types can be generated from a running server (§6.7); a deployment leaves it off. `/docs` and `/redoc` never exist, whatever the value: they load scripts from a third-party host |
 
 **Start is a fixed sequence, and the app binds only after it succeeds:**
 
@@ -1549,9 +1613,10 @@ its entries — both legs of a pair, every entry of a split. The panel is the
 only place an entry's interpretation is edited, apart from the merges (tags are edited there too, and directly elsewhere),
 and it opens for any unit from the queue, the ledger list or a rule's preview.
 Each key's evidence is shown — "1 of 1", "12 of 12" — so a thin proposal stands
-out. A unit with open document suggestions, or a transfer without its partner,
-can be committed but stays in review until the pick or the partner completes
-it; the preview says which state the commit leads to.
+out. A transfer without its partner can be committed but stays in review until the
+partner completes it; a unit with open document suggestions is committed with a
+pick or an explicit "commit without a document" (the server refuses it
+otherwise); the preview says which state the commit leads to.
 
 **The queue is a snapshot, not a live view.** A working set is fetched when the
 screen opens, and nothing is added, removed or reordered for the duration of the

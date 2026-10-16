@@ -10,10 +10,10 @@ protocol and how rules reach the plugin. This document covers only matching.
 ## 1. Input
 
 The entry's input as resolution sees it (`spec.md` §5.9): its source
-transaction and, where one is linked or picked, its document — the merchant
-name standing in for the counterparty name, the line descriptions added to the
-purpose (`spec.md` §5.8). That input is built when resolving and never
-stored; the source row is not changed. Plus the payee already resolved for the
+transaction and, where one is linked or picked, its document, read through the
+fields `document_merchant` and `document_line` (below); the source fields are
+as stored (`spec.md` §5.8). That input is built when resolving and never
+stored. Plus the payee already resolved for the
 entry, for category rules. The rules arrive from core, whole; the plugin never
 reads the database.
 
@@ -38,11 +38,13 @@ several conditions.
 
 | Field | Read from |
 |---|---|
-| `counterparty_name` | the counterparty name, or the linked document's merchant name |
+| `counterparty_name` | the counterparty name |
 | `counterparty_ref` | `counterparty_ref` |
-| `purpose` | the purpose, with a linked document's line descriptions appended, one per line |
+| `purpose` | the purpose |
 | `booking_text` | `booking_text` |
 | `mandate_ref` | `mandate_ref` |
+| `document_merchant` | the linked document's merchant name (fails without a document) |
+| `document_line` | the description of the entry's own line of the linked document (`spec.md` §5.8); fails without a document or without a line |
 | `payee` | the payee resolved so far in the same resolution, a proposed one included; the value is the payee id as a digit string (category rules only) |
 
 `payee` takes the operator `is` only (equal ids); every other field takes the
@@ -52,7 +54,7 @@ whose payee has been deleted never matches.
 | Fields | Comparison of `equals`, `starts_with`, `contains` |
 |---|---|
 | `counterparty_ref`, `mandate_ref` | both sides as canonical text (`spec.md` §5.2: NFKC, casefolded, alphanumerics only), so an IBAN prefix works |
-| `counterparty_name`, `purpose`, `booking_text` | both sides by **name normalisation** (below) |
+| `counterparty_name`, `purpose`, `booking_text`, `document_merchant`, `document_line` | both sides by **name normalisation** (below) |
 
 `regex` is Python `re`, case-insensitive, `search` — unanchored unless the
 pattern anchors itself — on the raw value of any field.
