@@ -327,3 +327,48 @@ def test_the_waiting_line_and_the_suggestions_are_in_the_preview(scene: Scene) -
         0,
         1,
     )
+
+
+def test_a_document_only_reresolve_keeps_the_users_values_where_reresolve_all_clears_them(
+    scene: Scene, docs: Docs
+) -> None:
+    """A confirmed charge (type, category, payee the user's) with the recorded "none" and candidates that
+    arrived later. The document-only re-resolve offers them and leaves the other fields be, as long as it
+    links nothing; a link it makes (a unique candidate) is a change of the first value in field order and
+    derives the rest again (spec §5.9), and the panel-wide re-resolve does that for every value."""
+    cat = scene.category("Gadgets")
+
+    def confirmed_charge() -> int:
+        _src, (e,) = scene.movement(
+            -1000,
+            counterparty=CARD,
+            type="flow",
+            category_id=cat,
+            payee_id=docs.provider,
+            derivation=json.dumps({**STANDING, "document": {"pass": "matcher_decision"}}),  # the "none"
+        )
+        return e
+
+    entry = confirmed_charge()
+    a, b = docs.document(total=-1000, external_id="a"), docs.document(total=-1000, external_id="b")
+    before = scene.row(entry)
+    assert not scene.preview(entry).row(entry).document_view.suggestions  # the "none" stands: no suggestion
+
+    # several candidates: the suggestion appears, nothing is linked, no value moves
+    row = scene.preview(entry, DraftEntry(entry, document=DocumentDraft("reresolve"))).row(entry)
+    assert row.document_view is not None and sorted(d.id for d in row.document_view.suggestions) == [a, b]
+    assert row.document_id is None and "document" not in row.derivation  # only the "none" is dropped
+    assert (row.fields["type"].value, row.fields["category"].value, row.fields["payee"].value) == (
+        "flow",
+        cat,
+        docs.provider,
+    )
+    assert {k: v for k, v in row.derivation.items() if k != "document"} == {
+        k: before.derivation[k] for k in STANDING
+    }  # type, category and payee are still the user's
+    assert (row.amount, row.note, tuple(row.tag_ids)) == (before.amount, before.note, ())
+
+    # the panel-wide re-resolve derives every value afresh: the user's category has no evidence to come back
+    every = scene.preview(entry, reresolve_all=True).row(entry)
+    assert every.fields["category"].value is None and every.derivation.get("category") is None
+    assert every.document_view is not None and sorted(d.id for d in every.document_view.suggestions) == [a, b]
