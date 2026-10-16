@@ -11,9 +11,9 @@ Probe: `probe.py`. Debug log `out/fints.log` is the ground truth (contains accou
 | Login (PIN) | works, **only with `--hnshk-v2`** (see 1) |
 | TAN at login | works when bank asks (see 2) |
 | Account discovery (`HKSPA`, UPD) | works |
-| MT940 transactions (`HKKAZ`) | **blocked**: 9075 plain / 9010 with HKTAN (see 4) |
-| Balance (`HKSAL`) | same as HKKAZ |
-| camt (`HKCAZ`) | not offered by this bank |
+| MT940 transactions (`HKKAZ`) | **works** (17 tx / 30 days) once HKTAN is attached and KTI1 is complete (see 4) |
+| Balance (`HKSAL`) | same flow as HKKAZ |
+| camt (`HKCAZ`) | not offered by this bank; known up front from UPD `supported_operations` (see 13) |
 
 ## Things the importer must know
 
@@ -55,6 +55,28 @@ Probe: `probe.py`. Debug log `out/fints.log` is the ground truth (contains accou
 11. **Environment.** A TLS-inspecting VPN/ZTA breaks `uv` and would see the PIN on the wire; disable
     when running against a bank.
 12. **Product ID** (DK-registered) was accepted; version string sent is the library's.
+
+13. **Don't try-and-fail; ask the bank first, and learn per bank.**
+    - Capabilities: per account, UPD `supported_operations` already says HKCAZ/HKSAL/HKKAZ/HKWPD yes/no, and
+      the BPD lists supported formats (HICAZS absent = no camt). Choose the format and skip unsupported ops
+      from that (`supports()` in the probe). The library does check HICAZS client-side, without contacting
+      the bank, but the probe was still entering a dialog first.
+    - SCA envelope: HIPINS says HKKAZ/HKSAL need no TAN, reality: they do (Consorsbank). A plain attempt costs
+      a login + rejected request (9075), the retry another login. Working sequence: `HKKAZ` plain -> 9075 ->
+      new dialog, `HKKAZ`+`HKTAN`(process 4) -> `3076 Keine starke Authentifizierung erforderlich` + data
+      (no challenge: exempt inside the SCA window; a challenge 0030/3955 is expected once it expires).
+      Learn the policy per bank and persist it (here: HKTAN on HKKAZ/HKSAL/HKCAZ) so later runs go
+      straight to the working form; keep the 9075-retry as the safety net because it can change.
+14. **MT940 data shape** (library `Transaction.data`, 17/17 rows, ~40 keys, most empty):
+    - Populated: `date`, `entry_date`, `guessed_entry_date`, `amount` (string, e.g. `-9.99 EUR`; parse it),
+      `currency`, `status` (C/D), `applicant_name`, `applicant_bin`, `purpose`, `posting_text` (GVC text),
+      `transaction_code`, `transaction_reference`, `customer_reference`, `end_to_end_reference`, `id`.
+    - **Counterparty IBAN is not in its own field here**: `applicant_name` comes as `<IBAN><name>` (IBAN glued
+      to the name), `applicant_bin` holds the BIC; `gvc_applicant_iban` is empty. Needs parsing.
+    - `end_to_end_reference` is space-padded, `customer_reference` can contain newlines: normalize.
+    - No stable unique transaction id (`id`/`transaction_reference` are not reliable): dedup needs a
+      synthetic key (account, booking date, amount, purpose/reference).
+    - Booked items only by default (pending is a separate flag in the library).
 
 ## Open questions
 

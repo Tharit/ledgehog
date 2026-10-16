@@ -68,6 +68,18 @@ def patch_hnshk_profile_v2() -> None:
 
 
 FORCE_TAN: set[str] = set()  # segment types that get an HKTAN (process 4) attached
+ACCOUNT_DATA_SEGS = {"HKKAZ", "HKSAL", "HKCAZ"}
+
+
+def supports(info: dict, account, op: str) -> bool:
+    """Ask the bank's own account permissions (UPD) whether an operation is available, instead of
+    trying and failing. Unknown account / operation -> True (try it)."""
+    from fints.client import FinTSOperations
+
+    for a in info.get("accounts", []):
+        if a.get("iban") == account.iban:
+            return bool((a.get("supported_operations") or {}).get(getattr(FinTSOperations, op), True))
+    return True
 
 
 def run(client: FinTS3PinTanClient, seg_type: str, fn):
@@ -83,8 +95,11 @@ def run(client: FinTS3PinTanClient, seg_type: str, fn):
         except FinTSSCARequiredError:
             if seg_type in FORCE_TAN:
                 raise
-            print(f"bank demands SCA for {seg_type}; retrying in a new dialog with a TAN request")
-            FORCE_TAN.add(seg_type)
+            # Learn per bank, not per call: the SCA policy is the same for all account-data calls
+            # (Consorsbank: HKKAZ/HKSAL/HKCAZ), so later calls skip the failed first attempt.
+            print(f"bank demands SCA for {seg_type}; retrying in a new dialog with a TAN request "
+                  f"(and doing the same for {sorted(ACCOUNT_DATA_SEGS - {seg_type})} from now on)")
+            FORCE_TAN.update(ACCOUNT_DATA_SEGS)
     raise RuntimeError("unreachable")
 
 
@@ -258,22 +273,28 @@ def main() -> int:
               f"{d.get('applicant_name') or ''} | {d.get('purpose') or ''}")
     (OUT / "transactions_mt940.json").write_text(json.dumps(dump, indent=2, ensure_ascii=False))
 
-    # 4b. Same range as camt.052/053 XML, if the bank supports it (Consorsbank: no HICAZS).
-    try:
-        print(f"\nFetching camt XML {start}..{end}")
-        xml = run(client, "HKCAZ", lambda: client.get_transactions_xml(acc, start, end))
-        for n, doc in enumerate(xml if isinstance(xml, (list, tuple)) else [xml]):
-            p = OUT / f"transactions_camt_{n}.xml"
-            p.write_bytes(doc if isinstance(doc, bytes) else str(doc).encode())
-            print("saved", p)
-    except Exception as e:
-        print("camt fetch not available / failed:", repr(e))
+    # 4b. Same range as camt.052/053 XML, only if the account permissions say the bank offers it.
+    if not supports(info, acc, "GET_TRANSACTIONS_XML"):
+        print("\ncamt XML: not offered for this account (UPD says no HKCAZ); skipping")
+    else:
+        try:
+            print(f"\nFetching camt XML {start}..{end}")
+            xml = run(client, "HKCAZ", lambda: client.get_transactions_xml(acc, start, end))
+            for n, doc in enumerate(xml if isinstance(xml, (list, tuple)) else [xml]):
+                p = OUT / f"transactions_camt_{n}.xml"
+                p.write_bytes(doc if isinstance(doc, bytes) else str(doc).encode())
+                print("saved", p)
+        except Exception as e:
+            print("camt fetch failed:", repr(e))
 
     # 4c. Balance (informational; also tells us currency/booking conventions).
-    try:
-        print("\nBalance:", run(client, "HKSAL", lambda: client.get_balance(acc)))
-    except Exception as e:
-        print("get_balance failed:", repr(e))
+    if not supports(info, acc, "GET_BALANCE"):
+        print("\nbalance: not offered for this account; skipping")
+    else:
+        try:
+            print("\nBalance:", run(client, "HKSAL", lambda: client.get_balance(acc)))
+        except Exception as e:
+            print("get_balance failed:", repr(e))
 
     # 5. Persist-able client state (what we'd store between runs: BPD/UPD, system id).
     (OUT / "client_state.bin").write_bytes(client.deconstruct())
