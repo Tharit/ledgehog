@@ -123,6 +123,17 @@ phone PIN, not the BestSign password); 2FA via (Miles & More) BestSign; FinTS fo
     (`KTV4.from_sepa_account`) crashes without a BIC.
     The debug log and `information.txt` contain the full card number: keep `out/` private.
 
+20. **Deutsche Bank card: final state of this spike = blocked bank-side.** With method 921 forced and the TAN
+    medium name in HKTAN the *login* is accepted (0020, 3076 'no SCA needed', last-login timestamp updates),
+    but every following request in the dialog (HKSPA, also with HKTAN(4)+medium name) gets `9960 Kein aktives
+    TAN Verfahren ermittelt`, and the bank never sends the allowed-procedures list (3920) for this ID. Other
+    card-only users get 921 in that list. Reading: the ID has no TAN procedure that the FinTS channel treats as
+    active (BestSign registered in the Miles & More app only); login is merely SCA-exempt. Next steps are
+    outside the code: check the card portal login, complete the Deutsche Bank website enrollment, or ask
+    support (cite: login OK with 921 + device name, 3076, then 9960 on any request, no 3920).
+    TAN medium name entered = the device name shown in the app (the 'Seal One-ID' was not needed).
+    Even then: transactions need HKKKU/G112, unsupported by python-fints.
+
 ## Open questions
 
 - Resolved: Consorsbank account-data access (full KTI1 + HKTAN on HKKAZ/HKSAL).
