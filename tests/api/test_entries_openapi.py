@@ -79,6 +79,8 @@ def test_a_sample_row_validates_against_the_model():
             "booked_on": "2026-03-10",
             "amount": {"amount": 5, "currency": "EUR"},
         },
+        "document": {"id": 3, "provider": "paypal", "merchant_name": "CloudNotes", "line_count": 2},
+        "document_line": {"line_no": 2, "description": "Pro plan"},
     }
     page = EntryPageOut.model_validate({"entries": [row], "total": 1, "limit": 100, "offset": 0})
     assert page.model_dump(mode="json")["entries"] == [row]

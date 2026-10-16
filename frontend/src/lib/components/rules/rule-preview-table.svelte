@@ -4,7 +4,7 @@
 	import MoneyDisplay from '#lib/components/common/money-display.svelte';
 	import ReviewBadge from '#lib/components/common/review-badge.svelte';
 	import type { Lookups } from '#lib/ledger/lookups.js';
-	import { FIELD_LABELS, type ConditionField } from '#lib/rules/conditions.js';
+	import { FIELD_LABELS, type SourceField } from '#lib/rules/conditions.js';
 	import { sourceText } from '#lib/rules/preview.js';
 	import type { RulePreviewRow, RuleSets } from '#lib/rules/types.js';
 	import { resolveAccount } from '#lib/theme/resolve.js';
@@ -30,7 +30,7 @@
 	}: {
 		rows: readonly RulePreviewRow[];
 		/** the source fields to show, in order */
-		columns: readonly ConditionField[];
+		columns: readonly SourceField[];
 		sets: RuleSets;
 		lookups: Lookups;
 		/** a rule's name by id, for the rule that takes precedence and for keys */

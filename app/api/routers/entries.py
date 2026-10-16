@@ -85,6 +85,22 @@ class PartnerOut(BaseModel):
     amount: Money
 
 
+class EntryDocumentOut(BaseModel):
+    """The document of the entry's transaction (every entry of a split reads the one its original carries)."""
+
+    id: int
+    provider: str
+    merchant_name: str | None
+    line_count: int
+
+
+class EntryDocumentLineOut(BaseModel):
+    """The entry's own line of that document: what a rule's `document_line` reads (spec §5.8)."""
+
+    line_no: int
+    description: str
+
+
 class EntryOut(BaseModel):
     id: int
     version: int
@@ -109,6 +125,11 @@ class EntryOut(BaseModel):
     unit_key: int | None  # the unit it is reviewed in (spec §6); null for a derived entry
     authored: bool  # entered by the user (the entry form); its `source` is the authored row
     partner: PartnerOut | None  # the other leg of a paired transfer, null otherwise
+    # the transaction's document (null when none), whichever entry of the transaction carries the link; and
+    # the entry's own line of it (null when the entry has none: an unsplit transaction of several lines, a
+    # split made by hand). `document_id` stays the entry's own column: set on the original entry only
+    document: EntryDocumentOut | None
+    document_line: EntryDocumentLineOut | None
 
     @staticmethod
     def of(row: EntryRow) -> EntryOut:
@@ -142,6 +163,19 @@ class EntryOut(BaseModel):
                 account_id=row.partner.account_id,
                 booked_on=row.partner.booked_on,
                 amount=Money(amount=row.partner.amount, currency=row.partner.currency),
+            ),
+            document=None
+            if row.document is None
+            else EntryDocumentOut(
+                id=row.document.id,
+                provider=row.document.provider,
+                merchant_name=row.document.merchant_name,
+                line_count=row.document.line_count,
+            ),
+            document_line=None
+            if row.document_line is None
+            else EntryDocumentLineOut(
+                line_no=row.document_line.line_no, description=row.document_line.description
             ),
         )
 

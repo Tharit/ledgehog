@@ -2,7 +2,7 @@
 // fills in nothing and changes nothing that is saved (spec §5.9); it only has to be shown, found
 // and remembered in the address.
 import type { Entry } from '#lib/api/types.js';
-import { CONDITION_FIELDS, FIELD_LABELS, type ConditionField } from './conditions.js';
+import { FIELD_LABELS, PAYEE_FIELD, SOURCE_FIELDS, type SourceField } from './conditions.js';
 
 export const EXAMPLE_PARAM = 'from';
 
@@ -25,7 +25,7 @@ export function withExample(address: Address, id: number | null): string {
 	return `${parsed.pathname}${parsed.search}${parsed.hash}`;
 }
 
-export type SourceRow = { field: ConditionField; label: string; value: string | null };
+export type SourceRow = { field: SourceField; label: string; value: string | null };
 
 /**
  * The fields of an entry's source transaction a rule can read, one row each, in the editor's
@@ -34,10 +34,62 @@ export type SourceRow = { field: ConditionField; label: string; value: string | 
 export function sourceRows(entry: Pick<Entry, 'source'>): SourceRow[] | null {
 	const source = entry.source;
 	if (!source) return null;
-	return CONDITION_FIELDS.map((field) => {
+	return SOURCE_FIELDS.map((field) => {
 		const text = source[field];
-		return { field, label: FIELD_LABELS[field], value: text === null || text === '' ? null : text };
+		return { field, label: FIELD_LABELS[field], value: textOrNull(text) };
 	});
+}
+
+export type EntryRow = {
+	field: typeof PAYEE_FIELD | 'document_merchant' | 'document_line';
+	label: string;
+	value: string | null;
+	/** why there is no value, when there is something to say; a bare dash when absent */
+	absent: string | null;
+};
+
+export const NO_DOCUMENT_NOTE = 'no document linked';
+
+/**
+ * The fields of the entry itself a rule can read, one row each: the payee (category rules read
+ * it), the document's merchant name and the entry's own line of the document (spec §5.8). A row
+ * without a value says why where it can: no document, or a document of several lines that is not
+ * split, so that this entry has no line.
+ */
+export function entryRows(
+	entry: Pick<Entry, 'payee_id' | 'document' | 'document_line'>,
+	payeeName: (id: number) => string | undefined = () => undefined
+): EntryRow[] {
+	const { document, document_line: line } = entry;
+	const payee = entry.payee_id === null ? null : (payeeName(entry.payee_id) ?? null);
+	return [
+		{ field: PAYEE_FIELD, label: 'Payee', value: payee, absent: null },
+		{
+			field: 'document_merchant',
+			label: FIELD_LABELS.document_merchant,
+			value: textOrNull(document?.merchant_name),
+			absent: document ? null : NO_DOCUMENT_NOTE
+		},
+		{
+			field: 'document_line',
+			label: FIELD_LABELS.document_line,
+			value: textOrNull(line?.description),
+			absent: lineAbsence(document, line)
+		}
+	];
+}
+
+function textOrNull(text: string | null | undefined): string | null {
+	return text === undefined || text === null || text === '' ? null : text;
+}
+
+/** Why an entry has no line: it has no document, or the document is not split, or has one. */
+function lineAbsence(document: Entry['document'], line: Entry['document_line']): string | null {
+	if (!document) return NO_DOCUMENT_NOTE;
+	if (line) return null;
+	return document.line_count > 1
+		? `the document has ${document.line_count} lines, not split`
+		: 'no line';
 }
 
 /** Shown in place of the table for an entry without a source transaction. */

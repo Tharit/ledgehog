@@ -76,8 +76,7 @@ describe('toFields', () => {
 			conditions: [
 				{ field: 'counterparty_name', op: 'starts_with', value: 'PAYPAL *' },
 				{ field: 'purpose', op: 'regex', value: 'cloud|hosting' }
-			],
-			priority: 100
+			]
 		});
 	});
 
@@ -122,6 +121,30 @@ describe('toFields', () => {
 
 	it('uses the typed priority', () => {
 		expect(toFields(form({ priority: '20' })).priority).toBe(20);
+	});
+
+	it('leaves a blank priority to the server for a new rule: the key is not sent', () => {
+		expect(toFields(form({ priority: '' }))).not.toHaveProperty('priority');
+		expect(toFields(form({ priority: '  ' }))).not.toHaveProperty('priority');
+	});
+
+	it('sends the default for a blank priority when a stored rule is edited', () => {
+		expect(toFields(form({ priority: '' }), { editing: true }).priority).toBe(DEFAULT_PRIORITY);
+		expect(toFields(form({ priority: '20' }), { editing: true }).priority).toBe(20);
+	});
+
+	it('carries a condition on a document field as it is', () => {
+		const fields = toFields(
+			form({
+				sets: 'payee',
+				conditions: [row('Cloud', 'document_merchant', 'contains'), row('x', 'document_line')]
+			})
+		);
+
+		expect(fields.conditions).toEqual([
+			{ field: 'document_merchant', op: 'contains', value: 'Cloud' },
+			{ field: 'document_line', op: 'starts_with', value: 'x' }
+		]);
 	});
 });
 

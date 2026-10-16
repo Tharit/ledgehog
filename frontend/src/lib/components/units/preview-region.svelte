@@ -4,7 +4,12 @@
 	import type { Lookups } from '#lib/ledger/lookups.js';
 	import { differenceOf } from '#lib/units/problems.js';
 	import type { UnitDraftFlow } from '#lib/units/unit-draft-flow.svelte.js';
-	import { consequenceGroups, previewRowEntry, resultText } from '#lib/units/view.js';
+	import {
+		consequenceGroups,
+		dropsDocument,
+		previewRowEntry,
+		resultText
+	} from '#lib/units/view.js';
 	import { cn } from '#lib/utils.js';
 
 	// What committing the draft would do (patterns §6): the state it leads to in plain words, the
@@ -125,6 +130,15 @@
 							? () => onopen(item.entry_id)
 							: undefined}
 					/>
+					{#if dropsDocument(item)}
+						<div role="row">
+							<div role="gridcell" class="px-3 pb-1">
+								<p class="text-xs text-muted-foreground" data-slot="document-dropped">
+									The document is dropped.
+								</p>
+							</div>
+						</div>
+					{/if}
 				{/each}
 			</div>
 		</section>

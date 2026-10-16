@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { documentRow } from '#lib/documents/fixtures.js';
+import { documentDetail, documentRow } from '#lib/documents/fixtures.js';
 import { account, category, entry, payee } from '#lib/ledger/fixtures.js';
 import { buildLookups } from '#lib/ledger/lookups.js';
 import { ruleNames } from '#lib/stores/rule-names.svelte.js';
@@ -23,13 +23,14 @@ const api = vi.hoisted(() => ({
 	listRules: vi.fn(),
 	previewUnit: vi.fn(),
 	commitUnit: vi.fn(),
-	listDocuments: vi.fn()
+	listDocuments: vi.fn(),
+	getDocument: vi.fn()
 }));
 vi.mock('#lib/api/index.js', async (importOriginal) => ({
 	...(await importOriginal<typeof import('#lib/api/index.js')>()),
 	...api
 }));
-const { getUnit, listRules, previewUnit, commitUnit, listDocuments } = api;
+const { getUnit, listRules, previewUnit, commitUnit, listDocuments, getDocument } = api;
 
 const lookups = buildLookups({
 	accounts: [account({ id: 1, name: 'Giro' })],
@@ -138,7 +139,7 @@ describe('the document field', () => {
 		expect(field).toHaveTextContent('2 lines');
 		expect(field).toHaveTextContent('document matched');
 		expect(within(field).getByRole('button', { name: 'Pick another document…' })).toBeVisible();
-		expect(within(field).getByRole('button', { name: 'Resolve again' })).toBeVisible();
+		expect(within(field).getByRole('button', { name: 'Look for a document' })).toBeVisible();
 	});
 
 	it('shows a document matched with a proposal in italic, to check the split', async () => {
@@ -265,11 +266,87 @@ describe('the document field', () => {
 			rowDocument({ document: documentSummary(), key: { pass: 'matcher_decision', basis: {} } })
 		);
 
-		await fireEvent.click(within(fieldOf(dialog)!).getByRole('button', { name: 'Resolve again' }));
+		await fireEvent.click(
+			within(fieldOf(dialog)!).getByRole('button', { name: 'Look for a document' })
+		);
 		await settled(panel);
 
 		expect(originalOf(lastRequest())!.document).toMatchObject({ mode: 'reresolve' });
 		expect(fieldOf(dialog)).toHaveTextContent('Matched again when you commit');
+	});
+
+	it('offers to look for a document where the matcher decided there is none', async () => {
+		const { dialog, panel } = await open(
+			rowDocument({ key: { pass: 'matcher_decision', basis: {} } })
+		);
+
+		const field = fieldOf(dialog)!;
+		await fireEvent.click(within(field).getByRole('button', { name: 'Look for a document' }));
+		await settled(panel);
+
+		expect(originalOf(lastRequest())!.document).toMatchObject({ mode: 'reresolve' });
+		expect(field).toHaveTextContent('Matched again when you commit');
+	});
+
+	it('does not offer it where documents are only suggested', async () => {
+		const { dialog } = await open(
+			rowDocument({ suggestions: [documentSummary()], decision_required: true })
+		);
+
+		expect(
+			within(fieldOf(dialog)!).queryByRole('button', { name: 'Look for a document' })
+		).toBeNull();
+	});
+
+	it('shows the lines of the document only when asked, fetched once, the entry’s own line marked', async () => {
+		vi.mocked(getDocument).mockResolvedValue(documentDetail({ id: 7 }));
+		const { dialog } = await open(
+			rowDocument({
+				stored_document_id: 7,
+				document: documentSummary(),
+				key: { pass: 'matcher_decision', basis: {} }
+			})
+		);
+		const field = fieldOf(dialog)!;
+		expect(getDocument).not.toHaveBeenCalled();
+		expect(field.querySelector('[data-slot="document-lines"]')).toBeNull();
+
+		const toggle = within(field).getByRole('button', { name: 'Show lines' });
+		expect(toggle).toHaveAttribute('aria-expanded', 'false');
+		await fireEvent.click(toggle);
+
+		expect(await within(field).findByText('USB cable')).toBeVisible();
+		expect(within(field).getByText('Book')).toBeVisible();
+		expect(getDocument).toHaveBeenCalledTimes(1);
+		expect(getDocument.mock.calls[0][0]).toBe(7);
+		expect(within(field).getByRole('button', { name: 'Hide lines' })).toHaveAttribute(
+			'aria-expanded',
+			'true'
+		);
+
+		await fireEvent.click(within(field).getByRole('button', { name: 'Hide lines' }));
+		expect(field.querySelector('[data-slot="document-lines"]')).toBeNull();
+		await fireEvent.click(within(field).getByRole('button', { name: 'Show lines' }));
+		expect(await within(field).findByText('USB cable')).toBeVisible();
+		expect(getDocument).toHaveBeenCalledTimes(1);
+	});
+
+	it('says when the lines could not be loaded', async () => {
+		vi.mocked(getDocument).mockRejectedValue(new Error('down'));
+		const { dialog } = await open(
+			rowDocument({ stored_document_id: 7, document: documentSummary(), key: null })
+		);
+		const field = fieldOf(dialog)!;
+
+		await fireEvent.click(within(field).getByRole('button', { name: 'Show lines' }));
+
+		expect(await within(field).findByText('The lines could not be loaded.')).toBeVisible();
+	});
+
+	it('has no lines toggle where no document is carried', async () => {
+		const { dialog } = await open(rowDocument({ key: { pass: 'user', basis: {} } }));
+
+		expect(within(fieldOf(dialog)!).queryByRole('button', { name: 'Show lines' })).toBeNull();
 	});
 
 	it('says a payee with no provider has nothing to find by hand', async () => {
@@ -380,7 +457,7 @@ describe('the split along the lines', () => {
 			original: false,
 			version: null,
 			amount: { amount, currency: 'EUR' },
-			document_line: { document_id: 7, line_no: lineNo }
+			document_line: { document_id: 7, line_no: lineNo, description: `Line ${lineNo}` }
 		});
 
 	it('is offered as an explicit choice, and sent as split_along_lines with the document’s version', async () => {

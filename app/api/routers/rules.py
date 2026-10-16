@@ -141,7 +141,9 @@ class RuleBody(BaseModel):
     payee_id: EntityId | None = None
     category_id: EntityId | None = None
     conditions: list[ConditionBody] = Field(default_factory=list, max_length=50)  # all must hold
-    priority: Priority = 100
+    # lower comes first. Left out: 100, except that a NEW payee rule with a document condition is given a
+    # priority before every payee rule without one (spec §5.9); an explicit priority is kept as given
+    priority: Priority | None = None
     dry_run: bool = False
     expected_count: Count | None = None  # the dry run's `matches.total`; required for a real run
 

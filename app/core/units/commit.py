@@ -161,23 +161,26 @@ def _accounts_of(conn: Connection, entry_ids: tuple[int, ...]) -> set[int]:
 
 _INSERT = text(
     "INSERT INTO ledger_entry (source_transaction_id, account_id, amount, currency, booked_on, value_on,"
-    " type, payee_id, category_id, counter_account_id, description, note, derivation)"
+    " type, payee_id, category_id, counter_account_id, description, note, document_line_id, derivation)"
     " VALUES (:src, :account, :amount, :currency, :booked_on, :value_on, :type, :payee, :category, :counter,"
-    " :description, :note, CAST(:derivation AS jsonb)) RETURNING id"
+    " :description, :note, :line, CAST(:derivation AS jsonb)) RETURNING id"
 )
 
+# `:line` is the entry's line of the transaction's document (spec §5.8), written in the same statement as
+# `:document`: set with a pick of a document of one line, on each entry a split along the lines made, cleared
+# whenever the link is changed or dropped
 _UPDATE = text(
     "UPDATE ledger_entry SET type = :type, payee_id = :payee, category_id = :category,"
     " counter_account_id = :counter, amount = :amount, description = :description, note = :note,"
-    " counterpart_entry_id = :counterpart, document_id = :document,"
-    # a write that changes the link clears the entry's line of the old document in the same statement; the
-    # units build writes the new line with it (spec §5.8)
-    " document_line_id = CASE WHEN document_id IS DISTINCT FROM CAST(:document AS bigint)"
-    " THEN NULL ELSE document_line_id END,"
+    " counterpart_entry_id = :counterpart, document_id = :document, document_line_id = :line,"
     " derivation = CAST(:derivation AS jsonb) WHERE id = :id"
 )
-_FREE_DOCUMENT = text(
-    "UPDATE ledger_entry SET document_id = NULL, document_line_id = NULL WHERE id = ANY(:ids)"
+# a line an entry of the unit holds and another is to take, let go of first
+_FREE_LINES = text("UPDATE ledger_entry SET document_line_id = NULL WHERE id = ANY(:ids)")
+_LINE_IDS = text(
+    "SELECT l.document_id, l.line_no, l.id FROM external_document_line AS l"
+    " JOIN unnest(CAST(:docs AS bigint[]), CAST(:nos AS int[])) AS v(d, n)"
+    " ON l.document_id = v.d AND l.line_no = v.n"
 )
 
 
@@ -266,6 +269,23 @@ def _documents_of(conn: Connection, draft: UnitDraft, closure: tuple[int, ...]) 
     return sorted({*document_pick_ids(draft), *(int(d) for d in carried)})
 
 
+def _line_ids(conn: Connection, plan: Plan) -> dict[tuple[int, int], int]:
+    """The ids of the lines the plan's rows are written with, by (document, line number). The documents are
+    locked and the plan was made under the lock, so the lines are as the plan read them; one that is gone is a
+    stale reference."""
+    wanted = sorted({r.written.document_line for r in plan.rows if r.written.document_line is not None})
+    if not wanted:
+        return {}
+    found = {
+        (int(r.document_id), int(r.line_no)): int(r.id)
+        for r in conn.execute(_LINE_IDS, {"docs": [d for d, _n in wanted], "nos": [n for _d, n in wanted]})
+    }
+    for key in wanted:
+        if key not in found:
+            raise StaleReference("document_line", "document", key[0])
+    return found
+
+
 def _write(conn: Connection, plan: Plan) -> dict[int, int]:
     """The plan's writes; returns the real ids of the created entries by temporary id."""
     if plan.unpaired_entry_ids:
@@ -279,6 +299,20 @@ def _write(conn: Connection, plan: Plan) -> dict[int, int]:
             ),
             {"a": amount, "patch": json.dumps({"amount": amount}), "i": source_id},
         )
+    changing = [r for r in plan.rows if r.stored is not None and r.written.accepted and _differs(r)]
+    lines = _line_ids(conn, plan)
+    # a line that moves from one entry of the unit to another is let go of first (the unique index on a
+    # line is checked per row); with every line left to its entry this never happens
+    taking = {r.written.document_line for r in plan.rows if r.written.document_line is not None}
+    held = [
+        r.id
+        for r in changing
+        if r.stored is not None
+        and r.stored.document_line in taking
+        and r.stored.document_line != r.written.document_line
+    ]
+    if held:
+        conn.execute(_FREE_LINES, {"ids": sorted(held)})
     created: dict[int, int] = {}
     for row in plan.rows:
         if row.stored is not None:
@@ -303,6 +337,7 @@ def _write(conn: Connection, plan: Plan) -> dict[int, int]:
                     "counter": w.counter_account_id,
                     "description": w.description,
                     "note": w.note,
+                    "line": lines.get(w.document_line) if w.document_line is not None else None,
                     "derivation": json.dumps(w.derivation),
                 },
             ).scalar_one()
@@ -316,19 +351,6 @@ def _write(conn: Connection, plan: Plan) -> dict[int, int]:
                 {"e": created[row.id], "t": list(row.tag_ids)},
             )
     # entries that stop being transfers first: one transfer per source is a unique index, checked per row
-    changing = [r for r in plan.rows if r.stored is not None and r.written.accepted and _differs(r)]
-    # a document that moves from one entry of the unit to another is freed first: the unique index of I35 is
-    # checked per row, so the new holder cannot take it while the old one still does
-    taking = {r.written.document_id for r in changing if r.written.document_id is not None}
-    free = [
-        r.id
-        for r in changing
-        if r.stored is not None
-        and r.stored.document_id in taking
-        and r.written.document_id != r.stored.document_id
-    ]
-    if free:
-        conn.execute(_FREE_DOCUMENT, {"ids": sorted(free)})
     for row in sorted(changing, key=lambda r: (r.written.type == "transfer", r.id)):
         w = row.written
         conn.execute(
@@ -344,6 +366,7 @@ def _write(conn: Connection, plan: Plan) -> dict[int, int]:
                 "note": w.note,
                 "counterpart": created.get(w.counterpart_entry_id or 0, w.counterpart_entry_id),
                 "document": w.document_id,
+                "line": lines.get(w.document_line) if w.document_line is not None else None,
                 "derivation": json.dumps(w.derivation),
             },
         )
@@ -391,6 +414,7 @@ def _differs(row: PlannedRow) -> bool:
         or dict(s.derivation) != dict(w.derivation)
         or s.counterpart_entry_id != w.counterpart_entry_id
         or s.document_id != w.document_id
+        or s.document_line != w.document_line
     )
 
 

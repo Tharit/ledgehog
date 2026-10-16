@@ -252,7 +252,10 @@ export class RuleEditorStore {
 	}
 
 	#write(form: RuleForm, controls: RuleWriteControls): Promise<RuleWriteOut> {
-		const fields: RuleFields = toFields(form, { forPreview: controls.dryRun });
+		const fields: RuleFields = toFields(form, {
+			forPreview: controls.dryRun,
+			editing: this.ruleId !== null
+		});
 		return this.ruleId === null
 			? createRule(fields, controls)
 			: updateRule(this.ruleId, fields, controls);

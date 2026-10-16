@@ -1287,6 +1287,30 @@ export interface components {
             /** Versions */
             versions: components["schemas"]["EntryVersionOut"][];
         };
+        /**
+         * EntryDocumentLineOut
+         * @description The entry's own line of that document: what a rule's `document_line` reads (spec §5.8).
+         */
+        EntryDocumentLineOut: {
+            /** Description */
+            description: string;
+            /** Line No */
+            line_no: number;
+        };
+        /**
+         * EntryDocumentOut
+         * @description The document of the entry's transaction (every entry of a split reads the one its original carries).
+         */
+        EntryDocumentOut: {
+            /** Id */
+            id: number;
+            /** Line Count */
+            line_count: number;
+            /** Merchant Name */
+            merchant_name: string | null;
+            /** Provider */
+            provider: string;
+        };
         /** EntryOut */
         EntryOut: {
             /** Account Id */
@@ -1313,8 +1337,10 @@ export interface components {
             description: string | null;
             /** Display Text */
             display_text: string | null;
+            document: components["schemas"]["EntryDocumentOut"] | null;
             /** Document Id */
             document_id: number | null;
+            document_line: components["schemas"]["EntryDocumentLineOut"] | null;
             /** Id */
             id: number;
             /** Note */
@@ -1706,11 +1732,8 @@ export interface components {
             name: string;
             /** Payee Id */
             payee_id?: number | null;
-            /**
-             * Priority
-             * @default 100
-             */
-            priority: number;
+            /** Priority */
+            priority?: number | null;
             /**
              * Sets
              * @enum {string}
@@ -1798,11 +1821,8 @@ export interface components {
             name: string;
             /** Payee Id */
             payee_id?: number | null;
-            /**
-             * Priority
-             * @default 100
-             */
-            priority: number;
+            /** Priority */
+            priority?: number | null;
             /** Sets */
             sets?: ("counter_account" | "payee" | "category") | null;
         };
@@ -2618,9 +2638,11 @@ export interface components {
         };
         /**
          * UnitRowDocumentLineOut
-         * @description The line a row was made from (the original entry: the first line it takes): echo it in the draft.
+         * @description The line a row has (spec §5.8), with its description; a row made from a line echoes it back.
          */
         UnitRowDocumentLineOut: {
+            /** Description */
+            description: string | null;
             /** Document Id */
             document_id: number;
             /** Line No */

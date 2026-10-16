@@ -4,8 +4,9 @@
 	import DateDisplay from '#lib/components/common/date-display.svelte';
 	import MoneyDisplay from '#lib/components/common/money-display.svelte';
 	import { Button } from '#lib/components/ui/button/index.js';
+	import { ENTRY_GROUP, SOURCE_GROUP } from '#lib/rules/conditions.js';
 	import type { Lookups } from '#lib/ledger/lookups.js';
-	import { NO_SOURCE_NOTE, sourceRows } from '#lib/rules/example.js';
+	import { NO_SOURCE_NOTE, entryRows, sourceRows } from '#lib/rules/example.js';
 	import type { RuleExampleStore } from '#lib/stores/rule-example.svelte.js';
 	import { resolveAccount } from '#lib/theme/resolve.js';
 	import ExampleFind from './example-find.svelte';
@@ -21,6 +22,7 @@
 
 	const entry = $derived(store.entry);
 	const rows = $derived(entry ? sourceRows(entry) : null);
+	const fromEntry = $derived(entry ? entryRows(entry, (id) => lookups.payees.get(id)?.name) : []);
 	const account = $derived(entry ? lookups.accounts.get(entry.account_id) : undefined);
 </script>
 
@@ -107,6 +109,11 @@
 						</td>
 					</tr>
 					{#if rows}
+						<tr data-slot="example-group" data-group="source">
+							<td colspan="2" class="bg-muted/50 text-xs font-medium text-muted-foreground">
+								{SOURCE_GROUP}
+							</td>
+						</tr>
 						{#each rows as row (row.field)}
 							<tr data-field={row.field}>
 								<th scope="row" class="text-left align-top font-normal text-muted-foreground">
@@ -125,6 +132,27 @@
 							</tr>
 						{/each}
 					{/if}
+					<tr data-slot="example-group" data-group="entry">
+						<td colspan="2" class="bg-muted/50 text-xs font-medium text-muted-foreground">
+							{ENTRY_GROUP}
+						</td>
+					</tr>
+					{#each fromEntry as row (row.field)}
+						<tr data-field={row.field}>
+							<th scope="row" class="text-left align-top font-normal text-muted-foreground">
+								{row.label}
+							</th>
+							<td class="break-words whitespace-pre-wrap">
+								{#if row.value !== null}
+									{row.value}
+								{:else if row.absent}
+									<span class="text-muted-foreground">{row.absent}</span>
+								{:else}
+									<span class="text-muted-foreground">&mdash;</span>
+								{/if}
+							</td>
+						</tr>
+					{/each}
 				</tbody>
 			</table>
 		</div>

@@ -5,7 +5,8 @@
 	import { cn } from '#lib/utils.js';
 
 	// One value chosen from a short fixed list: the shared picker in a popover, the same trigger as
-	// the other choice fields (patterns §11.2). Spread the Field's control props onto it.
+	// the other choice fields (patterns §11.2); options with a `group` are listed under its heading.
+	// Spread the Field's control props onto it.
 	let {
 		options,
 		value,
@@ -15,7 +16,7 @@
 		onchange,
 		...control
 	}: {
-		options: readonly { value: string; label: string }[];
+		options: readonly { value: string; label: string; group?: string }[];
 		value: string;
 		/** the accessible name of the button ("Kind") */
 		label: string;
@@ -29,7 +30,9 @@
 
 	let open = $state(false);
 	const selected = $derived(options.find((o) => o.value === value) ?? null);
-	const items = $derived<PickerItem[]>(options.map((o, id) => ({ id, label: o.label })));
+	const items = $derived<PickerItem[]>(
+		options.map((o, id) => ({ id, label: o.label, group: o.group }))
+	);
 	const selectedId = $derived(options.findIndex((o) => o.value === value));
 
 	function choose(id: number) {

@@ -143,6 +143,11 @@ export function describeProblem(problem: UnitProblem, context: ProblemContext): 
 				text: 'This document cannot split the transaction: it has a single line, or its lines do not add up to the total.',
 				remedy: 'Keep one entry, or pick another document.'
 			};
+		case 'document_not_for_transfer':
+			return {
+				text: 'A transfer cannot carry a document.',
+				remedy: 'Pick a flow, or remove the document.'
+			};
 		case 'stale_reference':
 			return { text: stale(problem.field), remedy: 'Choose again.' };
 		case 'invariant_violated':

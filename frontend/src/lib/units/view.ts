@@ -49,7 +49,16 @@ export type FieldView = {
 	clearable: boolean;
 	/** an empty payee by the user's decision ("No payee"), not one still open to proposals */
 	decidedNone: boolean;
+	/**
+	 * The user's draft changes a value a RULE set (the stored key's pass is `rule`, the value
+	 * shown is another and no rule says it): the offer to create a rule from the transaction
+	 * (spec §6). Never for what history, the model, the user or the own-account pass set.
+	 */
+	changedFromRule: boolean;
 };
+
+/** The fields a rule can set that the offer to create a rule covers (spec §6). */
+const RULE_FIELDS: readonly FieldName[] = ['type', 'payee', 'category'];
 
 export type EntryView = {
 	id: number;
@@ -92,7 +101,7 @@ export type EntryView = {
 	counterLeg: boolean;
 	/** the transaction's document under the draft (the original entry only; null: nothing to show) */
 	document: DocumentFieldView | null;
-	/** the line of the document the row was made from (a row of the split along the lines) */
+	/** the line of the document the entry has (its own: a row of the split, or a one-line document's) */
 	documentLine: RowDocumentLine | null;
 	/** its amount is an allocation the user sets: a split row or a stored entry of a split */
 	amountEditable: boolean;
@@ -188,6 +197,15 @@ function fieldView(
 		(stored === null ||
 			edit.value !== STORED_VALUE[name](stored) ||
 			(name === 'payee' && edit.value === null && !storedNone));
+	// the value the draft leaves: the preview's, else a fixed one (without a preview to say)
+	const effective = out ? out.value : edit?.mode === 'fixed' ? edit.value : value;
+	const changedFromRule =
+		stored !== null &&
+		edit !== undefined &&
+		RULE_FIELDS.includes(name) &&
+		storedKey(stored, name)?.pass === 'rule' &&
+		effective !== STORED_VALUE[name](stored) &&
+		(out === undefined || key?.pass !== 'rule');
 	return {
 		name,
 		value,
@@ -214,7 +232,8 @@ function fieldView(
 			(name === 'payee' ||
 				(key?.pass === 'user' && !viaPair && !isPartnerBasis(key)) ||
 				edit?.mode === 'fixed'),
-		decidedNone: name === 'payee' && value === null && key?.pass === 'user'
+		decidedNone: name === 'payee' && value === null && key?.pass === 'user',
+		changedFromRule
 	};
 }
 
@@ -347,7 +366,7 @@ export function entryViews(args: {
 								: null
 						)
 					: null,
-			documentLine: b.row?.document_line ?? null,
+			documentLine: b.row ? (b.row.document_line ?? null) : storedLine(entry),
 			amountEditable: !original && !counterLeg,
 			removable: !original && !counterLeg
 		};
@@ -370,6 +389,16 @@ export function resultText(state: UnitState): string {
 	if (state.confirmed) return 'Confirmed';
 	const words = state.reasons.map((r) => RESULT_TEXT[r] ?? r);
 	return words.length > 0 ? words.join(' · ') : 'Stays in review';
+}
+
+/**
+ * The change takes the document off the transaction: the row stored a document and ends with
+ * none (converting to a transfer, deciding on none): the panel says so in the row.
+ */
+export function dropsDocument(item: UnitConsequence): boolean {
+	const document = item.row.document;
+	if (item.kind !== 'changed' || !document) return false;
+	return document.stored_document_id !== null && document.document === null;
 }
 
 export const CONSEQUENCE_ORDER: readonly ConsequenceKind[] = [
@@ -405,6 +434,22 @@ export function consequenceGroups(preview: UnitPreview | null): ConsequenceGroup
 	});
 }
 
+/** The line of a stored entry as a preview row says it; null without one. */
+function storedLine(entry: Entry | null): RowDocumentLine | null {
+	if (!entry?.document_line || !entry.document) return null;
+	return {
+		document_id: entry.document.id,
+		line_no: entry.document_line.line_no,
+		description: entry.document_line.description
+	};
+}
+
+/** The line a preview row stands for, as an entry carries it; null without a description. */
+function rowLine(row: PreviewRow): Entry['document_line'] {
+	const line = row.document_line;
+	return line?.description ? { line_no: line.line_no, description: line.description } : null;
+}
+
 /**
  * A preview row as an entry, so the compact row of the ledger can draw it. The text of an entry
  * the unit holds is its own; one outside the unit has none beyond its description.
@@ -435,6 +480,8 @@ export function previewRowEntry(row: PreviewRow, base: Entry | null = null): Ent
 		unit_key: row.unit_key,
 		partner: base?.partner ?? null,
 		document_id: base?.document_id ?? null,
+		document: base?.document ?? null,
+		document_line: rowLine(row) ?? base?.document_line ?? null,
 		review_flags: row.review_flags as Entry['review_flags'],
 		tag_ids: row.tag_ids
 	};

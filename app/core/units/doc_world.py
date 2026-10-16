@@ -2,11 +2,11 @@
 
 `DocWorld` is the part of the ledger outside the unit that document matching reads: the registry and the
 document sources (waiting), the payees that have a provider, the unlinked documents that can matter to the
-unit's transactions (the documents no entry OUTSIDE the unit carries) with what enrichment reads of them, and
-the other transactions step 2 would consider (the original entries of the ledger outside the unit that have
-a provider payee and no decided document), against which uniqueness is judged both ways. The overlay takes
-the rest from its own rows: which of the unit's originals have a provider payee and no decided document, and
-which documents they carry.
+unit's transactions (the documents no entry OUTSIDE the unit carries) with what the entries' input reads
+of them (merchant, lines), and the other transactions step 2 would consider (the original entries of the
+ledger outside the unit that have a provider payee and no decided document), against which uniqueness is
+judged both ways. The overlay takes the rest from its own rows: which of the unit's originals have a
+provider payee and no decided document, and which documents they carry.
 
 The functions here are the pure ones of wave A (`core/matching/documents.py`, `core/units/documents.py`)
 applied to those facts; nothing is restated.

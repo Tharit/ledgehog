@@ -119,6 +119,8 @@ def test_row_json_shape_and_money(anna: TestClient, api_engine: Engine, acct: in
             "unit_key": src,
             "authored": False,
             "partner": None,
+            "document": None,
+            "document_line": None,
         }
     ]
     # the one-entry read answers with the same row, nothing more and nothing less
@@ -339,7 +341,8 @@ def test_the_list_reads_sources_in_one_query(anna: TestClient, api_engine: Engin
         listed(anna)
         return len([s for s in seen if "source_transaction" in s])
 
-    assert statements() <= 3  # the page, its count and the pairs' sources: constant, however many rows
+    # the page, its count, the pairs' sources and the documents: constant, however many rows
+    assert statements() <= 4
 
 
 def test_a_split_part_carries_the_whole_source_amount(

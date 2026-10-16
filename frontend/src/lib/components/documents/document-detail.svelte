@@ -14,6 +14,7 @@
 	import type { DocumentDetail } from '#lib/types/domain.js';
 	import CarrierLink from './carrier-link.svelte';
 	import { documentTitle } from './describe.js';
+	import DocumentLines from './document-lines.svelte';
 
 	// One document (view sketch: ux/views/documents.md): its merchant, total and lines. A linked
 	// document names the transaction carrying it; one carried by no entry lists the transactions it
@@ -75,34 +76,7 @@
 		{#if document.lines.length === 0}
 			<p class="text-sm text-muted-foreground">This document has no lines.</p>
 		{:else}
-			<div class="overflow-x-auto">
-				<table class="w-full min-w-md text-[13px]">
-					<thead>
-						<tr
-							class="h-8 border-b border-border bg-muted text-xs font-medium text-muted-foreground"
-						>
-							<th scope="col" class="px-3 text-left font-medium">Description</th>
-							<th scope="col" class="w-20 px-3 text-right font-medium">Qty</th>
-							<th scope="col" class="w-32 px-3 text-right font-medium">Amount</th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each document.lines as line (line.line_no)}
-							<tr class="h-8 border-b border-border">
-								<td class="px-3">{line.description}</td>
-								<td class="px-3 text-right tabular-nums">{line.qty ?? ''}</td>
-								<td class="px-3">
-									<MoneyDisplay
-										minor={line.amount.amount}
-										currency={line.amount.currency}
-										{locale}
-									/>
-								</td>
-							</tr>
-						{/each}
-					</tbody>
-				</table>
-			</div>
+			<DocumentLines lines={document.lines} {locale} />
 		{/if}
 	</section>
 

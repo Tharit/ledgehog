@@ -75,6 +75,36 @@ describe('documentField', () => {
 		expect(field.evidence?.text).toBe('no document');
 	});
 
+	it('offers to look for a document when one is carried, or none was decided by user or matcher', () => {
+		const look = (document: ReturnType<typeof rowDocument>, d = draft()) =>
+			documentField(rowOf(document), d, 1)!.lookAgain;
+
+		expect(
+			look(
+				rowDocument({ document: documentSummary(), key: { pass: 'matcher_decision', basis: {} } })
+			)
+		).toBe(true);
+		expect(look(rowDocument({ key: { pass: 'user', basis: {} } }))).toBe(true);
+		// the matcher's none: it looked and found nothing, no link
+		expect(look(rowDocument({ key: { pass: 'matcher_decision', basis: {} } }))).toBe(true);
+	});
+
+	it('does not offer it where there is nothing to look again at, or the draft already decides', () => {
+		const look = (document: ReturnType<typeof rowDocument>, d = draft()) =>
+			documentField(rowOf(document), d, 1)!.lookAgain;
+
+		// documents are suggested, no decision of the matcher or the user: open
+		expect(look(rowDocument({ suggestions: [documentSummary()], decision_required: true }))).toBe(
+			false
+		);
+		// a document with a matcher proposal is still open, not decided
+		expect(look(rowDocument({ key: { pass: 'matcher_proposal', basis: {} } }))).toBe(false);
+		// the draft already says: no document, a pick, matching afresh
+		const none = rowDocument({ key: { pass: 'matcher_decision', basis: {} } });
+		expect(look(none, draft().reresolveDocument(1))).toBe(false);
+		expect(look(none, draft().noDocument(1))).toBe(false);
+	});
+
 	it('shows the document the draft picks, as the preview says it would be linked', () => {
 		const picked = documentSummary({ id: 9 });
 		const field = documentField(

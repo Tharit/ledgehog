@@ -154,8 +154,9 @@ class _Row:
     linked: LinkedDocument | None = None
     # the draft changed the link: every value after it is derived again (spec §5.9); what happens to the
     # `document` key a commit writes (`doc_draft.KeyAction`); the row's own line of the document (None: no
-    # line, spec §5.8): a row the draft made from a line, the original entry of a document of one line or of
-    # a split along the lines; the stored `document_line_id` of an existing entry is not read yet
+    # line, spec §5.8): the stored `document_line_id` of an entry (while it is a line of the document the
+    # transaction carries after the draft), the line a row was made from, the first line the original takes
+    # in a split along the lines, the one line of a document of one line the original takes with a new link
     reopen: bool = False
     doc_key: str = "stored"
     line_no: int | None = None
@@ -360,8 +361,11 @@ def _assemble(
 
 def _carry_documents(stored: StoredUnit, rows: Mapping[int, _Row], world: World, docs: DocPlan) -> None:
     """Every row of a source shares the document its original entry carries (`v_entry_document`), as the draft
-    leaves it (`doc_draft.plan_documents`): the stored link, a pick, or none. A row the draft made from a line
-    is read with that line, and so is the original entry that takes the first."""
+    leaves it (`doc_draft.plan_documents`): the stored link, a pick, or none. Every row has its own line of it
+    (spec §5.8), or none: a stored entry the line it references, where that line belongs to this document
+    (a link that changed leaves the old lines behind); a row the draft made from a line, that line; the
+    original that takes the first line of a split along the lines, that line; the original of a document of
+    one line, which it takes with a link that is new."""
     for src in stored.sources.values():
         oid = stored.original_of(src.id)
         decision = docs.decisions[oid]
@@ -374,14 +378,30 @@ def _carry_documents(stored: StoredUnit, rows: Mapping[int, _Row], world: World,
             if r.src.id != src.id:
                 continue
             r.document_id, r.linked, r.reopen = decision.link, linked, decision.reopen
+            r.line_no = None
             if r.draft.document_line is not None:
                 r.line_no = r.draft.document_line.line_no
+            elif (
+                r.stored is not None
+                and r.stored.document_line is not None
+                and decision.link is not None
+                and r.stored.document_line[0] == decision.link
+            ):
+                r.line_no = r.stored.document_line[1]
         original = rows.get(oid)
         if original is not None:
             original.doc_key = decision.key
-            original.line_no = docs.first_line.get(oid)
-            if original.line_no is None and linked is not None and len(linked.lines) == 1:
-                original.line_no = linked.lines[0][0]  # a document of one line: the original entry takes it
+            first = docs.first_line.get(oid)
+            had = stored.entry(oid)
+            if first is not None:
+                original.line_no = first
+            elif (
+                original.line_no is None
+                and linked is not None
+                and len(linked.lines) == 1
+                and (had is None or had.document_id != decision.link)
+            ):
+                original.line_no = linked.lines[0][0]  # a document of one line: taken with the new link
 
 
 def _allocate(stored: StoredUnit, rows: dict[int, _Row]) -> list[Problem]:
@@ -428,6 +448,11 @@ class _Walk:
             implied = "flow"
         elif "counter_account" in hints:
             implied = "transfer"
+        elif row.original and row.doc_key == "user" and row.document_id is not None and not _transfer(cur):
+            # a document picked for a transaction that is not a transfer makes it a flow, as the user's
+            # decision where it had no type (spec §5.8): a document explains a flow, like a drafted payee. A
+            # transfer is left as it is: the pick on it is a problem (`document_not_for_transfer`)
+            implied = "flow"
         fixed: dict[Field, Decided] = {}
         changed = row.reopen  # a changed link is a change of the first value in field order (spec §5.9)
         last: Resolved | None = None
@@ -507,6 +532,25 @@ class _Walk:
         for f in later:
             out[f] = step(f)
         return out
+
+
+def _transfer(decisions: Mapping[Field, Decided | None]) -> bool:
+    kind = decisions.get("type")
+    return kind is not None and kind.value == "transfer"
+
+
+def _line_of(r: _Row) -> tuple[int, int] | None:
+    """The (document, line number) the row has, None for no line."""
+    return None if r.line_no is None or r.document_id is None else (r.document_id, r.line_no)
+
+
+def _drop_document(source_rows: Sequence[_Row]) -> None:
+    """The transaction's document dropped (key, link and every row's line), as converting it to a transfer
+    does (spec §5.8): the rows read no document from now on, and the original's `document` key goes."""
+    for x in source_rows:
+        x.document_id, x.linked, x.line_no, x.reopen = None, None, None, True
+        if x.original:
+            x.doc_key = "drop"
 
 
 def _release(e: Stored) -> tuple[int | None, dict[str, Any]]:
@@ -1084,6 +1128,22 @@ def _problems(rows: Sequence[_Row], world: World) -> list[Problem]:
             out.append(Problem("type_conflict", r.id, "payee"))  # the user's 'no payee' is for flows (I9)
         if r.payee_id is not None and r.draft.payee.mode == "fixed" and r.payee_id not in world.payees:
             out.append(Problem("stale_reference", r.id, "payee_id", {"id": r.payee_id}))
+    held: dict[tuple[int, int], int] = {}
+    for r in rows:
+        if r.original and r.document_id is not None and r.type == "transfer":
+            out.append(Problem("document_not_for_transfer", r.id, "document", {"document_id": r.document_id}))
+        if r.document_id is not None and r.line_no is not None:  # a line is the line of one entry (I35)
+            line = (r.document_id, r.line_no)
+            if line in held:
+                out.append(
+                    Problem(
+                        "document_taken",
+                        r.id,
+                        "document_line",
+                        {"document_id": r.document_id, "line_no": r.line_no, "carrier": held[line]},
+                    )
+                )
+            held.setdefault(line, r.id)
     for src_id, legs in sorted(transfers.items()):
         for extra in sorted(legs, key=lambda x: x.id)[1:]:
             out.append(Problem("second_transfer", extra.id, "type", {"source": src_id}))
@@ -1459,6 +1519,9 @@ def plan_unit(stored: StoredUnit, draft: UnitDraft, world: World) -> Plan:
             decisions = walk.run(r, r.s0, owned=False, rederive_ok=not stored_confirmed.get(r.id, False))
         if r.id in picked:
             decisions, set_by_pair = _pick_decisions(decisions, rows[picked[r.id]].account_id)
+            if r.original and r.document_id is not None and r.doc_key == "stored":
+                # a linked transaction a pick makes a transfer loses its document (a picked one is a problem)
+                _drop_document([x for x in ordered if x.src.id == r.src.id])
             _write_accepted(r, decisions)
             _pick_keys(r, set_by_pair)
         else:
@@ -1478,17 +1541,14 @@ def plan_unit(stored: StoredUnit, draft: UnitDraft, world: World) -> Plan:
             derivation=dict(r.derivation or {}),
             accepted=r.accepted,
             document_id=r.document_id if r.original and r.stored is not None else None,
+            document_line=_line_of(r),
         )
         for r in ordered
     }
     for r in ordered:
         r.s1_values, r.s1_derivation = dict(_values(r)), dict(r.derivation or {})
-    document_lines = {
-        r.id: (r.document_id, r.line_no) for r in ordered if r.line_no is not None and r.document_id
-    }
-    # (each row keeps its line through settling: an entry's line is stored with it once committed, spec §5.8)
-
-    # what settling leaves of it
+    # what settling leaves of it (each row keeps its line through it: an entry's line is stored with it, and a
+    # link settling makes for a document of one line gives the original that line, spec §5.8)
     pulled = _settle(ordered, world)
     final_states = _states(ordered, world)
     views = _document_views(ordered, world, docs, problems)
@@ -1523,7 +1583,8 @@ def plan_unit(stored: StoredUnit, draft: UnitDraft, world: World) -> Plan:
             counter_leg_for=r.counter_leg_for,
             document_id=r.document_id if r.original else None,
             document_view=_finish_view(views.get(r.id), r),
-            document_line=document_lines.get(r.id) if r.id in document_lines else None,
+            document_line=_line_of(r),
+            document_line_description=r.linked.description_of(r.line_no) if r.linked is not None else None,
         )
         for r in ordered
     )
@@ -1560,7 +1621,9 @@ def plan_unit(stored: StoredUnit, draft: UnitDraft, world: World) -> Plan:
         splits=splits,
         problems=tuple(problems),
         consequences=tuple(
-            _consequences(stored, ordered, unpaired, anchor_key, stored_confirmed, final_states, unit_of)
+            _consequences(
+                stored, ordered, unpaired, anchor_key, stored_confirmed, final_states, unit_of, written
+            )
         ),
         versions={e.id: e.version for e in stored.entries},
         created_ids=tuple(r.id for r in ordered if r.is_new),
@@ -1577,6 +1640,7 @@ def _consequences(
     stored_confirmed: Mapping[int, bool],
     final_states: Mapping[int, tuple[tuple[_Row, ...], UnitState]],
     unit_of: Mapping[int, int],
+    written: Mapping[int, Written],
 ) -> list[Consequence]:
     """What the draft does beyond the values the user typed: rows made, removed, changed, freed, returned."""
     out: list[Consequence] = []
@@ -1591,7 +1655,9 @@ def _consequences(
             out.append(Consequence(r.id, "unpaired" if unit_of[r.id] == anchor_key else "left_behind"))
         before = (s.type, s.payee_id, s.category_id, s.counter_account_id, s.amount, s.description, s.note)
         after = (r.type, r.payee_id, r.category_id, r.counter_account_id, r.amount, r.description, r.note)
-        if before != after or s.counterpart_entry_id != r.counterpart:
+        # a link the commit takes away is a change too (converting to a transfer drops the document, §5.8)
+        dropped = s.document_id is not None and written[r.id].document_id is None
+        if before != after or s.counterpart_entry_id != r.counterpart or dropped:
             out.append(Consequence(r.id, "changed"))
         if stored_confirmed.get(r.id, False) and not final_states[unit_of[r.id]][1].confirmed:
             out.append(Consequence(r.id, "returns_to_review"))

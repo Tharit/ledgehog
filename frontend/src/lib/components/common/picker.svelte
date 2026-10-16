@@ -11,6 +11,8 @@
 		initial?: string;
 		/** a colour dot and the name instead of an icon tile (tags) */
 		dot?: boolean;
+		/** a heading to list it under; items follow in the order given, a group at its first item */
+		group?: string;
 	};
 </script>
 
@@ -72,6 +74,20 @@
 		needle === '' ? items : items.filter((item) => item.label.toLowerCase().includes(needle))
 	);
 	// a name that is taken is chosen, not added (the API refuses duplicates)
+	// items that carry a group are listed under its heading, a group where its first item is
+	const sections = $derived.by(() => {
+		const out: { group: string | null; items: PickerItem[] }[] = [];
+		for (const item of shown) {
+			const group = item.group ?? null;
+			let section = out.find((s) => s.group === group);
+			if (!section) {
+				section = { group, items: [] };
+				out.push(section);
+			}
+			section.items.push(item);
+		}
+		return out;
+	});
 	const creatable = $derived(
 		oncreate !== undefined && needle !== '' && !items.some((i) => i.label.toLowerCase() === needle)
 	);
@@ -88,34 +104,48 @@
 	}
 </script>
 
+{#snippet option(item: PickerItem)}
+	<Command.Item
+		value={`item-${item.id}`}
+		disabled={item.disabled !== undefined}
+		data-checked={checked ? checked.has(item.id) : item.id === selectedId}
+		onSelect={() => choose(item.id)}
+	>
+		{#if row}
+			{@render row(item)}
+		{:else if item.dot}
+			<AccountDot name={item.label} color={item.color} />
+		{:else}
+			{#if item.icon !== undefined || item.initial !== undefined}
+				<DimensionIcon icon={item.icon} color={item.color} initial={item.initial} />
+			{/if}
+			<span class="truncate">{item.label}</span>
+		{/if}
+		{#if checked?.has(item.id)}<span class="sr-only">({checkedLabel})</span>{/if}
+		{#if item.disabled}
+			<span class="ml-auto shrink-0 text-xs text-muted-foreground">{item.disabled}</span>
+		{/if}
+	</Command.Item>
+{/snippet}
+
 <Command.Root shouldFilter={false} aria-busy={busy}>
 	<Command.Input {placeholder} aria-label={findLabel ?? `Search ${label}`} bind:value={query} />
 	<Command.List aria-label={label} class="max-h-64">
 		{#if error}
 			<p role="alert" class="px-2 py-6 text-center text-sm text-destructive">{error}</p>
 		{:else}
-			{#each shown as item (item.id)}
-				<Command.Item
-					value={`item-${item.id}`}
-					disabled={item.disabled !== undefined}
-					data-checked={checked ? checked.has(item.id) : item.id === selectedId}
-					onSelect={() => choose(item.id)}
-				>
-					{#if row}
-						{@render row(item)}
-					{:else if item.dot}
-						<AccountDot name={item.label} color={item.color} />
-					{:else}
-						{#if item.icon !== undefined || item.initial !== undefined}
-							<DimensionIcon icon={item.icon} color={item.color} initial={item.initial} />
-						{/if}
-						<span class="truncate">{item.label}</span>
-					{/if}
-					{#if checked?.has(item.id)}<span class="sr-only">({checkedLabel})</span>{/if}
-					{#if item.disabled}
-						<span class="ml-auto shrink-0 text-xs text-muted-foreground">{item.disabled}</span>
-					{/if}
-				</Command.Item>
+			{#each sections as section (section.group ?? '')}
+				{#if section.group !== null}
+					<Command.Group heading={section.group}>
+						{#each section.items as item (item.id)}
+							{@render option(item)}
+						{/each}
+					</Command.Group>
+				{:else}
+					{#each section.items as item (item.id)}
+						{@render option(item)}
+					{/each}
+				{/if}
 			{/each}
 			{#if creatable}
 				<Command.Item value="add-new" onSelect={create}>{createLabel(query.trim())}</Command.Item>

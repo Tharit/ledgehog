@@ -496,6 +496,177 @@ describe('editing a value', () => {
 	});
 });
 
+const OFFER = 'Create rule from this transaction';
+
+describe('the offer to create a rule from a change', () => {
+	const ruled = (derivation: Record<string, unknown>, over = {}) =>
+		unit({
+			anchor_entry_id: 1,
+			entries: [
+				entry({
+					id: 1,
+					unit_key: 1,
+					source_transaction_id: 5,
+					source: source(),
+					category_id: 10,
+					payee_id: 20,
+					type: 'flow',
+					derivation,
+					...over
+				})
+			]
+		});
+
+	it('appears next to a category a rule set once the draft changes it, and opens the entry as the example', async () => {
+		const { panel, dialog } = await openPanel(
+			ruled({ category: { pass: 'rule', basis: { rule_id: 3 } } })
+		);
+		expect(within(dialog).queryByRole('link', { name: OFFER })).toBeNull();
+
+		panel.flow.setField(1, 'category', 11);
+
+		const link = await within(dialog).findByRole('link', { name: OFFER });
+		expect(link).toHaveAttribute('href', '/settings/rules/new?from=1');
+		expect(link).toHaveAttribute('target', '_blank');
+		expect(link).toHaveAttribute('data-field', 'category');
+	});
+
+	it('goes when the change is taken back', async () => {
+		const { panel, dialog } = await openPanel(
+			ruled({ category: { pass: 'rule', basis: { rule_id: 3 } } })
+		);
+		panel.flow.setField(1, 'category', 11);
+		await within(dialog).findByRole('link', { name: OFFER });
+
+		panel.flow.revertField(1, 'category');
+
+		await waitFor(() => expect(within(dialog).queryByRole('link', { name: OFFER })).toBeNull());
+	});
+
+	it('also covers a payee a rule set', async () => {
+		const { panel, dialog } = await openPanel(
+			ruled({ payee: { pass: 'rule', basis: { rule_id: 3 } } })
+		);
+
+		panel.flow.setField(1, 'payee', 21);
+
+		const link = await within(dialog).findByRole('link', { name: OFFER });
+		expect(link).toHaveAttribute('data-field', 'payee');
+	});
+
+	it('is not offered for a value history, the model or the user set', async () => {
+		const { panel, dialog } = await openPanel(
+			ruled({
+				category: { pass: 'history', basis: { agree: 3, of: 4 } },
+				payee: { pass: 'user' }
+			})
+		);
+
+		panel.flow.setField(1, 'category', 11);
+		panel.flow.setField(1, 'payee', 21);
+
+		await waitFor(() =>
+			expect(within(dialog).getByRole('button', { name: 'Category' })).toHaveTextContent('Dining')
+		);
+		expect(within(dialog).queryByRole('link', { name: OFFER })).toBeNull();
+	});
+
+	it('is not offered for a rule’s value left as it is, nor for an entry without a source', async () => {
+		const { dialog } = await openPanel(
+			ruled({ category: { pass: 'rule', basis: { rule_id: 3 } } })
+		);
+		expect(within(dialog).queryByRole('link', { name: OFFER })).toBeNull();
+		cleanup();
+
+		const bare = await openPanel(
+			ruled({ category: { pass: 'rule', basis: { rule_id: 3 } } }, { source: null })
+		);
+		bare.panel.flow.setField(1, 'category', 11);
+		await waitFor(() =>
+			expect(within(bare.dialog).getByRole('button', { name: 'Category' })).toHaveTextContent(
+				'Dining'
+			)
+		);
+		expect(within(bare.dialog).queryByRole('link', { name: OFFER })).toBeNull();
+	});
+});
+
+describe('the line and the document dropped', () => {
+	it('shows the description of the entry’s line next to its label, long text cut with a title', async () => {
+		const text = 'Coffee capsules, a very long description of the one line of this order';
+		const { dialog } = await openPanel(
+			unit({
+				anchor_entry_id: 1,
+				entries: [
+					entry({
+						id: 1,
+						unit_key: 1,
+						source_transaction_id: 5,
+						document_id: 7,
+						document: { id: 7, provider: 'amazon', merchant_name: 'Amazon', line_count: 1 },
+						document_line: { line_no: 1, description: text }
+					})
+				]
+			})
+		);
+
+		const label = dialog.querySelector('[data-slot="document-line-no"]')!;
+		expect(label).toHaveTextContent('Line 1 of the document');
+		const description = dialog.querySelector('[data-slot="document-line-description"]')!;
+		expect(description).toHaveTextContent(text);
+		expect(description).toHaveAttribute('title', text);
+		expect(description).toHaveClass('truncate');
+	});
+
+	it('shows no line for an entry that has none', async () => {
+		const { dialog } = await openPanel();
+
+		expect(dialog.querySelector('[data-slot="document-line-no"]')).toBeNull();
+	});
+
+	it('says the document is dropped in the row of a change that takes it off', async () => {
+		const shown = unit({ anchor_entry_id: 1 });
+		const row = previewRowOf(shown.entries[0], {
+			document: {
+				stored_document_id: 7,
+				document: null,
+				key: null,
+				suggestions: [],
+				waiting: null,
+				decision_required: false,
+				split: null
+			}
+		});
+		vi.mocked(getUnit).mockResolvedValue(shown);
+		vi.mocked(previewUnit).mockResolvedValue(
+			preview(shown, { consequences: [consequence('changed', row)] })
+		);
+		const panel = new UnitPanel(nav());
+		render(UnitPanelView, { props: { panel, lookups } });
+		panel.open(1);
+		const dialog = await screen.findByRole('dialog');
+
+		const changed = await within(dialog).findByRole('region', { name: 'Changed' });
+		expect(within(changed).getByText('The document is dropped.')).toBeInTheDocument();
+	});
+
+	it('says nothing of a document in a change that leaves it', async () => {
+		const shown = unit({ anchor_entry_id: 1 });
+		const row = previewRowOf(shown.entries[0]);
+		vi.mocked(getUnit).mockResolvedValue(shown);
+		vi.mocked(previewUnit).mockResolvedValue(
+			preview(shown, { consequences: [consequence('changed', row)] })
+		);
+		const panel = new UnitPanel(nav());
+		render(UnitPanelView, { props: { panel, lookups } });
+		panel.open(1);
+		const dialog = await screen.findByRole('dialog');
+
+		await within(dialog).findByRole('region', { name: 'Changed' });
+		expect(within(dialog).queryByText('The document is dropped.')).toBeNull();
+	});
+});
+
 describe('type', () => {
 	it('x makes a flow a transfer, and the counter-account is chosen next', async () => {
 		const { dialog } = await openPanel();

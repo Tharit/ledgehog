@@ -6,12 +6,15 @@
 	import { Input } from '#lib/components/ui/input/index.js';
 	import type { Lookups } from '#lib/ledger/lookups.js';
 	import {
-		CONDITION_FIELDS,
 		CONDITION_OPS,
+		ENTRY_FIELDS,
+		ENTRY_GROUP,
 		FIELD_LABELS,
 		OP_LABELS,
 		OP_LABELS_PAYEE,
 		PAYEE_FIELD,
+		SOURCE_FIELDS,
+		SOURCE_GROUP,
 		isPayeeRow,
 		payeeOfRow,
 		type ConditionRow,
@@ -55,13 +58,21 @@
 
 	const opOptions = CONDITION_OPS.map((op) => ({ value: op, label: OP_LABELS[op] }));
 
-	/** the field list; the payee is offered on category rules and kept on a row that has it */
+	/**
+	 * the field list in two groups: the source transaction's fields, then the entry's (the payee on
+	 * category rules, kept on a row that has it, and the document's)
+	 */
 	function fieldOptions(row: ConditionRow) {
-		const options: { value: string; label: string }[] = CONDITION_FIELDS.map((field) => ({
-			value: field,
-			label: FIELD_LABELS[field]
-		}));
-		if (takesPayee || isPayeeRow(row)) options.push({ value: PAYEE_FIELD, label: 'Payee' });
+		const options: { value: string; label: string; group: string }[] = [];
+		for (const field of SOURCE_FIELDS) {
+			options.push({ value: field, label: FIELD_LABELS[field], group: SOURCE_GROUP });
+		}
+		if (takesPayee || isPayeeRow(row)) {
+			options.push({ value: PAYEE_FIELD, label: 'Payee', group: ENTRY_GROUP });
+		}
+		for (const field of ENTRY_FIELDS) {
+			options.push({ value: field, label: FIELD_LABELS[field], group: ENTRY_GROUP });
+		}
 		return options;
 	}
 
@@ -69,7 +80,7 @@
 </script>
 
 <fieldset class="flex flex-col gap-3">
-	<legend class="mb-1 text-sm font-semibold">When an entry’s source transaction has</legend>
+	<legend class="mb-1 text-sm font-semibold">When the entry has</legend>
 	<p class="text-xs text-muted-foreground">All the conditions must hold.</p>
 
 	<ul class="flex flex-col gap-3" aria-label="Conditions">

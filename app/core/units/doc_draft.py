@@ -8,8 +8,10 @@ exist (`stale_reference`), be at the version the client saw (`document_changed`)
 (`document_taken`) and not belong to another provider than the payee's (`document_provider_mismatch`). A
 payee with no provider takes any document: documents.md §9 offers a document to a transaction "whatever its
 payee", found by hand. The payee judged is the draft's own when it fixes one, else the stored one of an entry
-that carries no link (a link's enrichment may have changed it); a transaction cannot be an unreachable
-duplicate here, which has no entries (I3).
+that carries no link (a link's rules may have changed it); a transaction cannot be an unreachable
+duplicate here, which has no entries (I3). A transaction that the draft converts to a transfer loses its
+document (``drop``, as the payee goes, I9); a pick on a transfer is a problem the plan reports
+(`document_not_for_transfer`).
 
 The split along the lines (documents.md §6) is draft state: the rows it creates are ordinary new entries of
 the draft, so the rest of the plan treats them like any split. The preview issues them DETERMINISTIC negative
@@ -102,6 +104,22 @@ def allocation(src: StoredSource, info: DocumentInfo) -> list[tuple[int, int]] |
     )
 
 
+def drafted_type(entry: DraftEntry | None) -> str | None:
+    """The type the draft itself gives an entry: the one it fixes, else the one a drafted value implies (a
+    payee or a category a flow, a counter-account a transfer, as the overlay's walk reads them); None where
+    the draft leaves the type to resolution."""
+    if entry is None:
+        return None
+    kind = entry.type
+    if kind.mode == "fixed" and kind.value is not None:
+        return str(kind.value)
+    if (entry.payee.mode == "fixed") or (entry.category.mode == "fixed" and entry.category.value is not None):
+        return "flow"
+    if entry.counter_account.mode == "fixed" and entry.counter_account.value is not None:
+        return "transfer"
+    return None
+
+
 def _decide(
     stored: StoredUnit, draft: UnitDraft, world: World
 ) -> tuple[dict[int, DocDecision], dict[int, DocumentDraft], list[Problem]]:
@@ -156,6 +174,9 @@ def _decide(
             decisions[oid] = DocDecision(None, "user", had is not None)
         elif mode == "reresolve":
             decisions[oid] = DocDecision(None, "drop", had is not None)
+        elif had is not None and drafted_type(listed) == "transfer":
+            # converting a linked transaction to a transfer drops its document as it drops the payee (I9)
+            decisions[oid] = DocDecision(None, "drop", True)
         else:
             decisions[oid] = DocDecision(had, "stored", False)
     problems.extend(_refused_picks(stored, draft, world, decisions, picks))

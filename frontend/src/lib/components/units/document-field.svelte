@@ -7,7 +7,9 @@
 	import * as Command from '#lib/components/ui/command/index.js';
 	import * as Popover from '#lib/components/ui/popover/index.js';
 	import { formatDate, formatMoney } from '#lib/format/index.js';
+	import DocumentLines from '#lib/components/documents/document-lines.svelte';
 	import { DocumentFinder } from '#lib/stores/document-finder.svelte.js';
+	import { DocumentDetailStore } from '#lib/stores/documents.svelte.js';
 	import type { DocumentSummary } from '#lib/units/types.js';
 	import type { UnitDraftFlow } from '#lib/units/unit-draft-flow.svelte.js';
 	import { documentHints, waitingText } from '#lib/units/unit-document.js';
@@ -58,6 +60,19 @@
 		untrack(() => finder.dispose());
 	});
 	$effect(() => () => finder.dispose());
+
+	// the lines of the document shown, fetched when the toggle opens and not before
+	const detail = new DocumentDetailStore();
+	let showLines = $state(false);
+	const shownId = $derived(doc.document?.id ?? null);
+	$effect(() => {
+		const id = shownId;
+		if (!showLines || id === null) return;
+		untrack(() => {
+			if (detail.document?.id !== id) void detail.load(id);
+		});
+	});
+	$effect(() => () => detail.dispose());
 
 	function searchText(document: DocumentSummary): string {
 		return [
@@ -165,6 +180,39 @@
 		<p class="text-muted-foreground" data-slot="document-line">No document</p>
 	{/if}
 	<EvidenceLine evidence={doc.evidence} />
+
+	{#if doc.document}
+		<div class="flex flex-col gap-1" data-slot="document-lines-region">
+			<ActionButton
+				variant="link"
+				class="h-auto self-start p-0 text-xs"
+				data-slot="toggle-lines"
+				aria-expanded={showLines}
+				onclick={() => (showLines = !showLines)}
+			>
+				{showLines ? 'Hide lines' : 'Show lines'}
+			</ActionButton>
+			{#if showLines}
+				{#if detail.status === 'error'}
+					<p class="text-xs text-muted-foreground" data-slot="document-lines-error">
+						The lines could not be loaded.
+					</p>
+				{:else if detail.document && detail.document.id === shownId}
+					{#if detail.document.lines.length === 0}
+						<p class="text-xs text-muted-foreground">This document has no lines.</p>
+					{:else}
+						<DocumentLines
+							lines={detail.document.lines}
+							{locale}
+							current={view.documentLine?.line_no ?? null}
+						/>
+					{/if}
+				{:else}
+					<p class="text-xs text-muted-foreground" role="status">Loading the lines…</p>
+				{/if}
+			{/if}
+		</div>
+	{/if}
 
 	{#if doc.decisionRequired}
 		<div class="flex flex-wrap items-center gap-x-3 gap-y-1" data-slot="document-decision">
@@ -304,7 +352,7 @@
 				Split along the lines
 			</ActionButton>
 		{/if}
-		{#if doc.state === 'linked' || (doc.state === 'none' && doc.edit === undefined)}
+		{#if doc.lookAgain}
 			<ActionButton
 				variant="link"
 				class="h-auto p-0 text-xs"
@@ -312,7 +360,7 @@
 				disabled={flow.committing}
 				onclick={() => flow.reresolveDocument(view.id)}
 			>
-				Resolve again
+				Look for a document
 			</ActionButton>
 		{/if}
 		{#if doc.edit !== undefined}

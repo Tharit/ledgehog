@@ -66,6 +66,10 @@ class Stored:
     derivation: Mapping[str, Any]
     tag_ids: tuple[int, ...] = ()
     document_id: int | None = None
+    # the line this entry references (`document_line_id`) as (the line's document, its line number); None for
+    # none. Whether it counts is the overlay's to judge: only while that document is the transaction's
+    # (spec §5.8)
+    document_line: tuple[int, int] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,6 +145,7 @@ PROBLEM_CODES = (
     "document_provider_mismatch",
     "document_decision_required",
     "document_split_unavailable",
+    "document_not_for_transfer",
 )
 
 
@@ -202,6 +207,10 @@ class Written:
     # the link a commit writes on `ledger_entry.document_id` (the original entry carries it; None elsewhere):
     # the stored one, or the pick; the automatic link is settling's (`PlannedRow.document_id`)
     document_id: int | None = None
+    # the line a commit writes on `ledger_entry.document_line_id` (any entry of the transaction, spec §5.8) as
+    # (document, line number): an entry's line stays only while its document is the one the transaction
+    # carries after the draft; None clears it
+    document_line: tuple[int, int] | None = None
 
 
 TransferState = Literal["paired", "waiting", "unmatched", "needs_account"]
@@ -334,9 +343,12 @@ class PlannedRow:
     document_id: int | None = None
     # an original entry: its document in the preview; None where there is nothing to say
     document_view: DocumentView | None = None
-    # an entry made from a line of the document (the original: the first line it takes) when the draft splits
-    # along the lines: the (document, line) the preview echoes
+    # the entry's own line of the document, as settling leaves it (spec §5.8): the (document, line number) of
+    # an entry the draft made from a line, of the original that takes the first line or the one line of a
+    # document of one line, of a stored entry that references one; the preview echoes it
     document_line: tuple[int, int] | None = None
+    # the description of that line (None: no line)
+    document_line_description: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

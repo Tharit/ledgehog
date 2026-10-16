@@ -132,7 +132,7 @@
 		<div class="mt-3">
 			<Field
 				label="Priority"
-				hint="Among rules that set the same kind of value, the lower number is tried first. Blank is 100."
+				hint="Among rules that set the same kind of value, the lower number is tried first. Blank is 100, except that a new payee rule with a document condition is placed before every payee rule without one."
 				error={errors.priority ?? null}
 			>
 				{#snippet children(control)}

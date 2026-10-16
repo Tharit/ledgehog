@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { entry } from '#lib/ledger/fixtures.js';
 import { Draft } from './draft.js';
 import { knownRules } from './evidence.js';
-import { consequence, fieldOut, preview, previewRowOf, unit } from './fixtures.js';
+import { consequence, documentSummary, fieldOut, preview, previewRowOf, unit } from './fixtures.js';
 import {
 	consequenceGroups,
+	dropsDocument,
 	effectiveChanged,
 	entryViews,
 	previewRowEntry,
@@ -422,6 +423,144 @@ describe('the X and "Reset to proposal" follow what the preview shows', () => {
 		const decided = stored({ payee_id: null, derivation: { payee: { pass: 'user' } } });
 		const same = Draft.of(decided).clearField(1, 'payee');
 		expect(field(decided, same, preview(decided), 'payee').canReset).toBe(false);
+	});
+});
+
+describe('entryViews: a value a rule set that the draft changes', () => {
+	const ruled = (derivation: Record<string, unknown>) =>
+		unit({
+			anchor_entry_id: 1,
+			entries: [
+				entry({
+					id: 1,
+					unit_key: 1,
+					type: 'flow',
+					category_id: 10,
+					payee_id: 20,
+					derivation
+				})
+			]
+		});
+	const fieldsOf = (base: ReturnType<typeof ruled>, draft: Draft) =>
+		views(draft, preview(base), base)[0].fields;
+	const answered = (base: ReturnType<typeof ruled>, name: 'category' | 'payee', value: number) => {
+		const out = preview(base);
+		out.rows[0].fields[name] = fieldOut(value, { pass: 'user' });
+		return out;
+	};
+
+	it('is flagged for a category whose stored key is a rule, once another value is in the draft', () => {
+		const base = ruled({ category: { pass: 'rule', basis: { rule_id: 3 } } });
+		const draft = Draft.of(base).setField(1, 'category', 11, null);
+
+		const shown = views(draft, answered(base, 'category', 11), base)[0].fields;
+		expect(shown.category.changedFromRule).toBe(true);
+		expect(fieldsOf(base, Draft.of(base)).category.changedFromRule).toBe(false);
+	});
+
+	it('is flagged for a payee and for a type, not for a counter-account', () => {
+		const base = ruled({
+			payee: { pass: 'rule', basis: { rule_id: 3 } },
+			type: { pass: 'rule', basis: { rule_id: 4 } }
+		});
+		const draft = Draft.of(base).setField(1, 'payee', 21, null);
+
+		const shown = views(draft, answered(base, 'payee', 21), base)[0].fields;
+		expect(shown.payee.changedFromRule).toBe(true);
+		expect(shown.counter_account.changedFromRule).toBe(false);
+	});
+
+	it('is not flagged for history, the model, the user or the own account', () => {
+		for (const key of [
+			{ pass: 'history', basis: { agree: 3, of: 4 } },
+			{ pass: 'llm', basis: {} },
+			{ pass: 'user' },
+			{ pass: 'own_account' }
+		]) {
+			const base = ruled({ category: key });
+			const draft = Draft.of(base).setField(1, 'category', 11, null);
+
+			const shown = views(draft, answered(base, 'category', 11), base)[0].fields;
+			expect(shown.category.changedFromRule).toBe(false);
+		}
+	});
+
+	it('is not flagged while a rule still decides the value shown', () => {
+		const base = ruled({ category: { pass: 'rule', basis: { rule_id: 3 } } });
+		const out = preview(base);
+		out.rows[0].fields.category = fieldOut(11, { pass: 'rule', basis: { rule_id: 4 } });
+		const draft = Draft.of(base).clearField(1, 'category');
+
+		expect(views(draft, out, base)[0].fields.category.changedFromRule).toBe(false);
+	});
+});
+
+describe('entryViews: the line of a document', () => {
+	const line = { line_no: 2, description: 'Filter' };
+	const carried = unit({
+		anchor_entry_id: 1,
+		entries: [
+			entry({
+				id: 1,
+				unit_key: 1,
+				document_id: 7,
+				document: { id: 7, provider: 'amazon', merchant_name: 'Amazon', line_count: 3 },
+				document_line: line
+			})
+		]
+	});
+
+	it('is the preview row’s, with its description', () => {
+		const out = preview(carried);
+
+		expect(views(Draft.of(carried), out, carried)[0].documentLine).toEqual({
+			document_id: 7,
+			line_no: 2,
+			description: 'Filter'
+		});
+	});
+
+	it('is the stored entry’s own line before a preview, and none for an entry without one', () => {
+		expect(views(Draft.of(carried), null, carried)[0].documentLine).toEqual({
+			document_id: 7,
+			line_no: 2,
+			description: 'Filter'
+		});
+		expect(views(Draft.of(split))[0].documentLine).toBeNull();
+	});
+
+	it('is what the row of an entry made for the ledger’s row carries', () => {
+		const row = previewRowOf(carried.entries[0]);
+
+		expect(previewRowEntry(row, carried.entries[0]).document_line).toEqual(line);
+		expect(previewRowEntry(row, carried.entries[0]).document).toEqual(carried.entries[0].document);
+	});
+});
+
+describe('dropsDocument', () => {
+	const row = previewRowOf(entry({ id: 1 }));
+	const withDocument = (stored: number | null, shown: unknown) => ({
+		...row,
+		document: {
+			stored_document_id: stored,
+			document: shown as never,
+			key: null,
+			suggestions: [],
+			waiting: null,
+			decision_required: false,
+			split: null
+		}
+	});
+
+	it('is true for a change whose row stored a document and ends with none', () => {
+		expect(dropsDocument(consequence('changed', withDocument(7, null)))).toBe(true);
+	});
+
+	it('is false where the document stays, was never there, or the kind is another', () => {
+		expect(dropsDocument(consequence('changed', withDocument(7, documentSummary())))).toBe(false);
+		expect(dropsDocument(consequence('changed', withDocument(null, null)))).toBe(false);
+		expect(dropsDocument(consequence('changed', row))).toBe(false);
+		expect(dropsDocument(consequence('deleted', withDocument(7, null)))).toBe(false);
 	});
 });
 

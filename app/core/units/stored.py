@@ -29,9 +29,11 @@ _ENTRIES = text(
     SELECT e.id, e.version, e.source_transaction_id, e.account_id, e.currency, e.booked_on, e.value_on,
            e.amount, e.type, e.payee_id, e.category_id, e.counter_account_id, e.counterpart_entry_id,
            e.description, e.note, e.derivation, e.document_id,
+           l.document_id AS line_document_id, l.line_no,
            COALESCE((SELECT array_agg(t.tag_id ORDER BY t.tag_id)
                        FROM ledger_entry_tag AS t WHERE t.ledger_entry_id = e.id), '{}') AS tag_ids
       FROM ledger_entry AS e
+      LEFT JOIN external_document_line AS l ON l.id = e.document_line_id
      WHERE e.id = ANY(:ids)
      ORDER BY e.id
     """
@@ -79,6 +81,7 @@ def load_stored_entries(conn: Connection, anchor_entry_id: int, entry_ids: Itera
             derivation=cast(dict[str, Any], r.derivation),
             tag_ids=tuple(int(t) for t in r.tag_ids),
             document_id=r.document_id,
+            document_line=None if r.line_no is None else (int(r.line_document_id), int(r.line_no)),
         )
         for r in rows
     )

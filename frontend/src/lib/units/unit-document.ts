@@ -43,6 +43,11 @@ export type DocumentFieldView = {
 	declined: boolean;
 	/** the provider the payee's documents come from, for finding one by hand */
 	provider: string | null;
+	/**
+	 * "Look for a document" applies: the transaction carries one, or the user or the matcher
+	 * decided it has none, and nothing is drafted about it yet
+	 */
+	lookAgain: boolean;
 	/** "Reset to proposal" applies: the draft decides something about the document */
 	canReset: boolean;
 	/** the split rows were edited, or taken over from the proposal and then changed */
@@ -158,6 +163,11 @@ export function documentField(
 		declined,
 		provider:
 			waiting?.provider ?? linked?.provider ?? suggestions[0]?.provider ?? payeeProvider ?? null,
+		lookAgain:
+			edit === undefined &&
+			(state === 'linked' ||
+				state === 'none' ||
+				(state === 'open' && key?.pass === 'matcher_decision' && linked === null)),
 		canReset: edit !== undefined || declined || draft.lineRowsEdited,
 		splitEdited: draft.lineRowsEdited
 	};

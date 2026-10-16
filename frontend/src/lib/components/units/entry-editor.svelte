@@ -9,6 +9,8 @@
 	import { Input } from '#lib/components/ui/input/index.js';
 	import { accounts as accountDialog } from '#lib/accounts/controller.svelte.js';
 	import type { Lookups } from '#lib/ledger/lookups.js';
+	import { NEW_RULE_PATH } from '#lib/rules/links.js';
+	import { withExample } from '#lib/rules/example.js';
 	import { resolveAccount } from '#lib/theme/resolve.js';
 	import { allocationText, type FieldName, type FieldValue } from '#lib/units/draft.js';
 	import type { UnitDraftFlow } from '#lib/units/unit-draft-flow.svelte.js';
@@ -119,9 +121,27 @@
 	}
 </script>
 
+<!-- the offer to turn the user's change of a rule's value into a rule: another page, in a new tab,
+	because the panel may hold a draft; the same address as the icon of the source strip -->
+{#snippet ruleOffer(field: FieldView)}
+	{#if field.changedFromRule && view.stored?.source && !view.isNew}
+		<a
+			href={withExample(NEW_RULE_PATH, view.id)}
+			target="_blank"
+			rel="noopener"
+			class="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+			data-slot="rule-offer"
+			data-field={field.name}
+		>
+			Create rule from this transaction
+		</a>
+	{/if}
+{/snippet}
+
 {#snippet evidenceOf(field: FieldView)}
 	<div class="flex flex-wrap items-baseline gap-x-3">
 		<EvidenceLine evidence={field.evidence} />
+		{@render ruleOffer(field)}
 		{#if field.canReset}
 			<ActionButton
 				variant="link"
@@ -172,8 +192,19 @@
 			<span class="text-xs text-muted-foreground" data-slot="split-label">{splitLabel}</span>
 		{/if}
 		{#if view.documentLine}
-			<span class="text-xs text-muted-foreground" data-slot="document-line-no">
-				Line {view.documentLine.line_no} of the document
+			<span class="flex min-w-0 items-baseline gap-1 text-xs text-muted-foreground">
+				<span class="shrink-0" data-slot="document-line-no">
+					Line {view.documentLine.line_no} of the document
+				</span>
+				{#if view.documentLine.description}
+					<span
+						class="max-w-64 truncate"
+						title={view.documentLine.description}
+						data-slot="document-line-description"
+					>
+						{view.documentLine.description}
+					</span>
+				{/if}
 			</span>
 		{/if}
 		{#if !view.isNew}
@@ -238,7 +269,10 @@
 						</ActionButton>
 					{/each}
 				</div>
-				<EvidenceLine evidence={view.fields.type.evidence} />
+				<div class="flex flex-wrap items-baseline gap-x-3">
+					<EvidenceLine evidence={view.fields.type.evidence} />
+					{@render ruleOffer(view.fields.type)}
+				</div>
 			</dd>
 		{/if}
 

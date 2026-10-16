@@ -64,6 +64,13 @@ describe('describeProblem', () => {
 		);
 	});
 
+	it('says a document on a transfer, with its remedy', () => {
+		expect(words('document_not_for_transfer')).toEqual({
+			text: 'A transfer cannot carry a document.',
+			remedy: 'Pick a flow, or remove the document.'
+		});
+	});
+
 	it('names which pick vanished', () => {
 		expect(words('stale_reference', { field: 'category_id' }).text).toMatch(/category/);
 		expect(words('stale_reference', { field: 'payee_id' }).text).toMatch(/payee/);

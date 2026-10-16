@@ -179,13 +179,6 @@ def test_a_document_another_entry_carries_is_taken(scene: Scene, docs: Docs) -> 
     ]
 
 
-def test_the_same_document_picked_twice_in_a_unit_is_taken_by_the_first(scene: Scene, docs: Docs) -> None:
-    (_a, (x,)), (_b, (y,)) = scene.transfer_pair()
-    doc = docs.document(total=-1000)
-    plan = scene.preview(x, pick(x, scene, doc), pick(y, scene, doc))
-    assert [(p.code, p.entry_id) for p in plan.problems] == [("document_taken", y)]
-
-
 def test_a_document_of_another_provider_than_the_payees_is_refused(scene: Scene, docs: Docs) -> None:
     entry = docs.charge()
     scene.settle()

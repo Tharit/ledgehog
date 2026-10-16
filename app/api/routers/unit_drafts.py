@@ -565,10 +565,11 @@ class UnitRowDocumentOut(BaseModel):
 
 
 class UnitRowDocumentLineOut(BaseModel):
-    """The line a row was made from (the original entry: the first line it takes): echo it in the draft."""
+    """The line a row has (spec §5.8), with its description; a row made from a line echoes it back."""
 
     document_id: int
     line_no: int
+    description: str | None  # the line's description (what a rule's `document_line` reads)
 
 
 class UnitPreviewRowOut(BaseModel):
@@ -596,8 +597,9 @@ class UnitPreviewRowOut(BaseModel):
     counter_leg_for: int | None = None
     # an original entry: its document (suggestions, waiting, the link, the split); null otherwise
     document: UnitRowDocumentOut | None = None
-    # a row made from a line of the document by the split along the lines (a proposed row has a server-issued
-    # negative id); the original entry shows the first line it takes
+    # the row's own line of the document (spec §5.8): a row made from a line by the split along the lines
+    # (a proposed row has a server-issued negative id), the original entry the first line it takes or the
+    # one line of a document of one line, a stored entry the line it references
     document_line: UnitRowDocumentLineOut | None = None
 
     @staticmethod
@@ -622,7 +624,11 @@ class UnitPreviewRowOut(BaseModel):
             document=None if r.document_view is None else UnitRowDocumentOut.of(r.document_view),
             document_line=None
             if r.document_line is None
-            else UnitRowDocumentLineOut(document_id=r.document_line[0], line_no=r.document_line[1]),
+            else UnitRowDocumentLineOut(
+                document_id=r.document_line[0],
+                line_no=r.document_line[1],
+                description=r.document_line_description,
+            ),
             fields={n: UnitFieldOut.of(f, stored=s is not None) for n, f in r.fields.items()},
             review_flags=list(r.flags),
             derivation=dict(r.derivation),

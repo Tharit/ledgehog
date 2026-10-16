@@ -223,7 +223,7 @@ describe('RuleForm: fields', () => {
 		setup({ example });
 
 		const text = screen.getByText('the example');
-		const conditions = screen.getByRole('group', { name: /source transaction has/ });
+		const conditions = screen.getByRole('group', { name: /entry has/ });
 		expect(
 			text.compareDocumentPosition(conditions) & Node.DOCUMENT_POSITION_FOLLOWING
 		).toBeTruthy();
@@ -258,7 +258,9 @@ describe('RuleForm: the condition rows', () => {
 			'Purpose',
 			'Booking text',
 			'Mandate reference',
-			'Payee'
+			'Payee',
+			'Document merchant name',
+			'Document line'
 		]);
 		expect(await optionsOf('Condition 1: operator')).toEqual([
 			'is',
@@ -266,6 +268,43 @@ describe('RuleForm: the condition rows', () => {
 			'contains',
 			'matches pattern (regex)'
 		]);
+	});
+
+	it('groups the fields: the source transaction’s, then the entry’s with the payee and the document', async () => {
+		setup();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Condition 1: field' }));
+		const source = await screen.findByRole('group', { name: 'From the source transaction' });
+		const entryGroup = screen.getByRole('group', { name: 'From the entry' });
+
+		expect(within(source).getAllByRole('option')).toHaveLength(5);
+		expect(
+			within(entryGroup)
+				.getAllByRole('option')
+				.map((o) => o.textContent?.trim())
+		).toEqual(['Payee', 'Document merchant name', 'Document line']);
+	});
+
+	it('offers the document fields on every rule, the payee on category rules only', async () => {
+		setup({ form: form({ sets: 'payee' }) });
+
+		expect(await optionsOf('Condition 1: field')).toEqual([
+			'Counterparty name',
+			'Counterparty IBAN or reference',
+			'Purpose',
+			'Booking text',
+			'Mandate reference',
+			'Document merchant name',
+			'Document line'
+		]);
+	});
+
+	it('says where a payee rule with a document condition is placed, in the priority’s help', () => {
+		setup();
+
+		expect(
+			screen.getByText(/new payee rule with a document condition is placed before/)
+		).toBeInTheDocument();
 	});
 
 	it('reports a change of field, operator and value of one row', async () => {

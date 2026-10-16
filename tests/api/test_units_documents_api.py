@@ -187,6 +187,16 @@ def test_the_problems_of_a_pick_are_codes(anna: TestClient, scene: Scene, docs: 
     ]
 
 
+def test_a_pick_on_a_transfer_is_a_problem_code(anna: TestClient, scene: Scene, docs: Docs) -> None:
+    (_a, (x,)), _b = scene.transfer_pair()
+    doc = docs.document(total=-1000)
+    out = anna.post(PREVIEW, json=body(scene, x, pick(x, doc))).json()
+    assert [(p["code"], p["entry_id"], p["field"]) for p in out["problems"]] == [
+        ("document_not_for_transfer", x, "document")
+    ]
+    assert_envelope(anna.post(COMMIT, json=body(scene, x, pick(x, doc))), 422, "document_not_for_transfer")
+
+
 def test_the_split_along_the_lines_is_proposed_with_server_issued_ids(
     anna: TestClient, scene: Scene, docs: Docs
 ) -> None:
@@ -198,7 +208,8 @@ def test_the_split_along_the_lines_is_proposed_with_server_issued_ids(
     ids = [r["id"] for r in out["rows"]]
     assert ids == [entry, proposed_split_id(entry, 2), proposed_split_id(entry, 3)]
     assert [r["document_line"] for r in out["rows"]] == [
-        {"document_id": doc, "line_no": n} for n in (1, 2, 3)
+        {"document_id": doc, "line_no": n, "description": d}
+        for n, d in ((1, "USB cable"), (2, "Case"), (3, "Shipping"))
     ]
     assert [r["amount"]["amount"] for r in out["rows"]] == [-400, -300, -300]
     assert out["rows"][0]["document"]["split"] == {

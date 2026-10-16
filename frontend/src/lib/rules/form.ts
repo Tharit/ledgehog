@@ -39,7 +39,7 @@ export type RuleForm = {
 	target: number | null;
 	/** every one must hold; a row without a value is not sent */
 	conditions: ConditionRow[];
-	/** as typed; blank means the default */
+	/** as typed; blank on a new rule leaves it to the server, which places it (spec §5.9) */
 	priority: string;
 };
 
@@ -84,6 +84,13 @@ export function parsePriority(text: string): number | null {
 	return Number.isSafeInteger(value) && Math.abs(value) < 2 ** 31 ? value : null;
 }
 
+/** The `priority` part of a request: the typed number, or nothing for a new rule's blank. */
+function priorityField(text: string, editing: boolean): { priority?: number } {
+	if (text.trim() === '') return editing ? { priority: DEFAULT_PRIORITY } : {};
+	const typed = parsePriority(text);
+	return typed === null ? {} : { priority: typed };
+}
+
 /** Whether a payee condition applies (a row in the conditions): category rules only. */
 export function takesPayeeCondition(sets: RuleSets): boolean {
 	return sets === 'category';
@@ -106,8 +113,12 @@ export function isPreviewable(form: RuleForm): boolean {
 /** The name a preview is asked with while the field is blank: the server needs one, we need not. */
 export const PREVIEW_NAME = 'Untitled rule';
 
-/** The request body for the form: the one target `sets` names, every condition, the priority. */
-export function toFields(form: RuleForm, { forPreview = false } = {}): RuleFields {
+/**
+ * The request body for the form: the one target `sets` names, every condition, the priority. A
+ * blank priority is not sent when the rule is new: the server places it (spec §5.9). A rule being
+ * edited sends the default instead, so that clearing the field means what it says.
+ */
+export function toFields(form: RuleForm, { forPreview = false, editing = false } = {}): RuleFields {
 	const name = form.name.trim();
 	const target = form.target ?? undefined;
 	return {
@@ -117,7 +128,7 @@ export function toFields(form: RuleForm, { forPreview = false } = {}): RuleField
 		payee_id: form.sets === 'payee' ? target : null,
 		category_id: form.sets === 'category' ? target : null,
 		conditions: requestConditions(form),
-		priority: parsePriority(form.priority) ?? DEFAULT_PRIORITY
+		...priorityField(form.priority, editing)
 	};
 }
 

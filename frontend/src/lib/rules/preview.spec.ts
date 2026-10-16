@@ -33,3 +33,14 @@ describe('sourceText', () => {
 		expect(sourceText(previewRow({ source: null }), 'counterparty_name')).toBeNull();
 	});
 });
+
+describe('sourceColumns and the document fields', () => {
+	it('leaves a document condition out: the preview rows carry only the source fields', () => {
+		expect(
+			sourceColumns([
+				{ field: 'document_merchant', op: 'equals', value: 'CloudNotes' },
+				{ field: 'purpose', op: 'contains', value: 'x' }
+			])
+		).toEqual(['counterparty_name', 'purpose']);
+	});
+});

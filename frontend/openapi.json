@@ -1371,6 +1371,61 @@
         "title": "EditEffectsOut",
         "type": "object"
       },
+      "EntryDocumentLineOut": {
+        "description": "The entry's own line of that document: what a rule's `document_line` reads (spec \u00a75.8).",
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "line_no": {
+            "title": "Line No",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "line_no",
+          "description"
+        ],
+        "title": "EntryDocumentLineOut",
+        "type": "object"
+      },
+      "EntryDocumentOut": {
+        "description": "The document of the entry's transaction (every entry of a split reads the one its original carries).",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "line_count": {
+            "title": "Line Count",
+            "type": "integer"
+          },
+          "merchant_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant Name"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "merchant_name",
+          "line_count"
+        ],
+        "title": "EntryDocumentOut",
+        "type": "object"
+      },
       "EntryOut": {
         "properties": {
           "account_id": {
@@ -1449,6 +1504,16 @@
             ],
             "title": "Display Text"
           },
+          "document": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EntryDocumentOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "document_id": {
             "anyOf": [
               {
@@ -1459,6 +1524,16 @@
               }
             ],
             "title": "Document Id"
+          },
+          "document_line": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EntryDocumentLineOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "id": {
             "title": "Id",
@@ -1607,7 +1682,9 @@
           "derivation",
           "unit_key",
           "authored",
-          "partner"
+          "partner",
+          "document",
+          "document_line"
         ],
         "title": "EntryOut",
         "type": "object"
@@ -2757,11 +2834,17 @@
             "title": "Payee Id"
           },
           "priority": {
-            "default": 100,
-            "maximum": 2147483647.0,
-            "minimum": -2147483648.0,
-            "title": "Priority",
-            "type": "integer"
+            "anyOf": [
+              {
+                "maximum": 2147483647.0,
+                "minimum": -2147483648.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
           },
           "sets": {
             "enum": [
@@ -3040,11 +3123,17 @@
             "title": "Payee Id"
           },
           "priority": {
-            "default": 100,
-            "maximum": 2147483647.0,
-            "minimum": -2147483648.0,
-            "title": "Priority",
-            "type": "integer"
+            "anyOf": [
+              {
+                "maximum": 2147483647.0,
+                "minimum": -2147483648.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
           },
           "sets": {
             "anyOf": [
@@ -5554,8 +5643,19 @@
         "type": "object"
       },
       "UnitRowDocumentLineOut": {
-        "description": "The line a row was made from (the original entry: the first line it takes): echo it in the draft.",
+        "description": "The line a row has (spec \u00a75.8), with its description; a row made from a line echoes it back.",
         "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
           "document_id": {
             "title": "Document Id",
             "type": "integer"
@@ -5567,7 +5667,8 @@
         },
         "required": [
           "document_id",
-          "line_no"
+          "line_no",
+          "description"
         ],
         "title": "UnitRowDocumentLineOut",
         "type": "object"

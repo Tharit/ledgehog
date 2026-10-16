@@ -39,6 +39,9 @@ from app.utils.db.errors import constraint_name
 from app.utils.db.locks import lock_rows, retry_on_deadlock
 
 SETS = ("counter_account", "payee", "category")
+DEFAULT_PRIORITY = 100
+DOCUMENT_FIELDS = frozenset({"document_merchant", "document_line"})
+_MIN_PRIORITY = -(2**31)
 _TARGET_FIELD = {"counter_account": "counter_account_id", "payee": "payee_id", "category": "category_id"}
 _TARGET_ENTITY = {"counter_account": "account", "payee": "payee", "category": "category"}
 
@@ -78,7 +81,9 @@ class RuleDraft:
     payee_id: int | None = None
     category_id: int | None = None
     conditions: tuple[Condition, ...] = ()
-    priority: int = 100
+    # None: the client gave none. A rule update takes the default; a new payee rule with a document condition
+    # is given a priority before every payee rule without one (`default_priority`, spec §5.9 rule editor)
+    priority: int | None = None
 
 
 @dataclass(frozen=True)
@@ -231,7 +236,7 @@ def _checked(draft: RuleDraft, sets: str) -> RuleDraft:
         name=cleaned.name,
         sets=sets,  # type: ignore[arg-type]
         target_id=given[wanted],
-        priority=cleaned.priority,
+        priority=DEFAULT_PRIORITY if cleaned.priority is None else cleaned.priority,
         conditions=cleaned.conditions,
     )
     try:
@@ -263,6 +268,25 @@ def _duplicate(exc: DBAPIError) -> bool:
     return constraint_name(exc) == "ux_rule_name"
 
 
+def _has_document_condition(conditions: tuple[Condition, ...]) -> bool:
+    return any(c.field in DOCUMENT_FIELDS for c in conditions)
+
+
+def default_priority(conn: Connection, draft: RuleDraft) -> int:
+    """The priority of a NEW rule the client gave none for (spec §5.9, rule editor): the default, except
+    that a payee rule with a document condition is placed before every payee rule without one, so that a
+    rule on the merchant is evaluated ahead of the descriptor rule it refines (lower comes first). Rules of
+    its own kind keep their order (a tie falls to the id, so the older one first); explicit priorities are
+    never touched."""
+    if draft.sets != "payee" or not _has_document_condition(draft.conditions):
+        return DEFAULT_PRIORITY
+    rows = conn.execute(text("SELECT priority, conditions FROM rule WHERE sets = 'payee'")).all()
+    plain = [int(r.priority) for r in rows if not _has_document_condition(conditions_of(r.conditions))]
+    if not plain:
+        return DEFAULT_PRIORITY
+    return max(min(plain) - 1, _MIN_PRIORITY)
+
+
 def _params(draft: RuleDraft) -> dict[str, Any]:
     return {
         "n": draft.name,
@@ -274,7 +298,7 @@ def _params(draft: RuleDraft) -> dict[str, Any]:
             [{"field": c.field, "op": c.op, "value": c.value} for c in draft.conditions],
             separators=(",", ":"),
         ),
-        "pri": draft.priority,
+        "pri": DEFAULT_PRIORITY if draft.priority is None else draft.priority,
     }
 
 
@@ -315,8 +339,12 @@ def create_rule(
 
     def work(conn: Connection) -> RuleWritten:
         _check_references(conn, cleaned)
+        if cleaned.priority is None:
+            ordered = replace(cleaned, priority=default_priority(conn, cleaned))
+        else:
+            ordered = cleaned
         try:
-            new_id = int(conn.execute(text(_INSERT), _params(cleaned)).scalar_one())
+            new_id = int(conn.execute(text(_INSERT), _params(ordered)).scalar_one())
         except DBAPIError as exc:
             if _duplicate(exc):
                 raise DuplicateName("rule") from exc

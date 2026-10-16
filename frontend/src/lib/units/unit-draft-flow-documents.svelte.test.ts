@@ -75,7 +75,7 @@ function lineRow(id: number, lineNo: number, amount: number): PreviewRow {
 		original: false,
 		version: null,
 		amount: { amount, currency: 'EUR' },
-		document_line: { document_id: 7, line_no: lineNo }
+		document_line: { document_id: 7, line_no: lineNo, description: `Line ${lineNo}` }
 	});
 }
 

@@ -122,6 +122,15 @@ export function previewRowOf(e: Entry, over: Partial<PreviewRow> = {}): PreviewR
 		review_flags: [...e.review_flags],
 		derivation: e.derivation,
 		stored: { amount: e.amount, description: e.description, note: e.note },
+		...(e.document_line && e.document_id !== null
+			? {
+					document_line: {
+						document_id: e.document_id,
+						line_no: e.document_line.line_no,
+						description: e.document_line.description
+					}
+				}
+			: {}),
 		...over
 	};
 }
