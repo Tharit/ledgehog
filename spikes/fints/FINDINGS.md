@@ -80,7 +80,8 @@ Probe: `probe.py`. Debug log `out/fints.log` is the ground truth (contains accou
 
 ## Open questions
 
-- What makes Consorsbank accept account-data calls? Candidates: SCA in the login dialog followed by HKKAZ in
-  the same dialog (never reached: the one login TAN session crashed in probe printing before HKKAZ),
-  HKTAN variants, or a bank-side limitation for third-party clients.
-- Does a second bank behave better? Likely more informative than more Consorsbank guessing.
+- Resolved: Consorsbank account-data access (full KTI1 + HKTAN on HKKAZ/HKSAL).
+- What does the challenge look like when the SCA window expires (0030 typed TAN with 900, 3955 app push with
+  901)? Not seen yet for account data; the login-time challenge handling is patched, the 901 push is untested.
+- Pagination/touchdown for long ranges, pending items, the 90-day SCA-free history limit.
+- Does a second bank behave differently (camt, IBAN fields, SCA rules)? Worth one more probe run.
