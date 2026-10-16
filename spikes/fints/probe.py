@@ -22,6 +22,7 @@ import sys
 from pathlib import Path
 
 from fints.client import FinTS3PinTanClient, NeedTANResponse
+from fints.exceptions import FinTSSCARequiredError
 
 OUT = Path(__file__).parent / "out"
 
@@ -66,18 +67,39 @@ def patch_hnshk_profile_v2() -> None:
     M.sign_prepare = sign_prepare
 
 
+FORCE_TAN: set[str] = set()  # segment types that get an HKTAN (process 4) attached
+
+
+def run(client: FinTS3PinTanClient, seg_type: str, fn):
+    """Run one data call in its own dialog. If the bank answers 9075 (SCA required) although its
+    HIPINS says no TAN is needed, retry once in a fresh dialog with a TAN request attached."""
+    for _ in range(2):
+        client.init_tan_response = None
+        try:
+            with client:
+                if client.init_tan_response:
+                    ask_tan(client, client.init_tan_response)
+                return ask_tan(client, fn())
+        except FinTSSCARequiredError:
+            if seg_type in FORCE_TAN:
+                raise
+            print(f"bank demands SCA for {seg_type}; retrying in a new dialog with a TAN request")
+            FORCE_TAN.add(seg_type)
+    raise RuntimeError("unreachable")
+
+
 def patch_force_tan() -> None:
-    """Attach HKTAN (process 4) to account-data requests even though the bank's HIPINS says no TAN
-    is needed. Consorsbank answers 9075 'Starke Authentifizierung erforderlich' otherwise (and
-    closes the dialog), e.g. for HKSAL when the login itself was SCA-exempt (3076)."""
+    """Attach HKTAN (process 4) to the segment types in FORCE_TAN even though the bank's HIPINS says
+    no TAN is needed. Consorsbank answers 9075 'Starke Authentifizierung erforderlich' otherwise
+    (and closes the dialog), e.g. when the login itself was SCA-exempt (3076)."""
     from fints.client import FinTS3PinTanClient as C
 
     orig = C._need_twostep_tan_for_segment
 
     def need(self, seg):
-        # Only HKSAL: Consorsbank rejects a redundant HKTAN on SCA-exempt calls (HKKAZ within the
-        # exemption window answers 9010 + 3076 'Keine starke Authentifizierung erforderlich').
-        if seg.header.type in ("HKSAL",) and self.get_current_tan_mechanism() not in (None, "999"):
+        # Consorsbank rejects a redundant HKTAN on SCA-exempt calls (9010 + 3076 'Keine starke
+        # Authentifizierung erforderlich'), so this is opt-in per segment type, set by run().
+        if seg.header.type in FORCE_TAN and self.get_current_tan_mechanism() not in (None, "999"):
             return True
         return orig(self, seg)
 
@@ -141,7 +163,7 @@ def main() -> int:
     ap.add_argument("--user", default=os.environ.get("FINTS_USER"))
     ap.add_argument("--product-id", default=os.environ.get("FINTS_PRODUCT_ID"),
                     help="DK-registered product id; banks may reject requests without one")
-    ap.add_argument("--days", type=int, default=7)
+    ap.add_argument("--days", type=int, default=30)
     ap.add_argument("--no-debug", action="store_true",
                     help="don't log raw FinTS segments to out/fints.log (contains account data; PIN is masked)")
     ap.add_argument("--mechanism", help="TAN mechanism code (skips the prompt), e.g. 900 / 901")
@@ -159,8 +181,9 @@ def main() -> int:
     if args.hnshk_v2:
         patch_hnshk_profile_v2()
     patch_login_tan_detection()
+    patch_force_tan()
     if args.force_tan:
-        patch_force_tan()
+        FORCE_TAN.add("HKSAL")
 
     pin = getpass.getpass("PIN: ")
     client = FinTS3PinTanClient(
@@ -170,12 +193,20 @@ def main() -> int:
     # 1. Anonymous-ish dialog: bank parameter data (BPD) is available before login.
     pick_tan_mechanism(client, args.mechanism)
 
+    # The library starts in 'bootstrap mode', where a 9075 (SCA required) silently closes the dialog
+    # instead of raising -> empty results. Only get_tan_media() resets it; do it explicitly.
+    client._bootstrap_mode = False
+    client.add_response_callback(
+        lambda seg, r: print(f"   [bank {r.code}] {r.text}") if r.code[0] != "0" or r.code == "0030" else None
+    )
+
+    # 2./3. One dialog: bank info + SEPA accounts.
     with client:
         # Strong customer authentication may already be demanded at dialog init.
         if client.init_tan_response:
             ask_tan(client, client.init_tan_response)
 
-        # 2. Bank info: BPD/UPD, supported segments, account permissions.
+        # Bank info: BPD/UPD, supported segments, account permissions.
         info = client.get_information()
         (OUT / "information.txt").write_text(pprint.pformat(info, width=120))
         print("\nBank:", info.get("bank", {}).get("name"))
@@ -185,54 +216,48 @@ def main() -> int:
                                  ("iban", "account_number", "subaccount_number", "product_name", "currency", "type", "owner_name_1")},
                   "ops:", sorted(getattr(k, "name", str(k)) for k, v in (acc.get("supported_operations") or {}).items() if v))
 
-        # 3. SEPA accounts (the objects get_transactions needs).
         accounts = ask_tan(client, client.get_sepa_accounts())
         print("\nSEPA accounts:")
         for i, a in enumerate(accounts):
             print(f"  [{i}] {a.iban}  bic={a.bic}  acct={a.accountnumber}/{a.subaccount}  blz={a.blz}")
         acc = accounts[int(input("Select account index: ") or 0)]
 
-        end = dt.date.today()
-        start = end - dt.timedelta(days=args.days)
+    end = dt.date.today()
+    start = end - dt.timedelta(days=args.days)
 
-        # NB: a rejected request (e.g. 9075 SCA required) makes the bank close the dialog, so the
-        # important call goes first and optional ones last.
+    # Each data call gets its own dialog: a rejected request makes the bank close the dialog.
+    # 4a. Transactions as MT940 (the classic format, parsed by the mt-940 lib).
+    print(f"\nFetching MT940 {start}..{end}")
+    txs = run(client, "HKKAZ", lambda: client.get_transactions(acc, start, end))
+    print(f"{len(txs)} transactions (MT940)")
+    dump = []
+    for t in txs:
+        d = t.data
+        dump.append({k: str(v) for k, v in d.items()})
+        print(f"{d.get('date')}  (val {d.get('entry_date')})  {d.get('amount')}  "
+              f"{d.get('applicant_name') or ''} | {d.get('purpose') or ''}")
+    (OUT / "transactions_mt940.json").write_text(json.dumps(dump, indent=2, ensure_ascii=False))
 
-        # 4b. Transactions as MT940 (the classic format, parsed by the mt-940 lib).
-        print(f"\nFetching MT940 {start}..{end}")
-        txs = ask_tan(client, client.get_transactions(acc, start, end))
-        print(f"{len(txs)} transactions (MT940)")
-        dump = []
-        for t in txs:
-            d = t.data
-            dump.append({k: str(v) for k, v in d.items()})
-            amt = d.get("amount")
-            print(f"{d.get('date')}  (val {d.get('entry_date')})  {amt}  "
-                  f"{d.get('applicant_name') or ''} | {d.get('purpose') or ''}")
-        (OUT / "transactions_mt940.json").write_text(json.dumps(dump, indent=2, ensure_ascii=False))
+    # 4b. Same range as camt.052/053 XML, if the bank supports it (Consorsbank: no HICAZS).
+    try:
+        print(f"\nFetching camt XML {start}..{end}")
+        xml = run(client, "HKCAZ", lambda: client.get_transactions_xml(acc, start, end))
+        for n, doc in enumerate(xml if isinstance(xml, (list, tuple)) else [xml]):
+            p = OUT / f"transactions_camt_{n}.xml"
+            p.write_bytes(doc if isinstance(doc, bytes) else str(doc).encode())
+            print("saved", p)
+    except Exception as e:
+        print("camt fetch not available / failed:", repr(e))
 
-        # 4c. Same range as camt.052/053 XML, if the bank supports it.
-        try:
-            print(f"\nFetching camt XML {start}..{end}")
-            xml = ask_tan(client, client.get_transactions_xml(acc, start, end))
-            docs = xml if isinstance(xml, (list, tuple)) else [xml]
-            for n, doc in enumerate(docs):
-                p = OUT / f"transactions_camt_{n}.xml"
-                p.write_bytes(doc if isinstance(doc, bytes) else str(doc).encode())
-                print("saved", p)
-        except Exception as e:
-            print("camt fetch not available / failed:", repr(e))
+    # 4c. Balance (informational; also tells us currency/booking conventions).
+    try:
+        print("\nBalance:", run(client, "HKSAL", lambda: client.get_balance(acc)))
+    except Exception as e:
+        print("get_balance failed:", repr(e))
 
-        # 4a. Balance (informational; also tells us currency/booking conventions). Last on purpose.
-        try:
-            bal = ask_tan(client, client.get_balance(acc))
-            print("\nBalance:", bal)
-        except Exception as e:
-            print("get_balance failed:", repr(e))
-
-        # 5. Persist-able client state (what we'd store between runs: BPD/UPD, system id).
-        (OUT / "client_state.bin").write_bytes(client.deconstruct())
-        print("\nclient state saved (contains no PIN) -> out/client_state.bin")
+    # 5. Persist-able client state (what we'd store between runs: BPD/UPD, system id).
+    (OUT / "client_state.bin").write_bytes(client.deconstruct())
+    print("\nclient state saved (contains no PIN) -> out/client_state.bin")
     return 0
 
 
