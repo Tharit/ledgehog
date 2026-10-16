@@ -20,6 +20,14 @@ source transaction on the counter-account (importer NULL, a random `source_id`, 
 changed set takes the transaction again with more locks, as `ledger/sources.py` does), and its derived
 entries are recomputed. A source that follows its partner's amount is written with it.
 
+A document the draft picks (spec §5.8) is part of it: the picked documents and the ones the unit carries are
+locked, in id order, right after the settle lock and BEFORE the accounts - the order document ingest takes
+(documents, then the carriers' accounts, then the entries), so the two cannot deadlock. A pick that names a
+document that is gone is `StaleReference` (409), one at another version or carried by another entry is
+`UnitMoved` (409, with the document and the reason; the unique indexes of I35 are the net under the check). A
+commit that carries no document key for a transaction that is offered documents or awaits one is refused
+(`document_decision_required`, 422) unless the draft picks or says "none".
+
 What is written: a pair the draft breaks is undone (`removal.unpair`, so a partner is left behind as
 the removal routine leaves it), removed entries go through `removal.remove_entries`, created entries are
 inserted with real ids and inherit the original's tags (the draft's tag change on top), the tag changes of
@@ -58,6 +66,7 @@ from app.core.units.plan import Consequence, Plan, PlannedRow, Problem
 from app.core.units.preview import UnitNotFound, resolve_draft
 from app.core.units.state import UnitState, document_facts_of_flags, leg_states_of_flags, unit_state
 from app.core.units.stored import (
+    document_pick_ids,
     load_closure_of,
     load_stored_entries,
     load_world,
@@ -71,16 +80,31 @@ from app.utils.db.locks import WriteConflict, lock_accounts, lock_rows, lock_set
 OTHER_ROWS_CAP = 200
 OTHER_IDS_CAP = 5000
 
-_ENTITY = {"category_id": "category", "payee_id": "payee", "counter_account_id": "account"}
+_ENTITY = {
+    "category_id": "category",
+    "payee_id": "payee",
+    "counter_account_id": "account",
+    "document_id": "document",
+}
+# problems that say the document the user chose is not what the preview saw: a conflict, not a refusal
+_DOCUMENT_MOVED = {"document_taken": "taken", "document_changed": "version"}
 
 
 class UnitMoved(Exception):
-    """The unit's closure changed between reading it and holding its locks. Nothing was written."""
+    """The unit's closure changed between reading it and holding its locks, or the document the draft picks
+    is no longer what the preview saw (`reason`: `taken` by another entry, or at another `version`).
+    Nothing was written."""
 
-    def __init__(self, anchor_entry_id: int) -> None:
+    def __init__(
+        self, anchor_entry_id: int, *, document_id: int | None = None, reason: str | None = None
+    ) -> None:
         self.anchor_entry_id = anchor_entry_id
+        self.document_id = document_id
+        self.reason = reason
         super().__init__(
             f"the unit of entry {anchor_entry_id} changed while it was being committed: reload it"
+            if document_id is None
+            else f"document {document_id} is no longer what was shown ({reason}): reload the unit"
         )
 
 
@@ -145,8 +169,10 @@ _INSERT = text(
 _UPDATE = text(
     "UPDATE ledger_entry SET type = :type, payee_id = :payee, category_id = :category,"
     " counter_account_id = :counter, amount = :amount, description = :description, note = :note,"
-    " counterpart_entry_id = :counterpart, derivation = CAST(:derivation AS jsonb) WHERE id = :id"
+    " counterpart_entry_id = :counterpart, document_id = :document,"
+    " derivation = CAST(:derivation AS jsonb) WHERE id = :id"
 )
+_FREE_DOCUMENT = text("UPDATE ledger_entry SET document_id = NULL WHERE id = ANY(:ids)")
 
 
 _LOCK_ROUNDS = 3
@@ -213,6 +239,27 @@ def _stale(plan: Plan) -> None:
             raise StaleReference(field, _ENTITY.get(field, "row"), int(found) if found is not None else None)
 
 
+def _moved(plan: Plan, anchor_entry_id: int) -> None:
+    """A document the draft picks that was taken or has moved on since the preview: a conflict (409)."""
+    for p in plan.problems:
+        if p.code in _DOCUMENT_MOVED:
+            found = p.detail.get("document_id")
+            raise UnitMoved(
+                anchor_entry_id,
+                document_id=int(found) if found is not None else None,
+                reason=_DOCUMENT_MOVED[p.code],
+            )
+
+
+def _documents_of(conn: Connection, draft: UnitDraft, closure: tuple[int, ...]) -> list[int]:
+    """The documents a commit locks: those the draft names, and those the unit's entries carry now."""
+    carried = conn.execute(
+        text("SELECT document_id FROM ledger_entry WHERE id = ANY(:ids) AND document_id IS NOT NULL"),
+        {"ids": list(closure)},
+    ).scalars()
+    return sorted({*document_pick_ids(draft), *(int(d) for d in carried)})
+
+
 def _write(conn: Connection, plan: Plan) -> dict[int, int]:
     """The plan's writes; returns the real ids of the created entries by temporary id."""
     if plan.unpaired_entry_ids:
@@ -264,6 +311,18 @@ def _write(conn: Connection, plan: Plan) -> dict[int, int]:
             )
     # entries that stop being transfers first: one transfer per source is a unique index, checked per row
     changing = [r for r in plan.rows if r.stored is not None and r.written.accepted and _differs(r)]
+    # a document that moves from one entry of the unit to another is freed first: the unique index of I35 is
+    # checked per row, so the new holder cannot take it while the old one still does
+    taking = {r.written.document_id for r in changing if r.written.document_id is not None}
+    free = [
+        r.id
+        for r in changing
+        if r.stored is not None
+        and r.stored.document_id in taking
+        and r.written.document_id != r.stored.document_id
+    ]
+    if free:
+        conn.execute(_FREE_DOCUMENT, {"ids": sorted(free)})
     for row in sorted(changing, key=lambda r: (r.written.type == "transfer", r.id)):
         w = row.written
         conn.execute(
@@ -278,6 +337,7 @@ def _write(conn: Connection, plan: Plan) -> dict[int, int]:
                 "description": w.description,
                 "note": w.note,
                 "counterpart": created.get(w.counterpart_entry_id or 0, w.counterpart_entry_id),
+                "document": w.document_id,
                 "derivation": json.dumps(w.derivation),
             },
         )
@@ -324,6 +384,7 @@ def _differs(row: PlannedRow) -> bool:
         != (w.type, w.payee_id, w.category_id, w.counter_account_id, w.amount, w.description, w.note)
         or dict(s.derivation) != dict(w.derivation)
         or s.counterpart_entry_id != w.counterpart_entry_id
+        or s.document_id != w.document_id
     )
 
 
@@ -338,6 +399,7 @@ def _commit_once(
             if before is None:
                 raise UnitNotFound(draft.anchor_entry_id)
             closure = before
+            lock_rows(conn, "external_document", _documents_of(conn, draft, before))
             locked = _accounts_of(conn, before) | set(extra_accounts)
             lock_accounts(conn, locked)
             lock_rows(conn, "ledger_entry", before)
@@ -348,6 +410,7 @@ def _commit_once(
             stored = load_stored_entries(conn, draft.anchor_entry_id, before)
             plan = plan_unit(stored, draft, load_world(conn, stored, draft))
             _stale(plan)
+            _moved(plan, draft.anchor_entry_id)
             if (gone := missing_tag(conn, draft)) is not None:
                 raise StaleReference(f"entries[{gone[0]}].tags.add", "tag", gone[1])
             if plan.problems:
@@ -362,6 +425,9 @@ def _commit_once(
     except DBAPIError as exc:
         orig = exc.orig
         if isinstance(orig, psycopg.errors.UniqueViolation):
+            if (constraint_name(exc) or "").startswith("ux_le_document"):
+                # a document taken between the check and the write (I35): the pick moved
+                raise UnitMoved(draft.anchor_entry_id, reason="taken") from exc
             # a partner or a transfer slot taken between the check and the write: a named conflict
             raise VersionConflict(closure) from exc
         if isinstance(orig, psycopg.errors.CheckViolation | psycopg.errors.RaiseException):

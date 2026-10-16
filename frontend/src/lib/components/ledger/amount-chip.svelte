@@ -29,6 +29,7 @@
 		currencies,
 		defaultCurrency,
 		locale = 'en',
+		withDirection = true,
 		onchange
 	}: {
 		label: string;
@@ -41,6 +42,8 @@
 		currencies: readonly string[];
 		defaultCurrency: string;
 		locale?: string;
+		/** offer the in/out choice (the ledger's entries have a direction, documents do not) */
+		withDirection?: boolean;
 		onchange: (patch: AmountPatch) => void;
 	} = $props();
 
@@ -118,20 +121,26 @@
 </script>
 
 <FilterChip {label} {active} bind:open width="w-80">
-	<p class="text-xs text-muted-foreground">
-		Compares the size of an amount and ignores its sign. Out is money leaving an account (negative),
-		In is money arriving (positive).
-	</p>
-	<div class="flex gap-1" role="radiogroup" aria-label="Direction">
-		{#each DIRECTIONS as option (option.value)}
-			<Button
-				variant={chosenDirection === option.value ? 'secondary' : 'outline'}
-				role="radio"
-				aria-checked={chosenDirection === option.value}
-				onclick={() => (chosenDirection = option.value)}>{option.text}</Button
-			>
-		{/each}
-	</div>
+	{#if withDirection}
+		<p class="text-xs text-muted-foreground">
+			Compares the size of an amount and ignores its sign. Out is money leaving an account
+			(negative), In is money arriving (positive).
+		</p>
+		<div class="flex gap-1" role="radiogroup" aria-label="Direction">
+			{#each DIRECTIONS as option (option.value)}
+				<Button
+					variant={chosenDirection === option.value ? 'secondary' : 'outline'}
+					role="radio"
+					aria-checked={chosenDirection === option.value}
+					onclick={() => (chosenDirection = option.value)}>{option.text}</Button
+				>
+			{/each}
+		</div>
+	{:else}
+		<p class="text-xs text-muted-foreground">
+			Compares the size of an amount and ignores its sign.
+		</p>
+	{/if}
 	<div class="flex items-end gap-2">
 		<Field label="Min">
 			{#snippet children(control)}

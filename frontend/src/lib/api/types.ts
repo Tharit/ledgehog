@@ -41,6 +41,12 @@ export type Account = {
 type Schemas = import('../types/api.js').components['schemas'];
 
 export type Entry = Schemas['EntryOut'];
+export type DocumentRow = Schemas['DocumentOut'];
+export type DocumentPage = Schemas['DocumentPageOut'];
+export type DocumentDetail = Schemas['DocumentDetailOut'];
+export type DocumentLine = Schemas['DocumentLineOut'];
+export type DocumentMatch = Schemas['DocumentMatchOut'];
+export type DocumentCarrier = Schemas['CarrierOut'];
 export type SourceTransaction = Schemas['SourceTransactionOut'];
 export type EntryPage = Schemas['EntryPageOut'];
 export type EntryType = NonNullable<Entry['type']>;
@@ -93,7 +99,7 @@ export type Payee = {
 	icon: string | null;
 	color: string | null;
 	note: string | null;
-	/** not shown in the UI yet (step 9); the lookup list carries it */
+	/** the provider of the documents that describe this payee's charges (spec §3.6) */
 	document_provider?: string | null;
 };
 
@@ -130,4 +136,22 @@ export type EntryFilter = {
 	q: string;
 	type: string[];
 	flag: string[];
+};
+
+/**
+ * The documents filter, in the API's own parameter names. Providers are OR, the rest AND. Amounts
+ * are magnitudes in minor units of `currency` (which an amount bound requires); `linked: false`
+ * is "not linked" (carried by no entry).
+ */
+export type DocumentFilter = {
+	provider: string[];
+	/** inclusive */
+	from?: IsoDate;
+	/** inclusive */
+	to?: IsoDate;
+	amount_min?: number;
+	amount_max?: number;
+	currency?: string;
+	q: string;
+	linked?: boolean;
 };

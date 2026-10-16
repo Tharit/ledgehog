@@ -21,7 +21,14 @@ preview shows is accepted), ``pick`` (the stored entry the user chose; a pick is
 client names with a temporary id, and for a cross-currency leg the amount received) or ``reresolve`` (drop
 the stored pair and let the passes decide again).
 
-Not modelled yet, on purpose: documents (step 9).
+A transaction's document is drafted as a `DocumentDraft` on its ORIGINAL entry (spec §5.8, §6; the original
+carries the link, I31/I35): ``keep`` (the link as it stands; a commit decides "none" only where nothing is
+suggested or awaited), ``pick`` (a document, with the version the client saw), ``none`` (the user's decision
+that there is no document), ``reresolve`` (drop the decision and the link: matching decides afresh) and
+``split_along_lines`` (a pick of `document_id` AND the split along its lines, replacing an existing split).
+A new entry made from a line of the document carries its `DocumentLineRef` (the client echoes it from the
+preview); a transaction the draft does not split gets the split along the lines as a proposal, which
+`DocumentDraft.decline_split` refuses.
 """
 
 from __future__ import annotations
@@ -154,6 +161,64 @@ class PairingDraft:
 
 KEEP_PAIRING: Final = PairingDraft()
 
+DocumentMode = Literal["keep", "pick", "none", "reresolve", "split_along_lines"]
+DOCUMENT_MODES: Final[tuple[DocumentMode, ...]] = ("keep", "pick", "none", "reresolve", "split_along_lines")
+
+
+def _positive(n: object) -> bool:
+    return isinstance(n, int) and not isinstance(n, bool) and n > 0
+
+
+@dataclass(frozen=True, slots=True)
+class DocumentDraft:
+    """What the draft says of a transaction's document (spec §5.8), on its original entry.
+
+    ``pick`` and ``split_along_lines`` name a stored document (`document_id`) and the `document_version` the
+    client saw: a commit is refused if the document has moved on. ``decline_split`` keeps the proposed split
+    along the document's lines from being made (the transaction stays as the draft has it); it is no choice of
+    its own, so ``split_along_lines`` refuses it.
+    """
+
+    mode: DocumentMode = "keep"
+    document_id: int | None = None
+    document_version: int | None = None
+    decline_split: bool = False
+
+    def __post_init__(self) -> None:
+        if self.mode not in DOCUMENT_MODES:
+            raise DraftError("invalid_document", f"unknown document mode {self.mode!r}", field="document")
+        if self.mode in ("pick", "split_along_lines"):
+            if not _positive(self.document_id) or not _positive(self.document_version):
+                raise DraftError(
+                    "invalid_document",
+                    "a pick names a stored document (a positive id) and the version seen",
+                    field="document",
+                )
+        elif self.document_id is not None or self.document_version is not None:
+            raise DraftError("invalid_document", "only a pick names a document", field="document")
+        if self.decline_split and self.mode == "split_along_lines":
+            raise DraftError(
+                "invalid_document", "the split along the lines is not declined", field="document"
+            )
+
+
+KEEP_DOCUMENT: Final = DocumentDraft()
+
+
+@dataclass(frozen=True, slots=True)
+class DocumentLineRef:
+    """The line of a document a new entry was made from (the preview's `document_line`, echoed back): an
+    entry whose document is no longer the one its line belongs to is dropped from the draft (spec §6)."""
+
+    document_id: int
+    line_no: int
+
+    def __post_init__(self) -> None:
+        if not _positive(self.document_id) or not _positive(self.line_no):
+            raise DraftError(
+                "invalid_document_line", "a document line is an id and a line number", field="document_line"
+            )
+
 
 @dataclass(frozen=True, slots=True)
 class DraftEntry:
@@ -176,6 +241,8 @@ class DraftEntry:
     category: FieldDraft = KEEP
     counter_account: FieldDraft = KEEP
     pairing: PairingDraft = KEEP_PAIRING
+    document: DocumentDraft = KEEP_DOCUMENT
+    document_line: DocumentLineRef | None = None
     source_entry_id: int | None = None
     tags_add: tuple[int, ...] = ()
     tags_remove: tuple[int, ...] = ()
@@ -210,6 +277,20 @@ class DraftEntry:
             raise DraftError("invalid_pairing", "a new entry is a flow: it has no partner", entry_id=self.id)
         if self.is_new and self.amount is None:
             raise DraftError("amount_missing", "a new entry carries its amount", entry_id=self.id)
+        if self.is_new and self.document.mode != "keep":
+            raise DraftError(
+                "document_not_original",
+                "only a transaction's original entry has a document",
+                entry_id=self.id,
+                field="document",
+            )
+        if self.document_line is not None and not self.is_new:
+            raise DraftError(
+                "invalid_document_line",
+                "only a new entry is made from a document line",
+                entry_id=self.id,
+                field="document_line",
+            )
         for tag in (*self.tags_add, *self.tags_remove):
             if not isinstance(tag, int) or isinstance(tag, bool) or tag <= 0:
                 raise DraftError("invalid_tag", "a tag is an id", entry_id=self.id, field="tags")

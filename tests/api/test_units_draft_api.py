@@ -51,7 +51,7 @@ def test_preview_shape(anna: TestClient, scene: Scene) -> None:
     assert set(row) == set(
         "id version source_transaction_id unit_key in_unit original account_id booked_on value_on amount"
         " description note tag_ids counterpart_entry_id fields review_flags derivation stored".split()
-        + ["transfer", "counter_leg_for"]
+        + ["transfer", "counter_leg_for", "document", "document_line"]
     )
     assert row["amount"] == {"amount": -700, "currency": "EUR"} and row["in_unit"] and row["original"]
     cat = row["fields"]["category"]

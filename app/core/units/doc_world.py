@@ -16,10 +16,39 @@ from __future__ import annotations
 
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from datetime import date
 
-from app.core.matching.documents import DocInput, DocTxn, automatic_links
+from app.core.matching.documents import DocInput, DocTxn, automatic_links, suggestions
 from app.core.resolution.enrich import LinkedDocument
-from app.core.units.documents import DocumentFacts, DocumentSource, document_facts
+from app.core.units.documents import (
+    DocumentFacts,
+    DocumentSource,
+    DocumentWait,
+    document_facts,
+    waiting_for,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class DocumentInfo:
+    """A stored document as the draft and the preview read it: what a suggestion shows, what a pick is
+    checked against (`version`, `provider`, `carrier_entry_id`) and what the split along its lines uses."""
+
+    id: int
+    version: int
+    provider: str
+    external_id: str
+    occurred_on: date
+    total: int
+    currency: str
+    merchant_name: str | None
+    title: str | None
+    lines: tuple[tuple[int, int, str], ...] = ()
+    carrier_entry_id: int | None = None  # the entry carrying it now (any entry of the ledger), None: free
+
+    @property
+    def line_count(self) -> int:
+        return len(self.lines)
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +61,10 @@ class DocWorld:
     documents: Sequence[DocInput] = ()
     details: Mapping[int, LinkedDocument] = field(default_factory=dict)
     others: Sequence[DocTxn] = ()  # gated original entries outside the unit
+    # every document named by the draft (picks, echoed lines) and every one `documents` holds, by id; the
+    # carrier of a picked one is any entry of the ledger (a document carried outside the unit is no candidate
+    # but may be picked: it is refused as taken)
+    infos: Mapping[int, DocumentInfo] = field(default_factory=dict)
 
 
 def _marked(world: DocWorld, carried: Collection[int]) -> list[DocInput]:
@@ -78,3 +111,33 @@ def links_of(txns: Sequence[DocTxn], world: DocWorld, carried: Collection[int]) 
     everyone = [*gated, *(o for o in world.others if o.entry_id not in own)]
     found = automatic_links(everyone, _marked(world, carried), world.window)
     return {i: d for i, d in found.items() if i in own}
+
+
+def suggestions_of(
+    txns: Sequence[DocTxn], world: DocWorld, carried: Collection[int]
+) -> dict[int, list[DocInput]]:
+    """The documents offered for each of `txns` (the unit's original entries), by entry id: the candidates of
+    a transaction that has no automatic link (never stored), nearest first. Only for the gated ones."""
+    if not world.payee_providers:
+        return {}
+    gated = _gated(txns)
+    if not gated:
+        return {}
+    own = {t.entry_id for t in txns}
+    everyone = [*gated, *(o for o in world.others if o.entry_id not in own)]
+    documents = _marked(world, carried)
+    return {
+        t.entry_id: found
+        for t in gated
+        if (found := suggestions(t, documents, world.window, others=everyone))
+    }
+
+
+def waits_of(txns: Sequence[DocTxn], world: DocWorld) -> dict[int, DocumentWait]:
+    """What each gated transaction of `txns` waits for (documents.md §7), by entry id."""
+    out: dict[int, DocumentWait] = {}
+    for t in _gated(txns):
+        assert t.payee_provider is not None
+        if wait := waiting_for(t.payee_provider, t.booked_on, world.window, world.sources, world.providers):
+            out[t.entry_id] = wait
+    return out

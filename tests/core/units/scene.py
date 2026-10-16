@@ -14,6 +14,7 @@ from app.core.settle.settle import SettleResult, settle
 from app.core.units.commit import CommitResult, commit_unit
 from app.core.units.draft import (
     KEEP,
+    DocumentDraft,
     DraftEntry,
     FieldDraft,
     ShownBasis,
@@ -32,6 +33,11 @@ def fixed(value: int | str | None, basis: tuple[str, Mapping[str, Any]] | None =
 
 
 RERESOLVE = FieldDraft("reresolve")
+
+
+def no_document(entry_id: int, **kw: Any) -> DraftEntry:
+    """The explicit decision to commit without a document, on the transaction's original entry."""
+    return DraftEntry(entry_id, document=DocumentDraft("none"), **kw)
 
 
 @dataclass
@@ -256,4 +262,4 @@ class Scene:
         return out
 
 
-__all__ = ["D", "KEEP", "RERESOLVE", "DraftEntry", "Scene", "fixed"]
+__all__ = ["D", "KEEP", "RERESOLVE", "DocumentDraft", "DraftEntry", "Scene", "fixed", "no_document"]

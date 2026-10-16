@@ -3,6 +3,7 @@
 	import { afterNavigate, goto, pushState, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
+	import FileTextIcon from '@lucide/svelte/icons/file-text';
 	import ListIcon from '@lucide/svelte/icons/list';
 	import ListChecksIcon from '@lucide/svelte/icons/list-checks';
 	import SettingsIcon from '@lucide/svelte/icons/settings';
@@ -24,7 +25,8 @@
 	// Only routes that exist (design §10).
 	const nav: NavItem[] = [
 		{ href: '/ledger', label: 'Ledger', icon: ListIcon },
-		{ href: '/review', label: 'Review', icon: ListChecksIcon }
+		{ href: '/review', label: 'Review', icon: ListChecksIcon },
+		{ href: '/documents', label: 'Documents', icon: FileTextIcon }
 	];
 	// at the bottom of the sidebar, as in the mockup (design §5); /settings opens its first tab
 	const footerNav: NavItem[] = [

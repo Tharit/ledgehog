@@ -740,8 +740,10 @@ export interface paths {
          * @description Write the draft in one transaction, then settle. A commit does not confirm: settling does.
          *
          *     409 `conflict` names the entries whose version moved (or that `versions` omitted); 409 `unit_moved` is a
-         *     closure that changed under the locks; 409 `stale_reference` a category, payee or account that no longer
-         *     exists; 409 `try_again` a deadlock lost twice. 422 carries the code of the first problem the preview would
+         *     closure that changed under the locks, or a picked document that another entry carries (`details.reason`
+         *     `taken`) or that is at another version (`version`), named in `details.document_id`; 409
+         *     `stale_reference` a category, payee, account or picked document that no longer exists; 409 `try_again`
+         *     a deadlock lost twice. 422 carries the code of the first problem the preview would
          *     list (all of them in `details.problems`), or `invalid_draft`. A pick is checked against the widest window
          *     (90 days), so one the widened preview accepted commits. `window_days` (1 to 90, default the matching
          *     window) is the window the proposals were shown for: send the one the preview used, so the proposals a
@@ -2168,6 +2170,111 @@ export interface components {
             purpose: string | null;
         };
         /**
+         * UnitDocumentDraftIn
+         * @description What the draft says of the transaction's document (spec §5.8, §6), on its ORIGINAL entry (any other
+         *     entry: 422 `invalid_draft`, `document_not_original`). `keep` (also: absent) leaves the link as it stands;
+         *     a commit that carries no document key for a transaction that is offered documents or awaits one is
+         *     refused, `document_decision_required`, unless the draft picks or says `none`. `pick` names a stored
+         *     `document_id` and the `document_version` the client saw (both required; a document another entry carries,
+         *     one that is gone or one at another version is a problem of the preview, and a conflict of a commit).
+         *     `none` decides that there is no document. `reresolve` drops the decision and the link: matching decides
+         *     afresh. `split_along_lines` picks `document_id` too and splits the transaction along its lines,
+         *     replacing an existing split (the entries it deletes are consequences of the preview). `decline_split`
+         *     keeps the split the preview proposes along the lines of a linked document from being made. A document
+         *     mode on a new entry, `document_id` or `document_version` on another mode, or `decline_split` on
+         *     `split_along_lines`, is 422 `invalid_draft` (`invalid_document`).
+         *
+         *     The split along the lines is draft state made of ordinary new entries. For a transaction that is stored
+         *     unsplit, has a linked or picked document of several lines with an exact total, and that the draft neither
+         *     splits nor declines, the preview adds one row per further line with a server-issued negative id and
+         *     `document_line`; the original entry takes the first line and the remainder. Once the client echoes any row
+         *     that carries a `document_line` (its id, `source_entry_id`, `amount`, `document_line` and its edits), the
+         *     split is the client's: nothing is regenerated and a row left out is removed. `split_along_lines` also
+         *     deletes the other stored entries of an existing split (consequences of kind `deleted`, with their
+         *     tags) and the client's own rows for the transaction. Anchor the draft on the original entry: the
+         *     anchor is never deleted.
+         */
+        UnitDocumentDraftIn: {
+            /**
+             * Decline Split
+             * @default false
+             */
+            decline_split: boolean;
+            /** Document Id */
+            document_id?: number | null;
+            /** Document Version */
+            document_version?: number | null;
+            /**
+             * Mode
+             * @default keep
+             * @enum {string}
+             */
+            mode: "keep" | "pick" | "none" | "reresolve" | "split_along_lines";
+        };
+        /**
+         * UnitDocumentLineIn
+         * @description The line of a document a new entry was made from, as the preview showed it on the row
+         *     (`document_line`): echoed so an edit of a proposed row sticks to its line. A row whose document is no
+         *     longer the transaction's is dropped from the draft.
+         */
+        UnitDocumentLineIn: {
+            /** Document Id */
+            document_id: number;
+            /** Line No */
+            line_no: number;
+        };
+        /**
+         * UnitDocumentSplitOut
+         * @description The split along the lines of the document the transaction carries (a document of several lines).
+         */
+        UnitDocumentSplitOut: {
+            /** Available */
+            available: boolean;
+            /** Document Id */
+            document_id: number;
+            /** Proposed */
+            proposed: boolean;
+            /** Replaces Stored Split */
+            replaces_stored_split: boolean;
+        };
+        /**
+         * UnitDocumentSummaryOut
+         * @description A document in a few words: a suggestion, the one a transaction carries.
+         */
+        UnitDocumentSummaryOut: {
+            /** External Id */
+            external_id: string;
+            /** Id */
+            id: number;
+            /** Line Count */
+            line_count: number;
+            /** Merchant Name */
+            merchant_name: string | null;
+            /**
+             * Occurred On
+             * Format: date
+             */
+            occurred_on: string;
+            /** Provider */
+            provider: string;
+            /** Title */
+            title: string | null;
+            total: components["schemas"]["Money"];
+            /** Version */
+            version: number;
+        };
+        /**
+         * UnitDocumentWaitingOut
+         * @description The line of a transaction that waits for its document: "from <provider>, covered through <date>",
+         *     or "not synced yet" where `covered_through` is null.
+         */
+        UnitDocumentWaitingOut: {
+            /** Covered Through */
+            covered_through: string | null;
+            /** Provider */
+            provider: string;
+        };
+        /**
          * UnitDraftEntryIn
          * @description One entry the draft changes. `description` and `note` are left as stored when absent and emptied when
          *     null. A new entry (negative `id`) names `source_entry_id`, a stored entry of the source it splits, and
@@ -2181,6 +2288,8 @@ export interface components {
             counter_account?: components["schemas"]["UnitFieldDraftIn"];
             /** Description */
             description?: string | null;
+            document?: components["schemas"]["UnitDocumentDraftIn"];
+            document_line?: components["schemas"]["UnitDocumentLineIn"] | null;
             /** Id */
             id: number;
             /** Note */
@@ -2413,6 +2522,8 @@ export interface components {
             };
             /** Description */
             description: string | null;
+            document?: components["schemas"]["UnitRowDocumentOut"] | null;
+            document_line?: components["schemas"]["UnitRowDocumentLineOut"] | null;
             /** Fields */
             fields: {
                 [key: string]: components["schemas"]["UnitFieldOut"];
@@ -2479,6 +2590,34 @@ export interface components {
             /** Entry Ids */
             entry_ids: number[];
             state: components["schemas"]["UnitStateOut"];
+        };
+        /**
+         * UnitRowDocumentLineOut
+         * @description The line a row was made from (the original entry: the first line it takes): echo it in the draft.
+         */
+        UnitRowDocumentLineOut: {
+            /** Document Id */
+            document_id: number;
+            /** Line No */
+            line_no: number;
+        };
+        /**
+         * UnitRowDocumentOut
+         * @description The document part of a transaction's original entry (spec §5.8, §6). Null where there is nothing to
+         *     say: no link, no key, no suggestion, no wait. A suggestion is no decision: where `decision_required`, a
+         *     commit is refused (`document_decision_required`) unless it picks one or says `none`.
+         */
+        UnitRowDocumentOut: {
+            /** Decision Required */
+            decision_required: boolean;
+            document: components["schemas"]["UnitDocumentSummaryOut"] | null;
+            key: components["schemas"]["UnitKeyOut"] | null;
+            split: components["schemas"]["UnitDocumentSplitOut"] | null;
+            /** Stored Document Id */
+            stored_document_id: number | null;
+            /** Suggestions */
+            suggestions: components["schemas"]["UnitDocumentSummaryOut"][];
+            waiting: components["schemas"]["UnitDocumentWaitingOut"] | null;
         };
         /**
          * UnitShownBasisIn

@@ -12,20 +12,17 @@ from __future__ import annotations
 import json
 from collections.abc import Iterator
 from datetime import timedelta
-from typing import Any
 
 import pytest
-from sqlalchemy import Connection, text
+from sqlalchemy import Connection
 
 from app.core.importers.providers import reset_document_providers
-from tests.core.units.doc_helpers import make_doc_source, make_document, make_payee
+from app.core.units.commit import CommitRefused
+from tests.core.units.doc_helpers import CARD, STANDING, Docs, make_payee
 from tests.core.units.equality import preview_then_commit
-from tests.core.units.scene import D, DraftEntry, Scene, fixed
+from tests.core.units.scene import D, DraftEntry, Scene, fixed, no_document
 from tests.fixtures import rule_seed as rs
 from tests.invariants.helpers import make_category
-
-CARD = "PAYPAL *SEEEDDEVELO"
-STANDING = {"type": {"pass": "user"}, "category": {"pass": "user"}, "payee": {"pass": "user"}}
 
 
 @pytest.fixture(autouse=True)
@@ -33,55 +30,6 @@ def _registry() -> Iterator[None]:
     reset_document_providers()
     yield
     reset_document_providers()
-
-
-class Docs:
-    """A document source covering the whole period, the provider payee PayPal and a rule setting it on the
-    card text `PAYPAL *`."""
-
-    def __init__(self, scene: Scene, *, covered: bool = True) -> None:
-        self.scene = scene
-
-        def build(c: Connection) -> int:
-            provider = make_payee(c, "PayPal", "paypal")
-            rs.rule(
-                c,
-                "paypal",
-                "payee",
-                provider,
-                conditions=(rs.cond("counterparty_name", "starts_with", "PAYPAL"),),
-            )
-            make_doc_source(c, covered_through=D + timedelta(days=60) if covered else None)
-            return provider
-
-        self.provider: int = scene.tx(build)
-
-    def charge(self, amount: int = -1000, *, on: Any = D, name: str = CARD, **cols: Any) -> int:
-        _src, (entry,) = self.scene.movement(amount, counterparty=name, on=on, **cols)
-        return entry
-
-    def document(self, **kw: Any) -> int:
-        return int(self.scene.tx(lambda c: make_document(c, **kw)))
-
-    def lines(self, doc: int, *lines: tuple[str, int]) -> None:
-        def go(c: Connection) -> None:
-            for n, (description, amount) in enumerate(lines, start=1):
-                c.execute(
-                    text(
-                        "INSERT INTO external_document_line (document_id, line_no, description, amount)"
-                        " VALUES (:d, :n, :t, :a)"
-                    ),
-                    {"d": doc, "n": n, "t": description, "a": amount},
-                )
-
-        self.scene.tx(go)
-
-    def merchant(self, doc: int, name: str) -> None:
-        self.scene.tx(
-            lambda c: c.execute(
-                text("UPDATE external_document SET merchant_name = :n WHERE id = :d"), {"n": name, "d": doc}
-            )
-        )
 
 
 @pytest.fixture
@@ -161,8 +109,10 @@ def test_ambiguous_documents_are_suggestions_and_nothing_is_linked(scene: Scene,
     assert "document_suggested" in r.flags
     assert not plan.anchor_unit.state.confirmed
     assert "document_suggested" in plan.anchor_unit.state.reasons
-    preview_then_commit(scene, scene.draft(entry))
-    assert "document" not in scene.row(entry).derivation
+    # offered documents and none picked: the commit is refused unless the draft says "none" (spec §6)
+    assert [p.code for p in plan.problems] == ["document_decision_required"]
+    preview_then_commit(scene, scene.draft(entry, no_document(entry)))
+    assert scene.row(entry).derivation["document"] == {"pass": "user"}
 
 
 def test_a_candidate_a_charge_outside_the_unit_has_too_is_nobodys(scene: Scene, docs: Docs) -> None:
@@ -171,8 +121,9 @@ def test_a_candidate_a_charge_outside_the_unit_has_too_is_nobodys(scene: Scene, 
     scene.settle()  # the other charge has its payee (a settled ledger)
     plan = scene.preview(entry)
     assert plan.row(entry).document_id is None and "document_suggested" in plan.row(entry).flags
-    preview_then_commit(scene, scene.draft(entry))
-    assert scene.row(other).document_id is None
+    preview_then_commit(scene, scene.draft(entry, no_document(entry)))
+    # "none" took the first charge out of the matching: the document is now the other's alone
+    assert scene.row(other).document_id is not None and scene.row(entry).document_id is None
 
 
 def test_a_document_carried_outside_the_unit_is_no_candidate(scene: Scene, docs: Docs) -> None:
@@ -188,14 +139,21 @@ def test_a_unit_awaiting_its_document_is_not_confirmed_and_no_none_is_decided(sc
     uncovered = Docs(scene, covered=False)
     entry = uncovered.charge()
     cat = scene.category("Gadgets")
-    draft = scene.draft(entry, DraftEntry(entry, payee=fixed(uncovered.provider), category=fixed(cat)))
-    plan, _result = preview_then_commit(scene, draft)
+    decided = DraftEntry(entry, payee=fixed(uncovered.provider), category=fixed(cat))
+    plan = scene.preview(entry, decided)
     r = plan.row(entry)
     assert "waiting" in r.flags and "document" not in r.derivation
     assert not plan.anchor_unit.state.confirmed
     assert "waiting_for_document" in plan.anchor_unit.state.reasons
-    assert "document" not in scene.row(entry).derivation  # the commit did not decide "none"
-    assert "waiting" in scene.row(entry).review_flags
+    assert [p.code for p in plan.problems] == ["document_decision_required"]  # the wait is skipped explicitly
+    with pytest.raises(CommitRefused):
+        scene.commit(entry, decided)
+    # the explicit decision: no document, which satisfies the wait; the unit is then confirmed
+    plan, _result = preview_then_commit(
+        scene, scene.draft(entry, no_document(entry, payee=fixed(uncovered.provider), category=fixed(cat)))
+    )
+    assert plan.row(entry).derivation["document"] == {"pass": "user"} and plan.anchor_unit.state.confirmed
+    assert scene.row(entry).review_flags == []
 
 
 def test_a_unit_waiting_and_offered_shows_both(scene: Scene) -> None:
@@ -205,7 +163,7 @@ def test_a_unit_waiting_and_offered_shows_both(scene: Scene) -> None:
     uncovered.document(total=-1000, external_id="b")
     plan = scene.preview(entry)
     assert {"waiting", "document_suggested"} <= set(plan.row(entry).flags)
-    preview_then_commit(scene, scene.draft(entry))
+    preview_then_commit(scene, scene.draft(entry, no_document(entry)))
 
 
 # ---- a confirmed unit -------------------------------------------------------------------------------

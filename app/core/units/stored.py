@@ -18,7 +18,7 @@ from app.core.resolution.registry import classifiers_for
 from app.core.resolution.snapshot import HistorySnapshot, load_votes
 from app.core.settle.pairing import load_unpaired_legs
 from app.core.settle.window import document_window, matching_window_days
-from app.core.units.doc_world import DocWorld
+from app.core.units.doc_world import DocumentInfo, DocWorld
 from app.core.units.documents import DocumentSource
 from app.core.units.draft import UnitDraft
 from app.core.units.lookup import unit_ids_of
@@ -163,7 +163,7 @@ def load_world(conn: Connection, stored: StoredUnit, draft: UnitDraft, *, ledger
         categories=found_categories,
         payees=found_payees,
         ledger_legs=load_unpaired_legs(conn) if ledger_wide else (),
-        docs=load_doc_world(conn, stored),
+        docs=load_doc_world(conn, stored, document_pick_ids(draft)),
     )
 
 
@@ -179,7 +179,8 @@ _SOURCES_OF_DOCUMENTS = text(
 # whatever payee a draft may give the entry (documents.md §3)
 _DOCUMENTS = text(
     """
-    SELECT d.id, d.provider, d.occurred_on, d.total, d.currency, d.merchant_name,
+    SELECT d.id, d.provider, d.occurred_on, d.total, d.currency, d.merchant_name, d.version, d.title,
+           d.external_id,
            (SELECT jsonb_agg(jsonb_build_array(l.line_no, l.amount, l.description) ORDER BY l.line_no)
               FROM external_document_line AS l WHERE l.document_id = d.id) AS lines
       FROM external_document AS d
@@ -189,6 +190,19 @@ _DOCUMENTS = text(
             OR EXISTS (SELECT 1 FROM unnest(CAST(:currencies AS text[]), CAST(:totals AS bigint[]))
                                  AS k(currency, total)
                         WHERE k.currency = d.currency AND k.total = d.total))
+    """
+)
+
+# the documents a draft names (picks, lines echoed back), with the entry carrying each, wherever it is
+_PICKED = text(
+    """
+    SELECT d.id, d.provider, d.occurred_on, d.total, d.currency, d.merchant_name, d.version, d.title,
+           d.external_id,
+           (SELECT jsonb_agg(jsonb_build_array(l.line_no, l.amount, l.description) ORDER BY l.line_no)
+              FROM external_document_line AS l WHERE l.document_id = d.id) AS lines,
+           (SELECT c.id FROM ledger_entry AS c WHERE c.document_id = d.id) AS carrier
+      FROM external_document AS d
+     WHERE d.id = ANY(CAST(:ids AS bigint[]))
     """
 )
 
@@ -211,12 +225,30 @@ _OTHERS = text(
 )
 
 
-def load_doc_world(conn: Connection, stored: StoredUnit) -> DocWorld:
+def _info(r: Any, carrier: int | None) -> DocumentInfo:
+    return DocumentInfo(
+        id=int(r.id),
+        version=int(r.version),
+        provider=str(r.provider),
+        external_id=str(r.external_id),
+        occurred_on=r.occurred_on,
+        total=int(r.total),
+        currency=str(r.currency).strip(),
+        merchant_name=r.merchant_name,
+        title=r.title,
+        lines=tuple((int(n), int(a), str(d)) for n, a, d in (r.lines or ())),
+        carrier_entry_id=carrier,
+    )
+
+
+def load_doc_world(conn: Connection, stored: StoredUnit, picks: Collection[int] = ()) -> DocWorld:
     """What the simulation of settle steps 2 and 3 reads outside `stored` (`doc_world.DocWorld`): a few
-    small queries, each cut to the transactions that have a provider payee or the documents that can match."""
+    small queries, each cut to the transactions that have a provider payee or the documents that can match.
+    `picks` are the documents the draft names: read whoever carries them."""
     payee_providers = {int(r.id): str(r.document_provider) for r in conn.execute(_PAYEE_PROVIDERS)}
     closure = sorted(e.id for e in stored.entries)
-    carried = sorted({e.document_id for e in stored.entries if e.document_id is not None})
+    stored_carried = {e.document_id: e.id for e in stored.entries if e.document_id is not None}
+    carried = sorted({*stored_carried, *picks})
     if not payee_providers and not carried:
         return DocWorld(window=0)  # nothing can be matched, nothing is linked: judged without documents
     currencies: list[str] = []
@@ -229,14 +261,19 @@ def load_doc_world(conn: Connection, stored: StoredUnit) -> DocWorld:
             totals.append(src.instructed_amount)
     docs: list[DocInput] = []
     details: dict[int, LinkedDocument] = {}
+    infos: dict[int, DocumentInfo] = {}
     for r in conn.execute(
         _DOCUMENTS, {"closure": closure, "carried": carried, "currencies": currencies, "totals": totals}
     ):
         docs.append(DocInput(int(r.id), r.provider, r.occurred_on, int(r.total), str(r.currency).strip()))
-        details[int(r.id)] = LinkedDocument(
-            merchant_name=r.merchant_name,
-            lines=tuple((int(n), int(a), str(d)) for n, a, d in (r.lines or ())),
-        )
+        info = _info(r, stored_carried.get(int(r.id)))
+        infos[info.id] = info
+        details[info.id] = LinkedDocument(merchant_name=info.merchant_name, lines=info.lines)
+    if picks:  # whoever carries them, a document the draft names is known (it may be refused as taken)
+        for r in conn.execute(_PICKED, {"ids": sorted(picks)}):
+            info = _info(r, None if r.carrier is None else int(r.carrier))
+            infos[info.id] = info
+            details[info.id] = LinkedDocument(merchant_name=info.merchant_name, lines=info.lines)
     others = [
         DocTxn(
             entry_id=int(r.id),
@@ -267,7 +304,15 @@ def load_doc_world(conn: Connection, stored: StoredUnit) -> DocWorld:
         documents=docs,
         details=details,
         others=others,
+        infos=infos,
     )
+
+
+def document_pick_ids(draft: UnitDraft) -> list[int]:
+    """The documents the draft names, ascending: picked, or the one a new entry's line belongs to."""
+    ids = {e.document.document_id for e in draft.entries if e.document.document_id is not None}
+    ids |= {e.document_line.document_id for e in draft.entries if e.document_line is not None}
+    return sorted(ids)
 
 
 def missing_tag(conn: Connection, draft: UnitDraft) -> tuple[int, int] | None:

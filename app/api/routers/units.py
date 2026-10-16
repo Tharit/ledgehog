@@ -200,7 +200,17 @@ map_error(
 )
 map_error(UnitNotFound, 404, "not_found")
 # the closure changed between reading the unit and holding its locks: reload it
-map_error(UnitMoved, 409, "unit_moved", details=lambda e: {"anchor_entry_id": e.anchor_entry_id})
+# (or a picked document taken by another entry, or at another version: `reason` `taken` / `version`)
+map_error(
+    UnitMoved,
+    409,
+    "unit_moved",
+    details=lambda e: {
+        "anchor_entry_id": e.anchor_entry_id,
+        "document_id": e.document_id,
+        "reason": e.reason,
+    },
+)
 
 
 @router.post("/preview")
@@ -230,8 +240,10 @@ def commit_unit(
     """Write the draft in one transaction, then settle. A commit does not confirm: settling does.
 
     409 `conflict` names the entries whose version moved (or that `versions` omitted); 409 `unit_moved` is a
-    closure that changed under the locks; 409 `stale_reference` a category, payee or account that no longer
-    exists; 409 `try_again` a deadlock lost twice. 422 carries the code of the first problem the preview would
+    closure that changed under the locks, or a picked document that another entry carries (`details.reason`
+    `taken`) or that is at another version (`version`), named in `details.document_id`; 409
+    `stale_reference` a category, payee, account or picked document that no longer exists; 409 `try_again`
+    a deadlock lost twice. 422 carries the code of the first problem the preview would
     list (all of them in `details.problems`), or `invalid_draft`. A pick is checked against the widest window
     (90 days), so one the widened preview accepted commits. `window_days` (1 to 90, default the matching
     window) is the window the proposals were shown for: send the one the preview used, so the proposals a

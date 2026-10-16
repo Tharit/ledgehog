@@ -6,7 +6,8 @@
 	import type { PayeesStore } from '#lib/payees/store.svelte.js';
 	import type { Payee } from '#lib/types/domain.js';
 
-	// "Add payee" and "Edit REWE": one form dialog for both (patterns §11.2), name and note, each
+	// "Add payee" and "Edit REWE": one form dialog for both (patterns §11.2), name, note and the
+	// document provider (spec §3.6; empty means none), each
 	// with its label. A taken name is said under the name; any other refusal in the dialog. After
 	// an add the caller reveals the new row, so focus is not given back to the opener.
 	let {
@@ -29,6 +30,7 @@
 
 	let name = $state('');
 	let note = $state('');
+	let provider = $state('');
 	let nameError = $state<string | null>(null);
 	let failure = $state<string | null>(null);
 	let busy = $state(false);
@@ -38,6 +40,7 @@
 		if (!open) return;
 		name = payee?.name ?? '';
 		note = payee?.note ?? '';
+		provider = payee?.document_provider ?? '';
 		nameError = null;
 		failure = null;
 		added = false;
@@ -47,7 +50,14 @@
 		const trimmed = name.trim();
 		if (trimmed === '') return;
 		const trimmedNote = note.trim() === '' ? null : note.trim();
-		if (payee && trimmed === payee.name && trimmedNote === (payee.note ?? null)) {
+		const trimmedProvider = provider.trim() === '' ? null : provider.trim();
+		const providerChanged = trimmedProvider !== (payee?.document_provider ?? null);
+		if (
+			payee &&
+			trimmed === payee.name &&
+			trimmedNote === (payee.note ?? null) &&
+			!providerChanged
+		) {
 			onclose();
 			return;
 		}
@@ -55,8 +65,12 @@
 		nameError = null;
 		failure = null;
 		const result = payee
-			? await store.update(payee.id, { name: trimmed, note: trimmedNote })
-			: await store.create(trimmed, trimmedNote);
+			? await store.update(payee.id, {
+					name: trimmed,
+					note: trimmedNote,
+					...(providerChanged ? { document_provider: trimmedProvider } : {})
+				})
+			: await store.create(trimmed, trimmedNote, trimmedProvider);
 		busy = false;
 		if (result.ok) {
 			added = payee === null;
@@ -98,6 +112,14 @@
 	<Field label="Note" hint="Optional: what this merchant is for.">
 		{#snippet children(field)}
 			<Input bind:value={note} {...field} readonly={busy} autocomplete="off" />
+		{/snippet}
+	</Field>
+	<Field
+		label="Document provider"
+		hint="Optional: the provider of the documents that describe this merchant's charges. Its transactions are then matched to them."
+	>
+		{#snippet children(field)}
+			<Input bind:value={provider} {...field} readonly={busy} autocomplete="off" />
 		{/snippet}
 	</Field>
 </ActionDialog>

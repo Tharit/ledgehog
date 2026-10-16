@@ -69,15 +69,16 @@ async function chooseFromMenu(name: string, item: string) {
 }
 
 describe('PayeeManager: the list', () => {
-	it('shows name and note, "default" for a payee without its own look, and no document provider', async () => {
+	it('shows name and note, "default" for a payee without its own look, and its document provider', async () => {
 		await setup([{ ...rewe, document_provider: 'amazon' }, edeka]);
 
 		const row = document.querySelector('[data-payee-id="1"]') as HTMLElement;
 		expect(within(row).getByText('REWE')).toBeInTheDocument();
 		expect(within(row).getByText('weekly shop')).toBeInTheDocument();
 		expect(within(row).getByText('default')).toBeInTheDocument();
-		expect(screen.queryByText(/amazon/)).toBeNull();
+		expect(within(row).getByText('Documents: amazon')).toBeInTheDocument();
 		const own = document.querySelector('[data-payee-id="2"]') as HTMLElement;
+		expect(own.querySelector('[data-slot="document-provider"]')).toBeNull();
 		expect(own.querySelector('[data-slot="look-hint"]')).toBeNull();
 	});
 
@@ -195,6 +196,74 @@ describe('PayeeManager: add and edit', () => {
 			expect(updatePayee).toHaveBeenCalledWith(1, { name: 'REWE Markt', note: null })
 		);
 		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+	});
+
+	it('edits the document provider, sending it only when it changed', async () => {
+		vi.mocked(updatePayee).mockResolvedValue(
+			written(rewe) as Awaited<ReturnType<typeof updatePayee>>
+		);
+		await setup([{ ...rewe, document_provider: 'amazon' }, edeka]);
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Edit REWE' }));
+		const dialog = await screen.findByRole('dialog', { name: 'Edit REWE' });
+		expect(within(dialog).getByLabelText('Document provider')).toHaveValue('amazon');
+		await fireEvent.input(within(dialog).getByLabelText('Document provider'), {
+			target: { value: ' paypal ' }
+		});
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+
+		await waitFor(() =>
+			expect(updatePayee).toHaveBeenCalledWith(1, {
+				name: 'REWE',
+				note: 'weekly shop',
+				document_provider: 'paypal'
+			})
+		);
+	});
+
+	it('clears the document provider with an empty field', async () => {
+		vi.mocked(updatePayee).mockResolvedValue(
+			written(rewe) as Awaited<ReturnType<typeof updatePayee>>
+		);
+		await setup([{ ...rewe, document_provider: 'amazon' }, edeka]);
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Edit REWE' }));
+		const dialog = await screen.findByRole('dialog', { name: 'Edit REWE' });
+		await fireEvent.input(within(dialog).getByLabelText('Document provider'), {
+			target: { value: '' }
+		});
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+
+		await waitFor(() =>
+			expect(updatePayee).toHaveBeenCalledWith(1, {
+				name: 'REWE',
+				note: 'weekly shop',
+				document_provider: null
+			})
+		);
+	});
+
+	it('adds a payee with a document provider', async () => {
+		vi.mocked(createPayee).mockResolvedValue(
+			written(rewe) as Awaited<ReturnType<typeof createPayee>>
+		);
+		await setup([]);
+
+		await fireEvent.click(headerAdd());
+		const dialog = await screen.findByRole('dialog', { name: 'Add payee' });
+		await fireEvent.input(within(dialog).getByLabelText('Name'), { target: { value: 'Amazon' } });
+		await fireEvent.input(within(dialog).getByLabelText('Document provider'), {
+			target: { value: 'amazon' }
+		});
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
+
+		await waitFor(() =>
+			expect(createPayee).toHaveBeenCalledWith({
+				name: 'Amazon',
+				note: null,
+				document_provider: 'amazon'
+			})
+		);
 	});
 
 	it('closes an unchanged edit without writing', async () => {

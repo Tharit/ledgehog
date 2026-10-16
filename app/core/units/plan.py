@@ -136,6 +136,11 @@ PROBLEM_CODES = (
     "counter_leg_account_synced",
     "received_amount_required",
     "received_amount_not_needed",
+    "document_taken",
+    "document_changed",
+    "document_provider_mismatch",
+    "document_decision_required",
+    "document_split_unavailable",
 )
 
 
@@ -194,6 +199,9 @@ class Written:
     note: str | None
     derivation: Mapping[str, Any]
     accepted: bool  # the draft's entry: its values are written; False: only a pair released is written
+    # the link a commit writes on `ledger_entry.document_id` (the original entry carries it; None elsewhere):
+    # the stored one, or the pick; the automatic link is settling's (`PlannedRow.document_id`)
+    document_id: int | None = None
 
 
 TransferState = Literal["paired", "waiting", "unmatched", "needs_account"]
@@ -236,6 +244,65 @@ class TransferView:
 
 
 @dataclass(frozen=True, slots=True)
+class DocumentSummary:
+    """A document in a few words: a suggestion, the one a transaction carries, a pick."""
+
+    id: int
+    version: int  # what a commit picking it carries
+    provider: str
+    external_id: str
+    occurred_on: date
+    total: int
+    currency: str
+    merchant_name: str | None
+    title: str | None
+    line_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class DocumentWaiting:
+    """The line of a transaction that waits for its document: `provider`'s, covered through a date or not
+    synced yet (documents.md §7)."""
+
+    provider: str
+    covered_through: date | None
+
+
+@dataclass(frozen=True, slots=True)
+class DocumentSplit:
+    """What the preview says of splitting a transaction along its document's lines (documents.md §6).
+
+    `proposed`: the draft's rows for the transaction are that split (made by the server, or echoed back by
+    the client). `available`: `split_along_lines` for this document would work (more than one line, a total
+    that matches the transaction exactly, an original entry that keeps a share of its sign).
+    `replaces_stored_split`: the transaction is split already: the explicit choice deletes the other entries.
+    """
+
+    document_id: int
+    proposed: bool
+    available: bool
+    replaces_stored_split: bool
+
+
+@dataclass(frozen=True, slots=True)
+class DocumentView:
+    """The document part of a transaction's original entry in the preview (spec §5.8, §6).
+
+    `document` is what the entry carries once committed and settled; `stored_document_id` what it carries
+    now. `key` is its `document` derivation key after the commit and settle. `suggestions` are the
+    candidates while no document is decided (never stored), `waiting` the line of a document that is awaited,
+    and `decision_required` that a commit is refused unless it picks a document or says "none"."""
+
+    stored_document_id: int | None
+    document: DocumentSummary | None
+    key: Mapping[str, Any] | None
+    suggestions: tuple[DocumentSummary, ...] = ()
+    waiting: DocumentWaiting | None = None
+    decision_required: bool = False
+    split: DocumentSplit | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class PlannedRow:
     id: int  # stored, or the client's temporary (negative) id
     version: int | None  # None for a row the draft creates
@@ -265,6 +332,11 @@ class PlannedRow:
     # the document this entry carries (`ledger_entry.document_id`: the original entry of its source holds the
     # link) as settling leaves it: stored, or linked by step 2 in the simulation; the key is in `derivation`
     document_id: int | None = None
+    # an original entry: its document in the preview; None where there is nothing to say
+    document_view: DocumentView | None = None
+    # an entry made from a line of the document (the original: the first line it takes) when the draft splits
+    # along the lines: the (document, line) the preview echoes
+    document_line: tuple[int, int] | None = None
 
 
 @dataclass(frozen=True, slots=True)

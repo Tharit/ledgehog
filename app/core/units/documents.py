@@ -62,6 +62,40 @@ def awaited(
     )
 
 
+@dataclass(frozen=True, slots=True)
+class DocumentWait:
+    """What a transaction waits for (documents.md §7): documents of `provider`, from the sources that still
+    hold it. `covered_through` is the earliest coverage among them, None when one has never run."""
+
+    provider: str
+    covered_through: date | None
+
+
+def waiting_for(
+    provider: str,
+    booked_on: date,
+    window: int,
+    sources: Iterable[DocumentSource],
+    providers: Mapping[str, frozenset[str]],
+) -> DocumentWait | None:
+    """The sources `awaited` counts, as a line the queue shows ("from <provider>, covered through <date>");
+    None where nothing is awaited."""
+    horizon = booked_on + timedelta(days=window)
+    holding = [
+        s
+        for s in sources
+        if not s.disabled
+        and provider in providers.get(s.importer, frozenset())
+        and (s.start_date is None or s.start_date <= booked_on)
+        and (s.covered_through is None or s.covered_through < horizon)
+    ]
+    if not holding:
+        return None
+    never = any(s.covered_through is None for s in holding)
+    through = None if never else min(s.covered_through for s in holding if s.covered_through is not None)
+    return DocumentWait(provider, through)
+
+
 def document_facts(
     txn: DocTxn,
     *,

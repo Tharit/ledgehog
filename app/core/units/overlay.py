@@ -76,7 +76,8 @@ from app.core.settle.flags import NONE_KEY
 from app.core.settle.pairing import PAIR_COUNTER_KEY_VALUE, PAIR_KEY_VALUE
 from app.core.settle.resolution import Rewrite, settle_rewrites, stored_decisions
 from app.core.units.closure import UnitEntry, units_of
-from app.core.units.doc_world import facts_of, links_of
+from app.core.units.doc_draft import DocPlan, plan_documents
+from app.core.units.doc_world import facts_of, links_of, suggestions_of, waits_of
 from app.core.units.documents import DocumentFacts
 from app.core.units.draft import (
     DERIVED_FIELDS,
@@ -90,6 +91,9 @@ from app.core.units.draft import (
 from app.core.units.picks import PickLeg, check_pick, window_of
 from app.core.units.plan import (
     Consequence,
+    DocumentSummary,
+    DocumentView,
+    DocumentWaiting,
     FieldResult,
     Plan,
     PlannedRow,
@@ -147,6 +151,12 @@ class _Row:
     # shares it): the input is enriched with it and history does not run for it
     document_id: int | None = None
     linked: LinkedDocument | None = None
+    # the draft changed the link: every value after it is derived again (spec §5.9); what happens to the
+    # `document` key a commit writes (`doc_draft.KeyAction`); the line of the document the row is read with
+    # while the draft's values are decided (None: all lines, as once committed)
+    reopen: bool = False
+    doc_key: str = "stored"
+    line_no: int | None = None
 
     @property
     def is_new(self) -> bool:
@@ -193,9 +203,10 @@ def _entry_input(row: _Row) -> EntryInput:
 
 
 def _resolution_input(row: _Row) -> EntryInput:
-    """The input resolution reads: `_entry_input` enriched with the transaction's document (documents.md §5).
-    Pairing reads the source as it is (`_entry_input`), as `load_unpaired_legs` does."""
-    return enriched_input(_entry_input(row), row.linked)
+    """The input resolution reads: `_entry_input` enriched with the transaction's document (documents.md §5),
+    an entry the draft made from a line read with that line. Pairing reads the source as it is
+    (`_entry_input`), as `load_unpaired_legs` does."""
+    return enriched_input(_entry_input(row), row.linked, line_no=row.line_no)
 
 
 def _as_unconfirmed(row: _Row) -> UnconfirmedEntry:
@@ -287,7 +298,9 @@ def _stored_entry_row(
 # ---- 1. assembling the rows ---------------------------------------------------------------------
 
 
-def _assemble(stored: StoredUnit, draft: UnitDraft, world: World) -> tuple[dict[int, _Row], list[Problem]]:
+def _assemble(
+    stored: StoredUnit, draft: UnitDraft, world: World, docs: DocPlan
+) -> tuple[dict[int, _Row], list[Problem]]:
     if stored.entry(draft.anchor_entry_id) is None:
         raise DraftError("unknown_entry", "the anchor is not in the unit", entry_id=draft.anchor_entry_id)
     removed = set(draft.removed_entry_ids)
@@ -338,22 +351,33 @@ def _assemble(stored: StoredUnit, draft: UnitDraft, world: World) -> tuple[dict[
             raise DraftError("unknown_entry", "the entry is not in the unit", entry_id=d.id)
         elif d.id in removed:
             raise DraftError("removed_and_edited", "an entry is removed and edited", entry_id=d.id)
-    _carry_documents(stored, rows, world)
+    _carry_documents(stored, rows, world, docs)
     problems = _allocate(stored, rows)
     return rows, problems
 
 
-def _carry_documents(stored: StoredUnit, rows: Mapping[int, _Row], world: World) -> None:
-    """Every row of a source shares the document its original entry carries (`v_entry_document`)."""
+def _carry_documents(stored: StoredUnit, rows: Mapping[int, _Row], world: World, docs: DocPlan) -> None:
+    """Every row of a source shares the document its original entry carries (`v_entry_document`), as the draft
+    leaves it (`doc_draft.plan_documents`): the stored link, a pick, or none. A row the draft made from a line
+    is read with that line, and so is the original entry that takes the first."""
     for src in stored.sources.values():
-        original = stored.entry(stored.original_of(src.id))
-        doc = original.document_id if original is not None else None
-        if doc is None:
-            continue
-        linked = world.docs.details.get(doc) if world.docs is not None else None
+        oid = stored.original_of(src.id)
+        decision = docs.decisions[oid]
+        linked = (
+            world.docs.details.get(decision.link)
+            if world.docs is not None and decision.link is not None
+            else None
+        )
         for r in rows.values():
-            if r.src.id == src.id:
-                r.document_id, r.linked = doc, linked
+            if r.src.id != src.id:
+                continue
+            r.document_id, r.linked, r.reopen = decision.link, linked, decision.reopen
+            if r.draft.document_line is not None:
+                r.line_no = r.draft.document_line.line_no
+        original = rows.get(oid)
+        if original is not None:
+            original.doc_key = decision.key
+            original.line_no = docs.first_line.get(oid)
 
 
 def _allocate(stored: StoredUnit, rows: dict[int, _Row]) -> list[Problem]:
@@ -401,7 +425,7 @@ class _Walk:
         elif "counter_account" in hints:
             implied = "transfer"
         fixed: dict[Field, Decided] = {}
-        changed = False
+        changed = row.reopen  # a changed link is a change of the first value in field order (spec §5.9)
         last: Resolved | None = None
 
         def afresh(f: Field) -> Decided | None:
@@ -1088,6 +1112,83 @@ def _problems(rows: Sequence[_Row], world: World) -> list[Problem]:
     return out
 
 
+# ---- the documents of the result -----------------------------------------------------------------------
+
+
+def _summary(world: World, doc_id: int) -> DocumentSummary | None:
+    info = world.docs.infos.get(doc_id) if world.docs is not None else None
+    if info is None:
+        return None
+    return DocumentSummary(
+        id=info.id,
+        version=info.version,
+        provider=info.provider,
+        external_id=info.external_id,
+        occurred_on=info.occurred_on,
+        total=info.total,
+        currency=info.currency,
+        merchant_name=info.merchant_name,
+        title=info.title,
+        line_count=info.line_count,
+    )
+
+
+def _document_views(
+    ordered: Sequence[_Row], world: World, docs: DocPlan, problems: list[Problem]
+) -> dict[int, DocumentView]:
+    """What the preview says of each original entry's document, judged on the rows as settling leaves them
+    (before the "none" it records for a confirmed unit). Appends `document_decision_required`: a commit that
+    carries no document key for a transaction that is offered documents or awaits one is refused (spec §6)."""
+    if world.docs is None:
+        return {}
+    rows = [r for r in ordered if r.original and r.stored is not None]
+    txns = _doc_txns(ordered, world)
+    carried = {r.document_id for r in ordered if r.document_id}
+    facts = _doc_facts(ordered, world)
+    offered = suggestions_of(txns, world.docs, carried)
+    waits = waits_of(txns, world.docs)
+    out: dict[int, DocumentView] = {}
+    for r in rows:
+        assert r.stored is not None
+        fact = facts.get(r.id)
+        decision_required = (
+            r.accepted
+            and "document" not in (r.derivation or {})
+            and fact is not None
+            and (fact.awaited or fact.suggested)
+        )
+        if decision_required:
+            problems.append(Problem("document_decision_required", r.id, "document"))
+        wait = waits.get(r.id)
+        out[r.id] = DocumentView(
+            stored_document_id=r.stored.document_id,
+            document=_summary(world, r.document_id) if r.document_id is not None else None,
+            key=None,
+            suggestions=tuple(s for d in offered.get(r.id, ()) if (s := _summary(world, d.document_id))),
+            waiting=None if wait is None else DocumentWaiting(wait.provider, wait.covered_through),
+            decision_required=decision_required,
+            split=docs.splits.get(r.id),
+        )
+    return out
+
+
+def _finish_view(view: DocumentView | None, r: _Row) -> DocumentView | None:
+    """The view with the key the row ends with; None where there is nothing to say about the document."""
+    if view is None:
+        return None
+    key = (r.derivation or {}).get("document")
+    view = dataclasses.replace(view, key=key if isinstance(key, Mapping) else None)
+    empty = (
+        view.stored_document_id is None
+        and view.document is None
+        and view.key is None
+        and not view.suggestions
+        and view.waiting is None
+        and view.split is None
+    )
+    return None if empty else view
+
+
 # ---- following the partner ----------------------------------------------------------------------
 
 
@@ -1217,6 +1318,8 @@ def _write_accepted(r: _Row, decisions: Mapping[Field, Decided | None]) -> None:
         )
         if key is not None:
             derivation[f] = key
+    if r.original and r.stored is not None:
+        _write_document_key(r, derivation)
 
     def value(f: Field) -> Any:
         d = decisions[f]
@@ -1230,6 +1333,25 @@ def _write_accepted(r: _Row, decisions: Mapping[Field, Decided | None]) -> None:
     )
     r.derivation = derivation
     r.evidence = dict(decisions)
+
+
+def _write_document_key(r: _Row, derivation: dict[str, Any]) -> None:
+    """The `document` key a commit writes on the original entry: the user's decision of a pick or "none", the
+    key dropped by a re-resolve, or what stands - except that a link of several lines settling proposed is
+    the user's once the unit is committed (documents.md §4: the unit is reviewed once)."""
+    match r.doc_key:
+        case "user":
+            derivation["document"] = dict(_USER)
+        case "drop":
+            derivation.pop("document", None)
+        case _:
+            key = derivation.get("document")
+            if (
+                isinstance(key, Mapping)
+                and key.get("pass") == "matcher_proposal"
+                and r.document_id is not None
+            ):
+                derivation["document"] = dict(_USER)
 
 
 def _field_results(r: _Row) -> dict[Field, FieldResult]:
@@ -1274,7 +1396,10 @@ def plan_unit(stored: StoredUnit, draft: UnitDraft, world: World) -> Plan:
     """Lay `draft` over `stored` (module docstring). Raises `DraftError` for a draft that is nonsense."""
     # the plan teaches history what its units confirm: into a layer of its own, so the world is left as it was
     world = dataclasses.replace(world, history=LayeredHistory(world.history))
-    rows, problems = _assemble(stored, draft, world)
+    docs = plan_documents(stored, draft, world)
+    draft = docs.draft  # with the split along the lines the documents imply
+    rows, problems = _assemble(stored, draft, world, docs)
+    problems.extend(docs.problems)
     ordered = [*(rows[e.id] for e in stored.entries if e.id in rows), *(r for r in rows.values() if r.is_new)]
     walk = _Walk(world, draft.reresolve_all)
     stored_confirmed = _stored_confirmed(stored, world)
@@ -1344,15 +1469,22 @@ def plan_unit(stored: StoredUnit, draft: UnitDraft, world: World) -> Plan:
             note=r.note,
             derivation=dict(r.derivation or {}),
             accepted=r.accepted,
+            document_id=r.document_id if r.original and r.stored is not None else None,
         )
         for r in ordered
     }
     for r in ordered:
         r.s1_values, r.s1_derivation = dict(_values(r)), dict(r.derivation or {})
+    document_lines = {
+        r.id: (r.document_id, r.line_no) for r in ordered if r.line_no is not None and r.document_id
+    }
+    for r in ordered:
+        r.line_no = None  # no line is stored with an entry: settling reads every entry with all lines
 
     # what settling leaves of it
     pulled = _settle(ordered, world)
     final_states = _states(ordered, world)
+    views = _document_views(ordered, world, docs, problems)
     _record_none_documents(final_states)
     unit_of = {ur.id: key for key, (unit_rows, _st) in final_states.items() for ur in unit_rows}
     anchor_key = unit_of[draft.anchor_entry_id]
@@ -1383,6 +1515,8 @@ def plan_unit(stored: StoredUnit, draft: UnitDraft, world: World) -> Plan:
             purpose=r.src.purpose,
             counter_leg_for=r.counter_leg_for,
             document_id=r.document_id if r.original else None,
+            document_view=_finish_view(views.get(r.id), r),
+            document_line=document_lines.get(r.id) if r.id in document_lines else None,
         )
         for r in ordered
     )

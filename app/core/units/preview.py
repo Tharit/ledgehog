@@ -25,6 +25,7 @@ from app.core.units.draft import UnitDraft
 from app.core.units.overlay import plan_unit
 from app.core.units.plan import Plan, StoredUnit, TransferView, World
 from app.core.units.stored import (
+    document_pick_ids,
     load_closure_of,
     load_doc_world,
     load_drafted_unit,
@@ -66,7 +67,9 @@ def _plan_pulling(
             return stored, plan
         ids = {e.id for e in stored.entries} | load_closure_of(conn, plan.pulled_entry_ids)
         stored = load_stored_entries(conn, draft.anchor_entry_id, ids)
-        world.docs = load_doc_world(conn, stored)  # the pulled units' documents, and what is now outside
+        world.docs = load_doc_world(
+            conn, stored, document_pick_ids(draft)
+        )  # the pulled units' documents, and what is now outside
         plan = plan_unit(stored, draft, world)
     raise RuntimeError("the preview kept pulling units in")
 

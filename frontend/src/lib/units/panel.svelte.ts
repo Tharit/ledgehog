@@ -164,8 +164,13 @@ export class UnitPanel {
 		});
 	}
 
-	/** Open the panel on the unit of `entryId`: a new history entry. */
-	open(entryId: number, origin?: HTMLElement | null): void {
+	/**
+	 * Open the panel on the unit of `entryId`: a new history entry. `documentId` is the document
+	 * the Documents view picked for the draft; accepted and ignored until the panel's document
+	 * section is wired (wave E2).
+	 */
+	open(entryId: number, origin?: HTMLElement | null, documentId?: number | null): void {
+		void documentId;
 		if (this.unitId === entryId && this.isOpen) return;
 		const wasOpen = this.isOpen;
 		this.origin =
