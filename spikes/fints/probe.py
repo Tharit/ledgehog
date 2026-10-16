@@ -23,6 +23,7 @@ from pathlib import Path
 
 from fints.client import FinTS3PinTanClient, NeedTANResponse
 from fints.exceptions import FinTSSCARequiredError
+from fints.models import SEPAAccount
 
 OUT = Path(__file__).parent / "out"
 
@@ -77,7 +78,9 @@ def supports(info: dict, account, op: str) -> bool:
     from fints.client import FinTSOperations
 
     for a in info.get("accounts", []):
-        if a.get("iban") == account.iban:
+        # Credit cards have no IBAN: match on account number then.
+        same = a.get("iban") == account.iban if account.iban else a.get("account_number") == account.accountnumber
+        if same:
             return bool((a.get("supported_operations") or {}).get(getattr(FinTSOperations, op), True))
     return True
 
@@ -203,6 +206,9 @@ def main() -> int:
     ap.add_argument("--mechanism", help="TAN mechanism code (skips the prompt), e.g. 900 / 901")
     ap.add_argument("--hnshk-v2", action="store_true",
                     help="experiment: sign two-step messages with PIN profile version 2 (library uses 1)")
+    ap.add_argument("--customer-id", default=os.environ.get("FINTS_CUSTOMER_ID"),
+                    help="separate customer id if the bank has one (default: same as --user)")
+    ap.add_argument("--yes", action="store_true", help="skip the 'about to connect' confirmation")
     ap.add_argument("--force-tan", action="store_true",
                     help="attach a TAN request to balance calls (the bank answers 9075 otherwise)")
     args = ap.parse_args()
@@ -220,9 +226,16 @@ def main() -> int:
     if args.force_tan:
         FORCE_TAN.add("HKSAL")
 
+    # A wrong user id / PIN can lock the account at the bank: make the target explicit first.
+    from urllib.parse import urlparse
+    print(f"\nAbout to connect:\n  bank code : {args.blz}\n  host      : {urlparse(args.url).hostname}\n"
+          f"  user id   : {args.user}\n  product id: {'set' if args.product_id else 'NOT set'}")
+    if not args.yes and input("Proceed and enter the PIN? [y/N] ").strip().lower() != "y":
+        return 1
+
     pin = getpass.getpass("PIN: ")
     client = FinTS3PinTanClient(
-        args.blz, args.user, pin, args.url, product_id=args.product_id,
+        args.blz, args.user, pin, args.url, customer_id=args.customer_id, product_id=args.product_id,
     )
 
     # 1. Anonymous-ish dialog: bank parameter data (BPD) is available before login.
@@ -251,10 +264,34 @@ def main() -> int:
                                  ("iban", "account_number", "subaccount_number", "product_name", "currency", "type", "owner_name_1")},
                   "ops:", sorted(getattr(k, "name", str(k)) for k, v in (acc.get("supported_operations") or {}).items() if v))
 
-        accounts = ask_tan(client, client.get_sepa_accounts())
-        print("\nSEPA accounts:")
+        # HKSPA lists IBAN accounts only; credit cards (no IBAN) may be missing or the call may fail.
+        sepa: dict = {}
+        try:
+            for s in ask_tan(client, client.get_sepa_accounts()):
+                sepa[(s.accountnumber, s.subaccount or "")] = s
+        except Exception as e:
+            print("(HKSPA failed or unsupported, using the bank's account list only:", repr(e), ")")
+
+        # Candidates come from the UPD (what the bank says exists); fall back to HKSPA's if UPD is empty.
+        accounts = []
+        for a in info.get("accounts", []):
+            key = (a.get("account_number"), a.get("subaccount_number") or "")
+            known = sepa.get(key)
+            bi = a.get("bank_identifier")
+            accounts.append(SEPAAccount(
+                iban=a.get("iban") or (known.iban if known else None),
+                bic=known.bic if known else None,
+                accountnumber=a.get("account_number"),
+                subaccount=a.get("subaccount_number"),
+                blz=getattr(bi, "bank_code", None) or args.blz,
+            ))
+        accounts = accounts or list(sepa.values())
+        print("\nAccounts (from the bank):")
         for i, a in enumerate(accounts):
-            print(f"  [{i}] {a.iban}  bic={a.bic}  acct={a.accountnumber}/{a.subaccount}  blz={a.blz}")
+            ops = [a_ for a_ in info.get("accounts", []) if a_.get("account_number") == a.accountnumber]
+            name = ops[0].get("product_name") if ops else ""
+            print(f"  [{i}] {name}  iban={a.iban}  acct={a.accountnumber}/{a.subaccount}  blz={a.blz}  "
+                  f"transactions={'yes' if supports(info, a, 'GET_TRANSACTIONS') else 'no'}")
         acc = accounts[int(input("Select account index: ") or 0)]
 
     end = dt.date.today()
