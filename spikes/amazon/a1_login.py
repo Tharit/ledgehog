@@ -64,6 +64,7 @@ def main() -> None:
         config = AmazonOrdersConfig(data={
             "domain": args.domain,
             "cookie_jar_path": str(jar_dir / "cookies.json"),
+            "language_package": "amazon_de_labels" if args.domain == "amazon.de" else None,
             "auth_forms_classes": [
                 "amazonorders.contrib.browser.playwright.PlaywrightAcicForm",
                 "amazonorders.contrib.browser.playwright.PlaywrightJSAuthForm",
