@@ -7,9 +7,22 @@ export function newImporterUrl(name: string): string {
 	return `${IMPORTERS_PATH}/new?importer=${encodeURIComponent(name)}`;
 }
 
-/** An instance's page; `linkAccount` opens it with the "Link account" dialog already asking. */
-export function instanceUrl(id: number, options: { linkAccount?: boolean } = {}): string {
-	return `${IMPORTERS_PATH}/${id}${options.linkAccount ? '?link=1' : ''}`;
+/**
+ * An instance's page. `linkAccount` opens it with the "Link account" dialog already asking;
+ * `added` does the same right after a new instance was saved, and says so.
+ */
+export function instanceUrl(
+	id: number,
+	options: { linkAccount?: boolean; added?: boolean } = {}
+): string {
+	const intent = options.added ? '?added=1' : options.linkAccount ? '?link=1' : '';
+	return `${IMPORTERS_PATH}/${id}${intent}`;
+}
+
+/** How the instance page was reached (see `instanceUrl`). */
+export function intentOf(search: string): 'added' | 'link' | null {
+	const params = new URLSearchParams(search);
+	return params.has('added') ? 'added' : params.has('link') ? 'link' : null;
 }
 
 /** The upload page of an account, with the file importer's instance chosen. */
