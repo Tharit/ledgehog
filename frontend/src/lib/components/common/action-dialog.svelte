@@ -14,6 +14,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import * as Dialog from '#lib/components/ui/dialog/index.js';
+	import { cn } from '#lib/utils.js';
 	import ActionButton from './action-button.svelte';
 
 	// The one dialog shape (patterns §11.1, §11.2): title, a body, a feedback slot above the footer,
@@ -107,7 +108,13 @@
 </script>
 
 {#snippet inner()}
-	<div class="flex flex-col gap-3 text-sm" data-slot="dialog-body">{@render children()}</div>
+	<!-- the body scrolls when it is long; the header and the buttons stay in view -->
+	<div
+		class="-mx-1 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-1 text-sm"
+		data-slot="dialog-body"
+	>
+		{@render children()}
+	</div>
 
 	{#if feedback}
 		<div data-slot="dialog-feedback" data-kind={feedback.kind} class="flex flex-col gap-1 text-sm">
@@ -159,7 +166,7 @@
 <Dialog.Root {open} onOpenChange={request}>
 	<Dialog.Content
 		bind:ref={content}
-		class={WIDTH[width]}
+		class={cn('flex max-h-[calc(100dvh-2rem)] flex-col', WIDTH[width])}
 		data-mode={mode}
 		onOpenAutoFocus={autofocus}
 		onCloseAutoFocus={oncloseautofocus}

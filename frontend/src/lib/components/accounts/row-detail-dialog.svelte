@@ -54,7 +54,7 @@
 
 <Dialog.Root {open} onOpenChange={(next) => !next && !busy && onclose()}>
 	<Dialog.Content
-		class="sm:max-w-xl"
+		class="flex max-h-[calc(100dvh-2rem)] flex-col sm:max-w-xl"
 		data-slot="row-detail"
 		onCloseAutoFocus={(event) => onclosefocus?.(event)}
 	>
@@ -63,7 +63,10 @@
 			<Dialog.Description>What this account's source said about this row.</Dialog.Description>
 		</Dialog.Header>
 
-		<div class="flex flex-col gap-3 text-sm" data-slot="dialog-body">
+		<div
+			class="-mx-1 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-1 text-sm"
+			data-slot="dialog-body"
+		>
 			{#if status === 'loading' || status === 'idle'}
 				<p class="text-muted-foreground">Loading the row…</p>
 			{:else if status === 'missing'}

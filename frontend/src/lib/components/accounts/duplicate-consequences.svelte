@@ -1,9 +1,8 @@
 <script lang="ts">
 	import type { Preview } from '#lib/accounts/duplicate-flow.svelte.js';
-	import DateDisplay from '#lib/components/common/date-display.svelte';
-	import MoneyDisplay from '#lib/components/common/money-display.svelte';
 	import { formatMoney } from '#lib/format/index.js';
 	import type { Entry } from '#lib/types/domain.js';
+	import ConsequenceRow from './consequence-row.svelte';
 
 	// What marking one row as a duplicate would do, as the consequence list of patterns §6: the
 	// entries it deletes, the partners it unpairs and returns to review, the derived entries that
@@ -12,7 +11,6 @@
 	let { preview, locale = 'en' }: { preview: Preview; locale?: string } = $props();
 
 	const confirmed = (entry: Entry) => !entry.review_flags.includes('unconfirmed');
-	const text = (entry: Entry) => entry.description ?? entry.display_text ?? '';
 	const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 	function derivedLine(
@@ -38,27 +36,15 @@
 	{@const out = preview.out}
 	{@const removedCount = out.removed_entry_ids.length}
 	{@const allShown = preview.removed.length === removedCount}
-	<div class="flex flex-col gap-1.5" data-slot="consequences">
+	<div class="flex min-w-0 flex-col gap-1.5" data-slot="consequences">
 		{#if removedCount > 0}
 			<p class="font-medium">
 				Deleted: {plural(removedCount, 'entry', 'entries')}{#if allShown}
 					({preview.removed.filter(confirmed).length} confirmed){/if}
 			</p>
-			<ul class="flex flex-col">
+			<ul class="flex min-w-0 flex-col">
 				{#each preview.removed as entry (entry.id)}
-					<li class="flex items-baseline gap-2 border-b border-border py-0.5 text-[13px]">
-						<DateDisplay date={entry.booked_on} {locale} />
-						<span class="min-w-0 flex-1 truncate">{text(entry)}</span>
-						<span class="text-xs text-muted-foreground"
-							>{confirmed(entry) ? 'confirmed' : 'in review'}</span
-						>
-						<MoneyDisplay
-							minor={entry.amount.amount}
-							currency={entry.amount.currency}
-							{locale}
-							class="w-24"
-						/>
-					</li>
+					<ConsequenceRow {entry} {locale} note={confirmed(entry) ? 'confirmed' : 'in review'} />
 				{/each}
 			</ul>
 		{:else}
@@ -69,18 +55,9 @@
 			<p class="mt-1 font-medium">
 				Unpaired and returned to review: {plural(out.partners.length, 'entry', 'entries')}
 			</p>
-			<ul class="flex flex-col">
+			<ul class="flex min-w-0 flex-col">
 				{#each out.partners as entry (entry.id)}
-					<li class="flex items-baseline gap-2 border-b border-border py-0.5 text-[13px]">
-						<DateDisplay date={entry.booked_on} {locale} />
-						<span class="min-w-0 flex-1 truncate">{text(entry)}</span>
-						<MoneyDisplay
-							minor={entry.amount.amount}
-							currency={entry.amount.currency}
-							{locale}
-							class="w-24"
-						/>
-					</li>
+					<ConsequenceRow {entry} {locale} />
 				{/each}
 			</ul>
 		{/if}

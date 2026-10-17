@@ -107,11 +107,12 @@
 			No other imported row of this account has the same amount and is not a duplicate already.
 		</p>
 	{:else}
-		<fieldset class="flex flex-col gap-1" data-slot="candidates">
+		<fieldset class="flex min-w-0 flex-col gap-1" data-slot="candidates">
 			<legend class="mb-1 font-medium">The original</legend>
 			{#each flow.candidates as candidate (candidate.id)}
-				<label class="flex items-center gap-2 rounded-md px-1 py-0.5 hover:bg-muted">
+				<label class="flex min-w-0 items-center gap-2 rounded-md px-1 py-0.5 hover:bg-muted">
 					<input
+						class="shrink-0"
 						type="radio"
 						name="original"
 						value={candidate.id}
@@ -119,19 +120,20 @@
 						disabled={flow.busy}
 						onchange={() => void flow.pick(candidate.id)}
 					/>
-					<span class="min-w-0 truncate">{describe(candidate)}</span>
+					<span class="min-w-0 truncate" title={describe(candidate)}>{describe(candidate)}</span>
 				</label>
 			{/each}
 		</fieldset>
 
 		{#if flow.picked && flow.previews}
 			{@const previews = flow.previews}
-			<fieldset class="flex flex-col gap-2" data-slot="directions">
+			<fieldset class="flex min-w-0 flex-col gap-2" data-slot="directions">
 				<legend class="mb-1 font-medium">Which one is the duplicate?</legend>
 				{#each options as option (option.direction)}
-					<div class="flex flex-col gap-1 rounded-lg border border-border p-2">
-						<label class="flex items-center gap-2">
+					<div class="flex min-w-0 flex-col gap-1 rounded-lg border border-border p-2">
+						<label class="flex min-w-0 items-start gap-2">
 							<input
+								class="mt-0.5 shrink-0"
 								type="radio"
 								name="direction"
 								value={option.direction}
@@ -139,12 +141,12 @@
 								disabled={flow.busy}
 								onchange={() => flow.choose(option.direction)}
 							/>
-							<span>
+							<span class="min-w-0 break-words">
 								{option.title}{#if option.hint}
 									<span class="text-muted-foreground"> · {option.hint}</span>{/if}
 							</span>
 						</label>
-						<div class="pl-6">
+						<div class="min-w-0 pl-6">
 							<DuplicateConsequences preview={previews[option.direction]} {locale} />
 						</div>
 					</div>
