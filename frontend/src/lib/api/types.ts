@@ -34,6 +34,8 @@ export type Account = {
 	last_data_on: IsoDate | null;
 	unexplained_difference: Money | null;
 	anchored: boolean;
+	/** the sum of the account's entries, in its currency */
+	balance: Money;
 	records_since_zero: number[] | null;
 };
 
@@ -81,6 +83,18 @@ export type SourceEditEffects = Schemas['EditEffectsOut'];
 export type SourceDeleteOut = Schemas['SourceDeleteOut'];
 export type SourceDeleteCounts = Schemas['DeleteCountsOut'];
 export type SourceUnitRef = Schemas['UnitRefOut'];
+export type AccountUpdateBody = Schemas['UpdateBody'];
+export type StatementPage = Schemas['StatementOut'];
+export type StatementItem = StatementPage['items'][number];
+export type StatementSource = Schemas['StatementSourceOut'];
+export type StatementRecord = Schemas['StatementRecordOut'];
+export type Provenance = Schemas['ProvenanceOut'];
+export type RunRef = Schemas['RunRefOut'];
+export type DuplicateOf = Schemas['DuplicateOfOut'];
+export type MarkDuplicateOut = Schemas['MarkDuplicateOut'];
+export type DerivedChange = Schemas['DerivedChangeOut'];
+export type RecordWriteOut = Schemas['RecordWriteOut'];
+export type RecordDeleteOut = Schemas['RecordDeleteOut'];
 
 // TEMPORARY, hand-written from app/api/routers/lookups.py until the generated types contain
 // GET /api/ledger/categories|payees|tags; then replace these with `Schemas[...]`.

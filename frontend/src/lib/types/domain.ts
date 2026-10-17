@@ -2,6 +2,7 @@
 // as props); the shapes they receive are re-exported here so they can still be typed.
 export type {
 	Account,
+	AccountWriteOut,
 	Category,
 	CategoryDeleteOut,
 	CategoryMergeOut,
@@ -12,6 +13,7 @@ export type {
 	DocumentMatch,
 	DocumentPage,
 	DocumentRow,
+	DuplicateOf,
 	Entry,
 	EntryTagIds,
 	EntryFilter,
@@ -22,8 +24,15 @@ export type {
 	Payee,
 	PayeeDeleteOut,
 	PayeeMergeOut,
+	Provenance,
+	RecordDeleteOut,
+	RecordWriteOut,
 	ReviewFlag,
+	RunRef,
 	SourceTransaction,
+	StatementItem,
+	StatementRecord,
+	StatementSource,
 	Tag,
 	TagApplyOut
 } from '#lib/api/types.js';

@@ -1,5 +1,14 @@
 import { request } from './http.js';
-import type { Account, AccountCreateBody, AccountWriteOut } from './types.js';
+import type {
+	Account,
+	AccountCreateBody,
+	AccountUpdateBody,
+	AccountWriteOut,
+	Money,
+	RecordDeleteOut,
+	RecordWriteOut,
+	SettleOut
+} from './types.js';
 
 export async function listAccounts(signal?: AbortSignal): Promise<Account[]> {
 	const { accounts } = await request<{ accounts: Account[] }>('GET', '/api/ledger/accounts', {
@@ -15,4 +24,50 @@ export async function listAccounts(signal?: AbortSignal): Promise<Account[]> {
  */
 export function createAccount(body: AccountCreateBody): Promise<AccountWriteOut> {
 	return request('POST', '/api/ledger/accounts', { body });
+}
+
+/** What an edit changes: absent fields stay; `null` clears a note, reference, icon or colour. */
+export function updateAccount(id: number, body: AccountUpdateBody): Promise<AccountWriteOut> {
+	return request('PUT', `/api/ledger/accounts/${id}`, { body });
+}
+
+/** Close the account on a date; it stops fetching and holds no balance (spec §3.3). */
+export function closeAccount(id: number, closedOn: string): Promise<AccountWriteOut> {
+	return request('POST', `/api/ledger/accounts/${id}/close`, { body: { closed_on: closedOn } });
+}
+
+export function reopenAccount(id: number): Promise<AccountWriteOut> {
+	return request('POST', `/api/ledger/accounts/${id}/reopen`);
+}
+
+/**
+ * Delete an account that holds nothing. 409 `conflict` with `details.reason` `account_not_empty`
+ * and `details.held` (what it holds, by name) otherwise.
+ */
+export function deleteAccount(id: number): Promise<{ settle: SettleOut }> {
+	return request('DELETE', `/api/ledger/accounts/${id}`);
+}
+
+/**
+ * "Set balance": a manual record on a date; a date that already holds one edits it (spec §5.10).
+ * 422 `validation_error` for another currency.
+ */
+export function setBalance(
+	accountId: number,
+	body: { balance_on: string; balance: Money }
+): Promise<RecordWriteOut> {
+	return request('POST', `/api/ledger/accounts/${accountId}/balance-records`, { body });
+}
+
+/** Correct a manual record: its balance, and its date when given. 409 `record_date_taken`. */
+export function correctBalance(
+	recordId: number,
+	body: { balance: Money; balance_on?: string }
+): Promise<RecordWriteOut> {
+	return request('PUT', `/api/ledger/balance-records/${recordId}`, { body });
+}
+
+/** Delete any record, reported ones included; its interval merges into the next (spec §3.10). */
+export function deleteBalanceRecord(recordId: number): Promise<RecordDeleteOut> {
+	return request('DELETE', `/api/ledger/balance-records/${recordId}`);
 }

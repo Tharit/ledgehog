@@ -49,6 +49,7 @@ export function account(over: Partial<Account> = {}): Account {
 		last_data_on: null,
 		unexplained_difference: null,
 		anchored: true,
+		balance: { amount: 0, currency: 'EUR' },
 		records_since_zero: null,
 		...over
 	};
