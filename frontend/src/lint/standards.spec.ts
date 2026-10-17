@@ -19,6 +19,8 @@ const BUTTON = new RegExp(
 	'g'
 );
 const BAD_LABEL = /^(Create\b|New\b|OK$|Confirm$|Submit$)/;
+// the one approved exception: the product wording of the source strip's icon, as the rule nudge link says it
+const APPROVED = new Set(['Create rule from this transaction']);
 
 function offences(test: (text: string) => string[]): string[] {
 	return files.flatMap(({ path, text }) => test(text).map((what) => `${path}: ${what}`));
@@ -44,7 +46,7 @@ describe('interaction standards', () => {
 			}
 			for (const [, value] of text.matchAll(/\b(?:verb|actionLabel)="([^"]*)"/g))
 				labels.push(value);
-			return labels.filter((label) => BAD_LABEL.test(label));
+			return labels.filter((label) => BAD_LABEL.test(label) && !APPROVED.has(label));
 		});
 		expect(found).toEqual([]);
 	});

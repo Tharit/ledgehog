@@ -1,5 +1,5 @@
 <script lang="ts">
-	import PlusIcon from '@lucide/svelte/icons/plus';
+	import FunnelPlusIcon from '@lucide/svelte/icons/funnel-plus';
 	import IconButton from '#lib/components/common/icon-button.svelte';
 	import MoneyDisplay from '#lib/components/common/money-display.svelte';
 	import type { SourceGroup } from '#lib/units/describe.js';
@@ -8,7 +8,7 @@
 	// What the source said (patterns §4.5, read-only): the normalised columns of the source
 	// transaction, one strip per source of the unit. An entry entered by hand has a source of its
 	// own and shows it the same way, with a small "Entered by hand"; one with none says only that.
-	// The "Add rule from this transaction" icon sits in the top-right corner, revealed by hover or
+	// The "Create rule from this transaction" icon sits in the top-right corner, revealed by hover or
 	// focus on the strip (opacity only, patterns §11.3) and always visible where there is no hover.
 	let { groups, locale = 'en' }: { groups: readonly SourceGroup[]; locale?: string } = $props();
 
@@ -68,21 +68,21 @@
 					</dd>
 				{/if}
 			</dl>
-			<!-- another page, not a decision: no ellipsis. A new tab, because the panel may hold a draft -->
+			<!-- Funnel-plus: the rules icon, plus create. Another page, not a decision: no ellipsis. A new tab, because the panel may hold a draft -->
 			<div
 				class="absolute top-1.5 right-1.5 text-muted-foreground opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
 				data-slot="add-rule-reveal"
 			>
 				<IconButton
 					compact
-					verb="Add rule from this transaction"
-					label="Add rule from this transaction"
+					verb="Create rule from this transaction"
+					label="Create rule from this transaction"
 					href={`/settings/rules/new?from=${group.entryIds[0]}`}
 					target="_blank"
 					rel="noopener"
 					data-slot="add-rule-from-source"
 				>
-					<PlusIcon aria-hidden="true" />
+					<FunnelPlusIcon aria-hidden="true" />
 				</IconButton>
 			</div>
 		{/if}

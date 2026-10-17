@@ -497,6 +497,15 @@ describe('editing a value', () => {
 });
 
 const OFFER = 'Create rule from this transaction';
+// the nudge link of the panel; the source strip's icon carries the same name (and its own slot)
+const nudge = (root: HTMLElement) =>
+	within(root)
+		.queryAllByRole('link', { name: OFFER })
+		.find((link) => link.dataset.slot !== 'add-rule-from-source') ?? null;
+const findNudge = async (root: HTMLElement) => {
+	await waitFor(() => expect(nudge(root)).not.toBeNull());
+	return nudge(root)!;
+};
 
 describe('the offer to create a rule from a change', () => {
 	const ruled = (derivation: Record<string, unknown>, over = {}) =>
@@ -521,11 +530,11 @@ describe('the offer to create a rule from a change', () => {
 		const { panel, dialog } = await openPanel(
 			ruled({ category: { pass: 'rule', basis: { rule_id: 3 } } })
 		);
-		expect(within(dialog).queryByRole('link', { name: OFFER })).toBeNull();
+		expect(nudge(dialog)).toBeNull();
 
 		panel.flow.setField(1, 'category', 11);
 
-		const link = await within(dialog).findByRole('link', { name: OFFER });
+		const link = await findNudge(dialog);
 		expect(link).toHaveAttribute('href', '/settings/rules/new?from=1');
 		expect(link).toHaveAttribute('target', '_blank');
 		expect(link).toHaveAttribute('data-field', 'category');
@@ -536,11 +545,11 @@ describe('the offer to create a rule from a change', () => {
 			ruled({ category: { pass: 'rule', basis: { rule_id: 3 } } })
 		);
 		panel.flow.setField(1, 'category', 11);
-		await within(dialog).findByRole('link', { name: OFFER });
+		await findNudge(dialog);
 
 		panel.flow.revertField(1, 'category');
 
-		await waitFor(() => expect(within(dialog).queryByRole('link', { name: OFFER })).toBeNull());
+		await waitFor(() => expect(nudge(dialog)).toBeNull());
 	});
 
 	it('also covers a payee a rule set', async () => {
@@ -550,7 +559,7 @@ describe('the offer to create a rule from a change', () => {
 
 		panel.flow.setField(1, 'payee', 21);
 
-		const link = await within(dialog).findByRole('link', { name: OFFER });
+		const link = await findNudge(dialog);
 		expect(link).toHaveAttribute('data-field', 'payee');
 	});
 
@@ -568,14 +577,14 @@ describe('the offer to create a rule from a change', () => {
 		await waitFor(() =>
 			expect(within(dialog).getByRole('button', { name: 'Category' })).toHaveTextContent('Dining')
 		);
-		expect(within(dialog).queryByRole('link', { name: OFFER })).toBeNull();
+		expect(nudge(dialog)).toBeNull();
 	});
 
 	it('is not offered for a rule’s value left as it is, nor for an entry without a source', async () => {
 		const { dialog } = await openPanel(
 			ruled({ category: { pass: 'rule', basis: { rule_id: 3 } } })
 		);
-		expect(within(dialog).queryByRole('link', { name: OFFER })).toBeNull();
+		expect(nudge(dialog)).toBeNull();
 		cleanup();
 
 		const bare = await openPanel(
@@ -587,7 +596,7 @@ describe('the offer to create a rule from a change', () => {
 				'Dining'
 			)
 		);
-		expect(within(bare.dialog).queryByRole('link', { name: OFFER })).toBeNull();
+		expect(nudge(bare.dialog)).toBeNull();
 	});
 });
 

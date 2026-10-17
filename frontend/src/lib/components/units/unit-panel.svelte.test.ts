@@ -325,7 +325,7 @@ describe('UnitPanel: other units', () => {
 		expect(within(strip).queryByText('Entered by hand')).toBeNull();
 	});
 
-	it('offers "Add rule from this transaction" in the strip: a new tab, the entry as the example', async () => {
+	it('offers "Create rule from this transaction" in the strip: a new tab, the entry as the example', async () => {
 		const { dialog } = await openPanel(
 			unit({
 				anchor_entry_id: 7,
@@ -334,7 +334,7 @@ describe('UnitPanel: other units', () => {
 		);
 
 		const strip = within(dialog).getByRole('region', { name: 'Source transaction' });
-		const link = within(strip).getByRole('link', { name: 'Add rule from this transaction' });
+		const link = within(strip).getByRole('link', { name: 'Create rule from this transaction' });
 		expect(link).toHaveAttribute('data-slot', 'add-rule-from-source');
 		expect(link.textContent?.trim()).toBe('');
 		const reveal = link.closest('[data-slot="add-rule-reveal"]')!;
@@ -366,7 +366,7 @@ describe('UnitPanel: other units', () => {
 			})
 		);
 		expect(
-			within(authored.dialog).getByRole('link', { name: 'Add rule from this transaction' })
+			within(authored.dialog).getByRole('link', { name: 'Create rule from this transaction' })
 		).toHaveAttribute('href', '/settings/rules/new?from=3');
 		cleanup();
 
@@ -377,7 +377,7 @@ describe('UnitPanel: other units', () => {
 			})
 		);
 		expect(
-			within(bare.dialog).queryByRole('link', { name: 'Add rule from this transaction' })
+			within(bare.dialog).queryByRole('link', { name: 'Create rule from this transaction' })
 		).toBeNull();
 		cleanup();
 
@@ -388,7 +388,7 @@ describe('UnitPanel: other units', () => {
 			})
 		);
 		expect(
-			within(derived.dialog).queryByRole('link', { name: 'Add rule from this transaction' })
+			within(derived.dialog).queryByRole('link', { name: 'Create rule from this transaction' })
 		).toBeNull();
 	});
 
