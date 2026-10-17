@@ -10,6 +10,7 @@
 	// (the address as state, the detail following it), without the router.
 	let { items }: { items: StatementItem[] } = $props();
 
+	let table = $state<ReturnType<typeof StatementTable> | null>(null);
 	const address = new RowAddress();
 	const detail = new RowDetail();
 	onMount(() => {
@@ -24,6 +25,7 @@
 </script>
 
 <StatementTable
+	bind:this={table}
 	{items}
 	total={items.length}
 	status="ready"
@@ -35,4 +37,8 @@
 	status={detail.status}
 	provenance={detail.provenance}
 	onclose={() => address.close()}
+	onclosefocus={(event) => {
+		event.preventDefault();
+		table?.focusList();
+	}}
 />

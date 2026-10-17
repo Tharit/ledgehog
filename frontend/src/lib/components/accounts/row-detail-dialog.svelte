@@ -18,6 +18,7 @@
 		timeZone = 'UTC',
 		busy = false,
 		onclose,
+		onclosefocus,
 		onretry,
 		onopenreview,
 		onopenoriginal,
@@ -34,6 +35,11 @@
 		/** "Not a duplicate" is being written */
 		busy?: boolean;
 		onclose: () => void;
+		/**
+		 * Focus is about to return to what had it (a click focused the statement's list): the page
+		 * places it itself, with `preventScroll`, since the default would scroll the list into view.
+		 */
+		onclosefocus?: (event: Event) => void;
 		onretry?: () => void;
 		onopenreview?: (entryId: number) => void;
 		onopenoriginal?: (sourceId: number) => void;
@@ -47,7 +53,11 @@
 </script>
 
 <Dialog.Root {open} onOpenChange={(next) => !next && !busy && onclose()}>
-	<Dialog.Content class="sm:max-w-xl" data-slot="row-detail">
+	<Dialog.Content
+		class="sm:max-w-xl"
+		data-slot="row-detail"
+		onCloseAutoFocus={(event) => onclosefocus?.(event)}
+	>
 		<Dialog.Header>
 			<Dialog.Title>Source transaction</Dialog.Title>
 			<Dialog.Description>What this account's source said about this row.</Dialog.Description>

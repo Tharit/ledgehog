@@ -45,6 +45,7 @@
 	// statement the row is on, and so does a link from a run summary. Shallow routing does not move
 	// `page.url`, so the real address is read (as the unit panel does) after our own changes, after
 	// Back and Forward, and after a navigation.
+	let table = $state<ReturnType<typeof StatementTable> | null>(null);
 	const address = new RowAddress({
 		url: () => new URL(location.href),
 		push: (url) => pushState(url, {}),
@@ -169,6 +170,7 @@
 		/>
 
 		<StatementTable
+			bind:this={table}
 			items={view.statement.items}
 			total={view.statement.total}
 			status={view.statement.status}
@@ -188,6 +190,11 @@
 
 {#if account}
 	<AccountPageDialogs
+		onclosefocus={(event) => {
+			// a click on a row focused the list; giving focus back must not scroll it into view
+			event.preventDefault();
+			table?.focusList();
+		}}
 		{view}
 		{runs}
 		{detail}

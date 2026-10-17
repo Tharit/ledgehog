@@ -78,6 +78,14 @@
 			?.scrollIntoView?.({ block: 'nearest' });
 	});
 
+	/**
+	 * Give the focus back to the list without scrolling to it: what a dialog opened from a row
+	 * returns to (patterns §11.2), the page staying exactly where it was.
+	 */
+	export function focusList() {
+		container?.focus({ preventScroll: true });
+	}
+
 	/** Hand the keyboard to the list: the cursor goes to the first row. */
 	export function enterList() {
 		container?.focus({ preventScroll: true });

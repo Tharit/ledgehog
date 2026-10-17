@@ -51,6 +51,26 @@ describe('opening a statement row', () => {
 		expect(location.search).toBe('?source=4');
 	});
 
+	it('gives focus back to the list without scrolling it into view when it closes', async () => {
+		const focus = vi.spyOn(HTMLElement.prototype, 'focus');
+		render(Harness, { props: { items } });
+		await fireEvent.click(screen.getByText('REWE'));
+		const dialog = await screen.findByRole('dialog');
+		focus.mockClear();
+
+		await fireEvent.click(within(dialog).getAllByRole('button', { name: 'Close' })[0]);
+		await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+		const grid = screen.getByRole('grid', { name: 'Statement rows' });
+		const onGrid = focus.mock.contexts.flatMap((el, i) =>
+			el === grid ? [focus.mock.calls[i][0]] : []
+		);
+		expect(onGrid.length).toBeGreaterThan(0);
+		// every focus the list received on close is one that does not scroll
+		expect(onGrid.every((options) => options?.preventScroll === true)).toBe(true);
+		focus.mockRestore();
+	});
+
 	it('closes with Cancel-style Close and clears ?source=', async () => {
 		render(Harness, { props: { items } });
 		await fireEvent.click(screen.getByText('REWE'));

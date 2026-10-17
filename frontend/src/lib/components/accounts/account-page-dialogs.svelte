@@ -25,6 +25,7 @@
 		timeZone = 'UTC',
 		onclosedetail,
 		onleavedetail,
+		onclosefocus,
 		onopendetail,
 		ondeleted
 	}: {
@@ -37,6 +38,8 @@
 		onclosedetail: () => void;
 		/** the detail's address is left for something else (the panel, a dialog): `?source=` goes at once */
 		onleavedetail: () => void;
+		/** the detail closed: the page places focus itself, without scrolling */
+		onclosefocus?: (event: Event) => void;
 		/** another row's detail is asked for (the row a duplicate duplicates) */
 		onopendetail: (sourceId: number) => void;
 		/** the account was deleted: the page has nothing left to show */
@@ -81,6 +84,7 @@
 	{timeZone}
 	busy={clearing}
 	onclose={onclosedetail}
+	{onclosefocus}
 	onretry={() => detail.reload()}
 	onopenreview={openReview}
 	onopenoriginal={onopendetail}
