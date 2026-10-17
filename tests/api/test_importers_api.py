@@ -110,7 +110,7 @@ def test_a_blank_label_is_refused(api: Api):
 
 def test_update_changes_label_settings_and_disabled(api: Api):
     inst = api.instance()
-    other = {**PROFILE, "label": "changed"}
+    other = {**PROFILE, "quote": "'"}
     r = api.client.put(f"{BASE}/{inst}", json={"label": "Renamed", "settings": other, "disabled": True})
     assert r.status_code == 200
     assert (r.json()["label"], r.json()["settings"], r.json()["disabled"]) == ("Renamed", other, True)

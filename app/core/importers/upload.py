@@ -100,7 +100,7 @@ def upload(
     dry_run: bool = False,
 ) -> UploadResult:
     """Upload `data` for one account of one file-importer instance."""
-    instance_name, profile, currency, exponents = _checked(engine, instance_id, account_id)
+    instance_name, label, profile, currency, exponents = _checked(engine, instance_id, account_id)
 
     run_id: int | None = None
     if not dry_run:
@@ -114,7 +114,12 @@ def upload(
         )
     try:
         parsed = importer.parse(
-            data, profile, account_currency=currency, minor_units_of=exponents.__getitem__, today=today
+            data,
+            profile,
+            account_currency=currency,
+            minor_units_of=exponents.__getitem__,
+            today=today,
+            name=label,
         )
     except (ImporterError, InvalidProfile) as exc:
         if run_id is None:
@@ -239,11 +244,11 @@ def _fail(engine: Engine, run_id: int, message: str) -> None:
 
 def _checked(
     engine: Engine, instance_id: int, account_id: int
-) -> tuple[str, dict[str, Any], str, dict[str, int]]:
-    """The refusals, then (importer name, profile, account currency, minor units per currency)."""
+) -> tuple[str, str, dict[str, Any], str, dict[str, int]]:
+    """The refusals, then (importer name, instance label, profile, account currency, minor units per currency)."""
     with engine.connect() as conn:
         inst = conn.execute(
-            text("SELECT importer, emits, disabled, settings FROM importer_instance WHERE id = :i"),
+            text("SELECT importer, label, emits, disabled, settings FROM importer_instance WHERE id = :i"),
             {"i": instance_id},
         ).one_or_none()
         if inst is None:
@@ -269,4 +274,4 @@ def _checked(
             str(r.code): int(r.minor_units)
             for r in conn.execute(text("SELECT code, minor_units FROM currency"))
         }
-        return str(inst.importer), dict(inst.settings), str(acct.currency), exponents
+        return str(inst.importer), str(inst.label), dict(inst.settings), str(acct.currency), exponents

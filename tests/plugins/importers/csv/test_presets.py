@@ -25,12 +25,12 @@ def test_presets_carry_no_account_details() -> None:
 
 def test_load_presets_returns_independent_copies() -> None:
     a = load_presets()
-    a["giro_with_preamble"]["label"] = "changed"
-    assert load_presets()["giro_with_preamble"]["label"] != "changed"
+    a["giro_with_preamble"]["quote"] = "changed"
+    assert load_presets()["giro_with_preamble"]["quote"] != "changed"
 
 
 def giro(**kw: object) -> object:
-    return run(giro_bytes(**kw), profile=load_presets()["giro_with_preamble"], today=date(2030, 1, 1))  # type: ignore[arg-type]
+    return run(giro_bytes(**kw), profile=load_presets()["giro_with_preamble"], today=date(2030, 1, 1), name="giro")  # type: ignore[arg-type]
 
 
 def test_giro_rows_pending_placeholders_and_zero() -> None:

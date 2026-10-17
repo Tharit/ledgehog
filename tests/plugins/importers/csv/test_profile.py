@@ -12,7 +12,6 @@ from app.plugins.importers.csv.profile import Profile
 
 def minimal() -> dict[str, Any]:
     return {
-        "label": "t",
         "header_marker": ["Datum", "Betrag"],
         "booked_on": "Datum",
         "date_format": "dd.MM.yyyy",
@@ -114,7 +113,6 @@ def bad(**changes: Any) -> dict[str, Any]:
 @pytest.mark.parametrize(
     ("changes", "setting"),
     [
-        ({"label": ""}, "label"),
         ({"encoding": "no-such-codec"}, "encoding"),
         ({"delimiter": ";;"}, "delimiter"),
         ({"quote": ""}, "quote"),

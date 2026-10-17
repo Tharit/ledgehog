@@ -20,7 +20,6 @@ def exponent_of(currency: str) -> int:
 
 def base_profile(**over: Any) -> dict[str, Any]:
     p: dict[str, Any] = {
-        "label": "t",
         "delimiter": ";",
         "header_marker": ["Datum", "Betrag"],
         "booked_on": "Datum",
@@ -40,6 +39,7 @@ def run(
     currency: str = "EUR",
     minor_units_of: Callable[[str], int] = exponent_of,
     samples: int = 5,
+    name: str = "t",
     **over: Any,
 ) -> ParsedFile:
     data = text if isinstance(text, bytes) else text.encode()
@@ -50,6 +50,7 @@ def run(
         account_currency=currency,
         minor_units_of=minor_units_of,
         today=today,
+        name=name,
         dry_run_samples=samples,
     )
 
@@ -70,7 +71,6 @@ CARD = (
 
 def card_profile(**over: Any) -> dict[str, Any]:
     p: dict[str, Any] = {
-        "label": "card",
         "delimiter": ";",
         "header_marker": ["Belegdatum", "Eingangstag"],
         "booked_on": "Eingangstag",

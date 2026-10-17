@@ -149,6 +149,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             account_currency=args.currency,
             minor_units_of=exponent_of,
             today=today,
+            name=args.preset,
         )
     except InvalidProfile as exc:
         print(f"FAILED: invalid profile: {exc}")

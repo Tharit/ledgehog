@@ -157,9 +157,13 @@ class FileImporter(Protocol):
         account_currency: str,
         minor_units_of: Callable[[str], int],
         today: date,
+        name: str,
         dry_run_samples: int = 5,
     ) -> ParsedFile:
         """Raise `ParseFailed` (carrying the report) for any problem on the importer's side.
+
+        `name` is the instance's label at the time of the run, which an importer may put in the
+        `source_format` of its rows (the CSV importer's `csv:<label>`).
 
         `minor_units_of` maps a currency code to its minor-unit exponent (the caller supplies it
         from the `currency` table); it raises `KeyError` for a code it does not know, which the

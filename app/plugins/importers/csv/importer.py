@@ -42,13 +42,14 @@ class CsvImporter:
         account_currency: str,
         minor_units_of: Callable[[str], int],
         today: date,
+        name: str,
         dry_run_samples: int = 5,
     ) -> ParsedFile:
         prof = Profile.from_dict(profile)
         prof.validate()
         report = ReportBuilder(limit=dry_run_samples)
         try:
-            return _parse(data, prof, report, account_currency, _known(minor_units_of), today)
+            return _parse(data, prof, report, account_currency, _known(minor_units_of), today, name)
         except ParseFailed as exc:
             if exc.report is not None:
                 raise
@@ -68,7 +69,7 @@ def _known(lookup: Callable[[str], int]) -> Callable[[str], int]:
 
 
 def _parse(
-    data: bytes, prof: Profile, rep: ReportBuilder, currency: str, exponent: Callable[[str], int], today: date
+    data: bytes, prof: Profile, rep: ReportBuilder, currency: str, exponent: Callable[[str], int], today: date, name: str
 ) -> ParsedFile:
     minor_units = exponent(currency)
     rf = read_file(
@@ -76,7 +77,7 @@ def _parse(
     )
     rep.encoding, rep.delimiter = rf.encoding, rf.delimiter
     rep.header_line = rf.records[rf.header_index].line
-    kept = _read_rows(rf, prof, rep, currency, exponent)
+    kept = _read_rows(rf, prof, rep, currency, exponent, name)
     emitted = [k.row for k in kept if k.row is not None]
     if rep.rows_read and rep.skipped.count == rep.rows_read:
         rep.warnings.append(
@@ -127,7 +128,12 @@ def _coverage(prof: Profile, rf: ReadFile, emitted: Sequence[IncomingRow], rep: 
 
 
 def _read_rows(
-    rf: ReadFile, prof: Profile, rep: ReportBuilder, currency: str, exponent: Callable[[str], int]
+    rf: ReadFile,
+    prof: Profile,
+    rep: ReportBuilder,
+    currency: str,
+    exponent: Callable[[str], int],
+    name: str,
 ) -> list[Kept]:
     header = rf.header
 
@@ -170,7 +176,7 @@ def _read_rows(
 
     placeholders = set(prof.placeholders)
     lim = rep.limit
-    source_format = f"csv:{prof.label}"
+    source_format = f"csv:{name}"  # the instance's label at the time of the run
     kept: list[Kept] = []
 
     def cell(cells: Sequence[str], i: int | None) -> str:
@@ -242,7 +248,7 @@ def _read_rows(
             currency=row_currency,
             booked_on=booked_on,
             source_format=source_format,
-            raw={"profile": prof.label, "header": list(header), "cells": list(rec.cells), "text": rec.text},
+            raw={"header": list(header), "cells": list(rec.cells), "text": rec.text},
             value_on=value_on,
             instructed_amount_minor=instr_amount,
             instructed_currency=instr_currency,

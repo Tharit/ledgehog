@@ -21,7 +21,6 @@ def test_basic_row_mapping() -> None:
     assert row.counterparty_name == "Coffee Shop"
     assert row.counterparty_ref is None and row.end_to_end_id is None
     assert row.raw == {
-        "profile": "t",
         "header": ["Datum", "Betrag", "Zweck"],
         "cells": ["03.08.2026", "-12,50", "Coffee   Shop"],
         "text": "03.08.2026;-12,50;Coffee   Shop",
@@ -39,7 +38,6 @@ def test_all_optional_columns() -> None:
         text,
         profile={
             **{
-                "label": "t",
                 "delimiter": ";",
                 "header_marker": ["Datum", "Betrag"],
                 "booked_on": "Datum",
@@ -138,7 +136,6 @@ def test_credit_debit_pair() -> None:
     pf = run(
         text,
         profile={
-            "label": "t",
             "delimiter": ";",
             "header_marker": ["Datum", "Haben", "Soll"],
             "booked_on": "Datum",
@@ -160,7 +157,6 @@ def test_placeholders_in_amount_and_date_cells() -> None:
     pf = run(
         text,
         profile={
-            "label": "t",
             "delimiter": ";",
             "header_marker": ["Datum", "Haben"],
             "booked_on": "Datum",
@@ -212,7 +208,6 @@ INSTR = "Datum;Fremd;Betrag#1;Kurs;Betrag#2\n"
 
 def instr_profile(**over: object) -> dict[str, object]:
     return {
-        "label": "t",
         "delimiter": ";",
         "header_marker": ["Datum", "Fremd"],
         "booked_on": "Datum",
@@ -277,7 +272,6 @@ FH = "Datum;Valuta;Betrag;Whrg\n"
 
 def fprofile(**over: object) -> dict[str, object]:
     return {
-        "label": "t",
         "delimiter": ";",
         "header_marker": ["Datum", "Valuta"],
         "booked_on": "Datum",

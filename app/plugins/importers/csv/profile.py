@@ -309,7 +309,6 @@ _OPTIONAL_COLUMNS = (
     "booking_text",
 )
 _KEYS = {
-    "label",
     "encoding",
     "delimiter",
     "quote",
@@ -333,12 +332,11 @@ _KEYS = {
     "coverage_end",
     "statement_payment",
 }
-_REQUIRED = ("label", "header_marker", "booked_on", "date_format", "amount")
+_REQUIRED = ("header_marker", "booked_on", "date_format", "amount")
 
 
 @dataclass(frozen=True, slots=True)
 class Profile:
-    label: str
     header_marker: tuple[str, ...]
     booked_on: ColRef
     date_format: str
@@ -380,7 +378,6 @@ class Profile:
             return None if d.get(key) is None else build(d[key])
 
         return cls(
-            label=_str(d["label"], "label"),
             header_marker=tuple(_str(m, "header_marker") for m in _list(d["header_marker"], "header_marker")),
             booked_on=_colref(d["booked_on"], "booked_on"),
             date_format=_str(d["date_format"], "date_format"),
@@ -407,7 +404,6 @@ class Profile:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "label": self.label,
             "encoding": self.encoding,
             "delimiter": self.delimiter,
             "quote": self.quote,
@@ -433,8 +429,6 @@ class Profile:
         }
 
     def validate(self) -> None:
-        if not self.label.strip():
-            raise _fail("label", "must not be empty")
         if self.encoding is not None:
             try:
                 codecs.lookup(self.encoding)

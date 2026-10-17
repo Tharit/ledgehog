@@ -379,6 +379,15 @@ def test_the_importer_gets_the_profile_currency_exponents_and_today(db: Db) -> N
         call["minor_units_of"]("ZZZ")
 
 
+def test_the_importer_gets_the_instances_label_at_the_time_of_the_run(db: Db) -> None:
+    w = world(db)
+    stub = Stub(parsed([irow(-100, 5)], through=date(2026, 8, 10)))
+    w.up(b"x", importer=stub, today=date(2026, 8, 11), dry_run=True)
+    update_instance(db.engine, w.instance, label="Renamed")
+    w.up(b"x", importer=stub, today=date(2026, 8, 11), dry_run=True)
+    assert [c["name"] for c in stub.calls] == ["Giro CSV", "Renamed"]
+
+
 def test_the_parse_runs_outside_any_database_transaction(db: Db) -> None:
     w = world(db)
     seen: list[int] = []

@@ -57,7 +57,7 @@ def test_report_shows_the_synthetic_payment() -> None:
 
 def test_net_positive_emits_nothing_and_counts_skipped() -> None:
     text = CARD.replace("Saldo:", "3.8.2026;3.8.2026;Refund;100,00\nSaldo:")
-    pf = run(text, profile=card_profile(statement_payment=PAY, balance=None), today=TODAY)
+    pf = run(text, profile=card_profile(statement_payment=PAY, balance=None), today=TODAY, name="card")
     assert len(pf.rows) == 3
     assert all(r.source_format == "csv:card" for r in pf.rows)
     assert pf.importer_stats["synthetic_skipped"] == 1

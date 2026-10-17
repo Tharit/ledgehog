@@ -65,9 +65,9 @@ def test_giro_first_upload_by_hand(api: Api):
     assert http.records(account) == [GIRO_RECORD]
     # the booked amounts as the bank's source rows carry them
     assert [(s.amount, s.booked_on, s.source_format) for s in http.sources(account)] == [
-        (-4550, D(2026, 8, 18), "csv:giro"),
-        (150000, D(2026, 8, 19), "csv:giro"),
-        (-1000, D(2026, 8, 20), "csv:giro"),
+        (-4550, D(2026, 8, 18), "csv:giro_with_preamble (e2e)"),
+        (150000, D(2026, 8, 19), "csv:giro_with_preamble (e2e)"),
+        (-1000, D(2026, 8, 20), "csv:giro_with_preamble (e2e)"),
     ]
     # the balance report: figure and dating
     bal = body["report"]["balance"]
