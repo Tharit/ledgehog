@@ -433,3 +433,32 @@ def test_transfer_legs_fill_the_needs_account_and_waiting_sections(seeded: str, 
     # a partner (a leg) or a document (a charge): each waiting unit says what it waits for
     assert waiting.total >= 1 and all((u.waiting or u.waiting_document) is not None for u in waiting.units)
     assert any(u.waiting is not None for u in waiting.units)
+
+
+def test_the_seeds_direct_sql_leaves_every_accounts_derived_entries_current(seeded: str, dev_engine: Engine):
+    from app.core.balance.derived import recompute_derived
+
+    snapshot = (
+        "SELECT id, account_id, type, booked_on, amount FROM ledger_entry"
+        " WHERE balance_record_id IS NOT NULL ORDER BY id"
+    )
+    with dev_engine.begin() as conn:
+        before = conn.execute(text(snapshot)).all()
+        for account_id in conn.execute(text("SELECT id FROM account")).scalars().all():
+            recompute_derived(conn, account_id)
+        assert conn.execute(text(snapshot)).all() == before  # recomputing finds nothing to change
+        # the transfer legs are a later, balance-reporting delivery: the giro shows no difference
+        giro = conn.execute(
+            text("SELECT id FROM account WHERE name = 'Girokonto [seed]'")
+        ).scalar_one_or_none()
+        if giro is not None:
+            assert (
+                conn.execute(
+                    text(
+                        "SELECT count(*) FROM v_unexplained_difference"
+                        " WHERE account_id = :a AND difference <> 0"
+                    ),
+                    {"a": giro},
+                ).scalar_one()
+                == 0
+            )

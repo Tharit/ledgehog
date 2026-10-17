@@ -49,12 +49,13 @@ from typing import Any
 from sqlalchemy import Engine, text
 
 from app.core.accounts import create_account
+from app.core.balance.derived import recompute_derived
 from app.core.balance.records import set_manual_record
 from app.core.importers.instances import create_instance, link_account
 from app.core.importers.providers import register_document_importers
 from app.core.importers.upload import upload
 from app.core.ingest.documents import ingest_documents
-from app.core.ingest.run import start_run
+from app.core.ingest.run import ingest_delivery, start_run
 from app.core.integrity import check_integrity
 from app.core.ledger.payees import create_payee
 from app.core.ledger.rules import RuleDraft, create_rule
@@ -72,6 +73,9 @@ from scripts import dev_seed_data as data
 
 DEFAULT_SEED = 20261011
 _NO_CATEGORY_SHARE = 0.10  # of the classified movements: flows left without a category
+_TRANSFER_TAIL_DAYS = (
+    10  # days after the exports' last booking day that hold the transfer legs (`_TRANSFERS`)
+)
 _ALWAYS = frozenset({"Rent", "Salary", "Insurance"})  # recurring items are never left unclassified
 
 # preset -> (accounts it feeds: (account key, reference at the login))
@@ -332,14 +336,16 @@ _TRANSFERS: tuple[_Leg, ...] = (
 
 def transfer_cases(engine: Engine, out: list[str]) -> None:
     """PROTOTYPE-ONLY dev data: transfer legs for the review queue and the partner popover (spec §5.7),
-    written with direct SQL around the last day of the giro's data (`_TRANSFERS`; it says what each is):
+    written with direct SQL in the days after the synced accounts' last reported balance (`_TRANSFERS`;
+    it says what each is). Each synced account's legs belong to a new run, closed through the real
+    `ingest_delivery` with the balance the legs lead to, so the ledger holds no reconciliation and no
+    difference; derived entries are recomputed for every touched account. The legs:
     needs account, waiting, an exact pair (unconfirmed), exact open legs, an inexact pair, a counter-leg
     proposal, a counter-leg that needs the amount received and one that has it, a confirmed pair, and a
     leg whose partner candidate is paired elsewhere. Settling then pairs what it can.
     """
     gbp = create_account(engine, name=_CASH_GBP[1] + data.SUFFIX, kind=_CASH_GBP[2], currency=_CASH_GBP[3])
-    with engine.begin() as conn:
-        lock_settle_exclusive(conn)
+    with engine.connect() as conn:
         ids = {
             key: int(
                 conn.execute(
@@ -348,21 +354,27 @@ def transfer_cases(engine: Engine, out: list[str]) -> None:
             )
             for key, name, _kind, _ref in data.ACCOUNTS
         }
-        ids[_CASH_GBP[0]] = gbp
-        currency = {ids[k]: "EUR" for k in ids} | {gbp: _CASH_GBP[3]}
-        last = conn.execute(
-            text(
-                "SELECT max(booked_on) FROM ledger_entry WHERE account_id = :a AND balance_record_id IS NULL"
-            ),
-            {"a": ids["giro"]},
-        ).scalar_one()
-        run = {
+        # the latest counting record of each synced account: the legs come after all of them
+        latest = {
             key: conn.execute(
-                text("SELECT max(id) FROM import_run WHERE account_id = :a AND status = 'ok'"),
+                text(
+                    "SELECT balance_on, balance FROM v_balance_record WHERE account_id = :a"
+                    " ORDER BY balance_on DESC, id DESC LIMIT 1"
+                ),
                 {"a": ids[key]},
-            ).scalar_one()
+            ).first()
             for key in _SYNCED
         }
+    ids[_CASH_GBP[0]] = gbp
+    currency = {ids[k]: "EUR" for k in ids} | {gbp: _CASH_GBP[3]}
+    # `ago` counts back from the last leg day; the earliest leg lies after every reported balance
+    last = max(r.balance_on for r in latest.values() if r is not None) + timedelta(
+        days=max(leg.ago for leg in _TRANSFERS) + 1
+    )
+    legs_of = {leg.account for leg in _TRANSFERS if leg.account in _SYNCED}
+    run = {key: start_run(engine, ids[key], "transactions", importer="csv") for key in legs_of}
+    with engine.begin() as conn:
+        lock_settle_exclusive(conn)
         for n, leg in enumerate(_TRANSFERS):
             account, day, imported = ids[leg.account], last - timedelta(days=leg.ago), leg.account in _SYNCED
             counter = ids[leg.counter] if leg.counter else None
@@ -415,6 +427,20 @@ def transfer_cases(engine: Engine, out: list[str]) -> None:
                     "d": json.dumps(derivation),
                 },
             )
+        for account_id in {ids[leg.account] for leg in _TRANSFERS}:  # direct SQL bypasses the derived entries
+            recompute_derived(conn, account_id)
+    for key in sorted(legs_of):  # the real delivery closes each run with the balance the legs lead to
+        total = sum(leg.amount for leg in _TRANSFERS if leg.account == key)
+        before = latest[key]  # an account that never reported a balance has none to lead on from
+        ingest_delivery(
+            engine,
+            run[key],
+            [],
+            reported_balance=None if before is None else int(before.balance) + total,
+            reported_balance_on=None if before is None else last,
+            covered_from=None if before is None else before.balance_on + timedelta(days=1),
+            covered_through=last,
+        )
     out.append(f"PROTOTYPE-ONLY dev data (direct SQL): {len(_TRANSFERS)} transfer legs for the review queue")
 
 
@@ -556,6 +582,7 @@ def _document_charges(
                     "d": json.dumps(keys),
                 },
             )
+        recompute_derived(conn, visa)  # direct SQL bypasses the derived entries
 
 
 def _document_json(d: data.DocScenario, last_on: date) -> dict[str, Any]:
@@ -731,8 +758,11 @@ def summary(engine: Engine) -> list[str]:
 
 def seed(engine: Engine, *, months: int, seed_value: int, do_classify: bool, today: date) -> list[str]:
     out: list[str] = ["seeding SYNTHETIC data through the real pipeline"]
-    plan = data.build_plan(seed=seed_value, end=today, months=months)
-    run_pipeline(engine, plan, today, out)
+    # With the transfer cases the exports end a few days early: those legs are a later delivery, after
+    # every reported balance, and still booked before today.
+    export_day = today - timedelta(days=_TRANSFER_TAIL_DAYS) if do_classify else today
+    plan = data.build_plan(seed=seed_value, end=export_day, months=months)
+    run_pipeline(engine, plan, export_day, out)
     if do_classify:
         classify(engine, seed_value, out)
         make_rules(engine, out)
