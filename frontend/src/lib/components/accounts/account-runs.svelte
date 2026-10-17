@@ -30,7 +30,7 @@
 		status: 'loading' | 'ready' | 'error';
 		/** the label of the instance a run came from; a deleted instance has none */
 		instanceLabel: (run: ImportRun) => string;
-		/** whether the importer a run came from takes a file (what a failed run offers next) */
+		/** whether the importer a run came from takes a file (only those offer a next step for now) */
 		isFile?: (run: ImportRun) => boolean;
 		showAll?: boolean;
 		currency: string;
@@ -119,7 +119,7 @@
 					</div>
 					{#if open}
 						<div class="pb-3 pl-6">
-							<RunSummary {run} {currency} {locale} fileImporter={isFile(run)} />
+							<RunSummary {run} {currency} {locale} />
 						</div>
 					{/if}
 				</li>

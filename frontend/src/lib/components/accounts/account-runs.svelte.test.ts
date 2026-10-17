@@ -101,6 +101,20 @@ describe('AccountRuns', () => {
 		expect(within(li(2)).queryByRole('link', { name: 'Upload file' })).toBeNull();
 	});
 
+	it('offers no next step on a failed run of a fetch importer', () => {
+		runs({
+			runs: [
+				run({ id: 2, status: 'failed', retryable: true, error_text: 'SourceUnavailable: down' }),
+				run({ id: 3, status: 'failed', retryable: false, error_text: 'ParseFailed: no header' })
+			],
+			isFile: () => false
+		});
+		for (const id of [2, 3]) {
+			expect(within(li(id)).queryByRole('link')).toBeNull();
+			expect(within(li(id)).queryByText(/then upload again/)).toBeNull();
+		}
+	});
+
 	it('opens the run summary in place', async () => {
 		runs();
 		await fireEvent.click(within(li(6)).getByRole('button', { expanded: false }));

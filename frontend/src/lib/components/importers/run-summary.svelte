@@ -2,13 +2,12 @@
 	import { formatCount, formatDate, formatDateRange, formatMoney } from '#lib/format/index.js';
 	import { accountUrl } from '#lib/importers/links.js';
 	import { isDifference, statsOf, type RunSummaryInput } from '#lib/importers/run.js';
-	import RunNextStep from './run-next-step.svelte';
 
 	// The run summary (ux/views/importers.md "The run summary"; patterns §8): a report, not an alarm.
 	// It says per account what a run did and opens nothing: rows inserted, inserted as duplicates
 	// (each "of #N", a link to the row it duplicates on the account's statement, and a link to the
 	// duplicate itself), skipped by identity, what the importer left out, the balance record written,
-	// the coverage, and the unexplained difference before and after. A failed run shows its error, then what to do (`run-next-step`).
+	// the coverage, and the unexplained difference before and after. A failed run shows its error only; its next step is in the account's run row.
 	// `run` is a stored run or a dry run in the same shape (`dryRunAsRun`); for a dry run the new
 	// duplicates are not linked, since they were rolled back. `currency` is the account's: the amounts
 	// of the statistics arrive as minor units, and the server states a currency only where there is one.
@@ -16,14 +15,11 @@
 		run,
 		currency,
 		dryRun = false,
-		fileImporter = false,
 		locale = 'en'
 	}: {
 		run: RunSummaryInput;
 		currency: string;
 		dryRun?: boolean;
-		/** whether the run's importer takes a file: decides what a failed run offers next */
-		fileImporter?: boolean;
 		locale?: string;
 	} = $props();
 
@@ -60,7 +56,6 @@
 			<span class="font-medium">This run failed. Nothing was imported.</span>
 			<span class="text-muted-foreground">{run.error_text ?? 'No error was recorded.'}</span>
 		</p>
-		<div><RunNextStep {run} {fileImporter} /></div>
 	{:else if run.status === 'running'}
 		<p class="text-muted-foreground" aria-busy="true">This run has not finished.</p>
 	{:else}

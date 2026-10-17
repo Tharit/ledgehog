@@ -3,10 +3,11 @@
 	import { instanceUrl, uploadUrl } from '#lib/importers/links.js';
 	import type { ImportRun } from '#lib/accounts/runs.js';
 
-	// What follows the error of a failed run (patterns §8): a run that trying again can help (the
-	// server says so, from the error's class: no message is read here) offers to run it again, which
-	// for a file importer is "Upload file"; one that cannot says what to fix instead, with a link to
-	// the instance. Nothing for a run that is not failed, or whose instance was deleted.
+	// What follows the error of a failed run, in the account page's run row (patterns §8): a run that
+	// trying again can help (the server says so, from the error's class: no message is read here)
+	// offers "Upload file"; one that cannot says what to fix instead, with a link to the instance.
+	// File importers only for now (fetch importers get theirs with the sync view). Nothing for a run
+	// that is not failed, or whose instance was deleted.
 	let {
 		run,
 		fileImporter = false
@@ -20,22 +21,16 @@
 	const instance = $derived(run.instance_id);
 </script>
 
-{#if run.status === 'failed' && instance !== null}
+{#if run.status === 'failed' && instance !== null && fileImporter}
 	{#if run.retryable}
-		{#if fileImporter && run.account_id !== null}
+		{#if run.account_id !== null}
 			<ActionButton variant="outline" href={uploadUrl(run.account_id, instance)}
 				>Upload file</ActionButton
 			>
-		{:else}
-			<ActionButton variant="outline" href={instanceUrl(instance)}>Run again</ActionButton>
 		{/if}
 	{:else}
 		<span class="text-muted-foreground" data-slot="run-fix">
-			{#if fileImporter}
-				<a href={instanceUrl(instance)} class={link}>Fix the profile</a>, then upload again.
-			{:else}
-				<a href={instanceUrl(instance)} class={link}>Fix the importer</a>, then run it again.
-			{/if}
+			<a href={instanceUrl(instance)} class={link}>Fix the profile</a>, then upload again.
 		</span>
 	{/if}
 {/if}
