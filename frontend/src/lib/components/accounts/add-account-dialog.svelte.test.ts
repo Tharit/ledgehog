@@ -46,7 +46,7 @@ describe('the Add account dialog', () => {
 		expect(
 			within(dialog).getByText('Entered by hand. Transfers to it can be completed here.')
 		).toBeInTheDocument();
-		for (const label of ['Name', 'Kind', 'Currency'])
+		for (const label of ['Name', 'Kind', 'Currency', 'External reference'])
 			expect(within(dialog).getByLabelText(label)).toBeInTheDocument();
 		expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
 		expect(within(dialog).getByRole('button', { name: 'Add' })).toBeDisabled();
@@ -100,6 +100,58 @@ describe('the Add account dialog', () => {
 		expect(body()).toMatchObject({ name: 'Cash USD', kind: 'cash', currency: 'USD' });
 		expect(lookupsStore.lookups.accounts.get(8)?.name).toBe('Cash USD');
 		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+	});
+
+	it('sends the trimmed external reference and omits an empty one', async () => {
+		vi.mocked(api.createAccount).mockResolvedValue({
+			account: account({ id: 8 }),
+			settle: { error: null, touched_entry_ids: [] }
+		});
+		const dialog = await open();
+		const reference = within(dialog).getByLabelText('External reference');
+		expect(reference).not.toHaveAttribute('placeholder');
+
+		await fireEvent.input(within(dialog).getByLabelText('Name'), { target: { value: 'Visa' } });
+		await fireEvent.input(reference, { target: { value: '  DE02 1234  ' } });
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
+		await waitFor(() => expect(api.createAccount).toHaveBeenCalledTimes(1));
+		expect(body()).toMatchObject({ external_ref: 'DE02 1234' });
+	});
+
+	it('omits a blank external reference', async () => {
+		vi.mocked(api.createAccount).mockResolvedValue({
+			account: account({ id: 8 }),
+			settle: { error: null, touched_entry_ids: [] }
+		});
+		const dialog = await open();
+
+		await fireEvent.input(within(dialog).getByLabelText('Name'), { target: { value: 'Wallet' } });
+		await fireEvent.input(within(dialog).getByLabelText('External reference'), {
+			target: { value: '   ' }
+		});
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
+		await waitFor(() => expect(api.createAccount).toHaveBeenCalledTimes(1));
+		expect(body()).not.toHaveProperty('external_ref');
+	});
+
+	it('says a duplicate external reference under that field', async () => {
+		vi.mocked(api.createAccount).mockRejectedValue(
+			apiError(409, 'conflict', { reason: 'duplicate_external_ref' })
+		);
+		const dialog = await open();
+
+		await fireEvent.input(within(dialog).getByLabelText('Name'), { target: { value: 'Visa' } });
+		await fireEvent.input(within(dialog).getByLabelText('External reference'), {
+			target: { value: 'DE02' }
+		});
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
+
+		expect(await within(dialog).findByRole('alert')).toHaveTextContent(/already uses/);
+		expect(within(dialog).getByLabelText('External reference')).toHaveAttribute(
+			'aria-invalid',
+			'true'
+		);
+		expect(within(dialog).getByLabelText('Name')).not.toHaveAttribute('aria-invalid', 'true');
 	});
 
 	it('submits with Enter in the name field', async () => {

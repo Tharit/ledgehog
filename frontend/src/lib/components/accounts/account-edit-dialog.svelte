@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { EditAccountFlow } from '#lib/accounts/edit-flow.svelte.js';
+	import { EXTERNAL_REF_HINT, EXTERNAL_REF_LABEL } from '#lib/accounts/external-ref.js';
 	import ActionDialog, { type DialogFeedback } from '#lib/components/common/action-dialog.svelte';
 	import Field from '#lib/components/common/field.svelte';
 	import ColorChoices from '#lib/components/settings/color-choices.svelte';
@@ -63,8 +64,8 @@
 		{/snippet}
 	</Field>
 	<Field
-		label="External reference"
-		hint="Optional: the bank's own reference for this account, such as its IBAN."
+		label={EXTERNAL_REF_LABEL}
+		hint={EXTERNAL_REF_HINT}
 		error={flow.errors.externalRef ?? null}
 	>
 		{#snippet children(field)}

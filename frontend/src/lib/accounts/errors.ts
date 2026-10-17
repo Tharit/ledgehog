@@ -37,7 +37,8 @@ export function classifyAccountError(error: unknown): AccountFailure {
 }
 
 /** Where the message stands: under the field it came from, or in the dialog's feedback slot. */
-export function failureField(failure: AccountFailure): 'name' | 'currency' | null {
+export function failureField(failure: AccountFailure): 'name' | 'currency' | 'externalRef' | null {
+	if (failure.kind === 'duplicate_external_ref') return 'externalRef';
 	if (failure.kind === 'validation') return 'name';
 	if (failure.kind === 'unknown_currency') return 'currency';
 	return null;

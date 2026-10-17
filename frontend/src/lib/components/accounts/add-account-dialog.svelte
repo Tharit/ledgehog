@@ -5,6 +5,7 @@
 	import Field from '#lib/components/common/field.svelte';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import { AddAccountFlow } from '#lib/accounts/add-flow.svelte.js';
+	import { EXTERNAL_REF_HINT, EXTERNAL_REF_LABEL } from '#lib/accounts/external-ref.js';
 	import { accounts } from '#lib/accounts/controller.svelte.js';
 	import { ACCOUNT_KINDS } from '#lib/accounts/kinds.js';
 	import { lookupsStore } from '#lib/stores/lookups.svelte.js';
@@ -96,6 +97,15 @@
 					onchange={(next) => (flow.currency = next)}
 				/>
 			{/if}
+		{/snippet}
+	</Field>
+	<Field
+		label={EXTERNAL_REF_LABEL}
+		hint={EXTERNAL_REF_HINT}
+		error={flow.errors.externalRef ?? null}
+	>
+		{#snippet children(field)}
+			<Input bind:value={flow.externalRef} {...field} readonly={flow.busy} autocomplete="off" />
 		{/snippet}
 	</Field>
 </ActionDialog>

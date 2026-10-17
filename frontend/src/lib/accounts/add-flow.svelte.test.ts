@@ -100,6 +100,38 @@ describe('AddAccountFlow.submit', () => {
 		expect(flow.busy).toBe(false);
 	});
 
+	it('sends the trimmed external reference and omits a blank one', async () => {
+		vi.mocked(createAccount).mockResolvedValue(written());
+		const flow = new AddAccountFlow();
+		flow.start({ currency: 'USD' });
+		flow.name = 'Visa';
+		flow.externalRef = '  DE02 1234 ';
+
+		await flow.submit();
+		expect(createAccount).toHaveBeenLastCalledWith(
+			expect.objectContaining({ external_ref: 'DE02 1234' })
+		);
+
+		flow.externalRef = '  ';
+		await flow.submit();
+		expect(vi.mocked(createAccount).mock.lastCall![0]).not.toHaveProperty('external_ref');
+	});
+
+	it('says a duplicate external reference under that field', async () => {
+		vi.mocked(createAccount).mockRejectedValue(
+			new ApiError(409, 'conflict', 'x', { reason: 'duplicate_external_ref' })
+		);
+		const flow = new AddAccountFlow();
+		flow.start();
+		flow.name = 'a';
+		flow.externalRef = 'DE02';
+
+		expect(await flow.submit()).toBeNull();
+
+		expect(flow.errors.externalRef).toBeTruthy();
+		expect(flow.failure).toBeNull();
+	});
+
 	it('adds the account to the shared lookups', async () => {
 		vi.mocked(createAccount).mockResolvedValue(written());
 		const flow = new AddAccountFlow();

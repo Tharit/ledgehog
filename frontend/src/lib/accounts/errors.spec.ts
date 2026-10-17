@@ -25,7 +25,7 @@ describe('where and how a failure is said', () => {
 		expect(failureField({ kind: 'validation' })).toBe('name');
 		expect(failureField({ kind: 'unknown_currency' })).toBe('currency');
 		expect(failureField({ kind: 'network' })).toBeNull();
-		expect(failureField({ kind: 'duplicate_external_ref' })).toBeNull();
+		expect(failureField({ kind: 'duplicate_external_ref' })).toBe('externalRef');
 	});
 
 	it('says something for every kind', () => {

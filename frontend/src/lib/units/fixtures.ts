@@ -68,8 +68,8 @@ export function queue(
 }
 
 /** An error answer, for tests of components (which never import the API themselves). */
-export function apiError(status: number, code: string): ApiError {
-	return new ApiError(status, code, 'x');
+export function apiError(status: number, code: string, details: unknown = null): ApiError {
+	return new ApiError(status, code, 'x', details);
 }
 
 /** One derived field of a preview row; a proposal when its key is a proposal pass. */

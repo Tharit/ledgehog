@@ -65,8 +65,8 @@ export class EditAccountFlow {
 		} catch (error) {
 			const failure = classifyAccountError(error);
 			const text = describeAccountFailure(failure);
-			if (failure.kind === 'duplicate_external_ref') this.errors = { externalRef: text };
-			else if (failureField(failure) === 'name') this.errors = { name: text };
+			const field = failureField(failure);
+			if (field === 'name' || field === 'externalRef') this.errors = { [field]: text };
 			else this.failure = text.replace('could not be added', 'could not be saved');
 			return null;
 		} finally {

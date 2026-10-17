@@ -10,7 +10,7 @@ import type { AddAccountOptions } from './controller.svelte.js';
 import { classifyAccountError, describeAccountFailure, failureField } from './errors.js';
 import { DEFAULT_KIND } from './kinds.js';
 
-export type AddAccountErrors = { name?: string; currency?: string };
+export type AddAccountErrors = { name?: string; currency?: string; externalRef?: string };
 
 /** The currencies to choose from: the base currency first, then the accounts', each once. */
 export function knownCurrencies(base: string | undefined, accounts: Iterable<Account>): string[] {
@@ -26,6 +26,7 @@ export class AddAccountFlow {
 	currency = $state('');
 	/** the currency was given and cannot be changed */
 	locked = $state(false);
+	externalRef = $state('');
 	errors = $state.raw<AddAccountErrors>({});
 	/** a refusal that belongs to no field: shown in the dialog above its buttons */
 	failure = $state<string | null>(null);
@@ -38,6 +39,7 @@ export class AddAccountFlow {
 	/** Reset for a fresh dialog: nothing of an earlier one survives (patterns §11.2). */
 	start(options: AddAccountOptions = {}): void {
 		this.name = '';
+		this.externalRef = '';
 		this.kind = options.kind ?? DEFAULT_KIND;
 		this.locked = options.currency !== undefined;
 		this.currency = options.currency ?? session.config?.base_currency ?? this.currencies[0] ?? '';
@@ -59,10 +61,12 @@ export class AddAccountFlow {
 		this.failure = null;
 		try {
 			const known = [...lookupsStore.lookups.accounts.values()];
+			const externalRef = this.externalRef.trim();
 			const out = await createAccount({
 				name,
 				kind: this.kind,
 				currency: this.currency,
+				...(externalRef !== '' ? { external_ref: externalRef } : {}),
 				// after the accounts held, so a new one does not jump to the top of the list
 				sort_order: known.reduce((top, a) => Math.max(top, a.sort_order), -1) + 1
 			});
