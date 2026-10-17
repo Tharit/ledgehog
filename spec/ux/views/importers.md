@@ -21,8 +21,9 @@ Titled "Importers", with the primary action "Add importer". A row shows the
 instance's label, its importer, the accounts it is linked to — each a link to
 the account's page — when it last ran ("never run" for none, relative with the
 absolute instant in a tooltip, `ux/patterns.md` §3) and "disabled" when it is.
-Which user's login an instance is, for one that holds a login, is shown too
-(`spec.md` §5.11). A row opens its page (below). It follows the settings-row
+For an instance that holds a login (FinTS, a later wave), whose login it is
+and whether the other user may run it are shown too (`spec.md` §5.11); a file
+importer holds none and is always shared. A row opens its page (below). It follows the settings-row
 rule (`ux/patterns.md` §11.3): two icon actions, "Edit" and "Link account", and
 one `⋯` menu holding "Disable" or "Enable", "Reset…" and, last in the
 destructive style, "Delete…".
@@ -79,7 +80,8 @@ account's coverage stays as history and that rows it holds stay.
 ## The CSV profile form
 
 The CSV importer's settings are a profile (`plugins/importers/csv.md` §1): the
-form is the add and edit page above, in groups that follow the profile —
+form is the add and edit page above, in groups that follow the profile
+(`plugins/importers/csv.md` §2–§6) —
 *Reading the file* (encoding, delimiter, quote, the header marker), *Columns*
 (booking date and its format, value date, the amount as one signed column or a
 credit and a debit column, the separators, the counterparty fields, purpose as
@@ -94,13 +96,20 @@ so, since no field carries an example value as a placeholder.
 **Presets** (`plugins/importers/csv.md` §8) are chosen from a select at the top
 of the add page, "Start from a preset", which comes from the catalog's entry for
 the importer. Choosing one fills the form as a draft edit: nothing is saved
-until "Save importer", and Cancel discards it. It is offered on add only. The
-form cannot judge a profile: the dry run of an upload does (*Uploading a file*
-below), which needs an account and a file.
+until "Save importer", and Cancel discards it. It is offered on add only.
+
+**A profile is judged by a dry run, not by the form.** The dry run needs a
+file and an account — the account's currency, coverage and rows decide what a
+run would do — so it lives on the upload page (*Uploading a file*, below), and
+setting up a new format is: add the profile, link the account, upload with the
+dry run, adjust the profile and check again until the report is right. After
+saving a new instance, its page offers "Link account" at once, so the
+sequence reads as one path. No second dry-run mechanism is added for unsaved
+settings.
 
 ## Uploading a file
 
-Started from the account page, with "Upload" on a linked source: the page
+Started from the account page, with "Upload file" on a linked source: the page
 `/accounts/[id]/upload?instance=`, a page because it holds a preview and a table
 (`ux/patterns.md` §11.1). Titled "Upload a file", described as the account and
 the instance. One page, three steps:
@@ -129,9 +138,13 @@ the instance. One page, three steps:
 
    A failure the real run would end in — an unreadable file, a header or label
    not found, a currency that differs from the account's — takes the place of
-   the counts and says which setting to look at, with the profile's page
-   opening in a new tab; the page and the file stay. The commit is disabled with
+   the counts and says which setting to look at. The commit is disabled with
    that as its reason (`ux/patterns.md` §6).
+
+   "Edit profile" opens the instance's page in a new tab, and "Check again"
+   reruns the dry run on the same file with the profile as now saved: the
+   page keeps the file, so adjusting a profile never means choosing it
+   again.
 3. **Commit.** "Upload" runs the real operation with the same file. The page
    becomes the run summary (below) with "Back to the account".
 
@@ -146,7 +159,8 @@ list, and later at the end of a sync (`architecture.md` §6.4). It is a report,
 not an alarm (`ux/patterns.md` §8): it opens no dialog and colours nothing red.
 Per account it says how many rows were inserted; how many were inserted as
 duplicates, each "of #N" with a link to the row it duplicates on the account's
-statement, and a link to the duplicate itself; how many were skipped by identity;
+statement (`?source=`, `ux/views/account.md`), and a link to the duplicate
+itself; how many were skipped by identity;
 what the importer left out (zero bookings it dropped, a statement payment it
 did not emit); the balance record the run wrote, with its kind and date; the
 coverage; and the unexplained difference before and after, which where it is

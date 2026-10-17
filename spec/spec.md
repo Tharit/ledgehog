@@ -1422,8 +1422,8 @@ two ways:
 
 - **At import** (§5.2) — the routine case, and the only automatic one. Ingest
   marks only rows it is inserting, which have no entries yet.
-- **By hand, from the account's statement of source transactions**, for a
-  duplicate deduplication did not catch:
+- **By hand, from the account's statement** (its source transactions,
+  `ux/views/account.md`), for a duplicate deduplication did not catch:
   *mark as duplicate of* another row on the same account, by default the
   newer of the two. The marked row's entries are deleted and the removal
   routine applies; the preview shows what each direction would remove (§6),

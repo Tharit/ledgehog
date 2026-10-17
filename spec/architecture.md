@@ -201,12 +201,13 @@ exhaustive, and deliberately without field detail:
 GET    /api/ledger/entries                     filtered, paged list
 GET    /api/ledger/entries/{id}                one entry, in the row shape of
                                                the list (200; 404 when missing)
-GET    /api/ledger/entries/{id}/source         provenance: the source transaction
-GET    /api/ledger/sources/{id}                the same read by source transaction
-                                               id, for a row that has no entry
-                                               (a duplicate): the normalised
-                                               columns, `raw`, the run, and
-                                               `duplicate_of`
+GET    /api/ledger/sources/{id}                provenance: one source transaction
+                                               — the normalised columns, `raw`,
+                                               the run it arrived in and
+                                               `duplicate_of` — by its id, which
+                                               every entry row and statement row
+                                               carries; a duplicate, which has
+                                               no entry, is read the same way
 
   user-authored source transactions — the entry form (spec §3.9, §5.6), on
   unsynced accounts only
@@ -745,17 +746,19 @@ a balance record stands above the rows of its own date, because it is the state
 at the end of its day, and records of one date are by id, descending. The order
 is total. `limit` (1 to 500, default 100) and `offset` page it, and the answer
 is `items`, `total` (every item the account has, whatever the page), `limit` and
-`offset`. `amount` (signed minor units) keeps only the source transactions of
-that amount, no record, for the picker of "mark as duplicate"; it changes no
-balance, which is always computed over the whole account.
+`offset`. `amount` (signed minor units) keeps only the imported source
+transactions of that amount that are not duplicates, and no record: the picker
+of "mark as duplicate of…". It changes no balance, which is always computed
+over the whole account.
 
 **Items** are of two kinds, told apart by `kind`:
 
 - `source` — the source transaction's id, `booked_on`, `value_on`, `amount`
   (§4.5), counterparty name, purpose, `authored` (entered by hand),
-  `duplicate_of` (the id of the row it duplicates, else null), `entry_id` (its
-  original entry, for the `?unit=` link to the review page; null for a
-  duplicate), `run_id` (null for an authored row) and `balance`, the running
+  `duplicate_of` (the row it duplicates — its id, `booked_on` and amount, so
+  the row can name it — else null),
+  `entry_id` (the lowest id among its entries, which opens its unit in the
+  review panel; null for a duplicate), `run_id` (null for an authored row) and `balance`, the running
   balance after it, null for a duplicate. It never carries `raw`: provenance is
   `GET /api/ledger/sources/{id}`.
 - `record` — the record's id, `balance_on`, `record_kind` (`reported` or
@@ -829,8 +832,10 @@ package data, `plugins/importers/csv.md` §8) and empty otherwise. Presets ride
 on the catalog entry rather than a route of their own: they exist only to fill
 the form of that importer, and the catalog is read when the form opens. The
 settings form itself belongs to the client, one component per importer
-(`ux/views/importers.md`); creating an instance takes its `emits` and access
-from the catalog's entry, never from the client.
+(`ux/views/importers.md`). Creating an instance takes its `emits` from the
+catalog's entry, never from the client; an instance of a file importer holds
+no credential and is always `shared` (`spec.md` §5.11), while one that holds a
+login is created with its owner and the access the user states.
 
 #### Operations return everything they touched
 
