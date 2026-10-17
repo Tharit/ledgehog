@@ -21,6 +21,7 @@
 		view,
 		runs,
 		detail,
+		detailOpen,
 		dialogs,
 		timeZone = 'UTC',
 		onclosedetail,
@@ -32,6 +33,8 @@
 		view: AccountPageStore;
 		runs: AccountRunsStore;
 		detail: RowDetail;
+		/** the address names a row: the one thing that says whether the detail is open */
+		detailOpen: boolean;
 		dialogs: AccountDialogs;
 		timeZone?: string;
 		/** the detail was closed by the user: back to where the page was */
@@ -65,19 +68,21 @@
 		unitPanel.open(entryId);
 	}
 
-	async function marked(result: MarkResult) {
-		dialogs.close();
+	// A marking replaced the detail with its decision; once done the detail does not come back: the
+	// address is left first, so nothing shows between the two dialogs.
+	async function marked(result: MarkResult, original: string) {
 		onleavedetail();
+		dialogs.close();
 		await view.afterWrite();
 		const returned = result.out.partners.length;
 		view.notify(
-			`Marked as a duplicate.${returned > 0 ? ` ${returned} ${returned === 1 ? 'entry' : 'entries'} returned to review.` : ''}`
+			`Marked as a duplicate of ${original}.${returned > 0 ? ` ${returned} ${returned === 1 ? 'entry' : 'entries'} returned to review.` : ''}`
 		);
 	}
 </script>
 
 <RowDetailDialog
-	open={detail.id !== null && !dialogs.is('mark')}
+	open={detailOpen && !dialogs.is('mark')}
 	status={detail.status}
 	provenance={detail.provenance}
 	locale={view.locale}
@@ -107,6 +112,7 @@
 	row={detail.provenance}
 	locale={view.locale}
 	onclose={() => dialogs.close()}
+	{onclosefocus}
 	onmarked={marked}
 />
 

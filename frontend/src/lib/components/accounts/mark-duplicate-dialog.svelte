@@ -22,6 +22,7 @@
 		flow = new DuplicateFlow(),
 		locale = 'en',
 		onclose,
+		onclosefocus,
 		onmarked
 	}: {
 		open: boolean;
@@ -30,8 +31,10 @@
 		flow?: DuplicateFlow;
 		locale?: string;
 		onclose: () => void;
-		/** the row marked, the row it duplicates, and what the call touched */
-		onmarked: (result: MarkResult) => void;
+		/** focus returns to the page's list without scrolling it into view */
+		onclosefocus?: (event: Event) => void;
+		/** the row marked, the row it duplicates, what the call touched, and the original as words */
+		onmarked: (result: MarkResult, original: string) => void;
 	} = $props();
 
 	$effect(() => {
@@ -44,8 +47,11 @@
 	});
 
 	async function confirm() {
+		const original = flow.direction === 'this' ? flow.picked : row;
 		const result = await flow.confirm();
-		if (result) onmarked(result);
+		if (result && original) {
+			onmarked(result, `${formatDate(original.booked_on, locale)} · ${money(original.amount)}`);
+		}
 	}
 
 	const money = (m: { amount: number; currency: string }) =>
@@ -94,6 +100,7 @@
 	disabled={!flow.canConfirm}
 	onsubmit={confirm}
 	{feedback}
+	oncloseautofocus={onclosefocus}
 	width="lg"
 >
 	{#if flow.candidatesStatus === 'loading'}

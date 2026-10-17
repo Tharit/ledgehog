@@ -63,9 +63,20 @@
 		const id = address.id;
 		untrack(() => void detail.show(id));
 	});
-	const openDetail = (id: number) => address.open(id);
-	const closeDetail = () => address.close();
-	const leaveDetail = () => address.leave();
+	// the detail follows the address at once on our own changes (the effect above covers Back,
+	// Forward and links), so the dialog and the address can never disagree for a moment
+	function openDetail(id: number) {
+		address.open(id);
+		void detail.show(id);
+	}
+	function closeDetail() {
+		address.close();
+		void detail.show(null);
+	}
+	function leaveDetail() {
+		address.leave();
+		void detail.show(null);
+	}
 
 	// the entry form writes rows of this account: the statement follows
 	$effect(() =>
@@ -198,6 +209,7 @@
 		{view}
 		{runs}
 		{detail}
+		detailOpen={address.id !== null}
 		{dialogs}
 		timeZone={session.config?.timezone ?? 'UTC'}
 		onclosedetail={closeDetail}
