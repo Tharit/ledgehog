@@ -13,7 +13,7 @@ from collections.abc import Mapping
 from datetime import date, datetime
 from email.message import Message
 from email.parser import BytesHeaderParser
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict, Field
@@ -27,6 +27,7 @@ from app.api.openapi import ErrorEnvelope
 from app.api.session import CurrentUser, EngineDep
 from app.core.accounts import AccountMissing
 from app.core.domain.errors import ContractViolation
+from app.core.importers import catalog as cat
 from app.core.importers import instances as inst
 from app.core.importers import upload as up
 from app.core.importers.instances import InstanceView
@@ -156,6 +157,30 @@ def importer_for(request: Request, name: str) -> FileImporter:
     return found
 
 
+# ---- the catalog ---------------------------------------------------------------------------
+
+
+class CatalogEntryOut(BaseModel):
+    name: str
+    kind: Literal["file", "fetch"]
+    emits: list[Literal["transactions", "documents", "rates"]]
+    presets: dict[str, dict[str, Any]]  # preset name -> the settings it fills; empty for most importers
+
+
+@router.get("")
+def list_catalog(request: Request, user: CurrentUser) -> list[CatalogEntryOut]:
+    """The importers this deployment registers: what a new instance can be made from."""
+    return [
+        CatalogEntryOut(
+            name=e.name,
+            kind=e.kind,
+            emits=list(e.emits),  # type: ignore[arg-type]
+            presets={k: dict(v) for k, v in e.presets.items()},
+        )
+        for e in cat.catalog(request.app.state.importers)
+    ]
+
+
 # ---- instances -----------------------------------------------------------------------------
 
 
@@ -167,6 +192,8 @@ class CreateInstance(_Body):
     importer: str = Field(min_length=1)
     label: str
     settings: dict[str, Any]
+    # a fetch importer holds a login: owned by the creator, or shared; a file importer takes none
+    access: Literal["owner", "shared"] | None = None
 
 
 class UpdateInstance(_Body):
@@ -192,15 +219,21 @@ def list_instances(user: CurrentUser, engine: EngineDep) -> list[Any]:
 @router.post("/instances", status_code=201)
 def create_instance(body: CreateInstance, request: Request, user: CurrentUser, engine: EngineDep) -> Any:
     importer = importer_for(request, body.importer)
-    # a file importer: it emits transactions, and its profile is shared by the household
+    entry = cat.describe(body.importer, importer)  # what it emits is the catalog's to say, not the client's
+    if entry.kind == "file":  # no credential: its profile is shared by the household
+        if body.access is not None:
+            raise _invalid("access", "a file importer holds no login: it is always shared", "extra_forbidden")
+        access = "shared"
+    else:
+        access = body.access or "owner"
     new_id = inst.create_instance(
         engine,
         importer=body.importer,
         label=body.label,
         settings=body.settings,
-        emits=["transactions"],
-        access="shared",
-        owner_id=None,
+        emits=list(entry.emits),
+        access=access,
+        owner_id=user.id if access == "owner" else None,
         validate=importer.validate_settings,
     )
     return to_json(_view(engine, new_id))

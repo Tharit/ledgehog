@@ -31,6 +31,13 @@ def _collapse(text: str) -> str:
 
 
 class CsvImporter:
+    @property
+    def presets(self) -> dict[str, dict[str, Any]]:
+        """The shipped presets by name, for the catalog (csv.md §8)."""
+        from app.plugins.importers.csv.presets import load_presets  # the presets package imports this one
+
+        return load_presets()
+
     def validate_settings(self, settings: Mapping[str, Any]) -> None:
         Profile.from_dict(settings).validate()
 

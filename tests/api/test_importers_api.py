@@ -21,6 +21,7 @@ make_api = h.make_api
 PROFILE = load_presets()["giro_with_preamble"]
 
 ROUTES = [
+    ("GET", "/api/importers"),
     ("GET", BASE),
     ("POST", BASE),
     ("PUT", f"{BASE}/1"),
@@ -336,3 +337,53 @@ def test_unlink_returns_the_settle_result(api: Api, monkeypatch):
     assert calls == [1]
     assert api.client.get(BASE).json()[0]["accounts"] == []
     error_of(api.client.delete(f"{BASE}/{inst}/links/{acct}"), 404, "not_found")
+
+
+# ---- the catalog ---------------------------------------------------------------------------
+
+
+class _DocStub:
+    """A document importer: fetches, emits documents, ships no presets."""
+
+    providers = frozenset({"paypal"})
+
+    def validate_settings(self, settings) -> None:
+        return None
+
+    def fetch(self, settings, *, since, today):
+        raise NotImplementedError
+
+
+def test_the_catalog_lists_the_registered_importers_with_kind_emits_and_presets(make_api):
+    api = make_api({"csv": SpyCsv(), "docs": _DocStub(), "bank": _FetchStub()})
+    r = api.client.get("/api/importers")
+    assert r.status_code == 200
+    by_name = {e["name"]: e for e in r.json()}
+    assert list(by_name) == ["bank", "csv", "docs"]  # by name
+    csv = by_name["csv"]
+    assert (csv["kind"], csv["emits"]) == ("file", ["transactions"])
+    assert csv["presets"] == load_presets()  # the package data, as shipped
+    assert (by_name["docs"]["kind"], by_name["docs"]["emits"], by_name["docs"]["presets"]) == (
+        "fetch",
+        ["documents"],
+        {},
+    )
+    assert (by_name["bank"]["kind"], by_name["bank"]["emits"]) == ("fetch", ["transactions"])
+
+
+def test_a_new_instance_takes_its_emits_from_the_catalog(make_api):
+    api = make_api({"csv": SpyCsv(), "docs": _DocStub()})
+    csv = api.client.post(BASE, json={"importer": "csv", "label": "Giro", "settings": PROFILE})
+    assert (csv.json()["emits"], csv.json()["access"], csv.json()["owner_id"]) == (
+        ["transactions"],
+        "shared",
+        None,
+    )
+    docs = api.client.post(BASE, json={"importer": "docs", "label": "PayPal", "settings": {}})
+    assert docs.status_code == 201, docs.text
+    assert (docs.json()["emits"], docs.json()["access"]) == (["documents"], "owner")
+    assert docs.json()["owner_id"] is not None  # the creator
+    shared = api.client.post(
+        BASE, json={"importer": "docs", "label": "Shared", "settings": {}, "access": "shared"}
+    )
+    assert (shared.json()["access"], shared.json()["owner_id"]) == ("shared", None)
