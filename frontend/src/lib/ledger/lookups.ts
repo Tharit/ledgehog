@@ -54,3 +54,8 @@ export function withPayees(lookups: Lookups, payees: readonly Payee[]): Lookups 
 export function withAccount(lookups: Lookups, account: Account): Lookups {
 	return { ...lookups, accounts: new Map([...lookups.accounts, [account.id, account]]) };
 }
+
+/** The lookups with the account list replaced by a fresh one (its facts moved), the rest untouched. */
+export function withAccounts(lookups: Lookups, accounts: readonly Account[]): Lookups {
+	return { ...lookups, accounts: byId(accounts) };
+}

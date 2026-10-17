@@ -1,7 +1,8 @@
 // The ledger list's keyboard model (patterns §5), as pure functions so it can be tested without
 // a DOM. The cursor is the selection; there is no multi-select.
 
-export type LedgerKey = 'up' | 'down' | 'open' | 'escape' | 'search' | 'help' | 'tag';
+export type LedgerKey =
+	'up' | 'down' | 'open' | 'escape' | 'search' | 'help' | 'tag' | 'provenance';
 
 type KeyEventLike = {
 	key: string;
@@ -45,6 +46,8 @@ export function ledgerKey(event: KeyEventLike): LedgerKey | null {
 			return 'help';
 		case 't':
 			return 'tag';
+		case 'p':
+			return 'provenance';
 		default:
 			return null;
 	}

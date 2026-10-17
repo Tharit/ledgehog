@@ -14,6 +14,8 @@ import { describeEntry } from './effects.js';
 export type EntryFormListener = {
 	/** a transaction was entered (also by "Add and add another") */
 	created?(out: SourceWriteOut): void | Promise<void>;
+	/** a transaction was entered, edited or deleted: a page that shows source rows follows (the account statement) */
+	changed?(): void | Promise<void>;
 	/** a quiet line for the page's notice slot (patterns §11.5) */
 	notify?(text: string, error?: boolean): void;
 };
@@ -100,13 +102,17 @@ export class EntryFormController {
 
 	/** A transaction was entered. `open`: the work panel opens on its unit (Add, not "Add and add another"). */
 	created(out: SourceWriteOut, open: boolean): void {
-		for (const listener of this.#listeners) void listener.created?.(out);
+		for (const listener of this.#listeners) {
+			void listener.created?.(out);
+			void listener.changed?.();
+		}
 		if (out.settle.error) this.notify(`Added. ${SETTLE_STALE}`);
 		if (open && out.anchor_entry_id !== null) unitPanel.open(out.anchor_entry_id, this.opener);
 	}
 
 	/** An edit was saved: the rows held follow the answer, and the open unit is loaded again. */
 	edited(out: SourceEditOut): void {
+		for (const listener of this.#listeners) void listener.changed?.();
 		activeUnitSource()?.patch({
 			entries: out.entries,
 			removed_entry_ids: out.removed_entry_ids,
@@ -126,6 +132,7 @@ export class EntryFormController {
 	 * steps to the neighbour unit or closes when it showed the deleted one.
 	 */
 	deleted(out: SourceDeleteOut, entry: Entry): void {
+		for (const listener of this.#listeners) void listener.changed?.();
 		const source = activeUnitSource();
 		source?.patch({
 			entries: out.partners,

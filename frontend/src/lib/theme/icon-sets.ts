@@ -21,3 +21,9 @@ export const PAYEE_ICONS: readonly string[] = [
 	'landmark', 'shield', 'film', 'music', 'gamepad-2', 'book-open', 'package', 'truck', 'gift',
 	'paw-print', 'scissors', 'wrench', 'dumbbell', 'graduation-cap', 'user', 'users'
 ];
+
+// prettier-ignore
+export const ACCOUNT_ICONS: readonly string[] = [
+	'landmark', 'piggy-bank', 'credit-card', 'wallet', 'wallet-cards', 'banknote', 'hand-coins',
+	'chart-line', 'trending-up', 'gem', 'house', 'briefcase', 'shield', 'building-2'
+];

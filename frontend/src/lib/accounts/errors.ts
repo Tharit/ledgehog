@@ -59,3 +59,113 @@ export function describeAccountFailure(failure: AccountFailure): string {
 			return 'The account could not be added. Try again in a moment.';
 	}
 }
+
+/** A refused write from the account page, routed by `code` and `details.reason` (patterns §8). */
+export type WriteFailure = {
+	/** `error`: nothing was written. `conflict`: the world moved; ask again. */
+	kind: 'error' | 'conflict';
+	text: string;
+	/** `details.reason` of a 409, for the caller that tells reasons apart */
+	reason?: string;
+	/** what an account holds (`account_not_empty`), by name */
+	held?: Readonly<Record<string, number>>;
+	retryable: boolean;
+};
+
+function heldOf(details: unknown): Record<string, number> | undefined {
+	const held =
+		details !== null && typeof details === 'object' && !Array.isArray(details)
+			? (details as Record<string, unknown>).held
+			: undefined;
+	if (held === null || typeof held !== 'object' || Array.isArray(held)) return undefined;
+	return Object.fromEntries(
+		Object.entries(held).filter((entry): entry is [string, number] => typeof entry[1] === 'number')
+	);
+}
+
+const REASONS: Record<string, string> = {
+	duplicate_external_ref: 'Another account already uses this bank reference.',
+	record_date_taken: 'Another balance record already holds this date.',
+	reported_record_not_editable: 'A reported balance cannot be edited. Delete it instead.',
+	already_duplicate: 'This row is already marked as a duplicate.',
+	duplicate_chain: 'The other row is itself a duplicate: pick its original instead.',
+	not_a_duplicate: 'This row is not marked as a duplicate.',
+	not_revertible: 'Only the latest successful run of an account can be reverted.'
+};
+
+export function classifyWriteError(error: unknown): WriteFailure {
+	if (!(error instanceof ApiError) || error.code === 'network_error') {
+		return {
+			kind: 'error',
+			text: 'The server could not be reached. Check the connection and try again.',
+			retryable: true
+		};
+	}
+	switch (error.code) {
+		case 'unauthenticated':
+			return { kind: 'error', text: 'Your session has ended. Sign in again.', retryable: false };
+		case 'not_found':
+			return {
+				kind: 'error',
+				text: 'This no longer exists. Reload the page to see what is there now.',
+				retryable: false
+			};
+		case 'try_again':
+			return {
+				kind: 'error',
+				text: 'The server was busy and did not write this. Try again.',
+				retryable: true
+			};
+		case 'conflict': {
+			const reason = reasonOf(error.details);
+			if (reason === 'account_not_empty') {
+				const held = heldOf(error.details);
+				const what = held
+					? Object.entries(held)
+							.map(([name, n]) => `${n} ${name}`)
+							.join(', ')
+					: 'data';
+				return {
+					kind: 'error',
+					reason: 'account_not_empty',
+					held,
+					text: `This account holds ${what}, so it cannot be deleted. Closing it keeps its history.`,
+					retryable: false
+				};
+			}
+			const known = typeof reason === 'string' ? REASONS[reason] : undefined;
+			return {
+				kind: 'conflict',
+				reason: typeof reason === 'string' ? reason : undefined,
+				text: known ?? 'Something changed since this was opened. What follows is checked again.',
+				retryable: false
+			};
+		}
+		case 'not_revertible':
+		case 'not_latest_run':
+			return {
+				kind: 'conflict',
+				reason: 'not_revertible',
+				text: REASONS.not_revertible,
+				retryable: false
+			};
+		case 'invalid_duplicate':
+			return {
+				kind: 'error',
+				text: 'These two rows cannot stand in this relation.',
+				retryable: false
+			};
+		case 'validation_error':
+			return {
+				kind: 'error',
+				text: 'The server did not accept these values. Check them and try again.',
+				retryable: false
+			};
+		default:
+			return {
+				kind: 'error',
+				text: 'The server could not do this. Try again in a moment.',
+				retryable: true
+			};
+	}
+}

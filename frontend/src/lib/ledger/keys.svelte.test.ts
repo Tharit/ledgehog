@@ -12,6 +12,7 @@ describe('ledgerKey', () => {
 		expect(ledgerKey({ key: '/' })).toBe('search');
 		expect(ledgerKey({ key: '?' })).toBe('help');
 		expect(ledgerKey({ key: 't' })).toBe('tag');
+		expect(ledgerKey({ key: 'p' })).toBe('provenance');
 	});
 
 	it('ignores other keys', () => {

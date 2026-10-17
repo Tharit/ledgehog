@@ -8,6 +8,7 @@ import {
 	buildLookups,
 	emptyLookups,
 	withAccount,
+	withAccounts,
 	withCategories,
 	withPayees,
 	withTag,
@@ -74,6 +75,11 @@ export class LookupsStore {
 	/** An account added here joins the list (the pickers and the rows see it at once). */
 	addAccount(account: Account): void {
 		this.lookups = withAccount(this.lookups, account);
+	}
+
+	/** The accounts were fetched afresh (their facts move with every write): they replace the list held. */
+	setAccounts(accounts: readonly Account[]): void {
+		this.lookups = withAccounts(this.lookups, accounts);
 	}
 
 	/** A tag created here joins the list. */
