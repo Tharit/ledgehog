@@ -33,10 +33,15 @@ class LinkedDocument:
 
 
 def with_document(
-    entry: EntryInput, document: LinkedDocument | None, *, line_no: int | None = None
+    entry: EntryInput,
+    document: LinkedDocument | None,
+    *,
+    line_no: int | None = None,
+    link_pass: str | None = None,
 ) -> EntryInput:
     """`entry` as resolution reads it with `document` linked: the source fields as they are, plus the
-    document's merchant name and the description of the entry's own line `line_no` (None: no line)."""
+    document's merchant name and the description of the entry's own line `line_no` (None: no line);
+    `link_pass` is the pass of the link's key, the key of the type the document decides."""
     if document is None:
         return entry
     merchant = document.merchant_name if document.merchant_name and document.merchant_name.strip() else None
@@ -45,4 +50,5 @@ def with_document(
         documented=True,
         document_merchant=merchant,
         document_line=document.description_of(line_no),
+        document_pass=link_pass,
     )

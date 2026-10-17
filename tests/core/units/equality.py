@@ -85,7 +85,7 @@ def preview_then_commit(scene: Scene, draft: UnitDraft) -> tuple[Plan, CommitRes
             "document_id": row.document_id,
             "document_line": lines.get(created_or_id(result.created, temp_or_id)),
         }
-        assert actual == expected, f"entry {temp_or_id}"
+        assert actual == expected, f"entry {temp_or_id}: {actual} != {expected}"
     previewed_consequences = sorted(
         (result.created.get(c.entry_id, c.entry_id), c.kind) for c in plan.consequences
     )

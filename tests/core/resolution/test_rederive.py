@@ -114,3 +114,33 @@ def test_a_user_none_payee_is_kept_while_earlier_fields_change_and_never_propose
     r = go(current, [s])
     assert r["payee"] == USER_NO_PAYEE
     assert r["category"].value == 9
+
+
+# ---- a document decides the type first, with the link's key (spec §5.9 field order) -----------------
+
+
+def test_a_rule_keyed_flow_that_gets_a_document_becomes_document_decided_and_the_rest_is_derived_again() -> (
+    None
+):
+    current = {"type": dec("flow", "rule"), "payee": dec(7, "rule"), "category": dec(1, "rule")}
+    e = entry(documented=True, document_pass="matcher_decision")
+    s = Script("rule", {"payee": 7, "category": 2})
+    r = rederive(e, current, accounts=ACCOUNTS, classifiers=[s], reopen=True)
+    assert r["type"] == Decided("flow", "matcher_decision", {})
+    assert r["category"].value == 2  # re-derived: the link is new input
+
+
+def test_a_stored_transfer_proposal_never_survives_a_document() -> None:
+    current = {"type": dec("transfer", "history"), "counter_account": dec(2, "history")}
+    s = Script("history", {"type": "transfer", "counter_account": 2})
+    r = rederive(entry(documented=True), current, accounts=ACCOUNTS, classifiers=[s])
+    assert r["type"] == Decided("flow", "user", {}) and "counter_account" not in r
+
+
+def test_dropping_the_link_derives_the_type_again_as_for_any_entry() -> None:
+    s = Script("history", {"type": "flow", "payee": 5})
+    with_doc = rederive(entry(documented=True, document_pass="user"), {}, accounts=ACCOUNTS, classifiers=[s])
+    assert with_doc["type"] == Decided("flow", "user", {})
+    current = dict(with_doc)
+    r = rederive(entry(), current, accounts=ACCOUNTS, classifiers=[s], reopen=True)
+    assert r["type"] == Decided("flow", "history", {"by": "history", "v": "flow"})

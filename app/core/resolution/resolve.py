@@ -28,10 +28,25 @@ from app.core.resolution.accounts import counter_account_ok
 from app.core.resolution.pass0 import own_account_index, pass0
 from app.core.resolution.types import Decided, Resolved
 
-__all__ = ["Decided", "Resolved", "resolve"]
+__all__ = ["Decided", "Resolved", "document_type", "resolve"]
 
 _TYPES = ("flow", "transfer")
 _FLOW_FIELDS: tuple[Literal["payee", "category"], ...] = ("payee", "category")
+
+
+def document_type(entry: EntryInput, current: Decided | None = None) -> Decided | None:
+    """The type a linked or picked document decides (spec §5.9 field order, item 1): `flow`, with the key of
+    the link and an empty basis (`document_pass`: `user` for a pick, `matcher_decision` for an automatic link
+    of one line, `matcher_proposal` for one of several). The document comes first, so no later pass proposes
+    `transfer` for the entry; None for an entry without a document. The user's own `flow` (`current`, which a
+    commit wrote as the user's with the proposal it accepted as its basis) stands as it is under a link that
+    is the user's: the origin it keeps is not rewritten."""
+    if not entry.documented:
+        return None
+    link = entry.document_pass or "user"
+    if link == "user" and current is not None and current.pass_name == "user" and current.value == "flow":
+        return current
+    return Decided("flow", link, {})
 
 
 def _is_id(value: object) -> bool:
@@ -85,6 +100,8 @@ class _Run:
         return pass0(self.entry, own_account_index(self.accounts.values()))
 
     def type_(self) -> Decided | None:
+        if (d := document_type(self.entry)) is not None:  # the document comes first (spec §5.9, field order)
+            return d
         if (d := self.fixed.get("type")) is not None:
             return d if d.value in _TYPES else None
         for field in ("payee", "category", "counter_account"):
@@ -93,17 +110,14 @@ class _Run:
             ):
                 kind = "transfer" if field == "counter_account" else "flow"
                 return Decided(kind, f.pass_name, f.basis)
-        # a document implies a flow (spec §5.9 field order): no pass proposes a transfer for a transaction
-        # with a linked or picked document, whichever it is (own account, rule, history): it is dropped
-        documented = self.entry.documented
-        if not documented and (p0 := self.own_account()) is not None:
+        if (p0 := self.own_account()) is not None:
             return p0[0]
         for c in self.classifiers:
             p = self.ask(c, "type")
-            if p is not None and not (documented and p.value == "transfer"):
+            if p is not None:
                 return Decided(str(p.value), c.pass_name, p.basis)
             # a pass that proposes a counter-account proposes a transfer, a payee or category a flow
-            if not documented and (p := self.counter_proposal(c)) is not None:
+            if (p := self.counter_proposal(c)) is not None:
                 return Decided("transfer", c.pass_name, p.basis)
             for field in _FLOW_FIELDS:
                 p = self.ask(c, field)

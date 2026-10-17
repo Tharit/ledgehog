@@ -74,6 +74,9 @@ class EntryInput:
     documented: bool = False
     document_merchant: str | None = None
     document_line: str | None = None
+    # the pass of the link's `document` key (`user`, `matcher_decision`, `matcher_proposal`): the key the type
+    # the document decides carries (spec §5.9, field order); None reads as `user`
+    document_pass: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

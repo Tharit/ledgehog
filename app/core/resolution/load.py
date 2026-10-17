@@ -89,7 +89,10 @@ def _movements(where: str, *, of_entries: bool = False) -> TextClause:
            e.counterpart_entry_id AS counterpart_id, (e.counterpart_entry_id IS NOT NULL) AS paired,
            (u.first_id = e.id) AS original,
            vd.document_id AS document_id, d.merchant_name AS doc_merchant,
-           el.description AS doc_line
+           el.description AS doc_line,
+           (SELECT c.derivation -> 'document' ->> 'pass' FROM ledger_entry AS c
+             WHERE c.source_transaction_id = e.source_transaction_id
+               AND c.document_id IS NOT NULL) AS doc_pass
       FROM units AS u
       JOIN ledger_entry AS e ON e.id = u.id
       JOIN source_transaction AS s ON s.id = e.source_transaction_id
@@ -158,6 +161,7 @@ def _load(
             documented=documented,
             document_merchant=_merchant(r.doc_merchant) if documented else None,
             document_line=r.doc_line if documented else None,
+            document_pass=(r.doc_pass or "user") if documented else None,
         )
         out.append(
             UnconfirmedEntry(

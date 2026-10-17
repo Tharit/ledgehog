@@ -71,13 +71,14 @@ from app.core.plugins.classifier import (
 from app.core.resolution import Decided, Resolved, resolve
 from app.core.resolution.enrich import LinkedDocument, with_document
 from app.core.resolution.load import UnconfirmedEntry
+from app.core.resolution.resolve import document_type
 from app.core.resolution.snapshot import LayeredHistory
 from app.core.resolution.types import USER_NO_PAYEE, is_user_no_payee
 from app.core.settle.flags import NONE_KEY
 from app.core.settle.pairing import PAIR_COUNTER_KEY_VALUE, PAIR_KEY_VALUE
 from app.core.settle.resolution import Rewrite, settle_rewrites, stored_decisions
 from app.core.units.closure import UnitEntry, units_of
-from app.core.units.doc_draft import DocPlan, plan_documents
+from app.core.units.doc_draft import DocDecision, DocPlan, plan_documents
 from app.core.units.doc_world import facts_of, links_of, suggestions_of, waits_of
 from app.core.units.documents import DocumentFacts
 from app.core.units.draft import (
@@ -160,6 +161,9 @@ class _Row:
     reopen: bool = False
     doc_key: str = "stored"
     line_no: int | None = None
+    # the pass of the link's `document` key the row's transaction carries (`user`, `matcher_decision`,
+    # `matcher_proposal`): the key of the type the document decides (spec §5.9, field order)
+    doc_pass: str | None = None
 
     @property
     def is_new(self) -> bool:
@@ -209,7 +213,7 @@ def _resolution_input(row: _Row) -> EntryInput:
     """The input resolution reads: `_entry_input` plus the transaction's document, read through its merchant
     and the row's own line (documents.md §5; `line_no`: the line the row has, None for none). The source
     fields are as stored. Pairing reads the source as it is (`_entry_input`), as `load_unpaired_legs` does."""
-    return with_document(_entry_input(row), row.linked, line_no=row.line_no)
+    return with_document(_entry_input(row), row.linked, line_no=row.line_no, link_pass=row.doc_pass)
 
 
 def _as_unconfirmed(row: _Row) -> UnconfirmedEntry:
@@ -359,6 +363,20 @@ def _assemble(
     return rows, problems
 
 
+def _link_pass(carrier: Stored | None, decision: DocDecision) -> str | None:
+    """The pass of the `document` key the link has after the draft: `user` for a pick, the stored key where
+    the link stands (`user` where it has none), None without a link. A stored `matcher_proposal` stays one:
+    the type shows where it comes from (the document's proposal); the commit writes it as the user's
+    (`_commit_key`, `_write_document_key`)."""
+    if decision.link is None:
+        return None
+    if decision.key == "stored" and carrier is not None:
+        key = carrier.derivation.get("document")
+        if isinstance(key, Mapping) and key.get("pass") in ("matcher_decision", "matcher_proposal", "user"):
+            return str(key["pass"])
+    return "user"
+
+
 def _carry_documents(stored: StoredUnit, rows: Mapping[int, _Row], world: World, docs: DocPlan) -> None:
     """Every row of a source shares the document its original entry carries (`v_entry_document`), as the draft
     leaves it (`doc_draft.plan_documents`): the stored link, a pick, or none. Every row has its own line of it
@@ -374,10 +392,12 @@ def _carry_documents(stored: StoredUnit, rows: Mapping[int, _Row], world: World,
             if world.docs is not None and decision.link is not None
             else None
         )
+        link_pass = _link_pass(stored.entry(oid), decision)
         for r in rows.values():
             if r.src.id != src.id:
                 continue
             r.document_id, r.linked, r.reopen = decision.link, linked, decision.reopen
+            r.doc_pass = link_pass
             r.line_no = None
             if r.draft.document_line is not None:
                 r.line_no = r.draft.document_line.line_no
@@ -448,11 +468,7 @@ class _Walk:
             implied = "flow"
         elif "counter_account" in hints:
             implied = "transfer"
-        elif row.original and row.doc_key == "user" and row.document_id is not None and not _transfer(cur):
-            # a document picked for a transaction that is not a transfer makes it a flow, as the user's
-            # decision where it had no type (spec §5.8): a document explains a flow, like a drafted payee. A
-            # transfer is left as it is: the pick on it is a problem (`document_not_for_transfer`)
-            implied = "flow"
+        documented = entry.documented and not _transfer(cur)
         fixed: dict[Field, Decided] = {}
         changed = row.reopen  # a changed link is a change of the first value in field order (spec §5.9)
         last: Resolved | None = None
@@ -493,6 +509,10 @@ class _Walk:
                     new = Decided(d.value, "user", {})
             elif f == "type" and row.is_new and d.mode == "keep":
                 new = c  # a created entry is a flow (I31): a pass does not decide that again
+            elif f == "type" and documented and d.mode == "keep":
+                # the document decides the type first, with the link's key (spec §5.9); a transfer stays
+                # one here: the pick on it is a problem (`document_not_for_transfer`)
+                new = document_type(entry, c)
             elif f == "type" and implied is not None and d.mode == "keep" and not self.reresolve_all:
                 new = c if c is not None and c.value == implied else Decided(implied, "user", {})
             elif d.mode == "reresolve" or self.reresolve_all:
@@ -575,25 +595,22 @@ def _normalised(d: FieldDraft, f: Field) -> FieldDraft:
     return d
 
 
-def _commit_key(
-    stored_dec: Decided | None,
-    stored_key: Mapping[str, Any] | None,
-    final: Decided | None,
-    shown: Mapping[str, Any] | None,
-) -> Mapping[str, Any] | None:
-    """The key a commit writes for a value (§5.9, D212); None for an empty field. The user's decision of no
-    payee is an empty field that carries the standing key `user`."""
+def _commit_key(final: Decided | None, shown: Mapping[str, Any] | None) -> Mapping[str, Any] | None:
+    """The key a commit writes for a value (§5.9, D212), a function of the FINAL decision alone: a standing
+    pass keeps its own key, a proposal is accepted (`user`, the proposal as its basis), the user's decision
+    of no payee is the key `user`, an empty field has none. `shown`: the proposal the user accepted in the
+    panel, the basis of a value the draft fixes."""
     if final is None:
         return None
     if is_user_no_payee(final):
         return _USER
-    if stored_dec is not None and stored_dec.value == final.value and stored_dec.pass_name in STANDING_PASSES:
-        return stored_key if stored_key is not None else _USER
-    if shown is not None:
-        return {"pass": "user", "basis": dict(shown)}
     if final.pass_name in PROPOSAL_PASSES:
         return {"pass": "user", "basis": {"pass": final.pass_name, "basis": dict(final.basis)}}
-    return _USER
+    if final.pass_name == "user":
+        if final.basis:
+            return {"pass": "user", "basis": dict(final.basis)}
+        return {"pass": "user", "basis": dict(shown)} if shown is not None else _USER
+    return {"pass": final.pass_name, "basis": dict(final.basis)}
 
 
 # ---- 4. simulating settling -----------------------------------------------------------------------
@@ -781,7 +798,7 @@ def _link_documents(rows: Sequence[_Row], world: World) -> list[_Row]:
         r.derivation = {**(r.derivation or {}), "document": {"pass": key, "basis": {}}}
         for x in rows:
             if x.src.id == r.src.id:
-                x.document_id, x.linked = doc_id, detail
+                x.document_id, x.linked, x.doc_pass = doc_id, detail, key
         if len(detail.lines) == 1:
             r.line_no = detail.lines[0][0]  # a document of one line: the original takes it with the link
         linked.append(r)
@@ -1379,8 +1396,6 @@ def _write_accepted(r: _Row, decisions: Mapping[Field, Decided | None]) -> None:
     for f in DERIVED_FIELDS:
         shown = r.draft.field(f).shown_basis
         key = _commit_key(
-            r.s0.get(f),
-            r.s0_derivation.get(f),
             decisions[f],
             None if shown is None else {"pass": shown.pass_name, "basis": dict(shown.basis)},
         )
@@ -1526,6 +1541,11 @@ def plan_unit(stored: StoredUnit, draft: UnitDraft, world: World) -> Plan:
             _pick_keys(r, set_by_pair)
         else:
             _write_accepted(r, decisions)
+        if r.original and r.doc_pass == "matcher_proposal" and (r.derivation or {}).get("document") == _USER:
+            # the commit made the link the user's: settling reads the type's document as the user's
+            for x in ordered:
+                if x.src.id == r.src.id:
+                    x.doc_pass = "user"
 
     problems.extend(_problems(ordered, world))
     written = {

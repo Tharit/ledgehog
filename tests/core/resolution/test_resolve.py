@@ -231,29 +231,52 @@ def test_resolved_is_immutable_and_ordered() -> None:
         r["payee"] = Decided(1, "x", {})  # type: ignore[index]
 
 
-# ---- a document implies a flow (spec §5.9 field order) ----
+# ---- a document decides the type `flow` first, with the link's key (spec §5.9 field order) ----
 
 
-def test_a_documented_entry_is_never_proposed_a_transfer_by_the_own_account_pass() -> None:
+@pytest.mark.parametrize("link", ["user", "matcher_decision", "matcher_proposal"])
+def test_a_document_decides_flow_with_the_key_of_its_link_and_an_empty_basis(link: str) -> None:
+    r = run([Script("rule", {"payee": 5})], entry(documented=True, document_pass=link))
+    assert r["type"] == Decided("flow", link, {})
+    assert r["payee"].value == 5  # the payee and category passes run as for any flow
+
+
+def test_a_document_without_a_known_link_pass_reads_as_a_pick() -> None:
+    assert run([], entry(documented=True))["type"] == Decided("flow", "user", {})
+
+
+def test_a_documented_entry_with_no_other_evidence_is_still_a_flow() -> None:
+    assert values(run([], entry(documented=True, document_pass="matcher_decision"))) == {"type": "flow"}
+
+
+def test_the_own_account_pass_proposes_no_transfer_for_a_documented_entry() -> None:
     accounts = [account(1), account(2, ref=OWN_REF)]
     e = entry(counterparty_ref=OWN_REF, documented=True)
-    assert dict(resolve(e, accounts=accounts, classifiers=[])) == {}
+    assert values(resolve(e, accounts=accounts, classifiers=[])) == {"type": "flow"}
     undocumented = resolve(entry(counterparty_ref=OWN_REF), accounts=accounts, classifiers=[])
     assert values(undocumented) == {"type": "transfer", "counter_account": 2}  # the control
 
 
-def test_a_transfer_type_proposal_is_dropped_for_a_documented_entry_and_the_next_pass_is_asked() -> None:
-    rules = Script("rule", {"type": "transfer", "counter_account": 2})
-    history = Script("history", {"type": "flow", "payee": 5})
-    r = run([rules, history], entry(documented=True))
-    assert r["type"] == Decided("flow", "history", {"by": "history", "v": "flow"})
+@pytest.mark.parametrize(
+    "proposal",
+    [
+        {"type": "transfer", "counter_account": 2},  # a rule, history or the model proposing the type
+        {"counter_account": 2},  # a counter-account proposal is a transfer proposal
+    ],
+)
+@pytest.mark.parametrize("name", ["rule", "history", "llm"])
+def test_a_transfer_proposal_of_any_pass_is_ignored_for_a_documented_entry(name: str, proposal: dict) -> None:
+    script = Script(name, proposal)
+    r = run([script], entry(documented=True, document_pass="matcher_decision"))
+    assert r["type"] == Decided("flow", "matcher_decision", {})
     assert "counter_account" not in r
-    assert run([rules, history])["type"].value == "transfer"  # without a document the rule decides
+    assert run([Script(name, proposal)])["type"].value == "transfer"  # without a document it decides
 
 
-def test_a_counter_account_proposal_makes_no_transfer_for_a_documented_entry() -> None:
-    assert dict(run([Script("rule", {"counter_account": 2})], entry(documented=True))) == {}
-    assert run([Script("rule", {"counter_account": 2})])["type"].value == "transfer"
+def test_a_standing_flow_of_another_pass_becomes_document_decided() -> None:
+    fixed = {"type": Decided("flow", "rule", {"rule_id": 1})}
+    r = run([], entry(documented=True, document_pass="user"), fixed=fixed)
+    assert r["type"] == Decided("flow", "user", {})
 
 
 def test_a_documented_entry_still_resolves_a_flow_from_a_payee() -> None:

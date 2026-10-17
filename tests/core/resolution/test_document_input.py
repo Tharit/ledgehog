@@ -59,6 +59,20 @@ def test_the_loader_gives_a_documented_entry_the_merchant_and_its_own_line_and_t
     assert (got.counterparty_name, got.purpose) == ("PAYPAL *X", "P")  # the bank's, never rewritten
 
 
+@pytest.mark.parametrize("key", ["user", "matcher_decision", "matcher_proposal"])
+def test_the_loader_gives_the_pass_of_the_links_key(
+    db_conn: Connection, make_account: MakeAccount, key: str
+) -> None:
+    acct = make_account(db_conn)
+    doc = make_document(db_conn, total=-1000)
+    src = make_source(db_conn, acct, amount=-1000)
+    e = make_entry(
+        db_conn, src, type=None, document_id=doc, derivation=json.dumps({"document": {"pass": key}})
+    )
+    assert inputs(db_conn)[e].document_pass == key
+    assert inputs(db_conn, with_document=False)[e].document_pass is None
+
+
 def test_an_undocumented_entry_has_no_document_fields(db_conn: Connection, make_account: MakeAccount) -> None:
     e = make_entry(db_conn, make_source(db_conn, make_account(db_conn)), type=None)
     got = inputs(db_conn)[e]
