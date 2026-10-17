@@ -321,8 +321,10 @@ row; a resolved row stays in place, marked (§7).
   - *try again* (a write aborted twice, architecture §5.2) — a notice with a
     retry action, the draft kept;
   - *importer errors* (architecture §5.5) — on the run, in the sync view, with
-    the retryability the taxonomy states: "wrong PIN" invites correction,
-    "bank unreachable" a retry, "format changed" neither.
+    the retryability the taxonomy states: a run that trying again can help — a
+    rejected PIN, an expired TAN, an unreachable bank; every run asks for its
+    PIN afresh — offers to run it again; one that cannot — a changed format, a
+    missing registration — says what to fix instead.
 - **Run summaries are reports, not alarms.** Duplicates inserted, rows skipped
   and an unexplained difference caused by a run are listed in its summary with
   links to the rows (spec §5.3, §5.10); none of them opens a dialog.

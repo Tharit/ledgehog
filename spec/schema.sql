@@ -411,6 +411,10 @@ CREATE TABLE import_run (
     status               text NOT NULL CHECK (status IN
                              ('running','ok','failed','reverted')),
     error_text           text,
+    -- for a failed run, whether running it again can help, as its error
+    -- class in the importer taxonomy says (architecture §5.5). NULL unless
+    -- the run failed.
+    retryable            boolean,
     -- the date the run covered THROUGH, as the importer reported it, by the
     -- rules of spec §5.1: a fetch through the day before the fetch, whether or
     -- not it returned rows; a file through its period end or last booking,

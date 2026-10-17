@@ -433,8 +433,10 @@ POST   /api/importers/instances/{id}/upload    a CSV file → one run per
                                                that already existed are real.
 GET    /api/importers/runs                     the import log; `account_id`,
                                                `instance_id`, `status`, `limit`;
-                                               each run with its statistics and
-                                               whether it is revertible
+                                               each run with its statistics,
+                                               whether it is revertible and, for
+                                               a failed run, whether trying
+                                               again can help (§5.5)
 GET    /api/importers/runs/{id}                one run
 POST   /api/importers/runs/{id}/revert         delete what the run produced;
                                                only the account's latest
