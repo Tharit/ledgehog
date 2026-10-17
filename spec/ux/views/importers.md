@@ -164,7 +164,7 @@ duplicates, each "of #N" with a link to the row it duplicates on the account's
 statement (`?source=`, `ux/views/account.md`), and a link to the duplicate
 itself; how many were skipped by identity;
 what the importer left out (zero bookings it dropped, a statement payment it
-did not emit); the balance record the run wrote, with its kind and date; the
+did not emit); the balance record the run wrote, with its date and balance; the
 coverage; and the unexplained difference before and after, which where it is
 non-zero names the reported records that localise it, linking to the statement.
 A failed run shows its error and whether trying again can help. The component

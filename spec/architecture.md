@@ -442,7 +442,10 @@ POST   /api/importers/runs/{id}/revert         delete what the run produced;
                                                transaction run; previewed;
                                                carries the version of every
                                                entry it removes or unpairs,
-                                               which its preview returns
+                                               which its preview returns,
+                                               with, per consequence group,
+                                               its count and the number of
+                                               confirmed entries among them
 
   sync — one long-running task over several importer instances
 POST   /api/sync                               start        → {task_id}

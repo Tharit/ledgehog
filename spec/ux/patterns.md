@@ -248,7 +248,10 @@ row; a resolved row stays in place, marked (§7).
   state first ("confirmed", "waits for its partner", "stays unclassified", "stays without a
   partner", "proposals to check" — spec §6), then a consequence list grouped by effect: *created*, *changed*,
   *returns to review*, *deleted*, *unpaired*, *left behind*. Each item is a row in the
-  shape of §4.1 and can be opened.
+  shape of §4.1 and can be opened. A group of more than ten items is stated as
+  its count instead of listed, with the confirmed entries among it counted,
+  since those are what confirmation names (below): a revert of a run typically
+  is, marking one row as a duplicate never is.
 - **A rule's preview rows carry their source.** Each row is an entry with its
   `source` (architecture §4.1); beside the entry's own fields the row shows the
   source fields that the rule's conditions read, always the counterparty, under

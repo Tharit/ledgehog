@@ -149,7 +149,8 @@ can help (`ux/patterns.md` §8).
 account's latest successful, non-reverted run (`spec.md` I30); an earlier run
 says that later runs are reverted first. Its decision dialog is the revert's
 preview (`ux/patterns.md` §6): the rows the run brought, the entries removed
-and the partners unpaired, confirmed entries by count. The verb is "Revert
+and the partners unpaired, as counts per group with confirmed entries
+counted where a group is large. The verb is "Revert
 run".
 
 **Open for the first month.** Whether runs belong above the statement, below
