@@ -89,3 +89,16 @@ def test_the_importer_registry_is_available_to_routers(api_config, api_engine):
     app = create_app(api_config, api_engine, importers={"csv": sentinel})  # type: ignore[dict-item]
     assert app.state.importers == {"csv": sentinel}
     assert create_app(api_config, api_engine).state.importers == {}
+
+
+def test_the_task_registry_is_one_object_on_the_app_and_the_loop_is_known_once_started(
+    api_config, api_engine
+):
+    from app.core.tasks import TaskRegistry
+
+    mine = TaskRegistry()
+    app = create_app(api_config, api_engine, tasks=mine)
+    assert app.state.tasks is mine and app.state.loop is None
+    assert isinstance(create_app(api_config, api_engine).state.tasks, TaskRegistry)
+    with TestClient(app):  # the lifespan runs: a start from the threadpool launches on this loop
+        assert app.state.loop is not None

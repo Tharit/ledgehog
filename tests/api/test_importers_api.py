@@ -36,6 +36,26 @@ ROUTES = [
 ]
 
 
+@pytest.mark.parametrize(
+    ("exc", "code"),
+    [("BankSetupRequired", "bank_setup_required"), ("AccountUnsupported", "account_unsupported")],
+)
+def test_the_new_importer_errors_are_422_with_their_code_and_not_retryable(api: Api, exc, code):
+    from app.core.plugins import errors
+
+    @api.client.app.get("/api/_importer_error")
+    def raises() -> None:
+        raise getattr(errors, exc)("say what to fix")
+
+    r = api.client.get("/api/_importer_error")
+    assert r.status_code == 422
+    assert r.json()["error"] == {
+        "code": code,
+        "message": "say what to fix",
+        "details": {"retryable": False},
+    }
+
+
 @pytest.mark.parametrize(("method", "path"), ROUTES)
 def test_every_route_needs_a_session(make_api, method, path):
     anon = make_api(signed_in=False)

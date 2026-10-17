@@ -93,8 +93,12 @@ def test_the_test_importer_registers_only_behind_the_flag_and_fills_the_provider
         assert set(register_importers(base)) == {"csv"}
         assert document_providers() == {} and registered_providers() == []
         on = register_importers(replace(base, enable_test_importers=True))
-        assert set(on) == {"csv", "testdocs"} and isinstance(on["testdocs"], TestDocumentImporter)
-        assert dict(document_providers()) == {"testdocs": TestDocumentImporter.providers}
+        assert set(on) == {"csv", "testdocs", "testfetch"}
+        assert isinstance(on["testdocs"], TestDocumentImporter)
+        assert dict(document_providers()) == {
+            "testdocs": TestDocumentImporter.providers,
+            "testfetch": TestDocumentImporter.providers,  # it emits documents too
+        }
         assert registered_providers() == ["amazon", "paypal"]
         register_importers(base)  # a later process configuration replaces it
         assert registered_providers() == []

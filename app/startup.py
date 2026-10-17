@@ -17,6 +17,7 @@ from sqlalchemy import Connection, Engine, text
 from app.core.plugins.fetch import FetchImporter
 from app.core.plugins.importer import FileImporter
 from app.core.settle import SettleResult, settle
+from app.core.tasks import TaskRegistry
 from app.utils import clock
 from app.utils.auth import hash_password, revoke_sessions, verify_password
 from app.utils.config import Config, UserConfig
@@ -206,7 +207,8 @@ def start(
                 log.info("users %s: %s", verb, ", ".join(logins))
         assert_pool_settings(engine, config)  # 6
         result = run_settle(engine)  # 7
-        app = create_app(config, engine, owns_engine=owns_engine, importers=importers)  # 8
+        # 8: the one task registry of the process (architecture §5.3) is created here, with the app
+        app = create_app(config, engine, owns_engine=owns_engine, importers=importers, tasks=TaskRegistry())
     except BaseException:
         if owns_engine:
             engine.dispose()

@@ -9,6 +9,7 @@ registry all assume one process (architecture §5.2, §5.7).
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 
@@ -22,6 +23,7 @@ from app.api.routers import include_routers
 from app.api.routes import router
 from app.core.plugins.fetch import FetchImporter
 from app.core.plugins.importer import FileImporter
+from app.core.tasks import TaskRegistry
 from app.utils import clock
 from app.utils.config import Config
 
@@ -32,15 +34,18 @@ def create_app(
     *,
     owns_engine: bool = False,
     importers: Mapping[str, FileImporter | FetchImporter] | None = None,
+    tasks: TaskRegistry | None = None,
 ) -> FastAPI:
     """Build the API. Time comes from `app.utils.clock` only (tests freeze it with `clock.frozen`).
 
     `importers` maps an importer name (`importer_instance.importer`) to its implementation;
-    the composition root supplies it, because the API never imports a concrete plugin.
+    the composition root supplies it, because the API never imports a concrete plugin. `tasks` is
+    the one task registry of the process (architecture §5.3), created by the composition root.
     """
 
     @asynccontextmanager
-    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        app.state.loop = asyncio.get_running_loop()  # what a start from the threadpool launches its task on
         install_redaction()
         try:
             yield
@@ -62,6 +67,8 @@ def create_app(
     app.state.engine = engine
     app.state.instant = clock.now
     app.state.importers = dict(importers or {})
+    app.state.tasks = tasks if tasks is not None else TaskRegistry()
+    app.state.loop = None  # set when the lifespan starts
     app.include_router(router)
     include_routers(app)  # registers each module's domain error mappings as it is imported...
     install_error_handlers(app)  # ...so the handlers are installed after

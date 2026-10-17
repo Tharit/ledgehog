@@ -28,6 +28,7 @@ from app.core.resolution.registry import configure_classifiers, configure_rule_t
 from app.plugins.classifiers import default_classifiers, default_rule_tools
 from app.plugins.importers.csv import CsvImporter
 from app.plugins.importers.testdocs import TestDocumentImporter
+from app.plugins.importers.testfetch import TestFetchImporter
 from app.startup import start
 from app.utils.config import Config
 
@@ -41,10 +42,12 @@ Send = Callable[[MutableMapping[str, Any]], Awaitable[None]]
 def register_importers(config: Config) -> dict[str, FileImporter | FetchImporter]:
     """The importers this deployment offers (name -> implementation); also installs the document
     providers of those that deliver documents, the one source of the providers a payee can name.
-    The deterministic test importer is registered only behind `ENABLE_TEST_IMPORTERS`."""
+    The deterministic test importers (`testdocs`, and the scripted `testfetch`) are registered only
+    behind `ENABLE_TEST_IMPORTERS`."""
     importers: dict[str, FileImporter | FetchImporter] = {"csv": CsvImporter()}
     if config.enable_test_importers:
         importers["testdocs"] = TestDocumentImporter()
+        importers["testfetch"] = TestFetchImporter()
     register_document_importers(importers)
     return importers
 
