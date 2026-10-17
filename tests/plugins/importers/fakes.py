@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping, MutableMapping, Sequence
 from datetime import date
 from typing import Any
 
+from app.core.plugins.fetch import FetchSession, FetchSessionBase, Prompter
 from app.core.plugins.importer import (
     DocumentDelivery,
     IncomingDocument,
@@ -13,8 +14,26 @@ from app.core.plugins.importer import (
 )
 
 
+class _FakeSession(FetchSessionBase):
+    def __init__(self, importer: FakeDocumentImporter) -> None:
+        self._importer = importer
+
+    def fetch_documents(self, *, since: date, today: date) -> DocumentDelivery:
+        return self._importer.fetch({}, since=since, today=today)
+
+
 class FakeDocumentImporter:
-    """Satisfies `DocumentImporter`. `fetch` returns the documents dated `since` or later."""
+    """Satisfies `FetchImporter` (documents). `fetch` returns the documents dated `since` or later."""
+
+    emits = frozenset({"documents"})
+
+    def default_fetch_start(self, settings: Mapping[str, Any], *, today: date) -> date:
+        return date(2026, 1, 1)
+
+    def open(
+        self, settings: Mapping[str, Any], state: MutableMapping[str, Any], prompter: Prompter, *, today: date
+    ) -> FetchSession:
+        return _FakeSession(self)
 
     def __init__(
         self,

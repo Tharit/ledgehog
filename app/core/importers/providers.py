@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from app.core.plugins.importer import DocumentImporter
+from app.core.plugins.fetch import FetchImporter
 
 _providers: dict[str, frozenset[str]] = {}
 
@@ -44,10 +44,15 @@ def provider_pairs() -> tuple[list[str], list[str]]:
 
 
 def register_document_importers(importers: Mapping[str, object]) -> None:
-    """Install the map from the registered importers: each one that is a `DocumentImporter` contributes
-    its `providers`. The composition root and the dev seed call it with the importers they register."""
+    """Install the map from the registered importers: each fetch importer that emits documents
+    contributes its `providers`. The composition root and the dev seed call it with the importers they
+    register."""
     configure_document_providers(
-        {name: imp.providers for name, imp in importers.items() if isinstance(imp, DocumentImporter)}
+        {
+            name: imp.providers
+            for name, imp in importers.items()
+            if isinstance(imp, FetchImporter) and "documents" in imp.emits
+        }
     )
 
 

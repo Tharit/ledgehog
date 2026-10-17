@@ -227,6 +227,8 @@ def test_a_file_importer_refuses_a_given_external_ref(api: Api):
 class _FetchStub:
     """A registered importer that is not a file importer: it has no `parse`."""
 
+    emits = frozenset({"transactions"})
+
     def validate_settings(self, settings) -> None:
         return None
 
@@ -345,6 +347,7 @@ def test_unlink_returns_the_settle_result(api: Api, monkeypatch):
 class _DocStub:
     """A document importer: fetches, emits documents, ships no presets."""
 
+    emits = frozenset({"documents"})
     providers = frozenset({"paypal"})
 
     def validate_settings(self, settings) -> None:

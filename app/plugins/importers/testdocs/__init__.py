@@ -14,11 +14,12 @@ Settings (`importer_instance.settings`):
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, MutableMapping
 from datetime import date
 from typing import Any
 
 from app.core.plugins.errors import InvalidProfile
+from app.core.plugins.fetch import FetchSession, FetchSessionBase, Prompter
 from app.core.plugins.importer import (
     DocumentDelivery,
     IncomingDocument,
@@ -62,11 +63,23 @@ def _document(raw: Any) -> IncomingDocument:
     return doc
 
 
+class _Session(FetchSessionBase):
+    """The session of a stateless importer: nothing to authenticate, so it only delivers documents."""
+
+    def __init__(self, importer: TestDocumentImporter, settings: Mapping[str, Any]) -> None:
+        self._importer = importer
+        self._settings = settings
+
+    def fetch_documents(self, *, since: date, today: date) -> DocumentDelivery:
+        return self._importer.fetch(self._settings, since=since, today=today)
+
+
 class TestDocumentImporter:
-    """Satisfies `DocumentImporter`; reads nothing but its settings."""
+    """Satisfies `FetchImporter` (documents only); reads nothing but its settings."""
 
     __test__ = False  # not a pytest class, whatever its name
 
+    emits: frozenset[str] = frozenset({"documents"})
     providers: frozenset[str] = PROVIDERS
 
     def validate_settings(self, settings: Mapping[str, Any]) -> None:
@@ -78,7 +91,21 @@ class TestDocumentImporter:
         for raw in documents:
             _document(raw)
 
+    def default_fetch_start(self, settings: Mapping[str, Any], *, today: date) -> date:
+        return _date(settings, "start_date")
+
+    def open(
+        self,
+        settings: Mapping[str, Any],
+        state: MutableMapping[str, Any],
+        prompter: Prompter,
+        *,
+        today: date,
+    ) -> FetchSession:
+        return _Session(self, settings)
+
     def fetch(self, settings: Mapping[str, Any], *, since: date, today: date) -> DocumentDelivery:
+        """The documents dated `since` or later (what the session's `fetch_documents` delivers)."""
         documents = tuple(_document(raw) for raw in settings.get("documents", ()))
         return DocumentDelivery(
             documents=tuple(d for d in documents if d.occurred_on >= since),

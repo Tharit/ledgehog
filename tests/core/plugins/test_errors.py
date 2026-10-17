@@ -11,21 +11,39 @@ from app.core.plugins.importer import DryRunReport, FileImporter, ParsedFile
 
 
 @pytest.mark.parametrize(
-    ("name", "retryable"),
+    ("name", "retryable", "scope", "code"),
     [
-        ("AuthRejected", True),  # after the user corrects the credentials
-        ("ChallengeExpired", True),
-        ("ChallengeAbandoned", True),
-        ("SourceUnavailable", True),
-        ("ParseFailed", False),
-        ("NotRegistered", False),
+        ("AuthRejected", True, "instance", "auth_rejected"),  # every run asks for the PIN afresh
+        ("ChallengeExpired", True, "instance", "challenge_expired"),
+        ("ChallengeAbandoned", True, "instance", "challenge_abandoned"),
+        ("SourceUnavailable", True, "instance", "source_unavailable"),
+        ("ParseFailed", False, "item", "parse_failed"),
+        ("NotRegistered", False, "instance", "not_registered"),
+        ("BankSetupRequired", False, "instance", "bank_setup_required"),
+        ("AccountUnsupported", False, "item", "account_unsupported"),
     ],
 )
-def test_retryable_flag_per_table(name: str, retryable: bool) -> None:
+def test_retryable_scope_and_code_per_table(name: str, retryable: bool, scope: str, code: str) -> None:
     cls = getattr(errors, name)
     assert issubclass(cls, errors.ImporterError)
-    assert cls.retryable is retryable
+    assert (cls.retryable, cls.scope, cls.code) == (retryable, scope, code)
     assert cls("x").retryable is retryable
+
+
+def test_error_code_and_scope_read_ingest_errors_too() -> None:
+    from app.core.domain.errors import ContractViolation, RunRefused
+
+    cv = ContractViolation("zero_amount", "row 0")
+    assert (errors.error_code(cv), errors.scope_of(cv)) == ("contract_violation", "item")
+    refused = RunRefused("account_closed", "closed")
+    assert (errors.error_code(refused), errors.scope_of(refused)) == ("account_closed", "item")
+    assert (errors.error_code(errors.InvalidProfile("x")), errors.scope_of(errors.InvalidProfile("x"))) == (
+        "invalid_profile",
+        "item",
+    )
+    assert errors.error_code(RuntimeError("x")) == "unexpected"
+    assert errors.scope_of(RuntimeError("x")) == "item"
+    assert errors.error_code(errors.AuthRejected("x")) == "auth_rejected"
 
 
 def test_parse_failed_carries_the_report() -> None:

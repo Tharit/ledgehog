@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 
 from app.core.plugins.errors import InvalidProfile
-from app.core.plugins.importer import DocumentImporter
+from app.core.plugins.fetch import FetchImporter
 from app.plugins.importers.testdocs import TestDocumentImporter
 
 DOC: dict[str, Any] = {
@@ -27,8 +27,22 @@ def settings(*docs: dict[str, Any], **kw: Any) -> dict[str, Any]:
 
 
 def test_it_satisfies_the_protocol_and_serves_two_providers():
-    assert isinstance(TestDocumentImporter(), DocumentImporter)
+    assert isinstance(TestDocumentImporter(), FetchImporter)
+    assert TestDocumentImporter.emits == {"documents"}
     assert TestDocumentImporter.providers == {"paypal", "amazon"}
+
+
+def test_its_session_delivers_what_fetch_does_and_its_default_start_is_the_start_date():
+    imp = TestDocumentImporter()
+    s = settings(DOC)
+    assert imp.default_fetch_start(s, today=date(2026, 7, 1)) == date(2026, 1, 1)
+    session = imp.open(s, {}, None, today=date(2026, 7, 1))  # type: ignore[arg-type]
+    try:
+        out = session.fetch_documents(since=date(2026, 1, 1), today=date(2026, 7, 1))
+        assert [d.external_id for d in out.documents] == ["A"]
+        assert session.accounts() == ()
+    finally:
+        session.close()
 
 
 def test_fetch_delivers_the_listed_documents_from_since_and_the_coverage():

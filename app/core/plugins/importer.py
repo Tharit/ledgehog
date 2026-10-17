@@ -207,18 +207,3 @@ class DocumentDelivery:
     documents: tuple[IncomingDocument, ...]
     covered_through: date
     covered_from: date | None = None
-
-
-@runtime_checkable
-class DocumentImporter(Protocol):
-    """Fetches documents from a provider. Reads neither the database nor the clock."""
-
-    providers: frozenset[str]  # the providers it delivers documents for, declared up front (spec §5.5)
-
-    def validate_settings(self, settings: Mapping[str, Any]) -> None:
-        """Raise `InvalidProfile` naming the setting that is wrong."""
-        ...
-
-    def fetch(self, settings: Mapping[str, Any], *, since: date, today: date) -> DocumentDelivery:
-        """Documents dated `since` or later (the instance's start date, spec §5.5)."""
-        ...

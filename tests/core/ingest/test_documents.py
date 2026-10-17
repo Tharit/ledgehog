@@ -13,7 +13,8 @@ from sqlalchemy import Engine, text
 from app.core.domain.errors import ContractViolation, IngestError, RunRefused
 from app.core.ingest.documents import DocumentRunResult, ingest_documents, reresolve_unconfirmed_carrier
 from app.core.ingest.run import start_run
-from app.core.plugins.importer import DocumentImporter, IncomingDocument
+from app.core.plugins.fetch import FetchImporter
+from app.core.plugins.importer import IncomingDocument
 from tests.invariants.helpers import make_category, make_movement
 from tests.plugins.importers.fakes import FakeDocumentImporter, document, line
 
@@ -86,7 +87,7 @@ def entry_row(engine: Engine, entry_id: int) -> Any:
 
 def test_fake_satisfies_the_protocol():
     fake = FakeDocumentImporter([document("A"), document("B", occurred_on=date(2026, 1, 1))])
-    assert isinstance(fake, DocumentImporter)
+    assert isinstance(fake, FetchImporter)
     out = fake.fetch({}, since=date(2026, 3, 1), today=THROUGH)
     assert [d.external_id for d in out.documents] == ["A"]
 

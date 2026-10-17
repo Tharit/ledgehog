@@ -20,7 +20,8 @@ from app.api.openapi import install_openapi, operation_id
 from app.api.redaction import install_redaction
 from app.api.routers import include_routers
 from app.api.routes import router
-from app.core.plugins.importer import DocumentImporter, FileImporter
+from app.core.plugins.fetch import FetchImporter
+from app.core.plugins.importer import FileImporter
 from app.utils import clock
 from app.utils.config import Config
 
@@ -30,7 +31,7 @@ def create_app(
     engine: Engine,
     *,
     owns_engine: bool = False,
-    importers: Mapping[str, FileImporter | DocumentImporter] | None = None,
+    importers: Mapping[str, FileImporter | FetchImporter] | None = None,
 ) -> FastAPI:
     """Build the API. Time comes from `app.utils.clock` only (tests freeze it with `clock.frozen`).
 

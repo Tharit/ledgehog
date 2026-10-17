@@ -32,7 +32,9 @@ from app.core.importers import instances as inst
 from app.core.importers import upload as up
 from app.core.importers.instances import InstanceView
 from app.core.plugins.errors import (
+    AccountUnsupported,
     AuthRejected,
+    BankSetupRequired,
     ChallengeAbandoned,
     ChallengeExpired,
     ImporterError,
@@ -145,6 +147,8 @@ map_error(ChallengeExpired, 422, "challenge_expired", details=_importer_details)
 map_error(ChallengeAbandoned, 422, "challenge_abandoned", details=_importer_details)
 map_error(SourceUnavailable, 502, "source_unavailable", details=_importer_details)
 map_error(NotRegistered, 422, "not_registered", details=_importer_details)
+map_error(BankSetupRequired, 422, "bank_setup_required", details=_importer_details)
+map_error(AccountUnsupported, 422, "account_unsupported", details=_importer_details)
 
 
 def importer_for(request: Request, name: str) -> FileImporter:

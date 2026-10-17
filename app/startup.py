@@ -14,7 +14,8 @@ from dataclasses import dataclass, field
 from fastapi import FastAPI
 from sqlalchemy import Connection, Engine, text
 
-from app.core.plugins.importer import DocumentImporter, FileImporter
+from app.core.plugins.fetch import FetchImporter
+from app.core.plugins.importer import FileImporter
 from app.core.settle import SettleResult, settle
 from app.utils import clock
 from app.utils.auth import hash_password, revoke_sessions, verify_password
@@ -174,7 +175,7 @@ def start(
     config: Config,
     engine: Engine | None = None,
     *,
-    importers: Mapping[str, FileImporter | DocumentImporter] | None = None,
+    importers: Mapping[str, FileImporter | FetchImporter] | None = None,
 ) -> StartedApp:
     """Run the start sequence (1: `config` is already validated) and build the app.
 

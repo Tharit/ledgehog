@@ -2,9 +2,8 @@
 
 The composition root hands over the importer objects; the catalog reads what they declare and nothing
 else, so core never imports a plugin. An object is a *file* importer when it satisfies `FileImporter`
-(it parses an upload; it emits transactions) and a *fetch* importer otherwise. It may declare more
-through optional attributes: `emits` (the kinds it delivers, for a fetch importer; a document importer
-delivers documents, any other fetch importer transactions) and `presets` (settings it ships, by name).
+(it parses an upload; it emits transactions) and a *fetch* importer otherwise, which declares the kinds
+it delivers in `emits` (`FetchImporter`). Either may ship `presets` (settings, by name).
 """
 
 from __future__ import annotations
@@ -13,7 +12,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from app.core.plugins.importer import DocumentImporter, FileImporter
+from app.core.plugins.importer import FileImporter
 
 
 @dataclass(frozen=True)
@@ -27,12 +26,7 @@ class CatalogEntry:
 def describe(name: str, importer: object) -> CatalogEntry:
     """One importer's catalog entry, derived from the object."""
     is_file = isinstance(importer, FileImporter)
-    if is_file:
-        emits: tuple[str, ...] = ("transactions",)
-    elif declared := getattr(importer, "emits", None):
-        emits = tuple(declared)
-    else:
-        emits = ("documents",) if isinstance(importer, DocumentImporter) else ("transactions",)
+    emits: tuple[str, ...] = ("transactions",) if is_file else tuple(sorted(importer.emits))  # type: ignore[attr-defined]
     return CatalogEntry(
         name=name,
         kind="file" if is_file else "fetch",
