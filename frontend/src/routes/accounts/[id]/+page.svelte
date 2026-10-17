@@ -1,8 +1,9 @@
 <script lang="ts">
-	import { goto, pushState, replaceState } from '$app/navigation';
+	import { afterNavigate, goto, pushState, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
-	import { onDestroy, untrack } from 'svelte';
-	import { accountIdOf, sourceIdOf, withSource } from '#lib/accounts/address.js';
+	import { onDestroy, onMount, untrack } from 'svelte';
+	import { accountIdOf } from '#lib/accounts/address.js';
+	import { RowAddress } from '#lib/accounts/row-address.svelte.js';
 	import { AccountDialogs } from '#lib/accounts/page-dialogs.svelte.js';
 	import { RowDetail } from '#lib/accounts/row-detail.svelte.js';
 	import { ACCOUNT_KINDS } from '#lib/accounts/kinds.js';
@@ -41,35 +42,29 @@
 	});
 
 	// `?source=` is the row detail: it opens for whatever id the address names, whatever page of the
-	// statement the row is on, and so does a link from a run summary
-	const sourceId = $derived(sourceIdOf(page.url));
+	// statement the row is on, and so does a link from a run summary. Shallow routing does not move
+	// `page.url`, so the real address is read (as the unit panel does) after our own changes, after
+	// Back and Forward, and after a navigation.
+	const address = new RowAddress({
+		url: () => new URL(location.href),
+		push: (url) => pushState(url, {}),
+		replace: (url) => replaceState(url, {}),
+		back: (steps) => history.go(-steps)
+	});
+	onMount(() => {
+		address.sync();
+		const follow = () => address.sync();
+		window.addEventListener('popstate', follow);
+		return () => window.removeEventListener('popstate', follow);
+	});
+	afterNavigate(() => address.sync());
 	$effect(() => {
-		const id = sourceId;
+		const id = address.id;
 		untrack(() => void detail.show(id));
 	});
-
-	// a detail opened from the page adds history entries; closing it takes them back
-	let pushed = 0;
-	$effect(() => {
-		if (sourceId === null) pushed = 0;
-	});
-	function openDetail(id: number) {
-		pushState(withSource(page.url, id), {});
-		pushed += 1;
-	}
-	function closeDetail() {
-		if (pushed > 0) {
-			const steps = pushed;
-			pushed = 0;
-			history.go(-steps);
-		} else leaveDetail();
-	}
-	// leaving for the work panel or another dialog: the address changes at once, so what opens next
-	// reads an address without `?source=`
-	function leaveDetail() {
-		pushed = 0;
-		if (sourceId !== null) replaceState(withSource(page.url, null), {});
-	}
+	const openDetail = (id: number) => address.open(id);
+	const closeDetail = () => address.close();
+	const leaveDetail = () => address.leave();
 
 	// the entry form writes rows of this account: the statement follows
 	$effect(() =>
