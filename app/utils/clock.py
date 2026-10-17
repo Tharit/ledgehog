@@ -42,6 +42,12 @@ def sleep(seconds: float) -> None:
     time.sleep(seconds)
 
 
+def monotonic() -> float:
+    """Seconds on a clock that never goes back, for deadlines and ages of things in this process
+    (a prompt's timeout, how long a task has had no client). Not a date: it ignores `frozen()`."""
+    return time.monotonic()
+
+
 def today(tz: tzinfo) -> date:
     """The current calendar day in `tz` (whose day it means must always be said)."""
     return now().astimezone(tz).date()
