@@ -56,6 +56,16 @@ describe('request', () => {
 		expect(init.headers).toMatchObject({ 'Content-Type': 'application/json' });
 	});
 
+	it('sends a FormData body as it is, without a content type of its own', async () => {
+		answer(() => reply(200, {}));
+		const form = new FormData();
+		form.append('dry_run', 'true');
+		await request('POST', '/api/x', { body: form });
+		const { init } = lastCall();
+		expect(init.body).toBe(form);
+		expect(init.headers).not.toHaveProperty('Content-Type');
+	});
+
 	it('answers undefined for 204', async () => {
 		answer(() => new Response(null, { status: 204 }));
 		await expect(request('DELETE', '/api/x')).resolves.toBeUndefined();

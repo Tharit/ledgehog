@@ -36,3 +36,17 @@ export type {
 	Tag,
 	TagApplyOut
 } from '#lib/api/types.js';
+export type {
+	CatalogEntry,
+	DryRunReport,
+	ImportRun,
+	ImporterInstance,
+	ImporterKind,
+	ImporterSettings,
+	LinkResult,
+	LinkedAccount,
+	RunStats,
+	RunStatus,
+	UploadFailure,
+	UploadResult
+} from '#lib/api/importers.js';

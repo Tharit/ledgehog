@@ -66,14 +66,16 @@ export async function request<T>(
 	{ body, query, signal }: RequestOptions = {}
 ): Promise<T> {
 	const headers: Record<string, string> = { Accept: 'application/json' };
-	if (body !== undefined) headers['Content-Type'] = 'application/json';
+	// a FormData body (a file upload) is sent as it is: the browser writes its multipart type and boundary
+	const multipart = typeof FormData !== 'undefined' && body instanceof FormData;
+	if (body !== undefined && !multipart) headers['Content-Type'] = 'application/json';
 	let response: Response;
 	try {
 		response = await fetch(path + queryString(query), {
 			method,
 			credentials: 'same-origin',
 			headers,
-			body: body === undefined ? undefined : JSON.stringify(body),
+			body: body === undefined ? undefined : multipart ? (body as FormData) : JSON.stringify(body),
 			signal
 		});
 	} catch (error) {
