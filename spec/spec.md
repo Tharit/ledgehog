@@ -1819,8 +1819,9 @@ as a subsystem of their own. The core requires this of it:
 - **A document explains a flow.** A transaction typed as a transfer is not a
   candidate, a pick on it is refused, and the schema refuses a link on a
   transfer. Converting a linked transaction to a transfer drops its document,
-  as it drops the payee (I9). Picking a document for an untyped transaction
-  types it `flow`, as a user decision, like a drafted payee.
+  as it drops the payee (I9). A linked or picked document decides `flow`
+  first, whatever the type was: the type takes the link's key (§5.9, field
+  order).
 - **Picking a document in review** is part of the review draft (§6): one of
   the suggestions, a document found by hand, or "none of these". The preview
   shows the values resolved with the document and the split; the commit writes the pick, or
@@ -1909,7 +1910,10 @@ decided. The **document** comes first (§5.8): matching judges the
 transaction as resolved without one, and a link then changes everything after
 it. Then:
 
-1. **Type**, by the first pass to decide it: pass 0 decides `transfer`; rules
+1. **Type**, by the first pass to decide it. A linked or picked document decides
+   `flow` first, the type taking the link's key (a pick `user`, an automatic
+   link of one line `matcher_decision`, one of several `matcher_proposal`),
+   and no later pass can propose `transfer` for it. Otherwise: pass 0 decides `transfer`; rules
    decide `transfer` when a counter-account rule matches and `flow` when
    otherwise a payee rule, or a category rule that has no payee condition,
    matches — counter-account rules come first (Pass 1, below); a category

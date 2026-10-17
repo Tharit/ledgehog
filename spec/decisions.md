@@ -3668,8 +3668,10 @@ Architecture §4.1, §6.3.
 
 Spec §5.9, architecture §4.1.
 
-- **A value equal to a shown proposal becomes `user`** with the proposal's key nested as its basis; an unchanged
-  `user` stays; anything else is `user` without a basis. Empty fields carry no key. A commit does not confirm.
+- **A standing value keeps its key** (pass 0, a rule, a matcher decision or a user's, with its basis): a commit
+  does not rewrite what already stands. **A proposal becomes `user`** with the proposal's key nested as its
+  basis: a value equal to a shown proposal, or one decided by `history`, `llm` or `matcher_proposal`. What the
+  user typed is `user` without a basis. Empty fields carry no key. A commit does not confirm.
 - **The client may name a basis only for the passes `history`, `llm` and `matcher_proposal`;** it is stored
   wrapped under `user` and never trusted as evidence. A client can never assert `rule` or `own_account`.
 - Rejected: *trusting the key the client sends* (a client could mint a standing key and confirm a unit).
@@ -3947,7 +3949,7 @@ with its own line in the preview but with all lines after the commit.
   "Re-resolve" keeps its meaning and gets no warning: its preview shows what changes.
 - **A document implies `flow`,** a field-order constraint like "a category implies a flow". A transfer is not a
   candidate and a pick on it is refused (`document_not_for_transfer`); converting a linked transaction to a transfer
-  drops its document, as it drops the payee (I9); a pick on an untyped transaction types it `flow` as a user decision;
+  drops its document, as it drops the payee (I9); the document decides `flow` first, the type taking the link's key (§5.9, field order);
   the schema refuses a document on a transfer (`ck_document_not_on_transfer`). Entries cut before this change are
   dropped: there is no real data yet.
 - **The model as the reviewer of weak history** is recorded as an open question (spec §9), to be decided with pass 3.

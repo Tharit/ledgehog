@@ -701,15 +701,6 @@ CREATE TABLE ledger_entry (
     -- split carries it once. Derived like a field, keyed 'document'. Its
     -- foreign key and the I35 indexes follow external_document, below.
     document_id          bigint,
-    -- the entry's LINE of its transaction's document (spec §5.8): for a
-    -- document of one line, the original entry's, written with the link;
-    -- for one of several, written by the split along the lines on each
-    -- entry it makes. Null for every other entry. Read only while the line
-    -- belongs to the document its transaction carries; a reference to
-    -- another document's line is ignored. A changed document's lines are
-    -- replaced (spec §5.5), which clears it. Its foreign key and unique
-    -- index follow external_document_line, below.
-    document_line_id     bigint,
 
     description text,
     note        text,
@@ -744,11 +735,22 @@ CREATE TABLE ledger_entry (
     -- writes the state the user saw and is refused only where the unit
     -- changed underneath it, never because a proposal was recomputed
     -- (spec §6). Structural columns — account, amount, counterpart,
-    -- document — bump it whoever writes them, settling included.
+    -- document and its line — bump it whoever writes them, settling included.
     -- No created_by / created_at / updated_at: attribution and timestamps
     -- are audit questions (spec §3.2). An imported entry's arrival time is its
     -- source transaction's run.
     version    integer NOT NULL DEFAULT 1,
+
+    -- the entry's LINE of its transaction's document (spec §5.8; declared
+    -- after `version` so that the column is added to the table in place): for a
+    -- document of one line, the original entry's, written with the link;
+    -- for one of several, written by the split along the lines on each
+    -- entry it makes. Null for every other entry. Read only while the line
+    -- belongs to the document its transaction carries; a reference to
+    -- another document's line is ignored. A changed document's lines are
+    -- replaced (spec §5.5), which clears it. Its foreign key and unique
+    -- index follow external_document_line, below.
+    document_line_id bigint,
 
     -- a movement or a derived entry, never both, never neither
     CONSTRAINT ck_entry_kind
@@ -1282,7 +1284,7 @@ CREATE TRIGGER trg_entry_source_fixed
 -- ledger.settling = 'on'): a commit writes the state the user saw, so a
 -- proposal recomputed underneath an open review panel must not refuse it.
 -- STRUCTURAL changes bump the version whoever makes them — account, amount,
--- counterpart and document (an entry's source never changes, 8.5c) —
+-- counterpart, document and its line (an entry's source never changes, 8.5c) —
 -- because a commit must be refused when the unit's structure moved (spec §6). A recomputed derived amount is such a change.
 CREATE OR REPLACE FUNCTION bump_version() RETURNS trigger AS $$
 BEGIN
@@ -1297,6 +1299,7 @@ CREATE TRIGGER trg_le_version BEFORE UPDATE ON ledger_entry
          OR OLD.amount                IS DISTINCT FROM NEW.amount
          OR OLD.counterpart_entry_id  IS DISTINCT FROM NEW.counterpart_entry_id
          OR OLD.document_id           IS DISTINCT FROM NEW.document_id
+         OR OLD.document_line_id      IS DISTINCT FROM NEW.document_line_id
          OR (current_setting('ledger.settling', true) IS DISTINCT FROM 'on'
              AND (   OLD.type         IS DISTINCT FROM NEW.type
                   OR OLD.counter_account_id IS DISTINCT FROM NEW.counter_account_id
