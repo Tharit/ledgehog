@@ -8,6 +8,39 @@ const popped = () =>
 beforeEach(() => history.replaceState(null, '', '/accounts/1'));
 afterEach(() => history.replaceState(null, '', '/'));
 
+describe('RowAddress with a router that applies a push a moment later', () => {
+	// SvelteKit's pushState may not have changed the address yet when it returns: the first click
+	// wrote ?source= but the row detail did not open, because the state was read back from the old
+	// address; a second click found the new one and worked
+	function laterNav() {
+		let current = new URL('http://x/accounts/1');
+		return {
+			url: () => new URL(current.href),
+			push: (url: string) => void queueMicrotask(() => (current = new URL(url, current))),
+			replace: (url: string) => void queueMicrotask(() => (current = new URL(url, current))),
+			back: () => {}
+		};
+	}
+
+	it('opens the row on the first open, before the address has changed', () => {
+		const address = new RowAddress(laterNav());
+		address.sync();
+
+		address.open(5);
+
+		expect(address.id).toBe(5);
+	});
+
+	it('does not lose the open row when something syncs before the push has landed', async () => {
+		const nav = laterNav();
+		const address = new RowAddress(nav);
+		address.open(5);
+		await Promise.resolve();
+		address.sync();
+		expect(address.id).toBe(5);
+	});
+});
+
 describe('RowAddress', () => {
 	it('reads the address it is given', () => {
 		history.replaceState(null, '', '/accounts/1?source=7');

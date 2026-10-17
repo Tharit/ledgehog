@@ -1,23 +1,11 @@
 // The row detail's address as state: which `?source=` the browser's address holds right now.
 // SvelteKit's shallow routing (`pushState`, `replaceState`) changes the address bar but not `page.url`,
 // so the page cannot read the address from `page.url`: like the unit panel (units/panel.svelte.ts) it
-// reads the real address (`nav.url()`) after every change it makes and after every Back, Forward and
-// navigation (`sync`). Opening adds a history entry per open, closing takes them back.
+// reads the real address (`nav.url()`) after every Back, Forward and navigation (`sync`), and sets
+// its own state when it opens or leaves a row, since the router may apply a push a moment later.
+// Opening adds a history entry per open, closing takes them back.
 import { sourceIdOf, withSource } from './address.js';
-
-export type RowNav = {
-	url: () => URL;
-	push: (url: string) => void;
-	replace: (url: string) => void;
-	back: (steps: number) => void;
-};
-
-export const browserNav: RowNav = {
-	url: () => new URL(location.href),
-	push: (url) => history.pushState(null, '', url),
-	replace: (url) => history.replaceState(null, '', url),
-	back: (steps) => history.go(-steps)
-};
+import { browserNav, type RowNav } from './row-nav.js';
 
 export class RowAddress {
 	/** the row the address names, or null */
@@ -41,7 +29,9 @@ export class RowAddress {
 		if (id === this.id) return;
 		this.#nav.push(withSource(this.#nav.url(), id));
 		this.#pushed += 1;
-		this.sync();
+		// the state is set here, not read back from the address: the router may apply a push a moment
+		// later, and reading it at once would find the old address and open nothing (like the panel)
+		this.id = id;
 	}
 
 	/** The user closed it: take back the entries opening added, else just drop the parameter. */
@@ -58,9 +48,9 @@ export class RowAddress {
 	/** Leave for the work panel or another dialog: the address changes at once. */
 	leave(): void {
 		this.#pushed = 0;
-		if (this.#nav.url().searchParams.has('source')) {
+		if (this.#nav.url().searchParams.has('source') || this.id !== null) {
 			this.#nav.replace(withSource(this.#nav.url(), null));
 		}
-		this.sync();
+		this.id = null;
 	}
 }
