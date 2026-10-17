@@ -3,13 +3,15 @@
 Each operation is ONE transaction: settle lock shared, then the account's lock, then row
 locks in ascending id; it commits, and only then settles (settling takes the settle lock
 exclusively in its own transaction, so it can never run inside this one). A settling
-failure is reported on the result, never raised into the committed write.
+failure is reported on the result, never raised into the committed write. Marking takes
+`dry_run`: the same code in a transaction that is rolled back, reporting what a real run would
+do and the versions it must carry (as a revert's preview does).
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from sqlalchemy import Connection, Engine, text
@@ -26,18 +28,32 @@ from app.core.domain.errors import (
     VersionConflict,
 )
 from app.core.ingest.entries import insert_entry
-from app.core.ingest.removal import Affected, entry_scope, remove_entries
+from app.core.ingest.removal import (
+    Affected,
+    DerivedChange,
+    derived_snapshot,
+    entry_scope,
+    entry_versions,
+    remove_entries,
+)
 from app.core.settle.settle import SettleResult, settle
 from app.utils.db.locks import WriteConflict, lock_accounts, lock_rows, lock_settle_shared, retry_on_deadlock
 
 
 @dataclass(frozen=True)
 class OpResult:
-    """Response of a duplicate operation: what settling touched, what the removal affected."""
+    """Response of a duplicate operation: what settling touched, what the removal affected.
 
-    settle: SettleResult
+    `settle` is None on a dry run. `versions` are the entries the marking writes (removed and unpaired),
+    which a real run must carry in `expected_versions`.
+    """
+
+    settle: SettleResult | None
     affected: Affected = field(default_factory=Affected)
     created_entry_id: int | None = None  # clear: the entry the row got
+    repointed_source_ids: tuple[int, ...] = ()  # mark: rows that pointed at the marked row, now at its original
+    derived_changes: tuple[DerivedChange, ...] = ()  # mark: accounts whose derived entries differ afterwards
+    versions: Mapping[int, int] = field(default_factory=dict)  # mark
 
 
 def mark_duplicate(
@@ -46,6 +62,7 @@ def mark_duplicate(
     of_row_id: int,
     *,
     expected_versions: Mapping[int, int] | None = None,
+    dry_run: bool = False,
 ) -> OpResult:
     """Mark imported row `row_id` as a duplicate of `of_row_id` (same account, not a duplicate).
 
@@ -56,11 +73,12 @@ def mark_duplicate(
     map (the caller's view was incomplete), `VersionConflict` names them all and nothing is
     written. The marked row's entries are removed through `remove_entries` in the same
     transaction that sets `duplicate_of`, and rows that pointed at it are repointed to `of_row_id`.
+    A dry run reports the same result without a settle and writes nothing.
     """
     if row_id == of_row_id:
         raise DuplicateOfSelf(row_id)
-    affected = retry_on_deadlock(lambda: _mark(engine, row_id, of_row_id, expected_versions))
-    return OpResult(settle=settle(engine), affected=affected)
+    done = retry_on_deadlock(lambda: _mark(engine, row_id, of_row_id, expected_versions, dry_run))
+    return done if dry_run else replace(done, settle=settle(engine))
 
 
 def clear_duplicate(engine: Engine, row_id: int) -> OpResult:
@@ -134,22 +152,39 @@ def _accounts_of_entries(conn: Connection, entry_ids: Sequence[int]) -> set[int]
     }
 
 
-def _mark(engine: Engine, row_id: int, of_row_id: int, expected: Mapping[int, int] | None) -> Affected:
+class _Preview(Exception):
+    """Carries a dry run's result out of the transaction, which it rolls back."""
+
+    def __init__(self, result: OpResult) -> None:
+        super().__init__("dry run")
+        self.result = result
+
+
+def _mark(
+    engine: Engine, row_id: int, of_row_id: int, expected: Mapping[int, int] | None, dry_run: bool
+) -> OpResult:
     """Removal rewrites transfer partners that may sit on other accounts, so those are locked
     too (architecture §5.2). They are read before the locks, and read again under them; a
     change in between extends the lock set and the transaction runs again."""
     extra: set[int] = set()
     for _ in range(_LOCK_ROUNDS):
         try:
-            return _mark_once(engine, row_id, of_row_id, expected, extra)
+            return _mark_once(engine, row_id, of_row_id, expected, extra, dry_run)
         except _AccountsMissing as missing:
             extra |= missing.accounts
+        except _Preview as preview:
+            return preview.result
     raise WriteConflict()
 
 
 def _mark_once(
-    engine: Engine, row_id: int, of_row_id: int, expected: Mapping[int, int] | None, extra: set[int]
-) -> Affected:
+    engine: Engine,
+    row_id: int,
+    of_row_id: int,
+    expected: Mapping[int, int] | None,
+    extra: set[int],
+    dry_run: bool,
+) -> OpResult:
     with engine.begin() as conn:
         rows, locked = _begin(conn, row_id, of_row_id, extra_accounts=extra, partners_of=row_id)
         row, of = rows[row_id], rows[of_row_id]
@@ -172,16 +207,37 @@ def _mark_once(
             _check_versions(conn, expected, written=[*removed, *partners])
         else:
             lock_rows(conn, "ledger_entry", [*removed, *partners])
+        versions = entry_versions(conn, [*removed, *partners])
+        accounts = sorted({int(row.account_id), *involved})
+        before = derived_snapshot(conn, accounts)
         # rows that pointed at the marked row follow it to its original (no chains)
-        conn.execute(
-            text("UPDATE source_transaction SET duplicate_of = :o WHERE duplicate_of = :r"),
-            {"o": of_row_id, "r": row_id},
-        )
+        repointed = [
+            int(i)
+            for i in conn.execute(
+                text(
+                    "UPDATE source_transaction SET duplicate_of = :o WHERE duplicate_of = :r RETURNING id"
+                ),
+                {"o": of_row_id, "r": row_id},
+            ).scalars()
+        ]
         conn.execute(
             text("UPDATE source_transaction SET duplicate_of = :o WHERE id = :r"),
             {"o": of_row_id, "r": row_id},
         )
-        return remove_entries(conn, removed, scope=scope)
+        affected = remove_entries(conn, removed, scope=scope)
+        after = derived_snapshot(conn, accounts)
+        result = OpResult(
+            settle=None,
+            affected=affected,
+            repointed_source_ids=tuple(sorted(repointed)),
+            derived_changes=tuple(
+                DerivedChange(a, before[a], after[a]) for a in accounts if before[a] != after[a]
+            ),
+            versions=versions,
+        )
+        if dry_run:
+            raise _Preview(result)
+        return result
 
 
 def _check_versions(conn: Connection, expected: Mapping[int, int], *, written: Sequence[int]) -> None:

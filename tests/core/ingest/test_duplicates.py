@@ -237,6 +237,23 @@ def test_no_version_map_means_no_check(ledger: Ledger) -> None:
     assert ledger.dup_of(a_src) == c_src
 
 
+def test_a_dry_run_reports_what_a_real_run_does_and_writes_nothing(
+    ledger: Ledger, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    a_src, a, b, c_src = _pair_to_mark(ledger)
+    calls: list[int] = []
+    monkeypatch.setattr(duplicates, "settle", lambda e: calls.append(1) or SettleResult())
+    preview = mark_duplicate(ledger.engine, a_src, c_src, dry_run=True)
+    assert calls == [] and preview.settle is None
+    assert ledger.dup_of(a_src) is None and ledger.entries_of(a_src) == [a]
+    assert preview.affected.removed_entry_ids == (a,) and preview.affected.partner_entry_ids == (b,)
+    assert preview.versions == {a: _version(ledger, a), b: _version(ledger, b)}
+    real = mark_duplicate(ledger.engine, a_src, c_src, expected_versions=preview.versions)
+    assert real.affected == preview.affected and real.versions == preview.versions
+    assert real.derived_changes == preview.derived_changes
+    assert ledger.dup_of(a_src) == c_src
+
+
 def test_a_version_refused_mark_does_not_settle(ledger: Ledger, monkeypatch: pytest.MonkeyPatch) -> None:
     a_src, a, _, c_src = _pair_to_mark(ledger)
     calls: list[int] = []

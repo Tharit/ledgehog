@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import date
 
 from sqlalchemy import Connection, text
 
@@ -43,6 +44,47 @@ class Affected:
     freed_document_ids: tuple[int, ...] = ()
     # `unpair` only: every entry that lost its link, the ones asked for and their partners
     unpaired_entry_ids: tuple[int, ...] = ()
+
+
+@dataclass(frozen=True)
+class DerivedEntry:
+    type: str
+    booked_on: date
+    amount: int
+
+
+@dataclass(frozen=True)
+class DerivedChange:
+    """An account whose derived entries (opening, reconciliations, valuations) differ after a write."""
+
+    account_id: int
+    before: tuple[DerivedEntry, ...]
+    after: tuple[DerivedEntry, ...]
+
+
+def entry_versions(conn: Connection, entry_ids: Sequence[int]) -> dict[int, int]:
+    """entry id -> version, for the entries that exist (what a confirming request must carry)."""
+    return {
+        int(r.id): int(r.version)
+        for r in conn.execute(
+            text("SELECT id, version FROM ledger_entry WHERE id = ANY(:ids) ORDER BY id"),
+            {"ids": list(entry_ids)},
+        )
+    }
+
+
+def derived_snapshot(conn: Connection, accounts: Sequence[int]) -> dict[int, tuple[DerivedEntry, ...]]:
+    """The derived entries of each account, by date then id: take it before and after a write."""
+    out: dict[int, tuple[DerivedEntry, ...]] = {a: () for a in accounts}
+    for r in conn.execute(
+        text(
+            "SELECT account_id, type, booked_on, amount FROM ledger_entry WHERE account_id = ANY(:a)"
+            " AND balance_record_id IS NOT NULL ORDER BY account_id, booked_on, id"
+        ),
+        {"a": list(accounts)},
+    ):
+        out[r.account_id] = (*out[r.account_id], DerivedEntry(r.type, r.booked_on, r.amount))
+    return out
 
 
 def entry_scope(conn: Connection, entry_ids: Sequence[int]) -> tuple[list[int], list[int]]:

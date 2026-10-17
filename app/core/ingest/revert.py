@@ -20,7 +20,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import date
 from typing import Any
 
 from sqlalchemy import Connection, Engine, text
@@ -28,7 +27,14 @@ from sqlalchemy import Connection, Engine, text
 from app.core.balance.derived import recompute_derived
 from app.core.ingest.duplicates import _check_versions
 from app.core.ingest.entries import insert_entry
-from app.core.ingest.removal import entry_scope, remove_entries
+from app.core.ingest.removal import (
+    DerivedChange,
+    DerivedEntry,
+    derived_snapshot,
+    entry_scope,
+    entry_versions,
+    remove_entries,
+)
 from app.core.settle.settle import SettleResult, settle
 from app.utils import clock
 from app.utils.db.locks import WriteConflict, lock_accounts, lock_rows, lock_settle_shared, retry_on_deadlock
@@ -59,22 +65,6 @@ class NotLatestRun(RevertError):
             f"import run {run_id} is not the account's latest run: "
             f"revert run {newer_run_id} (and any later run) first"
         )
-
-
-@dataclass(frozen=True)
-class DerivedEntry:
-    type: str
-    booked_on: date
-    amount: int
-
-
-@dataclass(frozen=True)
-class DerivedChange:
-    """An account whose derived entries (opening, reconciliations, valuations) differ after the revert."""
-
-    account_id: int
-    before: tuple[DerivedEntry, ...]
-    after: tuple[DerivedEntry, ...]
 
 
 @dataclass(frozen=True)
@@ -232,28 +222,6 @@ def _reassign_duplicates(
     return tuple(sorted(cleared)), tuple(sorted(repointed))
 
 
-def _versions(conn: Connection, entry_ids: list[int]) -> dict[int, int]:
-    return {
-        int(r.id): int(r.version)
-        for r in conn.execute(
-            text("SELECT id, version FROM ledger_entry WHERE id = ANY(:ids) ORDER BY id"), {"ids": entry_ids}
-        )
-    }
-
-
-def _derived(conn: Connection, accounts: list[int]) -> dict[int, tuple[DerivedEntry, ...]]:
-    out: dict[int, tuple[DerivedEntry, ...]] = {a: () for a in accounts}
-    for r in conn.execute(
-        text(
-            "SELECT account_id, type, booked_on, amount FROM ledger_entry WHERE account_id = ANY(:a)"
-            " AND balance_record_id IS NOT NULL ORDER BY account_id, booked_on, id"
-        ),
-        {"a": accounts},
-    ):
-        out[r.account_id] = (*out[r.account_id], DerivedEntry(r.type, r.booked_on, r.amount))
-    return out
-
-
 def _revert_once(
     engine: Engine,
     run_id: int,
@@ -287,9 +255,9 @@ def _revert_once(
             _check_versions(conn, expected, written=written)  # locks, compares, before any write
         else:
             lock_rows(conn, "ledger_entry", written)
-        versions = _versions(conn, written)
+        versions = entry_versions(conn, written)
         affected_accounts = sorted({account_id} | involved)
-        before = _derived(conn, affected_accounts)
+        before = derived_snapshot(conn, affected_accounts)
 
         # 0. the run stops counting before any recompute
         conn.execute(
@@ -307,7 +275,7 @@ def _revert_once(
             conn.execute(text("DELETE FROM source_transaction WHERE id = ANY(:ids)"), {"ids": row_ids})
         for acct in affected_accounts:
             recompute_derived(conn, acct)
-        after = _derived(conn, affected_accounts)
+        after = derived_snapshot(conn, affected_accounts)
         result = RevertResult(
             run_id=run_id,
             removed_entry_ids=affected.removed_entry_ids,
