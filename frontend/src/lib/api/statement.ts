@@ -41,15 +41,20 @@ export function markDuplicate(
 	of: number,
 	{
 		dryRun = false,
-		versions = {},
+		versions,
 		signal
 	}: { dryRun?: boolean; versions?: SourceVersions; signal?: AbortSignal } = {}
 ): Promise<MarkDuplicateOut> {
+	// The server treats any map as the versions the caller read, and refuses a write it does not
+	// cover: a dry run, which reads them, and a call that has none send null, never an empty map.
+	const supplied = !dryRun && versions !== undefined && Object.keys(versions).length > 0;
 	return request('POST', `/api/ledger/sources/${sourceId}/duplicate`, {
 		body: {
 			of,
 			dry_run: dryRun,
-			expected_versions: Object.fromEntries(Object.entries(versions).map(([k, v]) => [k, v]))
+			expected_versions: supplied
+				? Object.fromEntries(Object.entries(versions).map(([k, v]) => [k, v]))
+				: null
 		},
 		signal
 	});

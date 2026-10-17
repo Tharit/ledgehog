@@ -16,7 +16,7 @@ function last(): [string, RequestInit] {
 
 beforeEach(() => {
 	fetchMock.mockReset();
-	fetchMock.mockResolvedValue(reply({}));
+	fetchMock.mockImplementation(async () => reply({}));
 	vi.stubGlobal('fetch', fetchMock);
 });
 afterEach(() => vi.unstubAllGlobals());
@@ -45,8 +45,20 @@ describe('the duplicate routes', () => {
 		expect(JSON.parse(last()[1].body as string)).toEqual({
 			of: 5,
 			dry_run: true,
-			expected_versions: {}
+			expected_versions: null
 		});
+	});
+
+	it('sends no versions on a dry run even when it is given some', async () => {
+		await markDuplicate(8, 5, { dryRun: true, versions: { 10: 2 } });
+		expect(JSON.parse(last()[1].body as string).expected_versions).toBeNull();
+	});
+
+	it('sends no map when the caller has no versions, never an empty one', async () => {
+		await markDuplicate(8, 5);
+		expect(JSON.parse(last()[1].body as string).expected_versions).toBeNull();
+		await markDuplicate(8, 5, { versions: {} });
+		expect(JSON.parse(last()[1].body as string).expected_versions).toBeNull();
 	});
 
 	it('carries the versions the preview reported', async () => {

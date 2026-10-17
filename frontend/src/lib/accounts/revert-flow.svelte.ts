@@ -85,10 +85,7 @@ export class RevertFlow {
 			const failure = classifyWriteError(error);
 			if (failure.kind === 'conflict' && failure.reason !== 'not_revertible') {
 				await this.check();
-				this.failure = {
-					...failure,
-					text: 'Entries changed since this was opened. What would be removed is checked again above.'
-				};
+				this.failure = failure;
 			} else {
 				this.failure = failure;
 			}

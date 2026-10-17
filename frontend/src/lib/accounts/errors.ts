@@ -83,6 +83,18 @@ function heldOf(details: unknown): Record<string, number> | undefined {
 	);
 }
 
+/** What a version conflict says: the entries a write would change were edited since its preview. */
+export const ENTRIES_CHANGED =
+	'The entries this would change were edited since the preview. The preview is updated: check it and try again.';
+
+function hasEntryIds(details: unknown): boolean {
+	const ids =
+		details !== null && typeof details === 'object' && !Array.isArray(details)
+			? (details as Record<string, unknown>).entry_ids
+			: undefined;
+	return Array.isArray(ids);
+}
+
 const REASONS: Record<string, string> = {
 	duplicate_external_ref: 'Another account already uses this bank reference.',
 	record_date_taken: 'Another balance record already holds this date.',
@@ -133,11 +145,22 @@ export function classifyWriteError(error: unknown): WriteFailure {
 					retryable: false
 				};
 			}
+			// a 409 that names entries: they were written since the preview that reported their versions
+			if (reason === undefined && hasEntryIds(error.details)) {
+				return {
+					kind: 'conflict',
+					reason: 'entries_changed',
+					text: ENTRIES_CHANGED,
+					retryable: false
+				};
+			}
 			const known = typeof reason === 'string' ? REASONS[reason] : undefined;
 			return {
 				kind: 'conflict',
 				reason: typeof reason === 'string' ? reason : undefined,
-				text: known ?? 'Something changed since this was opened. What follows is checked again.',
+				text:
+					known ??
+					'This account changed since you opened this dialog. The figures are updated: check them and try again.',
 				retryable: false
 			};
 		}
