@@ -90,6 +90,7 @@ export function run(over: Partial<ImportRun> = {}): ImportRun {
 		finished_at: '2026-04-02T10:00:01Z',
 		started_by: 1,
 		error_text: null,
+		retryable: null,
 		covered_from: '2026-03-03',
 		covered_through: '2026-03-29',
 		stats: {

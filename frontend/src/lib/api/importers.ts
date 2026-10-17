@@ -138,6 +138,8 @@ export type ImportRun = {
 	started_by: number | null;
 	/** a failed run's error: its class and message ("ParseFailed: …"), never file content */
 	error_text: string | null;
+	/** a failed run: whether running it again can help (its error class says); null otherwise */
+	retryable: boolean | null;
 	covered_from: IsoDate | null;
 	covered_through: IsoDate | null;
 	/** `{}` for a run that failed or still runs */

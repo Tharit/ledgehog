@@ -171,6 +171,7 @@
 			runs={runs.runs}
 			status={runs.runsStatus}
 			instanceLabel={runs.instanceLabel}
+			isFile={runs.isFile}
 			showAll={runs.showAll}
 			currency={account.currency}
 			locale={view.locale}

@@ -3,6 +3,7 @@
 	import { LATEST_RUNS, statusLabel, summaryLine, type ImportRun } from '#lib/accounts/runs.js';
 	import ActionButton from '#lib/components/common/action-button.svelte';
 	import Notice from '#lib/components/common/notice.svelte';
+	import RunNextStep from '#lib/components/importers/run-next-step.svelte';
 	import RunSummary from '#lib/components/importers/run-summary.svelte';
 	import { formatDate, formatInstant } from '#lib/format/index.js';
 	import { cn } from '#lib/utils.js';
@@ -10,12 +11,13 @@
 	// The account's import log (ux/views/account.md "Runs"): the latest five runs, "Show all" for the
 	// rest. A row shows the instance, the start as an instant, its status, "covered through" and one
 	// line of its summary, and opens the run summary in place. A reverted run is marked; a failed one
-	// shows its error. "Revert…" is offered on the one run the server marks revertible; an earlier
+	// shows its error, then what to do next (`run-next-step`). "Revert…" is offered on the one run the server marks revertible; an earlier
 	// successful run says that later runs are reverted first.
 	let {
 		runs,
 		status,
 		instanceLabel,
+		isFile = () => false,
 		showAll = false,
 		currency,
 		locale = 'en',
@@ -28,6 +30,8 @@
 		status: 'loading' | 'ready' | 'error';
 		/** the label of the instance a run came from; a deleted instance has none */
 		instanceLabel: (run: ImportRun) => string;
+		/** whether the importer a run came from takes a file (what a failed run offers next) */
+		isFile?: (run: ImportRun) => boolean;
 		showAll?: boolean;
 		currency: string;
 		locale?: string;
@@ -103,7 +107,9 @@
 								</span>
 							{/if}
 						</button>
-						{#if run.revertible}
+						{#if run.status === 'failed'}
+							<RunNextStep {run} fileImporter={isFile(run)} />
+						{:else if run.revertible}
 							<ActionButton variant="outline" onclick={() => onrevert?.(run)}>Revert…</ActionButton>
 						{:else if run.status === 'ok'}
 							<span class="text-xs text-muted-foreground" data-slot="later-first">
@@ -113,7 +119,7 @@
 					</div>
 					{#if open}
 						<div class="pb-3 pl-6">
-							<RunSummary {run} {currency} {locale} />
+							<RunSummary {run} {currency} {locale} fileImporter={isFile(run)} />
 						</div>
 					{/if}
 				</li>

@@ -15,6 +15,7 @@ function run(over: Partial<ImportRun> = {}): ImportRun {
 		finished_at: '2026-10-11T08:00:05Z',
 		started_by: 1,
 		error_text: null,
+		retryable: null,
 		covered_from: null,
 		covered_through: '2026-10-10',
 		stats: { inserted: 12, skipped_by_identity: 3, inserted_as_duplicates: [] },
@@ -69,6 +70,35 @@ describe('AccountRuns', () => {
 		});
 		expect(within(li(3)).getByText('Reverted')).toBeInTheDocument();
 		expect(within(li(2)).getByText('ParseFailed: header not found')).toBeInTheDocument();
+	});
+
+	it('offers Upload file on a failed file run that trying again can help', () => {
+		runs({
+			runs: [
+				run({ id: 2, status: 'failed', retryable: true, error_text: 'SourceUnavailable: down' })
+			],
+			isFile: () => true
+		});
+		expect(within(li(2)).getByRole('link', { name: 'Upload file' })).toHaveAttribute(
+			'href',
+			'/accounts/1/upload?instance=2'
+		);
+		expect(within(li(2)).queryByText(/then upload again/)).toBeNull();
+	});
+
+	it('says what to fix on a failed run that trying again cannot help', () => {
+		runs({
+			runs: [
+				run({ id: 2, status: 'failed', retryable: false, error_text: 'ParseFailed: no header' })
+			],
+			isFile: () => true
+		});
+		expect(within(li(2)).getByText(/then upload again/)).toBeInTheDocument();
+		expect(within(li(2)).getByRole('link', { name: 'Fix the profile' })).toHaveAttribute(
+			'href',
+			'/settings/importers/2'
+		);
+		expect(within(li(2)).queryByRole('link', { name: 'Upload file' })).toBeNull();
 	});
 
 	it('opens the run summary in place', async () => {

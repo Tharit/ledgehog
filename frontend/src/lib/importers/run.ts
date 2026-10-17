@@ -5,15 +5,24 @@ import type { ImportRun, RunStats, UploadResult } from '#lib/api/importers.js';
 /** The part of a run the summary reads; a stored `ImportRun` has it as it is. */
 export type RunSummaryInput = Pick<
 	ImportRun,
-	'account_id' | 'status' | 'error_text' | 'covered_from' | 'covered_through' | 'stats'
+	| 'account_id'
+	| 'instance_id'
+	| 'status'
+	| 'error_text'
+	| 'retryable'
+	| 'covered_from'
+	| 'covered_through'
+	| 'stats'
 >;
 
 /** A dry run's answer as a run that would end well: the same statistics, the report's coverage. */
 export function dryRunAsRun(result: UploadResult, accountId: number): RunSummaryInput {
 	return {
 		account_id: accountId,
+		instance_id: null,
 		status: 'ok',
 		error_text: null,
+		retryable: null,
 		covered_from: null,
 		covered_through: result.report.coverage,
 		stats: result.summary

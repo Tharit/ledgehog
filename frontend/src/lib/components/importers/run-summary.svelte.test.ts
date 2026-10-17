@@ -88,11 +88,50 @@ describe('RunSummary', () => {
 		);
 	});
 
-	it('shows a failed run as its error, quietly, and says nothing about trying again', () => {
-		summarise({ status: 'failed', error_text: 'ParseFailed: no header row found', stats: {} });
+	it('shows a failed run as its error, quietly, then what to fix when trying again cannot help', () => {
+		render(RunSummary, {
+			props: {
+				run: run({
+					status: 'failed',
+					error_text: 'ParseFailed: no header row found',
+					retryable: false,
+					instance_id: 4,
+					stats: {}
+				}),
+				currency: 'EUR',
+				fileImporter: true
+			}
+		});
 		expect(screen.getByText('ParseFailed: no header row found')).toBeInTheDocument();
 		expect(screen.queryByRole('dialog')).toBeNull();
-		expect(screen.queryByText(/try again/i)).toBeNull();
+		expect(screen.getByText(/then upload again/)).toBeInTheDocument();
+		expect(screen.getByRole('link', { name: 'Fix the profile' })).toHaveAttribute(
+			'href',
+			'/settings/importers/4'
+		);
+		expect(screen.queryByRole('link', { name: 'Upload file' })).toBeNull();
+	});
+
+	it('offers Upload file after a failed file run that trying again can help', () => {
+		render(RunSummary, {
+			props: {
+				run: run({
+					status: 'failed',
+					error_text: 'SourceUnavailable: down',
+					retryable: true,
+					instance_id: 4,
+					account_id: 7,
+					stats: {}
+				}),
+				currency: 'EUR',
+				fileImporter: true
+			}
+		});
+		expect(screen.getByRole('link', { name: 'Upload file' })).toHaveAttribute(
+			'href',
+			'/accounts/7/upload?instance=4'
+		);
+		expect(screen.queryByText(/then upload again/)).toBeNull();
 	});
 
 	it('reads a dry run in the same shape', () => {
