@@ -10,6 +10,8 @@
 		icon?: Component<{ 'aria-hidden'?: 'true' }>;
 		onselect: () => void;
 		disabled?: boolean;
+		/** why it is disabled, shown as the tooltip of the disabled menu item (patterns §11.4) */
+		reason?: string;
 		/** carries out a deletion: last in the menu, in the destructive colour */
 		destructive?: boolean;
 	};
@@ -83,10 +85,13 @@
 			<DropdownMenu.Content align="end" class="min-w-44">
 				{#each items as action, i (action.verb)}
 					{#if i === firstDestructive && i > 0}<DropdownMenu.Separator />{/if}
+					<!-- a disabled item still takes the pointer, so that its reason shows as the tooltip -->
 					<DropdownMenu.Item
 						variant={action.destructive ? 'destructive' : 'default'}
 						disabled={action.disabled}
 						onSelect={action.onselect}
+						title={action.disabled ? action.reason : undefined}
+						class="data-disabled:pointer-events-auto"
 					>
 						{action.verb}
 					</DropdownMenu.Item>

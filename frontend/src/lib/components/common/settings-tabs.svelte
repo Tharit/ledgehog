@@ -6,7 +6,8 @@
 		{ href: '/settings/categories', label: 'Categories' },
 		{ href: '/settings/payees', label: 'Payees' },
 		{ href: '/settings/tags', label: 'Tags' },
-		{ href: '/settings/rules', label: 'Rules' }
+		{ href: '/settings/rules', label: 'Rules' },
+		{ href: '/settings/importers', label: 'Importers' }
 	];
 </script>
 

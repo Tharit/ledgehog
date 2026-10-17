@@ -106,6 +106,26 @@ describe('RowActions', () => {
 		);
 	});
 
+	it('gives a disabled menu item its reason as the tooltip', async () => {
+		const fn = actions();
+		categoryRow(fn, {
+			menu: [
+				{
+					verb: 'Delete…',
+					disabled: true,
+					reason: 'has runs; disable it instead',
+					onselect: fn.remove
+				}
+			]
+		});
+
+		const menu = await openMenu();
+
+		const item = within(menu).getByRole('menuitem', { name: 'Delete…' });
+		expect(item).toHaveAttribute('aria-disabled', 'true');
+		expect(item).toHaveAttribute('title', 'has runs; disable it instead');
+	});
+
 	it('has no menu when nothing is left for it', () => {
 		const fn = actions();
 		render(RowActions, {

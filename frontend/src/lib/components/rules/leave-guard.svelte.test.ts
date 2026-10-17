@@ -53,6 +53,16 @@ describe('LeaveGuard', () => {
 		expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
 	});
 
+	it('names what the draft is', async () => {
+		render(LeaveGuard, { props: { dirty: true, subject: 'this importer' } });
+
+		navigate();
+
+		expect(
+			await screen.findByText('The changes to this importer have not been saved.')
+		).toBeInTheDocument();
+	});
+
 	it('stays when the user cancels', async () => {
 		render(LeaveGuard, { props: { dirty: true } });
 		navigate();

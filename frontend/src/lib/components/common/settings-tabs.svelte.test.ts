@@ -7,11 +7,11 @@ function tabs(currentPath: string) {
 }
 
 describe('SettingsTabs', () => {
-	it('links Categories, Payees, Tags and Rules', () => {
+	it('links Categories, Payees, Tags, Rules and Importers', () => {
 		tabs('/settings/rules');
 
 		const nav = screen.getByRole('navigation', { name: 'Settings sections' });
-		expect(nav.querySelectorAll('a')).toHaveLength(4);
+		expect(nav.querySelectorAll('a')).toHaveLength(5);
 		expect(screen.getByRole('link', { name: 'Categories' })).toHaveAttribute(
 			'href',
 			'/settings/categories'
@@ -22,7 +22,17 @@ describe('SettingsTabs', () => {
 		);
 		expect(screen.getByRole('link', { name: 'Tags' })).toHaveAttribute('href', '/settings/tags');
 		expect(screen.getByRole('link', { name: 'Rules' })).toHaveAttribute('href', '/settings/rules');
-		expect(SETTINGS_TABS.map((t) => t.label)).toEqual(['Categories', 'Payees', 'Tags', 'Rules']);
+		expect(screen.getByRole('link', { name: 'Importers' })).toHaveAttribute(
+			'href',
+			'/settings/importers'
+		);
+		expect(SETTINGS_TABS.map((t) => t.label)).toEqual([
+			'Categories',
+			'Payees',
+			'Tags',
+			'Rules',
+			'Importers'
+		]);
 	});
 
 	it('marks the current tab, also below it (the rule editor)', () => {

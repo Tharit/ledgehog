@@ -7,7 +7,8 @@
 	// back link, Cancel, the settings tabs, the browser's Back) stops at "Discard changes?"; closing
 	// the tab or following an outside link gets the browser's own question. The page says `dirty`
 	// is false once it saves or deletes, so its own way out is not stopped.
-	let { dirty }: { dirty: boolean } = $props();
+	// `subject` says what the draft is ("this rule", "this importer").
+	let { dirty, subject = 'this rule' }: { dirty: boolean; subject?: string } = $props();
 
 	let open = $state(false);
 	let target = $state<URL | null>(null);
@@ -52,7 +53,7 @@
 	<Dialog.Content class="sm:max-w-sm">
 		<Dialog.Header>
 			<Dialog.Title>Discard changes?</Dialog.Title>
-			<Dialog.Description>The changes to this rule have not been saved.</Dialog.Description>
+			<Dialog.Description>The changes to {subject} have not been saved.</Dialog.Description>
 		</Dialog.Header>
 		<Dialog.Footer>
 			<Button variant="outline" onclick={keepEditing}>Cancel</Button>
