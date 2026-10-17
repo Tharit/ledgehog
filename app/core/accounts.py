@@ -80,6 +80,7 @@ class AccountView:
     last_data_on: date | None
     unexplained_difference: int | None
     anchored: bool  # False: it has entries but no counting balance record
+    balance: int  # the sum of its entries (`v_account_balance`), minor units of its currency
 
 
 def _canonical_ref(external_ref: str | None) -> str | None:
@@ -293,13 +294,14 @@ def reopen_account(engine: Engine, account_id: int) -> SettleResult:
 
 _LIST_SQL = """
 SELECT a.id, a.name, a.kind, a.currency, a.external_ref, a.closed_on, a.sort_order, a.note,
-       a.icon, a.color, s.synced, c.synced_through, d.last_data_on, u.difference,
+       a.icon, a.color, s.synced, c.synced_through, d.last_data_on, u.difference, bal.balance,
        NOT (EXISTS (SELECT 1 FROM ledger_entry e WHERE e.account_id = a.id)
             AND NOT EXISTS (SELECT 1 FROM v_balance_record b WHERE b.account_id = a.id)) AS anchored
   FROM account a
   JOIN v_account_synced s ON s.account_id = a.id
   JOIN v_account_coverage c ON c.account_id = a.id
   JOIN v_account_data_age d ON d.account_id = a.id
+  JOIN v_account_balance bal ON bal.account_id = a.id
   LEFT JOIN v_unexplained_difference u ON u.account_id = a.id
  ORDER BY (a.closed_on IS NOT NULL), a.sort_order, a.name, a.id
 """
@@ -324,6 +326,7 @@ def list_accounts(conn: Connection) -> list[AccountView]:
             last_data_on=r.last_data_on,
             unexplained_difference=None if r.difference is None else int(r.difference),
             anchored=r.anchored,
+            balance=int(r.balance),
         )
         for r in conn.execute(text(_LIST_SQL))
     ]

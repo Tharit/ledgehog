@@ -18,6 +18,7 @@ is updated in place, and a second call writes nothing.
 from __future__ import annotations
 
 from bisect import bisect_right
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 from itertools import accumulate
@@ -41,6 +42,55 @@ def recompute_derived(conn: Connection, account_id: int) -> None:
     _reconcile(conn, account_id, account.currency, desired)
 
 
+@dataclass(frozen=True)
+class RecordGap:
+    """What one counting record owns: its interval's movements and the amount left over (spec §3.10).
+
+    `amount` is the derived entry's amount: the opening for the anchor (the first record), the
+    reconciliation or valuation for every later one, zero where it owns none. `rows_sum` is the sum of the
+    movements in the record's interval: dated up to the record for the anchor, in (previous date, date]
+    for the others.
+    """
+
+    record_id: int
+    balance_on: date
+    balance: int
+    anchor: bool
+    rows_sum: int
+    amount: int
+
+
+def record_gaps(
+    records: Sequence[tuple[int, date, int]], movements: Iterable[tuple[date, int]]
+) -> list[RecordGap]:
+    """The one rule behind the derived entries and the statement's gaps (architecture §4.1).
+
+    `records` are the counting records `(id, balance_on, balance)` in order (balance_on, id);
+    `movements` are `(booked_on, amount)` of the account's movements, in any order and any
+    grouping. The derived entry of the anchor is `B - sum(movements dated <= D)` and of every later
+    record `(B - B_prev) - sum(movements dated in (D_prev, D])`: one formula, the anchor with a
+    previous balance and a previous sum of zero.
+    """
+    per_day: dict[date, int] = {}
+    for day, amount in movements:
+        per_day[day] = per_day.get(day, 0) + amount
+    days = sorted(per_day)
+    cumulative = [0, *accumulate(per_day[d] for d in days)]
+
+    def through(d: date) -> int:
+        """Sum of the movements dated on or before `d`."""
+        return cumulative[bisect_right(days, d)]
+
+    gaps: list[RecordGap] = []
+    prev_balance, prev_through = 0, 0
+    for rid, on, balance in records:
+        here = through(on)
+        rows_sum = here - prev_through
+        gaps.append(RecordGap(rid, on, balance, not gaps, rows_sum, (balance - prev_balance) - rows_sum))
+        prev_balance, prev_through = balance, here
+    return gaps
+
+
 def _desired(conn: Connection, account_id: int, *, investment: bool) -> dict[int, Desired]:
     records = conn.execute(
         text(
@@ -59,27 +109,17 @@ def _desired(conn: Connection, account_id: int, *, investment: bool) -> dict[int
         ),
         {"a": account_id},
     ).all()
-    days = [r.booked_on for r in per_day]
-    cumulative = [0, *accumulate(int(r.total) for r in per_day)]
-
-    def through(d: date) -> int:
-        """Sum of the movements dated on or before `d`."""
-        return cumulative[bisect_right(days, d)]
-
+    first_movement = per_day[0].booked_on if per_day else None
     desired: dict[int, Desired] = {}
-    prev_balance = 0
-    prev_date: date | None = None
-    for r in records:
-        if prev_date is None:
-            amount = r.balance - through(r.balance_on)
-            earliest = min(days[0], r.balance_on) if days else r.balance_on
-            entry = Desired("opening", earliest - timedelta(days=1), amount)
+    for gap in record_gaps([(r.id, r.balance_on, r.balance) for r in records], per_day):
+        if gap.amount == 0:
+            continue
+        if gap.anchor:
+            earliest = gap.balance_on if first_movement is None else min(first_movement, gap.balance_on)
+            desired[gap.record_id] = Desired("opening", earliest - timedelta(days=1), gap.amount)
         else:
-            amount = (r.balance - prev_balance) - (through(r.balance_on) - through(prev_date))
-            entry = Desired("valuation" if investment else "reconciliation", r.balance_on, amount)
-        if amount != 0:
-            desired[r.id] = entry
-        prev_balance, prev_date = r.balance, r.balance_on
+            kind = "valuation" if investment else "reconciliation"
+            desired[gap.record_id] = Desired(kind, gap.balance_on, gap.amount)
     return desired
 
 

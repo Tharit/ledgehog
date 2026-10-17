@@ -91,6 +91,7 @@ class AccountOut(BaseModel):
     last_data_on: date | None
     unexplained_difference: Money | None
     anchored: bool
+    balance: Money  # the sum of the account's entries
     records_since_zero: list[int] | None  # the reported records to look at; null without a difference
 
 
@@ -121,6 +122,7 @@ def facts(conn: Connection, view: AccountView) -> AccountOut:
         last_data_on=view.last_data_on,
         unexplained_difference=None if diff is None else Money(amount=diff, currency=view.currency),
         anchored=view.anchored,
+        balance=Money(amount=view.balance, currency=view.currency),
         records_since_zero=None if diff is None else records_since_zero(conn, view.id),
     )
 

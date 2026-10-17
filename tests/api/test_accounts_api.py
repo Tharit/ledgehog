@@ -54,6 +54,7 @@ def test_list_is_empty_then_carries_the_facts_of_each_account(anna: TestClient, 
             "last_data_on": None,
             "unexplained_difference": None,
             "anchored": True,
+            "balance": {"amount": 0, "currency": "EUR"},
             "records_since_zero": None,
         }
     ]
@@ -67,6 +68,7 @@ def test_facts_after_a_manual_record_and_after_a_reconcile_difference(
     facts = anna.get("/api/ledger/accounts").json()["accounts"][0]
     assert facts["anchored"] is True and facts["unexplained_difference"] is None
     assert facts["records_since_zero"] is None
+    assert facts["balance"] == {"amount": 10_000, "currency": "EUR"}  # the opening the record derived
     assert q(api_engine, "SELECT count(*) FROM ledger_entry WHERE account_id = :a", a=aid)[0][0] == 1
 
     reported = seed_difference(api_engine, aid)
