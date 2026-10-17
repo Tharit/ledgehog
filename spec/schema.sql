@@ -321,7 +321,7 @@ CREATE TABLE importer_instance (
     id           bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     importer     text    NOT NULL,        -- 'fints' | 'paypal' | 'amazon' | ...
     label        text    NOT NULL,        -- 'Sparkasse — Anna'
-    -- the kinds this instance produces. After one authentication per sync it
+    -- the kinds this instance produces. Once signed in it
     -- is asked for each linked account, and for each accountless kind, each
     -- logged as its own run; ingest routes by the run's kind without loading
     -- importer code (spec §5.1).
@@ -341,13 +341,14 @@ CREATE TABLE importer_instance (
     -- same remote login and importing it twice. Leave NULL for a second
     -- instance against the same login (the index is partial).
     external_id  text,
-    -- what the user configured: FinTS URL, BLZ, login, TAN method/medium,
+    -- what the user typed: FinTS URL, BLZ, login,
     -- CSV profile and column mapping (including an optional running-balance
     -- column and the sign-inversion settings for amounts and balance).
     -- Validated in app code against a per-importer schema. The ledger side has
     -- no opinion on its contents.
     settings     jsonb   NOT NULL DEFAULT '{}'::jsonb,
-    -- what the importer wrote back and owns: system_id, TAN medium, and a
+    -- what the importer wrote back and owns: system_id, TAN mechanism and
+    -- medium, what it learned about the bank, and a
     -- session token ONLY where that token is verifiably read-only and cannot
     -- authorise a payment (spec §7). Coverage is not here: it is recorded per
     -- run (import_run.covered_through). PINs, passwords and TANs are never

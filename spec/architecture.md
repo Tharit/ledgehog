@@ -152,8 +152,8 @@ the frontend's share of the dependency surface (above) small and visible.
                     PostgreSQL (external)
 ```
 
-**One worker process, always.** Sync task state — including a live FinTS
-dialog awaiting a TAN — lives in process memory, and the SSE stream for a task
+**One worker process, always.** Sync task state — including a prompt awaiting
+its answer — lives in process memory, and the SSE stream for a task
 must reach the process running it. Multiple workers would require a broker and
 externalised task state for no benefit at this scale. This is a deployment
 constraint, not an accident: `uvicorn` with default concurrency, never
@@ -402,10 +402,18 @@ GET    /api/importers                          the catalog: the importers this
 GET    /api/importers/instances
 POST   /api/importers/instances                create a credential or profile
 PUT    /api/importers/instances/{id}           settings, label, disabled
-POST   /api/importers/instances/{id}/reset     clear `state`, keep `settings`
+POST   /api/importers/instances/{id}/reset     clear `state`, keep `settings`;
+                                               409 `instance_busy` while a
+                                               task holds the instance
 DELETE /api/importers/instances/{id}           only while it has no runs;
                                                otherwise disable it
 POST   /api/importers/instances/{id}/discover-accounts
+                                               start a discovery → {task_id}:
+                                               a task like a sync (§5.3); the
+                                               list of accounts is the result
+                                               on the task's status, each with
+                                               the account it is linked to or
+                                               matches by external reference
 POST   /api/importers/instances/{id}/links     link an account to the credential
                                                (create-or-link from discovery);
                                                previewed, listing the
@@ -450,11 +458,27 @@ POST   /api/importers/runs/{id}/revert         delete what the run produced;
                                                confirmed entries among them
 
   sync — one long-running task over several importer instances
-POST   /api/sync                               start        → {task_id}
-GET    /api/sync/active                        the current user's task, or 204
-GET    /api/sync/tasks/{task_id}               state, for reattachment
-GET    /api/sync/tasks/{task_id}/events        SSE stream
-POST   /api/sync/tasks/{task_id}/input         answer a prompt (a TAN)
+GET    /api/sync/plan                          what "sync everything" would
+                                               do: per instance and account,
+                                               the fetch start, where it
+                                               comes from and whether the
+                                               user may change it, and
+                                               whether another task holds
+                                               the instance
+POST   /api/sync                               start; an empty body is every
+                                               instance the user may run,
+                                               else items: an instance, one
+                                               account of it, or one kind,
+                                               with a `since` only for an
+                                               account without coverage
+                                               → {task_id, busy}
+GET    /api/sync/active                        the current user's running
+                                               task, or 204
+GET    /api/sync/tasks/{task_id}               status, for reattachment; for
+                                               a discovery, its result
+GET    /api/sync/tasks/{task_id}/events        SSE stream, replayed from the
+                                               start
+POST   /api/sync/tasks/{task_id}/input         answer a prompt, or cancel it
 POST   /api/sync/tasks/{task_id}/abort
 
   session — password login today; OIDC replaces it, not the rest (§5.6)
@@ -481,6 +505,21 @@ POST   /api/maintenance/settle                 settle now: bring derived state
                                                up to date (spec §5)
 GET    /api/maintenance/check                  integrity views (schema.sql §9)
 ```
+
+**Starting a sync is validated as a whole**: nothing starts if any item is
+refused. An unknown instance or account is 404 `not_found`, an account not
+linked to the instance 409 `account_not_linked`, the other user's instance 403
+`forbidden`, a disabled one 409 `instance_disabled`, a file importer 409
+`not_a_fetch_source`, an importer not registered here 409
+`importer_unavailable`, a closed account 409 `account_closed`, a `since` for an
+account with coverage 422 `start_not_editable`, an empty plan 422
+`nothing_to_sync`, a user who already has a task 409 `task_active` (its
+`details.task_id` lets a client that lost its tab reattach) and an instance
+another task holds 409 `instance_busy`. "Everything" leaves out silently what
+an explicit item would be refused for, and reports an instance held by another
+task in `busy`; if nothing remains, that is 409 `instance_busy`. A discovery is
+refused likewise, and 409 `not_an_account_source` for an instance that does not
+emit transactions.
 
 Two things the grouping is meant to make obvious. `units` acts on ledger
 entries but is its own group, because an interpretation is committed per
@@ -939,31 +978,55 @@ input, so the TAN would need a second endpoint anyway; and the connection is
 held open for minutes through whatever proxy is in front, which is the problem
 SSE exists to solve properly.
 
-**Event design, as guidance rather than a fixed list.** The exact event set
-will settle during implementation; what the architecture fixes is its shape:
+**Event design.** The set is nine events, and its shape is fixed:
 
 - Every event is a **named type**, and the client routes on the name. No
   untyped payloads discriminated by inspecting their contents.
 - The stream carries **three kinds** of event: progress reporting (the task
-  advanced), a request for input (the task is blocked until answered — a TAN;
-  nothing about data ever blocks a sync, `spec.md` §5.11), and terminal
-  outcomes (a run finished or failed, or the whole task ended).
-  Any event that does not fall into one of these should prompt a check that
-  it belongs on this channel at all.
+  advanced), a request for input (the task is blocked until answered — a PIN
+  or a TAN; nothing about data ever blocks a sync, `spec.md` §5.11), and
+  terminal outcomes (a run finished or failed, an instance could not
+  continue, or the whole task ended). Any event that does not fall into one of
+  these should prompt a check that it belongs on this channel at all.
 - **A request for input carries a correlation id**, echoed back on the input
   operation, so a late or duplicate answer can be rejected rather than
   misapplied (§4.3).
 - **Events carry no secrets and no domain state the client could fetch
   instead.** Progress says what happened, not the whole updated ledger; the
-  client re-queries when it needs data.
-- **The stream is resumable.** Event ids are monotonic per task so that SSE's
-  own `Last-Event-ID` reconnect delivers what was missed.
+  client re-queries when it needs data. One exception: `run_finished` carries
+  the run's stored statistics (the object `GET /api/importers/runs/{id}`
+  returns, so the run summary renders without a query; never a ledger row). A
+  discovery's account list is not an event; it is the result on the task's
+  status.
+- **The stream is resumable, and reattaching is replaying.** Event ids are
+  1, 2, 3, … per task. Without `Last-Event-ID` the stream replays the whole
+  task from id 1 and then goes live; with it, what follows. A task's events
+  number tens, so there is no cap and no snapshot, and a reloaded tab recovers
+  a prompt that is still open. A `prompt` event whose prompt has been
+  resolved is replayed without its prompt body (§5.6). The first bytes are
+  `retry: 3000`, a comment line `: keepalive` follows every 15 s, and the
+  server closes the stream after `task_ended`.
+
+| Kind | Event | Carries |
+|---|---|---|
+| progress | `task_started` | `kind` (`sync` or `discovery`); the instances, each with its items |
+| progress | `instance_started` | `instance_id` |
+| progress | `run_started` | `run_id`, `instance_id`, `account_id` (null for documents), `kind`, `since` |
+| progress | `prompt_resolved` | `prompt_id`, `outcome`: `answered`, `confirmed` (a decoupled challenge), `cancelled`, `expired`, `aborted` |
+| input | `prompt` | `prompt_id`, `instance_id`, `run_id` (null while signing in), `expires_at`, the prompt (§5.5) |
+| terminal | `run_finished` | the run's ids and `kind`, its stored statistics |
+| terminal | `run_failed` | the run's ids and `kind`, `code`, `message`, `retryable` |
+| terminal | `instance_failed` | `instance_id`, `code`, `message`, `retryable`, `run_ids`: the runs it ended failed (every planned item for a failed sign-in, the remaining ones for an early end; none for a discovery) |
+| terminal | `task_ended` | `outcome` (§5.3), the counts of ok and failed runs, `not_started`: the instances never reached |
+
+`code` is the taxonomy's code (§5.5); `message` is the run's error text. A
+failed sign-in is one `instance_failed`, not a `run_failed` per account.
 
 ### 4.3 The task token, reload and multiple tabs
 
 ```
-POST /api/sync                  → 202 {task_id}
-GET  /api/sync/tasks/{id}/events  ← SSE: progress … prompt … done
+POST /api/sync                  → 202 {task_id, busy}
+GET  /api/sync/tasks/{id}/events  ← SSE: progress … prompt … task_ended
 POST /api/sync/tasks/{id}/input → 204
 ```
 
@@ -974,7 +1037,7 @@ follows from that.
 at most one active sync task, so on mount the frontend asks for the current
 user's active task and reattaches if there is one. No token in local storage,
 nothing to go stale, and a reloaded tab recovers a sync in progress —
-including one blocked on a TAN prompt.
+including one blocked on a prompt.
 
 **Two tabs are allowed, and both show the same thing.** Both attach to the
 same event stream and both render the prompt. This is not prevented, because
@@ -988,21 +1051,35 @@ Instead:
 - **Late and duplicate answers are rejected, not applied.** Every input
   carries the correlation id of the prompt it answers (§4.2). The task accepts
   an answer only for the prompt it is currently waiting on; anything else
-  returns a conflict error, which the client treats as "someone already
-  answered" and dismisses.
+  — a late, duplicate or other-tab answer, or a task that has ended —
+  returns 409 `conflict` with `details.reason` `prompt_not_open`, which the
+  client treats as "someone already answered" and dismisses.
 
 That second rule is the one the backend must get right regardless of what the
 frontend does: the server assumes answers may arrive out of order, twice, or
 for a prompt that has already been resolved.
 
 **Abandonment.** A task whose clients have all disconnected keeps running to
-the end of the current importer instance and then stops. A half-finished bank
-dialog is not worth preserving, and every instance is independently
-retryable.
+the end of the current importer instance and then, if it has been without a
+client for more than 30 s, stops, with the outcome `abandoned`. The grace
+keeps a reload that straddles an instance boundary from ending a sync. A
+half-finished bank dialog is not worth preserving, and every instance is
+independently retryable. A prompt that nobody answers ends by its own timeout
+(§5.5), so the current instance always comes to an end.
+
+**Status.** `GET /api/sync/tasks/{id}` tells a client whether to attach: the
+task's kind, whether it is running or ended, whether it is aborting, its
+outcome, the id of its last event and, for an ended discovery, its result. It
+does not restate what a replay says.
 
 Tasks are held in an in-memory registry keyed by token, with the owning user
 recorded, so another user can neither attach to a stream nor answer a
-prompt.
+prompt: for another user's task, status, stream, input and abort answer 404
+`not_found`, not 403. A finished task stays 15 minutes, so a client that
+reconnects just after `task_ended` still gets its replay and status; the
+user's finished task is evicted when they start the next one. After a restart
+the registry is empty: the active task is 204 and an old token is 404, which
+the client treats as an interrupted sync (§11).
 
 ### 4.4 Error envelope
 
@@ -1070,9 +1147,11 @@ app/
                          rederiving unconfirmed entries, pairing, document
                          matches, derived entries, flags
     reporting/           aggregate queries, all conversion via base_value()
-    tasks/               registry, sync orchestration, event bus
-    plugins/             PROTOCOLS ONLY: the importer and classifier
-                         interfaces, the error taxonomy, the history source
+    tasks/               registry and claims, the task with its events, the
+                         prompter, the per-instance job
+    plugins/             PROTOCOLS ONLY: the importer (file and fetch) and
+                         classifier interfaces, the prompt kinds and
+                         `SecretText`, the error taxonomy, the history source
                          classifiers read, the registry plugins register into
   plugins/               Concrete plugin implementations, one package each.
     importers/
@@ -1116,7 +1195,7 @@ implementations live outside and register themselves at startup, wired in
 registration, and `core` cannot develop a special case for a particular bank.
 
 **Plugins never import `api` or `utils/db`.** An importer receives settings,
-state, one account and a fetch window, and returns records, an optional reported
+state, a prompter, one account and a fetch window, and returns records, an optional reported
 balance and the date its coverage runs through. It does not know about
 identities, deduplication, ledger entries or database transactions. This is what
 makes `spec.md` §5.2's guarantee structural rather than aspirational: two
@@ -1335,31 +1414,68 @@ Transaction boundaries:
 
 ### 5.3 Task orchestration
 
-A sync task is an `asyncio.Task` plus a queue of outbound events and a future
-awaiting the next inbound answer. The orchestrator walks the instances the
-user may authenticate (`spec.md` §5.11), running those that need no input
-first, and emits `progress` between steps. Each instance authenticates once;
-the orchestrator then asks it, against that session, for each linked account
-from the account's fetch start, and for each accountless kind it emits —
-each as its own run (`spec.md` §5.1).
+A task is one sync or one discovery (its `kind`), over a list of jobs, one per
+importer instance: a sync's job is an instance with its items, a discovery's
+one job is "open, list the accounts, close". The orchestration is one
+`asyncio.Task`; each job runs in a worker thread (§3), because an importer
+blocks. The party awaiting an answer is therefore a blocked thread, not a
+coroutine: the task holds its events, its one open prompt and its subscribers
+under a lock, and `/input` fills a one-slot hand-off that the importer's thread
+waits on. A task can be tested without an event loop.
 
-When an importer needs a TAN it raises a prompt through the task, which emits
-a `prompt` event and awaits the correlated `/input` call with a timeout. On
-timeout or abort, the importer's dialog is closed and its run marked failed;
-the orchestrator continues to the next instance.
+**Instances run one after another**, in instance id order, among those the user
+may authenticate (`spec.md` §5.11). Each signs in, possibly prompting, is asked
+for each item in turn — each linked open account from its fetch start (§5.5),
+then each accountless kind it emits — and closes before the next begins. At most
+one prompt is open in a task. While an importer prompts or fetches nothing is
+held open: no transaction, no lock, no connection.
+
+**Claims.** The registry takes two claims when a task starts, in one step: the
+user's one active task, and one holder per instance (§4.1 names the refusals).
+A claim on an instance is released when its job ends, or at the task's end for
+an instance never reached; two instances that reach one shared account are
+serialised by the account lock in ingest, nothing new.
+
+**One run per fetch.** A run is started just before its own fetch, so its
+`running` status and `started_at` are true, and is ended by ingest or by a
+failure. A failed sign-in starts a run per planned item and fails each at once,
+so the account page shows a failed run per account, and emits `instance_failed`.
+A failure's class decides what it ends (`scope`, §5.5): an **item** failure
+fails that run and the next item goes on; an **instance** failure fails the
+remaining items' runs with the same error and ends the instance. Either way the
+other instances go on, and a failed run writes nothing (`spec.md` §5.1).
+
+**Prompts.** When an importer needs input it asks the prompter (§5.5), which
+emits a `prompt` event and blocks the importer's thread until the correlated
+`/input` call, a cancel, or the timeout. A cancel or a timeout reaches the
+importer as `ChallengeAbandoned` or `ChallengeExpired`, which ends its instance
+by its scope; the next instance goes on.
+
+**Abort** ends the task. It sets a flag and resolves the open prompt as
+aborted; a bank call already in flight is not interrupted. Before each fetch and
+each ingest the job looks at the flag: a delivery that arrives after the abort
+is discarded, not ingested, and its run fails `ChallengeAbandoned`, as do the
+instance's remaining runs. Instances not yet started write nothing and are
+listed in `task_ended.not_started`. Aborting an ended task is a no-op.
+
+**The end.** A task ends `completed` (every job attempted ran to its end,
+whatever its runs' results), `aborted`, `abandoned` (§4.3) or `crashed` (a bug
+in the orchestration: every run the jobs started and did not end is failed,
+retryable). The task is marked ended and the user's slot freed before
+`task_ended` is emitted, so a client reacting to it may start the next task.
 
 Nothing about data raises a prompt: duplicates are marked at ingest
 (`spec.md` §5.2) and listed in the run summary.
 
-A partially completed authentication dialog lives only in the task, in
-memory, and is dropped when the run ends, fails or is aborted. Nothing
-credential-grade is written to the database (`spec.md` §7), so there is no
-encryption key to manage; the cost is that a restart mid-dialog loses it
-(§11).
+Nothing credential-grade is written to the database (`spec.md` §7), so there is
+no encryption key to manage. The PIN lives in the importer's memory for its job
+and an answer only in the hand-off (§5.6); no bank dialog is kept open between
+calls. The cost is that a restart loses the task and any prompt it was waiting
+on (§11).
 
-At the end of the task: settling (`spec.md` §5). Because every write ends
-with settling, a sync abandoned part-way is settled by the next write; there
-is nothing to catch up on.
+**Settling.** Each ingest settles after its commit (`spec.md` §5), so a task
+stopped at any point leaves nothing stale; the task settles once more at its end
+only if a run's settling reported an error.
 
 ### 5.4 Classifier interface
 
@@ -1441,15 +1557,28 @@ entry unclassified, exactly as an unconfigured one would.
 
 ### 5.5 Importer interface and error taxonomy
 
-An importer implements a small protocol: describe the settings it needs,
-authenticate once per sync (possibly prompting), list reachable accounts — one
-per currency pocket for multi-currency providers — fetch one account, or one
-accountless kind, from a start date, and report the account's booked closing
-balance if it has one. It declares the set of kinds it emits (`spec.md` §5.1)
-and emits only final, booked records, in ledger sign convention. Each
+An importer that fetches implements one protocol, `FetchImporter` in
+`core/plugins/fetch.py`; a document importer is one of them. It declares the
+set of kinds it emits (`spec.md` §5.1) and, for documents, its providers,
+validates its settings, gives a default fetch start, and opens a **session**
+from its settings, its `state` and a prompter. The session lists reachable
+accounts — one per currency pocket for multi-currency providers, each with what
+it can deliver, transactions and a balance (used by discovery only) — fetches
+one account from a start date and reports the account's booked closing balance
+if it has one, fetches the documents from the instance's `start_date`
+(`spec.md` §5.5), and closes; the orchestrator always closes it. The orchestrator
+calls only the methods for the kinds the importer emits. An importer emits
+only final, booked records, in ledger sign convention. Each
 transaction record carries its `source_format`, the instructed amount where the
 source reports one, `source_id` when the source assigns one (`None` otherwise),
 and a `raw` payload containing the original unparsed data.
+
+**A session is the credential in memory, not a transport.** It holds what the
+user typed (the PIN), what the importer has learned (`state`) and the prompter.
+A bank may demand a challenge, and a fresh dialog, per data call, so the
+importer may ask for input from any call, not only from `open`: the user types
+the PIN once per sync and meets challenges as the bank demands them. Every call
+blocks and is made from a worker thread (§3, §5.3).
 
 Beyond the records, the protocol has an importer report:
 
@@ -1461,7 +1590,10 @@ Beyond the records, the protocol has an importer report:
   run's coverage (`spec.md` §5.1), and for statement formats the
   per-statement consistency check, failing with `ParseFailed` on a mismatch;
 - a **default fetch start** for an account without coverage and without
-  entries, shown prefilled in the sync and editable for that run;
+  entries (`default_fetch_start`, which needs no session). The core derives
+  every fetch's start when its run begins (`spec.md` §5.4) and asks the
+  importer only as the last resort; the plan read (§4.1) shows the start
+  prefilled, editable for that run only where there is no coverage;
 - for documents: one per charge where the provider exposes charges, signed
   totals, merchant name and lines, and the providers it delivers documents
   for, declared in code rather than configured (`spec.md` §5.5);
@@ -1476,18 +1608,68 @@ problem on the importer's side — undecodable bytes, a missing header row, a
 configured label it cannot find — raises `ParseFailed`; ingest's
 `ContractViolation` checks stay as the backstop.
 
+**Input is asked through a prompter**, one blocking call, `ask`, with four
+kinds of prompt:
+
+- `secret` — the PIN or a password; answered with text.
+- `tan` — a challenge, in a medium: `text`, `image` (a photoTAN, carried as a
+  base64 image and its MIME type) or `decoupled` (a confirmation in the user's
+  app). A decoupled prompt is answered only by `poll`, a function the importer
+  supplies that asks the bank "confirmed yet?" and raises the taxonomy's error
+  if the bank refused; the prompter calls it every 3 s on the importer's own
+  thread. Polling stays with the importer, and `ask` stays the only blocking
+  primitive.
+- `choice` — one of a list of options, an id and a label each: the TAN
+  mechanism, the TAN medium.
+- `text` — free text, for a medium the bank will not list.
+
+Each prompt has a `subject` the client maps to a label (an unknown subject is
+shown as given); a bank's own words go only into the challenge and the option
+labels. `ask` returns the answer — secret text for a `secret` or a typed or
+photographed TAN, the option id for a `choice`, text for a `text`, nothing for a
+decoupled `tan` — or raises `ChallengeAbandoned` (cancelled, or the task was
+aborted) or `ChallengeExpired` (300 s, unless the importer passes its own). It
+never retries by itself: a wrong TAN or PIN is the bank's verdict, and the
+importer decides whether to ask again or to raise `AuthRejected` — for a PIN, at
+once, because banks lock a login after a few failures. Every answer has one
+shape: `POST …/input` with `{prompt_id, value}`, or `{prompt_id, cancel: true}`;
+a decoupled prompt accepts only the cancel; a value outside a choice's options
+and an empty secret are 422 `validation_error` naming `value`, and the prompt
+stays open. Any prompt may be cancelled; there is no "skip".
+
+**`state` is the importer's working copy of `importer_instance.state`.** It
+writes into it whatever it learns that is not secret: the system id, the TAN
+mechanism and medium (chosen by prompt, not configured, so settings hold only
+what the user typed and "Reset" returns the instance to asking), a learned
+per-bank rule. The caller writes it back when the instance's job ends,
+whatever the outcome, if it changed, so a medium chosen before a failed sign-in
+is not asked for again. No PIN, password, TAN or token that does not meet
+`spec.md` §7 may be put in it.
+
 Errors are exception classes, not strings, because the queue's behaviour
 depends on the distinction:
 
-| Exception | Retryable | Surfaced as |
-|---|---|---|
-| `AuthRejected` | after correction | wrong PIN or password |
-| `ChallengeExpired` | yes | TAN timed out, retry the instance |
-| `ChallengeAbandoned` | yes | user cancelled |
-| `SourceUnavailable` | yes | bank unreachable or timed out |
-| `ParseFailed` | no | the file does not fit: the format changed, or the profile no longer finds its header or label; fix the importer or the profile |
-| `ContractViolation` | no | the importer delivered what its contract forbids (wrong currency, zero amount, repeated `source_id`, no coverage); needs a fix in the importer or its profile |
-| `NotRegistered` | no | FinTS product registration missing (`spec.md` §7.1) |
+| Exception | Retryable | Scope | Surfaced as |
+|---|---|---|---|
+| `AuthRejected` | yes — every run asks for the PIN afresh | instance | wrong PIN or password |
+| `ChallengeExpired` | yes | instance | TAN timed out, retry the instance |
+| `ChallengeAbandoned` | yes | instance | user cancelled, or the sync was aborted |
+| `SourceUnavailable` | yes | instance | bank unreachable or timed out |
+| `ParseFailed` | no | item | the file does not fit: the format changed, or the profile no longer finds its header or label; fix the importer or the profile |
+| `ContractViolation` | no | item | the importer delivered what its contract forbids (wrong currency, zero amount, repeated `source_id`, no coverage); needs a fix in the importer or its profile |
+| `NotRegistered` | no | instance | FinTS product registration missing (`spec.md` §7.1) |
+| `BankSetupRequired` | no | instance | the bank has not activated what a sync needs — no active TAN procedure or device; the message says to finish setup with the bank, then run again |
+| `AccountUnsupported` | no | item | the bank offers no booking retrieval for this account |
+
+*Retryable* is whether running it again can help; for the last two it cannot
+until the user acts elsewhere, so the client says what to fix instead of
+offering to run again. *Scope* is what the failure ends (§5.3): the run
+(`item`), or the instance, whose remaining runs fail with it (`instance`),
+because after an expired TAN or an unreachable bank every remaining account
+would wait out its own timeout. The two new classes are 422 `bank_setup_required`
+and `account_unsupported` over the API. A message states the rule and may carry
+a bank's return code and its text, never data segments, account numbers or
+anything the user typed.
 
 Outcomes that ingest decides — rows inserted as duplicates (`spec.md` §5.2) —
 are not importer exceptions; they are recorded on the run and surfaced with it.
@@ -1507,10 +1689,17 @@ last use. There is no CSRF token, because the API accepts only JSON and
 limiting in v1: two users, self-hosted — a conscious omission.
 
 **Redaction.** Secrets live only in local variables inside the importer and
-in the FinTS dialog object; neither is ever placed on the task, the event
-stream or an exception payload. A logging filter drops known-sensitive keys as
+in the session it holds; neither is ever placed on the task, the event
+stream or an exception payload. An answer to a prompt is a `SecretText` (defined in
+`core/plugins/fetch.py`; its `repr` and `str` are `***`, and the request model
+carries it as a `SecretStr`). It travels from the request handler through the
+one-slot hand-off straight to the blocked importer thread and is never stored on
+the task, which records only the prompt and that it was answered. A resolved
+prompt loses its body in the replay log, because a photoTAN image is
+credential-grade (`spec.md` §7). A logging filter drops known-sensitive keys as
 a backstop, and request bodies are never logged for sync endpoints. The
-backstop is not the mechanism — not putting secrets in loggable places is.
+backstop is not the mechanism — not putting secrets in loggable places is — and
+the mechanism is proven by an end-to-end test (§8), not filtered at the exits.
 
 **Clock.** `utils/clock.py` is the only caller of the system clock. It
 exposes `now()` (an aware UTC instant) and `today(tz)` requiring an explicit
@@ -1547,7 +1736,7 @@ returned by `GET /api/config`.
 | Household | `TIMEZONE` (required, an IANA zone; `spec.md` §5.4), `LOCALE` (`en`) |
 | Users | indexed groups `USER_<n>_LOGIN`, `USER_<n>_NAME`, `USER_<n>_PASSWORD`, `n` contiguous from 1, logins unique; none is allowed |
 | Model | `MODEL_ENDPOINT` and `MODEL_NAME` (both or neither), optional `MODEL_API_KEY`; absent means pass 3 does not run (§5.4) |
-| Development | `ENABLE_TEST_IMPORTERS` (`false`; `true` or `false`, anything else fails the start): registers the deterministic test document importer `testdocs` in the composition root, so documents can be exercised before a real document importer exists (`features/documents.md`); a deployment leaves it off. `EXPOSE_OPENAPI` (`false`; `true` or `false`, anything else fails the start): serves the OpenAPI document at `/api/openapi.json`, without a session, so the frontend's types can be generated from a running server (§6.7); a deployment leaves it off. `/docs` and `/redoc` never exist, whatever the value: they load scripts from a third-party host |
+| Development | `ENABLE_TEST_IMPORTERS` (`false`; `true` or `false`, anything else fails the start): registers the deterministic test importers in the composition root — `testdocs`, so documents can be exercised before a real document importer exists (`features/documents.md`), and `testfetch`, scripted by its settings to exercise every prompt kind and failure class without a bank; a deployment leaves it off. `EXPOSE_OPENAPI` (`false`; `true` or `false`, anything else fails the start): serves the OpenAPI document at `/api/openapi.json`, without a session, so the frontend's types can be generated from a running server (§6.7); a deployment leaves it off. `/docs` and `/redoc` never exist, whatever the value: they load scripts from a third-party host |
 
 **Start is a fixed sequence, and the app binds only after it succeeds:**
 
@@ -1990,9 +2179,20 @@ Layers:
   savings including reconciliations; net worth summing valued accounts with
   the others on the unvalued line.
 - **Importer tests** — against recorded payloads committed as fixtures, never
-  against a live bank.
+  against a live bank. The sync's orchestration is tested against the fake
+  `testfetch`, whose rows are a pure function of the date so that two
+  overlapping fetches deliver the same identities (the two-run rule, below);
+  the prompt hand-off, abort, timeout and abandonment are tested on the task
+  itself, with no event loop.
 - **API tests** — operation-level, including that another user cannot attach
-  to a sync task.
+  to, answer or abort a sync task, and the refusals of a start (§4.1). The SSE
+  replay and framing are tested against a finished task; live streaming and the
+  keepalive once, against the app served on a real port, because the in-process
+  ASGI transport buffers a response until it ends.
+- **Redaction test** — end to end: answer a PIN and a TAN with sentinel
+  strings, fail the instance, and assert the sentinels are absent from every
+  event, the status, the stored error text, `importer_instance.state` and
+  `settings`, and the debug log (§5.6).
 - **Start-up tests** — a bad or missing variable failing by name; the base
   currency written once and a different configured one refusing to start;
   users created, renamed and re-passworded from the environment, one removed

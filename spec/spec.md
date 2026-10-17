@@ -878,7 +878,7 @@ transactions linked to documents (§5.8). A pair, once made, stands (§5.7).
 A full sync runs:
 
 ```
-1. fetch    each instance authenticates once, then delivers each linked
+1. fetch    each instance signs in, then delivers each linked
             account it is asked for and each accountless kind it emits
             (documents, rates) — one import run each
 2. ingest   transactions → identity, deduplication, rows and the reported
@@ -955,14 +955,18 @@ purchases as positive, a debt reported as a positive balance — is the
 importer's job. A CSV profile has separate sign-inversion settings for amounts
 and for its balance column.
 
-**One authentication per sync, one run per account.** An instance
-authenticates once per sync. It is then asked for each linked account in turn,
-from that account's fetch start (§5.4), and for each accountless kind it
-emits; each request is its own `import_run`. An importer is never asked for
-"its accounts": which accounts a run covers is decided outside it. A failing
-account or document fetch leaves the other runs intact and independently
-retryable, and every row's `import_run_id` points at a run of the right
-account and kind.
+**The credential once per sync, one run per account.** The user enters an
+instance's PIN or password once per sync; the bank may still ask for a
+challenge as it sees fit — a TAN at sign-in or for a single request. The instance is asked for
+each linked account in turn, from that account's fetch start (§5.4), and for
+each accountless kind it emits; each request is its own `import_run`. An
+importer is never asked for "its accounts": which accounts a run covers is
+decided outside it. A failing account or document fetch leaves the other runs
+intact and independently retryable — unless the failure is the sign-in or the
+bank itself (a wrong PIN, an unanswered TAN, an unreachable bank), which ends
+the instance: its remaining runs fail with the same error, one failed run per
+account, so each can be retried. Every row's `import_run_id` points at a run of
+the right account and kind.
 
 **A run succeeds as a whole or fails.** A failed run writes nothing: no rows,
 no balance record, no coverage. Ingest writes a transaction run's rows, entries
@@ -1233,8 +1237,12 @@ delivery with the first (§5.2).
 
 | State | Lives on | Why |
 |---|---|---|
-| `system_id`, tokens, TAN medium | `importer_instance.state` | property of the credential |
+| `system_id`, tokens, the TAN mechanism and medium, what the importer learned about the bank | `importer_instance.state` | property of the credential |
 | coverage | `import_run` | a fact about one fetch of one account, or one document fetch |
+
+Settings hold only what the user typed — a URL, a bank code, a login. The TAN
+mechanism and medium are chosen when the bank asks and remembered, so resetting
+an instance returns it to asking.
 
 **`synced_through`** is the latest *through* among the account's non-reverted
 runs (§5.1): the last closed day up to which the account's data is believed
@@ -2526,17 +2534,20 @@ both.
 
 **A sync is a foreground sequence, not a background job.** Most instances
 require a PIN and a TAN, so instances run one after another, each asking for
-its input in turn. It must be abandonable at any point, and
-every run is independent — one bank failing leaves failed runs to retry and
-does not stop the others. Nothing in a sync waits for a decision about data:
-duplicates are settled at import (§5.2).
+its input in turn. It must be abandonable at any point: stopping it writes
+nothing more — a fetch under way when it stops is not written, the instance
+under way leaves its remaining runs failed as abandoned, to retry, and the
+instances not yet reached are left alone. Every run is independent — one bank
+failing leaves failed runs to retry and does not stop the others. Nothing in a
+sync waits for a decision about data: duplicates are settled at import (§5.2).
 
-Among the instances the current user may run, those that need no input at
-that moment — those holding a usable credential (§7), and those that hold no
-credential at all — run first, in the background, while the first PIN is being
-entered. Needing input is not a declared property of the importer: an expired
-token makes an otherwise unattended instance interactive for one run. The
-queue presents that as "needs sign-in", not as a failure.
+A user has one sync at a time, and an instance runs in one sync at a time:
+starting a second is refused, and "sync everything" leaves out an instance
+that another sync is running.
+
+Needing input is not a declared property of the importer: an expired token
+makes an otherwise unattended instance interactive for one run. Every instance
+therefore runs in its turn and asks for what it needs.
 
 **Every sync ends by settling** (§5), not at some point when all of the
 household's importers have run — there is no such point. A transfer between
@@ -2779,7 +2790,9 @@ PIN entry for a technical constraint and "fix" it with a credentials table.
 **Session state inherits the classification of what produced it.** A partially
 completed authentication dialog is credential-grade whether or not it contains
 the secret verbatim: it lives in memory or a short-TTL encrypted row, and is
-wiped when the flow completes or times out. What may persist indefinitely is
+wiped when the flow completes or times out. So is a challenge shown to the
+user, a photoTAN image included: it lives in memory, only until it is
+answered. What may persist indefinitely is
 the non-secret part — a `system_id`, for instance, which some banks require to
 be stable to avoid a TAN on every login, and which therefore belongs in
 `importer_instance.state`.
