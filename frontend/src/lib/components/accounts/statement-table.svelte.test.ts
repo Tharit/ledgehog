@@ -1,0 +1,186 @@
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
+import { describe, expect, it, vi } from 'vitest';
+import { recordRow, sourceRow } from '#lib/accounts/fixtures.js';
+import { account } from '#lib/ledger/fixtures.js';
+import StatementTable from './statement-table.svelte';
+
+const eur = (amount: number) => ({ amount, currency: 'EUR' });
+
+const items = [
+	sourceRow({ id: 4, booked_on: '2026-10-12', counterparty_name: 'Netflix', amount: eur(-1299) }),
+	recordRow({
+		id: 2,
+		balance_on: '2026-10-11',
+		rows_sum: eur(-5000),
+		difference: eur(-350),
+		balance: eur(90000)
+	}),
+	sourceRow({
+		id: 3,
+		booked_on: '2026-10-10',
+		counterparty_name: 'REWE',
+		duplicate_of: { id: 2, booked_on: '2026-10-09', amount: eur(-4000) },
+		balance: null
+	}),
+	sourceRow({ id: 2, booked_on: '2026-10-09', authored: true, counterparty_name: null }),
+	recordRow({ id: 1, anchor: true, record_kind: 'manual', rows_sum: null, difference: null })
+];
+
+function table(props = {}) {
+	return render(StatementTable, {
+		props: {
+			items,
+			total: items.length,
+			status: 'ready',
+			account: { kind: 'checking', records_since_zero: null },
+			...props
+		}
+	});
+}
+
+const row = (key: string) => document.querySelector(`[data-item-key="${key}"]`) as HTMLElement;
+
+describe('StatementTable rows', () => {
+	it('shows a source row with its counterparty, purpose, amount and running balance', () => {
+		table();
+		const r = within(row('source:4'));
+		expect(r.getByText('Netflix')).toBeInTheDocument();
+		expect(r.getByText('−12.99')).toBeInTheDocument();
+		expect(r.getByText('960.00')).toBeInTheDocument();
+	});
+
+	it('says "entered by hand" where the counterparty would be', () => {
+		table();
+		expect(within(row('source:2')).getByText('entered by hand')).toBeInTheDocument();
+	});
+
+	it('dims a duplicate, gives it no balance and names the row it duplicates', () => {
+		table();
+		const dup = row('source:3');
+		expect(dup).toHaveAttribute('data-duplicate');
+		expect(
+			within(dup).getByRole('button', { name: /duplicate of Oct 9, 2026 · −40\.00/ })
+		).toBeInTheDocument();
+		expect(within(dup).queryByText('960.00')).not.toBeInTheDocument();
+	});
+
+	it('opens the row a duplicate duplicates', async () => {
+		const onopen = vi.fn();
+		table({ onopen });
+		await fireEvent.click(within(row('source:3')).getByRole('button', { name: /duplicate of/ }));
+		expect(onopen).toHaveBeenCalledWith(2);
+	});
+
+	it('shows a record marker with the gap, and the anchor with its balance alone', () => {
+		table();
+		const marker = within(row('record:2'));
+		expect(marker.getByText('Reported balance')).toBeInTheDocument();
+		expect(marker.getByText('rows add up to −50.00 · difference −3.50')).toBeInTheDocument();
+		const anchor = within(row('record:1'));
+		expect(anchor.getByText('Manual balance')).toBeInTheDocument();
+		expect(anchor.queryByText(/rows add up/)).not.toBeInTheDocument();
+	});
+
+	it('calls the difference a valuation on an investment account', () => {
+		table({ account: { kind: 'depot', records_since_zero: null } });
+		expect(within(row('record:2')).getByText(/· valuation −3\.50/)).toBeInTheDocument();
+	});
+
+	it('marks the records that localise the unexplained difference', () => {
+		table({ account: account({ kind: 'checking', records_since_zero: [2] }) });
+		expect(within(row('record:2')).getByRole('img', { name: /Localises/ })).toBeInTheDocument();
+		expect(
+			within(row('record:1')).queryByRole('img', { name: /Localises/ })
+		).not.toBeInTheDocument();
+	});
+});
+
+describe('StatementTable keys and actions', () => {
+	it('moves the cursor with the arrows and opens a source row with Enter or p', async () => {
+		const onopen = vi.fn();
+		table({ onopen });
+
+		await fireEvent.keyDown(document.body, { key: 'ArrowDown' });
+		expect(row('source:4')).toHaveAttribute('aria-selected', 'true');
+		await fireEvent.keyDown(document.body, { key: 'Enter' });
+		await fireEvent.keyDown(document.body, { key: 'p' });
+		expect(onopen).toHaveBeenNthCalledWith(1, 4);
+		expect(onopen).toHaveBeenNthCalledWith(2, 4);
+	});
+
+	it('opens no detail on a marker', async () => {
+		const onopen = vi.fn();
+		table({ onopen });
+		await fireEvent.keyDown(document.body, { key: 'ArrowDown' });
+		await fireEvent.keyDown(document.body, { key: 'ArrowDown' });
+		expect(row('record:2')).toHaveAttribute('aria-selected', 'true');
+		await fireEvent.keyDown(document.body, { key: 'Enter' });
+		expect(onopen).not.toHaveBeenCalled();
+	});
+
+	it('opens a source row by click', async () => {
+		const onopen = vi.fn();
+		table({ onopen });
+		await fireEvent.click(within(row('source:4')).getByText('Netflix'));
+		expect(onopen).toHaveBeenCalledWith(4);
+	});
+
+	it('offers Edit on a manual record and Delete… on any record', async () => {
+		const onedit = vi.fn();
+		const ondelete = vi.fn();
+		table({ onedit, ondelete });
+
+		const manual = within(row('record:1'));
+		await fireEvent.click(manual.getByRole('button', { name: /^Edit Manual balance/ }));
+		await fireEvent.click(manual.getByRole('button', { name: /^Delete… Manual balance/ }));
+		expect(onedit).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }));
+		expect(ondelete).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }));
+
+		const reported = within(row('record:2'));
+		expect(reported.queryByRole('button', { name: /^Edit/ })).not.toBeInTheDocument();
+		expect(reported.getByRole('button', { name: /^Delete…/ })).toBeInTheDocument();
+	});
+
+	it('keeps the cursor on its row when the rows are replaced, and moves it to a neighbour when its row is gone', async () => {
+		const { rerender } = table();
+		await fireEvent.keyDown(document.body, { key: 'ArrowDown' });
+		await fireEvent.keyDown(document.body, { key: 'ArrowDown' });
+		await fireEvent.keyDown(document.body, { key: 'ArrowDown' });
+		expect(row('source:3')).toHaveAttribute('aria-selected', 'true');
+
+		await rerender({ items: [...items], total: items.length });
+		expect(row('source:3')).toHaveAttribute('aria-selected', 'true');
+
+		await rerender({ items: items.filter((i) => !(i.kind === 'source' && i.id === 3)), total: 4 });
+		expect(document.querySelectorAll('[aria-selected="true"]')).toHaveLength(1);
+		expect(row('source:2')).toHaveAttribute('aria-selected', 'true');
+	});
+});
+
+describe('StatementTable states', () => {
+	it('says how rows arrive when there are none', () => {
+		table({ items: [], total: 0 });
+		expect(screen.getByText('No rows yet')).toBeInTheDocument();
+	});
+
+	it('offers load more while rows are missing', async () => {
+		const onloadmore = vi.fn();
+		table({ total: 50, onloadmore });
+		await fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
+		expect(onloadmore).toHaveBeenCalled();
+		expect(screen.getByText('5 of 50')).toBeInTheDocument();
+	});
+
+	it('shows the error with Try again when the first page failed', async () => {
+		const onretry = vi.fn();
+		table({
+			items: [],
+			total: 0,
+			status: 'error',
+			error: { code: 'network_error', message: 'x' },
+			onretry
+		});
+		await fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+		expect(onretry).toHaveBeenCalled();
+	});
+});

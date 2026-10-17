@@ -4,6 +4,7 @@
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import FileTextIcon from '@lucide/svelte/icons/file-text';
+	import LandmarkIcon from '@lucide/svelte/icons/landmark';
 	import ListIcon from '@lucide/svelte/icons/list';
 	import ListChecksIcon from '@lucide/svelte/icons/list-checks';
 	import SettingsIcon from '@lucide/svelte/icons/settings';
@@ -26,7 +27,8 @@
 	const nav: NavItem[] = [
 		{ href: '/ledger', label: 'Ledger', icon: ListIcon },
 		{ href: '/review', label: 'Review', icon: ListChecksIcon },
-		{ href: '/documents', label: 'Documents', icon: FileTextIcon }
+		{ href: '/documents', label: 'Documents', icon: FileTextIcon },
+		{ href: '/accounts', label: 'Accounts', icon: LandmarkIcon }
 	];
 	// at the bottom of the sidebar, as in the mockup (design §5); /settings opens its first tab
 	const footerNav: NavItem[] = [
