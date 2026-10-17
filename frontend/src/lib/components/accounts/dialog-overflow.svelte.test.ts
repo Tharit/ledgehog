@@ -24,7 +24,9 @@ describe('dialogs with long content', () => {
 		flow.preview = {
 			run_id: 5,
 			removed_entry_ids: Array.from({ length: 400 }, (_, i) => i),
+			removed_confirmed: 0,
 			partner_entry_ids: [],
+			partner_confirmed: 0,
 			freed_document_ids: [],
 			repointed_source_ids: [],
 			cleared_duplicate_ids: [],

@@ -83,13 +83,13 @@
 		<ul class="flex list-disc flex-col gap-1 pl-5" data-slot="revert-consequences">
 			<li>
 				The rows this run brought ({n(brought, 'row', 'rows')}) are deleted, with
-				{n(out.removed_entry_ids.length, 'entry', 'entries')}{#if flow.confirmed !== null}, of which
-					{formatCount(flow.confirmed, locale)} confirmed{/if}.
+				{n(out.removed_entry_ids.length, 'entry', 'entries')}, of which
+				{formatCount(out.removed_confirmed, locale)} confirmed.
 			</li>
 			{#if out.partner_entry_ids.length > 0}
 				<li>
 					{n(out.partner_entry_ids.length, 'partner entry', 'partner entries')} are unpaired and return
-					to review.
+					to review, of which {formatCount(out.partner_confirmed, locale)} confirmed.
 				</li>
 			{/if}
 			{#if out.cleared_duplicate_ids.length > 0}

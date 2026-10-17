@@ -1,12 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, getEntry, revertRun, type ImportRun } from '#lib/api/index.js';
-import { entry } from '#lib/ledger/fixtures.js';
+import { ApiError, revertRun, type ImportRun } from '#lib/api/index.js';
 import { RevertFlow } from './revert-flow.svelte.js';
 
 vi.mock('#lib/api/index.js', async (importOriginal) => ({
 	...(await importOriginal<typeof import('#lib/api/index.js')>()),
-	revertRun: vi.fn(),
-	getEntry: vi.fn()
+	revertRun: vi.fn()
 }));
 
 const run = {
@@ -20,7 +18,9 @@ function result(over: Record<string, unknown> = {}) {
 	return {
 		run_id: 5,
 		removed_entry_ids: [10, 11],
+		removed_confirmed: 1,
 		partner_entry_ids: [20],
+		partner_confirmed: 0,
 		freed_document_ids: [],
 		repointed_source_ids: [],
 		cleared_duplicate_ids: [],
@@ -36,11 +36,8 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 beforeEach(() => vi.resetAllMocks());
 
 describe('RevertFlow', () => {
-	it('previews with a dry run and counts the confirmed entries among those removed', async () => {
+	it('previews with a dry run and keeps the server counts', async () => {
 		vi.mocked(revertRun).mockResolvedValue(result() as never);
-		vi.mocked(getEntry).mockImplementation(async (id) =>
-			entry({ id, review_flags: id === 10 ? [] : ['unconfirmed'] })
-		);
 		const flow = new RevertFlow();
 
 		flow.start(run);
@@ -51,26 +48,12 @@ describe('RevertFlow', () => {
 			expect.objectContaining({ dryRun: true })
 		]);
 		expect(flow.status).toBe('ready');
-		expect(flow.confirmed).toBe(1);
+		expect(flow.preview?.removed_confirmed).toBe(1);
 		expect(flow.canRevert).toBe(true);
-	});
-
-	it('does not count confirmed entries when too many were removed to read', async () => {
-		const many = Array.from({ length: 51 }, (_, i) => i + 1);
-		vi.mocked(revertRun).mockResolvedValue(result({ removed_entry_ids: many }) as never);
-		const flow = new RevertFlow();
-
-		flow.start(run);
-		await flush();
-
-		expect(getEntry).not.toHaveBeenCalled();
-		expect(flow.confirmed).toBeNull();
-		expect(flow.status).toBe('ready');
 	});
 
 	it('reverts with the versions of the preview', async () => {
 		vi.mocked(revertRun).mockResolvedValueOnce(result() as never);
-		vi.mocked(getEntry).mockResolvedValue(entry({ id: 10 }));
 		const flow = new RevertFlow();
 		flow.start(run);
 		await flush();
@@ -88,7 +71,6 @@ describe('RevertFlow', () => {
 
 	it('on a conflict checks again and asks again', async () => {
 		vi.mocked(revertRun).mockResolvedValueOnce(result() as never);
-		vi.mocked(getEntry).mockResolvedValue(entry({ id: 10 }));
 		const flow = new RevertFlow();
 		flow.start(run);
 		await flush();
@@ -106,7 +88,6 @@ describe('RevertFlow', () => {
 
 	it('says a run that is no longer the latest cannot be reverted', async () => {
 		vi.mocked(revertRun).mockResolvedValueOnce(result() as never);
-		vi.mocked(getEntry).mockResolvedValue(entry({ id: 10 }));
 		const flow = new RevertFlow();
 		flow.start(run);
 		await flush();

@@ -158,8 +158,12 @@ export type RunFilter = {
 export type RevertResult = {
 	run_id: number;
 	removed_entry_ids: number[];
+	/** how many of the removed entries are confirmed (no `unconfirmed` flag), counted by the server */
+	removed_confirmed: number;
 	/** unpaired and returned to review */
 	partner_entry_ids: number[];
+	/** how many of the unpaired entries are confirmed */
+	partner_confirmed: number;
 	freed_document_ids: number[];
 	/** (row id, its new original) */
 	repointed_source_ids: [number, number][];

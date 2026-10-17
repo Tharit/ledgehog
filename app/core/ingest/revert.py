@@ -70,7 +70,9 @@ class NotLatestRun(RevertError):
 class RevertResult:
     run_id: int
     removed_entry_ids: tuple[int, ...] = ()
+    removed_confirmed: int = 0  # how many of `removed_entry_ids` carry no `unconfirmed` flag (spec §6)
     partner_entry_ids: tuple[int, ...] = ()  # unpaired and returned to review
+    partner_confirmed: int = 0  # how many of `partner_entry_ids` carry no `unconfirmed` flag
     freed_document_ids: tuple[int, ...] = ()
     repointed_source_ids: tuple[tuple[int, int], ...] = ()  # (row id, its new original)
     cleared_duplicate_ids: tuple[int, ...] = ()  # rows that stopped being duplicates, now with an entry
@@ -146,6 +148,21 @@ def _run_ids(conn: Connection, run_id: int) -> tuple[list[int], list[int]]:
         ).scalars()
     ]
     return rows, entries
+
+
+def _confirmed_count(conn: Connection, entry_ids: Sequence[int]) -> int:
+    """How many of the entries are confirmed: no `unconfirmed` review flag (spec §6), as stored now."""
+    if not entry_ids:
+        return 0
+    return int(
+        conn.execute(
+            text(
+                "SELECT count(*) FROM ledger_entry"
+                " WHERE id = ANY(:ids) AND NOT 'unconfirmed' = ANY(review_flags)"
+            ),
+            {"ids": list(entry_ids)},
+        ).scalar_one()
+    )
 
 
 def _accounts_of_entries(conn: Connection, entry_ids: list[int]) -> set[int]:
@@ -255,6 +272,8 @@ def _revert_once(
         else:
             lock_rows(conn, "ledger_entry", written)
         versions = entry_versions(conn, written)
+        removed_confirmed = _confirmed_count(conn, removed)  # counted before the writes change anything
+        partner_confirmed = _confirmed_count(conn, partners)
         affected_accounts = sorted({account_id} | involved)
         before = derived_snapshot(conn, affected_accounts)
 
@@ -278,7 +297,9 @@ def _revert_once(
         result = RevertResult(
             run_id=run_id,
             removed_entry_ids=affected.removed_entry_ids,
+            removed_confirmed=removed_confirmed,
             partner_entry_ids=affected.partner_entry_ids,
+            partner_confirmed=partner_confirmed,
             freed_document_ids=affected.freed_document_ids,
             repointed_source_ids=repointed,
             cleared_duplicate_ids=cleared,

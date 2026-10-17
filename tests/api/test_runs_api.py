@@ -116,8 +116,9 @@ def test_a_revert_dry_run_returns_the_set_and_versions_and_writes_nothing(api: A
     assert r.status_code == 200, r.text
     body = r.json()
     assert set(body) == {
-        "run_id", "removed_entry_ids", "partner_entry_ids", "freed_document_ids", "repointed_source_ids",
-        "cleared_duplicate_ids", "derived_changes", "versions", "settle",
+        "run_id", "removed_entry_ids", "removed_confirmed", "partner_entry_ids", "partner_confirmed",
+        "freed_document_ids", "repointed_source_ids", "cleared_duplicate_ids", "derived_changes", "versions",
+        "settle",
     }  # fmt: skip
     assert body["run_id"] == run_id and body["settle"] is None and calls == []
     assert len(body["removed_entry_ids"]) == 3
@@ -126,6 +127,31 @@ def test_a_revert_dry_run_returns_the_set_and_versions_and_writes_nothing(api: A
     assert body["derived_changes"] and {"account_id", "before", "after"} <= set(body["derived_changes"][0])
     assert api.counts() == before
     assert api.client.get(f"{RUNS}/{run_id}").json()["status"] == "ok"
+
+
+def test_the_dry_run_counts_the_confirmed_entries_among_those_removed_and_unpaired(api: Api):
+    gi, ga, ci, ca = _two_accounts(api)
+    run_id = _latest(api, ga)
+    with api.engine.begin() as conn:
+        ids = list(
+            conn.execute(
+                text(
+                    "SELECT id FROM ledger_entry WHERE account_id = :a AND source_transaction_id IS NOT NULL"
+                ),
+                {"a": ga},
+            ).scalars()
+        )
+        # one confirmed (no flag), the others in review
+        conn.execute(
+            text("UPDATE ledger_entry SET review_flags = '{unconfirmed}' WHERE id = ANY(:i)"), {"i": ids}
+        )
+        conn.execute(text("UPDATE ledger_entry SET review_flags = '{}' WHERE id = :i"), {"i": ids[0]})
+    body = api.client.post(f"{RUNS}/{run_id}/revert", json={"dry_run": True}).json()
+    assert len(body["removed_entry_ids"]) == len(ids) == 3
+    assert body["removed_confirmed"] == 1
+    assert body["partner_entry_ids"] == [] and body["partner_confirmed"] == 0
+    done = api.client.post(f"{RUNS}/{run_id}/revert", json={"expected_versions": body["versions"]})
+    assert done.status_code == 200 and done.json()["removed_confirmed"] == 1
 
 
 def test_a_real_revert_with_the_previews_versions_succeeds_and_settles_once(api: Api, monkeypatch):
