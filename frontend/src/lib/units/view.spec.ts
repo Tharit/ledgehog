@@ -2,7 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { entry } from '#lib/ledger/fixtures.js';
 import { Draft } from './draft.js';
 import { knownRules } from './evidence.js';
-import { consequence, documentSummary, fieldOut, preview, previewRowOf, unit } from './fixtures.js';
+import {
+	consequence,
+	documentSummary,
+	fieldOut,
+	preview,
+	previewRowOf,
+	rowDocument,
+	unit
+} from './fixtures.js';
 import {
 	consequenceGroups,
 	dropsDocument,
@@ -492,6 +500,61 @@ describe('entryViews: a value a rule set that the draft changes', () => {
 		const draft = Draft.of(base).clearField(1, 'category');
 
 		expect(views(draft, out, base)[0].fields.category.changedFromRule).toBe(false);
+	});
+});
+
+describe('entryViews: the type decided by a linked document', () => {
+	const doc = { id: 7, provider: 'amazon', merchant_name: 'Amazon', line_count: 1 };
+	const typeText = (over: NonNullable<Parameters<typeof entry>[0]>, withRow: boolean) => {
+		const base = unit({
+			anchor_entry_id: 1,
+			entries: [
+				entry({
+					id: 1,
+					unit_key: 1,
+					derivation: { type: { pass: 'matcher_decision', basis: {} } },
+					...over
+				})
+			]
+		});
+		const shown = withRow
+			? preview(base, {
+					rows: [
+						previewRowOf(base.entries[0], {
+							document: rowDocument({ document: over.document ? documentSummary() : null })
+						})
+					]
+				})
+			: null;
+		return views(Draft.of(base), shown, base)[0].fields.type.evidence?.text;
+	};
+
+	it('reads "decided by the linked document" for a one-line document, in the preview and as stored', () => {
+		const linked = { document_id: 7, document: doc };
+		expect(typeText(linked, true)).toBe('decided by the linked document');
+		expect(typeText(linked, false)).toBe('decided by the linked document');
+	});
+
+	it('keeps "matched automatically" for an entry without a document', () => {
+		expect(typeText({}, true)).toBe('matched automatically');
+		expect(typeText({}, false)).toBe('matched automatically');
+	});
+
+	it('keeps a transfer pair\'s counter-account "matched automatically"', () => {
+		const base = unit({
+			anchor_entry_id: 1,
+			entries: [
+				entry({
+					id: 1,
+					unit_key: 1,
+					type: 'transfer',
+					counter_account_id: 2,
+					derivation: { counterpart: { pass: 'matcher_decision', basis: {} } }
+				})
+			]
+		});
+		const [view] = views(Draft.of(base), null, base);
+		expect(view.pairEvidence?.text).toBe('matched automatically');
 	});
 });
 

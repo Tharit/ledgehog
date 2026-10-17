@@ -77,6 +77,8 @@ export type KeyContext = {
 	field?: string;
 	/** the name of the partner's account, when it is known */
 	partnerAccount?: string;
+	/** the entry's transaction has a linked document: it decided the type, so its key reads so */
+	documented?: boolean;
 };
 
 /** The pass a pair decision was made with is its key's; the basis marks a value that follows the pair. */
@@ -143,7 +145,9 @@ export function describeKey(
 			};
 		}
 		case 'matcher_decision':
-			return { text: 'matched automatically', proposal: false };
+			return context.documented
+				? { text: 'decided by the linked document', proposal: false }
+				: { text: 'matched automatically', proposal: false };
 		case 'matcher_proposal':
 			return {
 				text: 'document matched — check the split',

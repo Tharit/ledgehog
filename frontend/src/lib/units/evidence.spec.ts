@@ -116,6 +116,30 @@ describe('describeKey', () => {
 		expect(e?.rationale).toBe('because');
 	});
 
+	it("words a matcher decision on the type of a documented entry as the linked document's", () => {
+		expect(describeKey({ pass: 'matcher_decision' }, rules, 'en', { documented: true })).toEqual({
+			text: 'decided by the linked document',
+			proposal: false
+		});
+		expect(
+			describeKey({ pass: 'matcher_decision' }, rules, 'en', { documented: false })?.text
+		).toBe('matched automatically');
+		// the other texts do not change with the document
+		const documented = { documented: true };
+		expect(describeKey({ pass: 'user' }, rules, 'en', documented)).toEqual({
+			text: 'set by you',
+			proposal: false
+		});
+		expect(describeKey({ pass: 'matcher_proposal' }, rules, 'en', documented)).toEqual({
+			text: 'document matched — check the split',
+			proposal: true
+		});
+		const confirmed = { pass: 'user', basis: { pass: 'matcher_proposal', basis: {} } };
+		expect(describeKey(confirmed, rules, 'en', documented)?.text).toBe(
+			'confirmed by you, proposed by a document match'
+		);
+	});
+
 	it('words the pair key: the partner account when known, else "matched automatically"', () => {
 		const key = { pass: 'matcher_decision', basis: {} };
 		expect(describeKey(key, rules, 'en', { field: 'counterpart', partnerAccount: 'Cash' })).toEqual(

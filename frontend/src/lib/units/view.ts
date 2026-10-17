@@ -171,6 +171,9 @@ function fieldView(
 	stored: Entry | null,
 	accountName: (id: number) => string | undefined
 ): FieldView {
+	// the type of an entry whose transaction has a linked document: the document decided it
+	const documented =
+		name === 'type' && (row ? (row.document?.document ?? null) !== null : !!stored?.document);
 	const edit = draft.fieldEdit(id, name);
 	let value: FieldValue = null;
 	let key: DerivationKey | null = null;
@@ -218,7 +221,9 @@ function fieldView(
 						field: 'counterpart',
 						partnerAccount: stored?.partner ? accountName(stored.partner.account_id) : undefined
 					}
-				: {}
+				: documented
+					? { documented }
+					: {}
 		),
 		proposal,
 		edit,
