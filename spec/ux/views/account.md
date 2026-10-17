@@ -76,7 +76,8 @@ density (`ux/patterns.md` §4.1, `design.md`). Two kinds of row:
 - **A balance record**, a marker row above the rows of its own date, since a
   record is the state at the end of its day: its kind (reported or manual), its
   date and its balance. Where the rows since the previous record do not add up
-  to it, the marker says by how much: "rows add up to *Y* · difference *Z*".
+  to it, the marker says by how much: "rows add up to *Y* · difference *Z*",
+  and on an investment account "· valuation *Z*".
   That difference is what the record's derived entry is in the ledger — a
   reconciliation, or a valuation on an investment account (`spec.md` §3.10) —
   so the statement shows where the ledger had to explain something without

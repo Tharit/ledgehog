@@ -50,7 +50,9 @@ page, because a profile has more than five fields (`ux/patterns.md` §11.1).
 The title is "Add importer" or the instance's label; the editor is a draft
 editor with "Save importer" and Cancel (`ux/patterns.md` §11.2). It holds:
 
-- **The label**, and the importer's own settings below it: one form component
+- **The label**, the instance's one name — a CSV profile has none of its own;
+  its rows' `source_format` is read from this label (`plugins/importers/csv.md`
+  §3) — and the importer's own settings below it: one form component
   per importer, chosen by its name, like the provenance widget
   (`ux/patterns.md` §4.5). The server validates the settings; a refusal names
   the setting (`invalid_profile`) and stands under that field (`ux/patterns.md`
@@ -170,6 +172,5 @@ takes a run's stored statistics; for a dry run the same shape, with the links
 to rolled-back rows left out.
 
 **Open for the first month.** Whether the profile form wants a live sample
-beside it; whether the instance label and the profile's own label
-(`source_format` reads the profile's) are one field; how a file importer's
+beside it; how a file importer's
 instance with several linked accounts is best chosen on the account page.
