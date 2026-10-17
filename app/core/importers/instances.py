@@ -248,6 +248,31 @@ def reset_instance(engine: Engine, instance_id: int) -> None:
     retry_on_deadlock(run)
 
 
+def save_state(engine: Engine, instance_id: int, state: Mapping[str, Any]) -> bool:
+    """Write back the importer's working copy of `state` (architecture §5.5), only if it differs.
+
+    One short transaction, after a job ended and whatever its outcome. Returns whether a row
+    changed; an instance deleted meanwhile is no error. Nothing settles: state is read by no
+    derived value. The importer keeps secrets out of it (spec §7); this does not look.
+    """
+    payload = _json(state)
+
+    def run() -> bool:
+        with engine.begin() as conn:
+            lock_settle_shared(conn)
+            return bool(
+                conn.execute(
+                    text(
+                        "UPDATE importer_instance SET state = CAST(:v AS jsonb)"
+                        " WHERE id = :i AND state IS DISTINCT FROM CAST(:v AS jsonb)"
+                    ),
+                    {"v": payload, "i": instance_id},
+                ).rowcount
+            )
+
+    return retry_on_deadlock(run)
+
+
 def delete_instance(engine: Engine, instance_id: int) -> SettleResult:
     """Delete an instance that has no runs (the runs' foreign key would only null them out).
 
