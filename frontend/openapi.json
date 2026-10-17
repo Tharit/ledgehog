@@ -19,11 +19,37 @@
         "title": "AccountCountOut",
         "type": "object"
       },
+      "AccountDerivedOut": {
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "booked_on": {
+            "format": "date",
+            "title": "Booked On",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "booked_on",
+          "amount"
+        ],
+        "title": "AccountDerivedOut",
+        "type": "object"
+      },
       "AccountOut": {
         "properties": {
           "anchored": {
             "title": "Anchored",
             "type": "boolean"
+          },
+          "balance": {
+            "$ref": "#/components/schemas/Money"
           },
           "closed_on": {
             "anyOf": [
@@ -170,6 +196,7 @@
           "last_data_on",
           "unexplained_difference",
           "anchored",
+          "balance",
           "records_since_zero"
         ],
         "title": "AccountOut",
@@ -239,6 +266,50 @@
           "amount"
         ],
         "title": "CarrierOut",
+        "type": "object"
+      },
+      "CatalogEntryOut": {
+        "properties": {
+          "emits": {
+            "items": {
+              "enum": [
+                "transactions",
+                "documents",
+                "rates"
+              ],
+              "type": "string"
+            },
+            "title": "Emits",
+            "type": "array"
+          },
+          "kind": {
+            "enum": [
+              "file",
+              "fetch"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "presets": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Presets",
+            "type": "object"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "emits",
+          "presets"
+        ],
+        "title": "CatalogEntryOut",
         "type": "object"
       },
       "CategoriesOut": {
@@ -853,6 +924,21 @@
       "CreateInstance": {
         "additionalProperties": false,
         "properties": {
+          "access": {
+            "anyOf": [
+              {
+                "enum": [
+                  "owner",
+                  "shared"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Access"
+          },
           "importer": {
             "minLength": 1,
             "title": "Importer",
@@ -942,6 +1028,35 @@
           "settle"
         ],
         "title": "DeleteOut",
+        "type": "object"
+      },
+      "DerivedChangeOut": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "integer"
+          },
+          "after": {
+            "items": {
+              "$ref": "#/components/schemas/AccountDerivedOut"
+            },
+            "title": "After",
+            "type": "array"
+          },
+          "before": {
+            "items": {
+              "$ref": "#/components/schemas/AccountDerivedOut"
+            },
+            "title": "Before",
+            "type": "array"
+          }
+        },
+        "required": [
+          "account_id",
+          "before",
+          "after"
+        ],
+        "title": "DerivedChangeOut",
         "type": "object"
       },
       "DocumentDetailOut": {
@@ -1305,6 +1420,66 @@
           "providers"
         ],
         "title": "DocumentProvidersOut",
+        "type": "object"
+      },
+      "DuplicateBody": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "expected_versions": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "exclusiveMinimum": 0.0,
+                  "maximum": 2147483647.0,
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Versions"
+          },
+          "of": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 9007199254740992.0,
+            "title": "Of",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "of"
+        ],
+        "title": "DuplicateBody",
+        "type": "object"
+      },
+      "DuplicateOfOut": {
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "booked_on": {
+            "format": "date",
+            "title": "Booked On",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "booked_on",
+          "amount"
+        ],
+        "title": "DuplicateOfOut",
         "type": "object"
       },
       "EditEffectsOut": {
@@ -1888,6 +2063,104 @@
           "password"
         ],
         "title": "LoginBody",
+        "type": "object"
+      },
+      "MarkDuplicateOut": {
+        "properties": {
+          "derived_changes": {
+            "items": {
+              "$ref": "#/components/schemas/DerivedChangeOut"
+            },
+            "title": "Derived Changes",
+            "type": "array"
+          },
+          "dry_run": {
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "freed_document_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Freed Document Ids",
+            "type": "array"
+          },
+          "of": {
+            "title": "Of",
+            "type": "integer"
+          },
+          "partner_entry_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Partner Entry Ids",
+            "type": "array"
+          },
+          "partners": {
+            "items": {
+              "$ref": "#/components/schemas/EntryOut"
+            },
+            "title": "Partners",
+            "type": "array"
+          },
+          "removed_entry_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Removed Entry Ids",
+            "type": "array"
+          },
+          "repointed_source_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Repointed Source Ids",
+            "type": "array"
+          },
+          "settle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SettleOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source_transaction_id": {
+            "title": "Source Transaction Id",
+            "type": "integer"
+          },
+          "units": {
+            "items": {
+              "$ref": "#/components/schemas/UnitRefOut"
+            },
+            "title": "Units",
+            "type": "array"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/EntryVersionOut"
+            },
+            "title": "Versions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "dry_run",
+          "source_transaction_id",
+          "of",
+          "removed_entry_ids",
+          "partner_entry_ids",
+          "freed_document_ids",
+          "repointed_source_ids",
+          "derived_changes",
+          "versions",
+          "partners",
+          "units",
+          "settle"
+        ],
+        "title": "MarkDuplicateOut",
         "type": "object"
       },
       "MergedPairOut": {
@@ -2581,6 +2854,197 @@
         "title": "PreviewRowOut",
         "type": "object"
       },
+      "ProvenanceOut": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "integer"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "authored": {
+            "title": "Authored",
+            "type": "boolean"
+          },
+          "booked_on": {
+            "format": "date",
+            "title": "Booked On",
+            "type": "string"
+          },
+          "booking_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booking Text"
+          },
+          "counterparty_bic": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Counterparty Bic"
+          },
+          "counterparty_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Counterparty Name"
+          },
+          "counterparty_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Counterparty Ref"
+          },
+          "duplicate_of": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DuplicateOfOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "end_to_end_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End To End Id"
+          },
+          "entry_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entry Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "instructed_amount": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mandate_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mandate Ref"
+          },
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          },
+          "raw": {
+            "title": "Raw"
+          },
+          "run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunRefOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source_format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Format"
+          },
+          "value_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value On"
+          }
+        },
+        "required": [
+          "id",
+          "account_id",
+          "authored",
+          "source_format",
+          "booked_on",
+          "value_on",
+          "amount",
+          "instructed_amount",
+          "counterparty_name",
+          "counterparty_ref",
+          "counterparty_bic",
+          "purpose",
+          "booking_text",
+          "end_to_end_id",
+          "mandate_ref",
+          "raw",
+          "run",
+          "duplicate_of",
+          "entry_id"
+        ],
+        "title": "ProvenanceOut",
+        "type": "object"
+      },
       "QueueSectionOut": {
         "properties": {
           "groups": {
@@ -3208,6 +3672,67 @@
         "title": "RuleWriteOut",
         "type": "object"
       },
+      "RunRefOut": {
+        "properties": {
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "importer": {
+            "title": "Importer",
+            "type": "string"
+          },
+          "instance_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instance Id"
+          },
+          "instance_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instance Label"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "importer",
+          "instance_id",
+          "instance_label",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "RunRefOut",
+        "type": "object"
+      },
       "SetBody": {
         "additionalProperties": false,
         "properties": {
@@ -3760,6 +4285,233 @@
           "entry_count"
         ],
         "title": "SpanOut",
+        "type": "object"
+      },
+      "StatementOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "record": "#/components/schemas/StatementRecordOut",
+                  "source": "#/components/schemas/StatementSourceOut"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/StatementSourceOut"
+                },
+                {
+                  "$ref": "#/components/schemas/StatementRecordOut"
+                }
+              ]
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "StatementOut",
+        "type": "object"
+      },
+      "StatementRecordOut": {
+        "properties": {
+          "anchor": {
+            "title": "Anchor",
+            "type": "boolean"
+          },
+          "balance": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "balance_on": {
+            "format": "date",
+            "title": "Balance On",
+            "type": "string"
+          },
+          "difference": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "const": "record",
+            "title": "Kind",
+            "type": "string"
+          },
+          "record_kind": {
+            "enum": [
+              "reported",
+              "manual"
+            ],
+            "title": "Record Kind",
+            "type": "string"
+          },
+          "rows_sum": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "balance_on",
+          "record_kind",
+          "balance",
+          "anchor",
+          "rows_sum",
+          "difference"
+        ],
+        "title": "StatementRecordOut",
+        "type": "object"
+      },
+      "StatementSourceOut": {
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "authored": {
+            "title": "Authored",
+            "type": "boolean"
+          },
+          "balance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "booked_on": {
+            "format": "date",
+            "title": "Booked On",
+            "type": "string"
+          },
+          "counterparty_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Counterparty Name"
+          },
+          "duplicate_of": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DuplicateOfOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "entry_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entry Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "const": "source",
+            "title": "Kind",
+            "type": "string"
+          },
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "value_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value On"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "booked_on",
+          "value_on",
+          "amount",
+          "counterparty_name",
+          "purpose",
+          "authored",
+          "duplicate_of",
+          "entry_id",
+          "run_id",
+          "balance"
+        ],
+        "title": "StatementSourceOut",
         "type": "object"
       },
       "TagApplyBody": {
@@ -6644,6 +7396,49 @@
         ]
       }
     },
+    "/api/importers": {
+      "get": {
+        "description": "The importers this deployment registers: what a new instance can be made from.",
+        "operationId": "list_catalog",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CatalogEntryOut"
+                  },
+                  "title": "Response List Catalog",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "List Catalog"
+      }
+    },
     "/api/importers/instances": {
       "get": {
         "operationId": "list_instances",
@@ -7999,6 +8794,115 @@
           }
         },
         "summary": "Reopen Ledger Account",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/ledger/accounts/{account_id}/statement": {
+      "get": {
+        "description": "The account's source transactions and counting balance records, newest first.",
+        "operationId": "account_statement",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740992,
+              "title": "Account Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 9007199254740992,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Signed minor units: only the imported source transactions of that amount that are not duplicates, and no record.",
+            "in": "query",
+            "name": "amount",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 9007199254740992,
+                  "minimum": -9007199254740992,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Signed minor units: only the imported source transactions of that amount that are not duplicates, and no record.",
+              "title": "Amount"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatementOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Account Statement",
         "tags": [
           "accounts"
         ]
@@ -10038,6 +10942,69 @@
           "sources"
         ]
       },
+      "get": {
+        "description": "One source transaction by its id: provenance, a duplicate included. Read-only.",
+        "operationId": "get_source",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740992,
+              "title": "Source Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProvenanceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Get Source",
+        "tags": [
+          "sources"
+        ]
+      },
       "put": {
         "description": "Edit a user-authored row's amount, date or purpose; the entries follow (spec \u00a75.6).\n\n`dry_run` reports what the edit would collapse, unpair and derive again, and writes nothing. A real\nrun carries `expected_versions` for the row's entries and the partners it unpairs.",
         "operationId": "update_ledger_source",
@@ -10117,6 +11084,166 @@
           }
         },
         "summary": "Update Ledger Source",
+        "tags": [
+          "sources"
+        ]
+      }
+    },
+    "/api/ledger/sources/{source_id}/duplicate": {
+      "post": {
+        "description": "Mark an imported row as a duplicate of another row on its account (spec \u00a75.6).\n\n`dry_run` reports what would go and the versions to carry; a real run carries `expected_versions`.\nThe client previews both directions with a second call, the roles swapped.",
+        "operationId": "mark_source_duplicate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740992,
+              "title": "Source Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DuplicateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarkDuplicateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflicts with the current state."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Mark Source Duplicate",
+        "tags": [
+          "sources"
+        ]
+      }
+    },
+    "/api/ledger/sources/{source_id}/not-duplicate": {
+      "post": {
+        "description": "Clear a row marked wrongly: it gets one new entry (spec \u00a75.6). Answers as the entry form's writes do.",
+        "operationId": "clear_source_duplicate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740992,
+              "title": "Source Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceWriteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflicts with the current state."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Clear Source Duplicate",
         "tags": [
           "sources"
         ]

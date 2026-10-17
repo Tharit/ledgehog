@@ -81,6 +81,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/importers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Catalog
+         * @description The importers this deployment registers: what a new instance can be made from.
+         */
+        get: operations["list_catalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/importers/instances": {
         parameters: {
             query?: never;
@@ -323,6 +343,26 @@ export interface paths {
         put?: never;
         /** Reopen Ledger Account */
         post: operations["reopen_ledger_account"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ledger/accounts/{account_id}/statement": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Account Statement
+         * @description The account's source transactions and counting balance records, newest first.
+         */
+        get: operations["account_statement"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -608,7 +648,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Get Source
+         * @description One source transaction by its id: provenance, a duplicate included. Read-only.
+         */
+        get: operations["get_source"];
         /**
          * Update Ledger Source
          * @description Edit a user-authored row's amount, date or purpose; the entries follow (spec §5.6).
@@ -623,6 +667,49 @@ export interface paths {
          * @description Delete a user-authored row and its entries (the removal routine). `dry_run` reports what goes.
          */
         delete: operations["delete_ledger_source"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ledger/sources/{source_id}/duplicate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark Source Duplicate
+         * @description Mark an imported row as a duplicate of another row on its account (spec §5.6).
+         *
+         *     `dry_run` reports what would go and the versions to carry; a real run carries `expected_versions`.
+         *     The client previews both directions with a second call, the roles swapped.
+         */
+        post: operations["mark_source_duplicate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ledger/sources/{source_id}/not-duplicate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Clear Source Duplicate
+         * @description Clear a row marked wrongly: it gets one new entry (spec §5.6). Answers as the entry form's writes do.
+         */
+        post: operations["clear_source_duplicate"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -873,10 +960,22 @@ export interface components {
             /** Newly Tagged */
             newly_tagged: number;
         };
+        /** AccountDerivedOut */
+        AccountDerivedOut: {
+            amount: components["schemas"]["Money"];
+            /**
+             * Booked On
+             * Format: date
+             */
+            booked_on: string;
+            /** Type */
+            type: string;
+        };
         /** AccountOut */
         AccountOut: {
             /** Anchored */
             anchored: boolean;
+            balance: components["schemas"]["Money"];
             /** Closed On */
             closed_on: string | null;
             /** Color */
@@ -934,6 +1033,24 @@ export interface components {
             entry_id: number;
             /** Source Transaction Id */
             source_transaction_id: number;
+        };
+        /** CatalogEntryOut */
+        CatalogEntryOut: {
+            /** Emits */
+            emits: ("transactions" | "documents" | "rates")[];
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "file" | "fetch";
+            /** Name */
+            name: string;
+            /** Presets */
+            presets: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
         };
         /** CategoriesOut */
         CategoriesOut: {
@@ -1126,6 +1243,8 @@ export interface components {
         };
         /** CreateInstance */
         CreateInstance: {
+            /** Access */
+            access?: ("owner" | "shared") | null;
             /** Importer */
             importer: string;
             /** Label */
@@ -1160,6 +1279,15 @@ export interface components {
         /** DeleteOut */
         DeleteOut: {
             settle: components["schemas"]["SettleOut"];
+        };
+        /** DerivedChangeOut */
+        DerivedChangeOut: {
+            /** Account Id */
+            account_id: number;
+            /** After */
+            after: components["schemas"]["AccountDerivedOut"][];
+            /** Before */
+            before: components["schemas"]["AccountDerivedOut"][];
         };
         /** DocumentDetailOut */
         DocumentDetailOut: {
@@ -1269,6 +1397,31 @@ export interface components {
         DocumentProvidersOut: {
             /** Providers */
             providers: string[];
+        };
+        /** DuplicateBody */
+        DuplicateBody: {
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+            /** Expected Versions */
+            expected_versions?: {
+                [key: string]: number;
+            } | null;
+            /** Of */
+            of: number;
+        };
+        /** DuplicateOfOut */
+        DuplicateOfOut: {
+            amount: components["schemas"]["Money"];
+            /**
+             * Booked On
+             * Format: date
+             */
+            booked_on: string;
+            /** Id */
+            id: number;
         };
         /** EditEffectsOut */
         EditEffectsOut: {
@@ -1442,6 +1595,32 @@ export interface components {
             login: string;
             /** Password */
             password: string;
+        };
+        /** MarkDuplicateOut */
+        MarkDuplicateOut: {
+            /** Derived Changes */
+            derived_changes: components["schemas"]["DerivedChangeOut"][];
+            /** Dry Run */
+            dry_run: boolean;
+            /** Freed Document Ids */
+            freed_document_ids: number[];
+            /** Of */
+            of: number;
+            /** Partner Entry Ids */
+            partner_entry_ids: number[];
+            /** Partners */
+            partners: components["schemas"]["EntryOut"][];
+            /** Removed Entry Ids */
+            removed_entry_ids: number[];
+            /** Repointed Source Ids */
+            repointed_source_ids: number[];
+            settle: components["schemas"]["SettleOut"] | null;
+            /** Source Transaction Id */
+            source_transaction_id: number;
+            /** Units */
+            units: components["schemas"]["UnitRefOut"][];
+            /** Versions */
+            versions: components["schemas"]["EntryVersionOut"][];
         };
         /** MergedPairOut */
         MergedPairOut: {
@@ -1649,6 +1828,46 @@ export interface components {
             shadowed_by_rule_id: number | null;
             source: components["schemas"]["SourceTransactionOut"] | null;
         };
+        /** ProvenanceOut */
+        ProvenanceOut: {
+            /** Account Id */
+            account_id: number;
+            amount: components["schemas"]["Money"];
+            /** Authored */
+            authored: boolean;
+            /**
+             * Booked On
+             * Format: date
+             */
+            booked_on: string;
+            /** Booking Text */
+            booking_text: string | null;
+            /** Counterparty Bic */
+            counterparty_bic: string | null;
+            /** Counterparty Name */
+            counterparty_name: string | null;
+            /** Counterparty Ref */
+            counterparty_ref: string | null;
+            duplicate_of: components["schemas"]["DuplicateOfOut"] | null;
+            /** End To End Id */
+            end_to_end_id: string | null;
+            /** Entry Id */
+            entry_id: number | null;
+            /** Id */
+            id: number;
+            instructed_amount: components["schemas"]["Money"] | null;
+            /** Mandate Ref */
+            mandate_ref: string | null;
+            /** Purpose */
+            purpose: string | null;
+            /** Raw */
+            raw: unknown;
+            run: components["schemas"]["RunRefOut"] | null;
+            /** Source Format */
+            source_format: string | null;
+            /** Value On */
+            value_on: string | null;
+        };
         /** QueueSectionOut */
         QueueSectionOut: {
             /** Groups */
@@ -1835,6 +2054,24 @@ export interface components {
             settle: components["schemas"]["SettleOut"] | null;
             settle_breakdown: components["schemas"]["SettleBreakdownOut"] | null;
         };
+        /** RunRefOut */
+        RunRefOut: {
+            /** Finished At */
+            finished_at: string | null;
+            /** Id */
+            id: number;
+            /** Importer */
+            importer: string;
+            /** Instance Id */
+            instance_id: number | null;
+            /** Instance Label */
+            instance_label: string | null;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+        };
         /** SetBody */
         SetBody: {
             balance: components["schemas"]["Money"];
@@ -1989,6 +2226,72 @@ export interface components {
             entry_count: number;
             /** Starts On */
             starts_on: string | null;
+        };
+        /** StatementOut */
+        StatementOut: {
+            /** Items */
+            items: (components["schemas"]["StatementSourceOut"] | components["schemas"]["StatementRecordOut"])[];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** StatementRecordOut */
+        StatementRecordOut: {
+            /** Anchor */
+            anchor: boolean;
+            balance: components["schemas"]["Money"];
+            /**
+             * Balance On
+             * Format: date
+             */
+            balance_on: string;
+            difference: components["schemas"]["Money"] | null;
+            /** Id */
+            id: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "record";
+            /**
+             * Record Kind
+             * @enum {string}
+             */
+            record_kind: "reported" | "manual";
+            rows_sum: components["schemas"]["Money"] | null;
+        };
+        /** StatementSourceOut */
+        StatementSourceOut: {
+            amount: components["schemas"]["Money"];
+            /** Authored */
+            authored: boolean;
+            balance: components["schemas"]["Money"] | null;
+            /**
+             * Booked On
+             * Format: date
+             */
+            booked_on: string;
+            /** Counterparty Name */
+            counterparty_name: string | null;
+            duplicate_of: components["schemas"]["DuplicateOfOut"] | null;
+            /** Entry Id */
+            entry_id: number | null;
+            /** Id */
+            id: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "source";
+            /** Purpose */
+            purpose: string | null;
+            /** Run Id */
+            run_id: number | null;
+            /** Value On */
+            value_on: string | null;
         };
         /**
          * TagApplyBody
@@ -2989,6 +3292,44 @@ export interface operations {
             };
             /** @description Not found. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_catalog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogEntryOut"][];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4010,6 +4351,60 @@ export interface operations {
             };
             /** @description Conflicts with the current state. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    account_statement: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                /** @description Signed minor units: only the imported source transactions of that amount that are not duplicates, and no record. */
+                amount?: number | null;
+            };
+            header?: never;
+            path: {
+                account_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatementOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5246,6 +5641,55 @@ export interface operations {
             };
         };
     };
+    get_source: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProvenanceOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     update_ledger_source: {
         parameters: {
             query?: never;
@@ -5330,6 +5774,126 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SourceDeleteOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    mark_source_duplicate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DuplicateBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarkDuplicateOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    clear_source_duplicate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceWriteOut"];
                 };
             };
             /** @description Not signed in (or wrong login or password). */
