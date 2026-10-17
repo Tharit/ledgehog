@@ -28,6 +28,7 @@ from app.core.ingest.run import (
     ingest_delivery,
     preview_delivery,
     run_error_text,
+    run_retryable,
     start_run,
 )
 from app.core.plugins.errors import ImporterError, InvalidProfile, ParseFailed
@@ -124,7 +125,7 @@ def upload(
     except (ImporterError, InvalidProfile) as exc:
         if run_id is None:
             return _failed_dry_run(exc)
-        _fail(engine, run_id, run_error_text(exc))
+        _fail(engine, run_id, run_error_text(exc), retryable=run_retryable(exc))
         raise
     except BaseException as exc:  # the run must not stay `running`; no message: it may quote the file
         if run_id is not None:
@@ -235,9 +236,9 @@ def _refusal(refused: RunRefused, instance_id: int, account_id: int) -> Exceptio
     return refused
 
 
-def _fail(engine: Engine, run_id: int, message: str) -> None:
+def _fail(engine: Engine, run_id: int, message: str, *, retryable: bool = False) -> None:
     try:
-        fail_run(engine, run_id, message)
+        fail_run(engine, run_id, message, retryable=retryable)
     except Exception as exc:  # the type only: a database error's message quotes statement content
         log.error("could not mark run %s failed: %s", run_id, type(exc).__name__)
 

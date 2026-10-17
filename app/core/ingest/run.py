@@ -109,16 +109,27 @@ def _insert_running(
     )
 
 
-def fail_run(engine: Engine, run_id: int, error: str) -> None:
-    """End a run `failed`, in its own transaction. A run no longer `running` is left alone."""
+def fail_run(engine: Engine, run_id: int, error: str, *, retryable: bool = False) -> None:
+    """End a run `failed`, in its own transaction. A run no longer `running` is left alone.
+
+    `retryable` says whether running it again can help (`run_retryable`).
+    """
     with engine.begin() as conn:
         conn.execute(
             text(
                 "UPDATE import_run SET status = 'failed', finished_at = clock_timestamp(),"
-                " error_text = :err WHERE id = :id AND status = 'running'"
+                " error_text = :err, retryable = :retry WHERE id = :id AND status = 'running'"
             ),
-            {"id": run_id, "err": error},
+            {"id": run_id, "err": error, "retry": retryable},
         )
+
+
+def run_retryable(exc: BaseException) -> bool:
+    """Whether running again can help after `exc`: what the importer taxonomy says (architecture §5.5).
+
+    Anything else (a contract violation, an unexpected error) is not retryable.
+    """
+    return isinstance(exc, ImporterError) and exc.retryable
 
 
 def run_error_text(exc: BaseException) -> str:
@@ -133,10 +144,10 @@ def run_error_text(exc: BaseException) -> str:
     return f"{type(exc).__name__}: unexpected error"
 
 
-def _fail_run_quietly(engine: Engine, run_id: int, error: str) -> None:
+def _fail_run_quietly(engine: Engine, run_id: int, error: str, *, retryable: bool = False) -> None:
     """`fail_run` that never raises: the caller is about to re-raise the original error."""
     try:
-        fail_run(engine, run_id, error)
+        fail_run(engine, run_id, error, retryable=retryable)
     except Exception as exc:  # the type only: a database error's message quotes statement content
         log.error("could not mark run %s failed: %s", run_id, type(exc).__name__)
 
@@ -182,7 +193,7 @@ def ingest_delivery(
 
         counts = retry_on_deadlock(attempt)
     except BaseException as exc:  # cancellation and interrupts too: the run must not stay `running`
-        _fail_run_quietly(engine, run_id, run_error_text(exc))
+        _fail_run_quietly(engine, run_id, run_error_text(exc), retryable=run_retryable(exc))
         raise
     settled = settle(engine)  # never raises: a failure comes back on the result (architecture §5.2)
     return RunResult(

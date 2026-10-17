@@ -34,6 +34,7 @@ def test_late_row_failure_leaves_nothing_and_run_failed(env: Env) -> None:
     assert r.status == "failed" and r.covered_through is None and r.finished_at is not None
     # a database error's message quotes the failing value: only its type is stored
     assert r.error_text == "IntegrityError: unexpected error"
+    assert r.retryable is False  # any other unexpected exception
 
 
 def test_duplicate_source_id_in_one_delivery_fails_the_run(env: Env) -> None:
@@ -188,7 +189,7 @@ def test_two_concurrent_deliveries_for_one_run_let_exactly_one_win(env: Env) -> 
 def test_a_failing_fail_run_does_not_mask_the_original_error(
     env: Env, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    def broken(engine: Any, run_id: int, error: str) -> None:
+    def broken(engine: Any, run_id: int, error: str, *, retryable: bool = False) -> None:
         raise RuntimeError("cannot record the failure")
 
     monkeypatch.setattr(run_module, "fail_run", broken)

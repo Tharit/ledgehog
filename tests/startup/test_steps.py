@@ -31,12 +31,13 @@ def test_running_runs_become_failed_with_finished_at(db_conn, clock):
     running, ok = _insert_run(db_conn, "running"), _insert_run(db_conn, "ok")
     assert fail_interrupted_runs(db_conn) == 1
     rows = {
-        r.id: r for r in db_conn.execute(text("SELECT id, status, finished_at, error_text FROM import_run"))
+        r.id: r for r in db_conn.execute(text("SELECT id, status, finished_at, error_text, retryable FROM import_run"))
     }
     assert rows[running].status == "failed"
     assert rows[running].finished_at == clock.now()
     assert rows[running].error_text
-    assert rows[ok].status == "ok"
+    assert rows[running].retryable is True  # interrupted by a restart: running it again can help
+    assert rows[ok].status == "ok" and rows[ok].retryable is None
 
 
 def test_base_currency_written_on_first_start_and_accepted_again(db_conn):

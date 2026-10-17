@@ -21,7 +21,12 @@ from typing import Any
 from sqlalchemy import Connection, Engine, text
 
 from app.core.domain.errors import ContractViolation, IngestError
-from app.core.ingest.run import _fail_run_quietly, recheck_instance, run_error_text
+from app.core.ingest.run import (
+    _fail_run_quietly,
+    recheck_instance,
+    run_error_text,
+    run_retryable,
+)
 from app.core.plugins.importer import IncomingDocument
 from app.core.resolution import Resolved, resolve_afresh
 from app.core.resolution.load import load_accounts, load_rules, load_unconfirmed
@@ -67,7 +72,7 @@ def ingest_documents(
 
         written = retry_on_deadlock(attempt)
     except BaseException as exc:  # the run must not stay `running`
-        _fail_run_quietly(engine, run_id, run_error_text(exc))
+        _fail_run_quietly(engine, run_id, run_error_text(exc), retryable=run_retryable(exc))
         raise
     return DocumentRunResult(
         run_id=run_id,

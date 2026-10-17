@@ -22,8 +22,24 @@ def test_fail_run_sets_failed_and_finished(env: Env) -> None:
     run_id = start_run(env.engine, env.account, "transactions", importer="csv")
     fail_run(env.engine, run_id, "boom")
     r = env.run_row(run_id)
-    assert (r.status, r.error_text) == ("failed", "boom")
+    assert (r.status, r.error_text, r.retryable) == ("failed", "boom", False)
     assert r.finished_at is not None and r.covered_through is None
+
+
+def test_fail_run_stores_whether_trying_again_can_help(env: Env) -> None:
+    run_id = start_run(env.engine, env.account, "transactions", importer="fints")
+    fail_run(env.engine, run_id, "AuthRejected: wrong PIN", retryable=True)
+    assert env.run_row(run_id).retryable is True
+
+
+def test_run_retryable_follows_the_importer_taxonomy() -> None:
+    from app.core.domain.errors import ContractViolation
+    from app.core.ingest.run import run_retryable
+    from app.core.plugins.errors import AuthRejected, NotRegistered, ParseFailed, SourceUnavailable
+
+    assert run_retryable(AuthRejected("x")) and run_retryable(SourceUnavailable("x"))
+    assert not run_retryable(ParseFailed("x")) and not run_retryable(NotRegistered("x"))
+    assert not run_retryable(ContractViolation("zero_amount", "x")) and not run_retryable(RuntimeError())
 
 
 def test_insert_creates_source_and_exactly_one_entry(env: Env) -> None:

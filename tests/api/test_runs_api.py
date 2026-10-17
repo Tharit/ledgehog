@@ -19,7 +19,7 @@ make_api = h.make_api
 RUNS = "/api/importers/runs"
 RUN_KEYS = {
     "id", "importer", "instance_id", "account_id", "kind", "status", "started_at", "finished_at",
-    "started_by", "error_text", "covered_from", "covered_through", "stats", "reverted_at",
+    "started_by", "error_text", "retryable", "covered_from", "covered_through", "stats", "reverted_at",
     "reverted_by", "revertible",
 }  # fmt: skip
 
@@ -72,6 +72,11 @@ def test_the_list_filters(api: Api):
     failed = api.client.get(RUNS, params={"status": "failed"}).json()
     assert len(failed) == 1 and failed[0]["status"] == "failed" and failed[0]["revertible"] is False
     assert failed[0]["error_text"] and PRIVATE not in failed[0]["error_text"]
+    # a changed format cannot be helped by trying again; a run that did not fail has no answer
+    assert failed[0]["retryable"] is False
+    assert all(x["retryable"] is None for x in api.client.get(RUNS, params={"status": "ok"}).json())
+    one = api.client.get(f"{RUNS}/{failed[0]['id']}").json()
+    assert one["retryable"] is False
     assert len(_ids(api.client.get(RUNS, params={"limit": 1}))) == 1
     both = api.client.get(RUNS, params={"account_id": ga, "status": "ok"})
     assert len(_ids(both)) == 1

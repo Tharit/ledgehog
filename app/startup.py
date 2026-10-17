@@ -70,7 +70,8 @@ def fail_interrupted_runs(conn: Connection) -> int:
     return conn.execute(
         text(
             "UPDATE import_run SET status = 'failed', finished_at = :now, "
-            "error_text = 'interrupted: the application stopped before the run finished' "
+            "error_text = 'interrupted: the application stopped before the run finished', "
+            "retryable = true "
             "WHERE status = 'running'"
         ),
         {"now": clock.now()},

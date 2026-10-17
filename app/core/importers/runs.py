@@ -17,7 +17,7 @@ from app.core.ingest.revert import latest_ok_runs
 
 _COLUMNS = (
     "id, importer, importer_instance_id, account_id, emits, status, started_at, finished_at, started_by,"
-    " error_text, covered_from, covered_through, stats, reverted_at, reverted_by"
+    " error_text, retryable, covered_from, covered_through, stats, reverted_at, reverted_by"
 )
 
 
@@ -33,6 +33,7 @@ class RunView:
     finished_at: datetime | None
     started_by: int | None
     error_text: str | None
+    retryable: bool | None  # a failed run: whether running it again can help; null otherwise
     covered_from: date | None
     covered_through: date | None
     stats: dict[str, Any]
@@ -55,6 +56,7 @@ def _views(conn: Connection, rows: list[Any]) -> list[RunView]:
             finished_at=r.finished_at,
             started_by=r.started_by,
             error_text=r.error_text,
+            retryable=r.retryable,
             covered_from=r.covered_from,
             covered_through=r.covered_through,
             stats=dict(r.stats),

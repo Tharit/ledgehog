@@ -285,6 +285,7 @@ def test_a_parse_error_fails_the_run_and_is_reraised(db: Db) -> None:
     run = _only_failed_run(w)
     assert run.status == "failed" and run.error_text and run.finished_at is not None
     assert run.error_text.startswith("ParseFailed")
+    assert run.retryable is False
     assert run.covered_through is None and run.importer_instance_id == w.instance
 
 
@@ -361,6 +362,7 @@ def test_an_importer_error_fails_the_run_with_its_message(db: Db) -> None:
         w.up(b"", importer=Stub(error=SourceUnavailable("bank down")), today=date(2026, 8, 10))
     run = _only_failed_run(w)
     assert run.status == "failed" and "bank down" in run.error_text
+    assert run.retryable is True  # SourceUnavailable: trying again can help
 
 
 def test_the_importer_gets_the_profile_currency_exponents_and_today(db: Db) -> None:
