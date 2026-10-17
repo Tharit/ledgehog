@@ -16,7 +16,7 @@ with correction, shared accounts, net worth tracking. Start with `spec.md`.
 | `features/*.md` | One per subsystem large enough to distort `spec.md` if absorbed. Rare. | Written before implementing that subsystem. |
 | `ux/patterns.md` | Conventions applying across every view: provenance widget, amount and date rendering, keyboard model, how flags and errors surface. | Written early, then stable. |
 | `ux/design.md` | Design specification | Written early, iterated, then stable. |
-| `ux/views/*.md` | Individual screens: ledger list, review queue and unit panel, sync wizard, dashboard, account discovery. | Written *during* implementation. Expected to churn. |
+| `ux/views/*.md` | Individual screens: ledger list, review queue and unit panel, documents, accounts and the account page, importers and the file upload, sync wizard, dashboard, account discovery. | Written *during* implementation. Expected to churn. |
 
 ## Rules between documents
 

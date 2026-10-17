@@ -166,7 +166,9 @@ items (spec §5.10).
 
 ### 4.5 Provenance widget
 
-Every entry with a source transaction can open its **provenance**: what the
+Every entry with a source transaction can open its **provenance**, and so can
+every row of an account's statement, a duplicate included
+(`ux/views/account.md`): what the
 source said, rendered from `source_transaction.raw` by an importer-specific
 widget (spec §3.1), with the normalised columns above it — counterparty and
 reference, purpose, booking text, end-to-end id, mandate reference, instructed

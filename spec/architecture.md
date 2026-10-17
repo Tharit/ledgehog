@@ -202,6 +202,11 @@ GET    /api/ledger/entries                     filtered, paged list
 GET    /api/ledger/entries/{id}                one entry, in the row shape of
                                                the list (200; 404 when missing)
 GET    /api/ledger/entries/{id}/source         provenance: the source transaction
+GET    /api/ledger/sources/{id}                the same read by source transaction
+                                               id, for a row that has no entry
+                                               (a duplicate): the normalised
+                                               columns, `raw`, the run, and
+                                               `duplicate_of`
 
   user-authored source transactions — the entry form (spec §3.9, §5.6), on
   unsynced accounts only
@@ -220,9 +225,12 @@ PUT    /api/ledger/sources/{id}                edit a user-authored row's
 DELETE /api/ledger/sources/{id}                delete a user-authored row and
                                                its entries; removal routine
 POST   /api/ledger/sources/{id}/duplicate      mark as a duplicate of another
-                                               row on the account; deletes its
-                                               entries through the removal
-                                               routine; previewed both ways
+                                               row on the account (`of`);
+                                               deletes its entries through the
+                                               removal routine; previewed, the
+                                               client previewing both
+                                               directions (a second call with
+                                               the roles swapped)
 POST   /api/ledger/sources/{id}/not-duplicate  clear a row marked wrongly; it
                                                gets one new entry
 POST   /api/ledger/tags/{id}/apply             tag every entry a ledger-list
@@ -369,6 +377,12 @@ PUT    /api/ledger/balance-records/{id}        correct a manual record
 DELETE /api/ledger/balance-records/{id}        remove any record, reported ones
                                                included; derived entries are
                                                recomputed
+GET    /api/ledger/accounts/{id}/statement     the account's source transactions
+                                               and counting balance records in
+                                               one list, newest first, with the
+                                               running balance and each record's
+                                               gap computed; paged like the
+                                               ledger list
 
   tags — direct writes outside the panel (spec §3.7)
 GET    /api/ledger/tags
@@ -379,6 +393,11 @@ PUT    /api/ledger/entries/{id}/tags/{tag_id}  tag one entry (not a derived
 DELETE /api/ledger/entries/{id}/tags/{tag_id}  one); each settles
 
   importers — credentials and their runs (spec §5.11)
+GET    /api/importers                          the catalog: the importers this
+                                               deployment registers, each with
+                                               its name, whether it takes a
+                                               file or fetches, the kinds it
+                                               emits, and its presets
 GET    /api/importers/instances
 POST   /api/importers/instances                create a credential or profile
 PUT    /api/importers/instances/{id}           settings, label, disabled
@@ -411,7 +430,11 @@ POST   /api/importers/instances/{id}/upload    a CSV file → one run per
                                                were rolled back, and a client
                                                does not link them. Ids of rows
                                                that already existed are real.
-GET    /api/importers/runs                     the import log
+GET    /api/importers/runs                     the import log; `account_id`,
+                                               `instance_id`, `status`, `limit`;
+                                               each run with its statistics and
+                                               whether it is revertible
+GET    /api/importers/runs/{id}                one run
 POST   /api/importers/runs/{id}/revert         delete what the run produced;
                                                only the account's latest
                                                successful, non-reverted
@@ -708,6 +731,106 @@ is empty and `settle` null. A filter that restricts nothing would select the who
 guard the selected set; instead a real run must carry the preview's `newly_tagged` as `expected_count`
 (422 without it), and if the filter now tags another number nothing is written and the answer is 409
 `conflict`, reason `filter_result_changed`, with `expected` and `actual`.
+
+#### The account statement
+
+The account page (`ux/views/account.md`) is a bank-layer view: the account's
+source transactions, duplicates included, and its balance records, in one
+list. `GET /api/ledger/accounts/{id}/statement` answers it and reads nothing
+of the entry layer. It is a read: no lock, no write, no settle.
+
+**Order and paging.** Newest first, as the ledger list is (*The ledger list and
+tags*): a source transaction by `booked_on`, then source id, both descending;
+a balance record stands above the rows of its own date, because it is the state
+at the end of its day, and records of one date are by id, descending. The order
+is total. `limit` (1 to 500, default 100) and `offset` page it, and the answer
+is `items`, `total` (every item the account has, whatever the page), `limit` and
+`offset`. `amount` (signed minor units) keeps only the source transactions of
+that amount, no record, for the picker of "mark as duplicate"; it changes no
+balance, which is always computed over the whole account.
+
+**Items** are of two kinds, told apart by `kind`:
+
+- `source` — the source transaction's id, `booked_on`, `value_on`, `amount`
+  (§4.5), counterparty name, purpose, `authored` (entered by hand),
+  `duplicate_of` (the id of the row it duplicates, else null), `entry_id` (its
+  original entry, for the `?unit=` link to the review page; null for a
+  duplicate), `run_id` (null for an authored row) and `balance`, the running
+  balance after it, null for a duplicate. It never carries `raw`: provenance is
+  `GET /api/ledger/sources/{id}`.
+- `record` — the record's id, `balance_on`, `record_kind` (`reported` or
+  `manual`), `balance`, `anchor` (true for the account's earliest record),
+  `rows_sum` and `difference`, both null for the anchor.
+
+**The running balance and the gap are one rule**, the formula of `spec.md`
+§3.10 applied to source transactions and records alone. Let the counting
+records be R₁…Rₙ in order of `(balance_on, id)`, with balances Bᵢ on dates Dᵢ,
+and let the *movements* be the account's source transactions that are not
+duplicates. By `spec.md` I3 the entries of a non-duplicate source carry its
+dates and sum to its amount, so summing sources is summing the movements of the
+formula.
+
+- **Interval.** Movements dated in (Dᵢ₋₁, Dᵢ] belong to Rᵢ; those up to D₁ to the
+  anchor R₁; those after Dₙ to no record.
+- **Gap.** For i > 1, `rows_sum` is the sum of the movements in Rᵢ's interval and
+  `difference` = (Bᵢ − Bᵢ₋₁) − `rows_sum`: the amount of the derived entry the
+  record owns, or zero where it owns none. The anchor has neither; its derived
+  entry is the opening, which absorbs what precedes it and explains nothing
+  (`spec.md` §5.10). The function that derives the entries computes the
+  difference, and the statement calls it rather than reading the entries, so
+  the two agree by construction.
+- **Running balance** of a movement, after it, a day's movements taken by source
+  id: in an interval i > 1, Bᵢ₋₁ plus the movements of the interval up to and
+  including it; in the anchor's interval, B₁ minus the movements of that
+  interval after it, so what precedes the anchor is counted back from it; after
+  Dₙ, Bₙ plus the movements dated after Dₙ up to and including it. With no
+  counting record, the sum of the movements from zero up to and including it. A
+  duplicate has none.
+- **The newest balance is the ledger balance.** The opening and the differences
+  telescope: the derived entries and movements dated up to Dₙ add up to Bₙ
+  (`spec.md` §3.10). I6 makes the account's balance the sum of its entries, so
+  the balance of the newest item — a movement's running balance, or Bₙ where the
+  newest item is Rₙ itself — equals it. A test asserts this for every account.
+- **Edge cases.** Records sharing a date stand after that day's movements, by id,
+  and a later one's interval holds no movement: its `difference` is the change
+  in balance between the two. A record of a reverted run does not count
+  (`spec.md` §3.10) and is not an item, and the rows that run wrote are gone.
+  An investment account follows the same formula: the difference is what the
+  entry layer calls a valuation (`spec.md` §3.3), and an account kept by records
+  alone has `record` items and none of the other kind. A closed account is
+  unchanged. No counting record means *balance not anchored*: running balances
+  count from zero and there are no `record` items.
+
+**The account's facts gain `balance`**, the sum of its entries as money, next to
+`synced_through`, `last_data_on`, `unexplained_difference`, `anchored` and
+`records_since_zero`, on every response that carries them: the list, and the
+`account` of every write. The list and the page need it (`ux/patterns.md` §4.4
+shows the facts wherever the account is shown with its balance), and the
+dashboard reads the same figure.
+
+**An account's linked importers are not a route.**
+`GET /api/importers/instances` already returns every instance with its linked
+accounts, and the page filters them by the account. A household has a handful
+of instances; an `importers` field on the account would repeat what the
+instances state and add a second place to keep right.
+
+**Marking and clearing from the statement.** `POST /api/ledger/sources/{id}/duplicate`
+takes `of` (the row it duplicates), `dry_run` and `expected_versions`, the
+versions of the entries the call removes or unpairs, which its preview returns
+as revert's does; `POST …/not-duplicate` takes none. Both answer with
+everything they touched (*Operations return everything they touched*), the
+latter including the entry the row got.
+
+**The catalog.** `GET /api/importers` lists what the deployment registers, one
+entry per importer: `name`, `kind` (`file` or `fetch`), `emits` (the kinds of
+`spec.md` §5.1) and `presets`, a map from a preset's name to the settings it
+fills, for an importer that ships any (the CSV importer's, loaded from its
+package data, `plugins/importers/csv.md` §8) and empty otherwise. Presets ride
+on the catalog entry rather than a route of their own: they exist only to fill
+the form of that importer, and the catalog is read when the form opens. The
+settings form itself belongs to the client, one component per importer
+(`ux/views/importers.md`); creating an instance takes its `emits` and access
+from the catalog's entry, never from the client.
 
 #### Operations return everything they touched
 
@@ -1475,10 +1598,12 @@ frontend/src/
     +layout.ts         ssr and prerender flags
     ledger/
     review/
-    accounts/
+    accounts/          the account list, `/accounts/[id]` and the file upload
+                       `/accounts/[id]/upload`
     sync/
     reports/
-    settings/          management: categories, payees, rules (below)
+    settings/          management: categories, payees, tags, rules, importers
+                       (below)
   lib/
     api/               The ONLY place fetch is called. One module per
                        operation group in §4.1 (ledger, units, importers,
@@ -1500,6 +1625,9 @@ frontend/src/
       ledger/          entry row, provenance widget
       units/           the unit panel — draft, preview, commit, split
                        editor — and queue rows, flag badges, evidence
+      accounts/        statement rows, balance markers, account facts
+      importers/       the instance list, one settings form per importer, the
+                       run summary (shown at the end of a sync too)
       sync/            progress list, prompt modals
     format/            money, dates, locale (§6.6)
     types/             shared types: api.d.ts is generated from OpenAPI
@@ -1525,7 +1653,8 @@ components of `common/` and do not restyle them; a new kind of interaction is
 first a pattern in `ux/patterns.md` §11.
 
 **Management lives under settings.** The routes are `/settings/categories`, `/settings/tags`,
-`/settings/payees`, `/settings/rules`, `/settings/rules/new` (optionally
+`/settings/payees`, `/settings/importers`, `/settings/importers/new` (with
+`?importer=`), `/settings/importers/{id}`, `/settings/rules`, `/settings/rules/new` (optionally
 `?from=<entry id>`, which opens the editor on that entry as its example, read
 with `GET /api/ledger/entries/{id}`; nothing is matched or written by it) and
 `/settings/rules/{id}`, the page an evidence line's rule links to
@@ -1583,8 +1712,9 @@ events. Input requests drive the modals — text TAN, photoTAN image, decoupled
 confirmation with a waiting state — and answers carry the correlation id of the
 request they answer. The run summary at the end lists, per account, what was
 inserted, what was inserted as a duplicate and of which row, with a link to
-those rows in the ledger list, and how many rows were skipped by identity; the CSV upload flow
-ends with the same summary.
+those rows on the account's statement (a duplicate has no entry, so no row in
+the ledger list), and how many rows were skipped by identity; the CSV upload flow
+ends with the same summary, one component in `components/importers/`.
 
 On mount, the app asks whether the current user has an active task and
 reattaches if so, rather than remembering a token locally (§4.3). Two tabs

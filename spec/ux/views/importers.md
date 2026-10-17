@@ -1,0 +1,161 @@
+# Importers — view sketch
+
+Status: **thin sketch.** Written before implementation, lean on purpose; it
+changes with use. The rules are `spec.md` §5.1–§5.4, §5.6 and §5.11; the CSV
+profile is `plugins/importers/csv.md`; the contracts are `architecture.md`
+§4.1 and §6.4. The account page, where an upload starts, is
+`ux/views/account.md`.
+
+---
+
+**Settings → Importers**, `/settings/importers`, is where importer instances
+are managed: a tab of Settings beside categories, payees, rules and tags.
+Fetching and syncing are not here; sync becomes a shell-level action in a later
+wave and is not specified by this sketch. FinTS setup — discovery, the login,
+the first-fetch start — is likewise later; this document names where it will
+plug in and no more.
+
+## The instance list
+
+Titled "Importers", with the primary action "Add importer". A row shows the
+instance's label, its importer, the accounts it is linked to — each a link to
+the account's page — when it last ran ("never run" for none, relative with the
+absolute instant in a tooltip, `ux/patterns.md` §3) and "disabled" when it is.
+Which user's login an instance is, for one that holds a login, is shown too
+(`spec.md` §5.11). A row opens its page (below). It follows the settings-row
+rule (`ux/patterns.md` §11.3): two icon actions, "Edit" and "Link account", and
+one `⋯` menu holding "Disable" or "Enable", "Reset…" and, last in the
+destructive style, "Delete…".
+
+- **Add importer** opens a pick dialog over the importer catalog
+  (`architecture.md` §4.1): each importer by name with whether it takes a file
+  or fetches. Choosing one opens the add page for it.
+- **Reset…** is offered only for an importer that keeps state, a login; a file
+  importer has none. The decision dialog says it clears the state and keeps the
+  settings.
+- **Delete…** is refused while the instance has runs (`spec.md` §5.6), the
+  runs staying as history. The action is disabled on a row that has run, with
+  the reason as its tooltip — "has runs; disable it instead" — and "Disable" is
+  right beside it. Should the server still refuse, because a run began meanwhile
+  (`instance_has_runs`), the decision dialog shows the refusal as an error
+  with the same pointer. An instance without runs is deleted after the decision
+  dialog; its links go with it, and the notice says so.
+- An empty list says what is missing and offers "Add importer" (§9).
+
+## The instance page
+
+`/settings/importers/new?importer=` adds, `/settings/importers/[id]` edits: a
+page, because a profile has more than five fields (`ux/patterns.md` §11.1).
+The title is "Add importer" or the instance's label; the editor is a draft
+editor with "Save importer" and Cancel (`ux/patterns.md` §11.2). It holds:
+
+- **The label**, and the importer's own settings below it: one form component
+  per importer, chosen by its name, like the provenance widget
+  (`ux/patterns.md` §4.5). The server validates the settings; a refusal names
+  the setting (`invalid_profile`) and stands under that field (`ux/patterns.md`
+  §11.5). Saving changes later uploads only: rows already imported keep saying
+  what the file said.
+- **Linked accounts**, listing each with "Unlink…" and the action "Link
+  account", for an instance already saved.
+
+**Link account** is a form dialog: an account picker (open accounts which the
+instance does not link yet) and, for a file importer, nothing else — it is never
+asked for a reference. For an importer that fetches, the account at the login
+comes from discovery, a later wave. Once an account is chosen the dialog shows
+the link's dry run (`architecture.md` §4.1), the warning of `spec.md` §5.4:
+
+```
+This account holds 14 rows entered by hand, 3 Jan – 29 Mar.
+Imports overlapping them are not deduplicated against them.
+Once linked, the account is synced: rows can no longer be entered by hand.
+```
+
+The first sentence appears only where the account holds user-authored rows —
+their count and the inclusive date range come from the preview; the second goes
+with it; the third is the consequence of every link that makes the account
+synced. The verb is "Link". **Unlink…** is a decision dialog that says the
+account's coverage stays as history and that rows it holds stay.
+
+## The CSV profile form
+
+The CSV importer's settings are a profile (`plugins/importers/csv.md` §1): the
+form is the add and edit page above, in groups that follow the profile —
+*Reading the file* (encoding, delimiter, quote, the header marker), *Columns*
+(booking date and its format, value date, the amount as one signed column or a
+credit and a debit column, the separators, the counterparty fields, purpose as
+a list of columns, instructed amount, currency), *Rows* (placeholders, filters),
+*Balance and coverage* (none, a running-balance column or a labelled figure with
+its label, offsets and date; the export date), *Statement payment* (off unless
+enabled: counter-account reference, purpose, date offset) and the two inversion
+settings. A column is named by its header, by `Name#2` for the second of that
+name, or by a position counted from 1; the helper text under each field says
+so, since no field carries an example value as a placeholder.
+
+**Presets** (`plugins/importers/csv.md` §8) are chosen from a select at the top
+of the add page, "Start from a preset", which comes from the catalog's entry for
+the importer. Choosing one fills the form as a draft edit: nothing is saved
+until "Save importer", and Cancel discards it. It is offered on add only. The
+form cannot judge a profile: the dry run of an upload does (*Uploading a file*
+below), which needs an account and a file.
+
+## Uploading a file
+
+Started from the account page, with "Upload" on a linked source: the page
+`/accounts/[id]/upload?instance=`, a page because it holds a preview and a table
+(`ux/patterns.md` §11.1). Titled "Upload a file", described as the account and
+the instance. One page, three steps:
+
+1. **Choose the file.** A file field, with the helper text that the file is for
+   this account only and may be up to 10 MiB. Choosing it starts the dry run at
+   once, "Checking the file…" (`ux/patterns.md` §11.6): the real path in a
+   transaction that is rolled back (`architecture.md` §4.1).
+2. **The report.** What the dry run carries, so that the profile can be judged
+   before the file is used (`plugins/importers/csv.md` §7):
+   - the file as read: encoding, delimiter, the header row and the columns
+     mapped, field to column; the first rows as parsed;
+   - counts: rows read, imported, skipped as not transactions, filtered by a
+     row filter, dropped as zero bookings, each with examples by line number
+     and reason, never cell content;
+   - the export date used and where it came from; the coverage and where it
+     came from;
+   - the balance record that would be written, its date, the figure in the file
+     and any roll-back applied; the synthetic statement payment, with its
+     amount, date and the sum it is made of;
+   - the importer's warnings;
+   - the run summary as it would stand: rows inserted, skipped by identity and
+     inserted as duplicates — each naming the existing row it duplicates, a
+     link to that row; the new duplicate itself is not linked, since a dry run
+     rolled it back — and the unexplained difference before and after.
+
+   A failure the real run would end in — an unreadable file, a header or label
+   not found, a currency that differs from the account's — takes the place of
+   the counts and says which setting to look at, with the profile's page
+   opening in a new tab; the page and the file stay. The commit is disabled with
+   that as its reason (`ux/patterns.md` §6).
+3. **Commit.** "Upload" runs the real operation with the same file. The page
+   becomes the run summary (below) with "Back to the account".
+
+A refusal of the request itself — a file over the limit, the account closed or
+no longer linked — stands above the buttons as an error (`ux/patterns.md`
+§11.5).
+
+## The run summary
+
+One component, shown after an upload here, on a run in the account page's run
+list, and later at the end of a sync (`architecture.md` §6.4). It is a report,
+not an alarm (`ux/patterns.md` §8): it opens no dialog and colours nothing red.
+Per account it says how many rows were inserted; how many were inserted as
+duplicates, each "of #N" with a link to the row it duplicates on the account's
+statement, and a link to the duplicate itself; how many were skipped by identity;
+what the importer left out (zero bookings it dropped, a statement payment it
+did not emit); the balance record the run wrote, with its kind and date; the
+coverage; and the unexplained difference before and after, which where it is
+non-zero names the reported records that localise it, linking to the statement.
+A failed run shows its error and whether trying again can help. The component
+takes a run's stored statistics; for a dry run the same shape, with the links
+to rolled-back rows left out.
+
+**Open for the first month.** Whether the profile form wants a live sample
+beside it; whether the instance label and the profile's own label
+(`source_format` reads the profile's) are one field; how a file importer's
+instance with several linked accounts is best chosen on the account page.
