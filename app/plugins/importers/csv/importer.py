@@ -76,7 +76,13 @@ def _known(lookup: Callable[[str], int]) -> Callable[[str], int]:
 
 
 def _parse(
-    data: bytes, prof: Profile, rep: ReportBuilder, currency: str, exponent: Callable[[str], int], today: date, name: str
+    data: bytes,
+    prof: Profile,
+    rep: ReportBuilder,
+    currency: str,
+    exponent: Callable[[str], int],
+    today: date,
+    name: str,
 ) -> ParsedFile:
     minor_units = exponent(currency)
     rf = read_file(

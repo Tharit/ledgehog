@@ -51,7 +51,9 @@ class OpResult:
     settle: SettleResult | None
     affected: Affected = field(default_factory=Affected)
     created_entry_id: int | None = None  # clear: the entry the row got
-    repointed_source_ids: tuple[int, ...] = ()  # mark: rows that pointed at the marked row, now at its original
+    repointed_source_ids: tuple[
+        int, ...
+    ] = ()  # mark: rows that pointed at the marked row, now at its original
     derived_changes: tuple[DerivedChange, ...] = ()  # mark: accounts whose derived entries differ afterwards
     versions: Mapping[int, int] = field(default_factory=dict)  # mark
 
@@ -214,9 +216,7 @@ def _mark_once(
         repointed = [
             int(i)
             for i in conn.execute(
-                text(
-                    "UPDATE source_transaction SET duplicate_of = :o WHERE duplicate_of = :r RETURNING id"
-                ),
+                text("UPDATE source_transaction SET duplicate_of = :o WHERE duplicate_of = :r RETURNING id"),
                 {"o": of_row_id, "r": row_id},
             ).scalars()
         ]

@@ -30,7 +30,7 @@ def ledger_balance(conn: Connection, account: int) -> int:
 
 
 def assert_agrees_with_the_ledger(s: Scene) -> None:
-    """The newest balance is the account's balance; every record's difference is its derived entry's amount."""
+    """The newest balance is the account's; every record's difference is its derived entry's amount."""
     s.recompute()
     items = full(s.conn, s.account)
     newest = next((i.balance for i in items if i.balance is not None), None)
@@ -173,9 +173,7 @@ def test_a_duplicate_as_the_newest_item_does_not_break_the_agreement(
     assert_agrees_with_the_ledger(s)
 
 
-def test_an_investment_account_has_valuations_as_differences(
-    db_conn: Connection, make_account: Make
-) -> None:
+def test_an_investment_account_has_valuations_as_differences(db_conn: Connection, make_account: Make) -> None:
     s = Scene(db_conn, make_account, kind="depot")
     s.manual(day(1, 1), 5_000_000)
     s.manual(day(2, 1), 5_400_000)
@@ -287,7 +285,11 @@ def test_items_carry_entry_run_and_authored(db_conn: Connection, make_account: M
     by_hand = make_source(db_conn, s.account, amount=9, booked_on=day(1, 2), importer=None)
     make_entry(db_conn, by_hand)
     items = {i.id: i for i in full(db_conn, s.account) if isinstance(i, SourceItem)}
-    assert (items[imported].entry_id, items[imported].authored, items[imported].purpose) == (first, False, "Coffee")
+    assert (items[imported].entry_id, items[imported].authored, items[imported].purpose) == (
+        first,
+        False,
+        "Coffee",
+    )
     assert items[imported].run_id is not None
     assert (items[by_hand].authored, items[by_hand].run_id) == (True, None)
 

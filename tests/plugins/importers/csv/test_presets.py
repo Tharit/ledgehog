@@ -30,7 +30,9 @@ def test_load_presets_returns_independent_copies() -> None:
 
 
 def giro(**kw: object) -> object:
-    return run(giro_bytes(**kw), profile=load_presets()["giro_with_preamble"], today=date(2030, 1, 1), name="giro")  # type: ignore[arg-type]
+    return run(
+        giro_bytes(**kw), profile=load_presets()["giro_with_preamble"], today=date(2030, 1, 1), name="giro"
+    )  # type: ignore[arg-type]
 
 
 def test_giro_rows_pending_placeholders_and_zero() -> None:

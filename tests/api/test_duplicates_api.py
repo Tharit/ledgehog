@@ -29,7 +29,9 @@ def acct(api_engine: Engine) -> int:
     return seed_account(api_engine)
 
 
-def movement(engine: Engine, account: int, *, amount: int = -500, on: date = DAY, **kw: Any) -> tuple[int, int]:
+def movement(
+    engine: Engine, account: int, *, amount: int = -500, on: date = DAY, **kw: Any
+) -> tuple[int, int]:
     """(source id, entry id) of an imported row that has its entry."""
     with engine.begin() as conn:
         src = make_source(conn, account, amount=amount, booked_on=on, **kw)
@@ -46,7 +48,11 @@ def counts(engine: Engine) -> tuple[int, int]:
     with engine.connect() as conn:
         return (
             int(conn.execute(text("SELECT count(*) FROM ledger_entry")).scalar_one()),
-            int(conn.execute(text("SELECT count(*) FROM source_transaction WHERE duplicate_of IS NOT NULL")).scalar_one()),
+            int(
+                conn.execute(
+                    text("SELECT count(*) FROM source_transaction WHERE duplicate_of IS NOT NULL")
+                ).scalar_one()
+            ),
         )
 
 
@@ -57,8 +63,12 @@ def transfer_pair(engine: Engine, a: int, b: int, *, amount: int = -50) -> tuple
         s_in = make_source(conn, b, amount=-amount, booked_on=DAY)
         e_out = make_entry(conn, s_out, type="transfer")
         e_in = make_entry(conn, s_in, type="transfer")
-        conn.execute(text("UPDATE ledger_entry SET counter_account_id = :c WHERE id = :i"), {"c": b, "i": e_out})
-        conn.execute(text("UPDATE ledger_entry SET counter_account_id = :c WHERE id = :i"), {"c": a, "i": e_in})
+        conn.execute(
+            text("UPDATE ledger_entry SET counter_account_id = :c WHERE id = :i"), {"c": b, "i": e_out}
+        )
+        conn.execute(
+            text("UPDATE ledger_entry SET counter_account_id = :c WHERE id = :i"), {"c": a, "i": e_in}
+        )
         pair(conn, e_out, e_in)
     return s_out, e_out, s_in, e_in
 
@@ -170,14 +180,24 @@ def test_a_real_mark_with_the_previews_versions_answers_with_everything_it_touch
     r = anna.post(f"{URL}/{s_out}/duplicate", json={"of": original, "expected_versions": seen})
     assert r.status_code == 200, r.text
     out = r.json()
-    assert out["dry_run"] is False and out["removed_entry_ids"] == [e_out] and out["partner_entry_ids"] == [e_in]
+    assert (
+        out["dry_run"] is False and out["removed_entry_ids"] == [e_out] and out["partner_entry_ids"] == [e_in]
+    )
     assert out["settle"] is not None and out["settle"]["error"] is None
     assert [p["id"] for p in out["partners"]] == [e_in]
     assert out["partners"][0]["version"] > seen[str(e_in)]  # unpaired: it moved
     assert [u["entry_ids"] for u in out["units"]] == [[e_in]]
     with api_engine.connect() as conn:
-        assert conn.execute(text("SELECT duplicate_of FROM source_transaction WHERE id = :i"), {"i": s_out}).scalar_one() == original
-        assert conn.execute(text("SELECT count(*) FROM ledger_entry WHERE id = :i"), {"i": e_out}).scalar_one() == 0
+        assert (
+            conn.execute(
+                text("SELECT duplicate_of FROM source_transaction WHERE id = :i"), {"i": s_out}
+            ).scalar_one()
+            == original
+        )
+        assert (
+            conn.execute(text("SELECT count(*) FROM ledger_entry WHERE id = :i"), {"i": e_out}).scalar_one()
+            == 0
+        )
     assert anna.get("/api/maintenance/check").json()["ok"] is True
 
 
@@ -200,7 +220,9 @@ def test_marking_reports_rows_it_repoints_and_derived_entries_that_move(
     done = anna.post(f"{URL}/{marked}/duplicate", json={"of": original, "expected_versions": seen}).json()
     assert done["repointed_source_ids"] == [follower] and done["removed_entry_ids"] == [marked_entry]
     with api_engine.connect() as conn:
-        got = conn.execute(text("SELECT duplicate_of FROM source_transaction WHERE id = :i"), {"i": follower}).scalar_one()
+        got = conn.execute(
+            text("SELECT duplicate_of FROM source_transaction WHERE id = :i"), {"i": follower}
+        ).scalar_one()
     assert got == original
 
 

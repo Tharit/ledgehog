@@ -29,7 +29,6 @@ from app.core.ingest.duplicates import _check_versions
 from app.core.ingest.entries import insert_entry
 from app.core.ingest.removal import (
     DerivedChange,
-    DerivedEntry,
     derived_snapshot,
     entry_scope,
     entry_versions,

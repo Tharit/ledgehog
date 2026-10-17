@@ -39,7 +39,9 @@ def test_an_empty_account(anna: TestClient, api_engine: Engine) -> None:
 
 def test_items_of_both_kinds_with_money_and_the_running_balance(anna: TestClient, api_engine: Engine) -> None:
     aid = seed_account(api_engine)
-    record = seed_difference(api_engine, aid)  # anchor 10000 at 31.1., one -1000 row on 10.2., reported 8000 on 1.3.
+    record = seed_difference(
+        api_engine, aid
+    )  # anchor 10000 at 31.1., one -1000 row on 10.2., reported 8000 on 1.3.
     body = anna.get(url(aid)).json()
     assert (body["total"], body["limit"], body["offset"]) == (3, 100, 0)
     reported, source, anchor = body["items"]
@@ -78,7 +80,9 @@ def test_paging_and_the_amount_filter(anna: TestClient, api_engine: Engine) -> N
     hits = anna.get(url(aid, amount=-5)).json()
     assert hits["total"] == 2 and [i["id"] for i in hits["items"]] == [ids[2], ids[0]]
     assert all(i["kind"] == "source" and i["duplicate_of"] is None for i in hits["items"])
-    assert hits["items"][0]["balance"]["amount"] == 1000 - 5 - 7 - 5  # the whole account's balance, not the filter's
+    assert (
+        hits["items"][0]["balance"]["amount"] == 1000 - 5 - 7 - 5
+    )  # the whole account's balance, not the filter's
 
 
 @pytest.mark.parametrize("query", ["limit=0", "limit=501", "offset=-1", "amount=x"])

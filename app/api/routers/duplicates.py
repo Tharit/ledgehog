@@ -36,7 +36,7 @@ from app.core.domain.errors import (
     UserAuthoredRow,
     VersionConflict,
 )
-from app.core.ingest.duplicates import OpResult, clear_duplicate, mark_duplicate
+from app.core.ingest.duplicates import clear_duplicate, mark_duplicate
 from app.core.ledger.entries import entries_by_ids
 from app.core.ledger.provenance import Provenance, get_provenance
 from app.core.ledger.sources import SourceMissing
@@ -122,7 +122,9 @@ class ProvenanceOut(BaseModel):
             raw=p.raw,
             run=None if p.run is None else RunRefOut(**vars(p.run)),
             duplicate_of=(
-                None if dup is None else DuplicateOfOut(id=dup.id, booked_on=dup.booked_on, amount=money(dup.amount, p.currency))
+                None
+                if dup is None
+                else DuplicateOfOut(id=dup.id, booked_on=dup.booked_on, amount=money(dup.amount, p.currency))
             ),
             entry_id=p.entry_id,
         )
@@ -216,7 +218,9 @@ def mark_source_duplicate(
 
     def derived(rows: tuple[Any, ...], account: int) -> list[AccountDerivedOut]:
         return [
-            AccountDerivedOut(type=r.type, booked_on=r.booked_on, amount=Money(amount=r.amount, currency=currency[account]))
+            AccountDerivedOut(
+                type=r.type, booked_on=r.booked_on, amount=Money(amount=r.amount, currency=currency[account])
+            )
             for r in rows
         ]
 
@@ -230,7 +234,9 @@ def mark_source_duplicate(
         repointed_source_ids=list(done.repointed_source_ids),
         derived_changes=[
             DerivedChangeOut(
-                account_id=c.account_id, before=derived(c.before, c.account_id), after=derived(c.after, c.account_id)
+                account_id=c.account_id,
+                before=derived(c.before, c.account_id),
+                after=derived(c.after, c.account_id),
             )
             for c in done.derived_changes
         ],
@@ -243,7 +249,7 @@ def mark_source_duplicate(
 
 @router.post("/{source_id}/not-duplicate")
 def clear_source_duplicate(source_id: PathId, user: CurrentUser, engine: EngineDep) -> SourceWriteOut:
-    """Clear a row marked wrongly: it gets one new entry (spec §5.6). Answers as the entry form's writes do."""
+    """Clear a row marked wrongly: it gets one new entry (spec §5.6). Answers as the entry form's writes do."""  # noqa: E501
     done = clear_duplicate(engine, source_id)
     assert done.created_entry_id is not None and done.settle is not None
     with engine.connect() as conn:

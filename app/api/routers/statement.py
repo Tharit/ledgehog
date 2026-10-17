@@ -92,7 +92,9 @@ def _item(item: SourceItem | RecordItem, currency: str) -> StatementSourceOut | 
         purpose=item.purpose,
         authored=item.authored,
         duplicate_of=(
-            None if dup is None else DuplicateOfOut(id=dup.id, booked_on=dup.booked_on, amount=money(dup.amount))
+            None
+            if dup is None
+            else DuplicateOfOut(id=dup.id, booked_on=dup.booked_on, amount=money(dup.amount))
         ),
         entry_id=item.entry_id,
         run_id=item.run_id,

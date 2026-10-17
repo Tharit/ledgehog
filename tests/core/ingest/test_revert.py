@@ -14,9 +14,8 @@ from sqlalchemy import Engine, text
 from app.core.balance.derived import recompute_derived
 from app.core.domain.errors import VersionConflict
 from app.core.ingest import revert
+from app.core.ingest.removal import DerivedChange, DerivedEntry
 from app.core.ingest.revert import (
-    DerivedChange,
-    DerivedEntry,
     NotLatestRun,
     NotRevertible,
     RunMissing,

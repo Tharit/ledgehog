@@ -51,10 +51,15 @@ def test_label_is_stripped_from_csv_instances_only(isolated_db: Config) -> None:
 
         def settings(i: int) -> dict[str, object]:
             return dict(
-                conn.execute(text("SELECT settings FROM importer_instance WHERE id = :i"), {"i": i}).scalar_one()
+                conn.execute(
+                    text("SELECT settings FROM importer_instance WHERE id = :i"), {"i": i}
+                ).scalar_one()
             )
 
-        assert settings(old) == {"quote": '"', "balance": {"label": "Saldo"}}  # nested labels are the profile's
+        assert settings(old) == {
+            "quote": '"',
+            "balance": {"label": "Saldo"},
+        }  # nested labels are the profile's
         assert settings(clean) == {"quote": '"'}
         assert settings(other) == {"label": "keep me"}
     engine.dispose()

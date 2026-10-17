@@ -95,7 +95,9 @@ def get_provenance(conn: Connection, source_id: int) -> Provenance | None:
         run=(
             None
             if r.run_id is None
-            else RunRef(r.run_id, r.run_importer, r.instance_id, r.instance_label, r.started_at, r.finished_at)
+            else RunRef(
+                r.run_id, r.run_importer, r.instance_id, r.instance_label, r.started_at, r.finished_at
+            )
         ),
         duplicate_of=None if r.of_id is None else DuplicateRef(r.of_id, r.of_on, int(r.of_amount)),
         entry_id=r.entry_id,

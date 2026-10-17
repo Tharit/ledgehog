@@ -245,7 +245,7 @@ def _fail(engine: Engine, run_id: int, message: str) -> None:
 def _checked(
     engine: Engine, instance_id: int, account_id: int
 ) -> tuple[str, str, dict[str, Any], str, dict[str, int]]:
-    """The refusals, then (importer name, instance label, profile, account currency, minor units per currency)."""
+    """The refusals, then (importer name, instance label, profile, account currency, minor units)."""
     with engine.connect() as conn:
         inst = conn.execute(
             text("SELECT importer, label, emits, disabled, settings FROM importer_instance WHERE id = :i"),

@@ -215,9 +215,9 @@ def test_card_with_footer_balance_and_a_statement_payment(api: Api):
     # negated, +51,10, dated 4 days after the statement: 7.8.
     assert body["summary"]["inserted"] == 4
     assert [(s.amount, s.booked_on, s.source_format) for s in http.sources(card)] == [
-        (-3001, D(2026, 7, 31), "csv:card_footer"),
-        (-1200, D(2026, 8, 2), "csv:card_footer"),
-        (-909, D(2026, 8, 3), "csv:card_footer"),
+        (-3001, D(2026, 7, 31), "csv:card_footer_balance (e2e)"),
+        (-1200, D(2026, 8, 2), "csv:card_footer_balance (e2e)"),
+        (-909, D(2026, 8, 3), "csv:card_footer_balance (e2e)"),
         (5110, D(2026, 8, 7), "csv:synthetic"),
     ]
     payment = http.sources(card)[-1]

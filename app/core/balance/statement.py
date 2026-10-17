@@ -72,9 +72,7 @@ class StatementAccountMissing(LookupError):
         super().__init__(f"account {account_id} does not exist")
 
 
-def _running_balances(
-    rows: list[tuple[int, date, int]], gaps: list[RecordGap]
-) -> dict[int, int]:
+def _running_balances(rows: list[tuple[int, date, int]], gaps: list[RecordGap]) -> dict[int, int]:
     """Running balance after each movement `(id, booked_on, amount)` (duplicates excluded by the caller).
 
     In an interval i > 1: B(i-1) plus the interval's movements up to and including it; in the anchor's
@@ -115,12 +113,15 @@ def get_statement(
 ) -> Statement:
     """The account's statement, newest first. `amount` keeps the imported, non-duplicate source
     transactions of that amount and no record (the picker of 'mark as duplicate of...')."""
-    currency = conn.execute(text("SELECT currency FROM account WHERE id = :a"), {"a": account_id}).scalar_one_or_none()
+    currency = conn.execute(
+        text("SELECT currency FROM account WHERE id = :a"), {"a": account_id}
+    ).scalar_one_or_none()
     if currency is None:
         raise StatementAccountMissing(account_id)
     thin = conn.execute(
         text(
-            "SELECT id, booked_on, amount, duplicate_of IS NOT NULL AS duplicate, importer IS NOT NULL AS imported"
+            "SELECT id, booked_on, amount, duplicate_of IS NOT NULL AS duplicate,"
+            " importer IS NOT NULL AS imported"
             " FROM source_transaction WHERE account_id = :a"
         ),
         {"a": account_id},
@@ -133,7 +134,9 @@ def get_statement(
         {"a": account_id},
     ).all()
     movements = [(r.id, r.booked_on, int(r.amount)) for r in thin if not r.duplicate]
-    gaps = record_gaps([(r.id, r.balance_on, int(r.balance)) for r in records], [(d, a) for _, d, a in movements])
+    gaps = record_gaps(
+        [(r.id, r.balance_on, int(r.balance)) for r in records], [(d, a) for _, d, a in movements]
+    )
     balances = _running_balances(movements, gaps)
     kinds = {r.id: r.kind for r in records}
 
