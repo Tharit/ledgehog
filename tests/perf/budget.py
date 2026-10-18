@@ -105,7 +105,7 @@ applies). 2 x the largest (0.32 s) is 0.64 s, so the floor of 1.0 s is the budge
 
 QUEUE_BUDGET_SECONDS = 0.5
 """A request of the review queue (`tests/perf/test_queue_budget.py`): the first page, a page of 500
-units, a page by cursor, the new-count and one unit, as the endpoints compute them.
+units, a page by cursor, the count and one unit, as the endpoints compute them.
 
 Derivation: on the backfill fixture (8,000 entries), all unconfirmed (a queue of 8,000 units, the worst
 case) and the ~70% confirmed variant (2,427 units). Measured on the dev machine (Postgres 18, localhost),

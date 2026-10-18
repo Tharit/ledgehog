@@ -1,4 +1,4 @@
-"""`GET /api/units/{entry_id}`, `/api/units/queue` and `/queue/new-count` (architecture §4.1, spec §6)."""
+"""`GET /api/units/{entry_id}`, `/api/units/queue` and `/queue/count` (architecture §4.1, spec §6)."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ def _make(api_engine: Engine, world: Bench, build: Any) -> Any:
 
 
 def test_requires_a_session(client: TestClient) -> None:
-    for url in ("/api/units/1", QUEUE, f"{QUEUE}/new-count?since=x"):
+    for url in ("/api/units/1", QUEUE, f"{QUEUE}/count"):
         assert_envelope(client.get(url), 401, "unauthenticated")
 
 
@@ -109,7 +109,7 @@ def test_the_queue_shape_sections_and_order(anna: TestClient, api_engine: Engine
     r = anna.get(QUEUE)
     assert r.status_code == 200, r.text
     body = r.json()
-    assert set(body) == {"sections", "total", "snapshot"} and body["total"] == 2 and body["snapshot"]
+    assert set(body) == {"sections", "total"} and body["total"] == 2
     assert [(s["kind"], s["total"]) for s in body["sections"]] == [
         ("pending_review", 2),
         ("needs_account", 0),
@@ -214,23 +214,20 @@ def test_queue_parameter_errors(anna: TestClient) -> None:
         {"section": "pending_review", "cursor": "not-a-cursor"},
     ):
         assert_envelope(anna.get(QUEUE, params=params), 422, "validation_error")
-    assert_envelope(anna.get(f"{QUEUE}/new-count"), 422, "validation_error")
-    assert_envelope(anna.get(f"{QUEUE}/new-count", params={"since": "junk"}), 422, "validation_error")
 
 
-def test_new_count(anna: TestClient, api_engine: Engine, world: Bench) -> None:
-    _make(api_engine, world, lambda b: b.flow(b.source(), done=False))
-    snap = anna.get(QUEUE).json()["snapshot"]
-    assert anna.get(f"{QUEUE}/new-count", params={"since": snap}).json()["new_count"] == 0
+def test_queue_count(anna: TestClient, api_engine: Engine, world: Bench) -> None:
+    assert anna.get(f"{QUEUE}/count").json() == {"count": 0}
 
-    def more(b: Bench) -> None:
-        b.flow(b.source(), done=False)
-        b.flow(b.source())
+    def build(b: Bench) -> None:
+        b.flow(b.source(), done=False)  # pending review
+        b.flow(b.source())  # confirmed: not in the queue
 
-    _make(api_engine, world, more)
-    body = anna.get(f"{QUEUE}/new-count", params={"since": snap}).json()
-    assert set(body) == {"new_count", "snapshot"} and body["new_count"] == 1
-    assert anna.get(f"{QUEUE}/new-count", params={"since": body["snapshot"]}).json()["new_count"] == 0
+    _make(api_engine, world, build)
+    assert anna.get(f"{QUEUE}/count").json() == {"count": 1}
+    sections = {s["kind"]: s["total"] for s in anna.get(QUEUE).json()["sections"]}
+    actionable = sections["pending_review"] + sections["needs_account"]
+    assert anna.get(f"{QUEUE}/count").json()["count"] == actionable
 
 
 def test_operation_ids(anna: TestClient) -> None:
@@ -242,7 +239,7 @@ def test_operation_ids(anna: TestClient) -> None:
     }
     assert ids == {
         ("/api/units/queue", "get"): "get_review_queue",
-        ("/api/units/queue/new-count", "get"): "get_new_unit_count",
+        ("/api/units/queue/count", "get"): "get_queue_count",
         ("/api/units/{entry_id}", "get"): "get_unit",
         ("/api/units/preview", "post"): "preview_unit",
         ("/api/units/commit", "post"): "commit_unit",

@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 from sqlalchemy import Connection, text
 
-from app.core.units.read import new_unit_count, review_queue
+from app.core.units.read import actionable_count, review_queue
 from tests.core.units.helpers import Bench
 from tests.invariants.helpers import link_account, make_instance, make_run, make_source
 
@@ -197,12 +197,15 @@ def test_section_filter_and_cursor_stay_inside_the_section(db_conn: Connection, 
     assert past.sections[0].units == () and past.sections[0].total == 0
 
 
-def test_new_count_counts_units_entering_any_section(db_conn: Connection, bench: Bench) -> None:
-    _leg(bench)
-    snap = review_queue(db_conn).snapshot
-    assert new_unit_count(db_conn, snap)[0] == 0
+def test_the_count_is_pending_review_and_needs_account_never_waiting(
+    db_conn: Connection, bench: Bench
+) -> None:
+    assert actionable_count(db_conn) == 0
     _leg(bench)  # needs an account
     waits = _leg(bench, instructed=None, counter_account_id=bench.b)
     _wait(db_conn, waits)
+    assert actionable_count(db_conn) == 1  # a waiting unit is not counted
     bench.flow(bench.source(), done=False)  # pending review
-    assert new_unit_count(db_conn, snap)[0] == 3
+    assert actionable_count(db_conn) == 2
+    queue = _sections(review_queue(db_conn))
+    assert actionable_count(db_conn) == len(queue["pending_review"]) + len(queue["needs_account"])

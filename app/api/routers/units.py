@@ -35,7 +35,7 @@ from app.core.units.read import (
     InvalidCursor,
     QueueSection,
     UnitView,
-    new_unit_count,
+    actionable_count,
     review_queue,
 )
 from app.core.units.read import get_unit as read_unit
@@ -133,12 +133,10 @@ class QueueSectionOut(BaseModel):
 class ReviewQueueOut(BaseModel):
     sections: list[QueueSectionOut]
     total: int  # units in all sections
-    snapshot: str  # opaque: pass to /queue/new-count
 
 
-class NewCountOut(BaseModel):
-    new_count: int  # units that arrived in the queue since the snapshot
-    snapshot: str  # a fresh one
+class QueueCountOut(BaseModel):
+    count: int  # units pending review or needing an account; not those waiting
 
 
 @router.get("/queue")
@@ -159,17 +157,14 @@ def get_review_queue(
         )
     with engine.connect() as conn:
         queue = review_queue(conn, limit=limit, section=section, cursor=cursor)
-    return ReviewQueueOut(
-        sections=[QueueSectionOut.of(s) for s in queue.sections], total=queue.total, snapshot=queue.snapshot
-    )
+    return ReviewQueueOut(sections=[QueueSectionOut.of(s) for s in queue.sections], total=queue.total)
 
 
-@router.get("/queue/new-count")
-def get_new_unit_count(user: CurrentUser, engine: EngineDep, since: Token) -> NewCountOut:
-    """How many units entered the queue since `since` (a `snapshot` of the queue): one cheap pass."""
+@router.get("/queue/count")
+def get_queue_count(user: CurrentUser, engine: EngineDep) -> QueueCountOut:
+    """How many units can be acted on now: pending review and needs an account, not waiting."""
     with engine.connect() as conn:
-        count, snapshot = new_unit_count(conn, since)
-    return NewCountOut(new_count=count, snapshot=snapshot)
+        return QueueCountOut(count=actionable_count(conn))
 
 
 class UnitMissing(LookupError):

@@ -37,7 +37,7 @@ MAX_LIMIT = 500
 
 
 class InvalidCursor(ValueError):
-    """A cursor or snapshot token that this server did not issue."""
+    """A cursor that this server did not issue."""
 
     def __init__(self, parameter: str) -> None:
         self.parameter = parameter
@@ -90,7 +90,6 @@ class QueueSection:
 class ReviewQueue:
     sections: tuple[QueueSection, ...]
     total: int  # units in all sections
-    snapshot: str  # opaque; hand it to `new_unit_count` later
 
 
 def unit_entry_of(row: EntryRow) -> UnitEntry:
@@ -224,13 +223,7 @@ _QUEUE_TOTAL = text(
     """
 )
 
-_NEW_UNITS = text(
-    f"""
-    WITH units AS ({units_sql()})
-    SELECT count(*) FROM (SELECT u.unit_key FROM units AS u WHERE NOT u.unit_ok
-                           GROUP BY u.unit_key HAVING min(u.id) > :since) AS n
-    """
-)
+_ACTIONABLE_COUNT = text(_SECTIONED_SQL + "SELECT count(*) FROM q WHERE q.section <> 'waiting'")
 
 _ENTRIES_OF_UNITS = text(
     """
@@ -243,8 +236,6 @@ _ENTRIES_OF_UNITS = text(
                WHERE t.source_transaction_id = ANY(:keys))
     """
 )
-
-_MAX_ENTRY_ID = text("SELECT COALESCE(max(id), 0) FROM ledger_entry")
 
 
 def encode_cursor(booked_on: date, anchor: int) -> str:
@@ -260,21 +251,6 @@ def decode_cursor(token: str) -> tuple[date, int]:
         return date.fromisoformat(day), int(anchor)
     except (ValueError, binascii.Error, UnicodeDecodeError) as exc:
         raise InvalidCursor("cursor") from exc
-
-
-def encode_snapshot(max_entry_id: int) -> str:
-    return base64.urlsafe_b64encode(f"s1:{max_entry_id}".encode()).decode().rstrip("=")
-
-
-def decode_snapshot(token: str) -> int:
-    try:
-        raw = base64.urlsafe_b64decode(token + "=" * (-len(token) % 4)).decode()
-        tag, value = raw.split(":")
-        if tag != "s1":
-            raise ValueError(raw)
-        return int(value)
-    except (ValueError, binascii.Error, UnicodeDecodeError) as exc:
-        raise InvalidCursor("since") from exc
 
 
 def _section(conn: Connection, kind: SectionKind, *, limit: int, cursor: str | None) -> QueueSection:
@@ -347,11 +323,7 @@ def review_queue(
     section: SectionKind | None = None,
     cursor: str | None = None,
 ) -> ReviewQueue:
-    """The first page of every section, or the page after `cursor` of one `section`.
-
-    `snapshot` is read first, so a unit imported while the page is being built counts as new later.
-    """
-    snapshot = encode_snapshot(int(conn.execute(_MAX_ENTRY_ID).scalar_one()))
+    """The first page of every section, or the page after `cursor` of one `section`."""
     wanted = SECTIONS if section is None else (section,)
     built = tuple(
         _section(conn, kind, limit=limit, cursor=cursor if section == kind else None) for kind in wanted
@@ -360,16 +332,10 @@ def review_queue(
         total = sum(s.total for s in built)
     else:
         total = int(conn.execute(_QUEUE_TOTAL, units_binds()).scalar_one())
-    return ReviewQueue(sections=built, total=total, snapshot=snapshot)
+    return ReviewQueue(sections=built, total=total)
 
 
-def new_unit_count(conn: Connection, since: str) -> tuple[int, str]:
-    """Units in the queue now whose anchor entry was created after the snapshot `since`, and a fresh snapshot.
-
-    An entry's id grows with creation, so "the anchor is newer than the snapshot" is a unit that arrived (an
-    import, an entry form) rather than one that was already there and changed (a split, a reopened unit).
-    One CTE pass; no per-unit work.
-    """
-    after = decode_snapshot(since)
-    count = int(conn.execute(_NEW_UNITS, {**units_binds(), "since": after}).scalar_one())
-    return count, encode_snapshot(int(conn.execute(_MAX_ENTRY_ID).scalar_one()))
+def actionable_count(conn: Connection) -> int:
+    """Units that can be acted on now: pending review and needs an account, not waiting (a waiting unit
+    completes itself). The queue's own sections, one cheap pass; what the Review item shows."""
+    return int(conn.execute(_ACTIONABLE_COUNT, units_binds()).scalar_one())

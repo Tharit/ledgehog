@@ -1,4 +1,4 @@
-"""Reading units as stored: one unit, and the review queue (sections, order, cursor, new-count)."""
+"""Reading units as stored: one unit, and the review queue (sections, order, cursor)."""
 
 from __future__ import annotations
 
@@ -13,7 +13,6 @@ from app.core.units.read import (
     decode_cursor,
     encode_cursor,
     get_unit,
-    new_unit_count,
     review_queue,
 )
 from tests.core.units.helpers import Bench, D, keys
@@ -159,25 +158,3 @@ def test_a_foreign_cursor_is_refused(token: str) -> None:
 def test_the_cursor_round_trips() -> None:
     assert decode_cursor(encode_cursor(D, 42)) == (D, 42)
 
-
-def test_new_count_counts_units_whose_anchor_arrived_after_the_snapshot(
-    db_conn: Connection, bench: Bench
-) -> None:
-    old_src = bench.source()
-    old = bench.flow(old_src, done=False)
-    snap = review_queue(db_conn).snapshot
-    assert new_unit_count(db_conn, snap)[0] == 0
-    bench.flow(bench.source(), done=False)  # a new unit
-    bench.flow(bench.source())  # confirmed: not in the queue
-    s = bench.source()
-    bench.flow(s, done=False), bench.flow(s, done=False)  # one new unit of two entries
-    bench.flow(old_src, done=False)  # an entry added to an OLD unit is not a new unit
-    count, fresh = new_unit_count(db_conn, snap)
-    assert count == 2 and fresh != snap
-    assert new_unit_count(db_conn, fresh)[0] == 0
-    assert old in _anchors(review_queue(db_conn))
-
-
-def test_a_foreign_snapshot_is_refused(db_conn: Connection) -> None:
-    with pytest.raises(InvalidCursor):
-        new_unit_count(db_conn, "garbage")

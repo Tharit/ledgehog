@@ -1,7 +1,7 @@
 """The review queue stays inside the budget on a backfill-sized ledger (spec §6, plan step 7).
 
 Each sample times what a request does: the first page of the queue (all sections), a deep page reached by
-its cursor, the cheap new-count, and one unit read. Two ledgers: all 8,000 entries unconfirmed (the worst
+its cursor, the Review item's count, and one unit read. Two ledgers: all 8,000 entries unconfirmed (the worst
 case: a queue of 8,000 units) and the ~70% confirmed variant (about 2,400 unconfirmed). The budget is
 `tests.perf.budget.QUEUE_BUDGET_SECONDS`. Numbers are printed (run with -s).
 """
@@ -13,7 +13,7 @@ from collections.abc import Callable
 
 import pytest
 
-from app.core.units.read import get_unit, new_unit_count, review_queue
+from app.core.units.read import actionable_count, get_unit, review_queue
 from tests.perf.budget import QUEUE_BUDGET_SECONDS
 from tests.perf.conftest import Backfill
 from tests.perf.test_settle_budget import Stats
@@ -45,7 +45,7 @@ def _within_budget(backfill: Backfill, label: str) -> None:
         "a page by cursor": lambda c: review_queue(
             c, limit=100, section="pending_review", cursor=deep.sections[0].next_cursor
         ),
-        "new-count": lambda c: new_unit_count(c, first.snapshot),
+        "count": actionable_count,
         "one unit": lambda c: get_unit(c, pending.units[0].anchor_entry_id),
     }
     worst = 0.0
