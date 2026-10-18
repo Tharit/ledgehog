@@ -165,6 +165,7 @@ def match_documents_step(conn: Connection) -> StepOutcome:
         for i in conn.execute(_LINK, {"ids": ids, "docs": docs, "passes": passes, "lines": only}).scalars()
     ]
     run.linked.extend(written)
+    run.document_linked = run.document_linked or bool(written)
     return StepOutcome(touched=written)
 
 

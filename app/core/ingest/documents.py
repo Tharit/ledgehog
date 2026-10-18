@@ -35,6 +35,7 @@ from app.core.resolution.snapshot import load_snapshot
 from app.core.resolution.types import is_user_no_payee
 from app.core.settle.resolution import new_derivation
 from app.core.settle.settle import SettleResult, settle
+from app.utils.db.changes import DOCUMENTS, note_change
 from app.utils.db.locks import lock_accounts, lock_settle_shared, retry_on_deadlock
 
 log = logging.getLogger(__name__)
@@ -184,6 +185,7 @@ class _Stored:
 def _existing(conn: Connection, documents: Sequence[IncomingDocument]) -> dict[tuple[str, str], _Stored]:
     if not documents:
         return {}
+    note_change(conn, DOCUMENTS)  # its own FOR UPDATE below, not `lock_rows`
     rows = conn.execute(
         text(
             "SELECT d.id, d.provider, d.external_id, d.total, d.currency, d.merchant_name"

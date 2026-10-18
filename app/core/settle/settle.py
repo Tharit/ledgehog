@@ -32,6 +32,7 @@ from app.core.settle.flags import record_none_documents, review_flags_step
 from app.core.settle.pairing import pair_transfers_step
 from app.core.settle.resolution import resolve_step
 from app.core.settle.run import StepOutcome, settle_run
+from app.utils.db.changes import DOCUMENTS, LEDGER, note_change
 from app.utils.db.locks import lock_settle_exclusive
 
 log = logging.getLogger(__name__)
@@ -75,7 +76,8 @@ def register_step(name: str, fn: Step) -> None:
     raise ValueError(f"unknown settle step: {name!r}")
 
 
-def _run_rounds(conn: Connection) -> set[int]:
+def _run_rounds(conn: Connection) -> tuple[set[int], bool]:
+    """The entries touched, and whether a document was linked."""
     touched: set[int] = set()
     with settle_run() as run:
         run.confirmed = load_confirmed_ids(conn)
@@ -89,7 +91,7 @@ def _run_rounds(conn: Connection) -> set[int]:
                 touched.update(outcome.touched)
                 confirmed += outcome.newly_confirmed
             if confirmed == 0:
-                return touched
+                return touched, run.document_linked
     raise RuntimeError(f"settling did not converge within {MAX_ROUNDS} rounds")
 
 
@@ -100,7 +102,12 @@ def settle(engine: Engine) -> SettleResult:
             lock_settle_exclusive(conn)
             # transaction-local: settling's rewrites must not bump `version` (schema 8.6)
             conn.execute(text("SELECT set_config('ledger.settling', 'on', true)"))
-            touched = _run_rounds(conn)
+            touched, document_linked = _run_rounds(conn)
+            # the change values move when this transaction commits (architecture §5.2)
+            if touched:
+                note_change(conn, LEDGER)
+            if document_linked:
+                note_change(conn, DOCUMENTS)
     except Exception as exc:
         log.exception("settle failed; the committed write stands")
         return SettleResult(error=_short(exc))

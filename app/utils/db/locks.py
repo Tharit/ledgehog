@@ -15,6 +15,8 @@ import psycopg.errors
 from sqlalchemy import Connection, text
 from sqlalchemy.exc import DBAPIError
 
+from app.utils.db.changes import DOCUMENTS, LEDGER, account_key, note_change
+
 _NS_SHIFT = 56
 _SETTLE_KEY = 1 << _NS_SHIFT
 _ACCOUNT_NS = 2 << _NS_SHIFT
@@ -45,6 +47,7 @@ class WriteConflict(Exception):
 def lock_settle_shared(conn: Connection) -> None:
     """Every write takes this first; writes run alongside each other."""
     conn.execute(text("SELECT pg_advisory_xact_lock_shared(:k)"), {"k": _SETTLE_KEY})
+    note_change(conn, LEDGER)
 
 
 def lock_settle_exclusive(conn: Connection) -> None:
@@ -60,6 +63,7 @@ def lock_accounts(conn: Connection, ids: Iterable[int]) -> list[int]:
             raise ValueError(f"invalid account id: {account_id}")
     for account_id in ordered:
         conn.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": _ACCOUNT_NS | account_id})
+        note_change(conn, account_key(account_id))
     return ordered
 
 
@@ -70,6 +74,8 @@ def lock_rows(conn: Connection, table: str, ids: Iterable[int]) -> list[int]:
     ordered = sorted(set(ids))
     if not ordered:
         return []
+    if table == "external_document":
+        note_change(conn, DOCUMENTS)
     rows = conn.execute(
         text(f"SELECT id FROM {table} WHERE id = ANY(:ids) ORDER BY id FOR UPDATE"),  # noqa: S608
         {"ids": ordered},

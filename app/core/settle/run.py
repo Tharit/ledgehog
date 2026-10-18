@@ -44,6 +44,8 @@ class SettleRun:
     resolution: ResolutionContext | None = None
     # the original entries step 2 linked to a document since step 3 last ran (step 3 resolves them again)
     linked: list[int] = field(default_factory=list)
+    # step 2 linked a document in this settle at all (`linked` is emptied by step 3): the documents moved
+    document_linked: bool = False
     # step 1 wrote something since step 2 last ran (true before the first round): a payee, the one thing
     # document matching reads of an entry, may have changed. A round in which it did not leaves step 2 out.
     documents_dirty: bool = True
