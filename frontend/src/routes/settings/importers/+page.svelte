@@ -13,7 +13,7 @@
 	import { sync } from '#lib/stores/sync.svelte.js';
 	import { describeImporterError, doneFromSearch } from '#lib/importers/messages.js';
 	import { ImporterListStore } from '#lib/stores/importer-list.svelte.js';
-	import { refetchOnSyncEnd } from '#lib/stores/new-data.svelte.js';
+	import { refetchOnChange } from '#lib/stores/new-data.svelte.js';
 
 	const store = new ImporterListStore();
 	let adding = $state(false);
@@ -39,8 +39,8 @@
 		void store.load();
 	});
 	onDestroy(() => store.dispose());
-	// not a snapshot: "last ran" moves with a sync
-	refetchOnSyncEnd(() => void store.load());
+	// not a snapshot: "last ran" moves with every write
+	refetchOnChange('ledger', () => void store.load());
 </script>
 
 <svelte:head>

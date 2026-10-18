@@ -12,7 +12,6 @@ import ReviewQueue from './review-queue.svelte';
 // components never import the API, not even in tests: the mocks come from here
 const api = vi.hoisted(() => ({
 	getQueue: vi.fn(),
-	getNewUnitCount: vi.fn(),
 	listRules: vi.fn()
 }));
 vi.mock('#lib/api/index.js', async (importOriginal) => ({

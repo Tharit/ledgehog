@@ -16,6 +16,7 @@ import {
 	type DocumentProvidersStore
 } from './document-providers.svelte.js';
 import { lookupsStore, type LookupsStore } from './lookups.svelte.js';
+import { NewDataWatch } from './new-data.svelte.js';
 import { session } from './session.svelte.js';
 
 export type DocumentsStatus = 'loading' | 'ready' | 'error';
@@ -35,6 +36,8 @@ export class DocumentsStore {
 	error = $state.raw<ApiError | null>(null);
 	loadingMore = $state(false);
 	moreError = $state.raw<ApiError | null>(null);
+	/** the documents changed since the list was fetched: the one quiet notice (patterns §7) */
+	readonly news = new NewDataWatch('documents');
 
 	readonly #lookups: LookupsStore;
 	get lookups(): Lookups {
@@ -95,6 +98,7 @@ export class DocumentsStore {
 		const controller = new AbortController();
 		this.#controller = controller;
 		const generation = ++this.#generation;
+		this.news.take();
 		this.status = 'loading';
 		this.error = null;
 		this.moreError = null;

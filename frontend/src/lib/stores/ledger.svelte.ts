@@ -133,8 +133,8 @@ export class LedgerStore {
 		}
 	});
 
-	/** rows from a sync that arrived since the list was fetched: the one quiet notice (patterns §7) */
-	readonly news = new NewDataWatch();
+	/** the ledger changed since the list was fetched: the one quiet notice (patterns §7) */
+	readonly news = new NewDataWatch('ledger');
 
 	#controller: AbortController | null = null;
 	#refreshController: AbortController | null = null;

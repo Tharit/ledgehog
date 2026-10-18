@@ -11,20 +11,9 @@
 	const queue = new ReviewQueueStore();
 	const locale = $derived(session.config?.locale ?? 'en');
 
-	// "N new — refresh" (patterns §7): a passive count, polled on focus and every minute, that
-	// refetches only when asked
-	const POLL_MS = 60_000;
-
 	onMount(() => {
 		void queue.load();
 		void lookupsStore.ensure();
-		const check = () => void queue.checkNew();
-		const timer = setInterval(check, POLL_MS);
-		window.addEventListener('focus', check);
-		return () => {
-			clearInterval(timer);
-			window.removeEventListener('focus', check);
-		};
 	});
 	onDestroy(() => queue.dispose());
 
@@ -32,9 +21,9 @@
 	// panel and the queue is told through the panel's source, not refreshed
 	$effect(() => entryForm.listen({ notify: (text) => (queue.notice = text) }));
 
-	// the line holds one notice: a write's, else the news ("New data from a sync — Refresh", never a
-	// count: patterns §7), else the lists that did not load
-	const stale = $derived(queue.news.stale || queue.newCount > 0);
+	// the line holds one notice: a write's, else the news ("New data — Refresh", never a count:
+	// patterns §7), else the lists that did not load
+	const stale = $derived(queue.news.stale);
 	const notice = $derived(
 		queue.notice !== null
 			? { text: queue.notice, error: false }

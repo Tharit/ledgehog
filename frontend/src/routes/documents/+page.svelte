@@ -2,7 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { onDestroy, onMount, untrack } from 'svelte';
-	import NoticeLine from '#lib/components/common/notice-line.svelte';
+	import NewDataNotice from '#lib/components/common/new-data-notice.svelte';
 	import PageHeader from '#lib/components/common/page-header.svelte';
 	import DocumentsFilterBar from '#lib/components/documents/documents-filter-bar.svelte';
 	import DocumentsTable from '#lib/components/documents/documents-table.svelte';
@@ -43,7 +43,8 @@
 		...new Set([...documents.lookups.accounts.values()].map((a) => a.currency))
 	]);
 
-	// the line holds the lists that did not load, so a missing name is explained
+	// the line holds the news ("New data — Refresh"), else the lists that did not load, so a missing
+	// name is explained
 	const notice = $derived(
 		documents.lookupsFailed.length > 0
 			? {
@@ -76,7 +77,7 @@
 	/>
 
 	<!-- one reserved line, so a notice appearing never moves the rows (patterns §7) -->
-	<NoticeLine {notice} />
+	<NewDataNotice stale={documents.news.stale} onrefresh={() => documents.reload()} {notice} />
 
 	<DocumentsTable
 		documents={documents.documents}

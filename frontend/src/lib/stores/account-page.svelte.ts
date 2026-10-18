@@ -31,7 +31,7 @@ export class AccountPageStore {
 	error = $state.raw<ApiError | null>(null);
 	readonly statement = new StatementStore();
 	notice = $state.raw<PageNotice | null>(null);
-	/** rows from a sync that arrived since the header, facts and statement were fetched */
+	/** this account changed since the header, facts and statement were fetched (keyed on open) */
 	readonly news = new NewDataWatch();
 
 	readonly locale = $derived(session.config?.locale ?? 'en');
@@ -48,7 +48,7 @@ export class AccountPageStore {
 	/** Show an account: its facts and the first page of its statement. */
 	async open(accountId: number): Promise<void> {
 		const generation = ++this.#generation;
-		this.news.take();
+		this.news.rekey({ account: accountId });
 		this.accountId = accountId;
 		this.account = null;
 		this.status = 'loading';

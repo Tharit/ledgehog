@@ -1,10 +1,10 @@
 // State of the review page: the queue as fetched (a SNAPSHOT, patterns §7, architecture §6.5),
-// its three sections with their cursors, and the passive count of units that arrived since. The
-// queue never adds or reorders rows by itself: a refresh happens on request ("N new — refresh").
+// and its three sections with their cursors. The queue never adds or reorders rows by itself: a
+// refresh happens on request ("New data — Refresh").
 // It registers as the `UnitSource` of the panel, so `[` and `]` step through units in queue order.
 // Page-scoped: the page creates one and drops it. No domain computation here.
 
-import { ApiError, getNewUnitCount, getQueue } from '#lib/api/index.js';
+import { ApiError, getQueue } from '#lib/api/index.js';
 import { clearMarks, applyAffected, noMarks, type Marks } from '#lib/units/patch.js';
 import { NewDataWatch } from './new-data.svelte.js';
 import { ruleNames } from './rule-names.svelte.js';
@@ -60,10 +60,8 @@ export class ReviewQueueStore {
 	sections = $state.raw<SectionState[]>(emptySections());
 	status = $state<QueueStatus>('loading');
 	error = $state.raw<ApiError | null>(null);
-	/** units that arrived since the snapshot (a passive count) */
-	newCount = $state(0);
-	/** rows from a sync that arrived since the queue was fetched: the one quiet notice (patterns §7) */
-	readonly news = new NewDataWatch();
+	/** the ledger changed since the queue was fetched: the one quiet notice (patterns §7) */
+	readonly news = new NewDataWatch('ledger');
 	/** what the unit panel's actions did to the rows held */
 	marks = $state.raw<Marks>(noMarks());
 
@@ -86,10 +84,8 @@ export class ReviewQueueStore {
 	/** the loaded units in queue order, across the sections */
 	readonly units = $derived(this.sections.flatMap((s) => s.units));
 
-	#snapshot: string | null = null;
 	#generation = 0;
 	#controller: AbortController | null = null;
-	#countController: AbortController | null = null;
 
 	/** What the panel steps through: the loaded units in queue order, "12 of 214" by position. */
 	readonly source: UnitSource = {
@@ -156,8 +152,6 @@ export class ReviewQueueStore {
 					moreError: null
 				};
 			});
-			this.#snapshot = queue.snapshot;
-			this.newCount = 0;
 			this.notice = null;
 			this.accountsAdded = [];
 			this.marks = noMarks();
@@ -201,23 +195,6 @@ export class ReviewQueueStore {
 		}
 	}
 
-	/** How many units arrived since the snapshot: one cheap request, a passive count (§7). */
-	async checkNew(): Promise<void> {
-		const snapshot = this.#snapshot;
-		if (snapshot === null || this.status !== 'ready') return;
-		this.#countController?.abort();
-		const controller = new AbortController();
-		this.#countController = controller;
-		const generation = this.#generation;
-		try {
-			const out = await getNewUnitCount(snapshot, controller.signal);
-			if (generation !== this.#generation) return;
-			this.newCount = out.new_count;
-		} catch {
-			// a count that cannot be had is no news
-		}
-	}
-
 	/** An action touched these entries: patch the units held, in place; nothing is added or moved. */
 	patchAffected(affected: Affected): void {
 		// the one exception: the entries a split created join the unit of their anchor
@@ -248,6 +225,5 @@ export class ReviewQueueStore {
 	dispose(): void {
 		this.#generation++;
 		this.#controller?.abort();
-		this.#countController?.abort();
 	}
 }

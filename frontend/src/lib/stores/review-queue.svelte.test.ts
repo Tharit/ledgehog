@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, getNewUnitCount, getQueue, listRules } from '#lib/api/index.js';
+import { ApiError, getQueue, listRules } from '#lib/api/index.js';
 import { entry } from '#lib/ledger/fixtures.js';
 import { rule } from '#lib/rules/fixtures.js';
 import { queue, section, unit } from '#lib/units/fixtures.js';
@@ -10,7 +10,6 @@ import { ruleNames } from './rule-names.svelte.js';
 vi.mock('#lib/api/index.js', async (importOriginal) => ({
 	...(await importOriginal<typeof import('#lib/api/index.js')>()),
 	getQueue: vi.fn(),
-	getNewUnitCount: vi.fn(),
 	listRules: vi.fn()
 }));
 
@@ -108,55 +107,6 @@ describe('ReviewQueueStore', () => {
 		expect(store.sections[0].moreError?.code).toBe('network_error');
 		expect(store.sections[0].units).toHaveLength(1);
 		expect(store.sections[0].loadingMore).toBe(false);
-	});
-
-	describe('new units', () => {
-		it('counts the units that arrived since the snapshot, and refetches nothing', async () => {
-			vi.mocked(getQueue).mockResolvedValue(queue({ pending_review: [plain(1)] }));
-			vi.mocked(getNewUnitCount).mockResolvedValue({ new_count: 12, snapshot: 'snap-2' });
-			const store = new ReviewQueueStore();
-			await store.load();
-
-			await store.checkNew();
-
-			expect(getNewUnitCount).toHaveBeenCalledWith('snap-1', expect.any(AbortSignal));
-			expect(store.newCount).toBe(12);
-			expect(getQueue).toHaveBeenCalledTimes(1);
-			expect(store.units).toHaveLength(1);
-		});
-
-		it('counts always against the snapshot of the queue shown, and a refresh resets it', async () => {
-			vi.mocked(getQueue).mockResolvedValue(queue({ pending_review: [plain(1)] }));
-			vi.mocked(getNewUnitCount).mockResolvedValue({ new_count: 2, snapshot: 'snap-2' });
-			const store = new ReviewQueueStore();
-			await store.load();
-			await store.checkNew();
-			await store.checkNew();
-			expect(vi.mocked(getNewUnitCount).mock.calls.map((c) => c[0])).toEqual(['snap-1', 'snap-1']);
-
-			await store.load();
-
-			expect(store.newCount).toBe(0);
-		});
-
-		it('says nothing when the count cannot be had', async () => {
-			vi.mocked(getQueue).mockResolvedValue(queue({ pending_review: [plain(1)] }));
-			vi.mocked(getNewUnitCount).mockRejectedValue(new ApiError(0, 'network_error', 'x'));
-			const store = new ReviewQueueStore();
-			await store.load();
-
-			await store.checkNew();
-
-			expect(store.newCount).toBe(0);
-		});
-
-		it('does not ask before the queue has loaded', async () => {
-			const store = new ReviewQueueStore();
-
-			await store.checkNew();
-
-			expect(getNewUnitCount).not.toHaveBeenCalled();
-		});
 	});
 
 	describe('as the panel source', () => {

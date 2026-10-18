@@ -20,7 +20,7 @@
 	import { formatDate } from '#lib/format/index.js';
 	import { AccountPageStore } from '#lib/stores/account-page.svelte.js';
 	import { AccountRunsStore } from '#lib/stores/account-runs.svelte.js';
-	import { refetchOnSyncEnd } from '#lib/stores/new-data.svelte.js';
+	import { refetchOnChange } from '#lib/stores/new-data.svelte.js';
 	import { session } from '#lib/stores/session.svelte.js';
 	import { entryDeps } from '#lib/stores/sync.svelte.js';
 	import { isBusyRefusal, refusalText, startOrReview } from '#lib/sync/entry.js';
@@ -30,8 +30,8 @@
 	const detail = new RowDetail();
 	const dialogs = new AccountDialogs();
 	view.onRefresh(() => runs.reload());
-	// the runs are not a snapshot: a sync's runs appear when it ends
-	refetchOnSyncEnd(() => void runs.reload());
+	// the runs are not a snapshot: a sync's runs appear as the ledger moves
+	refetchOnChange('ledger', () => void runs.reload());
 
 	const accountId = $derived(accountIdOf(page.params.id));
 

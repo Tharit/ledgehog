@@ -3,8 +3,8 @@
 	import ActionButton from './action-button.svelte';
 	import NoticeLine from './notice-line.svelte';
 
-	// The one quiet line of a view that holds a snapshot (ux/patterns.md §7, ux/views/sync.md "New
-	// data"): "New data from a sync — Refresh", without a count. It stands in the view's reserved
+	// The one quiet line of a view that holds a snapshot (ux/patterns.md §7, architecture §4.2):
+	// "New data — Refresh", without a count. It stands in the view's reserved
 	// notice line, so nothing moves when it appears; a notice the view already has (the answer to a
 	// write, with its own `noticeAction`) comes first, and the line says the news when that has gone.
 	let {
@@ -20,9 +20,7 @@
 		noticeAction?: Snippet;
 	} = $props();
 
-	const shown = $derived(
-		notice ?? (stale ? { text: 'New data from a sync —', error: false } : null)
-	);
+	const shown = $derived(notice ?? (stale ? { text: 'New data —', error: false } : null));
 </script>
 
 <NoticeLine notice={shown}>
