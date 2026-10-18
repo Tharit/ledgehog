@@ -42,12 +42,6 @@ export function startSync(
 	return request('POST', '/api/sync', { body: { items } });
 }
 
-/** The user's running task, or null (the server answers 204). */
-export async function getActiveTask(signal?: AbortSignal): Promise<TaskStatus | null> {
-	const status = await request<TaskStatus | undefined>('GET', '/api/sync/active', { signal });
-	return status ?? null;
-}
-
 /** A task's status; an unknown (or evicted) task is a 404 `not_found`. */
 export function getTaskStatus(taskId: string, signal?: AbortSignal): Promise<TaskStatus> {
 	return request<TaskStatus>('GET', `/api/sync/tasks/${encodeURIComponent(taskId)}`, { signal });

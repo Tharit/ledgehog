@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from './http.js';
-import { commitUnit, getNewUnitCount, getQueue, getUnit, previewUnit } from './units.js';
+import { commitUnit, getQueue, getQueueCount, getUnit, previewUnit } from './units.js';
 
 const fetchMock = vi.fn();
 
@@ -52,10 +52,11 @@ describe('getQueue', () => {
 	});
 });
 
-describe('getNewUnitCount', () => {
-	it('sends the snapshot', async () => {
-		await getNewUnitCount('snap 1');
-		expect(lastUrl()).toBe('/api/units/queue/new-count?since=snap+1');
+describe('getQueueCount', () => {
+	it('reads the count of the units that can be acted on', async () => {
+		fetchMock.mockImplementation(async () => reply({ count: 7 }));
+		expect(await getQueueCount()).toBe(7);
+		expect(lastUrl()).toBe('/api/units/queue/count');
 	});
 });
 

@@ -10,7 +10,7 @@ export type QueueSection = Schemas['QueueSectionOut'];
 export type QueueGroup = Schemas['CurrencyGroupOut'];
 export type SectionKind = QueueSection['kind'];
 export type ReviewQueue = Schemas['ReviewQueueOut'];
-export type NewUnitCount = Schemas['NewCountOut'];
+export type QueueCount = Schemas['QueueCountOut'];
 
 // The draft, its preview and its commit (architecture §4.1, spec §6).
 export type UnitDraftRequest = Schemas['UnitDraftIn'];

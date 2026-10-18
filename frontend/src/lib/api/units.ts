@@ -1,7 +1,7 @@
 // Units and the review queue (architecture §4.1): reads only.
 import { request } from './http.js';
 import type {
-	NewUnitCount,
+	QueueCount,
 	ReviewQueue,
 	SectionKind,
 	Unit,
@@ -35,9 +35,10 @@ export function getQueue({
 	return request('GET', '/api/units/queue', { query: { limit, section, cursor }, signal });
 }
 
-/** How many units entered the queue since `since` (a snapshot token of the queue). */
-export function getNewUnitCount(since: string, signal?: AbortSignal): Promise<NewUnitCount> {
-	return request('GET', '/api/units/queue/new-count', { query: { since }, signal });
+/** How many units can be acted on now (pending review and needs an account): the Review item's count. */
+export async function getQueueCount(signal?: AbortSignal): Promise<number> {
+	const out = await request<QueueCount>('GET', '/api/units/queue/count', { signal });
+	return out.count;
 }
 
 /** What committing the draft would do; nothing is written (architecture §4.1, §6.3). */

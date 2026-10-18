@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, request, setUnauthenticatedHandler } from './http.js';
+import { ApiError, request, setChangesListener, setUnauthenticatedHandler } from './http.js';
 import { login, logout, me } from './session.js';
 import { listAccounts } from './accounts.js';
+import { readChanges } from './changes.js';
 import { getConfig } from './config.js';
 
 const fetchMock = vi.fn();
@@ -35,6 +36,44 @@ beforeEach(() => {
 afterEach(() => {
 	setUnauthenticatedHandler(null);
 	vi.unstubAllGlobals();
+});
+
+describe('the change values of a write', () => {
+	const values = { ledger: 'b:3', documents: 'b:1', accounts: { '7': 'b:2' } };
+	const withHeader = (status = 200) =>
+		new Response('{}', {
+			status,
+			headers: { 'Content-Type': 'application/json', 'X-Ledger-Changes': JSON.stringify(values) }
+		});
+
+	afterEach(() => setChangesListener(null));
+
+	it('go to the listener after every answer that is not a read, an error answer included', async () => {
+		const listener = vi.fn();
+		setChangesListener(listener);
+
+		answer(() => withHeader());
+		await request('POST', '/api/x', { body: {} });
+		expect(listener).toHaveBeenCalledWith(values);
+
+		answer(() => withHeader(409));
+		await expect(request('DELETE', '/api/x')).rejects.toBeInstanceOf(ApiError);
+		expect(listener).toHaveBeenCalledTimes(2);
+	});
+
+	it('are not taken from a read, nor from an answer without the header or with a broken one', async () => {
+		const listener = vi.fn();
+		setChangesListener(listener);
+
+		answer(() => withHeader());
+		await request('GET', '/api/x');
+		answer(() => reply(200, {}));
+		await request('POST', '/api/x');
+		answer(() => new Response('{}', { status: 200, headers: { 'X-Ledger-Changes': 'not json' } }));
+		await request('POST', '/api/x');
+
+		expect(listener).not.toHaveBeenCalled();
+	});
 });
 
 describe('request', () => {
@@ -167,6 +206,13 @@ describe('the endpoint modules', () => {
 		answer(() => reply(200, config));
 		await expect(getConfig()).resolves.toEqual(config);
 		expect(lastCall().url).toBe('/api/config');
+	});
+
+	it('changes: reads /api/changes', async () => {
+		const read = { ledger: 'b:1', documents: 'b:1', accounts: {}, active_task: null };
+		answer(() => reply(200, read));
+		await expect(readChanges()).resolves.toEqual(read);
+		expect(lastCall().url).toBe('/api/changes');
 	});
 
 	it('accounts: unwraps the list', async () => {

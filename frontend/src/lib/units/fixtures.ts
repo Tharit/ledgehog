@@ -62,7 +62,6 @@ export function queue(
 	return {
 		sections: built,
 		total: built.reduce((sum, s) => sum + s.total, 0),
-		snapshot: 'snap-1',
 		...over
 	};
 }

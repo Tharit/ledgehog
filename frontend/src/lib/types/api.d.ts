@@ -4,6 +4,26 @@
  */
 
 export interface paths {
+    "/api/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Changes
+         * @description The change value of the ledger, of the documents and of each account, and the user's active task.
+         */
+        get: operations["get_changes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/config": {
         parameters: {
             query?: never;
@@ -1065,7 +1085,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/units/queue/new-count": {
+    "/api/units/queue/count": {
         parameters: {
             query?: never;
             header?: never;
@@ -1073,10 +1093,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get New Unit Count
-         * @description How many units entered the queue since `since` (a `snapshot` of the queue): one cheap pass.
+         * Get Queue Count
+         * @description How many units can be acted on now: pending review and needs an account, not waiting.
          */
-        get: operations["get_new_unit_count"];
+        get: operations["get_queue_count"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1324,6 +1344,19 @@ export interface components {
         CategoryWriteOut: {
             category: components["schemas"]["CategoryOut"];
             settle: components["schemas"]["SettleOut"];
+        };
+        /** ChangesOut */
+        ChangesOut: {
+            /** Accounts */
+            accounts: {
+                [key: string]: string;
+            };
+            /** Active Task */
+            active_task: string | null;
+            /** Documents */
+            documents: string;
+            /** Ledger */
+            ledger: string;
         };
         /** CheckOut */
         CheckOut: {
@@ -1880,13 +1913,6 @@ export interface components {
             /** Currency */
             currency: string;
         };
-        /** NewCountOut */
-        NewCountOut: {
-            /** New Count */
-            new_count: number;
-            /** Snapshot */
-            snapshot: string;
-        };
         /**
          * PartnerOut
          * @description The other leg of a paired transfer: where, when and how much.
@@ -2158,6 +2184,11 @@ export interface components {
             /** Value On */
             value_on: string | null;
         };
+        /** QueueCountOut */
+        QueueCountOut: {
+            /** Count */
+            count: number;
+        };
         /** QueueSectionOut */
         QueueSectionOut: {
             /** Groups */
@@ -2217,8 +2248,6 @@ export interface components {
         ReviewQueueOut: {
             /** Sections */
             sections: components["schemas"]["QueueSectionOut"][];
-            /** Snapshot */
-            snapshot: string;
             /** Total */
             total: number;
         };
@@ -3654,6 +3683,44 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    get_changes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangesOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     config_view: {
         parameters: {
             query?: never;
@@ -7471,11 +7538,9 @@ export interface operations {
             };
         };
     };
-    get_new_unit_count: {
+    get_queue_count: {
         parameters: {
-            query: {
-                since: string;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -7488,7 +7553,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["NewCountOut"];
+                    "application/json": components["schemas"]["QueueCountOut"];
                 };
             };
             /** @description Not signed in (or wrong login or password). */

@@ -1,6 +1,8 @@
 // The only place that calls `fetch` (architecture §6.2). JSON in and out, same-origin cookie
 // session, and the error envelope of architecture §4.4 turned into an ApiError.
 
+import type { ChangeValues } from './changes.js';
+
 export type QueryValue = string | number | boolean | null | undefined;
 export type Query = Record<string, QueryValue | readonly QueryValue[]>;
 
@@ -30,6 +32,29 @@ let unauthenticatedHandler: (() => void) | null = null;
 /** Called for every `unauthenticated` answer (a session that ended); one handler, set by the app shell. */
 export function setUnauthenticatedHandler(handler: (() => void) | null): void {
 	unauthenticatedHandler = handler;
+}
+
+let changesListener: ((values: ChangeValues) => void) | null = null;
+
+/**
+ * Called with the change values after every write (architecture §4.2): the `X-Ledger-Changes`
+ * header of each answer that is not a read. One listener, set by the change watcher.
+ */
+export function setChangesListener(listener: ((values: ChangeValues) => void) | null): void {
+	changesListener = listener;
+}
+
+const READS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+function noteChanges(method: string, response: Response): void {
+	if (!changesListener || READS.has(method.toUpperCase())) return;
+	const raw = response.headers.get('X-Ledger-Changes');
+	if (!raw) return;
+	try {
+		changesListener(JSON.parse(raw) as ChangeValues);
+	} catch {
+		// a header that is not JSON is no news
+	}
 }
 
 function queryString(query: Query | undefined): string {
@@ -83,6 +108,7 @@ export async function request<T>(
 		throw networkError();
 	}
 
+	noteChanges(method, response);
 	if (!response.ok) {
 		const error = await errorFrom(response);
 		if (error.code === 'unauthenticated') unauthenticatedHandler?.();

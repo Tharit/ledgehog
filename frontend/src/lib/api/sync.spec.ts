@@ -4,7 +4,6 @@ import {
 	abortTask,
 	answerPrompt,
 	discoverAccounts,
-	getActiveTask,
 	getTaskStatus,
 	openTaskEvents,
 	readSyncPlan,
@@ -65,15 +64,6 @@ describe('the sync operations', () => {
 			reply({ error: { code: 'nothing_to_sync', message: 'x', details: null } }, 422)
 		);
 		await expect(startSync([])).rejects.toBeInstanceOf(ApiError);
-	});
-
-	it('answers 204 for no active task with null, and a status otherwise', async () => {
-		fetchMock.mockImplementation(async () => new Response(null, { status: 204 }));
-		expect(await getActiveTask()).toBeNull();
-		expect(last()[0]).toBe('/api/sync/active');
-
-		fetchMock.mockImplementation(async () => reply({ task_id: 't', status: 'running' }));
-		expect(await getActiveTask()).toMatchObject({ task_id: 't' });
 	});
 
 	it('reads a status and aborts a task by its id', async () => {
