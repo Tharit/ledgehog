@@ -18,6 +18,10 @@ accounts and rules arrive confirmed once complete (`spec.md` §5.9), and appear
 only in the waiting bucket while a partner or a document is still to come: a
 recurring unit leaves the queue for good once a rule decides it.
 
+**The navigation counts what can be done.** The Review item shows, beside its
+label, how many units are pending review or need an account — not those
+waiting — muted, and nothing at zero (architecture §6.5).
+
 **Evidence is shown, not confidence.** Each derived value shows its basis as
 the pass recorded it: "1 of 1 since March" for history, the rule for a rule,
 the rationale for the model. A thin proposal stands out without a number to

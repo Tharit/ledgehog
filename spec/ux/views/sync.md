@@ -104,13 +104,12 @@ is focused. The page says "Stopping…" until the task ends.
 
 ## New data
 
-After this session's syncs have inserted rows, the views that hold a snapshot —
-the ledger list, the review queue and an account's statement — show one quiet
-notice, "New data from a sync — Refresh" (`ux/patterns.md` §7), without a
-count: a row is not a unit, and no view counts revisions. Refreshing refetches
-the view. Lists that are not snapshots — the accounts, the importers, an
-account's runs — refetch when a sync ends. A sync run by the other user reaches
-a session on reload.
+What a sync writes reaches the other views as any write does
+(`ux/patterns.md` §7): a view holding a snapshot — the ledger list, the review
+queue, an account's page, the documents list — shows "New data — Refresh", and
+lists that are not snapshots refetch on their own. A tab that is open while a
+sync starts in another one follows it: the indicator, the prompts and the report
+reach it within half a minute, or at once when the user returns to it.
 
 **Open for the first month.** Whether "Run again" should cover every failed
 login at once; whether a login can be synced from Settings → Importers; whether

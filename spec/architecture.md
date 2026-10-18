@@ -249,9 +249,10 @@ GET    /api/units/queue                        the units not confirmed, in
                                                by pass 0 and rules appear only
                                                while they wait for a partner or
                                                a document
-GET    /api/units/queue/new-count              how many units entered the queue
-                                               since a queue snapshot: one cheap
-                                               pass, for the passive "N new"
+GET    /api/units/queue/count                  how many units can be acted on
+                                               now: pending review and needs an
+                                               account, not waiting; for the
+                                               Review item of the navigation
 GET    /api/units/{entry_id}                   a unit's stored state
 POST   /api/units/preview                      stored state + draft → the unit a
                                                commit would write: rows (with
@@ -485,6 +486,13 @@ POST   /api/sync/tasks/{task_id}/abort
 POST   /api/session                            log in
 DELETE /api/session                            log out: deletes the session row
 GET    /api/session                            who am I
+
+  changes — whether what a view shows has changed (§4.2)
+GET    /api/changes                            the change value of the ledger,
+                                               of the documents and of each
+                                               account, and the current user's
+                                               active task; a write's response
+                                               carries the values after it
 
   configuration — read-only (§5.7)
 GET    /api/config                             base currency, the windows,
@@ -1022,6 +1030,21 @@ SSE exists to solve properly.
 `code` is the taxonomy's code (§5.5); `message` is the run's error text. A
 failed sign-in is one `instance_failed`, not a `run_failed` per account.
 
+**What changed is state, so it is polled.** Whether a view's data has changed
+since it was fetched is not progress: nobody waits on it, and a snapshot is only
+refreshed when the user asks (`ux/patterns.md` §7). The server keeps a **change
+value** per key — `ledger` (every entry, for the ledger list and the review
+queue alike), `documents`, and one per account (its source transactions, balance
+records and derived entries, for its page) — in process memory (§3). A value is
+opaque: it is a start token and a counter, so a restart makes every value new
+and a view shows the notice once, never misses one. The client reads them, with
+the current user's active task, every 30 s and whenever the tab regains focus.
+A view remembers the value of its key read before it fetched, and shows "New
+data — Refresh" when it moves. A write's response carries the values after it,
+so the tab that wrote takes them and shows no notice for its own change. A
+stream per tab was rejected: it holds a connection for the tab's life, and over
+HTTP/1.1 a few tabs exhaust the browser's connections to the origin.
+
 ### 4.3 The task token, reload and multiple tabs
 
 ```
@@ -1034,10 +1057,11 @@ The task lives on the server, not in the tab that started it. Everything below
 follows from that.
 
 **Reload.** The client does not need to remember the token. A user may have
-at most one active sync task, so on mount the frontend asks for the current
-user's active task and reattaches if there is one. No token in local storage,
-nothing to go stale, and a reloaded tab recovers a sync in progress —
-including one blocked on a prompt.
+at most one active sync task, and the change values (§4.2) carry it: on mount,
+and at every later read, a tab that is not attached to the user's active task
+attaches to it. No token in local storage, nothing to go stale; a reloaded tab
+recovers a sync in progress — including one blocked on a prompt — and a tab
+that was open before a sync started in another one follows it within a read.
 
 **Two tabs are allowed, and both show the same thing.** Both attach to the
 same event stream and both render the prompt. This is not prevented, because
@@ -1148,7 +1172,7 @@ app/
                          matches, derived entries, flags
     reporting/           aggregate queries, all conversion via base_value()
     tasks/               registry and claims, the task with its events, the
-                         prompter, the per-instance job
+                         prompter, the per-instance job; the change values
     plugins/             PROTOCOLS ONLY: the importer (file and fetch) and
                          classifier interfaces, the prompt kinds and
                          `SecretText`, the error taxonomy, the history source
@@ -1344,6 +1368,15 @@ Transaction boundaries:
   rewrites do not bump versions (§4.1). Should PostgreSQL still abort a write on a deadlock, the server
   retries it once, holding its whole payload; if the retry fails too, the
   write answers with a named "try again" conflict and writes nothing.
+- **Change values move on commit, from the locks.** The lock helpers note on
+  the transaction what it touches — the shared settle lock the ledger, a
+  document lock the documents, an account lock that account — and the values of
+  §4.2 move when the transaction commits, never on a rollback: a dry run or a
+  failed write moves nothing, and no write path reports changes by hand.
+  Document ingest, which locks its documents in its own statement, notes the
+  documents itself; settling moves the ledger
+  when it touched an entry and the documents when it linked or unlinked one. A
+  write made outside the server process moves nothing.
 - **The order of a settle.** One settle runs, over the units it covers:
   1. resolution, with each transaction's current link — so a linked
      transaction keeps the document fields its rules read — and without one
@@ -1926,8 +1959,9 @@ statistics of `run_finished`; the CSV upload flow ends with the same summary,
 one component in `components/importers/`.
 
 One store, mounted at the root layout, holds the active task whichever page is
-shown (the task outlives navigation). On mount, the app asks whether the
-current user has an active task and reattaches if so, rather than remembering
+shown (the task outlives navigation). The change values carry the current
+user's active task, and the store attaches to it whenever the tab is not
+already attached — on mount and at every later read — rather than remembering
 a token locally (§4.3); a discovery is such a task, hosted by its own page. A
 prompt's dialog is shown only on the page that hosts the task, and whenever
 that page is shown while the prompt is open — when the prompt arrives, or on
@@ -1940,10 +1974,11 @@ another tab was faster and is dismissed silently, not surfaced as an error. A
 task the server no longer knows is an interrupted sync. Abandoning a sync is an
 explicit operation, not a closed tab.
 
-The store notes whether a run of this session's syncs has written rows, and
-when a sync ends. Views holding a snapshot show the one notice of §6.5 if rows
-arrived since they fetched; lists that are not snapshots (the accounts, the
-importers, an account's runs) refetch when a sync ends. Nothing is counted.
+New data, whatever wrote it, is the change values' (§4.2), not the sync's: one
+watcher reads them every 30 s and on focus; a view holding a snapshot shows "New
+data — Refresh" when its key moves, and lists that are not snapshots (the
+accounts, the importers, an account's runs) refetch when the ledger's does.
+Nothing is counted.
 
 ### 6.5 Review queue
 
@@ -1977,14 +2012,22 @@ in the list a proposal by the time the cursor reaches them, without the list
 moving. Rows resolved during the session — whether acted on directly or as a
 consequence of another operation — stay in place, marked as resolved, so the
 list never shifts under the cursor and a mistaken action is still visible and
-correctable by editing. There is no undo. Rows arriving from this session's
-syncs surface as one uncounted notice, "New data from a sync — Refresh", which
-refetches only when the user asks (§6.4).
+correctable by editing. There is no undo. New data from any source — a sync,
+an upload, another tab, the other user — surfaces as one uncounted notice, "New
+data — Refresh", which refetches only when the user asks (§4.2).
 
 Position stability matters more than freshness of order in a keyboard-driven
 list: an item vanishing between keystrokes is how the wrong row gets
 confirmed. This is why operations return their full affected set (§4.1) —
 the client patches rows in place rather than refetching.
+
+**The Review item of the navigation counts what can be done now**: the units
+pending review and those that need an account, not those waiting for a partner
+or a document, which complete themselves. It is a quiet number, hidden at zero,
+read once when the app starts and again whenever the ledger's change value
+moves (§4.2), by its own read rather than on the change values: those stay a
+question of whether anything changed. The dashboard's unreviewed count is the
+same number.
 
 A row resolved as a *consequence* rather than by direct action needs to say
 so, because it changes without the user having touched it. Exactly how — and

@@ -9,8 +9,8 @@ changes with use. The rules are `spec.md` §5.5 and §5.8 and
 **A list of documents, in the shape of the ledger table** (`ux/patterns.md`
 §4, §7). Columns: provider, date, merchant or title, amount, and the
 transaction carrying it. Documents are browsed here; they are never created or
-edited. The list is a snapshot like the ledger list, with new data as a passive
-count.
+edited. The list is a snapshot like the ledger list, with new data as the
+passive notice "New data — Refresh" (`ux/patterns.md` §7).
 
 **Filters** are in the address, like the ledger list's: provider (several
 allowed), date range, amount (with its currency), text, and *not linked*

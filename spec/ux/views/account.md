@@ -95,8 +95,8 @@ anchored". The newest row's balance is therefore the header's balance, whatever
 lies in between. The column is the server's, not computed by the client
 (`architecture.md` §4.1, which has the precise rule).
 
-**A snapshot, refetched after its own writes.** New data from this session's
-syncs arrives as a passive notice, "New data from a sync — Refresh"
+**A snapshot, refetched after its own writes.** New data for this account, from
+any source, arrives as a passive notice, "New data — Refresh"
 (`ux/patterns.md` §7), whose refresh reloads the header, the facts and the
 statement together, so the balance and the newest row do not disagree. A write
 made from this page —

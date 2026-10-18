@@ -289,8 +289,9 @@ row; a resolved row stays in place, marked (§7).
   check stay until the list is refreshed.
 - **Snapshots stay snapshots.** A list fetched for a session (the review queue,
   architecture §6.5; the ledger list, whose filter is in its address) does not
-  add or reorder rows; new data from a sync appears as a passive notice
-  ("New data from a sync — Refresh") that refetches only on request. An action patches the rows it touched in place and
+  add or reorder rows; new data, whatever wrote it, appears as a passive notice
+  ("New data — Refresh") that refetches only on request (architecture §4.2). An
+  action patches the rows it touched in place and
   never removes or moves one: a row that the action takes out of the list's
   filter (a tag removed under a tag filter) stays, marked, until the list is
   fetched again. The one exception to never adding a row: the entries a split
