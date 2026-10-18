@@ -84,9 +84,11 @@ export class AccountRunsStore {
 		this.instances.find((i) => i.id === run.instance_id)?.label ??
 		(run.instance_id === null ? 'Deleted importer' : run.importer);
 
-	/** Whether the importer a run came from takes a file (the catalog says). */
-	isFile = (run: ImportRun): boolean =>
-		this.catalog.find((entry) => entry.name === run.importer)?.kind === 'file';
+	/** What the importer a run came from is (the catalog says); one it does not list has no next step. */
+	importerKind = (run: ImportRun): 'file' | 'fetch' | null => {
+		const kind = this.catalog.find((entry) => entry.name === run.importer)?.kind;
+		return kind === 'file' || kind === 'fetch' ? kind : null;
+	};
 
 	dispose(): void {
 		this.#generation++;

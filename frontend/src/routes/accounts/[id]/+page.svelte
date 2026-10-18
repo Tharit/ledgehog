@@ -21,6 +21,8 @@
 	import { AccountPageStore } from '#lib/stores/account-page.svelte.js';
 	import { AccountRunsStore } from '#lib/stores/account-runs.svelte.js';
 	import { session } from '#lib/stores/session.svelte.js';
+	import { entryDeps } from '#lib/stores/sync.svelte.js';
+	import { isBusyRefusal, refusalText, startOrReview } from '#lib/sync/entry.js';
 
 	const view = new AccountPageStore();
 	const runs = new AccountRunsStore();
@@ -85,6 +87,20 @@
 			notify: (text, error) => view.notify(text, error)
 		})
 	);
+
+	// "Fetch" and "Run again" are one-item syncs of this account (ux/views/sync.md "Starting"): at
+	// once, or after the sync page asked for the start of an account without coverage. A refused
+	// start is a notice here, not on the sync page.
+	async function fetchHere(instanceId: number) {
+		if (accountId === null) return;
+		const refusal = await startOrReview({ instanceId, accountId }, entryDeps(goto));
+		if (!refusal) return;
+		view.notify(
+			refusalText(refusal),
+			!isBusyRefusal(refusal),
+			isBusyRefusal(refusal) ? { label: 'Open Sync', run: () => void goto('/sync') } : undefined
+		);
+	}
 
 	onDestroy(() => {
 		view.dispose();
@@ -153,6 +169,7 @@
 			onclose={() => dialogs.open('close')}
 			onreopen={() => view.reopen()}
 			ondelete={() => dialogs.open('delete')}
+			onfetch={fetchHere}
 		/>
 
 		<!-- one reserved line, so a notice appearing never moves the rows (patterns §7) -->
@@ -171,7 +188,7 @@
 			runs={runs.runs}
 			status={runs.runsStatus}
 			instanceLabel={runs.instanceLabel}
-			isFile={runs.isFile}
+			importerKind={runs.importerKind}
 			showAll={runs.showAll}
 			currency={account.currency}
 			locale={view.locale}
@@ -179,6 +196,7 @@
 			onshowall={() => (runs.showAll = true)}
 			onrevert={(run) => dialogs.open('revert', { runId: run.id })}
 			onretry={() => accountId !== null && runs.load(accountId)}
+			onrunagain={(run) => run.instance_id !== null && fetchHere(run.instance_id)}
 		/>
 
 		<StatementTable

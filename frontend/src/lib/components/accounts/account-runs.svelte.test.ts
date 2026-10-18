@@ -27,7 +27,12 @@ function run(over: Partial<ImportRun> = {}): ImportRun {
 }
 
 function runs(props = {}) {
-	const handlers = { onrevert: vi.fn(), onshowall: vi.fn(), onretry: vi.fn() };
+	const handlers = {
+		onrevert: vi.fn(),
+		onshowall: vi.fn(),
+		onretry: vi.fn(),
+		onrunagain: vi.fn()
+	};
 	render(AccountRuns, {
 		props: {
 			runs: [run({ id: 6, revertible: true }), run({ id: 5 })],
@@ -77,7 +82,7 @@ describe('AccountRuns', () => {
 			runs: [
 				run({ id: 2, status: 'failed', retryable: true, error_text: 'SourceUnavailable: down' })
 			],
-			isFile: () => true
+			importerKind: () => 'file'
 		});
 		expect(within(li(2)).getByRole('link', { name: 'Upload file' })).toHaveAttribute(
 			'href',
@@ -91,7 +96,7 @@ describe('AccountRuns', () => {
 			runs: [
 				run({ id: 2, status: 'failed', retryable: false, error_text: 'ParseFailed: no header' })
 			],
-			isFile: () => true
+			importerKind: () => 'file'
 		});
 		expect(within(li(2)).getByText(/then upload again/)).toBeInTheDocument();
 		expect(within(li(2)).getByRole('link', { name: 'Fix the profile' })).toHaveAttribute(
@@ -101,16 +106,57 @@ describe('AccountRuns', () => {
 		expect(within(li(2)).queryByRole('link', { name: 'Upload file' })).toBeNull();
 	});
 
-	it('offers no next step on a failed run of a fetch importer', () => {
+	it('offers "Run again" on a failed fetch run that trying again can help', async () => {
+		const failed = run({
+			id: 2,
+			importer: 'testfetch',
+			status: 'failed',
+			retryable: true,
+			error_text: 'SourceUnavailable: down'
+		});
+		const h = runs({ runs: [failed], importerKind: () => 'fetch' });
+
+		await fireEvent.click(within(li(2)).getByRole('button', { name: 'Run again' }));
+
+		expect(h.onrunagain).toHaveBeenCalledWith(failed);
+		expect(within(li(2)).queryByRole('link', { name: 'Upload file' })).toBeNull();
+	});
+
+	it('says what to fix on a failed fetch run that trying again cannot help', () => {
+		runs({
+			runs: [
+				run({
+					id: 3,
+					importer: 'testfetch',
+					status: 'failed',
+					retryable: false,
+					error_text: 'BankSetupRequired: no TAN procedure'
+				})
+			],
+			importerKind: () => 'fetch'
+		});
+
+		expect(
+			within(li(3)).getByText(/Trying again will not help yet\. Fix what the error says/)
+		).toBeInTheDocument();
+		expect(within(li(3)).getByRole('link', { name: /settings/ })).toHaveAttribute(
+			'href',
+			'/settings/importers/2'
+		);
+		expect(within(li(3)).queryByRole('button', { name: 'Run again' })).toBeNull();
+	});
+
+	it('offers no next step on a failed run of an importer the catalog does not list', () => {
 		runs({
 			runs: [
 				run({ id: 2, status: 'failed', retryable: true, error_text: 'SourceUnavailable: down' }),
 				run({ id: 3, status: 'failed', retryable: false, error_text: 'ParseFailed: no header' })
 			],
-			isFile: () => false
+			importerKind: () => null
 		});
 		for (const id of [2, 3]) {
 			expect(within(li(id)).queryByRole('link')).toBeNull();
+			expect(within(li(id)).queryByRole('button', { name: 'Run again' })).toBeNull();
 			expect(within(li(id)).queryByText(/then upload again/)).toBeNull();
 		}
 	});

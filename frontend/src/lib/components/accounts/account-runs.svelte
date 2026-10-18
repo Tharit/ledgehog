@@ -17,21 +17,22 @@
 		runs,
 		status,
 		instanceLabel,
-		isFile = () => false,
+		importerKind = () => null,
 		showAll = false,
 		currency,
 		locale = 'en',
 		timeZone = 'UTC',
 		onshowall,
 		onrevert,
-		onretry
+		onretry,
+		onrunagain
 	}: {
 		runs: readonly ImportRun[];
 		status: 'loading' | 'ready' | 'error';
 		/** the label of the instance a run came from; a deleted instance has none */
 		instanceLabel: (run: ImportRun) => string;
-		/** whether the importer a run came from takes a file (only those offer a next step for now) */
-		isFile?: (run: ImportRun) => boolean;
+		/** what the importer a run came from is (the catalog says): it decides the next step of a failed run */
+		importerKind?: (run: ImportRun) => 'file' | 'fetch' | null;
 		showAll?: boolean;
 		currency: string;
 		locale?: string;
@@ -39,6 +40,8 @@
 		onshowall?: () => void;
 		onrevert?: (run: ImportRun) => void;
 		onretry?: () => void;
+		/** "Run again" on a failed fetch run: a one-item sync of its instance and account */
+		onrunagain?: (run: ImportRun) => void;
 	} = $props();
 
 	let openId = $state<number | null>(null);
@@ -108,7 +111,11 @@
 							{/if}
 						</button>
 						{#if run.status === 'failed'}
-							<RunNextStep {run} fileImporter={isFile(run)} />
+							<RunNextStep
+								{run}
+								importerKind={importerKind(run)}
+								onrunagain={() => onrunagain?.(run)}
+							/>
 						{:else if run.revertible}
 							<ActionButton variant="outline" onclick={() => onrevert?.(run)}>Revert…</ActionButton>
 						{:else if run.status === 'ok'}

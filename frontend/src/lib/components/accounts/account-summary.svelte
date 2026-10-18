@@ -10,7 +10,8 @@
 	// What stands under the account page's header (ux/views/account.md): the balance and its facts
 	// line, the sources (each linked importer instance with its action, or how an unlinked account is
 	// fed), "Set balance" and "View entries", and the `⋯` menu with Edit, Close… or Reopen, and Delete…
-	// last and destructive.
+	// last and destructive. A fetch importer's line has "Fetch", where a file importer's has "Upload
+	// file".
 	let {
 		account,
 		sources,
@@ -21,7 +22,8 @@
 		onedit,
 		onclose,
 		onreopen,
-		ondelete
+		ondelete,
+		onfetch
 	}: {
 		account: Account;
 		sources: readonly SourceLine[];
@@ -34,6 +36,8 @@
 		onclose: () => void;
 		onreopen: () => void;
 		ondelete: () => void;
+		/** "Fetch" on the line of a fetch importer: a one-item sync of this account (ux/views/sync.md) */
+		onfetch?: (instanceId: number) => void;
 	} = $props();
 
 	const closed = $derived(account.closed_on !== null);
@@ -106,6 +110,14 @@
 								disabled={source.disabled}
 							>
 								Upload file
+							</ActionButton>
+						{:else}
+							<ActionButton
+								variant="outline"
+								disabled={source.disabled}
+								onclick={() => onfetch?.(source.instanceId)}
+							>
+								Fetch
 							</ActionButton>
 						{/if}
 					</li>
