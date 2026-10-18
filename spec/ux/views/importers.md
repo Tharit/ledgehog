@@ -10,10 +10,10 @@ profile is `plugins/importers/csv.md`; the contracts are `architecture.md`
 
 **Settings → Importers**, `/settings/importers`, is where importer instances
 are managed: a tab of Settings beside categories, payees, rules and tags.
-Fetching and syncing are not here; sync becomes a shell-level action in a later
-wave and is not specified by this sketch. FinTS setup — discovery, the login,
-the first-fetch start — is likewise later; this document names where it will
-plug in and no more.
+Fetching and syncing are not here but in `ux/views/sync.md`; the discovery of an
+instance's accounts is *Refresh accounts*, below. The setup form of the FinTS
+importer — the URL, the bank code, the login — is later; this document names
+where it will plug in and no more.
 
 ## The instance list
 
@@ -24,7 +24,9 @@ absolute instant in a tooltip, `ux/patterns.md` §3) and "disabled" when it is.
 For an instance that holds a login (FinTS, a later wave), whose login it is
 and whether the other user may run it are shown too (`spec.md` §5.11); a file
 importer holds none and is always shared. A row opens its page (below). It follows the settings-row
-rule (`ux/patterns.md` §11.3): two icon actions, "Edit" and "Link account", and
+rule (`ux/patterns.md` §11.3): two icon actions, "Edit" and "Link account" —
+for an instance of an importer that fetches and emits transactions, "Refresh
+accounts" instead (below) — and
 one `⋯` menu holding "Disable" or "Enable", "Reset…" and, last in the
 destructive style, "Delete…".
 
@@ -59,13 +61,15 @@ editor with "Save importer" and Cancel (`ux/patterns.md` §11.2). It holds:
   §11.5). Saving changes later uploads only: rows already imported keep saying
   what the file said.
 - **Linked accounts**, listing each with "Unlink…" and the action "Link
-  account", for an instance already saved.
+  account", for an instance already saved; for an importer that fetches and
+  emits transactions the action is "Refresh accounts" (below).
 
 **Link account** is a form dialog: an account picker (open accounts which the
 instance does not link yet) and, for a file importer, nothing else — it is never
 asked for a reference. For an importer that fetches, the account at the login
-comes from discovery, a later wave. Once an account is chosen the dialog shows
-the link's dry run (`architecture.md` §4.1), the warning of `spec.md` §5.4:
+comes from discovery (*Refresh accounts*, below), which opens this dialog with
+the account fixed and the discovered reference sent. Once an account is chosen
+the dialog shows the link's dry run (`architecture.md` §4.1), the warning of `spec.md` §5.4:
 
 ```
 This account holds 14 rows entered by hand, 3 Jan – 29 Mar.
@@ -154,11 +158,36 @@ A refusal of the request itself — a file over the limit, the account closed or
 no longer linked — stands above the buttons as an error (`ux/patterns.md`
 §11.5).
 
+## Refresh accounts
+
+For an instance of an importer that fetches and emits transactions, "Refresh
+accounts" is the action of the instance page's linked accounts, instead of
+"Link account", and the second icon action of its row in the list. It starts a
+discovery (`spec.md` §5.4) and opens the page `/settings/importers/[id]/accounts`,
+titled "Refresh accounts", described "What *label* can reach at the bank, and what
+each is here." A discovery is a task like a sync (`ux/views/sync.md`): it prompts
+in the same dialogs, on this page, and its failure is shown as a sync's.
+
+One row per account the login reaches — a pocket of another currency is its own
+row — with its name, currency, kind, and its reference as the bank reports it.
+Each is one of: *linked* ("Linked to *Account*", a link); *nothing to fetch*
+("The bank offers neither bookings nor a balance for this account."); *matches a
+closed account*, which is not offered; *matches* an open account, with "Link…";
+or *not in the ledger yet*, with "Add and link". "Link…" is the link dialog of
+the instance page with the account fixed, showing the dry run of `spec.md` §5.4.
+"Add and link" is the add-account dialog prefilled with the name, the kind, the
+currency and the reference, ending "Add and link": it adds the account and links
+it, with no second dialog, because a new account holds no rows to warn about. A
+row changes state in place after either. Once an account has been linked, a
+notice offers "Fetch", which opens the sync page narrowed to this login, where
+each new account's start is prefilled and editable.
+
 ## The run summary
 
 One component, shown after an upload here, on a run in the account page's run
-list, and later at the end of a sync (`architecture.md` §6.4). It is a report,
-not an alarm (`ux/patterns.md` §8): it opens no dialog and colours nothing red.
+list, and in the report of a sync (`ux/views/sync.md`, `architecture.md`
+§6.4), where a row opens it from the statistics of the run's event. It is a
+report, not an alarm (`ux/patterns.md` §8): it opens no dialog and colours nothing red.
 Per account it says how many rows were inserted; how many were inserted as
 duplicates, each "of #N" with a link to the row it duplicates on the account's
 statement (`?source=`, `ux/views/account.md`), and a link to the duplicate
@@ -169,7 +198,9 @@ coverage; and the unexplained difference before and after, which where it is
 non-zero names the reported records that localise it, linking to the statement.
 A failed run shows its error and whether trying again can help. The component
 takes a run's stored statistics; for a dry run the same shape, with the links
-to rolled-back rows left out.
+to rolled-back rows left out; in a sync's report, where the event carries
+statistics and not the run's dates, without the coverage line, which is in the
+account's run log.
 
 **Open for the first month.** Whether the profile form wants a live sample
 beside it; how a file importer's

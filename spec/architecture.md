@@ -62,7 +62,7 @@ infrequent rebuilds — not the elimination of the risk.
 
 Three parts of the UI are interaction-heavy enough that form round-trips would
 be the wrong shape: the review queue with keyboard navigation and one-keystroke
-confirmation, the sync wizard with live progress and prompts, and reports that
+confirmation, the sync page with live progress and prompts, and reports that
 are filtered and drilled into rather than merely displayed. The ledger list and
 settings would have been fine either way.
 
@@ -1651,7 +1651,7 @@ depends on the distinction:
 
 | Exception | Retryable | Scope | Surfaced as |
 |---|---|---|---|
-| `AuthRejected` | yes — every run asks for the PIN afresh | instance | wrong PIN or password |
+| `AuthRejected` | yes — every run asks for the PIN afresh | instance | wrong PIN or password; the message warns that repeated rejections can lock the login |
 | `ChallengeExpired` | yes | instance | TAN timed out, retry the instance |
 | `ChallengeAbandoned` | yes | instance | user cancelled, or the sync was aborted |
 | `SourceUnavailable` | yes | instance | bank unreachable or timed out |
@@ -1799,7 +1799,7 @@ frontend/src/
     review/
     accounts/          the account list, `/accounts/[id]` and the file upload
                        `/accounts/[id]/upload`
-    sync/
+    sync/              the sync page: plan, progress, report
     reports/
     settings/          management: categories, payees, tags, rules, importers
                        (below)
@@ -1809,7 +1809,7 @@ frontend/src/
                        sync, maintenance), plus shared error handling and
                        the SSE client.
     stores/            Svelte stores. Page-scoped by default; one long-lived
-                       store for the active sync task.
+                       store for the active task, a sync or a discovery.
     components/        Presentational and reusable. Props in, events out;
                        no direct api/ imports.
       ui/              shadcn-svelte components, copied in: dialog,
@@ -1827,7 +1827,7 @@ frontend/src/
       accounts/        statement rows, balance markers, account facts
       importers/       the instance list, one settings form per importer, the
                        run summary (shown at the end of a sync too)
-      sync/            progress list, prompt modals
+      sync/            plan, progress, prompt dialogs, the discovery list
     format/            money, dates, locale (§6.6)
     types/             shared types: api.d.ts is generated from OpenAPI
                        (§6.7), the rest is what OpenAPI cannot say
@@ -1853,7 +1853,9 @@ first a pattern in `ux/patterns.md` §11.
 
 **Management lives under settings.** The routes are `/settings/categories`, `/settings/tags`,
 `/settings/payees`, `/settings/importers`, `/settings/importers/new` (with
-`?importer=`), `/settings/importers/{id}`, `/settings/rules`, `/settings/rules/new` (optionally
+`?importer=`), `/settings/importers/{id}`, `/settings/importers/{id}/accounts`
+(the discovery of an instance's accounts, `ux/views/importers.md`),
+`/settings/rules`, `/settings/rules/new` (optionally
 `?from=<entry id>`, which opens the editor on that entry as its example, read
 with `GET /api/ledger/entries/{id}`; nothing is matched or written by it) and
 `/settings/rules/{id}`, the page an evidence line's rule links to
@@ -1865,7 +1867,7 @@ editor with `?from=`.
 
 The four rules are enforced mechanically, as import-linter enforces the backend's
 (§5.1): ESLint's `no-restricted-imports` and `no-restricted-globals` forbid Bits UI outside `components/ui/`,
-the API from `components/`, and `fetch` outside `lib/api/`.
+the API from `components/`, and `fetch` and `EventSource` outside `lib/api/`.
 
 ### 6.3 Data loading and state
 
@@ -1906,22 +1908,42 @@ active sync task.
 Uses the sync operations of §4.1 through `lib/api/sync`; the paths there are
 illustrative and this section names none of them.
 
-Start a sync, attach to the returned task's event stream, and render from the
-events. Input requests drive the modals — text TAN, photoTAN image, decoupled
-confirmation with a waiting state — and answers carry the correlation id of the
-request they answer. The run summary at the end lists, per account, what was
-inserted, what was inserted as a duplicate and of which row, with a link to
+The page `/sync` reads the plan, and a start sends items built from it: per
+login, per account (with a `since` only where the user changed an editable
+one) and per documents kind; logins that another task holds are shown as busy
+and left out. The client then attaches to the returned task's event stream and
+renders from the events through one reducer: the view of a task is a function
+of the events seen, so a live stream and a replay give the same screen (§4.2).
+Input requests drive the dialogs — text TAN, photoTAN image, decoupled
+confirmation with a waiting state, a choice, a text, a PIN — and answers carry
+the correlation id of the request they answer. A failure is routed on its
+retryability alone (§5.5): the client offers to run the unfinished items again,
+or says what to fix; it parses no message. The report lists, per account, what
+was inserted, what was inserted as a duplicate and of which row, with a link to
 those rows on the account's statement (a duplicate has no entry, so no row in
-the ledger list), and how many rows were skipped by identity; the CSV upload flow
-ends with the same summary, one component in `components/importers/`.
+the ledger list), and how many rows were skipped by identity, from the
+statistics of `run_finished`; the CSV upload flow ends with the same summary,
+one component in `components/importers/`.
 
-On mount, the app asks whether the current user has an active task and
-reattaches if so, rather than remembering a token locally (§4.3). Two tabs
-attaching to the same task is expected: both render the prompt, and whichever
-answers first causes the other's modal to close through the shared stream. A
-rejected answer means another tab was faster and is dismissed silently, not
-surfaced as an error. Abandoning a sync is an explicit operation, not a
-closed tab.
+One store, mounted at the root layout, holds the active task whichever page is
+shown (the task outlives navigation). On mount, the app asks whether the
+current user has an active task and reattaches if so, rather than remembering
+a token locally (§4.3); a discovery is such a task, hosted by its own page. A
+prompt's dialog is shown only on the page that hosts the task, and whenever
+that page is shown while the prompt is open — when the prompt arrives, or on
+any later visit for a prompt that arrived while another page was shown: the
+page reads the open prompt from the store when it mounts, not only from the
+event. Elsewhere the navigation says that the task needs input. Two tabs attaching to the same task
+is expected: both render the prompt, and whichever answers first causes the
+other's dialog to close through the shared stream. A rejected answer means
+another tab was faster and is dismissed silently, not surfaced as an error. A
+task the server no longer knows is an interrupted sync. Abandoning a sync is an
+explicit operation, not a closed tab.
+
+The store notes whether a run of this session's syncs has written rows, and
+when a sync ends. Views holding a snapshot show the one notice of §6.5 if rows
+arrived since they fetched; lists that are not snapshots (the accounts, the
+importers, an account's runs) refetch when a sync ends. Nothing is counted.
 
 ### 6.5 Review queue
 
@@ -1955,8 +1977,9 @@ in the list a proposal by the time the cursor reaches them, without the list
 moving. Rows resolved during the session — whether acted on directly or as a
 consequence of another operation — stay in place, marked as resolved, so the
 list never shifts under the cursor and a mistaken action is still visible and
-correctable by editing. There is no undo. Entries arriving from another sync
-surface as a passive count that refetches only when the user asks.
+correctable by editing. There is no undo. Rows arriving from this session's
+syncs surface as one uncounted notice, "New data from a sync — Refresh", which
+refetches only when the user asks (§6.4).
 
 Position stability matters more than freshness of order in a keyboard-driven
 list: an item vanishing between keystrokes is how the wrong row gets

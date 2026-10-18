@@ -49,8 +49,10 @@ header:
   the statement rather than listed a second time;
 - **the sources**: each instance the account is linked to, one line each —
   its label, its importer and its action, "Upload file" for a file importer
-  (`ux/views/importers.md`) and "Fetch" for one that fetches (with the sync, a
-  later wave). An unlinked account says how it is fed instead: by hand, or by
+  (`ux/views/importers.md`) and "Fetch" for one that fetches
+  (`ux/views/sync.md`): a one-item sync for this account alone, started at
+  once, or after choosing the start where the account has no coverage. An
+  unlinked account says how it is fed instead: by hand, or by
   linking it in Settings → Importers (a link);
 - **"Set balance"** and **"View entries"**, and a `⋯` menu with "Edit", the
   account's form dialog (name, external reference, note, icon, colour),
@@ -93,8 +95,11 @@ anchored". The newest row's balance is therefore the header's balance, whatever
 lies in between. The column is the server's, not computed by the client
 (`architecture.md` §4.1, which has the precise rule).
 
-**A snapshot, refetched after its own writes.** New data from another sync
-arrives as a passive count (`ux/patterns.md` §7). A write made from this page —
+**A snapshot, refetched after its own writes.** New data from this session's
+syncs arrives as a passive notice, "New data from a sync — Refresh"
+(`ux/patterns.md` §7), whose refresh reloads the header, the facts and the
+statement together, so the balance and the newest row do not disagree. A write
+made from this page —
 a duplicate marked or cleared, a run reverted, a record set or deleted, a row
 entered, edited or deleted — refetches the pages the statement holds instead
 of patching them, because it moves the balance of every row after it; the
@@ -143,7 +148,9 @@ instance, the start as an instant (`ux/patterns.md` §3), its status, "covered
 through *date*" and one line of its summary — inserted, inserted as
 duplicates, skipped — and opens the run summary (`ux/views/importers.md`). A
 reverted run is marked; a failed one shows its error and whether trying again
-can help (`ux/patterns.md` §8).
+can help (`ux/patterns.md` §8): for a fetch that can be, "Run again", a
+one-item sync; where it cannot, the row says what to fix, as for a file
+("Upload file").
 
 "Revert…" is offered on the one run the server marks revertible, the
 account's latest successful, non-reverted run (`spec.md` I30); an earlier run

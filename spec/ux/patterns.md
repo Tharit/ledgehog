@@ -289,8 +289,8 @@ row; a resolved row stays in place, marked (§7).
   check stay until the list is refreshed.
 - **Snapshots stay snapshots.** A list fetched for a session (the review queue,
   architecture §6.5; the ledger list, whose filter is in its address) does not
-  add or reorder rows; new data from another sync appears as a passive count
-  ("12 new — refresh") that refetches only on request. An action patches the rows it touched in place and
+  add or reorder rows; new data from a sync appears as a passive notice
+  ("New data from a sync — Refresh") that refetches only on request. An action patches the rows it touched in place and
   never removes or moves one: a row that the action takes out of the list's
   filter (a tag removed under a tag filter) stays, marked, until the list is
   fetched again. The one exception to never adding a row: the entries a split
@@ -353,7 +353,6 @@ row; a resolved row stays in place, marked (§7).
 - the ledger list's columns: their order (in particular whether the amount
   comes before the description) and which columns give way first at a narrow
   width (the prototype's table simply overflows);
-- how the ledger list counts what is new since it was fetched ("12 new");
 - whether the ledger list shows the account's facts (§4.4) when one account is
   filtered; the prototype leaves them to the account view;
 - where a quiet notice appears (the prototype reserves one line under the
