@@ -13,13 +13,14 @@
 	import StatementTable from '#lib/components/accounts/statement-table.svelte';
 	import ErrorState from '#lib/components/common/error-state.svelte';
 	import Notice from '#lib/components/common/notice.svelte';
-	import NoticeLine from '#lib/components/common/notice-line.svelte';
+	import NewDataNotice from '#lib/components/common/new-data-notice.svelte';
 	import ActionButton from '#lib/components/common/action-button.svelte';
 	import PageHeader from '#lib/components/common/page-header.svelte';
 	import { entryForm } from '#lib/entry-form/controller.svelte.js';
 	import { formatDate } from '#lib/format/index.js';
 	import { AccountPageStore } from '#lib/stores/account-page.svelte.js';
 	import { AccountRunsStore } from '#lib/stores/account-runs.svelte.js';
+	import { refetchOnSyncEnd } from '#lib/stores/new-data.svelte.js';
 	import { session } from '#lib/stores/session.svelte.js';
 	import { entryDeps } from '#lib/stores/sync.svelte.js';
 	import { isBusyRefusal, refusalText, startOrReview } from '#lib/sync/entry.js';
@@ -29,6 +30,8 @@
 	const detail = new RowDetail();
 	const dialogs = new AccountDialogs();
 	view.onRefresh(() => runs.reload());
+	// the runs are not a snapshot: a sync's runs appear when it ends
+	refetchOnSyncEnd(() => void runs.reload());
 
 	const accountId = $derived(accountIdOf(page.params.id));
 
@@ -173,8 +176,8 @@
 		/>
 
 		<!-- one reserved line, so a notice appearing never moves the rows (patterns §7) -->
-		<NoticeLine notice={view.notice}>
-			{#snippet action()}
+		<NewDataNotice stale={view.news.stale} onrefresh={() => view.afterWrite()} notice={view.notice}>
+			{#snippet noticeAction()}
 				{#if view.notice?.action}
 					{@const run = view.notice.action}
 					<ActionButton variant="link" class="h-auto p-0" onclick={run.run}
@@ -182,7 +185,7 @@
 					>
 				{/if}
 			{/snippet}
-		</NoticeLine>
+		</NewDataNotice>
 
 		<AccountRuns
 			runs={runs.runs}

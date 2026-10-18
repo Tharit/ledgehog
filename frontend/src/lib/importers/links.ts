@@ -25,6 +25,11 @@ export function intentOf(search: string): 'added' | 'link' | null {
 	return params.has('added') ? 'added' : params.has('link') ? 'link' : null;
 }
 
+/** The page of an instance's discovery ("Refresh accounts"). */
+export function discoveryUrl(id: number): string {
+	return `${IMPORTERS_PATH}/${id}/accounts`;
+}
+
 /** The upload page of an account, with the file importer's instance chosen. */
 export function uploadUrl(accountId: number, instanceId: number): string {
 	return `/accounts/${accountId}/upload?instance=${instanceId}`;

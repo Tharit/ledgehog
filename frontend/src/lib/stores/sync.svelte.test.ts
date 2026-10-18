@@ -15,6 +15,7 @@ import {
 	ev,
 	instanceFailed,
 	promptEvent,
+	runFinished,
 	runStarted,
 	taskEnded,
 	taskStarted
@@ -327,5 +328,94 @@ describe('SyncStore: stopping', () => {
 		const s = await attached();
 		streams[0].push(resolved, ev(5, 'run_started', runStarted(1, 10, 7)));
 		expect(s.view.instances[0].items[0].state).toBe('fetching');
+	});
+});
+
+describe('SyncStore: what the views are told (revisions, never counts)', () => {
+	it('moves the data revision when a run wrote rows, and not for one that wrote none', async () => {
+		const s = await attached();
+		expect(s.dataRevision).toBe(0);
+
+		streams[0].push(
+			resolved,
+			ev(5, 'run_started', runStarted(1, 10, 7)),
+			ev(6, 'run_finished', runFinished(1, 10, 7, { inserted: 0, skipped_by_identity: 4 }))
+		);
+		expect(s.dataRevision).toBe(0);
+
+		streams[0].push(
+			ev(7, 'run_started', runStarted(1, 11, 7)),
+			ev(8, 'run_finished', runFinished(1, 11, 7, { inserted: 12, skipped_by_identity: 0 }))
+		);
+		expect(s.dataRevision).toBe(1);
+	});
+
+	it('counts a run that only inserted duplicates as one that wrote rows', async () => {
+		const s = await attached();
+		streams[0].push(
+			resolved,
+			ev(5, 'run_started', runStarted(1, 10, 7)),
+			ev(
+				6,
+				'run_finished',
+				runFinished(1, 10, 7, {
+					inserted: 0,
+					inserted_as_duplicates: [{ id: 5, duplicate_of: 3 }]
+				})
+			)
+		);
+		expect(s.dataRevision).toBe(1);
+	});
+
+	it('moves the end revision when the task ends', async () => {
+		const s = await attached();
+		expect(s.endRevision).toBe(0);
+		streams[0].push(resolved, ev(5, 'task_ended', taskEnded()));
+		expect(s.endRevision).toBe(1);
+	});
+
+	it('does not note what the replay of an attach delivers, nor a replay after a lost stream', async () => {
+		vi.mocked(getActiveTask).mockResolvedValue(running({ last_event_id: 4 }));
+		const s = store();
+		await s.mount();
+		streams[0].push(
+			begin,
+			ev(2, 'run_started', runStarted(1, 10, 7)),
+			ev(3, 'run_finished', runFinished(1, 10, 7)),
+			ev(4, 'instance_started', { instance_id: 1 })
+		);
+		expect(s.dataRevision).toBe(0);
+
+		streams[0].push(
+			ev(5, 'run_started', runStarted(1, 11, 7)),
+			ev(6, 'run_finished', runFinished(1, 11, 7))
+		);
+		expect(s.dataRevision).toBe(1);
+
+		// the stream is lost and attached again: the replay from id 1 is not news again
+		vi.mocked(getTaskStatus).mockResolvedValue(running({ last_event_id: 6 }));
+		streams[0].giveUp();
+		await vi.waitFor(() => expect(streams).toHaveLength(2));
+		streams[1].push(
+			begin,
+			ev(2, 'run_started', runStarted(1, 10, 7)),
+			ev(3, 'run_finished', runFinished(1, 10, 7)),
+			ev(4, 'instance_started', { instance_id: 1 }),
+			ev(5, 'run_started', runStarted(1, 11, 7)),
+			ev(6, 'run_finished', runFinished(1, 11, 7))
+		);
+		expect(s.dataRevision).toBe(1);
+	});
+
+	it('notes the events of a task the user started from its first event', async () => {
+		vi.mocked(startSync).mockResolvedValue({ task_id: 't2', busy: [] });
+		const s = store();
+		await s.start([{ instance_id: 1, account_id: 7 }]);
+		streams[0].push(
+			begin,
+			ev(2, 'run_started', runStarted(1, 10, 7)),
+			ev(3, 'run_finished', runFinished(1, 10, 7))
+		);
+		expect(s.dataRevision).toBe(1);
 	});
 });

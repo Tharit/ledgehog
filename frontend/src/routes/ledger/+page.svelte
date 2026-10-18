@@ -2,7 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { onDestroy, onMount, untrack } from 'svelte';
-	import NoticeLine from '#lib/components/common/notice-line.svelte';
+	import NewDataNotice from '#lib/components/common/new-data-notice.svelte';
 	import PageHeader from '#lib/components/common/page-header.svelte';
 	import FilterBar from '#lib/components/ledger/filter-bar.svelte';
 	import LedgerTable from '#lib/components/ledger/ledger-table.svelte';
@@ -108,7 +108,7 @@
 	</FilterBar>
 
 	<!-- one reserved line, so a notice appearing never moves the rows (patterns §7) -->
-	<NoticeLine {notice} />
+	<NewDataNotice stale={ledger.news.stale} onrefresh={() => ledger.reload()} {notice} />
 
 	<LedgerTable
 		bind:this={table}

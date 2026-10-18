@@ -41,6 +41,7 @@ import type { Entry, EntryTagIds, Tag } from '#lib/types/domain.js';
 import { applyAffected, clearMarks, noMarks, type Marks } from '#lib/units/patch.js';
 import type { Affected } from '#lib/units/types.js';
 import { lookupsStore, type LookupsStore } from './lookups.svelte.js';
+import { NewDataWatch } from './new-data.svelte.js';
 import { session } from './session.svelte.js';
 import { TagAllFlow } from './tag-all.svelte.js';
 
@@ -132,6 +133,9 @@ export class LedgerStore {
 		}
 	});
 
+	/** rows from a sync that arrived since the list was fetched: the one quiet notice (patterns §7) */
+	readonly news = new NewDataWatch();
+
 	#controller: AbortController | null = null;
 	#refreshController: AbortController | null = null;
 	#generation = 0;
@@ -154,6 +158,7 @@ export class LedgerStore {
 		const controller = new AbortController();
 		this.#controller = controller;
 		const generation = ++this.#generation;
+		this.news.take();
 		this.status = 'loading';
 		this.error = null;
 		this.moreError = null;

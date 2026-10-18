@@ -7,10 +7,13 @@
 	import PageHeader from '#lib/components/common/page-header.svelte';
 	import { describeLoadError } from '#lib/ledger/errors.js';
 	import { AccountsListStore } from '#lib/stores/accounts-list.svelte.js';
+	import { refetchOnSyncEnd } from '#lib/stores/new-data.svelte.js';
 
 	const list = new AccountsListStore();
 
 	onMount(() => void list.load());
+	// not a snapshot: the balances and the data age move with a sync
+	refetchOnSyncEnd(() => void list.load());
 	onDestroy(() => list.dispose());
 
 	// the existing "Add account" dialog; once added, the account's page opens

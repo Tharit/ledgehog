@@ -6,6 +6,7 @@
 
 import { ApiError, getNewUnitCount, getQueue } from '#lib/api/index.js';
 import { clearMarks, applyAffected, noMarks, type Marks } from '#lib/units/patch.js';
+import { NewDataWatch } from './new-data.svelte.js';
 import { ruleNames } from './rule-names.svelte.js';
 import type { StepDirection, UnitSource } from '#lib/units/sources.js';
 import {
@@ -61,6 +62,8 @@ export class ReviewQueueStore {
 	error = $state.raw<ApiError | null>(null);
 	/** units that arrived since the snapshot (a passive count) */
 	newCount = $state(0);
+	/** rows from a sync that arrived since the queue was fetched: the one quiet notice (patterns §7) */
+	readonly news = new NewDataWatch();
 	/** what the unit panel's actions did to the rows held */
 	marks = $state.raw<Marks>(noMarks());
 
@@ -134,6 +137,7 @@ export class ReviewQueueStore {
 		const controller = new AbortController();
 		this.#controller = controller;
 		const generation = ++this.#generation;
+		this.news.take();
 		this.status = 'loading';
 		this.error = null;
 		try {

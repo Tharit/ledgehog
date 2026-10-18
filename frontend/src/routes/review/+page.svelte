@@ -1,11 +1,9 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
-	import ActionButton from '#lib/components/common/action-button.svelte';
-	import NoticeLine from '#lib/components/common/notice-line.svelte';
+	import NewDataNotice from '#lib/components/common/new-data-notice.svelte';
 	import PageHeader from '#lib/components/common/page-header.svelte';
 	import ReviewQueue from '#lib/components/review/review-queue.svelte';
 	import { entryForm } from '#lib/entry-form/controller.svelte.js';
-	import { formatCount } from '#lib/format/index.js';
 	import { lookupsStore } from '#lib/stores/lookups.svelte.js';
 	import { ReviewQueueStore } from '#lib/stores/review-queue.svelte.js';
 	import { session } from '#lib/stores/session.svelte.js';
@@ -34,17 +32,18 @@
 	// panel and the queue is told through the panel's source, not refreshed
 	$effect(() => entryForm.listen({ notify: (text) => (queue.notice = text) }));
 
+	// the line holds one notice: a write's, else the news ("New data from a sync — Refresh", never a
+	// count: patterns §7), else the lists that did not load
+	const stale = $derived(queue.news.stale || queue.newCount > 0);
 	const notice = $derived(
 		queue.notice !== null
 			? { text: queue.notice, error: false }
-			: queue.newCount > 0
-				? { text: `${formatCount(queue.newCount, locale)} new`, error: false }
-				: lookupsStore.failed.length > 0
-					? {
-							text: `Some lists could not be loaded (${lookupsStore.failed.join(', ')}); their names may be missing below.`,
-							error: false
-						}
-					: null
+			: !stale && lookupsStore.failed.length > 0
+				? {
+						text: `Some lists could not be loaded (${lookupsStore.failed.join(', ')}); their names may be missing below.`,
+						error: false
+					}
+				: null
 	);
 </script>
 
@@ -59,15 +58,7 @@
 		description="Units waiting for a decision: check what was proposed, then commit them one at a time."
 	/>
 
-	<NoticeLine {notice}>
-		{#snippet action()}
-			{#if queue.newCount > 0}
-				<ActionButton variant="link" class="h-auto p-0" onclick={() => queue.load()}>
-					Refresh
-				</ActionButton>
-			{/if}
-		{/snippet}
-	</NoticeLine>
+	<NewDataNotice {stale} onrefresh={() => queue.load()} {notice} />
 
 	<ReviewQueue store={queue} lookups={lookupsStore.lookups} {locale} />
 </div>

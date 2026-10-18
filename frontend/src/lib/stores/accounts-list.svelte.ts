@@ -19,7 +19,8 @@ export class AccountsListStore {
 
 	async load(): Promise<void> {
 		const generation = ++this.#generation;
-		this.status = 'loading';
+		// a list already shown is replaced when the answer comes (a refetch when a sync ends)
+		if (this.status === 'error') this.status = 'loading';
 		this.error = null;
 		try {
 			const all = await listAccounts();

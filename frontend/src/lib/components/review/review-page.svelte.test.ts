@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { entry } from '#lib/ledger/fixtures.js';
 import { lookupsStore } from '#lib/stores/lookups.svelte.js';
 import { ruleNames } from '#lib/stores/rule-names.svelte.js';
+import { sync } from '#lib/stores/sync.svelte.js';
 import { queue, unit } from '#lib/units/fixtures.js';
 import Page from '../../../routes/review/+page.svelte';
 
@@ -50,16 +51,17 @@ describe('the review page', () => {
 		expect(await screen.findByText('REWE Markt')).toBeInTheDocument();
 	});
 
-	it('says how many units are new when the window gets focus, and refetches only on Refresh', async () => {
+	it('says that there is new data, uncounted, when the window gets focus, and refetches only on Refresh', async () => {
 		vi.mocked(getQueue).mockResolvedValue(queue({ pending_review: [plain(1, 'REWE Markt')] }));
 		vi.mocked(getNewUnitCount).mockResolvedValue({ new_count: 12, snapshot: 'snap-2' });
 		render(Page);
 		await screen.findByText('REWE Markt');
-		expect(screen.queryByText(/new$/)).toBeNull();
+		expect(screen.queryByText(/New data/)).toBeNull();
 
 		window.dispatchEvent(new Event('focus'));
 
-		expect(await screen.findByText('12 new')).toBeInTheDocument();
+		expect(await screen.findByText('New data from a sync —')).toBeInTheDocument();
+		expect(screen.queryByText(/12/)).toBeNull();
 		expect(getQueue).toHaveBeenCalledTimes(1);
 		expect(getNewUnitCount).toHaveBeenCalledWith('snap-1', expect.any(AbortSignal));
 
@@ -69,7 +71,21 @@ describe('the review page', () => {
 		await fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
 
 		expect(await screen.findByText('Edeka')).toBeInTheDocument();
-		await waitFor(() => expect(screen.queryByText('12 new')).toBeNull());
+		await waitFor(() => expect(screen.queryByText(/New data/)).toBeNull());
+	});
+
+	it('shows the same line when a sync of this session wrote rows, and Refresh clears it', async () => {
+		vi.mocked(getQueue).mockResolvedValue(queue({ pending_review: [plain(1, 'REWE Markt')] }));
+		render(Page);
+		await screen.findByText('REWE Markt');
+		expect(screen.queryByText(/New data/)).toBeNull();
+
+		sync.dataRevision++;
+
+		expect(await screen.findByText('New data from a sync —')).toBeInTheDocument();
+		await fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+		await waitFor(() => expect(screen.queryByText(/New data/)).toBeNull());
+		expect(getQueue).toHaveBeenCalledTimes(2);
 	});
 
 	it('polls every minute', async () => {
