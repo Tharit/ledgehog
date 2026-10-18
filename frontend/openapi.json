@@ -724,6 +724,44 @@
         "title": "CategoryWriteOut",
         "type": "object"
       },
+      "ChangesOut": {
+        "properties": {
+          "accounts": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Accounts",
+            "type": "object"
+          },
+          "active_task": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Task"
+          },
+          "documents": {
+            "title": "Documents",
+            "type": "string"
+          },
+          "ledger": {
+            "title": "Ledger",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ledger",
+          "documents",
+          "accounts",
+          "active_task"
+        ],
+        "title": "ChangesOut",
+        "type": "object"
+      },
       "CheckOut": {
         "properties": {
           "checks": {
@@ -2466,24 +2504,6 @@
         "title": "NeedsAccountOut",
         "type": "object"
       },
-      "NewCountOut": {
-        "properties": {
-          "new_count": {
-            "title": "New Count",
-            "type": "integer"
-          },
-          "snapshot": {
-            "title": "Snapshot",
-            "type": "string"
-          }
-        },
-        "required": [
-          "new_count",
-          "snapshot"
-        ],
-        "title": "NewCountOut",
-        "type": "object"
-      },
       "PartnerOut": {
         "description": "The other leg of a paired transfer: where, when and how much.",
         "properties": {
@@ -3450,6 +3470,19 @@
         "title": "ProvenanceOut",
         "type": "object"
       },
+      "QueueCountOut": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count"
+        ],
+        "title": "QueueCountOut",
+        "type": "object"
+      },
       "QueueSectionOut": {
         "properties": {
           "groups": {
@@ -3611,10 +3644,6 @@
             "title": "Sections",
             "type": "array"
           },
-          "snapshot": {
-            "title": "Snapshot",
-            "type": "string"
-          },
           "total": {
             "title": "Total",
             "type": "integer"
@@ -3622,8 +3651,7 @@
         },
         "required": [
           "sections",
-          "total",
-          "snapshot"
+          "total"
         ],
         "title": "ReviewQueueOut",
         "type": "object"
@@ -8065,6 +8093,48 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/changes": {
+      "get": {
+        "description": "The change value of the ledger, of the documents and of each account, and the user's active task.",
+        "operationId": "get_changes",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Get Changes",
+        "tags": [
+          "changes"
+        ]
+      }
+    },
     "/api/config": {
       "get": {
         "description": "Read-only configuration for the client; never a secret (architecture \u00a75.7).",
@@ -13577,29 +13647,16 @@
         ]
       }
     },
-    "/api/units/queue/new-count": {
+    "/api/units/queue/count": {
       "get": {
-        "description": "How many units entered the queue since `since` (a `snapshot` of the queue): one cheap pass.",
-        "operationId": "get_new_unit_count",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "since",
-            "required": true,
-            "schema": {
-              "maxLength": 200,
-              "minLength": 1,
-              "title": "Since",
-              "type": "string"
-            }
-          }
-        ],
+        "description": "How many units can be acted on now: pending review and needs an account, not waiting.",
+        "operationId": "get_queue_count",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/NewCountOut"
+                  "$ref": "#/components/schemas/QueueCountOut"
                 }
               }
             },
@@ -13626,7 +13683,7 @@
             "description": "The request is not valid."
           }
         },
-        "summary": "Get New Unit Count",
+        "summary": "Get Queue Count",
         "tags": [
           "units"
         ]
