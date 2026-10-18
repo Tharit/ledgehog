@@ -23,6 +23,7 @@
 			{instanceId}
 			{intent}
 			onleave={(url) => goto(url)}
+			onopen={(url) => goto(url)}
 			ontidy={() => goto(instanceUrl(instanceId), { replaceState: true })}
 		/>
 	{/key}

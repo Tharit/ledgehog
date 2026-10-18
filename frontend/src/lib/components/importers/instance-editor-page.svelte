@@ -9,6 +9,9 @@
 	import PageHeader from '#lib/components/common/page-header.svelte';
 	import LeaveGuard from '#lib/components/rules/leave-guard.svelte';
 	import { Input } from '#lib/components/ui/input/index.js';
+	import { canRefreshAccounts } from '#lib/importers/discovery.js';
+	import { refreshNotice, startRefresh } from '#lib/importers/refresh.js';
+	import { sync } from '#lib/stores/sync.svelte.js';
 	import { InstanceDecisionFlow } from '#lib/importers/decision-flow.svelte.js';
 	import { LinkAccountFlow } from '#lib/importers/link-flow.svelte.js';
 	import { IMPORTERS_PATH, instanceUrl } from '#lib/importers/links.js';
@@ -34,12 +37,15 @@
 		importer = null,
 		intent = null,
 		onleave,
+		onopen,
 		ontidy
 	}: {
 		instanceId?: number | null;
 		importer?: string | null;
 		intent?: 'added' | 'link' | null;
 		onleave: (url: string) => void;
+		/** go to another page without the editor having finished (the discovery's page) */
+		onopen?: (url: string) => void | Promise<void>;
 		ontidy?: () => void;
 	} = $props();
 
@@ -52,6 +58,18 @@
 	function leave(url: string) {
 		leaving = true;
 		onleave(url);
+	}
+
+	// "Refresh accounts" starts the discovery and opens its page; a refusal stays here as a notice,
+	// a busy one linking to the running task
+	let refused = $state<ReturnType<typeof refreshNotice> | null>(null);
+	async function refresh(id: number) {
+		refused = null;
+		const refusal = await startRefresh(id, {
+			start: (instance) => sync.startDiscovery(instance),
+			go: (path) => onopen?.(path)
+		});
+		if (refusal) refused = refreshNotice(refusal, sync.status === 'idle' ? '/sync' : sync.homePath);
 	}
 
 	const say = (text: string, settleFailed = false) =>
@@ -101,10 +119,14 @@
 		await store.init();
 		const stored = store.instance;
 		if (intent && stored) {
+			const fetches = canRefreshAccounts(stored, store.catalog);
 			if (intent === 'added') {
-				say(`Importer “${stored.label}” was added. Link an account to use it.`);
+				say(
+					`Importer “${stored.label}” was added. ${fetches ? 'Refresh its accounts' : 'Link an account'} to use it.`
+				);
 			}
-			if (!stored.disabled && stored.emits.includes('transactions')) link.start(stored);
+			// a fetch importer's accounts come from discovery, with their reference: no picker for them
+			if (!fetches && !stored.disabled && stored.emits.includes('transactions')) link.start(stored);
 			ontidy?.();
 		}
 	});
@@ -152,7 +174,14 @@
 	</a>
 	<PageHeader {title} {description} />
 
-	<NoticeLine {notice} />
+	<NoticeLine notice={refused ?? notice}>
+		{#snippet action()}
+			{#if refused?.action}
+				{@const go = refused.action}
+				<ActionButton variant="link" class="h-auto p-0" href={go.path}>{go.label}</ActionButton>
+			{/if}
+		{/snippet}
+	</NoticeLine>
 
 	{#if store.loadStatus === 'loading'}
 		<p class="text-sm text-muted-foreground" aria-busy="true">Loading…</p>
@@ -246,6 +275,8 @@
 				<LinkedAccounts
 					instance={store.instance}
 					lookups={lookupsStore.lookups}
+					refreshable={canRefreshAccounts(store.instance, store.catalog)}
+					onrefresh={() => store.instance && void refresh(store.instance.id)}
 					onlink={() => store.instance && link.start(store.instance)}
 					onunlink={(accountId) =>
 						store.instance && decision.start('unlink', store.instance, accountId)}

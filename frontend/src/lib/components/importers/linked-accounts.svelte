@@ -9,12 +9,17 @@
 	let {
 		instance,
 		lookups,
+		refreshable = false,
 		onlink,
+		onrefresh,
 		onunlink
 	}: {
 		instance: ImporterInstance;
 		lookups: Lookups;
+		/** the importer fetches and emits transactions: its accounts are found at the bank */
+		refreshable?: boolean;
 		onlink: () => void;
+		onrefresh?: () => void;
 		onunlink: (accountId: number) => void;
 	} = $props();
 </script>
@@ -28,16 +33,18 @@
 		<div class="flex flex-col gap-1">
 			<h3 class="text-base font-semibold">Linked accounts</h3>
 			<p class="max-w-prose text-sm text-muted-foreground">
-				A file of this format is uploaded to one of these accounts, from the account’s page.
+				{refreshable
+					? 'The accounts of this login that are fetched into the ledger.'
+					: 'A file of this format is uploaded to one of these accounts, from the account’s page.'}
 			</p>
 		</div>
 		<ActionButton
 			variant="outline"
 			disabled={instance.disabled}
 			reason={instance.disabled ? 'Enable the importer first.' : undefined}
-			onclick={onlink}
+			onclick={refreshable ? onrefresh : onlink}
 		>
-			Link account
+			{refreshable ? 'Refresh accounts' : 'Link account'}
 		</ActionButton>
 	</div>
 	{#if instance.accounts.length === 0}

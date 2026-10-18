@@ -4,6 +4,8 @@
 	import EmptyState from '#lib/components/common/empty-state.svelte';
 	import ErrorState from '#lib/components/common/error-state.svelte';
 	import RowActions, { type RowAction } from '#lib/components/common/row-actions.svelte';
+	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
+	import { canRefreshAccounts } from '#lib/importers/discovery.js';
 	import { canReset, hasRuns, lastRunText } from '#lib/importers/list.js';
 	import { accountUrl, instanceUrl } from '#lib/importers/links.js';
 	import type { CatalogEntry, ImporterInstance } from '#lib/types/domain.js';
@@ -11,7 +13,8 @@
 
 	// The importer instances (ux/views/importers.md "The instance list"): the label (a link to its
 	// page), its importer, the accounts it links to, when it last ran and "disabled" where it is. The
-	// settings-row rule (patterns §11.3): "Edit" and "Link account" as icons, one `⋯` menu with
+	// settings-row rule (patterns §11.3): "Edit" and "Link account" ("Refresh accounts" for an
+	// importer that fetches) as icons, one `⋯` menu with
 	// Disable or Enable, Reset… (an importer that keeps state) and, last, Delete…, which stays visible
 	// but disabled, with its reason, on an instance that has run.
 	let {
@@ -27,6 +30,7 @@
 		onretry,
 		onedit,
 		onlink,
+		onrefresh,
 		ontoggle,
 		onreset,
 		ondelete
@@ -44,6 +48,8 @@
 		onretry?: () => void;
 		onedit?: (instance: ImporterInstance) => void;
 		onlink?: (instance: ImporterInstance) => void;
+		/** "Refresh accounts", for an instance of an importer that fetches */
+		onrefresh?: (instance: ImporterInstance) => void;
 		ontoggle?: (instance: ImporterInstance) => void;
 		onreset?: (instance: ImporterInstance) => void;
 		ondelete?: (instance: ImporterInstance) => void;
@@ -52,13 +58,27 @@
 	const importerName = (instance: ImporterInstance) => instance.importer;
 
 	function primary(instance: ImporterInstance): RowAction[] {
+		const edit: RowAction = {
+			verb: 'Edit',
+			label: `Edit ${instance.label}`,
+			icon: PencilIcon,
+			onselect: () => onedit?.(instance)
+		};
+		// an importer that fetches and emits transactions finds its accounts at the bank
+		if (canRefreshAccounts(instance, catalog)) {
+			return [
+				edit,
+				{
+					verb: 'Refresh accounts',
+					label: `Refresh the accounts of ${instance.label}`,
+					icon: RefreshCwIcon,
+					onselect: () => onrefresh?.(instance),
+					disabled: instance.disabled
+				}
+			];
+		}
 		return [
-			{
-				verb: 'Edit',
-				label: `Edit ${instance.label}`,
-				icon: PencilIcon,
-				onselect: () => onedit?.(instance)
-			},
+			edit,
 			{
 				verb: 'Link account',
 				label: `Link an account to ${instance.label}`,

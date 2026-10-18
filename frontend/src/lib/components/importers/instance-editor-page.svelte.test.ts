@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { catalogEntry, instance, link } from '#lib/importers/fixtures.js';
 import { account } from '#lib/ledger/fixtures.js';
 import { lookupsStore } from '#lib/stores/lookups.svelte.js';
+import { sync } from '#lib/stores/sync.svelte.js';
 import InstanceEditorPage from './instance-editor-page.svelte';
 
 // components never import the API, not even in tests: the mocks come from here
@@ -17,6 +18,12 @@ const api = vi.hoisted(() => ({
 vi.mock('#lib/api/importers.js', async (importOriginal) => ({
 	...(await importOriginal<typeof import('#lib/api/importers.js')>()),
 	...api
+}));
+
+const syncApi = vi.hoisted(() => ({ discoverAccounts: vi.fn() }));
+vi.mock('#lib/api/sync.js', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#lib/api/sync.js')>()),
+	...syncApi
 }));
 
 type Navigation = { cancel: () => void; to: { url: URL } | null; willUnload: boolean };
@@ -202,6 +209,61 @@ describe('the instance page, editing', () => {
 		expect(await screen.findByRole('dialog')).toHaveTextContent('Link an account to “Giro”');
 		expect(screen.getByText(/was added\. Link an account to use it\./)).toBeInTheDocument();
 		expect(ontidy).toHaveBeenCalledOnce();
+	});
+
+	it('offers "Refresh accounts" instead of "Link account" for a fetch importer, which starts the discovery and opens its page', async () => {
+		api.listImporters.mockResolvedValue([
+			catalogEntry({ name: 'testfetch', kind: 'fetch', presets: {} })
+		]);
+		syncApi.discoverAccounts.mockResolvedValue({ task_id: 'd1' });
+		vi.stubGlobal(
+			'EventSource',
+			class {
+				readyState = 0;
+				onerror = null;
+				addEventListener() {}
+				close() {}
+			}
+		);
+		api.listInstances.mockResolvedValue([
+			instance({ id: 4, label: 'Testbank', importer: 'testfetch', settings: {} })
+		]);
+		const onopen = vi.fn();
+		render(InstanceEditorPage, {
+			props: { instanceId: 4, onleave: vi.fn(), onopen }
+		});
+		await screen.findByRole('form', { name: 'Importer' });
+
+		expect(screen.queryByRole('button', { name: 'Link account' })).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: 'Refresh accounts' }));
+
+		await waitFor(() => expect(onopen).toHaveBeenCalledWith('/settings/importers/4/accounts'));
+		expect(syncApi.discoverAccounts).toHaveBeenCalledWith(4);
+		sync.dispose();
+	});
+
+	it('shows a refused start as a notice here, with a link to the running task when busy', async () => {
+		const { ApiError } =
+			await vi.importActual<typeof import('#lib/api/http.js')>('#lib/api/http.js');
+		api.listImporters.mockResolvedValue([
+			catalogEntry({ name: 'testfetch', kind: 'fetch', presets: {} })
+		]);
+		syncApi.discoverAccounts.mockRejectedValue(new ApiError(409, 'task_active', 'busy'));
+		api.listInstances.mockResolvedValue([
+			instance({ id: 4, label: 'Testbank', importer: 'testfetch', settings: {} })
+		]);
+		const onopen = vi.fn();
+		render(InstanceEditorPage, { props: { instanceId: 4, onleave: vi.fn(), onopen } });
+		await screen.findByRole('form', { name: 'Importer' });
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Refresh accounts' }));
+
+		expect(await screen.findByText('A sync is already running')).toBeInTheDocument();
+		expect(screen.getByRole('link', { name: 'Open the running task' })).toHaveAttribute(
+			'href',
+			'/sync'
+		);
+		expect(onopen).not.toHaveBeenCalled();
 	});
 
 	it('unlinks after a decision that says the coverage stays', async () => {

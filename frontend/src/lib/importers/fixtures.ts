@@ -1,4 +1,5 @@
 // Test fixtures for the importer screens: whole objects with the defaults a screen reads.
+import type { DiscoveryEntry } from '#lib/api/sync.js';
 import type {
 	CatalogEntry,
 	DryRunReport,
@@ -31,6 +32,31 @@ export function instance(over: Partial<ImporterInstance> = {}): ImporterInstance
 		last_run_at: null,
 		accounts: [],
 		...over
+	};
+}
+
+/** One row of a discovery: an account the login reaches, not linked and not matched by default. */
+export function discoveryEntry(
+	over: {
+		name?: string;
+		currency?: string | null;
+		kind_hint?: string | null;
+		external_ref?: string;
+		capabilities?: ('transactions' | 'balance')[];
+		linked_account_id?: number | null;
+		matches_account?: { id: number; closed: boolean } | null;
+	} = {}
+): DiscoveryEntry {
+	return {
+		account: {
+			name: over.name ?? 'Testbank Giro',
+			currency: over.currency === undefined ? 'EUR' : over.currency,
+			kind_hint: over.kind_hint === undefined ? 'checking' : over.kind_hint,
+			external_ref: over.external_ref ?? 'TB-GIRO',
+			capabilities: over.capabilities ?? ['transactions', 'balance']
+		},
+		linked_account_id: over.linked_account_id ?? null,
+		matches_account: over.matches_account ?? null
 	};
 }
 

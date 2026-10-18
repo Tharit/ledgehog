@@ -12,6 +12,7 @@
 		message = null,
 		stuck = false,
 		canRunAgain = false,
+		runAgainLabel = 'Run again',
 		onrunagain
 	}: {
 		instanceId: number;
@@ -21,6 +22,8 @@
 		stuck?: boolean;
 		/** a failure that trying again can help, and the sync is over, so a run can start */
 		canRunAgain?: boolean;
+		/** a discovery says "Try again" */
+		runAgainLabel?: string;
 		onrunagain?: () => void;
 	} = $props();
 </script>
@@ -40,6 +43,6 @@
 		</p>
 	{/if}
 	{#if canRunAgain}
-		<ActionButton variant="outline" onclick={onrunagain}>Run again</ActionButton>
+		<ActionButton variant="outline" onclick={onrunagain}>{runAgainLabel}</ActionButton>
 	{/if}
 </div>

@@ -12,6 +12,7 @@ function list(instances: ImporterInstance[], over: Record<string, unknown> = {})
 	const fn = {
 		onedit: vi.fn(),
 		onlink: vi.fn(),
+		onrefresh: vi.fn(),
 		ontoggle: vi.fn(),
 		onreset: vi.fn(),
 		ondelete: vi.fn(),
@@ -72,6 +73,21 @@ describe('ImporterList', () => {
 				.getAllByRole('menuitem')
 				.map((i) => i.textContent?.trim())
 		).toEqual(['Disable', 'Delete…']);
+	});
+
+	it('swaps "Link account" for "Refresh accounts" on an instance of a fetch importer', async () => {
+		const fn = list([
+			instance({ id: 1, label: 'Giro' }),
+			instance({ id: 3, label: 'Bank', importer: 'fints' })
+		]);
+
+		expect(screen.getByRole('button', { name: 'Link an account to Giro' })).toBeInTheDocument();
+		expect(screen.queryByRole('button', { name: 'Link an account to Bank' })).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: 'Refresh the accounts of Bank' }));
+
+		expect(fn.onrefresh).toHaveBeenCalledOnce();
+		expect(fn.onrefresh.mock.calls[0][0]).toMatchObject({ id: 3 });
+		expect(fn.onlink).not.toHaveBeenCalled();
 	});
 
 	it('offers Enable on a disabled instance and Reset… only for an importer that keeps state', async () => {

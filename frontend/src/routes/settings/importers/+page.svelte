@@ -7,12 +7,27 @@
 	import InstanceDecisionDialog from '#lib/components/importers/instance-decision-dialog.svelte';
 	import NoticeLine from '#lib/components/common/notice-line.svelte';
 	import PageHeader from '#lib/components/common/page-header.svelte';
+	import ActionButton from '#lib/components/common/action-button.svelte';
 	import { IMPORTERS_PATH, instanceUrl, newImporterUrl } from '#lib/importers/links.js';
+	import { refreshNotice, startRefresh } from '#lib/importers/refresh.js';
+	import { sync } from '#lib/stores/sync.svelte.js';
 	import { describeImporterError, doneFromSearch } from '#lib/importers/messages.js';
 	import { ImporterListStore } from '#lib/stores/importer-list.svelte.js';
+	import { refetchOnSyncEnd } from '#lib/stores/new-data.svelte.js';
 
 	const store = new ImporterListStore();
 	let adding = $state(false);
+	// a refused "Refresh accounts" stays here, as a notice; a busy one links to the running task
+	let refused = $state<ReturnType<typeof refreshNotice> | null>(null);
+
+	async function refresh(instanceId: number) {
+		refused = null;
+		const refusal = await startRefresh(instanceId, {
+			start: (id) => sync.startDiscovery(id),
+			go: (path) => goto(path)
+		});
+		if (refusal) refused = refreshNotice(refusal, sync.status === 'idle' ? '/sync' : sync.homePath);
+	}
 
 	onMount(() => {
 		// a page that saved or deleted sends what settled in the address; say it once, then tidy
@@ -24,6 +39,8 @@
 		void store.load();
 	});
 	onDestroy(() => store.dispose());
+	// not a snapshot: "last ran" moves with a sync
+	refetchOnSyncEnd(() => void store.load());
 </script>
 
 <svelte:head>
@@ -39,7 +56,14 @@
 		actionDisabled={store.status !== 'ready'}
 	/>
 
-	<NoticeLine notice={store.notice} />
+	<NoticeLine notice={refused ?? store.notice}>
+		{#snippet action()}
+			{#if refused?.action}
+				{@const go = refused.action}
+				<ActionButton variant="link" class="h-auto p-0" href={go.path}>{go.label}</ActionButton>
+			{/if}
+		{/snippet}
+	</NoticeLine>
 
 	<ImporterList
 		instances={store.instances}
@@ -54,6 +78,7 @@
 		onretry={() => store.load()}
 		onedit={(instance) => void goto(instanceUrl(instance.id))}
 		onlink={(instance) => void goto(instanceUrl(instance.id, { linkAccount: true }))}
+		onrefresh={(instance) => void refresh(instance.id)}
 		ontoggle={(instance) => store.setDisabled(instance, !instance.disabled)}
 		onreset={(instance) => store.decision.start('reset', instance)}
 		ondelete={(instance) => store.decision.start('delete', instance)}
