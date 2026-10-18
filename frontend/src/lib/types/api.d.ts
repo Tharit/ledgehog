@@ -137,6 +137,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/importers/instances/{instance_id}/discover-accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Discover Accounts
+         * @description Start a discovery, refused as a sync start is, and 409 `not_an_account_source` for an instance that
+         *     does not emit transactions.
+         */
+        post: operations["discover_accounts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/importers/instances/{instance_id}/links": {
         parameters: {
             query?: never;
@@ -833,6 +854,141 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Sync
+         * @description Start a sync, validated as a whole: nothing starts if any item is refused.
+         */
+        post: operations["start_sync"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sync/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Active Sync
+         * @description The user's running task, so a reloaded tab can reattach; 204 when there is none.
+         */
+        get: operations["active_sync"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sync/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Sync Plan
+         * @description What "sync everything" would do for the user, per instance and account.
+         */
+        get: operations["read_sync_plan"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sync/tasks/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Sync Task Status */
+        get: operations["sync_task_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sync/tasks/{task_id}/abort": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Abort Sync Task
+         * @description Stop the task: 202 while it was running (it ends once the current call returns); 200 and no
+         *     change for one that has ended.
+         */
+        post: operations["abort_sync_task"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sync/tasks/{task_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sync Task Events
+         * @description The task's events, replayed from the start (or after `Last-Event-ID`), then live.
+         */
+        get: operations["sync_task_events"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sync/tasks/{task_id}/input": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Answer Sync Prompt */
+        post: operations["answer_sync_prompt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/units/commit": {
         parameters: {
             query?: never;
@@ -970,6 +1126,13 @@ export interface components {
             booked_on: string;
             /** Type */
             type: string;
+        };
+        /** AccountMatchOut */
+        AccountMatchOut: {
+            /** Closed */
+            closed: boolean;
+            /** Id */
+            id: number;
         };
         /** AccountOut */
         AccountOut: {
@@ -1171,6 +1334,18 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ChoicePromptBody */
+        ChoicePromptBody: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "choice";
+            /** Options */
+            options: components["schemas"]["PromptOption"][];
+            /** Subject */
+            subject: string;
+        };
         /** CloseBody */
         CloseBody: {
             /**
@@ -1288,6 +1463,33 @@ export interface components {
             after: components["schemas"]["AccountDerivedOut"][];
             /** Before */
             before: components["schemas"]["AccountDerivedOut"][];
+        };
+        /** DiscoveredAccountOut */
+        DiscoveredAccountOut: {
+            /** Capabilities */
+            capabilities: ("transactions" | "balance")[];
+            /** Currency */
+            currency: string | null;
+            /** External Ref */
+            external_ref: string;
+            /** Kind Hint */
+            kind_hint: string | null;
+            /** Name */
+            name: string;
+        };
+        /** DiscoveryEntryOut */
+        DiscoveryEntryOut: {
+            account: components["schemas"]["DiscoveredAccountOut"];
+            /** Linked Account Id */
+            linked_account_id: number | null;
+            matches_account: components["schemas"]["AccountMatchOut"] | null;
+        };
+        /** DiscoveryResultOut */
+        DiscoveryResultOut: {
+            /** Accounts */
+            accounts: components["schemas"]["DiscoveryEntryOut"][];
+            /** Instance Id */
+            instance_id: number;
         };
         /** DocumentDetailOut */
         DocumentDetailOut: {
@@ -1577,6 +1779,24 @@ export interface components {
             /** Rules */
             rules: number;
         };
+        /** InstanceFailedEvent */
+        InstanceFailedEvent: {
+            /** Code */
+            code: string;
+            /** Instance Id */
+            instance_id: number;
+            /** Message */
+            message: string;
+            /** Retryable */
+            retryable: boolean;
+            /** Run Ids */
+            run_ids: number[];
+        };
+        /** InstanceStartedEvent */
+        InstanceStartedEvent: {
+            /** Instance Id */
+            instance_id: number;
+        };
         /** LinkAccount */
         LinkAccount: {
             /** Account Id */
@@ -1793,6 +2013,40 @@ export interface components {
             /** Payees */
             payees: components["schemas"]["PayeeOut"][];
         };
+        /** PlanAccountOut */
+        PlanAccountOut: {
+            /** Account Id */
+            account_id: number;
+            /** Editable */
+            editable: boolean;
+            /** External Ref */
+            external_ref: string;
+            /**
+             * Since
+             * Format: date
+             */
+            since: string;
+            /**
+             * Since Source
+             * @enum {string}
+             */
+            since_source: "coverage" | "latest_entry" | "importer_default";
+        };
+        /** PlanInstanceOut */
+        PlanInstanceOut: {
+            /** Accounts */
+            accounts: components["schemas"]["PlanAccountOut"][];
+            /** Busy */
+            busy: boolean;
+            /** Documents Since */
+            documents_since: string | null;
+            /** Importer */
+            importer: string;
+            /** Instance Id */
+            instance_id: number;
+            /** Label */
+            label: string;
+        };
         /** PreviewListOut */
         PreviewListOut: {
             /** Rows */
@@ -1827,6 +2081,42 @@ export interface components {
             /** Shadowed By Rule Id */
             shadowed_by_rule_id: number | null;
             source: components["schemas"]["SourceTransactionOut"] | null;
+        };
+        /** PromptEvent */
+        PromptEvent: {
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Instance Id */
+            instance_id: number;
+            /**
+             * Prompt
+             * @default null
+             */
+            prompt: (components["schemas"]["SecretPromptBody"] | components["schemas"]["TanPromptBody"] | components["schemas"]["ChoicePromptBody"] | components["schemas"]["TextPromptBody"]) | null;
+            /** Prompt Id */
+            prompt_id: string;
+            /** Run Id */
+            run_id: number | null;
+        };
+        /** PromptOption */
+        PromptOption: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+        };
+        /** PromptResolvedEvent */
+        PromptResolvedEvent: {
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "answered" | "confirmed" | "cancelled" | "expired" | "aborted";
+            /** Prompt Id */
+            prompt_id: string;
         };
         /** ProvenanceOut */
         ProvenanceOut: {
@@ -2054,6 +2344,44 @@ export interface components {
             settle: components["schemas"]["SettleOut"] | null;
             settle_breakdown: components["schemas"]["SettleBreakdownOut"] | null;
         };
+        /** RunFailedEvent */
+        RunFailedEvent: {
+            /** Account Id */
+            account_id: number | null;
+            /** Code */
+            code: string;
+            /** Instance Id */
+            instance_id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "transactions" | "documents";
+            /** Message */
+            message: string;
+            /** Retryable */
+            retryable: boolean;
+            /** Run Id */
+            run_id: number;
+        };
+        /** RunFinishedEvent */
+        RunFinishedEvent: {
+            /** Account Id */
+            account_id: number | null;
+            /** Instance Id */
+            instance_id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "transactions" | "documents";
+            /** Run Id */
+            run_id: number;
+            /** Stats */
+            stats: {
+                [key: string]: unknown;
+            };
+        };
         /** RunRefOut */
         RunRefOut: {
             /** Finished At */
@@ -2071,6 +2399,35 @@ export interface components {
              * Format: date-time
              */
             started_at: string;
+        };
+        /** RunStartedEvent */
+        RunStartedEvent: {
+            /** Account Id */
+            account_id: number | null;
+            /** Instance Id */
+            instance_id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "transactions" | "documents";
+            /** Run Id */
+            run_id: number;
+            /**
+             * Since
+             * Format: date
+             */
+            since: string;
+        };
+        /** SecretPromptBody */
+        SecretPromptBody: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "secret";
+            /** Subject */
+            subject: string;
         };
         /** SetBody */
         SetBody: {
@@ -2227,6 +2584,23 @@ export interface components {
             /** Starts On */
             starts_on: string | null;
         };
+        /** StartSync */
+        StartSync: {
+            /** Items */
+            items?: components["schemas"]["SyncItem"][] | null;
+        };
+        /** StartedDiscovery */
+        StartedDiscovery: {
+            /** Task Id */
+            task_id: string;
+        };
+        /** StartedSync */
+        StartedSync: {
+            /** Busy */
+            busy: number[];
+            /** Task Id */
+            task_id: string;
+        };
         /** StatementOut */
         StatementOut: {
             /** Items */
@@ -2292,6 +2666,37 @@ export interface components {
             run_id: number | null;
             /** Value On */
             value_on: string | null;
+        };
+        /**
+         * SyncEventPayloads
+         * @description Not a body: the nine events of `GET /api/sync/tasks/{id}/events`, by name. A frame's `event:` is a
+         *     key of this object and its `data:` is the JSON of that key's value.
+         */
+        SyncEventPayloads: {
+            instance_failed: components["schemas"]["InstanceFailedEvent"];
+            instance_started: components["schemas"]["InstanceStartedEvent"];
+            prompt: components["schemas"]["PromptEvent"];
+            prompt_resolved: components["schemas"]["PromptResolvedEvent"];
+            run_failed: components["schemas"]["RunFailedEvent"];
+            run_finished: components["schemas"]["RunFinishedEvent"];
+            run_started: components["schemas"]["RunStartedEvent"];
+            task_ended: components["schemas"]["TaskEndedEvent"];
+            task_started: components["schemas"]["TaskStartedEvent"];
+        };
+        /**
+         * SyncItem
+         * @description One thing to fetch: an instance, one account of it (with a `since` only if it has no coverage),
+         *     or one kind of it.
+         */
+        SyncItem: {
+            /** Account Id */
+            account_id?: number | null;
+            /** Instance Id */
+            instance_id: number;
+            /** Kind */
+            kind?: ("transactions" | "documents") | null;
+            /** Since */
+            since?: string | null;
         };
         /**
          * TagApplyBody
@@ -2432,6 +2837,121 @@ export interface components {
         TagsOut: {
             /** Tags */
             tags: components["schemas"]["TagOut"][];
+        };
+        /** TanPromptBody */
+        TanPromptBody: {
+            /** Challenge */
+            challenge: string;
+            /**
+             * Image B64
+             * @default null
+             */
+            image_b64: string | null;
+            /**
+             * Image Mime
+             * @default null
+             */
+            image_mime: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "tan";
+            /**
+             * Medium
+             * @enum {string}
+             */
+            medium: "text" | "image" | "decoupled";
+            /** Method */
+            method: string | null;
+        };
+        /** TaskEndedEvent */
+        TaskEndedEvent: {
+            /** Failed */
+            failed: number;
+            /** Not Started */
+            not_started: number[];
+            /** Ok */
+            ok: number;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "completed" | "aborted" | "abandoned" | "crashed";
+        };
+        /**
+         * TaskInput
+         * @description An answer to the open prompt, or a cancel of it. `value` is a secret: never echoed or logged.
+         */
+        TaskInput: {
+            /**
+             * Cancel
+             * @default false
+             */
+            cancel: boolean;
+            /** Prompt Id */
+            prompt_id: string;
+            /** Value */
+            value?: string | null;
+        };
+        /** TaskStartedEvent */
+        TaskStartedEvent: {
+            /** Instances */
+            instances: components["schemas"]["TaskStartedInstance"][];
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "sync" | "discovery";
+        };
+        /** TaskStartedInstance */
+        TaskStartedInstance: {
+            /** Instance Id */
+            instance_id: number;
+            /** Items */
+            items: components["schemas"]["TaskStartedItem"][];
+        };
+        /** TaskStartedItem */
+        TaskStartedItem: {
+            /** Account Id */
+            account_id: number | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "transactions" | "documents";
+        };
+        /** TaskStatusOut */
+        TaskStatusOut: {
+            /** Aborting */
+            aborting: boolean;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "sync" | "discovery";
+            /** Last Event Id */
+            last_event_id: number;
+            /** Outcome */
+            outcome: ("completed" | "aborted" | "abandoned" | "crashed") | null;
+            result: components["schemas"]["DiscoveryResultOut"] | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "running" | "ended";
+            /** Task Id */
+            task_id: string;
+        };
+        /** TextPromptBody */
+        TextPromptBody: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "text";
+            /** Subject */
+            subject: string;
         };
         /** UnitCommitConsequenceOut */
         UnitCommitConsequenceOut: {
@@ -3517,6 +4037,64 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    discover_accounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                instance_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StartedDiscovery"];
                 };
             };
             /** @description Not signed in (or wrong login or password). */
@@ -6389,6 +6967,359 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    start_sync: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["StartSync"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StartedSync"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    active_sync: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskStatusOut"];
+                };
+            };
+            /** @description No task is running. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    read_sync_plan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanInstanceOut"][];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    sync_task_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskStatusOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    abort_sync_task: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskStatusOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    sync_task_events: {
+        parameters: {
+            query?: never;
+            header?: {
+                "last-event-id"?: string | null;
+            };
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Server-Sent Events: `retry: 3000`, then one frame per event (`id`, `event`, `data`), a `: keepalive` comment while idle, closed after `task_ended`. `event` is a key of `SyncEventPayloads` and `data` the JSON of its value. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                    "text/event-stream": components["schemas"]["SyncEventPayloads"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    answer_sync_prompt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflicts with the current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };

@@ -42,6 +42,24 @@
         "title": "AccountDerivedOut",
         "type": "object"
       },
+      "AccountMatchOut": {
+        "properties": {
+          "closed": {
+            "title": "Closed",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "closed"
+        ],
+        "title": "AccountMatchOut",
+        "type": "object"
+      },
       "AccountOut": {
         "properties": {
           "anchored": {
@@ -727,6 +745,33 @@
         "title": "CheckOut",
         "type": "object"
       },
+      "ChoicePromptBody": {
+        "properties": {
+          "kind": {
+            "const": "choice",
+            "title": "Kind",
+            "type": "string"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/PromptOption"
+            },
+            "title": "Options",
+            "type": "array"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "subject",
+          "options"
+        ],
+        "title": "ChoicePromptBody",
+        "type": "object"
+      },
       "CloseBody": {
         "additionalProperties": false,
         "properties": {
@@ -1057,6 +1102,116 @@
           "after"
         ],
         "title": "DerivedChangeOut",
+        "type": "object"
+      },
+      "DiscoveredAccountOut": {
+        "properties": {
+          "capabilities": {
+            "items": {
+              "enum": [
+                "transactions",
+                "balance"
+              ],
+              "type": "string"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "external_ref": {
+            "title": "External Ref",
+            "type": "string"
+          },
+          "kind_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind Hint"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "external_ref",
+          "name",
+          "currency",
+          "kind_hint",
+          "capabilities"
+        ],
+        "title": "DiscoveredAccountOut",
+        "type": "object"
+      },
+      "DiscoveryEntryOut": {
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/DiscoveredAccountOut"
+          },
+          "linked_account_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linked Account Id"
+          },
+          "matches_account": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountMatchOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "account",
+          "linked_account_id",
+          "matches_account"
+        ],
+        "title": "DiscoveryEntryOut",
+        "type": "object"
+      },
+      "DiscoveryResultOut": {
+        "properties": {
+          "accounts": {
+            "items": {
+              "$ref": "#/components/schemas/DiscoveryEntryOut"
+            },
+            "title": "Accounts",
+            "type": "array"
+          },
+          "instance_id": {
+            "title": "Instance Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "instance_id",
+          "accounts"
+        ],
+        "title": "DiscoveryResultOut",
         "type": "object"
       },
       "DocumentDetailOut": {
@@ -2014,6 +2169,55 @@
         "title": "HeldOut",
         "type": "object"
       },
+      "InstanceFailedEvent": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "instance_id": {
+            "title": "Instance Id",
+            "type": "integer"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "retryable": {
+            "title": "Retryable",
+            "type": "boolean"
+          },
+          "run_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Run Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "instance_id",
+          "code",
+          "message",
+          "retryable",
+          "run_ids"
+        ],
+        "title": "InstanceFailedEvent",
+        "type": "object"
+      },
+      "InstanceStartedEvent": {
+        "properties": {
+          "instance_id": {
+            "title": "Instance Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "instance_id"
+        ],
+        "title": "InstanceStartedEvent",
+        "type": "object"
+      },
       "LinkAccount": {
         "additionalProperties": false,
         "properties": {
@@ -2732,6 +2936,94 @@
         "title": "PayeesOut",
         "type": "object"
       },
+      "PlanAccountOut": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "integer"
+          },
+          "editable": {
+            "title": "Editable",
+            "type": "boolean"
+          },
+          "external_ref": {
+            "title": "External Ref",
+            "type": "string"
+          },
+          "since": {
+            "format": "date",
+            "title": "Since",
+            "type": "string"
+          },
+          "since_source": {
+            "enum": [
+              "coverage",
+              "latest_entry",
+              "importer_default"
+            ],
+            "title": "Since Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "account_id",
+          "external_ref",
+          "since",
+          "since_source",
+          "editable"
+        ],
+        "title": "PlanAccountOut",
+        "type": "object"
+      },
+      "PlanInstanceOut": {
+        "properties": {
+          "accounts": {
+            "items": {
+              "$ref": "#/components/schemas/PlanAccountOut"
+            },
+            "title": "Accounts",
+            "type": "array"
+          },
+          "busy": {
+            "title": "Busy",
+            "type": "boolean"
+          },
+          "documents_since": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Documents Since"
+          },
+          "importer": {
+            "title": "Importer",
+            "type": "string"
+          },
+          "instance_id": {
+            "title": "Instance Id",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "instance_id",
+          "importer",
+          "label",
+          "busy",
+          "accounts",
+          "documents_since"
+        ],
+        "title": "PlanInstanceOut",
+        "type": "object"
+      },
       "PreviewListOut": {
         "properties": {
           "rows": {
@@ -2852,6 +3144,119 @@
           "source"
         ],
         "title": "PreviewRowOut",
+        "type": "object"
+      },
+      "PromptEvent": {
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "instance_id": {
+            "title": "Instance Id",
+            "type": "integer"
+          },
+          "prompt": {
+            "anyOf": [
+              {
+                "discriminator": {
+                  "mapping": {
+                    "choice": "#/components/schemas/ChoicePromptBody",
+                    "secret": "#/components/schemas/SecretPromptBody",
+                    "tan": "#/components/schemas/TanPromptBody",
+                    "text": "#/components/schemas/TextPromptBody"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/SecretPromptBody"
+                  },
+                  {
+                    "$ref": "#/components/schemas/TanPromptBody"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ChoicePromptBody"
+                  },
+                  {
+                    "$ref": "#/components/schemas/TextPromptBody"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Prompt"
+          },
+          "prompt_id": {
+            "title": "Prompt Id",
+            "type": "string"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          }
+        },
+        "required": [
+          "prompt_id",
+          "instance_id",
+          "run_id",
+          "expires_at"
+        ],
+        "title": "PromptEvent",
+        "type": "object"
+      },
+      "PromptOption": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "PromptOption",
+        "type": "object"
+      },
+      "PromptResolvedEvent": {
+        "properties": {
+          "outcome": {
+            "enum": [
+              "answered",
+              "confirmed",
+              "cancelled",
+              "expired",
+              "aborted"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "prompt_id": {
+            "title": "Prompt Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "prompt_id",
+          "outcome"
+        ],
+        "title": "PromptResolvedEvent",
         "type": "object"
       },
       "ProvenanceOut": {
@@ -3672,6 +4077,105 @@
         "title": "RuleWriteOut",
         "type": "object"
       },
+      "RunFailedEvent": {
+        "properties": {
+          "account_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "instance_id": {
+            "title": "Instance Id",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "transactions",
+              "documents"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "retryable": {
+            "title": "Retryable",
+            "type": "boolean"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "run_id",
+          "instance_id",
+          "account_id",
+          "kind",
+          "code",
+          "message",
+          "retryable"
+        ],
+        "title": "RunFailedEvent",
+        "type": "object"
+      },
+      "RunFinishedEvent": {
+        "properties": {
+          "account_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
+          "instance_id": {
+            "title": "Instance Id",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "transactions",
+              "documents"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "integer"
+          },
+          "stats": {
+            "additionalProperties": true,
+            "title": "Stats",
+            "type": "object"
+          }
+        },
+        "required": [
+          "run_id",
+          "instance_id",
+          "account_id",
+          "kind",
+          "stats"
+        ],
+        "title": "RunFinishedEvent",
+        "type": "object"
+      },
       "RunRefOut": {
         "properties": {
           "finished_at": {
@@ -3731,6 +4235,70 @@
           "finished_at"
         ],
         "title": "RunRefOut",
+        "type": "object"
+      },
+      "RunStartedEvent": {
+        "properties": {
+          "account_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
+          "instance_id": {
+            "title": "Instance Id",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "transactions",
+              "documents"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "integer"
+          },
+          "since": {
+            "format": "date",
+            "title": "Since",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "instance_id",
+          "account_id",
+          "kind",
+          "since"
+        ],
+        "title": "RunStartedEvent",
+        "type": "object"
+      },
+      "SecretPromptBody": {
+        "properties": {
+          "kind": {
+            "const": "secret",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "subject"
+        ],
+        "title": "SecretPromptBody",
         "type": "object"
       },
       "SetBody": {
@@ -4287,6 +4855,61 @@
         "title": "SpanOut",
         "type": "object"
       },
+      "StartSync": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SyncItem"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items"
+          }
+        },
+        "title": "StartSync",
+        "type": "object"
+      },
+      "StartedDiscovery": {
+        "properties": {
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id"
+        ],
+        "title": "StartedDiscovery",
+        "type": "object"
+      },
+      "StartedSync": {
+        "properties": {
+          "busy": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Busy",
+            "type": "array"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "busy"
+        ],
+        "title": "StartedSync",
+        "type": "object"
+      },
       "StatementOut": {
         "properties": {
           "items": {
@@ -4512,6 +5135,108 @@
           "balance"
         ],
         "title": "StatementSourceOut",
+        "type": "object"
+      },
+      "SyncEventPayloads": {
+        "description": "Not a body: the nine events of `GET /api/sync/tasks/{id}/events`, by name. A frame's `event:` is a\nkey of this object and its `data:` is the JSON of that key's value.",
+        "properties": {
+          "instance_failed": {
+            "$ref": "#/components/schemas/InstanceFailedEvent"
+          },
+          "instance_started": {
+            "$ref": "#/components/schemas/InstanceStartedEvent"
+          },
+          "prompt": {
+            "$ref": "#/components/schemas/PromptEvent"
+          },
+          "prompt_resolved": {
+            "$ref": "#/components/schemas/PromptResolvedEvent"
+          },
+          "run_failed": {
+            "$ref": "#/components/schemas/RunFailedEvent"
+          },
+          "run_finished": {
+            "$ref": "#/components/schemas/RunFinishedEvent"
+          },
+          "run_started": {
+            "$ref": "#/components/schemas/RunStartedEvent"
+          },
+          "task_ended": {
+            "$ref": "#/components/schemas/TaskEndedEvent"
+          },
+          "task_started": {
+            "$ref": "#/components/schemas/TaskStartedEvent"
+          }
+        },
+        "required": [
+          "task_started",
+          "instance_started",
+          "run_started",
+          "prompt",
+          "prompt_resolved",
+          "run_finished",
+          "run_failed",
+          "instance_failed",
+          "task_ended"
+        ],
+        "title": "SyncEventPayloads",
+        "type": "object"
+      },
+      "SyncItem": {
+        "additionalProperties": false,
+        "description": "One thing to fetch: an instance, one account of it (with a `since` only if it has no coverage),\nor one kind of it.",
+        "properties": {
+          "account_id": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 9007199254740992.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
+          "instance_id": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 9007199254740992.0,
+            "title": "Instance Id",
+            "type": "integer"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "transactions",
+                  "documents"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          }
+        },
+        "required": [
+          "instance_id"
+        ],
+        "title": "SyncItem",
         "type": "object"
       },
       "TagApplyBody": {
@@ -4954,6 +5679,305 @@
           "tags"
         ],
         "title": "TagsOut",
+        "type": "object"
+      },
+      "TanPromptBody": {
+        "properties": {
+          "challenge": {
+            "title": "Challenge",
+            "type": "string"
+          },
+          "image_b64": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Image B64"
+          },
+          "image_mime": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Image Mime"
+          },
+          "kind": {
+            "const": "tan",
+            "title": "Kind",
+            "type": "string"
+          },
+          "medium": {
+            "enum": [
+              "text",
+              "image",
+              "decoupled"
+            ],
+            "title": "Medium",
+            "type": "string"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method"
+          }
+        },
+        "required": [
+          "kind",
+          "medium",
+          "challenge",
+          "method"
+        ],
+        "title": "TanPromptBody",
+        "type": "object"
+      },
+      "TaskEndedEvent": {
+        "properties": {
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "not_started": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Not Started",
+            "type": "array"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "integer"
+          },
+          "outcome": {
+            "enum": [
+              "completed",
+              "aborted",
+              "abandoned",
+              "crashed"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          }
+        },
+        "required": [
+          "outcome",
+          "ok",
+          "failed",
+          "not_started"
+        ],
+        "title": "TaskEndedEvent",
+        "type": "object"
+      },
+      "TaskInput": {
+        "additionalProperties": false,
+        "description": "An answer to the open prompt, or a cancel of it. `value` is a secret: never echoed or logged.",
+        "properties": {
+          "cancel": {
+            "default": false,
+            "title": "Cancel",
+            "type": "boolean"
+          },
+          "prompt_id": {
+            "title": "Prompt Id",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "format": "password",
+                "type": "string",
+                "writeOnly": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "prompt_id"
+        ],
+        "title": "TaskInput",
+        "type": "object"
+      },
+      "TaskStartedEvent": {
+        "properties": {
+          "instances": {
+            "items": {
+              "$ref": "#/components/schemas/TaskStartedInstance"
+            },
+            "title": "Instances",
+            "type": "array"
+          },
+          "kind": {
+            "enum": [
+              "sync",
+              "discovery"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "instances"
+        ],
+        "title": "TaskStartedEvent",
+        "type": "object"
+      },
+      "TaskStartedInstance": {
+        "properties": {
+          "instance_id": {
+            "title": "Instance Id",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TaskStartedItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "instance_id",
+          "items"
+        ],
+        "title": "TaskStartedInstance",
+        "type": "object"
+      },
+      "TaskStartedItem": {
+        "properties": {
+          "account_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
+          "kind": {
+            "enum": [
+              "transactions",
+              "documents"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "account_id",
+          "kind"
+        ],
+        "title": "TaskStartedItem",
+        "type": "object"
+      },
+      "TaskStatusOut": {
+        "properties": {
+          "aborting": {
+            "title": "Aborting",
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "sync",
+              "discovery"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "last_event_id": {
+            "title": "Last Event Id",
+            "type": "integer"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "enum": [
+                  "completed",
+                  "aborted",
+                  "abandoned",
+                  "crashed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DiscoveryResultOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "enum": [
+              "running",
+              "ended"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "kind",
+          "status",
+          "aborting",
+          "outcome",
+          "last_event_id",
+          "result"
+        ],
+        "title": "TaskStatusOut",
+        "type": "object"
+      },
+      "TextPromptBody": {
+        "properties": {
+          "kind": {
+            "const": "text",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "subject"
+        ],
+        "title": "TextPromptBody",
         "type": "object"
       },
       "UnitCommitConsequenceOut": {
@@ -7683,6 +8707,78 @@
           }
         },
         "summary": "Update Instance"
+      }
+    },
+    "/api/importers/instances/{instance_id}/discover-accounts": {
+      "post": {
+        "description": "Start a discovery, refused as a sync start is, and 409 `not_an_account_source` for an instance that\ndoes not emit transactions.",
+        "operationId": "discover_accounts",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "instance_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740992,
+              "title": "Instance Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartedDiscovery"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflicts with the current state."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Discover Accounts"
       }
     },
     "/api/importers/instances/{instance_id}/links": {
@@ -11780,6 +12876,446 @@
           }
         },
         "summary": "Login"
+      }
+    },
+    "/api/sync": {
+      "post": {
+        "description": "Start a sync, validated as a whole: nothing starts if any item is refused.",
+        "operationId": "start_sync",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/StartSync"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartedSync"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflicts with the current state."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Start Sync"
+      }
+    },
+    "/api/sync/active": {
+      "get": {
+        "description": "The user's running task, so a reloaded tab can reattach; 204 when there is none.",
+        "operationId": "active_sync",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskStatusOut",
+                  "title": "Response Active Sync"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "204": {
+            "description": "No task is running."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Active Sync"
+      }
+    },
+    "/api/sync/plan": {
+      "get": {
+        "description": "What \"sync everything\" would do for the user, per instance and account.",
+        "operationId": "read_sync_plan",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PlanInstanceOut"
+                  },
+                  "title": "Response Read Sync Plan",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Read Sync Plan"
+      }
+    },
+    "/api/sync/tasks/{task_id}": {
+      "get": {
+        "operationId": "sync_task_status",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Sync Task Status"
+      }
+    },
+    "/api/sync/tasks/{task_id}/abort": {
+      "post": {
+        "description": "Stop the task: 202 while it was running (it ends once the current call returns); 200 and no\nchange for one that has ended.",
+        "operationId": "abort_sync_task",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflicts with the current state."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Abort Sync Task"
+      }
+    },
+    "/api/sync/tasks/{task_id}/events": {
+      "get": {
+        "description": "The task's events, replayed from the start (or after `Last-Event-ID`), then live.",
+        "operationId": "sync_task_events",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "last-event-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncEventPayloads"
+                }
+              }
+            },
+            "description": "Server-Sent Events: `retry: 3000`, then one frame per event (`id`, `event`, `data`), a `: keepalive` comment while idle, closed after `task_ended`. `event` is a key of `SyncEventPayloads` and `data` the JSON of its value."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Sync Task Events"
+      }
+    },
+    "/api/sync/tasks/{task_id}/input": {
+      "post": {
+        "operationId": "answer_sync_prompt",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflicts with the current state."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Answer Sync Prompt"
       }
     },
     "/api/units/commit": {
