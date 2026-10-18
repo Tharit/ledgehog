@@ -4,9 +4,21 @@ import {
 	formatDateRange,
 	formatInstant,
 	formatMonth,
+	formatTime,
 	relativeDay,
 	todayIso
 } from './dates.js';
+
+describe('formatTime', () => {
+	it('gives the time of day in the household zone, in the locale', () => {
+		expect(formatTime('2026-10-18T12:32:00Z', 'Europe/Berlin', 'de')).toBe('14:32');
+		expect(formatTime('2026-10-18T12:32:00Z', 'UTC', 'de')).toBe('12:32');
+	});
+
+	it('rejects what is not an instant', () => {
+		expect(() => formatTime('soon', 'UTC')).toThrow(RangeError);
+	});
+});
 
 describe('formatDate', () => {
 	it('formats a calendar date in the locale', () => {

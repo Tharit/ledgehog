@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { PromptBody } from '#lib/api/sync.js';
-import { promptFieldLabel, promptMoment, promptTitle, promptVerb, subjectLabel } from './prompts.js';
+import {
+	promptFieldLabel,
+	promptMoment,
+	promptTitle,
+	promptVerb,
+	subjectLabel
+} from './prompts.js';
 
 const tan = (medium: 'text' | 'image' | 'decoupled'): PromptBody => ({
 	kind: 'tan',
@@ -44,7 +50,9 @@ describe('the verb of a prompt', () => {
 
 describe('the title and the field of a prompt', () => {
 	it('is titled by what it asks and the login', () => {
-		expect(promptTitle({ kind: 'secret', subject: 'pin' }, 'Giro login')).toBe('PIN for Giro login');
+		expect(promptTitle({ kind: 'secret', subject: 'pin' }, 'Giro login')).toBe(
+			'PIN for Giro login'
+		);
 		expect(promptTitle({ kind: 'secret', subject: 'password' }, 'Giro login')).toBe(
 			'Password for Giro login'
 		);

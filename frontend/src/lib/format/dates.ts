@@ -40,6 +40,13 @@ export function formatInstant(iso: string, timeZone: string, locale = 'en'): str
 	return format.format(instant);
 }
 
+/** The time of day of an instant in the household's zone ("14:32"), for a deadline today. */
+export function formatTime(iso: string, timeZone: string, locale = 'en'): string {
+	const instant = new Date(iso);
+	if (Number.isNaN(instant.getTime())) throw new RangeError(`not an instant: ${iso}`);
+	return new Intl.DateTimeFormat(locale, { timeStyle: 'short', timeZone }).format(instant);
+}
+
 /** Today's calendar date in the household's zone. */
 export function todayIso(timeZone: string, now: Date = new Date()): IsoDate {
 	const parts = new Intl.DateTimeFormat('en-CA', {

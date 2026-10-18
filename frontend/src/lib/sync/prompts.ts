@@ -2,6 +2,7 @@
 // subject, the verb of each kind and the words of a dialog's title and description. A bank's own
 // words (the challenge, the method, the options) are shown as given; an unknown subject too.
 import type { PromptBody } from '#lib/api/sync.js';
+import { promptItem, type TaskView } from './events.js';
 
 const SUBJECTS: Record<string, string> = {
 	pin: 'PIN',
@@ -57,6 +58,22 @@ export function promptFieldLabel(body: PromptBody): string | null {
 /** The moment, for the description: "Signing in." or "Fetching Giro." */
 export function promptMoment(runId: number | null, what: string | null): string {
 	return runId === null || what === null ? 'Signing in.' : `Fetching ${what}.`;
+}
+
+/** The moment of the open prompt of a view: the item of its run, or the sign-in. */
+export function viewMoment(
+	view: TaskView,
+	accountName: (accountId: number) => string | null
+): string {
+	const prompt = view.prompt;
+	if (!prompt) return '';
+	const item = promptItem(view);
+	if (!item) return promptMoment(prompt.runId, null);
+	const what =
+		item.kind === 'documents'
+			? 'documents'
+			: (item.accountId !== null && accountName(item.accountId)) || 'the account';
+	return promptMoment(prompt.runId, what);
 }
 
 /** What cancelling does, said in the dialog. */
