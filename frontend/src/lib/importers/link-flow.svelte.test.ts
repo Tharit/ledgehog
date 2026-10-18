@@ -34,7 +34,7 @@ describe('LinkAccountFlow', () => {
 
 		await flow.confirm();
 
-		expect(vi.mocked(linkAccount).mock.calls[1]).toEqual([3, 7]);
+		expect(vi.mocked(linkAccount).mock.calls[1]).toEqual([3, 7, {}]);
 		expect(host.linked).toHaveBeenCalledOnce();
 		const [now, accountId] = host.linked.mock.calls[0];
 		expect(accountId).toBe(7);
@@ -69,6 +69,37 @@ describe('LinkAccountFlow', () => {
 		expect(flow.error).toBe('This account is already linked to this importer.');
 		expect(flow.open).toBe(true);
 		expect(host.linked).not.toHaveBeenCalled();
+	});
+
+	it('with the account fixed by discovery: shows the dry run at once and sends the discovered reference with both calls', async () => {
+		vi.mocked(linkAccount)
+			.mockResolvedValueOnce(link({ account_id: 7, user_authored_count: 3 }))
+			.mockResolvedValueOnce(link({ dry_run: false, external_ref: 'DE01' }));
+		const host = { linked: vi.fn(), gone: vi.fn() };
+		const flow = new LinkAccountFlow(host);
+
+		flow.start(instance({ id: 3, label: 'Testbank' }), {
+			accountId: 7,
+			name: 'Giro',
+			externalRef: 'DE01'
+		});
+		await vi.waitFor(() => expect(flow.canLink).toBe(true));
+
+		expect(flow.accountId).toBe(7);
+		expect(vi.mocked(linkAccount).mock.calls[0]).toEqual([
+			3,
+			7,
+			{ dryRun: true, externalRef: 'DE01' }
+		]);
+		expect(flow.preview?.user_authored_count).toBe(3);
+
+		await flow.confirm();
+
+		expect(vi.mocked(linkAccount).mock.calls[1]).toEqual([3, 7, { externalRef: 'DE01' }]);
+		expect(host.linked).toHaveBeenCalledOnce();
+		expect(host.linked.mock.calls[0][0].accounts).toEqual([
+			{ account_id: 7, external_ref: 'DE01' }
+		]);
 	});
 
 	it('says why the preview failed, without a verb to press', async () => {

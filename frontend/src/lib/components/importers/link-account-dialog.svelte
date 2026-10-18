@@ -2,6 +2,7 @@
 	import ActionDialog from '#lib/components/common/action-dialog.svelte';
 	import AccountSelect from '#lib/components/common/account-select.svelte';
 	import Field from '#lib/components/common/field.svelte';
+	import { Input } from '#lib/components/ui/input/index.js';
 	import { formatCount, formatDateRange } from '#lib/format/index.js';
 	import type { LinkAccountFlow } from '#lib/importers/link-flow.svelte.js';
 	import type { Account } from '#lib/types/domain.js';
@@ -24,7 +25,9 @@
 	open={flow.open}
 	onclose={() => flow.close()}
 	title={`Link an account to “${flow.instance?.label ?? ''}”`}
-	description="Uploads of this format go to the account you choose."
+	description={flow.fixed
+		? 'The account the bank reported, linked to this login.'
+		: 'Uploads of this format go to the account you choose.'}
 	verb="Link"
 	busyVerb="Linking…"
 	busy={flow.busy}
@@ -32,21 +35,29 @@
 	onsubmit={() => void flow.confirm()}
 	feedback={flow.error ? { kind: 'error', text: flow.error } : null}
 >
-	<Field
-		label="Account"
-		hint={accounts.length === 0 ? 'Every open account is linked already.' : undefined}
-	>
-		{#snippet children(control)}
-			<AccountSelect
-				{...control}
-				{accounts}
-				label="Account"
-				value={flow.accountId}
-				disabled={flow.busy}
-				onchange={(id) => void flow.choose(id)}
-			/>
-		{/snippet}
-	</Field>
+	{#if flow.fixed}
+		<Field label="Account">
+			{#snippet children(control)}
+				<Input {...control} value={flow.fixed?.name ?? ''} readonly autocomplete="off" />
+			{/snippet}
+		</Field>
+	{:else}
+		<Field
+			label="Account"
+			hint={accounts.length === 0 ? 'Every open account is linked already.' : undefined}
+		>
+			{#snippet children(control)}
+				<AccountSelect
+					{...control}
+					{accounts}
+					label="Account"
+					value={flow.accountId}
+					disabled={flow.busy}
+					onchange={(id) => void flow.choose(id)}
+				/>
+			{/snippet}
+		</Field>
+	{/if}
 
 	{#if flow.checking}
 		<p class="text-muted-foreground" aria-busy="true">Checking what linking would do…</p>

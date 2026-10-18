@@ -96,6 +96,16 @@ describe('links', () => {
 		expect(JSON.parse(init.body as string)).toEqual({ account_id: 7, dry_run: true });
 	});
 
+	it('sends the reference discovery found when there is one', async () => {
+		answer({ user_authored_count: 0 });
+		await linkAccount(2, 7, { externalRef: 'DE01 0001' });
+		expect(JSON.parse(last()[1].body as string)).toEqual({
+			account_id: 7,
+			dry_run: false,
+			external_ref: 'DE01 0001'
+		});
+	});
+
 	it('unlinks an account', async () => {
 		answer({ settle: {} });
 		await unlinkAccount(2, 7);

@@ -38,8 +38,8 @@ export class AddAccountFlow {
 
 	/** Reset for a fresh dialog: nothing of an earlier one survives (patterns §11.2). */
 	start(options: AddAccountOptions = {}): void {
-		this.name = '';
-		this.externalRef = '';
+		this.name = options.name ?? '';
+		this.externalRef = options.externalRef ?? '';
 		this.kind = options.kind ?? DEFAULT_KIND;
 		this.locked = options.currency !== undefined;
 		this.currency = options.currency ?? session.config?.base_currency ?? this.currencies[0] ?? '';

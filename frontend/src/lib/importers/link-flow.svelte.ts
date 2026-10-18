@@ -17,10 +17,15 @@ export type LinkHost = {
 	gone: (instance: ImporterInstance) => void;
 };
 
+/** An account discovery matched: shown as given, linked with the reference the bank reported. */
+export type FixedAccount = { accountId: number; name: string; externalRef: string };
+
 export class LinkAccountFlow {
 	readonly #host: LinkHost;
 	open = $state(false);
 	instance = $state.raw<ImporterInstance | null>(null);
+	/** the account is given (discovery), not picked */
+	fixed = $state.raw<FixedAccount | null>(null);
 	accountId = $state<number | null>(null);
 	preview = $state.raw<LinkResult | null>(null);
 	checking = $state(false);
@@ -35,15 +40,21 @@ export class LinkAccountFlow {
 
 	readonly canLink = $derived(this.preview !== null && !this.checking && !this.busy);
 
-	start(instance: ImporterInstance): void {
+	/**
+	 * Open the dialog. Discovery opens it with the account `fixed` (nothing to pick) and the
+	 * reference the bank reported, which every call then carries; the dry run starts at once.
+	 */
+	start(instance: ImporterInstance, fixed: FixedAccount | null = null): void {
 		this.#token++;
 		this.instance = instance;
+		this.fixed = fixed;
 		this.accountId = null;
 		this.preview = null;
 		this.checking = false;
 		this.busy = false;
 		this.error = null;
 		this.open = true;
+		if (fixed) void this.choose(fixed.accountId);
 	}
 
 	/** An account was chosen: ask what linking it would do. */
@@ -56,7 +67,10 @@ export class LinkAccountFlow {
 		this.error = null;
 		this.checking = true;
 		try {
-			const out = await linkAccount(instance.id, accountId, { dryRun: true });
+			const out = await linkAccount(instance.id, accountId, {
+				dryRun: true,
+				...this.#reference()
+			});
 			if (token !== this.#token) return;
 			this.preview = out;
 		} catch (error) {
@@ -75,7 +89,7 @@ export class LinkAccountFlow {
 		this.busy = true;
 		this.error = null;
 		try {
-			const out = await linkAccount(instance.id, accountId);
+			const out = await linkAccount(instance.id, accountId, this.#reference());
 			if (token !== this.#token) return;
 			this.close();
 			this.#host.linked(
@@ -100,6 +114,11 @@ export class LinkAccountFlow {
 			}
 			this.error = describeImporterError(failure);
 		}
+	}
+
+	/** the reference discovery found, for a fixed account; a file importer's link carries none */
+	#reference(): { externalRef?: string } {
+		return this.fixed ? { externalRef: this.fixed.externalRef } : {};
 	}
 
 	close(): void {

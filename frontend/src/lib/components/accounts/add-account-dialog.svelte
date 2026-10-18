@@ -46,9 +46,10 @@
 	{open}
 	{onclose}
 	title="Add account"
-	description="Entered by hand. Transfers to it can be completed here."
-	verb="Add"
-	busyVerb="Adding…"
+	description={accounts.options.description ??
+		'Entered by hand. Transfers to it can be completed here.'}
+	verb={accounts.options.verb ?? 'Add'}
+	busyVerb={accounts.options.busyVerb ?? 'Adding…'}
 	busy={flow.busy}
 	disabled={!flow.canSubmit}
 	onsubmit={add}
@@ -81,7 +82,9 @@
 	</Field>
 	<Field
 		label="Currency"
-		hint={flow.locked ? 'The transfer needs an account in this currency.' : undefined}
+		hint={flow.locked
+			? (accounts.options.currencyHint ?? 'The transfer needs an account in this currency.')
+			: undefined}
 		error={flow.errors.currency ?? null}
 	>
 		{#snippet children(field)}

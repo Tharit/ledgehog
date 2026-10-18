@@ -245,16 +245,25 @@ export function deleteInstance(id: number): Promise<{ settle: SettleOut }> {
 }
 
 /**
- * Link an account (a file importer takes no reference). `dryRun` previews what it would do and
- * writes nothing. 409 `account_closed`, `instance_disabled`, `already_linked`.
+ * Link an account (a file importer takes no reference; a fetch importer's link carries the one
+ * discovery found, `externalRef`). `dryRun` previews what it would do and writes nothing. 409
+ * `account_closed`, `instance_disabled`, `already_linked`.
  */
 export function linkAccount(
 	instanceId: number,
 	accountId: number,
-	{ dryRun = false, signal }: { dryRun?: boolean; signal?: AbortSignal } = {}
+	{
+		dryRun = false,
+		externalRef,
+		signal
+	}: { dryRun?: boolean; externalRef?: string; signal?: AbortSignal } = {}
 ): Promise<LinkResult> {
 	return request('POST', `/api/importers/instances/${instanceId}/links`, {
-		body: { account_id: accountId, dry_run: dryRun },
+		body: {
+			account_id: accountId,
+			dry_run: dryRun,
+			...(externalRef !== undefined ? { external_ref: externalRef } : {})
+		},
 		signal
 	});
 }

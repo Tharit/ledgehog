@@ -9,6 +9,15 @@ export type AddAccountOptions = {
 	currency?: string;
 	/** the kind to preselect (default `cash`) */
 	kind?: AccountKind;
+	/** prefilled: the name and the external reference (discovery's "Add and link") */
+	name?: string;
+	externalRef?: string;
+	/** the dialog's own words where the caller adds with a purpose: "Add and link" */
+	verb?: string;
+	busyVerb?: string;
+	description?: string;
+	/** said under a locked currency instead of the transfer's reason */
+	currencyHint?: string;
 	/** called with the account once it exists and is in the shared lookups */
 	onadded?: (account: Account) => void;
 	/** where focus goes when the dialog closes, when the opener is gone (a closed popover's item) */
