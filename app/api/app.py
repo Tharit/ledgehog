@@ -10,22 +10,32 @@ registry all assume one process (architecture §5.2, §5.7).
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Mapping
+import logging
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import Engine
 
 from app.api.errors import install_error_handlers
 from app.api.openapi import install_openapi, operation_id
 from app.api.redaction import install_redaction
 from app.api.routers import include_routers
+from app.api.routers.changes import HEADER as CHANGES_HEADER
+from app.api.routers.changes import values_of
 from app.api.routes import router
 from app.core.plugins.fetch import FetchImporter
 from app.core.plugins.importer import FileImporter
 from app.core.tasks import TaskRegistry
+from app.core.tasks.changes import ChangeRegister
 from app.utils import clock
 from app.utils.config import Config
+from app.utils.db.changes import install_change_hooks
+
+log = logging.getLogger(__name__)
+
+_READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
 
 def create_app(
@@ -35,6 +45,7 @@ def create_app(
     owns_engine: bool = False,
     importers: Mapping[str, FileImporter | FetchImporter] | None = None,
     tasks: TaskRegistry | None = None,
+    changes: ChangeRegister | None = None,
 ) -> FastAPI:
     """Build the API. Time comes from `app.utils.clock` only (tests freeze it with `clock.frozen`).
 
@@ -69,6 +80,25 @@ def create_app(
     app.state.importers = dict(importers or {})
     app.state.tasks = tasks if tasks is not None else TaskRegistry()
     app.state.loop = None  # set when the lifespan starts
+    app.state.changes = changes if changes is not None else ChangeRegister()
+    # the locks note what a transaction touches; the register moves when it commits (architecture §5.2)
+    install_change_hooks(engine, app.state.changes.bump)
+
+    @app.middleware("http")
+    async def changes_header(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        """Every write's response carries the change values after it (architecture §4.2), read once the
+        handler, and with it the settle, has finished. Reads do not carry them."""
+        response = await call_next(request)
+        if request.method not in _READ_METHODS:
+            try:
+                values = await run_in_threadpool(values_of, app.state.changes, engine)
+                response.headers[CHANGES_HEADER] = values.model_dump_json()
+            except Exception:
+                log.exception("could not read the change values for a response header")
+        return response
+
     app.include_router(router)
     include_routers(app)  # registers each module's domain error mappings as it is imported...
     install_error_handlers(app)  # ...so the handlers are installed after
