@@ -44,6 +44,7 @@ from app.core.plugins.errors import (
     SourceUnavailable,
 )
 from app.core.plugins.importer import FileImporter
+from app.core.tasks import InstanceBusy
 from app.utils import clock
 
 router = APIRouter(prefix="/api/importers")
@@ -263,7 +264,9 @@ def update_instance(
 
 
 @router.post("/instances/{instance_id}/reset")
-def reset_instance(instance_id: PathId, user: CurrentUser, engine: EngineDep) -> Any:
+def reset_instance(instance_id: PathId, request: Request, user: CurrentUser, engine: EngineDep) -> Any:
+    if request.app.state.tasks.is_held(instance_id):  # a running job would write its state back over it
+        raise InstanceBusy([instance_id])
     inst.reset_instance(engine, instance_id)
     return to_json(_view(engine, instance_id))
 

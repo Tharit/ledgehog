@@ -67,10 +67,25 @@ def _needs_session(dependant: Dependant) -> bool:
     return any(d.call is current_user or _needs_session(d) for d in dependant.dependencies)
 
 
+_EXTRA_SCHEMAS: list[type[BaseModel]] = []
+
+
+def register_schema(*models: type[BaseModel]) -> None:
+    """Publish models no route returns as a body (a stream's event payloads, which `responses` can only
+    describe as text) among the document's component schemas."""
+    for model in models:
+        if model not in _EXTRA_SCHEMAS:
+            _EXTRA_SCHEMAS.append(model)
+
+
 def _components() -> dict[str, Any]:
-    schema = ErrorEnvelope.model_json_schema(ref_template=_REF)
-    defs = schema.pop("$defs", {})
-    return {"ErrorEnvelope": schema, **defs}
+    out: dict[str, Any] = {}
+    models: list[type[BaseModel]] = [ErrorEnvelope, *_EXTRA_SCHEMAS]
+    for model in models:
+        schema = model.model_json_schema(ref_template=_REF)
+        out.update(schema.pop("$defs", {}))
+        out[model.__name__] = schema
+    return out
 
 
 def _post_process(app: FastAPI, schema: dict[str, Any]) -> dict[str, Any]:

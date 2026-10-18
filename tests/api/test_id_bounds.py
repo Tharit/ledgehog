@@ -18,7 +18,8 @@ BAD_IDS = [0, -1, 2**63, 10**20]
 def _id_routes(app) -> list[tuple[str, str]]:
     found = []
     for path, item in app.openapi()["paths"].items():
-        if re.search(r"\{\w*_id\}", path):
+        # a task is named by an opaque token (architecture §4.3), not an integer entity id
+        if re.search(r"\{\w*_id\}", path) and "{task_id}" not in path:
             for method in item:
                 found.append((method.upper(), path))
     return found
