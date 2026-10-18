@@ -157,4 +157,3 @@ def test_a_foreign_cursor_is_refused(token: str) -> None:
 
 def test_the_cursor_round_trips() -> None:
     assert decode_cursor(encode_cursor(D, 42)) == (D, 42)
-
