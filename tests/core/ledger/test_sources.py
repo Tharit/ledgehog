@@ -747,3 +747,43 @@ def test_delete_settles_once(isolated_engine: Engine, acct: int, monkeypatch: py
     assert calls == []
     delete_source(isolated_engine, done.source_id, expected_versions={e.id: e.version})
     assert calls == [1]
+
+
+# ---- lock order (architecture §5.2) ------------------------------------------------------------
+
+
+@pytest.mark.parametrize("op", ["create", "update", "delete"])
+def test_every_entry_form_write_takes_the_settle_lock_shared_first(
+    isolated_engine: Engine, acct: int, op: str
+):
+    """The settle lock is taken shared first: a write waiting on an account lock already holds it."""
+    import threading
+
+    from app.utils.db.locks import lock_accounts
+    from tests import lockwatch
+
+    settle_class = 1 << 24
+
+    done = enter(isolated_engine, acct)
+    (e,) = entries_of(isolated_engine, done.source_id)
+    acts = {
+        "create": lambda: enter(isolated_engine, acct),
+        "update": lambda: update_source(
+            isolated_engine, done.source_id, purpose="y", expected_versions={e.id: e.version}
+        ),
+        "delete": lambda: delete_source(isolated_engine, done.source_id, expected_versions={e.id: e.version}),
+    }
+    finished: list[Any] = []
+    with isolated_engine.connect() as holder:
+        with holder.begin():
+            pid = int(holder.execute(text("SELECT pg_backend_pid()")).scalar_one())
+            lock_accounts(holder, [acct])
+            thread = threading.Thread(target=lambda: finished.append(acts[op]()))
+            thread.start()
+            lockwatch.wait_until_waiting(isolated_engine, f"{op} to wait for the account lock")
+            held = lockwatch.advisory_held(
+                isolated_engine, exclude_pid=pid, classid=settle_class, mode="ShareLock"
+            )
+            assert held == 1
+    thread.join(timeout=15)
+    assert not thread.is_alive() and len(finished) == 1
