@@ -19,12 +19,10 @@ const api = {
 	regex: '(^|/)api(/|$)',
 	message: 'Components take data as props and never import the API (architecture §6.2).'
 };
-const noFetch = [
-	{
-		name: 'fetch',
-		message: 'Only src/lib/api/ calls fetch (architecture §6.2).'
-	}
-];
+const noFetch = ['fetch', 'EventSource'].map((name) => ({
+	name,
+	message: `Only src/lib/api/ calls ${name} (architecture §6.2).`
+}));
 const fetchViaObject = ['window', 'globalThis'].map((object) => ({
 	object,
 	property: 'fetch',

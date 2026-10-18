@@ -37,6 +37,17 @@ export type {
 	TagApplyOut
 } from '#lib/api/types.js';
 export type {
+	DiscoveryEntry,
+	DiscoveryResult,
+	PlanAccount,
+	PlanInstance,
+	PromptAnswer,
+	PromptBody,
+	SyncItem,
+	TaskKind,
+	TaskStatus
+} from '#lib/api/sync.js';
+export type {
 	CatalogEntry,
 	DryRunReport,
 	ImportRun,
