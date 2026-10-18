@@ -19,10 +19,13 @@ from typing import Any
 import pytest
 from sqlalchemy import Engine, text
 
+from app.core.accounts import create_account
 from app.core.documents import DocumentFilter, get_document, list_documents
+from app.core.importers.instances import link_account
 from app.core.importers.providers import reset_document_providers
 from app.core.integrity import check_integrity
 from app.plugins.importers.csv import load_presets
+from app.plugins.importers.testfetch import TestFetchImporter
 from app.utils.config import Config
 from app.utils.db import admin
 from app.utils.db.engine import make_engine
@@ -140,10 +143,10 @@ def _env(cfg: Config) -> dict[str, str]:
     return {**os.environ, "POSTGRES_DB": cfg.db.name}
 
 
-def _run(cfg: Config, *argv: str) -> str:
+def _run(cfg: Config, *argv: str, extra_env: dict[str, str] | None = None) -> str:
     out = io.StringIO()
     with redirect_stdout(out):
-        code = dev_seed.main(list(argv), _env(cfg))
+        code = dev_seed.main(list(argv), {**_env(cfg), **(extra_env or {})})
     assert code == 0, out.getvalue()
     return out.getvalue()
 
@@ -337,6 +340,36 @@ def test_the_document_scenarios_come_out_as_described(seeded: str, dev_engine: E
     assert "document scenarios:" in seeded and "charge exact: linked to PP-1001" in seeded
 
 
+def test_the_scripted_test_bank_is_seeded_unlinked_with_its_pin_and_tan(seeded: str, dev_engine: Engine):
+    with dev_engine.connect() as conn:
+        row = conn.execute(
+            text(
+                "SELECT id, emits::text, access, settings FROM importer_instance"
+                " WHERE importer = 'testfetch' AND label = 'Testbank [seed]'"
+            )
+        ).one()
+        links = conn.execute(
+            text("SELECT count(*) FROM account_source WHERE importer_instance_id = :i"), {"i": row.id}
+        ).scalar_one()
+    assert row.emits == "{transactions}" and row.access == "shared"
+    assert links == 0  # refresh accounts, then add and link: the seed links nothing
+    settings = row.settings
+    assert settings["open"] == [{"ask": "secret", "subject": "pin", "expect": "1234"}]
+    accounts = {a["name"]: a for a in settings["accounts"]}
+    assert set(accounts) == {"Testbank Giro", "Testbank Dollars", "Testbank Depot"}
+    assert (
+        accounts["Testbank Giro"]["currency"] == "EUR"
+        and accounts["Testbank Giro"]["kind_hint"] == "checking"
+    )
+    assert accounts["Testbank Giro"]["capabilities"] == ["transactions", "balance"]
+    assert accounts["Testbank Dollars"]["currency"] == "USD"
+    assert accounts["Testbank Dollars"]["fetch"] == [{"ask": "tan", "medium": "text", "expect": "123456"}]
+    assert accounts["Testbank Depot"]["capabilities"] == []
+    # the real importer accepts exactly these settings, and the PIN and the TAN are in the report
+    TestFetchImporter().validate_settings(settings)
+    assert "PIN 1234" in seeded and "TAN 123456" in seeded
+
+
 def test_the_documents_are_a_real_importer_instance_and_a_provider_payee(seeded: str, dev_engine: Engine):
     assert (
         _one(dev_engine, "SELECT emits::text FROM importer_instance WHERE importer = 'testdocs'")
@@ -409,8 +442,18 @@ def test_reset_removes_everything_it_created_and_a_reseed_works(
         "external_document_line",
     ):
         assert _one(dev_engine, f"SELECT count(*) FROM {table}") == 0, table  # noqa: S608
-    out = _run(dev_cfg, "--months", "2", "--seed", "12", "--no-classify")
-    assert "PROTOTYPE-ONLY" not in out
+    # without the test importers registered the scripted bank is not seeded (nothing could run it)
+    out = _run(
+        dev_cfg,
+        "--months",
+        "2",
+        "--seed",
+        "12",
+        "--no-classify",
+        extra_env={"ENABLE_TEST_IMPORTERS": "false"},
+    )
+    assert "PROTOTYPE-ONLY" not in out and "Testbank" not in out
+    assert _one(dev_engine, "SELECT count(*) FROM importer_instance WHERE importer = 'testfetch'") == 0
     assert _one(dev_engine, "SELECT count(*) FROM ledger_entry") > 0
     assert _one(dev_engine, "SELECT count(*) FROM category") == 0
     assert (
@@ -418,6 +461,23 @@ def test_reset_removes_everything_it_created_and_a_reseed_works(
     )  # documents come with the vocabulary
     _run(dev_cfg, "--reset", "--months", "2")  # reset + seed in one go
     assert _one(dev_engine, "SELECT count(*) FROM category") > 0
+    assert _one(dev_engine, "SELECT count(*) FROM importer_instance WHERE importer = 'testfetch'") == 1
+    with dev_engine.connect() as conn:
+        assert check_integrity(conn).ok
+
+
+def test_reset_also_removes_the_accounts_linked_by_hand_to_the_test_bank(
+    seeded: str, dev_cfg: Config, dev_engine: Engine
+):
+    # what "Add and link" leaves behind: an account without the marker, linked to the seeded login
+    instance = _one(dev_engine, "SELECT id FROM importer_instance WHERE importer = 'testfetch'")
+    added = create_account(dev_engine, name="Testbank Giro", kind="checking", currency="EUR")
+    link_account(dev_engine, instance, added, "TESTBANK-GIRO")
+
+    _run(dev_cfg, "--reset", "--months", "2")
+
+    assert _one(dev_engine, "SELECT count(*) FROM account WHERE name = 'Testbank Giro'") == 0
+    assert _one(dev_engine, "SELECT count(*) FROM importer_instance WHERE importer = 'testfetch'") == 1
     with dev_engine.connect() as conn:
         assert check_integrity(conn).ok
 

@@ -761,6 +761,55 @@ DOC_IMPORTER = "testdocs"
 DOC_CATEGORY = "Subscriptions"  # exists in CATEGORIES: the already-confirmed charge is classified with it
 
 
+# -- the scripted test bank (`testfetch`): a login to refresh accounts from and to fetch, by hand ------
+
+TESTBANK_IMPORTER = "testfetch"
+TESTBANK_LABEL = "Testbank"  # with SUFFIX: "Testbank [seed]"
+TESTBANK_PIN = "1234"  # the PIN every sign-in of the login asks for
+TESTBANK_TAN = "123456"  # the text TAN the dollar pocket asks for before its fetch
+TESTBANK_HISTORY_DAYS = 90  # how far back the scripted bank's bookings reach, from the day it is seeded
+
+
+def testbank_settings(today: date) -> dict[str, object]:
+    """The settings of the Testbank login (`app/plugins/importers/testfetch`): sign in with the PIN,
+    three accounts, none of them linked by the seed — Giro (EUR, bookings and a balance), Dollars
+    (a USD pocket whose fetch asks for a TAN) and Depot (nothing to fetch)."""
+    start = (today - timedelta(days=TESTBANK_HISTORY_DAYS)).isoformat()
+    return {
+        "open": [{"ask": "secret", "subject": "pin", "expect": TESTBANK_PIN}],
+        "accounts": [
+            {
+                "ref": "TESTBANK-GIRO",
+                "name": "Testbank Giro",
+                "currency": "EUR",
+                "kind_hint": "checking",
+                "capabilities": ["transactions", "balance"],
+                "history_start": start,
+                "rows_per_day": 1,
+                "opening_minor": 250_000,
+            },
+            {
+                "ref": "TESTBANK-USD",
+                "name": "Testbank Dollars",
+                "currency": "USD",
+                "kind_hint": "checking",
+                "capabilities": ["transactions", "balance"],
+                "history_start": start,
+                "rows_per_day": 1,
+                "opening_minor": 80_000,
+                "fetch": [{"ask": "tan", "medium": "text", "expect": TESTBANK_TAN}],
+            },
+            {
+                "ref": "TESTBANK-DEPOT",
+                "name": "Testbank Depot",
+                "currency": "EUR",
+                "kind_hint": "depot",
+                "capabilities": [],
+            },
+        ],
+    }
+
+
 @dataclass(frozen=True)
 class DocCharge:
     """A card charge on the Visa account, `ago` days before its last booking. `confirmed` is a charge the

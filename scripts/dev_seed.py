@@ -25,6 +25,13 @@ instructed-currency one, a document for an already confirmed charge (stays unlin
 the coverage (waiting). The script's composition root configures the document providers of its process
 (`core/importers/providers.py`).
 
+A scripted test bank (`dev_seed_data.testbank_settings`; only where `testfetch` is registered, that is with
+`ENABLE_TEST_IMPORTERS=true`): a `testfetch` instance "Testbank [seed]", shared, linked to no account, for
+trying refresh accounts, fetching and the prompts by hand. Its login asks for the PIN **1234**; it reaches
+three accounts: "Testbank Giro" (EUR, checking, bookings and a balance, ninety days of history), "Testbank
+Dollars" (a USD pocket whose fetch asks for the text TAN **123456**) and "Testbank Depot" (nothing to fetch).
+`--reset` removes the instance and the accounts that were linked to it.
+
 Named rules (`dev_seed_data.RULES`: a counter-account rule against the cash account, a payee rule, a
 category rule by counterparty reference, a regex rule, a category rule with a payee condition) are
 written through the real `create_rule`, previewed first, after the classification they name.
@@ -65,6 +72,7 @@ from app.core.settle.settle import settle
 from app.plugins.classifiers import default_classifiers, default_rule_tools
 from app.plugins.importers.csv import CsvImporter, load_presets
 from app.plugins.importers.testdocs import TestDocumentImporter
+from app.plugins.importers.testfetch import TestFetchImporter
 from app.utils import clock
 from app.utils.config import Config
 from app.utils.db.engine import make_engine
@@ -494,6 +502,30 @@ def document_cases(engine: Engine, today: date, out: list[str]) -> None:
     )
 
 
+def testbank_instance(engine: Engine, today: date, out: list[str]) -> None:
+    """The scripted test bank: a `testfetch` instance "Testbank [seed]" to try the sync pages against.
+
+    Through the real `create_instance` (its settings validated by the importer). It is not linked to
+    any account: refresh its accounts (`/settings/importers/<id>/accounts`), then add and link them.
+    Only seeded where `testfetch` is registered (`ENABLE_TEST_IMPORTERS`), like the document importer
+    it mirrors; the [seed] marker lets `--reset` remove it, and the accounts linked to it.
+    """
+    importer = TestFetchImporter()
+    create_instance(
+        engine,
+        importer=data.TESTBANK_IMPORTER,
+        label=data.TESTBANK_LABEL + data.SUFFIX,
+        settings=data.testbank_settings(today),
+        emits=["transactions"],
+        access="shared",
+        validate=importer.validate_settings,
+    )
+    out.append(
+        f"importer instance {data.TESTBANK_LABEL + data.SUFFIX!r} (testfetch): PIN {data.TESTBANK_PIN}, "
+        f"TAN {data.TESTBANK_TAN} for the dollar pocket; three accounts, none linked"
+    )
+
+
 def _document_anchor(engine: Engine) -> tuple[date, int, int, int]:
     with engine.connect() as conn:
         visa = int(
@@ -674,6 +706,16 @@ def reset(engine: Engine) -> None:
             int(r)
             for r in conn.execute(text("SELECT id FROM account WHERE right(name, :n) = :m"), marker).scalars()
         ]
+        # the accounts a seeded login was linked to by hand (the Testbank's, added from its discovery)
+        # carry no marker but are its test data: they go with it
+        linked = conn.execute(
+            text(
+                "SELECT account_id FROM account_source WHERE importer_instance_id IN"
+                " (SELECT id FROM importer_instance WHERE right(label, :n) = :m)"
+            ),
+            marker,
+        ).scalars()
+        ids = sorted({*ids, *(int(r) for r in linked)})
         conn.execute(
             text("DELETE FROM rule WHERE name = ANY(:n)"),
             {"n": [r.name for r in data.RULES] + list(data.DOC_RULES)},
@@ -756,7 +798,15 @@ def summary(engine: Engine) -> list[str]:
     return lines
 
 
-def seed(engine: Engine, *, months: int, seed_value: int, do_classify: bool, today: date) -> list[str]:
+def seed(
+    engine: Engine,
+    *,
+    months: int,
+    seed_value: int,
+    do_classify: bool,
+    today: date,
+    test_importers: bool = False,
+) -> list[str]:
     out: list[str] = ["seeding SYNTHETIC data through the real pipeline"]
     # With the transfer cases the exports end a few days early: those legs are a later delivery, after
     # every reported balance, and still booked before today.
@@ -768,6 +818,8 @@ def seed(engine: Engine, *, months: int, seed_value: int, do_classify: bool, tod
         make_rules(engine, out)
         transfer_cases(engine, out)
         document_cases(engine, today, out)
+    if test_importers:
+        testbank_instance(engine, today, out)
     settle(engine)  # review flags recomputed once, at the end
     with engine.connect() as conn:
         report = check_integrity(conn)
@@ -817,6 +869,7 @@ def main(argv: list[str] | None = None, environ: Mapping[str, str] | None = None
             seed_value=args.seed,
             do_classify=not args.no_classify,
             today=today,
+            test_importers=cfg.enable_test_importers,
         ):
             print(line)
         return 0
