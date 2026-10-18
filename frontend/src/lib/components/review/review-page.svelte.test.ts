@@ -88,6 +88,22 @@ describe('the review page', () => {
 		expect(getQueue).toHaveBeenCalledTimes(2);
 	});
 
+	it('never refetches itself because a sync ended or the shared lists were refreshed, and keeps the notice until Refresh', async () => {
+		vi.mocked(getQueue).mockResolvedValue(queue({ pending_review: [plain(1, 'REWE Markt')] }));
+		render(Page);
+		await screen.findByText('REWE Markt');
+
+		sync.dataRevision++;
+		expect(await screen.findByText('New data from a sync —')).toBeInTheDocument();
+		sync.endRevision++;
+		await lookupsStore.reload();
+		lookupsStore.setAccounts([]);
+		await new Promise((resolve) => setTimeout(resolve, 20));
+
+		expect(getQueue).toHaveBeenCalledTimes(1);
+		expect(screen.getByText('New data from a sync —')).toBeInTheDocument();
+	});
+
 	it('polls every minute', async () => {
 		vi.useFakeTimers();
 		try {

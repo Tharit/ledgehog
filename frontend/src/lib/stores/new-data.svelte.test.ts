@@ -2,6 +2,7 @@ import { flushSync } from 'svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getStatement, listAccounts, listEntries, listRuns } from '#lib/api/index.js';
 import { account, entry } from '#lib/ledger/fixtures.js';
+import { lookupsStore } from './lookups.svelte.js';
 import { AccountPageStore } from './account-page.svelte.js';
 import { LedgerStore } from './ledger.svelte.js';
 import { NewDataWatch, refetchOnSyncEnd } from './new-data.svelte.js';
@@ -95,6 +96,24 @@ describe('the views that hold a snapshot', () => {
 		expect(store.news.stale).toBe(false);
 		// the facts and the statement were read again, together
 		expect(vi.mocked(listAccounts)).toHaveBeenCalledTimes(2);
+	});
+
+	it('the statement is not read again because a sync ended or the shared accounts were refreshed', async () => {
+		vi.mocked(listAccounts).mockResolvedValue([account({ id: 7 })]);
+		vi.mocked(getStatement).mockResolvedValue({ items: [], total: 0, limit: 100, offset: 0 });
+		vi.mocked(listRuns).mockResolvedValue([]);
+		const store = new AccountPageStore();
+		await store.open(7);
+		await flush();
+		sync.dataRevision++;
+
+		sync.endRevision++;
+		lookupsStore.setAccounts([account({ id: 7, name: 'Renamed' })]);
+		await flush();
+
+		expect(vi.mocked(getStatement)).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(listAccounts)).toHaveBeenCalledTimes(1);
+		expect(store.news.stale).toBe(true);
 	});
 
 	it('rows that arrive while a view is fetching are still news to it', async () => {
