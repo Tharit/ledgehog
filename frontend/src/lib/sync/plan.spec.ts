@@ -108,7 +108,9 @@ describe('narrowing', () => {
 	});
 
 	it('leaves a login with nothing to fetch out', () => {
-		expect(narrowPlan([planInstance({ accounts: [] })], { instanceId: null, accountId: null })).toEqual([]);
+		expect(
+			narrowPlan([planInstance({ accounts: [] })], { instanceId: null, accountId: null })
+		).toEqual([]);
 	});
 });
 

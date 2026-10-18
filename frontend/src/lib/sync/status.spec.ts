@@ -31,9 +31,9 @@ describe('navStatus', () => {
 	});
 
 	it('says "Refreshing accounts…" for a discovery', () => {
-		expect(navStatus(input({ kind: 'discovery' }), '/ledger', '/settings/importers/1/accounts')).toEqual(
-			{ text: 'Refreshing accounts…', busy: true }
-		);
+		expect(
+			navStatus(input({ kind: 'discovery' }), '/ledger', '/settings/importers/1/accounts')
+		).toEqual({ text: 'Refreshing accounts…', busy: true });
 	});
 
 	it('says "Needs your input" when a prompt is open and the task page is not shown', () => {

@@ -116,7 +116,10 @@ class FakeSource implements EventSourceLike {
 		this.readyState = 2;
 	}
 	emit(name: string, id: number, data: unknown) {
-		this.listeners.get(name)?.({ data: JSON.stringify(data), lastEventId: String(id) } as MessageEvent);
+		this.listeners.get(name)?.({
+			data: JSON.stringify(data),
+			lastEventId: String(id)
+		} as MessageEvent);
 	}
 }
 

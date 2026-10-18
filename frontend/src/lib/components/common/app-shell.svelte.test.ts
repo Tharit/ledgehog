@@ -118,3 +118,41 @@ describe('AppShell: footer navigation', () => {
 		expect(screen.queryByRole('navigation', { name: 'Secondary' })).toBeNull();
 	});
 });
+
+describe('AppShell: the status line of an item', () => {
+	function withStatus(status?: string, busy = false) {
+		render(AppShell, {
+			props: {
+				items: [...items, { href: '/sync', label: 'Sync', icon: ListIcon, status, busy }],
+				currentPath: '/ledger',
+				userName: 'Ada',
+				onlogout: vi.fn(),
+				children: content
+			}
+		});
+	}
+
+	it('shows a second line and a spinner while the task runs', () => {
+		withStatus('Syncing…', true);
+
+		const link = screen.getByRole('link', { name: /^Sync/ });
+		expect(link).toHaveTextContent('Syncing…');
+		expect(link.querySelector('[data-slot="nav-spinner"]')).not.toBeNull();
+	});
+
+	it('shows the line of a finished task without a spinner', () => {
+		withStatus('Finished · 3 ok, 1 failed');
+
+		const link = screen.getByRole('link', { name: /^Sync/ });
+		expect(link).toHaveTextContent('Finished · 3 ok, 1 failed');
+		expect(link.querySelector('[data-slot="nav-spinner"]')).toBeNull();
+	});
+
+	it('shows no second line for an item without a status', () => {
+		withStatus();
+
+		expect(
+			screen.getByRole('link', { name: 'Sync' }).querySelector('[data-slot="nav-status"]')
+		).toBeNull();
+	});
+});

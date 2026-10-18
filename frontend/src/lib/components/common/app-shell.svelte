@@ -14,10 +14,15 @@
 		icon: IconComponent;
 		/** the path an item is current under, when that is not its own address */
 		match?: string;
+		/** a second line under the label, a muted one ("Syncing…"); the Sync item is the task indicator */
+		status?: string;
+		/** something runs behind the status: a spinner at the end of the item */
+		busy?: boolean;
 	};
 </script>
 
 <script lang="ts">
+	import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle';
 	import LogOutIcon from '@lucide/svelte/icons/log-out';
 	import IconButton from './icon-button.svelte';
 
@@ -47,10 +52,32 @@
 	<a
 		href={item.href}
 		aria-current={active ? 'page' : undefined}
-		class="flex h-9 items-center gap-3 rounded-md px-2 text-sm text-sidebar-foreground hover:bg-sidebar-accent/60 aria-[current=page]:bg-sidebar-accent aria-[current=page]:font-medium"
+		class="flex min-h-9 items-center gap-3 rounded-md px-2 py-1 text-sm text-sidebar-foreground hover:bg-sidebar-accent/60 aria-[current=page]:bg-sidebar-accent aria-[current=page]:font-medium"
 	>
-		<item.icon size={18} strokeWidth={1.75} class="text-muted-foreground" aria-hidden="true" />
-		{item.label}
+		<item.icon
+			size={18}
+			strokeWidth={1.75}
+			class="shrink-0 text-muted-foreground"
+			aria-hidden="true"
+		/>
+		<span class="flex min-w-0 flex-1 flex-col">
+			<span>{item.label}</span>
+			{#if item.status}
+				<span class="truncate text-xs font-normal text-muted-foreground" data-slot="nav-status">
+					{item.status}
+				</span>
+			{/if}
+		</span>
+		{#if item.busy}
+			<span class="shrink-0" data-slot="nav-spinner">
+				<LoaderCircleIcon
+					size={14}
+					strokeWidth={1.75}
+					class="animate-spin text-muted-foreground"
+					aria-hidden="true"
+				/>
+			</span>
+		{/if}
 	</a>
 {/snippet}
 

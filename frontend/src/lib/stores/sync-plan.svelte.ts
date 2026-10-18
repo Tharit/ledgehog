@@ -26,7 +26,8 @@ export class SyncPlanStore {
 
 	async load(): Promise<void> {
 		const generation = ++this.#generation;
-		this.status = 'loading';
+		// a plan already held stays on screen while it is read again (a task's cards need its labels)
+		if (this.status !== 'ready') this.status = 'loading';
 		try {
 			const plan = await readSyncPlan();
 			if (generation !== this.#generation) return;

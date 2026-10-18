@@ -22,6 +22,14 @@ describe('module boundary lint rules', { timeout: 60_000 }, () => {
 		);
 	});
 
+	it('bans EventSource outside src/lib/api, as it bans fetch', async () => {
+		const code = 'export const open = () => new EventSource("/api/x");\n';
+		expect(await rulesFired(code, COMPONENT)).toContain('no-restricted-globals');
+		expect(await rulesFired(code, 'src/lib/stores/example.ts')).toContain('no-restricted-globals');
+		expect(await rulesFired(code, 'src/routes/example.ts')).toContain('no-restricted-globals');
+		expect(await rulesFired(code, 'src/lib/api/example.ts')).not.toContain('no-restricted-globals');
+	});
+
 	it('bans window.fetch and globalThis.fetch outside src/lib/api', async () => {
 		const code = 'export const a = () => window.fetch("/x");\nexport const b = globalThis.fetch;\n';
 		expect(await rulesFired(code, COMPONENT)).toEqual([

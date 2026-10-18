@@ -11,6 +11,7 @@ import {
 	getActiveTask,
 	getTaskStatus,
 	openTaskEvents,
+	readSyncPlan,
 	startSync,
 	type PromptAnswer,
 	type SyncEvent,
@@ -21,7 +22,7 @@ import {
 	type TaskStatus
 } from '#lib/api/index.js';
 import { initialView, foldEvent, type TaskView } from '#lib/sync/events.js';
-import { refusalOf, type StartRefusal } from '#lib/sync/entry.js';
+import { refusalOf, type EntryDeps, type StartRefusal } from '#lib/sync/entry.js';
 import type { TaskPhase } from '#lib/sync/status.js';
 
 export type OpenEvents = (taskId: string, handlers: TaskEventsHandlers) => TaskEvents;
@@ -85,7 +86,7 @@ export class SyncStore {
 	async mount(): Promise<void> {
 		if (this.#mounted) return;
 		this.#mounted = true;
-		let active: TaskStatus | null = null;
+		let active: TaskStatus | null;
 		try {
 			active = await getActiveTask();
 		} catch {
@@ -103,24 +104,26 @@ export class SyncStore {
 
 	/** Start a sync of these items. A refusal leaves the store as it was and is returned for the page that asked. */
 	async start(items: readonly SyncItem[]): Promise<StartRefusal | null> {
+		let started: { task_id: string };
 		try {
-			const started = await startSync(items);
-			this.#begin(started.task_id, 'sync');
-			return null;
+			started = await startSync(items);
 		} catch (error) {
 			return refusalOf(error);
 		}
+		this.#begin(started.task_id, 'sync');
+		return null;
 	}
 
 	/** Start the discovery of an instance's accounts; it is hosted by its own page. */
 	async startDiscovery(instanceId: number): Promise<StartRefusal | null> {
+		let started: { task_id: string };
 		try {
-			const started = await discoverAccounts(instanceId);
-			this.#begin(started.task_id, 'discovery', instanceId);
-			return null;
+			started = await discoverAccounts(instanceId);
 		} catch (error) {
 			return refusalOf(error);
 		}
+		this.#begin(started.task_id, 'discovery', instanceId);
+		return null;
 	}
 
 	/** Answer the open prompt. It closes when the stream says it is resolved, not on the answer. */
@@ -263,3 +266,8 @@ export class SyncStore {
 
 /** The one store of the app. */
 export const sync = new SyncStore();
+
+/** What the entry points ("Fetch", "Run again") need: the plan read, the store's start, and where to go. */
+export function entryDeps(go: EntryDeps['go']): EntryDeps {
+	return { readPlan: () => readSyncPlan(), start: (items) => sync.start(items), go };
+}
