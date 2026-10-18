@@ -24,8 +24,7 @@ const api = vi.hoisted(() => ({
 	readSyncPlan: vi.fn(),
 	startSync: vi.fn(),
 	answerPrompt: vi.fn(),
-	abortTask: vi.fn(),
-	getActiveTask: vi.fn()
+	abortTask: vi.fn()
 }));
 vi.mock('#lib/api/index.js', async (importOriginal) => ({
 	...(await importOriginal<typeof import('#lib/api/index.js')>()),

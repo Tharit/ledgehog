@@ -24,8 +24,7 @@ vi.mock('#lib/api/importers.js', async (importOriginal) => ({
 const syncApi = vi.hoisted(() => ({
 	discoverAccounts: vi.fn(),
 	getTaskStatus: vi.fn(),
-	answerPrompt: vi.fn(),
-	getActiveTask: vi.fn()
+	answerPrompt: vi.fn()
 }));
 vi.mock('#lib/api/sync.js', async (importOriginal) => ({
 	...(await importOriginal<typeof import('#lib/api/sync.js')>()),

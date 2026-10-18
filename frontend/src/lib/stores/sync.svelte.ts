@@ -1,6 +1,6 @@
-// The active task, a sync or a discovery (architecture §6.4): ONE store, mounted at the root layout
-// once the session is known, so that the task outlives the page that started it. It asks the server
-// for the user's active task (no token is kept anywhere), attaches to its event stream, and holds
+// The active task, a sync or a discovery (architecture §6.4): ONE store, alive as long as the session,
+// so that the task outlives the page that started it. The change watcher tells it the user's active
+// task (`follow`; no token is kept anywhere); it attaches to its event stream, and holds
 // the folded view. A prompt is open if and only if `view.prompt` is set; the page that hosts the task
 // reads it from here when it mounts, so a prompt that arrived elsewhere is shown on a later visit.
 import {
@@ -8,7 +8,6 @@ import {
 	abortTask,
 	answerPrompt,
 	discoverAccounts,
-	getActiveTask,
 	getTaskStatus,
 	openTaskEvents,
 	readSyncPlan,
@@ -18,13 +17,11 @@ import {
 	type SyncItem,
 	type TaskEvents,
 	type TaskEventsHandlers,
-	type TaskKind,
-	type TaskStatus
+	type TaskKind
 } from '#lib/api/index.js';
 import { discoveryUrl } from '#lib/importers/links.js';
 import { initialView, foldEvent, type TaskView } from '#lib/sync/events.js';
 import { refusalOf, type EntryDeps, type StartRefusal } from '#lib/sync/entry.js';
-import { eventWroteRows } from '#lib/sync/new-data.js';
 import type { TaskPhase } from '#lib/sync/status.js';
 
 export type OpenEvents = (taskId: string, handlers: TaskEventsHandlers) => TaskEvents;
@@ -67,17 +64,7 @@ export class SyncStore {
 	/** a failure to send, shown in the dialog's feedback slot */
 	sendError = $state<string | null>(null);
 
-	/**
-	 * Revisions, never counts (architecture §6.4): `dataRevision` moves when a run of this session
-	 * wrote rows, `endRevision` when a sync (or discovery) ended. A view remembers the former it
-	 * fetched at; a list that is not a snapshot refetches when the latter moves.
-	 */
-	dataRevision = $state(0);
-	endRevision = $state(0);
-
 	#discoveryInstance = $state<number | null>(null);
-	/** the last event id already noted: a replay of the stream (a reattach) is not news again */
-	#notedUpTo = 0;
 	/** where the task is hosted: `/sync`, or a discovery's page */
 	readonly homePath = $derived(
 		this.kind === 'discovery'
@@ -87,34 +74,42 @@ export class SyncStore {
 
 	#open: OpenEvents;
 	#events: TaskEvents | null = null;
-	#mounted = false;
 	#reattaches = 0;
+	/** the task whose status is being read to attach to it */
+	#following: string | null = null;
 
 	constructor(open: OpenEvents = openTaskEvents) {
 		this.#open = open;
 	}
 
-	/** The app is authenticated: ask for the active task and attach to it (a reload picks it up again). */
-	async mount(): Promise<void> {
-		if (this.#mounted) return;
-		this.#mounted = true;
-		let active: TaskStatus | null;
-		try {
-			active = await getActiveTask();
-		} catch {
-			return; // nothing to attach to; the next start says what is wrong
+	/**
+	 * The user's active task as the last change read said (architecture §4.2, §4.3): attach to a task
+	 * this tab is not attached to (a reload, or a sync started in another tab); and a null while the
+	 * store thinks a task runs means its end was not seen, so the status is read again.
+	 */
+	async follow(activeTask: string | null): Promise<void> {
+		if (activeTask === null) {
+			const running = this.status === 'attaching' || this.status === 'running';
+			if (running && this.taskId) await this.#recheck(this.taskId);
+			return;
 		}
-		if (active && this.status === 'idle') {
-			this.#begin(active.task_id, active.kind, null, active.aborting);
-			// what the replay delivers happened before this page loaded: its views already hold it
-			this.#notedUpTo = active.last_event_id;
+		if (activeTask === this.taskId || activeTask === this.#following) return;
+		this.#following = activeTask;
+		try {
+			const status = await getTaskStatus(activeTask);
+			if (activeTask !== this.#following || activeTask === this.taskId) return;
+			this.#begin(status.task_id, status.kind, null, status.aborting);
+		} catch {
+			// nothing to attach to; the next read says what is wrong
+		} finally {
+			if (this.#following === activeTask) this.#following = null;
 		}
 	}
 
 	/** The session ended or the app is going: drop the task, keep nothing. */
 	dispose(): void {
 		this.#clear();
-		this.#mounted = false;
+		this.#following = null;
 	}
 
 	/** Start a sync of these items. A refusal leaves the store as it was and is returned for the page that asked. */
@@ -208,7 +203,6 @@ export class SyncStore {
 		this.#clear();
 		this.taskId = taskId;
 		this.kind = kind;
-		this.#notedUpTo = 0;
 		this.#discoveryInstance = discoveryInstance;
 		this.stopping = aborting;
 		this.status = 'attaching';
@@ -225,7 +219,6 @@ export class SyncStore {
 
 	#apply(event: SyncEvent) {
 		this.#reattaches = 0;
-		this.#note(event);
 		const before = this.view.prompt?.promptId ?? null;
 		this.view = foldEvent(this.view, event);
 		if (this.view.kind) this.kind = this.view.kind;
@@ -238,14 +231,6 @@ export class SyncStore {
 		} else if (this.status === 'attaching') {
 			this.status = 'running';
 		}
-	}
-
-	/** Note what an event says to the views: rows written, a task ended; each event once. */
-	#note(event: SyncEvent) {
-		if (event.id <= this.#notedUpTo) return;
-		this.#notedUpTo = event.id;
-		if (eventWroteRows(event)) this.dataRevision++;
-		if (event.name === 'task_ended') this.endRevision++;
 	}
 
 	/** The stream closed for good without a `task_ended`: a status means attach again, nothing means lost. */

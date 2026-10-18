@@ -4,7 +4,6 @@ import {
 	abortTask,
 	answerPrompt,
 	discoverAccounts,
-	getActiveTask,
 	getTaskStatus,
 	startSync,
 	type SyncEvent,
@@ -15,7 +14,6 @@ import {
 	ev,
 	instanceFailed,
 	promptEvent,
-	runFinished,
 	runStarted,
 	taskEnded,
 	taskStarted
@@ -25,7 +23,6 @@ import { SyncStore } from './sync.svelte.js';
 vi.mock('#lib/api/sync.js', async (importOriginal) => ({
 	...(await importOriginal<typeof import('#lib/api/sync.js')>()),
 	startSync: vi.fn(),
-	getActiveTask: vi.fn(),
 	getTaskStatus: vi.fn(),
 	answerPrompt: vi.fn(),
 	abortTask: vi.fn(),
@@ -77,9 +74,9 @@ const asking = ev(3, 'prompt', promptEvent(1, null));
 const resolved = ev(4, 'prompt_resolved', { prompt_id: 'p1', outcome: 'answered' });
 
 async function attached() {
-	vi.mocked(getActiveTask).mockResolvedValue(running());
+	vi.mocked(getTaskStatus).mockResolvedValue(running());
 	const s = store();
-	await s.mount();
+	await s.follow('t1');
 	streams[0].push(begin, signing, asking);
 	return s;
 }
@@ -91,11 +88,11 @@ beforeEach(() => {
 
 describe('SyncStore: attaching', () => {
 	it('stays idle when the server has no active task', async () => {
-		vi.mocked(getActiveTask).mockResolvedValue(null);
 		const s = store();
-		await s.mount();
+		await s.follow(null);
 		expect(s.status).toBe('idle');
 		expect(streams).toHaveLength(0);
+		expect(getTaskStatus).not.toHaveBeenCalled();
 	});
 
 	it('attaches to the active task and rebuilds its view, an open prompt included, from the replay', async () => {
@@ -107,12 +104,57 @@ describe('SyncStore: attaching', () => {
 		expect(s.view.prompt).toMatchObject({ promptId: 'p1', body: { kind: 'secret' } });
 	});
 
-	it('asks the server only once however often it is mounted', async () => {
-		vi.mocked(getActiveTask).mockResolvedValue(null);
+	it('attaches when the active task appears in a later read, as a sync started in another tab', async () => {
+		vi.mocked(getTaskStatus).mockResolvedValue(running({ task_id: 't9' }));
 		const s = store();
-		await s.mount();
-		await s.mount();
-		expect(getActiveTask).toHaveBeenCalledTimes(1);
+		await s.follow(null);
+		expect(s.status).toBe('idle');
+
+		await s.follow('t9');
+		expect(streams).toHaveLength(1);
+		expect(streams[0].taskId).toBe('t9');
+		expect(s.status).toBe('attaching');
+		expect(s.taskId).toBe('t9');
+	});
+
+	it('does not attach again to the task it is attached to, nor twice while the status is being read', async () => {
+		const s = await attached();
+		await s.follow('t1');
+		expect(streams).toHaveLength(1);
+
+		let release!: (status: TaskStatus) => void;
+		vi.mocked(getTaskStatus).mockImplementation(
+			() => new Promise((resolve) => (release = resolve))
+		);
+		const other = store();
+		const first = other.follow('t2');
+		const second = other.follow('t2');
+		release(running({ task_id: 't2' }));
+		await Promise.all([first, second]);
+		expect(streams).toHaveLength(2);
+	});
+
+	it('picks up the abort already under way from the status it attaches by', async () => {
+		vi.mocked(getTaskStatus).mockResolvedValue(running({ aborting: true }));
+		const s = store();
+		await s.follow('t1');
+		expect(s.stopping).toBe(true);
+	});
+
+	it('reads the status again when the server has no active task and the end was not seen', async () => {
+		const s = await attached();
+		vi.mocked(getTaskStatus).mockRejectedValue(new ApiError(404, 'not_found', 'gone'));
+		await s.follow(null);
+		expect(s.status).toBe('interrupted');
+	});
+
+	it('leaves an ended task alone when the server has no active task', async () => {
+		const s = await attached();
+		streams[0].push(resolved, ev(5, 'task_ended', taskEnded()));
+		vi.mocked(getTaskStatus).mockClear();
+		await s.follow(null);
+		expect(getTaskStatus).not.toHaveBeenCalled();
+		expect(s.status).toBe('ended');
 	});
 
 	it('closes the prompt when the stream resolves it, as the other tab answered', async () => {
@@ -317,105 +359,9 @@ describe('SyncStore: stopping', () => {
 		expect(s.stopping).toBe(false);
 	});
 
-	it('picks up an abort already under way from the status', async () => {
-		vi.mocked(getActiveTask).mockResolvedValue(running({ aborting: true }));
-		const s = store();
-		await s.mount();
-		expect(s.stopping).toBe(true);
-	});
-
 	it('follows a task whose run began, for the item rows', async () => {
 		const s = await attached();
 		streams[0].push(resolved, ev(5, 'run_started', runStarted(1, 10, 7)));
 		expect(s.view.instances[0].items[0].state).toBe('fetching');
-	});
-});
-
-describe('SyncStore: what the views are told (revisions, never counts)', () => {
-	it('moves the data revision when a run wrote rows, and not for one that wrote none', async () => {
-		const s = await attached();
-		expect(s.dataRevision).toBe(0);
-
-		streams[0].push(
-			resolved,
-			ev(5, 'run_started', runStarted(1, 10, 7)),
-			ev(6, 'run_finished', runFinished(1, 10, 7, { inserted: 0, skipped_by_identity: 4 }))
-		);
-		expect(s.dataRevision).toBe(0);
-
-		streams[0].push(
-			ev(7, 'run_started', runStarted(1, 11, 7)),
-			ev(8, 'run_finished', runFinished(1, 11, 7, { inserted: 12, skipped_by_identity: 0 }))
-		);
-		expect(s.dataRevision).toBe(1);
-	});
-
-	it('counts a run that only inserted duplicates as one that wrote rows', async () => {
-		const s = await attached();
-		streams[0].push(
-			resolved,
-			ev(5, 'run_started', runStarted(1, 10, 7)),
-			ev(
-				6,
-				'run_finished',
-				runFinished(1, 10, 7, {
-					inserted: 0,
-					inserted_as_duplicates: [{ id: 5, duplicate_of: 3 }]
-				})
-			)
-		);
-		expect(s.dataRevision).toBe(1);
-	});
-
-	it('moves the end revision when the task ends', async () => {
-		const s = await attached();
-		expect(s.endRevision).toBe(0);
-		streams[0].push(resolved, ev(5, 'task_ended', taskEnded()));
-		expect(s.endRevision).toBe(1);
-	});
-
-	it('does not note what the replay of an attach delivers, nor a replay after a lost stream', async () => {
-		vi.mocked(getActiveTask).mockResolvedValue(running({ last_event_id: 4 }));
-		const s = store();
-		await s.mount();
-		streams[0].push(
-			begin,
-			ev(2, 'run_started', runStarted(1, 10, 7)),
-			ev(3, 'run_finished', runFinished(1, 10, 7)),
-			ev(4, 'instance_started', { instance_id: 1 })
-		);
-		expect(s.dataRevision).toBe(0);
-
-		streams[0].push(
-			ev(5, 'run_started', runStarted(1, 11, 7)),
-			ev(6, 'run_finished', runFinished(1, 11, 7))
-		);
-		expect(s.dataRevision).toBe(1);
-
-		// the stream is lost and attached again: the replay from id 1 is not news again
-		vi.mocked(getTaskStatus).mockResolvedValue(running({ last_event_id: 6 }));
-		streams[0].giveUp();
-		await vi.waitFor(() => expect(streams).toHaveLength(2));
-		streams[1].push(
-			begin,
-			ev(2, 'run_started', runStarted(1, 10, 7)),
-			ev(3, 'run_finished', runFinished(1, 10, 7)),
-			ev(4, 'instance_started', { instance_id: 1 }),
-			ev(5, 'run_started', runStarted(1, 11, 7)),
-			ev(6, 'run_finished', runFinished(1, 11, 7))
-		);
-		expect(s.dataRevision).toBe(1);
-	});
-
-	it('notes the events of a task the user started from its first event', async () => {
-		vi.mocked(startSync).mockResolvedValue({ task_id: 't2', busy: [] });
-		const s = store();
-		await s.start([{ instance_id: 1, account_id: 7 }]);
-		streams[0].push(
-			begin,
-			ev(2, 'run_started', runStarted(1, 10, 7)),
-			ev(3, 'run_finished', runFinished(1, 10, 7))
-		);
-		expect(s.dataRevision).toBe(1);
 	});
 });
