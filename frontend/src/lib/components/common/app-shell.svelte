@@ -18,6 +18,8 @@
 		status?: string;
 		/** something runs behind the status: a spinner at the end of the item */
 		busy?: boolean;
+		/** a quiet number at the end of the item (Review); nothing at zero */
+		count?: number;
 	};
 </script>
 
@@ -68,6 +70,11 @@
 				</span>
 			{/if}
 		</span>
+		{#if item.count}
+			<span class="shrink-0 text-xs text-muted-foreground tabular-nums" data-slot="nav-count">
+				{item.count}
+			</span>
+		{/if}
 		{#if item.busy}
 			<span class="shrink-0" data-slot="nav-spinner">
 				<LoaderCircleIcon

@@ -17,7 +17,9 @@
 	import PanelNavigationGuard from '#lib/components/units/panel-navigation-guard.svelte';
 	import UnitPanelView from '#lib/components/units/unit-panel.svelte';
 	import { entryForm } from '#lib/entry-form/controller.svelte.js';
+	import { runLiveData } from '#lib/stores/live-data.svelte.js';
 	import { lookupsStore } from '#lib/stores/lookups.svelte.js';
+	import { reviewCount } from '#lib/stores/review-count.svelte.js';
 	import { session } from '#lib/stores/session.svelte.js';
 	import { sync } from '#lib/stores/sync.svelte.js';
 	import { navStatus } from '#lib/sync/status.js';
@@ -39,7 +41,7 @@
 	// Only routes that exist (design §10).
 	const nav: NavItem[] = $derived([
 		{ href: '/ledger', label: 'Ledger', icon: ListIcon },
-		{ href: '/review', label: 'Review', icon: ListChecksIcon },
+		{ href: '/review', label: 'Review', icon: ListChecksIcon, count: reviewCount.count },
 		{ href: '/documents', label: 'Documents', icon: FileTextIcon },
 		{ href: '/accounts', label: 'Accounts', icon: LandmarkIcon },
 		{
@@ -94,12 +96,10 @@
 	// the entry form's dialogs take the entry the panel shows (an authored unit's)
 	const entryOf = (id: number) => unitPanel.unit?.entries.find((e) => e.id === id);
 
-	// The task store lives as long as the session: it asks for the active task once signed in (a
-	// reload picks a sync up again) and drops everything when the session ends
-	$effect(() => {
-		if (session.status === 'authenticated') void sync.mount();
-		else if (session.status === 'anonymous') sync.dispose();
-	});
+	// The change watcher, the task store and the Review count live as long as the session: the
+	// watcher's reads carry the user's active task (a reload picks a sync up again, and so does a tab
+	// that was open before the sync started elsewhere)
+	runLiveData();
 
 	// The auth gate: anonymous visitors go to /login, signed-in ones leave it.
 	$effect(() => {

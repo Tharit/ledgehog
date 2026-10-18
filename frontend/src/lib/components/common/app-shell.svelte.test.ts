@@ -156,3 +156,41 @@ describe('AppShell: the status line of an item', () => {
 		).toBeNull();
 	});
 });
+
+describe('AppShell: the count of an item', () => {
+	function withCount(count?: number) {
+		render(AppShell, {
+			props: {
+				items: [...items, { href: '/review', label: 'Review', icon: ListIcon, count }],
+				currentPath: '/ledger',
+				userName: 'Ada',
+				onlogout: vi.fn(),
+				children: content
+			}
+		});
+	}
+
+	it('shows a quiet number beside the label, muted and not a badge', () => {
+		withCount(12);
+
+		const count = screen
+			.getByRole('link', { name: /^Review/ })
+			.querySelector('[data-slot="nav-count"]');
+		expect(count).toHaveTextContent('12');
+		expect(count).toHaveClass('text-muted-foreground');
+	});
+
+	it('shows nothing at zero, and nothing without a count', () => {
+		withCount(0);
+		expect(
+			screen.getByRole('link', { name: 'Review' }).querySelector('[data-slot="nav-count"]')
+		).toBeNull();
+	});
+
+	it('shows nothing for an item that has no count', () => {
+		withCount();
+		expect(
+			screen.getByRole('link', { name: 'Review' }).querySelector('[data-slot="nav-count"]')
+		).toBeNull();
+	});
+});
