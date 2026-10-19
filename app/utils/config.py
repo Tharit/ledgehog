@@ -82,6 +82,7 @@ class Config:
     model: ModelConfig | None
     expose_openapi: bool = False  # development only: serve /api/openapi.json
     enable_test_importers: bool = False  # development only: register the deterministic test importers
+    fints_product_id: str | None = None  # the DK product registration id (spec §7.1); not a secret
 
     def with_database(self, name: str) -> Config:
         """A copy pointing at another database (test and dev contexts, architecture §9)."""
@@ -109,6 +110,14 @@ class _Reader:
         if value.strip() == "":
             raise ConfigError(var, "must not be empty")
         return value
+
+    def optional_text(self, var: str) -> str | None:
+        raw = self.env.get(var)
+        if raw is None:
+            return None
+        if raw.strip() == "":
+            raise ConfigError(var, "must not be empty")
+        return raw.strip()
 
     def integer(self, var: str, default: int, lo: int, hi: int | None = None) -> int:
         raw = self.env.get(var)
@@ -212,4 +221,5 @@ class _Reader:
             model=self.model(),
             expose_openapi=self.boolean("EXPOSE_OPENAPI", False),
             enable_test_importers=self.boolean("ENABLE_TEST_IMPORTERS", False),
+            fints_product_id=self.optional_text("FINTS_PRODUCT_ID"),
         )

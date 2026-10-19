@@ -7,6 +7,8 @@ dependencies = [
     "alembic>=1.13",
     "argon2-cffi>=25.1.0",
     "fastapi>=0.115",
+    "fints==5.0.1",
+    "mt-940==5.1.1",
     "psycopg[binary]>=3.2",
     "python-multipart>=0.0.32",
     "sqlalchemy>=2.0",
@@ -51,3 +53,9 @@ strict = true
 files = ["app"]
 mypy_path = "."
 explicit_package_bases = true
+
+# python-fints and requests ship no type information; the FinTS plugin is their only user, behind
+# its own typed seam (app/plugins/importers/fints/bank.py).
+[[tool.mypy.overrides]]
+module = ["fints", "fints.*", "requests"]
+ignore_missing_imports = true

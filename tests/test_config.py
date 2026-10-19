@@ -240,3 +240,14 @@ def test_enable_test_importers_rejects_anything_else_naming_the_variable(raw):
         load(ENABLE_TEST_IMPORTERS=raw)
     assert err.value.variable == "ENABLE_TEST_IMPORTERS"
     assert "ENABLE_TEST_IMPORTERS" in str(err.value)
+
+
+def test_the_fints_product_id_is_optional_and_not_a_secret():
+    assert load().fints_product_id is None
+    assert load(FINTS_PRODUCT_ID=" ABC123 ").fints_product_id == "ABC123"
+
+
+def test_a_blank_fints_product_id_names_the_variable():
+    with pytest.raises(ConfigError) as err:
+        load(FINTS_PRODUCT_ID="  ")
+    assert err.value.variable == "FINTS_PRODUCT_ID"
