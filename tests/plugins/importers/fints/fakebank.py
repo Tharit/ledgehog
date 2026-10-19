@@ -57,6 +57,7 @@ class Dialog:
     fail: Sequence[ReturnCode] | None = None  # the library fails in the data request, with these codes
     fail_login: Sequence[ReturnCode] | None = None  # the library fails at login, with these codes
     system_id: str | None = None  # assigned by this dialog
+    before_text: Callable[[], None] | None = None  # runs when the data request arrives (a rendezvous)
 
 
 class _Open:
@@ -94,6 +95,8 @@ class _Open:
             self._codes.extend(self._script.fail)
             raise DialogFailed(self._codes, "FinTSSCARequiredError")
         self._codes.extend(self._script.request_codes)
+        if self._script.before_text is not None:
+            self._script.before_text()
         return self._script.text
 
 
