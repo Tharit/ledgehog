@@ -12,14 +12,7 @@ import {
 	type ImporterError,
 	type ImporterInstance
 } from '#lib/api/importers.js';
-import {
-	CSV_FIELDS,
-	draftFromSettings,
-	emptyDraft,
-	fieldOfSetting,
-	settingsFromDraft,
-	type CsvDraft
-} from '#lib/importers/csv-profile.js';
+import { settingsFormOf, type AnyDraft } from '#lib/importers/forms.js';
 import { describeImporterError } from '#lib/importers/messages.js';
 import { session } from './session.svelte.js';
 
@@ -46,7 +39,8 @@ export class ImporterEditorStore {
 	catalog = $state.raw<CatalogEntry[]>([]);
 
 	label = $state('');
-	draft = $state<CsvDraft>(emptyDraft());
+	/** the importer's draft, in the type of its form adapter (`lib/importers/forms.ts`) */
+	draft = $state<AnyDraft>({});
 	/** the preset the form was last filled from (add only) */
 	preset = $state('');
 
@@ -129,7 +123,7 @@ export class ImporterEditorStore {
 				return;
 			}
 			this.label = '';
-			this.draft = emptyDraft();
+			this.draft = this.#form()?.emptyDraft() ?? {};
 			this.#initial = this.#snapshot();
 		}
 		this.loadStatus = 'ready';
@@ -138,8 +132,12 @@ export class ImporterEditorStore {
 	#adopt(instance: ImporterInstance): void {
 		this.instance = instance;
 		this.label = instance.label;
-		this.draft = draftFromSettings(instance.settings);
+		this.draft = this.#form()?.draftFromSettings(instance.settings) ?? {};
 		this.#initial = this.#snapshot();
+	}
+
+	#form() {
+		return this.importer ? settingsFormOf(this.importer) : null;
 	}
 
 	/** Fill the form from a preset, as a draft edit; the label stays what it is. */
@@ -147,7 +145,7 @@ export class ImporterEditorStore {
 		const settings = this.entry?.presets[name];
 		if (!settings) return;
 		this.preset = name;
-		this.draft = draftFromSettings(settings);
+		this.draft = this.#form()?.draftFromSettings(settings) ?? {};
 		this.errors = {};
 		this.failure = null;
 	}
@@ -166,11 +164,17 @@ export class ImporterEditorStore {
 	/** Save the draft: the instance as it now is, or null (the refusal is in `errors` or `failure`). */
 	async save(): Promise<SaveResult | null> {
 		const importer = this.importer;
-		if (this.saving || !importer || this.loadStatus !== 'ready') return null;
-		this.saving = true;
+		const form = this.#form();
+		if (this.saving || !importer || !form || this.loadStatus !== 'ready') return null;
 		this.errors = {};
 		this.failure = null;
-		const fields = { label: this.label, settings: settingsFromDraft(this.draft) };
+		const problems = form.problems?.(this.draft) ?? {};
+		if (Object.keys(problems).length > 0) {
+			this.errors = problems;
+			return null;
+		}
+		this.saving = true;
+		const fields = { label: this.label, settings: form.settingsFromDraft(this.draft) };
 		try {
 			const created = !this.editing;
 			const instance =
@@ -190,8 +194,8 @@ export class ImporterEditorStore {
 	#refuse(error: ImporterError): void {
 		switch (error.kind) {
 			case 'invalid_profile': {
-				const field = error.setting ? fieldOfSetting(error.setting) : null;
-				if (field && CSV_FIELDS.includes(field)) {
+				const field = error.setting ? (this.#form()?.fieldOfRefusal(error.setting) ?? null) : null;
+				if (field) {
 					this.errors = { [field]: sentence(error.message) };
 				} else {
 					this.failure = describeImporterError(error);

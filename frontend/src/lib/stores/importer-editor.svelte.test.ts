@@ -119,6 +119,72 @@ describe('ImporterEditorStore, adding', () => {
 	});
 });
 
+describe('ImporterEditorStore, a non-CSV adapter', () => {
+	const FINTS = { url: 'https://b.example/fints', bank_code: '12345678', user_id: 'me' };
+
+	async function addingFints() {
+		vi.mocked(listImporters).mockResolvedValue([catalogEntry({ name: 'fints', kind: 'fetch' })]);
+		const store = new ImporterEditorStore({ importer: 'fints' });
+		await store.init();
+		return store;
+	}
+
+	it('opens the adapter’s empty draft and saves its settings', async () => {
+		const store = await addingFints();
+		expect(store.draft).toEqual({ url: '', bankCode: '', userId: '', customerId: '' });
+
+		store.label = 'Bank';
+		store.draft.url = FINTS.url;
+		store.draft.bankCode = FINTS.bank_code;
+		store.draft.userId = FINTS.user_id;
+		vi.mocked(createInstance).mockResolvedValue(instance({ id: 5, importer: 'fints' }));
+		const result = await store.save();
+
+		expect(result).toMatchObject({ created: true });
+		expect(createInstance).toHaveBeenCalledWith('fints', { label: 'Bank', settings: FINTS });
+	});
+
+	it('stops at the client checks without calling the server', async () => {
+		const store = await addingFints();
+		store.label = 'Bank';
+
+		expect(await store.save()).toBeNull();
+
+		expect(createInstance).not.toHaveBeenCalled();
+		expect(store.errorFor('url')).not.toBeNull();
+		expect(store.saving).toBe(false);
+	});
+
+	it('puts the server’s refusal under the field its setting names', async () => {
+		const store = await addingFints();
+		store.label = 'Bank';
+		Object.assign(store.draft, { url: FINTS.url, bankCode: '12345678', userId: 'me' });
+		vi.mocked(createInstance).mockRejectedValueOnce(
+			new ApiError(422, 'invalid_profile', 'bank_code: unknown bank', { setting: 'bank_code' })
+		);
+
+		await store.save();
+
+		expect(store.errorFor('bank_code')).toBe('Unknown bank');
+		expect(store.failure).toBeNull();
+	});
+
+	it('reads stored settings into the draft when editing', async () => {
+		vi.mocked(listInstances).mockResolvedValue([
+			instance({ id: 6, importer: 'fints', label: 'Bank', settings: FINTS })
+		]);
+		const store = new ImporterEditorStore({ instanceId: 6 });
+		await store.init();
+
+		expect(store.draft).toEqual({
+			url: FINTS.url,
+			bankCode: '12345678',
+			userId: 'me',
+			customerId: ''
+		});
+	});
+});
+
 describe('ImporterEditorStore, editing', () => {
 	it('opens the stored settings and saves them back with the label', async () => {
 		vi.mocked(listInstances).mockResolvedValue([

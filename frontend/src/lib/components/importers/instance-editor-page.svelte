@@ -154,10 +154,14 @@
 	}
 
 	const title = $derived(store.editing ? (store.instance?.label ?? 'Importer') : 'Add importer');
+	const isCsv = $derived(store.importer === 'csv');
+	// the description is about the file format: for the CSV importer only
 	const description = $derived(
-		store.editing
-			? 'Change the importer’s settings. Saving changes later uploads only: rows already imported keep saying what the file said.'
-			: `Name the importer and describe the file format${store.importer ? ` (${store.importer})` : ''}. Link an account once it is saved, then check the profile with a dry run on the upload page.`
+		!isCsv
+			? undefined
+			: store.editing
+				? 'Change the importer’s settings. Saving changes later uploads only: rows already imported keep saying what the file said.'
+				: 'Name the importer and describe the file format (csv). Link an account once it is saved, then check the profile with a dry run on the upload page.'
 	);
 	const locale = $derived(session.config?.locale ?? 'en');
 </script>
@@ -210,7 +214,7 @@
 			onsubmit={(event) => event.preventDefault()}
 			{onkeydown}
 		>
-			{#if !store.editing && store.presetNames.length > 0}
+			{#if isCsv && !store.editing && store.presetNames.length > 0}
 				<Field
 					label="Start from a preset"
 					hint="Fills the form below as a draft. Nothing is saved until you save the importer, and Cancel discards it."
@@ -233,7 +237,9 @@
 
 			<Field
 				label="Label"
-				hint="The importer’s one name. Rows it imports say csv: and this label as their source format, so it is read from here."
+				hint={isCsv
+					? 'The importer’s one name. Rows it imports say csv: and this label as their source format, so it is read from here.'
+					: 'The importer’s one name.'}
 				error={store.errorFor('label')}
 			>
 				{#snippet children(control)}

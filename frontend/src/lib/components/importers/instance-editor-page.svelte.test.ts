@@ -266,6 +266,28 @@ describe('the instance page, editing', () => {
 		expect(onopen).not.toHaveBeenCalled();
 	});
 
+	it('shows the FinTS form without the CSV copy, preset or label hint', async () => {
+		api.listImporters.mockResolvedValue([
+			catalogEntry({ name: 'fints', kind: 'fetch', presets: { odd: {} } })
+		]);
+		render(InstanceEditorPage, { props: { importer: 'fints', onleave: vi.fn() } });
+		await screen.findByRole('form', { name: 'Importer' });
+
+		expect(screen.getByLabelText('Bank address')).toBeInTheDocument();
+		expect(screen.queryByText(/describe the file format/)).toBeNull();
+		expect(screen.queryByText(/Start from a preset/)).toBeNull();
+		expect(screen.queryByText(/say csv:/)).toBeNull();
+		expect(screen.queryByText(/dry run/)).toBeNull();
+	});
+
+	it('keeps the CSV copy for csv', async () => {
+		await adding();
+
+		expect(screen.getByText(/describe the file format/)).toBeInTheDocument();
+		expect(screen.getByText(/say csv:/)).toBeInTheDocument();
+		expect(screen.getAllByText(/Start from a preset/).length).toBeGreaterThan(0);
+	});
+
 	it('unlinks after a decision that says the coverage stays', async () => {
 		api.unlinkAccount.mockResolvedValue({ settle: { touched_entry_ids: [], error: null } });
 		await editing();
