@@ -1189,7 +1189,9 @@ The same booking can reach an account more than once:
   again to fill a gap after a holiday;
 - **through one importer after a format change** — a bank that changes how it
   renders descriptions re-delivers its overlap window (§5.4) under new
-  hashes.
+  hashes;
+- **through two credentials** — two users' logins to one shared account, each
+  fetching it in turn from the account's sync position, whoever fetched last.
 
 §5.2 settles both with the same rule, at import, without asking anyone. There
 is no special case for either. A movement entered by hand and later imported is
@@ -2804,6 +2806,11 @@ Deutsche Kreditwirtschaft is mandatory and free. Register the *application*
 (category "Web-Server"), not the library — library registration numbers may
 not be used in live operation. Registration also unlocks the FinTS
 Bankenliste.
+
+The registration number belongs to the deployment, not to a login: whoever runs
+the ledger sets it once, and every FinTS login uses it. Without it, a sync or a
+refresh of accounts stops before asking for a PIN and says that the
+registration is missing.
 
 ---
 

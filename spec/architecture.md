@@ -58,6 +58,13 @@ frontend is orders of magnitude more third-party code than Go plus four FinTS
 packages. Mitigations are hash-pinned lockfiles on both sides and deliberate,
 infrequent rebuilds — not the elimination of the risk.
 
+**python-fints and mt-940 are pinned exactly.** The fixes the FinTS importer
+needs are carried in the plugin as subclasses, each with its own test, and
+deleted once the library makes the test pass without them
+(`plugins/importers/fints.md`); an upgrade is a deliberate change that runs
+those tests. The importer holds no dialog between calls and stores no
+`deconstruct()` blob: it is a pickle, and nothing loads a pickle from storage.
+
 ### Why an SPA rather than server-rendered HTML
 
 Three parts of the UI are interaction-heavy enough that form round-trips would
@@ -1677,7 +1684,8 @@ what the user typed and "Reset" returns the instance to asking), a learned
 per-bank rule. The caller writes it back when the instance's job ends,
 whatever the outcome, if it changed, so a medium chosen before a failed sign-in
 is not asked for again. No PIN, password, TAN or token that does not meet
-`spec.md` §7 may be put in it.
+`spec.md` §7 may be put in it. What the FinTS importer keeps there is listed in
+`plugins/importers/fints.md` §1.
 
 Errors are exception classes, not strings, because the queue's behaviour
 depends on the distinction:
@@ -1769,6 +1777,7 @@ returned by `GET /api/config`.
 | Household | `TIMEZONE` (required, an IANA zone; `spec.md` §5.4), `LOCALE` (`en`) |
 | Users | indexed groups `USER_<n>_LOGIN`, `USER_<n>_NAME`, `USER_<n>_PASSWORD`, `n` contiguous from 1, logins unique; none is allowed |
 | Model | `MODEL_ENDPOINT` and `MODEL_NAME` (both or neither), optional `MODEL_API_KEY`; absent means pass 3 does not run (§5.4) |
+| Bank access | `FINTS_PRODUCT_ID` (optional): the registration number of `spec.md` §7.1, sent with every FinTS request; absent means a FinTS login stops before asking for a PIN (`NotRegistered`), and nothing else is affected |
 | Development | `ENABLE_TEST_IMPORTERS` (`false`; `true` or `false`, anything else fails the start): registers the deterministic test importers in the composition root — `testdocs`, so documents can be exercised before a real document importer exists (`features/documents.md`), and `testfetch`, scripted by its settings to exercise every prompt kind and failure class without a bank; a deployment leaves it off. `EXPOSE_OPENAPI` (`false`; `true` or `false`, anything else fails the start): serves the OpenAPI document at `/api/openapi.json`, without a session, so the frontend's types can be generated from a running server (§6.7); a deployment leaves it off. `/docs` and `/redoc` never exist, whatever the value: they load scripts from a third-party host |
 
 **Start is a fixed sequence, and the app binds only after it succeeds:**
@@ -2245,7 +2254,10 @@ Layers:
   savings including reconciliations; net worth summing valued accounts with
   the others on the unvalued line.
 - **Importer tests** — against recorded payloads committed as fixtures, never
-  against a live bank. The sync's orchestration is tested against the fake
+  against a live bank. The FinTS importer is tested through its one seam to the
+  bank, against a fake of it, with a hand-built MT940 corpus, and each fix it
+  carries to python-fints has its own test (`plugins/importers/fints.md` §9).
+  The sync's orchestration is tested against the fake
   `testfetch`, whose rows are a pure function of the date so that two
   overlapping fetches deliver the same identities (the two-run rule, below);
   the prompt hand-off, abort, timeout and abandonment are tested on the task

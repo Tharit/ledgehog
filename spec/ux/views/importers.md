@@ -11,9 +11,8 @@ profile is `plugins/importers/csv.md`; the contracts are `architecture.md`
 **Settings → Importers**, `/settings/importers`, is where importer instances
 are managed: a tab of Settings beside categories, payees, rules and tags.
 Fetching and syncing are not here but in `ux/views/sync.md`; the discovery of an
-instance's accounts is *Refresh accounts*, below. The setup form of the FinTS
-importer — the URL, the bank code, the login — is later; this document names
-where it will plug in and no more.
+instance's accounts is *Refresh accounts*, below. The FinTS importer's setup is
+*The FinTS form*, below.
 
 ## The instance list
 
@@ -112,6 +111,21 @@ dry run, adjust the profile and check again until the report is right. After
 saving a new instance, its page offers "Link account" at once, so the
 sequence reads as one path. No second dry-run mechanism is added for unsaved
 settings.
+
+## The FinTS form
+
+The FinTS importer's settings (`plugins/importers/fints.md` §1) are four fields
+on the instance page, each with a visible label and helper text and no
+placeholder: *Bank address* ("The address your bank publishes for online access
+by software (FinTS). Your bank's help pages or the FinTS bank list give it. It
+must start with https."), *Bank code* ("The eight-digit Bankleitzahl of your
+bank."), *Login name* ("The name you sign in to online banking with.") and,
+optional, *Customer ID* ("Only if your bank gave you a customer ID that differs
+from the login name. Leave empty otherwise."). Below them one line: "The PIN is
+not stored. You will be asked for it whenever this login is used." There is no
+connection test: *Refresh accounts* is one, and every extra login spends an
+attempt. The page's CSV-specific parts — the preset select, the hints about the
+file and about `source_format` — are shown for a CSV profile only.
 
 ## Uploading a file
 
