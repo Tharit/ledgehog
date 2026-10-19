@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Callable, MutableMapping
+from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 from anyio import to_thread
@@ -27,6 +28,7 @@ from app.core.plugins.importer import FileImporter
 from app.core.resolution.registry import configure_classifiers, configure_rule_tools
 from app.plugins.classifiers import default_classifiers, default_rule_tools
 from app.plugins.importers.csv import CsvImporter
+from app.plugins.importers.fints import FintsImporter
 from app.plugins.importers.testdocs import TestDocumentImporter
 from app.plugins.importers.testfetch import TestFetchImporter
 from app.startup import start
@@ -39,12 +41,25 @@ Receive = Callable[[], Awaitable[MutableMapping[str, Any]]]
 Send = Callable[[MutableMapping[str, Any]], Awaitable[None]]
 
 
+def app_version() -> str:
+    """The application's own version, which FinTS sends as the product version."""
+    try:
+        return version("ledgehog")
+    except PackageNotFoundError:
+        return "0.0.0"
+
+
 def register_importers(config: Config) -> dict[str, FileImporter | FetchImporter]:
     """The importers this deployment offers (name -> implementation); also installs the document
     providers of those that deliver documents, the one source of the providers a payee can name.
     The deterministic test importers (`testdocs`, and the scripted `testfetch`) are registered only
     behind `ENABLE_TEST_IMPORTERS`."""
-    importers: dict[str, FileImporter | FetchImporter] = {"csv": CsvImporter()}
+    importers: dict[str, FileImporter | FetchImporter] = {
+        "csv": CsvImporter(),
+        # always registered, so the catalog and the setup form exist; without the DK product
+        # registration id `open` raises `NotRegistered` before it asks for anything (spec §7.1)
+        "fints": FintsImporter(config.fints_product_id, app_version()),
+    }
     if config.enable_test_importers:
         importers["testdocs"] = TestDocumentImporter()
         importers["testfetch"] = TestFetchImporter()

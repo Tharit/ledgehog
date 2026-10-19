@@ -7,6 +7,7 @@ library is told to leave field 86 as it came and to sign reversal marks.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import date
@@ -99,6 +100,8 @@ def read_statements(text: str, *, until: date, minor_units_of: Callable[[str], i
 
 
 def _parse(text: str) -> list[Any]:
+    # The library's debug log carries every matched line, i.e. the bookings: keep it at warning (fints.md §8).
+    logging.getLogger("mt940").setLevel(logging.WARNING)
     try:
         return list(
             mt940.parse_statements(
