@@ -5,8 +5,9 @@
 	import type { Snippet } from "svelte";
 	import type { HTMLAttributes } from "svelte/elements";
 
+	// Deviation from the shadcn original (lint): the unused `_payload` parameter is dropped.
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	function defaultFormatter(value: any, _payload: TooltipPayload[]) {
+	function defaultFormatter(value: any) {
 		return `${value}`;
 	}
 
@@ -168,7 +169,8 @@
 							</div>
 							{#if item.value !== undefined}
 								<span class="font-mono font-medium text-foreground tabular-nums">
-									{item.value.toLocaleString()}
+									<!-- Deviation from the shadcn original (lint): `toLocaleString` is restricted (locale formatting lives in lib/format); the reports pass their own `formatter` or use FigureTooltip. -->
+									{String(item.value)}
 								</span>
 							{/if}
 						</div>

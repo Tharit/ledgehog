@@ -12,4 +12,19 @@ if (typeof ResizeObserver === 'undefined') {
 	};
 }
 
+// LayerChart reads `prefers-reduced-motion` when it loads
+if (typeof window.matchMedia !== 'function') {
+	window.matchMedia = (query: string) =>
+		({
+			matches: false,
+			media: query,
+			onchange: null,
+			addEventListener() {},
+			removeEventListener() {},
+			addListener() {},
+			removeListener() {},
+			dispatchEvent: () => false
+		}) as MediaQueryList;
+}
+
 afterEach(cleanup);
