@@ -20,9 +20,9 @@ Titled "Importers", with the primary action "Add importer". A row shows the
 instance's label, its importer, the accounts it is linked to — each a link to
 the account's page — when it last ran ("never run" for none, relative with the
 absolute instant in a tooltip, `ux/patterns.md` §3) and "disabled" when it is.
-For an instance that holds a login (FinTS, a later wave), whose login it is
-and whether the other user may run it are shown too (`spec.md` §5.11); a file
-importer holds none and is always shared. A row opens its page (below). It follows the settings-row
+For an instance that holds a login, whose it is is shown too — "your login",
+"*Name*'s login", or "shared" where either user may run it (`spec.md` §5.11);
+a file importer holds none and is always shared. A row opens its page (below). It follows the settings-row
 rule (`ux/patterns.md` §11.3): two icon actions, "Edit" and "Link account" —
 for an instance of an importer that fetches and emits transactions, "Refresh
 accounts" instead (below) — and
@@ -42,6 +42,8 @@ destructive style, "Delete…".
   (`instance_has_runs`), the decision dialog shows the refusal as an error
   with the same pointer. An instance without runs is deleted after the decision
   dialog; its links go with it, and the notice says so.
+- **The other user's login** is read-only: its row shows no actions and opens
+  its page read-only (below).
 - An empty list says what is missing and offers "Add importer" (§9).
 
 ## The instance page
@@ -62,6 +64,11 @@ editor with "Save importer" and Cancel (`ux/patterns.md` §11.2). It holds:
 - **Linked accounts**, listing each with "Unlink…" and the action "Link
   account", for an instance already saved; for an importer that fetches and
   emits transactions the action is "Refresh accounts" (below).
+
+For the other user's login the page is read-only: everything it shows — the
+label, the settings, whose login it is, the linked accounts, when it last ran —
+with no editor and none of the actions above. Nothing of an instance is hidden
+from the other user: no credential is ever stored, and the rest is not secret.
 
 **Link account** is a form dialog: an account picker (open accounts which the
 instance does not link yet) and, for a file importer, nothing else — it is never

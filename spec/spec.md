@@ -2523,8 +2523,10 @@ then starts from zero.
 
 A credential is personal even though the ledger is shared: one user cannot
 enter another's PIN. `importer_instance.owner_id` and `access` record **who
-may authenticate an instance**, and nothing else — every source transaction it
-produces lands in the one shared ledger regardless of who ran it.
+may authenticate an instance**, and with it who may manage it: run it, refresh
+its accounts, link and unlink accounts, change its settings, reset, disable or
+delete it. They restrict nothing else — every source transaction it produces
+lands in the one shared ledger regardless of who ran it.
 
 | `access` | Meaning |
 |---|---|
@@ -2537,9 +2539,9 @@ is otherwise always a stated decision, never an unset column.
 
 **"Sync everything" means every instance the current user can authenticate**:
 the ones they own plus the shared ones, except instances a user has disabled.
-Instances owned by the other user are listed but cannot be started, with their
-last run visible, so a connection that has not run in nine days is apparent to
-both.
+Instances owned by the other user are listed, read-only, with whose they are
+and their last run, so a connection that has not run in nine days is apparent
+to both.
 
 **A sync is a foreground sequence, not a background job.** Most instances
 require a PIN and a TAN, so instances run one after another, each asking for

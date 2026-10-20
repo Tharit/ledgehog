@@ -536,6 +536,12 @@ task in `busy`; if nothing remains, that is 409 `instance_busy`. A discovery is
 refused likewise, and 409 `not_an_account_source` for an instance that does not
 emit transactions.
 
+**An instance the user may not run is read-only for them** (`spec.md` §5.11):
+changing its settings, label or `disabled`, resetting it, deleting it, linking
+or unlinking an account and discovering its accounts are 403 `forbidden`, as
+starting it is. Reading it is not restricted: the other user reads everything,
+settings included.
+
 Two things the grouping is meant to make obvious. `units` acts on ledger
 entries but is its own group, because an interpretation is committed per
 unit, atomically, not as a sequence of field updates on entries. And

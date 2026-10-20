@@ -51,8 +51,9 @@ header:
   its label, its importer and its action, "Upload file" for a file importer
   (`ux/views/importers.md`) and "Fetch" for one that fetches
   (`ux/views/sync.md`): a one-item sync for this account alone, started at
-  once, or after choosing the start where the account has no coverage. An
-  unlinked account says how it is fed instead: by hand, or by
+  once, or after choosing the start where the account has no coverage. A
+  source that is the other user's login shows whose it is in place of its
+  action. An unlinked account says how it is fed instead: by hand, or by
   linking it in Settings → Importers (a link);
 - **"Set balance"** and **"View entries"**, and a `⋯` menu with "Edit", the
   account's form dialog (name, external reference, note, icon, colour),
