@@ -1,5 +1,6 @@
 // The reporting reads (architecture §4.1): read-only aggregates, every figure a `Line`. The ledger
 // list's account and tag filters apply to the ones that take them.
+import type { Balances, Kind, OverTime, Step } from '#lib/reports/shapes.js';
 import type { ByCategory, Overview } from '#lib/reports/types.js';
 import { request } from './http.js';
 
@@ -33,4 +34,38 @@ export function getByCategory({
 		query: { from, to, kind, account_id: accountIds, tag_id: tagIds, top },
 		signal
 	});
+}
+
+export type OverTimeOptions = {
+	from: string;
+	to: string;
+	step?: Step;
+	/** `savings`: income, expense and savings per period; `category`: each category's amount */
+	mode?: 'savings' | 'category';
+	kind?: Kind;
+	accountIds?: readonly number[];
+	tagIds?: readonly number[];
+	signal?: AbortSignal;
+};
+
+/** A range cut into months, quarters or years (at most 120): the savings or the categories of each. */
+export function getOverTime({
+	from,
+	to,
+	step,
+	mode,
+	kind,
+	accountIds,
+	tagIds,
+	signal
+}: OverTimeOptions): Promise<OverTime> {
+	return request('GET', '/api/reports/over-time', {
+		query: { from, to, step, mode, kind, account_id: accountIds, tag_id: tagIds },
+		signal
+	});
+}
+
+/** Net worth and every account's balance at the month-ends of a range. */
+export function getBalances(from: string, to: string, signal?: AbortSignal): Promise<Balances> {
+	return request('GET', '/api/reports/balances', { query: { from, to }, signal });
 }

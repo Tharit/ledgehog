@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from './http.js';
-import { getByCategory, getOverview } from './reports.js';
+import { getBalances, getByCategory, getOverTime, getOverview } from './reports.js';
 
 const fetchMock = vi.fn();
 
@@ -37,6 +37,33 @@ describe('getOverview', () => {
 			reply({ error: { code: 'internal_error', message: 'x', details: null } }, 500)
 		);
 		await expect(getOverview()).rejects.toBeInstanceOf(ApiError);
+	});
+});
+
+describe('getOverTime', () => {
+	it('asks for a range, and the step, mode, kind and filters when given', async () => {
+		await getOverTime({ from: '2026-01-01', to: '2026-06-30' });
+		expect(lastUrl()).toBe('/api/reports/over-time?from=2026-01-01&to=2026-06-30');
+
+		await getOverTime({
+			from: '2026-01-01',
+			to: '2026-06-30',
+			step: 'quarter',
+			mode: 'category',
+			kind: 'income',
+			accountIds: [3],
+			tagIds: [7]
+		});
+		expect(lastUrl()).toBe(
+			'/api/reports/over-time?from=2026-01-01&to=2026-06-30&step=quarter&mode=category&kind=income&account_id=3&tag_id=7'
+		);
+	});
+});
+
+describe('getBalances', () => {
+	it('asks for a range and nothing else', async () => {
+		await getBalances('2026-01-01', '2026-06-30');
+		expect(lastUrl()).toBe('/api/reports/balances?from=2026-01-01&to=2026-06-30');
 	});
 });
 
