@@ -1,6 +1,6 @@
 """The bank's account list (the UPD) to discovered accounts (fints.md §3).
 
-No HKSPA: the UPD carries the IBAN.
+No HKSPA: the UPD carries the IBAN. A card has none: its reference is its card number and sub-account.
 """
 
 from __future__ import annotations
@@ -26,6 +26,14 @@ def external_ref_of(account: UpdAccount) -> str | None:
 
 def find(accounts: Sequence[UpdAccount], external_ref: str) -> UpdAccount | None:
     return next((a for a in accounts if external_ref_of(a) == external_ref), None)
+
+
+def fetch_kind(account: UpdAccount) -> str | None:
+    """Which request fetches this row: `card` (HKKKU) for a card the UPD lists with it, which is fetched
+    with it instead of the statements; `statements` (HKKAZ); None where the bank offers neither."""
+    if account.cards and (not account.statements or kind_hint(account.account_type) == "card"):
+        return "card"
+    return "statements" if account.statements else None
 
 
 def kind_hint(account_type: int | None) -> str | None:
@@ -55,7 +63,7 @@ def discover(accounts: Sequence[UpdAccount]) -> list[DiscoveredAccount]:
             name=a.product_name or a.account_number or ref,
             currency=a.currency,
             kind_hint=kind_hint(a.account_type),
-            # the balance is part of the statements, so it has no capability of its own
-            capabilities=_CAPABILITIES if a.statements else frozenset(),
+            # the balance is part of the statements and of the card answer: no capability of its own
+            capabilities=_CAPABILITIES if fetch_kind(a) else frozenset(),
         )
     return list(found.values())

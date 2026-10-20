@@ -22,8 +22,9 @@ from app.core.plugins.errors import (
 )
 from app.core.plugins.fetch import ChoicePrompt, FetchImporter, Option, TanPrompt, TextPrompt
 from app.plugins.importers.fints import FintsImporter
-from app.plugins.importers.fints.bank import BankLogin, Challenge, Procedure
-from tests.plugins.importers.fints.fakebank import Asker, Dialog, FakeBank, rc, upd
+from app.plugins.importers.fints.bank import BankLogin, CardAnswer, CardBalance, Challenge, Procedure
+from tests.plugins.importers.fints.fakebank import Asker, Dialog, FakeBank, card_upd, rc, upd
+from tests.plugins.importers.fints.wire import CARD
 
 TODAY = date(2026, 11, 1)  # the request runs to the 31st
 IBAN = "DE02120300000000202051"
@@ -656,4 +657,156 @@ def test_only_return_codes_and_texts_are_logged(caplog: pytest.LogCaptureFixture
     logged = "\n".join(r.getMessage() for r in caplog.records)
     assert "3076 keine SCA" in logged
     for private in ("123456", "alice", IBAN, "PAYEE", "E2E-0001", "Miete"):
+        assert private not in logged
+
+
+# ---- credit cards (fints.md §6a) ------------------------------------------------------------------------
+
+CARD_REF = f"{CARD}/01"
+
+
+def booking(booked: str, amount: str, direction: str = "D", **more: str) -> dict[str, str]:
+    return {
+        "booking_date": booked,
+        "amount": amount,
+        "currency": "EUR",
+        "direction": direction,
+        "merchant_name": "SHOP",
+        "billed": "J",
+        **more,
+    }
+
+
+def card_answer(*entries: dict[str, str], balance: CardBalance | None = None) -> CardAnswer:
+    return CardAnswer(balance, tuple(entries))
+
+
+def card_bank(*dialogs: Dialog) -> FakeBank:
+    return FakeBank(*dialogs, procedures=SINGLE)
+
+
+def test_a_card_row_is_discovered_by_its_card_number_and_sub_account_with_the_card_hint() -> None:
+    bank = card_bank(Dialog(accounts=[upd(), card_upd(), upd(iban=None, number="888", statements=False)]))
+    session, *_ = open_session(bank)
+    found = session.accounts()
+    assert [(a.external_ref, a.name, a.currency, a.kind_hint, sorted(a.capabilities)) for a in found] == [
+        (IBAN, "Girokonto", "EUR", "checking", ["balance", "transactions"]),
+        (CARD_REF, "Credit Card", "EUR", "card", ["balance", "transactions"]),
+        ("888", "Girokonto", "EUR", "checking", []),
+    ]
+
+
+def test_a_card_fetch_sends_the_card_request_not_the_statement_request_and_maps_the_answer() -> None:
+    answer = card_answer(
+        booking("20261012", "12,50", description_1="Kaffee", value_date="20261014"),
+        booking("20261014", "9,20", "C", original_amount="10,00", original_currency="USD"),
+    )
+    bank = card_bank(Dialog(accounts=[card_upd()], card=answer))
+    session, *_ = open_session(bank)
+    result = fetch(session, ref=CARD_REF, since=date(2026, 10, 1))
+    assert bank.requests == []
+    ((account, since, until, with_tan),) = bank.card_requests
+    assert (account.account_number, with_tan) == (CARD, False)
+    assert (since, until) == (date(2026, 10, 1), date(2026, 10, 31))
+    assert [(r.amount_minor, r.source_format, r.source_id) for r in result.rows] == [
+        (-1250, "hkkku", None),
+        (920, "hkkku", None),
+    ]
+    assert result.rows[1].instructed_amount_minor == 1000
+    assert (result.covered_from, result.covered_through) == (date(2026, 10, 1), date(2026, 10, 31))
+    assert result.reported_balance is None
+    assert dict(result.importer_stats) == {"filtered": 0}
+
+
+def test_unbilled_entries_hold_the_coverage_and_the_balance_is_the_booked_one_rolled_back() -> None:
+    answer = card_answer(
+        booking("20261020", "40,00"),
+        booking("20261029", "15,00"),
+        booking("20261028", "12,50", billed="N"),
+        booking("20261030", "7,50", billed="N"),
+        balance=CardBalance("D", "500,00", "EUR", "20261030"),
+    )
+    bank = card_bank(Dialog(accounts=[card_upd()], card=answer))
+    session, *_ = open_session(bank)
+    result = fetch(session, ref=CARD_REF)
+    assert [r.amount_minor for r in result.rows] == [-4000, -1500]  # the unbilled are not imported
+    assert result.covered_through == date(2026, 10, 27)
+    assert (result.reported_balance, result.balance_on) == (-46500, date(2026, 10, 27))
+
+
+def test_a_card_request_answered_9075_is_repeated_with_a_tan_request_and_hkkku_is_learned() -> None:
+    bank = card_bank(
+        Dialog(accounts=[card_upd()], fail=[rc("9075", "Starke Authentifizierung erforderlich")]),
+        Dialog(accounts=[card_upd()], card=card_answer(booking("20261012", "1,00"))),
+    )
+    session, _, state, _ = open_session(bank)
+    result = fetch(session, ref=CARD_REF)
+    assert [r[3] for r in bank.card_requests] == [False, True]
+    assert state["tan_for"] == ["HKKKU"] and len(result.rows) == 1
+
+
+def test_a_learned_card_request_goes_out_with_the_tan_request_and_the_statement_request_does_not() -> None:
+    bank = card_bank(Dialog(accounts=[card_upd(), upd()], card=card_answer(), text=STATEMENTS))
+    session, _, _, _ = open_session(bank, state={"tan_for": ["HKKKU"]})
+    fetch(session, ref=CARD_REF)
+    fetch(session)
+    assert [r[3] for r in bank.card_requests] == [True] and [r[3] for r in bank.requests] == [False]
+
+
+def test_a_row_that_lists_both_requests_is_fetched_by_its_account_type() -> None:
+    both = [
+        upd(iban=None, number="111", kind=1, statements=True, cards=True),
+        upd(iban=None, number="222", kind=50, statements=True, cards=True),
+    ]
+    bank = card_bank(Dialog(accounts=both, text=STATEMENTS, card=card_answer(booking("20261012", "1,00"))))
+    session, *_ = open_session(bank)
+    fetch(session, ref="111")
+    fetch(session, ref="222")
+    assert [r[0].account_number for r in bank.requests] == ["111"]
+    assert [r[0].account_number for r in bank.card_requests] == ["222"]
+
+
+def test_an_account_listed_with_neither_request_is_unsupported_and_the_message_names_no_number() -> None:
+    bank = card_bank(Dialog(accounts=[upd(iban=None, number=CARD, sub="01", statements=False, cards=False)]))
+    session, *_ = open_session(bank)
+    with pytest.raises(AccountUnsupported) as err:
+        fetch(session, ref=CARD_REF)
+    assert CARD not in str(err.value) and bank.requests == [] and bank.card_requests == []
+
+
+def test_an_entry_that_cannot_be_read_fails_the_run_without_the_card_number_or_the_amount() -> None:
+    bank = card_bank(Dialog(accounts=[card_upd()], card=card_answer(booking("20261012", "12,505"))))
+    session, *_ = open_session(bank)
+    with pytest.raises(ParseFailed) as err:
+        fetch(session, ref=CARD_REF)
+    assert CARD not in str(err.value) and "12,505" not in str(err.value)
+
+
+def test_a_refused_card_request_is_told_by_its_code_and_the_card_number_is_in_no_message() -> None:
+    bank = card_bank(
+        Dialog(accounts=[card_upd()], fail=[rc("9210", "Angabe der Kontoverbindung erforderlich")])
+    )
+    session, *_ = open_session(bank)
+    with pytest.raises(Exception) as err:
+        fetch(session, ref=CARD_REF)
+    assert CARD not in str(err.value) and "9210" in str(err.value)
+
+
+def test_a_card_fetch_logs_return_codes_and_texts_only_never_the_card_number(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    answer = card_answer(
+        booking("20261012", "12,50", merchant_name="PAYEE-X", description_1="Kaffee"),
+        balance=CardBalance("D", "500,00", "EUR", "20261030"),
+    )
+    bank = card_bank(
+        Dialog(accounts=[card_upd()], login_codes=[rc("0010", "ok"), rc("3076", "keine SCA")], card=answer)
+    )
+    session, *_ = open_session(bank)
+    with caplog.at_level(logging.DEBUG):
+        fetch(session, ref=CARD_REF)
+        session.accounts()
+    logged = "\n".join(r.getMessage() for r in caplog.records)
+    assert "3076 keine SCA" in logged
+    for private in (CARD, "123456", "alice", "PAYEE-X", "Kaffee", "12,50", "500,00"):
         assert private not in logged

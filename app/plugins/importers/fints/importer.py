@@ -1,8 +1,8 @@
 """The FinTS fetch importer (spec/plugins/importers/fints.md).
 
 Its logic (the PIN and TAN prompts, the code table, the learned `tan_for`, discovery, statements to
-records) is written against `BankSession` (bank.py) and holds no open dialog between calls: every data
-call runs in its own dialog (fints.md §2). Tested against a fake session.
+records, card answers to records) is written against `BankSession` (bank.py) and holds no open dialog
+between calls: every data call runs in its own dialog (fints.md §2). Tested against a fake session.
 """
 
 from __future__ import annotations
@@ -37,13 +37,16 @@ from app.plugins.importers.fints.bank import (
     BankConnect,
     BankLogin,
     BankSession,
+    CardAnswer,
     Challenge,
     Dialog,
     DialogFailed,
     ReturnCode,
 )
+from app.plugins.importers.fints.cards import read_card
 from app.plugins.importers.fints.codes import MEDIUM_REFUSED, STRONG_AUTH_REQUIRED, error_for, errors_in, has
-from app.plugins.importers.fints.discovery import discover, find
+from app.plugins.importers.fints.discovery import discover, fetch_kind, find
+from app.plugins.importers.fints.hkku import CARD_REQUEST
 from app.plugins.importers.fints.library import connect_bank
 from app.plugins.importers.fints.statements import read_statements
 
@@ -68,6 +71,21 @@ class _Refused(Exception):
         super().__init__(detail)
         self.codes = tuple(codes)
         self.detail = detail
+
+
+class _Plan:
+    """The TAN request of one attempt (§4): the dialog's body names the request it sends, and whether a
+    TAN request goes with it is decided here, from what is learned and from a retry after a 9075."""
+
+    def __init__(self, learned: set[str], retry: bool) -> None:
+        self._learned, self._retry = learned, retry
+        self.request: str | None = None  # the request the body sent, once it has
+        self.attached = False
+
+    def attach(self, request: str) -> bool:
+        self.request = request
+        self.attached = request in self._learned or self._retry
+        return self.attached
 
 
 class FintsImporter:
@@ -225,7 +243,7 @@ class _Session(FetchSessionBase):
     # ---- the FetchSession ----
 
     def accounts(self) -> Sequence[DiscoveredAccount]:
-        return self._run(None, lambda dialog, with_tan: discover(dialog.accounts))
+        return self._run(lambda dialog, plan: discover(dialog.accounts))
 
     def fetch_account(
         self,
@@ -239,14 +257,27 @@ class _Session(FetchSessionBase):
         until = today - timedelta(days=1)
         start = min(since, until)  # a request is never empty-ranged
 
-        def statements(dialog: Dialog, with_tan: bool) -> str:
+        def request(dialog: Dialog, plan: _Plan) -> str | CardAnswer:
             account = find(dialog.accounts, external_ref)
-            if account is None or not account.statements:
-                raise AccountUnsupported("the bank offers no MT940 statement request for this account")
-            return dialog.statements(account, start, until, with_tan=with_tan)
+            kind = None if account is None else fetch_kind(account)
+            if account is None or kind is None:
+                raise AccountUnsupported("the bank offers no statement or card request for this account")
+            if kind == "card":
+                return dialog.card(account, start, until, with_tan=plan.attach(CARD_REQUEST))
+            return dialog.statements(account, start, until, with_tan=plan.attach(STATEMENT_REQUEST))
 
-        text = self._run(STATEMENT_REQUEST, statements)
-        read = read_statements(text, until=until, minor_units_of=minor_units_of)
+        answer = self._run(request)
+        if isinstance(answer, CardAnswer):
+            card = read_card(answer, until=until, minor_units_of=minor_units_of)
+            return FetchedTransactions(
+                rows=card.rows,
+                covered_through=card.covered_through,
+                covered_from=min(start, card.covered_through),
+                reported_balance=card.balance_minor,
+                balance_on=card.balance_on,
+                importer_stats={"filtered": card.filtered},
+            )
+        read = read_statements(answer, until=until, minor_units_of=minor_units_of)
         return FetchedTransactions(
             rows=read.rows,
             covered_through=until,
@@ -261,14 +292,15 @@ class _Session(FetchSessionBase):
 
     # ---- one dialog per data call ----
 
-    def _run(self, request: str | None, body: Callable[[Dialog, bool], T]) -> T:
-        """Run `body` in a fresh dialog. A plain request answered 9075 is repeated once with a TAN
-        request attached, and the type is learned; a medium name refused (9210) is asked once."""
+    def _run(self, body: Callable[[Dialog, _Plan], T]) -> T:
+        """Run `body` in a fresh dialog. The request it sends (named through `plan`, which decides whether
+        a TAN request goes with it) answered 9075 plain is repeated once with a TAN request attached,
+        and the type is learned; a medium name refused (9210) is asked once."""
         sca_retry = False
         while True:
-            with_tan = request is not None and (request in self._tan_for() or sca_retry)
+            plan = _Plan(self._tan_for(), sca_retry)
             try:
-                result = self._attempt(body, with_tan)
+                result = self._attempt(body, plan)
             except _Refused as refused:
                 if (
                     has(refused.codes, MEDIUM_REFUSED)
@@ -278,19 +310,20 @@ class _Session(FetchSessionBase):
                     self._state["tan_medium"] = self._ask_medium_name()
                     self._bank.use_medium(str(self._state["tan_medium"]))
                     continue
-                if has(refused.codes, STRONG_AUTH_REQUIRED) and request is not None and not with_tan:
+                plain = plan.request is not None and not plan.attached
+                if has(refused.codes, STRONG_AUTH_REQUIRED) and plain:
                     sca_retry = True
                     continue
                 raise error_for(refused.codes, refused.detail) from None
-            if sca_retry and request is not None:
-                self._state["tan_for"] = sorted({*self._tan_for(), request})
+            if sca_retry and plan.request is not None:
+                self._state["tan_for"] = sorted({*self._tan_for(), plan.request})
             return result
 
-    def _attempt(self, body: Callable[[Dialog, bool], T], with_tan: bool) -> T:
+    def _attempt(self, body: Callable[[Dialog, _Plan], T], plan: _Plan) -> T:
         try:
             with self._bank.dialog(self._tan) as dialog:
                 self._check(dialog.codes)  # a refused login: nothing is sent
-                result = body(dialog, with_tan)
+                result = body(dialog, plan)
                 self._check(dialog.codes)  # never an empty result without the codes
                 self._log(dialog.codes)
                 return result
