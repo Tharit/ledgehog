@@ -228,7 +228,8 @@ It is never part of an import.
 | `value_on` | `Valuta` | `Belegdatum` | — |
 | date format | `dd.MM.yyyy` | `d.M.yyyy` | `dd/MM/yyyy` |
 | amount | `Betrag`, `.` thousands, `,` decimal | `Betrag#2` | `Betrag`, inverted |
-| purpose | `Buchungstext`, `Verwendungszweck` | `Verwendungszweck` | `Beschreibung` |
+| purpose | `Verwendungszweck` | `Verwendungszweck` | `Beschreibung` |
+| booking text | `Buchungstext` | — | — |
 | counterparty | `Sender / Empfänger`, `IBAN` | — | — |
 | instructed | — | `Fremdwährung`, `Betrag#1` | — |
 | currency | a currency column | a currency column | — (the account's) |
