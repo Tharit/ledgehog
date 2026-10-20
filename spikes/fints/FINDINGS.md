@@ -168,6 +168,29 @@ phone PIN, not the BestSign password); 2FA via (Miles & More) BestSign; FinTS fo
     The enrollment done in this spike moved the ID from (A) to (B). Untested: which BLZ the card appears under
     after activation (50070010 for the regular DB access vs 50070439), and whether the card then shows up.
 
+24. **After activating the Deutsche Bank BestSign (letter received):** the same ID (BLZ 50070439) now gets past the
+    media step: the TAN-media request is answered with `9075`/`9050` first, then the device list comes back
+    including the newly activated device; the card is listed in the UPD and can be selected. No TAN/push was
+    requested yet because no TAN-requiring operation had been sent (HKSPA/HKTAB do not need one).
+25. **HKKKU v1 (credit-card transactions) layout and response**, taken from the open-source Rust crate
+    `floatingpixels/fints` (`credit_card_transactions_request`, `response/credit_card.rs`), implemented in
+    `probe.py` (`HKKKU1`, `fetch_credit_card_transactions`, `show_credit_card_pages`; offline-tested with made-up
+    data in `test_hkku.py`; NOT yet verified against the bank):
+    - request: `HKKKU:n:1 + <account group or empty> + <card number> + <sub-account> + <from YYYYMMDD> +
+      <to> [+ <max entries, empty> + <touchdown point>]`. HIKKUS (BPD) says whether the account group and a date
+      range are allowed; HIPINS says HKKKU needs a TAN (`J`), so the library attaches HKTAN automatically.
+    - response `HIKKU:n:1`: element 1 card number, 2 account id, 3 current balance DEG (D/C : amount : currency :
+      date [: time]), 4 last statement date, 5 next statement date, 6+ one DEG per booking, last element an
+      empty DEG. A booking DEG has 29 components: 0 card, 1 receipt date, 2 booking date, 3 statement date,
+      4 value date, 5-7 original amount/currency/direction, 8 exchange rate, 9-11 booked amount/currency/direction
+      (C/D), 12-19 description lines, 20 country, 21 merchant name, 22 terminal, 23 billed flag, 24 booking
+      reference, 25 fee code, 26 statement marker, 27 cash fee, 28 foreign-use fee. Decimals use a comma, dates
+      `YYYYMMDD`. The format is called G112 (not MT940), richer than MT940 for cards: merchant, country, original
+      currency + exchange rate, fees, statement assignment.
+    - python-fints keeps unknown segments as generic objects (`_additional_data`: nested lists), so parsing needs
+      no library change; for requests, `NeedTANResponse` resumes through a *named client method*, so the resume
+      hook has to be a method on the client class.
+
 ### Resuming the Deutsche Bank experiment (after the activation letter)
 
 1. Activate per the letter. Check the bank now lists 920/921 with the probe. Try BOTH `--blz 50070010` and

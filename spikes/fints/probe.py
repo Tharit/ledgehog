@@ -23,7 +23,10 @@ from pathlib import Path
 
 from fints.client import FinTS3PinTanClient, NeedTANResponse
 from fints.exceptions import FinTSNoResponseError, FinTSSCARequiredError
+from fints.fields import DataElementField, DataElementGroupField
+from fints.formals import KTI1
 from fints.models import SEPAAccount
+from fints.segments.base import FinTS3Segment
 
 OUT = Path(__file__).parent / "out"
 
@@ -69,7 +72,93 @@ def patch_hnshk_profile_v2() -> None:
 
 
 FORCE_TAN: set[str] = set()  # segment types that get an HKTAN (process 4) attached
-ACCOUNT_DATA_SEGS = {"HKKAZ", "HKSAL", "HKCAZ"}
+ACCOUNT_DATA_SEGS = {"HKKAZ", "HKSAL", "HKCAZ", "HKKKU", "HKKKS"}
+
+
+class HKKKU1(FinTS3Segment):
+    """Kreditkartenumsaetze anfordern, version 1. python-fints has no credit-card support; the element
+    order follows the request builder of the Rust crate floatingpixels/fints (verified live there):
+    account group (empty if the bank's HIKKUS says not required), card number, sub-account, from, to,
+    [max entries (empty), touchdown point]."""
+    account = DataElementGroupField(type=KTI1, required=False, _d="Kontoverbindung international")
+    card_number = DataElementField(type="an", max_length=30, _d="Kreditkartennummer")
+    subaccount = DataElementField(type="an", required=False, _d="Unterkontomerkmal")
+    date_start = DataElementField(type="dat", required=False, _d="Von Datum")
+    date_end = DataElementField(type="dat", required=False, _d="Bis Datum")
+    max_number_responses = DataElementField(type="num", max_length=4, required=False, _d="Maximale Anzahl Eintraege")
+    touchdown_point = DataElementField(type="an", max_length=35, required=False, _d="Aufsetzpunkt")
+
+
+def _return_response(self, command_seg, response):
+    return response
+
+
+# NeedTANResponse resumes via a *named client method*, so the hook must live on the class.
+FinTS3PinTanClient._return_response = _return_response
+
+# HIKKU entry components, by position (G112 layout, as parsed by floatingpixels/fints)
+_HIKKU_FIELDS = {
+    0: "card_number", 1: "receipt_date", 2: "booking_date", 3: "statement_date", 4: "value_date",
+    5: "original_amount", 6: "original_currency", 7: "original_direction", 8: "exchange_rate",
+    9: "amount", 10: "currency", 11: "direction",
+    20: "country", 21: "merchant_name", 22: "terminal", 23: "billed", 24: "booking_reference",
+    25: "fee_code", 26: "statement_marker", 27: "cash_fee", 28: "foreign_use_fee",
+}
+
+
+def fetch_credit_card_transactions(client: FinTS3PinTanClient, acc, start, end) -> list:
+    """HKKKU for one card, following touchdown points (3040). Returns the raw response messages."""
+    pages, touchdown = [], None
+    for _ in range(10):
+        seg = HKKKU1(card_number=acc.accountnumber, subaccount=acc.subaccount or "",
+                     date_start=start, date_end=end, touchdown_point=touchdown)
+        dialog = client._get_dialog()
+        response = ask_tan(client, client._send_with_possible_retry(dialog, seg, client._return_response))
+        pages.append(response)
+        touchdown = None
+        for hirms in response.find_segments("HIRMS"):
+            for r in hirms.responses:
+                if r.code == "3040" and r.parameters:
+                    touchdown = r.parameters[0]
+        if not touchdown:
+            break
+        print("  (more data: bank gave a touchdown point, requesting the next page)")
+    return pages
+
+
+def _amount(value, direction) -> str:
+    """'1234,56' + 'D' -> '-1234.56' (debit is negative from the cardholder's side)."""
+    if value in (None, ""):
+        return ""
+    num = value.replace(".", "").replace(",", ".")
+    return ("-" if direction == "D" else "") + num
+
+
+def show_credit_card_pages(pages) -> list[dict]:
+    """Print and return the entries of HIKKU responses. Card number is masked in the printout only."""
+    dump = []
+    for page in pages:
+        for seg in page.find_segments("HIKKU"):
+            data = seg._additional_data
+            card = data[0] if data else ""
+            masked = f"...{card[-4:]}" if card else "?"
+            bal = data[2] if len(data) > 2 and isinstance(data[2], list) else None
+            print(f"\nCard {masked}  statement dates: last={data[3] if len(data) > 3 else None} "
+                  f"next={data[4] if len(data) > 4 else None}")
+            if bal:
+                print(f"  current balance: {_amount(bal[1], bal[0])} {bal[2]} as of {bal[3] if len(bal) > 3 else '?'}")
+            for el in data[5:]:
+                if not isinstance(el, list) or not any(c not in (None, "") for c in el):
+                    continue  # empty tail group
+                row = {name: el[i] for i, name in _HIKKU_FIELDS.items() if i < len(el) and el[i] not in (None, "")}
+                row["description"] = [c for c in el[12:20] if c not in (None, "")]
+                row["amount"] = _amount(row.get("amount"), row.get("direction"))
+                dump.append(row)
+                print(f"  {row.get('booking_date')} (receipt {row.get('receipt_date')})  {row['amount']:>10} "
+                      f"{row.get('currency', '')}  {row.get('merchant_name', '')} | {' '.join(row['description'])}")
+    if not dump:
+        print("  (no HIKKU entries in the response)")
+    return dump
 
 
 def raw_allowed(client: FinTS3PinTanClient, account_number) -> list[str]:
@@ -389,8 +478,12 @@ def main() -> int:
         print("\nMT940 (HKKAZ): not allowed for this account; skipping. Operations the bank lists for it: "
               f"{allowed}")
         if "HKKKU" in allowed:
-            print("  -> this is a credit card: transactions are HKKKU (G112 format), which python-fints "
-                  "does not implement.")
+            print("  -> this is a credit card: transactions are HKKKU (G112 format), not in python-fints; "
+                  "using the probe's own implementation")
+            print(f"\nFetching credit-card transactions (HKKKU) {start}..{end}")
+            pages = run(client, "HKKKU", lambda: fetch_credit_card_transactions(client, acc, start, end))
+            dump = show_credit_card_pages(pages)
+            (OUT / "transactions_hkkku.json").write_text(json.dumps(dump, indent=2, ensure_ascii=False))
     else:
         print(f"\nFetching MT940 {start}..{end}")
         txs = run(client, "HKKAZ", lambda: client.get_transactions(acc, start, end))
