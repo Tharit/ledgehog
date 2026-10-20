@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Annotated, Any, Literal, cast
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, StringConstraints
 
 from app.api.errors import map_error
@@ -187,10 +187,7 @@ class EntryPageOut(BaseModel):
     offset: int
 
 
-@router.get("")
-def list_entries_view(
-    user: CurrentUser,
-    engine: EngineDep,
+def ledger_filter(
     from_: Annotated[date | None, Query(alias="from")] = None,
     to: date | None = None,
     account_id: Ids = None,
@@ -206,10 +203,9 @@ def list_entries_view(
     q: SearchText | None = None,
     type: Annotated[list[str] | None, Query()] = None,
     flag: Annotated[list[str] | None, Query()] = None,
-    limit: Annotated[int, Query(ge=1, le=500)] = 100,
-    offset: Annotated[int, Query(ge=0, le=MAX_ID)] = 0,
-) -> EntryPageOut:
-    flt = LedgerFilter(
+) -> LedgerFilter:
+    """The ledger filter as query parameters: the one definition, shared by the list and the export."""
+    return LedgerFilter(
         date_from=from_,
         date_to=to,
         account_ids=tuple(account_id or ()),
@@ -226,6 +222,19 @@ def list_entries_view(
         types=tuple(type or ()),
         flags=tuple(flag or ()),
     )
+
+
+FilterQuery = Annotated[LedgerFilter, Depends(ledger_filter)]
+
+
+@router.get("")
+def list_entries_view(
+    user: CurrentUser,
+    engine: EngineDep,
+    flt: FilterQuery,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    offset: Annotated[int, Query(ge=0, le=MAX_ID)] = 0,
+) -> EntryPageOut:
     with engine.connect() as conn:
         page = list_entries(conn, flt, limit=limit, offset=offset)
     return EntryPageOut(
