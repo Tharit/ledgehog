@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { onDestroy, onMount, untrack } from 'svelte';
+	import { exportUrl } from '#lib/api/entries.js';
 	import NewDataNotice from '#lib/components/common/new-data-notice.svelte';
 	import PageHeader from '#lib/components/common/page-header.svelte';
 	import FilterBar from '#lib/components/ledger/filter-bar.svelte';
@@ -95,6 +96,7 @@
 		baseCurrency={ledger.baseCurrency}
 		bind:searchEl
 		ondown={() => table?.enterList()}
+		exportHref={exportUrl(ledger.filter)}
 		onchange={show}
 	>
 		{#snippet trailing()}

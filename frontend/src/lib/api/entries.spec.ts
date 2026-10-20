@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { filterQuery, getEntry, listEntries } from './entries.js';
+import { exportUrl, filterQuery, getEntry, listEntries } from './entries.js';
 import { listCategories, listPayees, listTags } from './lookups.js';
 import type { EntryFilter } from './types.js';
 
@@ -36,6 +36,30 @@ beforeEach(() => {
 
 afterEach(() => {
 	vi.unstubAllGlobals();
+});
+
+describe('exportUrl', () => {
+	it('is the export route with nothing for an empty filter, and never fetches', () => {
+		expect(exportUrl(empty)).toBe('/api/ledger/entries/export');
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it('carries the list filter in the same parameters and order, without a page', () => {
+		const filter: EntryFilter = {
+			...empty,
+			from: '2026-10-01',
+			account_id: [2, 1],
+			flag: ['waiting'],
+			q: ' bakery ',
+			uncategorised: true
+		};
+		const query = exportUrl(filter).split('?')[1];
+		expect(exportUrl(filter)).toMatch(/^\/api\/ledger\/entries\/export\?/);
+		expect(query).toBe(
+			'from=2026-10-01&account_id=2&account_id=1&uncategorised=true&q=bakery&flag=waiting'
+		);
+		expect(query).not.toMatch(/limit|offset/);
+	});
 });
 
 describe('listEntries', () => {

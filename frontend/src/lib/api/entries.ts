@@ -1,4 +1,4 @@
-import { request, type Query } from './http.js';
+import { queryString, request, type Query } from './http.js';
 import type { Entry, EntryFilter, EntryPage } from './types.js';
 
 export const DEFAULT_PAGE_SIZE = 100;
@@ -40,6 +40,14 @@ export function listEntries(
 		query: { ...filterQuery(filter), limit, offset: offset > 0 ? offset : undefined },
 		signal
 	});
+}
+
+/**
+ * The address of the CSV of every entry matching `filter` (the server's answer, in the list's
+ * order). A link, not a request: the browser follows it and the session cookie rides along.
+ */
+export function exportUrl(filter: EntryFilter): string {
+	return `/api/ledger/entries/export${queryString(filterQuery(filter))}`;
 }
 
 /** One entry, with its source transaction (`source`, null for a user-authored or derived one). */

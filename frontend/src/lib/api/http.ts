@@ -57,7 +57,7 @@ function noteChanges(method: string, response: Response): void {
 	}
 }
 
-function queryString(query: Query | undefined): string {
+export function queryString(query: Query | undefined): string {
 	const params = new URLSearchParams();
 	for (const [key, value] of Object.entries(query ?? {})) {
 		for (const item of Array.isArray(value) ? value : [value]) {

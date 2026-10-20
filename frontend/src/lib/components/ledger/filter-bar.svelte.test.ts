@@ -176,6 +176,23 @@ describe('FilterBar: the review state chip', () => {
 	});
 });
 
+describe('FilterBar: Export CSV', () => {
+	it('is a plain link to the given address', () => {
+		bar({}, { exportHref: '/api/ledger/entries/export?flag=waiting' });
+
+		const link = screen.getByRole('link', { name: 'Export CSV' });
+		expect(link).toHaveAttribute('href', '/api/ledger/entries/export?flag=waiting');
+		expect(link).toHaveAttribute('data-sveltekit-reload');
+		expect(screen.queryByRole('button', { name: 'Export CSV' })).not.toBeInTheDocument();
+	});
+
+	it('is left out without an address', () => {
+		bar();
+
+		expect(screen.queryByText('Export CSV')).not.toBeInTheDocument();
+	});
+});
+
 describe('FilterBar: the text box', () => {
 	function box() {
 		return screen.getByRole('textbox', { name: 'Filter entries by text' });
