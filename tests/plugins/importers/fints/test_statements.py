@@ -218,9 +218,17 @@ def test_the_last_final_statement_wins_and_an_intermediate_one_after_it_does_not
     assert (result.balance_minor, result.balance_on) == (9500, date(2026, 10, 21))
 
 
-def test_a_statement_dated_after_the_last_closed_day_is_not_taken() -> None:
+def test_a_statement_dated_after_the_last_closed_day_is_rolled_back_to_it() -> None:
     result = read("two_statements", until=date(2026, 10, 20))
     assert (result.balance_minor, result.balance_on) == (9000, date(2026, 10, 20))
+
+
+def test_one_statement_running_into_today_is_rolled_back_to_the_last_closed_day() -> None:
+    result = read("runs_into_today", until=date(2026, 10, 19))
+    # 85,00 at the 20th includes today's booking (-5,00): at the 19th the balance was 90,00
+    assert (result.balance_minor, result.balance_on) == (9000, date(2026, 10, 19))
+    # today's row is kept
+    assert [r.booked_on for r in result.rows] == [date(2026, 10, 19), date(2026, 10, 20)]
 
 
 def test_a_forward_dated_line_the_balance_includes_moves_the_figure_to_that_line() -> None:

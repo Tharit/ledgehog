@@ -514,7 +514,20 @@ def test_discovery_maps_the_banks_account_list() -> None:
 
 @pytest.mark.parametrize(
     ("kind", "hint"),
-    [(1, "checking"), (9, "checking"), (10, "savings"), (19, "savings"), (0, None), (20, None), (None, None)],
+    [
+        (1, "checking"),
+        (9, "checking"),
+        (10, "savings"),
+        (19, "savings"),
+        (30, "depot"),
+        (39, "depot"),
+        (50, "card"),
+        (59, "card"),
+        (0, None),
+        (20, None),
+        (40, None),
+        (None, None),
+    ],
 )
 def test_the_kind_hint_follows_the_banks_account_type(kind: int | None, hint: str | None) -> None:
     bank = FakeBank(Dialog(accounts=[upd(kind=kind)]), procedures=SINGLE)

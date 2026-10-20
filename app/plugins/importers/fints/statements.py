@@ -52,8 +52,9 @@ class _Closing:
 
 
 def read_statements(text: str, *, until: date, minor_units_of: Callable[[str], int]) -> Read:
-    """Rows and the balance of the MT940 `text`, a closing figure dated no later than `until`'s
-    coverage. Raises `ParseFailed` where the text cannot be read or a statement does not add up."""
+    """Rows and the balance of the MT940 `text`: the last final statement's figure, whatever its date,
+    rolled back to `until` (the coverage) where it is later. Raises `ParseFailed` where the text cannot
+    be read or a statement does not add up."""
     statements = _parse(text)
     rows: list[IncomingRow] = []
     filtered = 0
@@ -81,7 +82,7 @@ def read_statements(text: str, *, until: date, minor_units_of: Callable[[str], i
                 filtered += 1
                 continue
             rows.append(_row(tx, reference, amount, str(tx.data.get("currency") or currency)))
-        if "final_closing_balance" in statement.data and _day(closing.date) <= until:
+        if "final_closing_balance" in statement.data:
             balance_date = _day(closing.date)
             later = [d for d in booked if d > balance_date]
             figure_on = max([balance_date, *later])

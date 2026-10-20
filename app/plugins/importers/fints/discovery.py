@@ -29,13 +29,18 @@ def find(accounts: Sequence[UpdAccount], external_ref: str) -> UpdAccount | None
 
 
 def kind_hint(account_type: int | None) -> str | None:
-    """By the bank's account type: 1 to 9 checking, 10 to 19 savings, else none (a hint only prefills)."""
+    """By the bank's account type (the UPD's Kontoart): 1 to 9 checking, 10 to 19 savings, 30 to 39
+    depot, 50 to 59 card, else none (a hint only prefills)."""
     if account_type is None:
         return None
     if 1 <= account_type <= 9:
         return "checking"
     if 10 <= account_type <= 19:
         return "savings"
+    if 30 <= account_type <= 39:
+        return "depot"
+    if 50 <= account_type <= 59:
+        return "card"
     return None
 
 
