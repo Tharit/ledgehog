@@ -94,7 +94,8 @@ login. It does not call HKSPA: the UPD carries the IBAN. Per UPD row:
   (securities only) and an account the bank offers only as camt (HKCAZ) are
   therefore listed as "nothing to fetch". The balance is part of the statements
   (§6) and of the card answer (§6a), so it has no capability of its own. A
-  card's `external_ref` is its card number and sub-account, by the rule above.
+  card's `external_ref` is the account number the bank lists for it — at some
+  banks a masked card number — and its sub-account, by the rule above.
 
 Fetching an account that the UPD at that moment does not list, or lists without
 HKKAZ or HKKKU, fails the run as `AccountUnsupported` before any request is made.
