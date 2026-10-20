@@ -6,8 +6,8 @@ delivers and §5.2 what ingest does with it; `architecture.md` §5.5 owns the
 fetch-importer protocol, the prompt kinds and the error taxonomy. This document
 covers what is particular to FinTS: its settings and state, how accounts are
 discovered, how a statement becomes records, and how the bank's answers become
-the taxonomy. Credit cards (HKKKU, G112 data) are not in scope: they come in by
-CSV (`csv.md`).
+the taxonomy. Credit cards are fetched with their own request (HKKKU, §6a); a
+card a bank does not offer that way still comes in by CSV (`csv.md`).
 
 ---
 
@@ -63,8 +63,8 @@ Every `ask` made on the bank's behalf is a prompt of `architecture.md` §5.5:
 | When | Prompt |
 |---|---|
 | before the first request | `secret`, subject `pin` |
-| the bank allows several TAN procedures and none is remembered | `choice`, subject `tan_mechanism`, options by the bank's code and name; with exactly one allowed procedure (the one-step procedure `999` apart) it is taken without asking |
-| the procedure needs a medium (device) and none is remembered | `choice`, subject `tan_medium`, from the bank's list; where the bank gives none or refuses the list (return code `9210`), `text`, subject `tan_medium_name` |
+| the bank allows several TAN procedures and none is remembered | `choice`, subject `tan_mechanism`, options by the bank's code and name; with exactly one allowed procedure (the one-step procedure `999` apart) it is taken without asking. The bank's list is authoritative: where it lists no procedure, the instance ends with `BankSetupRequired` — a procedure must be activated with the bank first |
+| the procedure needs a medium (device) and none is remembered | `choice`, subject `tan_medium`, from the bank's list, asked for in a login without a TAN request (a bank refuses the list in one that carries one); where the bank gives none, `text`, subject `tan_medium_name`. The chosen name goes with every TAN request |
 | a challenge the user types | `tan`, medium `text`, the bank's challenge text and the procedure's name |
 | a photoTAN or QR challenge | `tan`, medium `image`, with the image |
 | a decoupled challenge (a push to an app) | `tan`, medium `decoupled`; `poll` asks the bank "confirmed yet?" |
@@ -86,15 +86,18 @@ login. It does not call HKSPA: the UPD carries the IBAN. Per UPD row:
 - `name`: the bank's product name for the account, else its account number.
 - `currency`: the UPD's account currency; none where it states none.
 - `kind_hint`: by the UPD's account type — 1 to 9 `checking`, 10 to 19
-  `savings`, everything else none (a hint only prefills the add dialog).
+  `savings`, 30 to 39 `depot`, 50 to 59 `card`, everything else none (a hint
+  only prefills the add dialog).
 - `capabilities`: `transactions` and `balance` both, when the UPD allows the
-  MT940 statement request (HKKAZ); empty otherwise. A depot (securities only), a
-  credit card (card transactions only) and an account the bank offers only as
-  camt (HKCAZ) are therefore listed as "nothing to fetch". The balance is part
-  of the statements (§6), so it has no capability of its own.
+  MT940 statement request (HKKAZ) or the card transaction request (HKKKU),
+  read from the UPD's own list of allowed operations; empty otherwise. A depot
+  (securities only) and an account the bank offers only as camt (HKCAZ) are
+  therefore listed as "nothing to fetch". The balance is part of the statements
+  (§6) and of the card answer (§6a), so it has no capability of its own. A
+  card's `external_ref` is its card number and sub-account, by the rule above.
 
 Fetching an account that the UPD at that moment does not list, or lists without
-HKKAZ, fails the run as `AccountUnsupported` before any request is made.
+HKKAZ or HKKKU, fails the run as `AccountUnsupported` before any request is made.
 
 ## 4. Fetching statements
 
@@ -198,6 +201,48 @@ closed day and the coverage; later forward-dated lines subtracted) are those of
 a quiet account whose bank issues no statement for an empty range reconciles
 against balances entered by hand (`spec.md` §5.10).
 
+## 6a. Credit cards
+
+A card the UPD lists with the card transaction request (HKKKU) is fetched with
+it instead of the MT940 statements: one dialog, the card's transactions from
+`since` to the day before `today`, with a TAN request attached by the rule of §4
+(a bank may mark HKKKU as needing one, and `tan_for` learns it). The request
+carries the card's full account connection — card number, sub-account, country
+and bank code — which a bank requires although its parameters may read
+otherwise. python-fints has no card support: the request and its answer are the
+importer's own segments over the library's.
+
+**The answer** holds the card's current balance with its date and one entry
+per booking. An entry the bank marks as not yet billed is the card's pending
+item: it can change or disappear and carries no reference, so it is not
+imported (`spec.md` §5.1). Per billed entry, in ledger sign convention:
+
+| Field | From |
+|---|---|
+| `amount_minor` | the booked amount, signed by its credit or debit mark |
+| `currency` | the booked currency |
+| `booked_on` | the booking date |
+| `value_on` | the value date |
+| `counterparty_name` | the merchant name |
+| `purpose` | the description lines, joined by a space |
+| instructed amount, currency | the original amount and currency, where the currency differs from the booked one |
+| `source_id` | **always none**: an entry has no stable id |
+| `source_format` | `hkkku` |
+| `raw` | the entry's fields as received |
+
+**Coverage** is the day before `today`, or, where unbilled entries were
+delivered, the day before the earliest of their booking dates: an item billed
+later keeps its booking date, and the next fetch, which starts from the
+coverage, must reach it.
+
+**Closing balance.** The current balance includes the unbilled entries; minus
+them it is the booked balance at its date. That figure is dated and rolled back
+as the statements' figure is (§6), by the rule of `spec.md` §5.1: to the
+earliest of its date, the last closed day and the coverage, the billed entries
+after that date subtracted.
+
+The card number is never logged and appears in no error message (§8).
+
 ## 7. The bank's answers
 
 Every dialog records the return codes and texts of the bank's answers (the
@@ -246,7 +291,8 @@ Tests run against synthetic payloads, never a live bank (`architecture.md`
 list accounts, fetch an account's statements with or without a TAN request —
 which the patched library implements; the importer's own logic (§2 to §7) is
 tested against a fake of that seam, and the statements against a hand-built
-corpus of MT940 text with invented data, the cases that went wrong included.
+corpus of MT940 text with invented data, the cases that went wrong included;
+the card answers likewise against hand-built ones.
 Each fix to the library the importer carries has its own test, beside it, so
 that the fix and its test are deleted together when the library makes the test
 pass without it. A capture of a real session never becomes a fixture as it is;
