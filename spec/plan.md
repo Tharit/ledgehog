@@ -168,6 +168,10 @@ shape later work:
 - **Does the CSV export carry the same booking date as FinTS for the same
   booking?** Deduplication across sources pairs by booking date and amount
   (`spec.md` §5.2, §5.3); a format that shifts the date leaves duplicates.
+  *Answered for Consorsbank (2026-10-20): yes. The overlap's CSV and FinTS rows
+  paired by booking date and amount, and once the CSV profile mapped
+  `Buchungstext` to the booking text instead of the purpose, they were skipped
+  by identity.*
 - **Does the bank's closing balance line up with its booking dates?** Check
   whether weekend or late bookings are dated after the balance they are
   included in, and how often the bank books into a day it has already closed
@@ -176,6 +180,11 @@ shape later work:
   reconciliation line — so the FinTS importer can report the closing balance
   of the last closed day (`spec.md` §5.1). Check too that python-fints exposes the statement-level
   balances (MT940 `60F`/`62F`, camt `CLBD`), not only the transaction lines.
+  *Answered in part (2026-10-20): python-fints exposes only the transaction
+  lines, so the FinTS importer reads the raw statements for `60F`/`62F`
+  (`plugins/importers/fints.md` §6). Consorsbank delivers one statement for the
+  whole range, which can run into today; its figure is rolled back to the last
+  closed day. Weekend and late bookings are still to be observed.*
 - **Do internal transfers carry a real end-to-end id, and does the purpose
   survive to the receiving account unchanged?** The end-to-end id is a
   pairing filter and the purpose a tie-breaker (`spec.md` §5.7); a bank that

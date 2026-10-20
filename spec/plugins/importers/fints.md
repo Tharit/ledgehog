@@ -230,9 +230,9 @@ failures (`architecture.md` §5.5).
 
 The importer logs the bank's return codes and texts, per dialog step, and
 nothing else of the exchange: no segment, no statement, no account number, no
-setting, no PIN or TAN. The library's own debug log carries data segments, so it
-is kept off (level warning) and is switched on only by hand for a capture
-(§9).
+setting, no PIN or TAN. The debug logs of python-fints and of mt-940 carry data
+segments and booking lines, so both are kept at level warning and are switched
+on only by hand for a capture (§9).
 
 ## 9. Fetch start, tests, fixtures
 
