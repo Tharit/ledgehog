@@ -76,7 +76,7 @@ class _Names:
         by_id = {c.id: c for c in list_categories(conn)}
         self.categories: dict[int, str] = {}
         for cid in by_id:
-            path: list[str] = [_KINDS.get(by_id[cid].kind, by_id[cid].kind)]  # the kind is the root (spec §3.5)
+            path: list[str] = [_KINDS.get(by_id[cid].kind, by_id[cid].kind)]  # the kind is the root
             node = by_id.get(cid)
             names: list[str] = []
             while node is not None:
