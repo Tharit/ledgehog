@@ -11,6 +11,7 @@ from app.core.ledger.entries import (
     list_entries,
     matching_entry_ids,
 )
+from app.core.ledger.export import export_csv
 from app.core.ledger.filters import (
     DIRECTIONS,
     ENTRY_TYPES,
@@ -34,6 +35,7 @@ __all__ = [
     "PartnerSummary",
     "compose",
     "entries_by_ids",
+    "export_csv",
     "get_entry",
     "list_entries",
     "matching_entry_ids",

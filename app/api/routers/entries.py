@@ -7,10 +7,12 @@ client already holds the account, category and payee lists. Money travels as
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import date
 from typing import Annotated, Any, Literal, cast
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, StringConstraints
 
 from app.api.errors import map_error
@@ -18,7 +20,8 @@ from app.api.ids import MAX_ID, EntityId, PathId
 from app.api.routers.accounts import CurrencyCode, Money
 from app.api.session import CurrentUser, EngineDep
 from app.core.domain.source import SourceFields
-from app.core.ledger import EntryRow, InvalidFilter, LedgerFilter, get_entry, list_entries
+from app.core.ledger import EntryRow, InvalidFilter, LedgerFilter, export_csv, get_entry, list_entries
+from app.utils import clock
 
 router = APIRouter(prefix="/api/ledger/entries", tags=["entries"])
 
@@ -239,6 +242,31 @@ def list_entries_view(
         page = list_entries(conn, flt, limit=limit, offset=offset)
     return EntryPageOut(
         entries=[EntryOut.of(e) for e in page.entries], total=page.total, limit=page.limit, offset=page.offset
+    )
+
+
+@router.get(
+    "/export",
+    response_class=StreamingResponse,
+    responses={200: {"content": {"text/csv": {"schema": {"type": "string"}}}, "description": "The CSV."}},
+)
+def export_entries(
+    user: CurrentUser, engine: EngineDep, request: Request, flt: FilterQuery
+) -> StreamingResponse:
+    """Every entry matching the list's filter, in the list's order, as CSV (one row per entry).
+
+    Declared before `/{entry_id}`. Streamed from a server-side cursor: no page, no cap.
+    """
+
+    def body() -> Iterator[str]:
+        with engine.connect() as conn:
+            yield from export_csv(conn, flt)
+
+    filename = f"ledger-{clock.today(request.app.state.config.timezone).isoformat()}.csv"
+    return StreamingResponse(
+        body(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

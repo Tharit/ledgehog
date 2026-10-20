@@ -11580,6 +11580,30 @@
         "parameters": [
           {
             "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 9007199254740992,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
             "name": "from",
             "required": false,
             "schema": {
@@ -11844,30 +11868,6 @@
               ],
               "title": "Flag"
             }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 100,
-              "maximum": 500,
-              "minimum": 1,
-              "title": "Limit",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "offset",
-            "required": false,
-            "schema": {
-              "default": 0,
-              "maximum": 9007199254740992,
-              "minimum": 0,
-              "title": "Offset",
-              "type": "integer"
-            }
           }
         ],
         "responses": {
@@ -11903,6 +11903,317 @@
           }
         },
         "summary": "List Entries View",
+        "tags": [
+          "entries"
+        ]
+      }
+    },
+    "/api/ledger/entries/export": {
+      "get": {
+        "description": "Every entry matching the list's filter, in the list's order, as CSV (one row per entry).\n\nDeclared before `/{entry_id}`. Streamed from a server-side cursor: no page, no cap.",
+        "operationId": "export_entries",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "account_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740992,
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Account Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740992,
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category_descendants",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Category Descendants",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "uncategorised",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Uncategorised",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "payee_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740992,
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Payee Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tag_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740992,
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tag Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "amount_min",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 9223372036854775807,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Amount Min"
+            }
+          },
+          {
+            "in": "query",
+            "name": "amount_max",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 9223372036854775807,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Amount Max"
+            }
+          },
+          {
+            "in": "query",
+            "name": "currency",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Z]{3}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Currency"
+            }
+          },
+          {
+            "in": "query",
+            "name": "direction",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "in",
+                    "out"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Direction"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "flag",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Flag"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The CSV."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Export Entries",
         "tags": [
           "entries"
         ]

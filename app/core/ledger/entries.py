@@ -5,7 +5,7 @@ SQLAlchemy Core composes the filter (architecture §5.2). Reads only: no lock, n
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from typing import Any
@@ -78,6 +78,7 @@ class EntryRow:
     # the transaction's document and the entry's own line of it, for the rule editor's example and the panel
     document: EntryDocument | None = None
     document_line: EntryDocumentLine | None = None
+    importer: str | None = None  # the source's importer; None for an authored or derived entry
 
 
 @dataclass(frozen=True)
@@ -90,6 +91,10 @@ class EntryPage:
 
 def display_text(description: str | None, counterparty: str | None, purpose: str | None) -> str | None:
     return description or counterparty or purpose or None
+
+
+# the list's order, shared by the page and the stream
+_ORDER = (le.c.booked_on.desc(), le.c.source_transaction_id.desc().nulls_last(), le.c.id.desc())
 
 
 def _paged(conn: Connection, stmt: Any) -> tuple[EntryRow, ...]:
@@ -111,15 +116,29 @@ def list_entries(conn: Connection, flt: LedgerFilter, *, limit: int, offset: int
         select(*_COLUMNS)
         .select_from(_with_partner(parts.source))
         .where(*parts.where)
-        .order_by(
-            le.c.booked_on.desc(),
-            le.c.source_transaction_id.desc().nulls_last(),
-            le.c.id.desc(),
-        )
+        .order_by(*_ORDER)
         .limit(limit)
         .offset(offset),
     )
     return EntryPage(entries, int(total), limit, offset)
+
+
+def stream_entries(
+    conn: Connection, flt: LedgerFilter, *, batch: int = 500
+) -> Iterator[tuple[EntryRow, ...]]:
+    """Every entry matching `flt` in the list's order, in batches of up to `batch` rows.
+
+    The rows come from a server-side cursor (no page, no cap, never the whole set in memory); each
+    batch is completed (tags, documents, unit keys) like a page of the list.
+    """
+    parts = compose(flt)
+    stmt = select(*_COLUMNS).select_from(_with_partner(parts.source)).where(*parts.where).order_by(*_ORDER)
+    result = conn.execution_options(stream_results=True, max_row_buffer=batch).execute(stmt)
+    try:
+        for rows in result.partitions(batch):
+            yield _build(conn, rows)
+    finally:
+        result.close()
 
 
 def get_entry(conn: Connection, entry_id: int) -> EntryRow | None:
@@ -259,6 +278,7 @@ def _build(conn: Connection, rows: Sequence[Any]) -> tuple[EntryRow, ...]:
             ),
             document=documents[r.id][0] if r.id in documents else None,
             document_line=documents[r.id][1] if r.id in documents else None,
+            importer=r.importer,
         )
         for r in rows
     )
