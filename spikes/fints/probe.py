@@ -110,8 +110,11 @@ def fetch_credit_card_transactions(client: FinTS3PinTanClient, acc, start, end) 
     """HKKKU for one card, following touchdown points (3040). Returns the raw response messages."""
     pages, touchdown = [], None
     for _ in range(10):
-        seg = HKKKU1(card_number=acc.accountnumber, subaccount=acc.subaccount or "",
-                     date_start=start, date_end=end, touchdown_point=touchdown)
+        # The account group is needed although the bank's HIKKUS parameters look like 'not required'
+        # (bank answers 9210 'Angabe der Kontoverbindung erforderlich' without it). A card has no IBAN/BIC:
+        # the group carries card/account number, sub-account and bank code (see patch_full_account_kti1).
+        seg = HKKKU1(account=KTI1.from_sepa_account(acc), card_number=acc.accountnumber,
+                     subaccount=acc.subaccount or "", date_start=start, date_end=end, touchdown_point=touchdown)
         dialog = client._get_dialog()
         response = ask_tan(client, client._send_with_possible_retry(dialog, seg, client._return_response))
         pages.append(response)

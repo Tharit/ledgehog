@@ -179,6 +179,11 @@ phone PIN, not the BestSign password); 2FA via (Miles & More) BestSign; FinTS fo
     - request: `HKKKU:n:1 + <account group or empty> + <card number> + <sub-account> + <from YYYYMMDD> +
       <to> [+ <max entries, empty> + <touchdown point>]`. HIKKUS (BPD) says whether the account group and a date
       range are allowed; HIPINS says HKKKU needs a TAN (`J`), so the library attaches HKTAN automatically.
+    - live result 1: with an empty account group the bank answers `9210 Angabe der Kontoverbindung erforderlich`
+      (+ follow-ons `9210 ... Keine Daten zur uebermittelten Auftragsreferenz vorhanden` on the HKTAN). So the
+      group is required here even though the HIKKUS parameters (`990:0:0:745:N:J:J`) read like 'not required':
+      bank parameters mislead once more. Group for a card = `::<card number>:<sub-account>:280:<BLZ>`
+      (no IBAN/BIC).
     - response `HIKKU:n:1`: element 1 card number, 2 account id, 3 current balance DEG (D/C : amount : currency :
       date [: time]), 4 last statement date, 5 next statement date, 6+ one DEG per booking, last element an
       empty DEG. A booking DEG has 29 components: 0 card, 1 receipt date, 2 booking date, 3 statement date,
