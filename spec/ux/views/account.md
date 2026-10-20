@@ -32,7 +32,7 @@ currency code (accounts of several currencies stand together,
 "balance not anchored", the unexplained difference. A row opens the account.
 An empty list says that accounts are added here and then fed by a file, a
 sync, or by hand (`ux/patterns.md` §9). Sorting by data age and the
-net-worth figure are the dashboard's (`plan.md`, step 11), not this list's.
+net-worth figure are the Overview's (`ux/views/overview.md`), not this list's.
 
 ## The account page
 

@@ -16,19 +16,25 @@ references it.
 The specification defines the domain and the pipeline. These are additional
 deliverables v1 needs that no section of it describes.
 
-- **Dashboard.** Four numbers, not charts: account balances, net worth, this
-  month's spend against last, unreviewed count. This month is always the least
-  reviewed, so its spend shows the unclassified amount beside it ("€1,240 +
-  €310 unclassified") rather than understating it, and the period's
-  reconciliations, where cash spent unrecorded ends up (`spec.md` §8); net worth likewise shows
-  the transfers still unpaired beside it, since a withdrawal not yet confirmed
-  is missing from the cash account (`spec.md` §6). Also where the account
-  facts of `spec.md` §3.11 show — accounts sorted by data age, unexplained
-  differences — which is how a silently stopped importer gets noticed. The
-  "balance not anchored" status belongs on the account view.
-- **One report.** Spend by category over a date range, drilling into entries,
-  with the reconciliation and unclassified lines beside it so the report
-  shows how much of it is explained. Everything else is a filter on the
+- **Overview.** The landing page: four figure cards — net worth, the savings
+  rate of the last 12 months, this month's spend, the review count — then the
+  accounts by data age and this month's top expense categories. This month is
+  always the least reviewed, so its spend shows the unclassified amount beside
+  it ("€1,240 + €310 unclassified") rather than understating it, and the
+  period's reconciliations, where cash spent unrecorded ends up (`spec.md` §8);
+  net worth likewise shows the transfers still unpaired beside it, since a
+  withdrawal not yet confirmed is missing from the cash account (`spec.md` §6).
+  Also where the account facts of `spec.md` §3.11 show — accounts sorted by
+  data age, unexplained differences — which is how a silently stopped importer
+  gets noticed. The "balance not anchored" status shows in the account rows as
+  part of the facts line.
+- **Three reports**, one area. *By category*: spend or income by category over
+  a date range, with the reconciliation and unclassified lines beside it so
+  the report shows how much of it is explained. *Over time*: income, expense,
+  savings and the savings rate per period, or the categories per period.
+  *Balances*: net worth and account balances at month-ends. Each takes the
+  ledger's own filters and every number drills into the ledger list; a later
+  report is a variant inside a type. Everything else is a filter on the
   ledger list, and tagging applies to a filter's result (`spec.md` §3.7), so
   the filter bar is where the effort belongs.
 - **CSV export** of entries with their dimensions joined — escape hatch and
@@ -148,7 +154,7 @@ Rough sequence:
    document coverage, enrichment, the split along a document's lines in the
    preview, and the document list with its reverse matches.
 10. per account page to view & manage transactions, FinTS importer: discovery, first-fetch start, PIN/TAN; UI for importers (FinTS & CSV), UI for managing importer instances, per-account fetches, sync task and SSE.
-11. Dashboard with data age, the one report.
+11. The Overview with data age, the three reports, CSV export.
 
 Steps 3 to 9 are where the design is actually tested; everything before is
 scaffolding and everything after is comparatively mechanical.

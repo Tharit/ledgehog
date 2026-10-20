@@ -222,7 +222,7 @@ paw-print  scissors  wrench  dumbbell  graduation-cap  user  users
 (fixed icons below for transfers and derived entries). An account in a
 compact row — the account column, a transfer's "→ Cash" — is its name after
 an 8px dot in its colour. Account icons appear where the account is the
-subject: the account list, the dashboard, pickers, the account view. Payee
+subject: the account list, the Overview, pickers, the account view. Payee
 icons likewise only where the payee is the subject: the payee list, pickers,
 the unit panel; never in a ledger row.
 
@@ -280,6 +280,8 @@ section numbers in this table are `patterns.md`'s.
   in the categorical order of §3, with "Other" always `stone`.
 - Bars for comparing categories; a donut only where the whole matters more
   than the ranking. Amounts on charts follow `patterns.md` §2, signs included.
+- In a signed time series income draws above the zero line and expense below
+  it; an account's line takes the account's colour (§3).
 
 ## 9. Mascot and brand
 
@@ -306,9 +308,9 @@ and each empty-state illustration are to be redrawn as SVG before they ship.
 
 The mockup's **layout and content are illustrative only**; the spec decides
 what each screen shows. In particular, these appear in the mockup and are not
-part of the design: budgets, goals and a savings rate (`spec.md` §1.2); charts
-on the dashboard (`plan.md`); bank logos and payee logos; a greeting, a user
-avatar and the motivational quote; spending shown unsigned. Logos are never
+part of the design: budgets and goals; bank logos and payee logos; a greeting,
+a user avatar and the motivational quote; spending shown unsigned. Logos are
+never
 fetched from anywhere; custom icons, when they come, are the user's own
 uploads. The navigation
 follows the routes of architecture §6.2 — Ledger, not "Transactions", and the

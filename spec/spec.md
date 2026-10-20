@@ -588,7 +588,7 @@ account or currency, not to any entry.
 | **balance not anchored** | any account | it holds entries but no balance record: its balance rests on no stated balance and starts from zero (§5.10) |
 | **rate age** | currencies | days since its latest rate; a value whose rate is older than the maximum rate age is unvalued (§3.8) |
 
-Data age is what makes a lapse visible: the dashboard lists accounts sorted by
+Data age is what makes a lapse visible: the Overview lists accounts sorted by
 it, so a stalled importer rises to the top. No threshold decides when an age
 is too old; a Giro synced weekly, a card fed by a monthly file and a depot
 valued quarterly differ, and the reader knows which is which. The **maximum
@@ -2849,8 +2849,10 @@ Every figure is in the base currency (§3.8). Periods bucket entries by
   to the money: before review is finished, and where money left without an
   entry — cash spent unrecorded, interest a hand-kept loan absorbed. The
   **savings rate** shows "—" when income is zero or negative, and carries a
-  marker when the period has unclassified entries or reconciliations, because
-  its income or spending may then be incomplete.
+  marker when the period has unclassified entries, reconciliations or unvalued
+  amounts, because its income or spending may then be incomplete. Over a range
+  it is the range's savings over its income, not the mean of its periods'
+  rates.
 - **Transfers are not flows.** They are excluded from income, expense and
   savings, and appear only in the transfers (net) line — which, until a leg is
   paired, also holds what its counter-account is still missing (§6).
@@ -2863,6 +2865,14 @@ Every figure is in the base currency (§3.8). Periods bucket entries by
   explain, from unrecorded cash to a difference against the bank.
 - **Refunds net.** A category's spend can be negative in a period where its
   refunds exceed its purchases; reports show it as it is.
+- **A period's spend** is the *Spend by category* row summed over the period,
+  so that a figure beside a category report and the report agree. Unclassified
+  entries and reconciliations stand beside it, not in it.
+- **Unclassified is two figures where it stands beside a spend or income
+  figure:** the money out and the money in. Savings takes it as one net line.
+- **Net worth today** takes every account's full balance, as the account list
+  shows it; a net worth at an earlier date, and its history, cut the entries at
+  that date and convert at its rate.
 - **Older history can change earlier reports.** A backfill moves the opening
   earlier and changes it by what was added (§5.10), so net worth before the old
   anchor date changes; from the anchor date on it does not.

@@ -50,7 +50,9 @@ says so; those are revisited after the first month of use, not per view.
 - **Alignment.** Amount columns are right-aligned with tabular numerals.
 - **Unvalued is not zero.** A value with no usable rate renders as "unvalued"
   (a dash with a tooltip naming the currency and its rate age, spec §3.11),
-  never as `0.00`, and totals that omit unvalued amounts say so (spec §8).
+  never as `0.00`, and totals that omit unvalued amounts say so (spec §8): a
+  sum with some unvalued entries shows its total and "+ n unvalued", one with
+  none valued shows "unvalued".
 - **Entering amounts.** The entry form takes one signed amount, prefilled
   with a minus as spec §3.9 prefills an expense; a hint under the field says
   "− money out, + money in", because a leg of a transfer is neither income
@@ -69,7 +71,9 @@ says so; those are revisited after the first month of use, not per view.
 - **Instants** (a run's start, a session) render in the household's zone with
   date and time.
 - **Ranges** are inclusive on both ends, as the domain's dates are, and say so
-  where ambiguity is possible ("1 Mar – 31 Mar").
+  where ambiguity is possible ("1 Mar – 31 Mar"). A report's periods are
+  calendar months, quarters or years in the household's zone; one the range
+  cuts is labelled with its days ("1–20 Oct").
 
 ## 4. Entries, units and their state
 
@@ -296,6 +300,12 @@ row; a resolved row stays in place, marked (§7).
   filter (a tag removed under a tag filter) stays, marked, until the list is
   fetched again. The one exception to never adding a row: the entries a split
   creates are inserted next to their anchor.
+- **Computed views refetch.** A view of aggregates (the Overview, the reports)
+  has no cursor to protect and nothing in it is removed under the user's hand:
+  it keeps its figures on screen and replaces them when the ledger's change
+  value moves (architecture §4.2). A change of its controls is a new request,
+  the previous figures dimmed until the answer arrives. The ledger lists it
+  links to are snapshots in their own right.
 - **A filter's result is the server's, not the list's.** An action on a
   filter's result (spec §3.7) states how many entries it will touch from the
   server's count for the filter as it stands, not from the rows the list holds,

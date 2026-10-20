@@ -38,6 +38,7 @@ architecture.
 | Bank access | python-fints, in process |
 | Frontend | Svelte 5 + SvelteKit **in SPA mode** — no SSR, no prerendering |
 | UI components | shadcn-svelte, **copied into the repository**, on Bits UI primitives; Tailwind CSS, compiled at build time |
+| Charts | LayerChart, through shadcn-svelte's chart component |
 | Database | PostgreSQL, external to the container |
 | Packaging | One container; local development in a venv against a separate external development database |
 | Tooling | uv with a hash-pinned lockfile, npm with a committed lockfile for the frontend; pytest and hypothesis; ruff; mypy in strict mode; import-linter for the module boundaries (§5.1); httpx for API tests; argon2-cffi for password hashing |
@@ -257,9 +258,12 @@ GET    /api/units/queue                        the units not confirmed, in
                                                while they wait for a partner or
                                                a document
 GET    /api/units/queue/count                  how many units can be acted on
-                                               now: pending review and needs an
-                                               account, not waiting; for the
-                                               Review item of the navigation
+                                               now: `count`, the sum of
+                                               `pending_review` and
+                                               `needs_account`, not waiting;
+                                               `count` is for the Review item
+                                               of the navigation, the split
+                                               for the Overview
 GET    /api/units/{entry_id}                   a unit's stored state
 POST   /api/units/preview                      stored state + draft → the unit a
                                                commit would write: rows (with
@@ -506,12 +510,22 @@ GET    /api/config                             base currency, the windows,
                                                default locale; never a secret
 
   reporting — read-only aggregates over core/reporting (spec §8)
-GET    /api/reports/dashboard                  balances, net worth, this month
-                                               against last, unreviewed count,
+GET    /api/reports/overview                   the Overview's figures and
+                                               accounts: net worth, savings
+                                               of the last 12 months, last
+                                               month and this month, this
+                                               month's spend against last,
                                                account data age and status
-GET    /api/reports/spend-by-category          a date range, with the
-                                               reconciliation and unclassified
-                                               lines beside it
+GET    /api/reports/by-category                a date range, as a category
+                                               tree, with the unclassified and
+                                               reconciliation lines beside it;
+                                               the Overview's top categories
+                                               are this route with `top`
+GET    /api/reports/over-time                  a range cut into periods: the
+                                               savings and rate of each, or
+                                               each category's amount
+GET    /api/reports/balances                   net worth and every account's
+                                               balance at month-ends
 GET    /api/ledger/entries/export              CSV of the ledger list's filter,
                                                dimensions joined
 
@@ -520,6 +534,16 @@ POST   /api/maintenance/settle                 settle now: bring derived state
                                                up to date (spec §5)
 GET    /api/maintenance/check                  integrity views (schema.sql §9)
 ```
+
+**Reporting answers carry the sums, so the client adds nothing** (§6.3). Every
+figure is a `Line`: its total in the base currency (null when entries exist and
+none could be valued), the number of entries covered, and the unvalued
+remainder per currency (`spec.md` §8). Savings is one shape, computed once and
+used by the Overview and the over-time report alike: income, expense,
+unclassified, reconciliations, their sum, the rate, and whether it is
+incomplete. A report's filters are the ledger list's (`spec.md` §8), one
+predicate, so the entries behind a figure are exactly the entries its
+drill-down lists.
 
 **Starting a sync is validated as a whole**: nothing starts if any item is
 refused. An unknown instance or account is 404 `not_found`, an account not
@@ -874,7 +898,7 @@ formula.
 `records_since_zero`, on every response that carries them: the list, and the
 `account` of every write. The list and the page need it (`ux/patterns.md` §4.4
 shows the facts wherever the account is shown with its balance), and the
-dashboard reads the same figure.
+Overview reads the same figure.
 
 **An account's linked importers are not a route.**
 `GET /api/importers/instances` already returns every instance with its linked
@@ -1183,7 +1207,8 @@ app/
     settle/              bringing derived state up to date after every write:
                          rederiving unconfirmed entries, pairing, document
                          matches, derived entries, flags
-    reporting/           aggregate queries, all conversion via base_value()
+    reporting/           aggregate queries, all conversion via base_value();
+                         filtered by the ledger list's own predicate
     tasks/               registry and claims, the task with its events, the
                          prompter, the per-instance job; the change values
     plugins/             PROTOCOLS ONLY: the importer (file and fetch) and
@@ -1843,32 +1868,35 @@ frontend/src/
                        logic, no formatting.
     +layout.svelte     shell, nav, auth gate
     +layout.ts         ssr and prerender flags
+    +page.svelte       the Overview, `/`
     ledger/
     review/
     accounts/          the account list, `/accounts/[id]` and the file upload
                        `/accounts/[id]/upload`
     sync/              the sync page: plan, progress, report
-    reports/
+    reports/           three tabs: `by-category`, `over-time`, `balances`
     settings/          management: categories, payees, tags, rules, importers
                        (below)
   lib/
     api/               The ONLY place fetch is called. One module per
                        operation group in §4.1 (ledger, units, importers,
-                       sync, maintenance), plus shared error handling and
+                       sync, reports, maintenance), plus shared error
+                       handling and
                        the SSE client.
     stores/            Svelte stores. Page-scoped by default; one long-lived
                        store for the active task, a sync or a discovery.
     components/        Presentational and reusable. Props in, events out;
                        no direct api/ imports.
       ui/              shadcn-svelte components, copied in: dialog,
-                       combobox, menu, tooltip, toast, date picker, button.
+                       combobox, menu, tooltip, toast, date picker, button,
+                       chart.
                        Generic, no domain knowledge; the only place Bits UI
                        is imported
       common/          composites of ui/: tables, money and date displays,
                        and the interaction components of patterns §11:
                        action dialog, row actions, icon and action
-                       buttons, field, picker, page header, empty and error
-                       states, notice
+                       buttons, field, picker, page header, section tabs
+                       (Settings and Reports), empty and error states, notice
       ledger/          entry row, provenance widget
       units/           the unit panel — draft, preview, commit, split
                        editor — and queue rows, flag badges, evidence
@@ -1876,6 +1904,9 @@ frontend/src/
       importers/       the instance list, one settings form per importer, the
                        run summary (shown at the end of a sync too)
       sync/            plan, progress, prompt dialogs, the discovery list
+      reports/         the figure of a total with its unvalued remainder, the
+                       Overview's cards, the category tree table, the report
+                       charts built on `ui/` chart
     format/            money, dates, locale (§6.6)
     types/             shared types: api.d.ts is generated from OpenAPI
                        (§6.7), the rest is what OpenAPI cannot say
@@ -2041,8 +2072,8 @@ pending review and those that need an account, not those waiting for a partner
 or a document, which complete themselves. It is a quiet number, hidden at zero,
 read once when the app starts and again whenever the ledger's change value
 moves (§4.2), by its own read rather than on the change values: those stay a
-question of whether anything changed. The dashboard's unreviewed count is the
-same number.
+question of whether anything changed. The Overview's To review card shows the
+same number, split into its two parts, by the count route's own fields (§4.1).
 
 A row resolved as a *consequence* rather than by direct action needs to say
 so, because it changes without the user having touched it. Exactly how — and
@@ -2258,7 +2289,11 @@ Layers:
   the transfers (net) line for a pair straddling a period boundary; the
   starting balances, valuation, reconciliation and unclassified lines;
   savings including reconciliations; net worth summing valued accounts with
-  the others on the unvalued line.
+  the others on the unvalued line; a drill-down equals its number — for every
+  cell of a seeded ledger, the entries the cell's filter lists are as many as
+  it counts and sum to its total; one savings computation, the Overview's and
+  the over-time report's alike, its rate null on income of zero or less and
+  its marker per cause; periods bucketed in the household's zone.
 - **Importer tests** — against recorded payloads committed as fixtures, never
   against a live bank. The FinTS importer is tested through its one seam to the
   bank, against a fake of it, with a hand-built MT940 corpus, and each fix it
