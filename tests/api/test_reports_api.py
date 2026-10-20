@@ -64,7 +64,7 @@ def usd_unvalued(amount: int, count: int = 1) -> dict[str, Any]:
     return {"amount": {"amount": amount, "currency": "USD"}, "count": count}
 
 
-@pytest.mark.parametrize("url", [OVERVIEW, BY_CATEGORY, OVER_TIME])
+@pytest.mark.parametrize("url", [OVERVIEW, BY_CATEGORY, OVER_TIME, BALANCES])
 def test_every_report_requires_a_session(client: TestClient, url: str):
     assert_envelope(client.get(url), 401, "unauthenticated")
 
@@ -382,3 +382,81 @@ def test_every_cell_of_over_time_counts_what_the_ledger_lists_for_its_drilldown(
         assert s["expense"]["count"] == listed(**rng, category_id=expense_roots)
         assert s["unclassified"]["count"] == listed(**rng, uncategorised="true")
         assert s["reconciliations"]["count"] == listed(**rng, type="reconciliation")
+
+
+# ---- Balances
+
+AUG_OCT = {"from": "2026-08-01", "to": "2026-10-31"}
+
+
+def usd(amount: int) -> dict[str, Any]:
+    return {"amount": amount, "currency": "USD"}
+
+
+def test_balances_name_the_parameter_at_fault(anna: TestClient):
+    for params, named in (
+        ({"to": "2026-10-31"}, "from"),
+        ({"from": "2026-10-01"}, "to"),
+        ({"from": "2026-10-31", "to": "2026-10-01"}, "to"),
+        ({"from": "2010-01-01", "to": "2026-10-31"}, "from"),  # more than 120 month-ends
+    ):
+        r = anna.get(BALANCES, params=params)
+        assert_envelope(r, 422, "validation_error")
+        assert any(loc[:2] == ["query", named] for loc in error_locations(r)), params
+
+
+def test_balances_at_the_month_ends_with_today_as_the_current_months_point(
+    anna: TestClient, seeded: Household
+):
+    body = get(anna, BALANCES, **AUG_OCT)
+    assert body["base_currency"] == "EUR"
+    assert body["points"] == ["2026-08-31", "2026-09-30", "2026-10-20"]
+    assert [n["total"] for n in body["net_worth"]] == [eur(105_000), eur(354_000), eur(640_000)]
+    assert [n["unvalued"] for n in body["net_worth"]] == [
+        [{"amount": usd(30_000), "accounts": 1}],
+        [{"amount": usd(30_000), "accounts": 1}],
+        [{"amount": usd(28_000), "accounts": 1}],
+    ]
+    accounts = {a["account_id"]: a for a in body["accounts"]}
+    assert set(accounts) == {seeded.giro, seeded.cash, seeded.usd}
+    giro = accounts[seeded.giro]
+    # the opening and the reconciliation are in the balances
+    assert giro["balances"] == [eur(100_000), eur(349_000), eur(631_200)]
+    assert giro["native"] == giro["balances"]
+    foreign = accounts[seeded.usd]
+    assert foreign["balances"] == [None, None, None]  # no rate: unvalued, never zero
+    assert foreign["native"] == [usd(30_000), usd(30_000), usd(28_000)]
+
+
+def test_balances_at_today_are_the_overviews_net_worth(anna: TestClient, seeded: Household):
+    body = get(anna, BALANCES, **AUG_OCT)
+    assert body["net_worth"][-1] == {
+        "total": get(anna, OVERVIEW)["net_worth"]["total"],
+        "unvalued": get(anna, OVERVIEW)["net_worth"]["unvalued"],
+    }
+
+
+def test_balances_value_a_foreign_account_when_a_rate_is_in_the_window(
+    anna: TestClient, api_engine: Engine, seeded: Household
+):
+    with api_engine.begin() as conn:
+        rate(conn, "USD", date(2026, 9, 28), "2.0")
+    body = get(anna, BALANCES, **AUG_OCT)
+    foreign = next(a for a in body["accounts"] if a["account_id"] == seeded.usd)
+    assert foreign["balances"] == [None, eur(15_000), None]  # 30 Sep is in the window; 20 Oct is not
+    assert body["net_worth"][1]["unvalued"] == [] and body["net_worth"][1]["total"] == eur(369_000)
+    assert body["net_worth"][2]["unvalued"] != []
+
+
+def test_balances_list_a_closed_account_only_when_it_held_a_balance_in_the_range(
+    anna: TestClient, api_engine: Engine, seeded: Household
+):
+    with api_engine.begin() as conn:
+        old = seed.account(conn, "Old")
+        seed.entry(conn, old, amount=500, on=date(2026, 3, 1))
+        seed.entry(conn, old, amount=-500, on=date(2026, 4, 1))
+        conn.execute(text("UPDATE account SET closed_on = DATE '2026-04-01' WHERE id = :i"), {"i": old})
+    assert old not in {a["account_id"] for a in get(anna, BALANCES, **AUG_OCT)["accounts"]}
+    spring = get(anna, BALANCES, **{"from": "2026-03-01", "to": "2026-05-31"})
+    held = next(a for a in spring["accounts"] if a["account_id"] == old)
+    assert [b["amount"] for b in held["balances"]] == [500, 0, 0]

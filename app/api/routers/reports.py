@@ -20,6 +20,7 @@ from app.api.routers.accounts import AccountOut, Money, facts
 from app.api.routers.entries import Ids
 from app.api.session import CurrentUser, EngineDep
 from app.core import reporting as rp
+from app.core.ledger import InvalidFilter
 from app.core.reporting import Line, Savings
 from app.utils import clock
 
@@ -370,4 +371,64 @@ def get_over_time(
         other=[LineOut.of(x, base) for x in by_cat.other],
         totals=[LineOut.of(x, base) for x in by_cat.totals],
         sum=LineOut.of(by_cat.sum, base),
+    )
+
+
+# ---- Balances
+
+
+class PointNetWorthOut(BaseModel):
+    total: Money | None  # null when balances exist and none could be valued
+    unvalued: list[NetWorthUnvaluedOut]
+
+
+class AccountBalancesOut(BaseModel):
+    account_id: int
+    # the base-currency value at each point; null where the account has no balance yet or it is unvalued
+    balances: list[Money | None]
+    native: list[Money]  # the balance in the account's own currency at each point
+
+
+class BalancesOut(BaseModel):
+    base_currency: str
+    points: list[date]  # the range's month-ends, a future one replaced by today, today when in the range
+    net_worth: list[PointNetWorthOut]  # per point
+    accounts: list[AccountBalancesOut]  # open accounts, and closed ones that held a balance in the range
+
+
+@router.get("/balances")
+def get_balances(
+    user: CurrentUser,
+    engine: EngineDep,
+    request: Request,
+    from_: Annotated[date, Query(alias="from")],
+    to: Required,
+) -> BalancesOut:
+    """Net worth and every account's balance at the month-ends of a range. A balance is every entry
+    booked on or before the point (openings, valuations and reconciliations included), converted at that
+    date's rate; an amount that cannot be valued is listed, never counted as zero."""
+    config = request.app.state.config
+    base: str = config.base_currency
+    if from_ > to:
+        raise InvalidFilter("to", "to must not be before from")
+    with engine.connect() as conn:
+        got = rp.balances_report(conn, from_, to, clock.today(config.timezone))
+    return BalancesOut(
+        base_currency=base,
+        points=list(got.points),
+        net_worth=[
+            PointNetWorthOut(
+                total=None if n.total is None else Money(amount=n.total, currency=base),
+                unvalued=_worth_unvalued(n.unvalued),
+            )
+            for n in got.net_worth
+        ],
+        accounts=[
+            AccountBalancesOut(
+                account_id=a.account_id,
+                balances=[None if b is None else Money(amount=b, currency=base) for b in a.base],
+                native=[Money(amount=b, currency=a.currency) for b in a.native],
+            )
+            for a in got.accounts
+        ],
     )
