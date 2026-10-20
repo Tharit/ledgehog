@@ -64,7 +64,7 @@ def usd_unvalued(amount: int, count: int = 1) -> dict[str, Any]:
     return {"amount": {"amount": amount, "currency": "USD"}, "count": count}
 
 
-@pytest.mark.parametrize("url", [OVERVIEW, BY_CATEGORY])
+@pytest.mark.parametrize("url", [OVERVIEW, BY_CATEGORY, OVER_TIME])
 def test_every_report_requires_a_session(client: TestClient, url: str):
     assert_envelope(client.get(url), 401, "unauthenticated")
 
@@ -270,3 +270,115 @@ def test_every_node_of_by_category_counts_what_the_ledger_list_lists_for_its_dri
     assert body["unclassified_in"]["count"] == listed(uncategorised="true", direction="in")
     assert body["reconciliations"]["count"] == listed(type="reconciliation")
     assert body["unconfirmed_count"] == listed(flag="unconfirmed")
+
+
+# ---- Over time
+
+SEP_OCT = {"from": "2026-09-01", "to": "2026-10-31"}
+
+
+def test_over_time_names_the_parameter_at_fault(anna: TestClient):
+    for params, named in (
+        ({"to": "2026-10-31"}, "from"),
+        ({"from": "2026-10-01"}, "to"),
+        ({"from": "2026-10-31", "to": "2026-10-01"}, "to"),
+        ({**SEP_OCT, "step": "week"}, "step"),
+        ({**SEP_OCT, "mode": "chart"}, "mode"),
+        ({**SEP_OCT, "kind": "transfer"}, "kind"),
+        ({"from": "2015-01-01", "to": "2026-10-31", "step": "month"}, "step"),  # 142 months
+    ):
+        r = anna.get(OVER_TIME, params=params)
+        assert_envelope(r, 422, "validation_error")
+        assert any(loc[:2] == ["query", named] for loc in error_locations(r)), params
+    quarters = anna.get(OVER_TIME, params={"from": "2015-01-01", "to": "2026-10-31", "step": "quarter"})
+    assert quarters.status_code == 200
+
+
+def test_over_time_savings_is_the_default_mode_and_carries_only_its_own_fields(
+    anna: TestClient, seeded: Household
+):
+    body = get(anna, OVER_TIME, **SEP_OCT)
+    assert set(body) == {"base_currency", "kind", "step", "periods", "savings", "total"}
+    assert body["step"] == "month"
+    assert body["periods"] == [
+        {"from": "2026-09-01", "to": "2026-09-30"},
+        {"from": "2026-10-01", "to": "2026-10-31"},
+    ]
+    sep, octo = body["savings"]
+    assert sep["income"] == line(300_000, 1) and sep["expense"] == line(-49_500, 4)
+    assert sep["unclassified"] == line(-1_500, 1) and sep["reconciliations"] == line(0, 0)
+    assert sep["savings"] == line(249_000, 6) and sep["rate_bp"] == 8300 and sep["incomplete"] is True
+    assert octo["rate_bp"] == 9734 and octo["reconciliations"] == line(-700, 1)
+    total = body["total"]
+    assert total["savings"]["total"] == eur(542_000) and total["rate_bp"] == 9018  # 542000 / 601000
+    for field in ("income", "expense", "unclassified", "reconciliations", "savings"):
+        assert total[field]["count"] == sep[field]["count"] + octo[field]["count"]
+        parts = (sep[field]["total"]["amount"], octo[field]["total"]["amount"])
+        assert total[field]["total"]["amount"] == sum(parts)
+
+
+def test_over_time_cuts_by_quarter_and_year_in_calendar_buckets(anna: TestClient, seeded: Household):
+    q = get(anna, OVER_TIME, **{"from": "2026-08-15", "to": "2026-10-20"}, step="quarter")
+    assert q["periods"] == [
+        {"from": "2026-08-15", "to": "2026-09-30"},
+        {"from": "2026-10-01", "to": "2026-10-20"},
+    ]
+    year = get(anna, OVER_TIME, **{"from": "2026-01-01", "to": "2026-12-31"}, step="year")
+    assert year["periods"] == [{"from": "2026-01-01", "to": "2026-12-31"}]
+    assert year["savings"][0] == year["total"]  # one period is the whole range
+
+
+def test_over_time_by_category_carries_the_tree_per_period(anna: TestClient, seeded: Household):
+    body = get(anna, OVER_TIME, **SEP_OCT, mode="category")
+    assert set(body) == {
+        "base_currency",
+        "kind",
+        "step",
+        "periods",
+        "categories",
+        "slices",
+        "other",
+        "totals",
+        "sum",
+    }
+    rows = {c["category_id"]: c for c in body["categories"]}
+    assert [c["category_id"] for c in body["categories"]] == [
+        seeded.travel,
+        seeded.food,
+        seeded.groceries,
+    ]
+    assert rows[seeded.food]["total"] == [line(-9_500, 3), line(-10_200, 2)]
+    assert rows[seeded.food]["own"] == [line(-2_000, 1), line(0, 0)]
+    assert rows[seeded.food]["sum"] == line(-19_700, 5)
+    assert [s["category_id"] for s in body["slices"]] == [seeded.travel, seeded.food]
+    assert body["other"] == [line(0, 0), line(0, 0)]
+    assert body["totals"] == [line(-49_500, 4), line(-9_500, 4, [usd_unvalued(-2_000)])]
+    whole = get(anna, BY_CATEGORY, **SEP_OCT)
+    assert body["sum"] == whole["total"]  # the periods sum to the range
+    assert {c["category_id"]: c["sum"] for c in body["categories"]} == {
+        c["category_id"]: c["total"] for c in whole["categories"]
+    }
+
+
+def test_over_time_filters_are_the_ledgers(anna: TestClient, seeded: Household):
+    body = get(anna, OVER_TIME, **SEP_OCT, tag_id=seeded.trip, mode="category")
+    assert [c["category_id"] for c in body["categories"]] == [seeded.travel]
+    savings = get(anna, OVER_TIME, **SEP_OCT, account_id=[seeded.cash])
+    assert savings["total"]["expense"] == line(-1_200, 1)
+
+
+def test_every_cell_of_over_time_counts_what_the_ledger_lists_for_its_drilldown(
+    anna: TestClient, seeded: Household
+):
+    def listed(**params: Any) -> int:
+        return int(get(anna, "/api/ledger/entries", limit=1, **params)["total"])
+
+    body = get(anna, OVER_TIME, **SEP_OCT)
+    income_roots = [seeded.salary, seeded.gifts]
+    expense_roots = [seeded.food, seeded.travel]
+    for period, s in zip(body["periods"], body["savings"], strict=True):
+        rng = {"from": period["from"], "to": period["to"]}
+        assert s["income"]["count"] == listed(**rng, category_id=income_roots)
+        assert s["expense"]["count"] == listed(**rng, category_id=expense_roots)
+        assert s["unclassified"]["count"] == listed(**rng, uncategorised="true")
+        assert s["reconciliations"]["count"] == listed(**rng, type="reconciliation")

@@ -283,3 +283,91 @@ def get_by_category(
         reconciliations=LineOut.of(got.reconciliations, base),
         unconfirmed_count=got.unconfirmed_count,
     )
+
+
+# ---- Over time
+
+
+class PeriodOut(Span):
+    """A calendar month, quarter or year, clipped to the range."""
+
+
+class CategorySeriesOut(BaseModel):
+    category_id: int
+    parent_id: int | None
+    own: list[LineOut]  # per period
+    total: list[LineOut]  # per period, with the descendants
+    sum: LineOut  # the category's total over the range
+
+
+class SliceIdOut(BaseModel):
+    category_id: int
+
+
+class OverTimeOut(BaseModel):
+    """Only the fields of the chosen mode are present."""
+
+    base_currency: str
+    kind: Kind
+    step: rp.Step
+    periods: list[PeriodOut]
+    # mode = savings
+    savings: list[SavingsOut] | None = None  # per period
+    total: SavingsOut | None = None  # the whole range: its savings over its income, not a mean of rates
+    # mode = category
+    categories: list[CategorySeriesOut] | None = None  # flat, depth-first, siblings by the range's magnitude
+    slices: list[SliceIdOut] | None = None  # the largest top-level categories of the kind's sign
+    other: list[LineOut] | None = None  # per period: the remaining top-level categories, summed
+    totals: list[LineOut] | None = None  # per period: the kind's total
+    sum: LineOut | None = None  # the kind's total over the range
+
+
+@router.get("/over-time", response_model_exclude_unset=True)
+def get_over_time(
+    user: CurrentUser,
+    engine: EngineDep,
+    request: Request,
+    from_: Annotated[date, Query(alias="from")],
+    to: Required,
+    step: rp.Step = "month",
+    mode: Literal["savings", "category"] = "savings",
+    kind: Kind = "expense",
+    account_id: Ids = None,
+    tag_id: Ids = None,
+) -> OverTimeOut:
+    """A range cut into calendar months, quarters or years (at most 120): the savings and rate of each,
+    or each category's amount. The ledger list's account and tag filters apply to every figure."""
+    base: str = request.app.state.config.base_currency
+    flt = rp.entry_filter(from_, to, account_id or (), tag_id or ())
+    with engine.connect() as conn:
+        if mode == "savings":
+            got = rp.savings_over_time(conn, flt, step)
+            return OverTimeOut(
+                base_currency=base,
+                kind=kind,
+                step=step,
+                periods=[PeriodOut(from_=p.start, to=p.end) for p in got.periods],
+                savings=[SavingsOut.of(s, base) for s in got.savings],
+                total=SavingsOut.of(got.total, base),
+            )
+        by_cat = rp.categories_over_time(conn, flt, step, kind)
+    return OverTimeOut(
+        base_currency=base,
+        kind=kind,
+        step=step,
+        periods=[PeriodOut(from_=p.start, to=p.end) for p in by_cat.periods],
+        categories=[
+            CategorySeriesOut(
+                category_id=c.category_id,
+                parent_id=c.parent_id,
+                own=[LineOut.of(x, base) for x in c.own],
+                total=[LineOut.of(x, base) for x in c.total],
+                sum=LineOut.of(c.sum, base),
+            )
+            for c in by_cat.categories
+        ],
+        slices=[SliceIdOut(category_id=c) for c in by_cat.slices],
+        other=[LineOut.of(x, base) for x in by_cat.other],
+        totals=[LineOut.of(x, base) for x in by_cat.totals],
+        sum=LineOut.of(by_cat.sum, base),
+    )
