@@ -20,7 +20,7 @@ from sqlalchemy import Engine, text
 
 from app.api import create_app
 from app.core.accounts import create_account
-from app.core.importers.instances import create_instance
+from app.core.importers.instances import create_instance, link_account
 from app.core.tasks import TaskRegistry, TaskTuning
 from app.plugins.importers.csv import CsvImporter
 from app.plugins.importers.testfetch import TestFetchImporter
@@ -86,10 +86,7 @@ class Sync:
         )
 
     def link(self, instance: int, account: int, ref: str) -> None:
-        r = self.client.post(
-            f"/api/importers/instances/{instance}/links", json={"account_id": account, "external_ref": ref}
-        )
-        assert r.status_code == 200, r.text
+        link_account(self.engine, instance, account, ref)  # setup: not through anna's session
 
     def world(
         self, settings: Mapping[str, Any] | None = None, refs: tuple[str, ...] = ("A1",), **kw: Any

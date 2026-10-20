@@ -60,7 +60,6 @@ router = APIRouter(prefix="/api/sync")
 # Unknown instance or account, a disabled instance, a closed or unlinked account and a discovery of an
 # instance without transactions are mapped where their errors live (`importers.py`).
 
-map_error(plan.InstanceForbidden, 403, "forbidden")
 map_error(plan.NotAFetchSource, 409, "not_a_fetch_source")
 map_error(plan.ImporterUnavailable, 409, "importer_unavailable")
 map_error(plan.StartNotEditable, 422, "start_not_editable")

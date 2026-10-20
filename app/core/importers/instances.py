@@ -40,6 +40,30 @@ class InstanceMissing(InstanceError):
         super().__init__(f"importer instance {instance_id} does not exist")
 
 
+class InstanceForbidden(InstanceError):
+    """The instance belongs to the other user (spec §5.11): 403 `forbidden`."""
+
+    def __init__(self, instance_id: int) -> None:
+        super().__init__(f"importer instance {instance_id} belongs to another user")
+
+
+def may_manage(instance: Any, user_id: int) -> bool:
+    """Spec §5.11: the owner, or anyone for a shared instance, may run and manage it."""
+    return bool(instance.access == "shared" or instance.owner_id == user_id)
+
+
+def require_manager(engine: Engine, instance_id: int, user_id: int) -> None:
+    """The one owner check of every managing operation: `InstanceMissing`, else `InstanceForbidden`."""
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT access, owner_id FROM importer_instance WHERE id = :i"), {"i": instance_id}
+        ).one_or_none()
+    if row is None:
+        raise InstanceMissing(instance_id)
+    if not may_manage(row, user_id):
+        raise InstanceForbidden(instance_id)
+
+
 class InvalidInstance(InstanceError):
     """The request is malformed (emits, access and owner, blank label or reference)."""
 
@@ -99,6 +123,7 @@ class InstanceView:
     emits: tuple[str, ...]
     access: str
     owner_id: int | None
+    owner_name: str | None  # the owner's display name; None for a shared instance
     settings: dict[str, Any]
     disabled: bool
     last_run_at: datetime | None
@@ -312,6 +337,7 @@ def list_instances(conn: Connection) -> list[InstanceView]:
             emits=tuple(r.emits),
             access=r.access,
             owner_id=r.owner_id,
+            owner_name=r.owner_name,
             settings=r.settings,
             disabled=r.disabled,
             last_run_at=r.last_run_at,
@@ -319,8 +345,10 @@ def list_instances(conn: Connection) -> list[InstanceView]:
         )
         for r in conn.execute(
             text(
-                "SELECT i.id, i.importer, i.label, i.emits, i.access, i.owner_id, i.settings, i.disabled,"
-                " l.last_run_at FROM importer_instance i"
+                "SELECT i.id, i.importer, i.label, i.emits, i.access, i.owner_id,"
+                " u.display_name AS owner_name, i.settings, i.disabled, l.last_run_at"
+                " FROM importer_instance i"
+                " LEFT JOIN app_user u ON u.id = i.owner_id"
                 " LEFT JOIN v_importer_last_run l ON l.importer_instance_id = i.id ORDER BY i.id"
             )
         )

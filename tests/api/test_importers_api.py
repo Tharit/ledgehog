@@ -81,10 +81,12 @@ def test_create_returns_the_instance_and_the_list_shows_it_with_links(api: Api):
         "emits": ["transactions"],
         "access": "shared",
         "owner_id": None,
+        "owner_name": None,
         "settings": PROFILE,
         "disabled": False,
         "last_run_at": None,
         "accounts": [],
+        "manageable": True,
     }
     acct = api.account()
     api.link(inst["id"], acct)

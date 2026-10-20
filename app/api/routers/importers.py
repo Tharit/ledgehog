@@ -128,6 +128,7 @@ def _importer_details(exc: ImporterError) -> dict[str, Any]:
 map_error(AccountMissing, 404, "not_found")
 map_error(inst.InstanceMissing, 404, "not_found")
 map_error(inst.LinkMissing, 404, "not_found")
+map_error(inst.InstanceForbidden, 403, "forbidden")
 map_error(inst.InvalidInstance, 422, "invalid_instance")
 map_error(inst.InstanceHasRuns, 409, "instance_has_runs")
 map_error(inst.InstanceDisabled, 409, "instance_disabled")
@@ -215,10 +216,18 @@ def _view(engine: Any, instance_id: int) -> InstanceView:
     raise inst.InstanceMissing(instance_id)
 
 
+def _out(view: InstanceView, user_id: int) -> dict[str, Any]:
+    """The instance as read: everything of it (the other user reads settings too, spec §5.11), plus
+    `manageable`, whether this user may change or run it, so a client need not repeat the rule."""
+    out: dict[str, Any] = to_json(view)
+    out["manageable"] = inst.may_manage(view, user_id)
+    return out
+
+
 @router.get("/instances")
 def list_instances(user: CurrentUser, engine: EngineDep) -> list[Any]:
     with engine.connect() as conn:
-        return to_json(inst.list_instances(conn))  # type: ignore[no-any-return]
+        return [_out(v, user.id) for v in inst.list_instances(conn)]
 
 
 @router.post("/instances", status_code=201)
@@ -241,13 +250,14 @@ def create_instance(body: CreateInstance, request: Request, user: CurrentUser, e
         owner_id=user.id if access == "owner" else None,
         validate=importer.validate_settings,
     )
-    return to_json(_view(engine, new_id))
+    return _out(_view(engine, new_id), user.id)
 
 
 @router.put("/instances/{instance_id}")
 def update_instance(
     instance_id: PathId, body: UpdateInstance, request: Request, user: CurrentUser, engine: EngineDep
 ) -> Any:
+    inst.require_manager(engine, instance_id, user.id)
     validate = None
     if body.settings is not None:
         name = _view(engine, instance_id).importer
@@ -260,19 +270,21 @@ def update_instance(
         disabled=body.disabled,
         validate=validate,
     )
-    return to_json(_view(engine, instance_id))
+    return _out(_view(engine, instance_id), user.id)
 
 
 @router.post("/instances/{instance_id}/reset")
 def reset_instance(instance_id: PathId, request: Request, user: CurrentUser, engine: EngineDep) -> Any:
+    inst.require_manager(engine, instance_id, user.id)
     if request.app.state.tasks.is_held(instance_id):  # a running job would write its state back over it
         raise InstanceBusy([instance_id])
     inst.reset_instance(engine, instance_id)
-    return to_json(_view(engine, instance_id))
+    return _out(_view(engine, instance_id), user.id)
 
 
 @router.delete("/instances/{instance_id}")
 def delete_instance(instance_id: PathId, user: CurrentUser, engine: EngineDep) -> Any:
+    inst.require_manager(engine, instance_id, user.id)
     return {"settle": to_json(inst.delete_instance(engine, instance_id))}
 
 
@@ -291,6 +303,7 @@ def link_account(
 ) -> Any:
     # A file importer has no login: the reference is `acct-<account id>`, read by nothing, so a
     # client does not give one. A fetch importer's reference is its account at the login: required.
+    inst.require_manager(engine, instance_id, user.id)
     importer = request.app.state.importers.get(_view(engine, instance_id).importer)
     if isinstance(importer, FileImporter):
         if body.external_ref is not None:
@@ -305,6 +318,7 @@ def link_account(
 
 @router.delete("/instances/{instance_id}/links/{account_id}")
 def unlink_account(instance_id: PathId, account_id: PathId, user: CurrentUser, engine: EngineDep) -> Any:
+    inst.require_manager(engine, instance_id, user.id)
     return {"settle": to_json(inst.unlink_account(engine, instance_id, account_id))}
 
 

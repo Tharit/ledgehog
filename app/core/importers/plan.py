@@ -26,8 +26,10 @@ from app.core.accounts import AccountMissing
 from app.core.importers.instances import (
     AccountClosed,
     InstanceDisabled,
+    InstanceForbidden,
     InstanceMissing,
     NotAnAccountSource,
+    may_manage,
 )
 from app.core.importers.upload import AccountNotLinked
 from app.core.plugins.errors import InvalidProfile
@@ -48,13 +50,6 @@ Kind = Literal["transactions", "documents"]
 
 class StartRefused(Exception):
     """A start was refused as a whole; nothing was started. The message states the rule."""
-
-
-class InstanceForbidden(StartRefused):
-    """The instance belongs to the other user (spec §5.11): 403 `forbidden`."""
-
-    def __init__(self, instance_id: int) -> None:
-        super().__init__(f"importer instance {instance_id} belongs to another user")
 
 
 class NotAFetchSource(StartRefused):
@@ -224,11 +219,6 @@ def _linked_open_accounts(conn: Connection, instance_id: int) -> list[Any]:
     )
 
 
-def _may_run(instance: Any, user_id: int) -> bool:
-    """Spec §5.11: the owner, or anyone for a shared instance."""
-    return bool(instance.access == "shared" or instance.owner_id == user_id)
-
-
 def _eligible(
     conn: Connection, user_id: int, importers: Mapping[str, object]
 ) -> list[tuple[Any, FetchImporter]]:
@@ -239,7 +229,7 @@ def _eligible(
         text(f"SELECT {_INSTANCE_COLUMNS} FROM importer_instance WHERE NOT disabled ORDER BY id")  # noqa: S608
     ):
         importer = importers.get(inst.importer)
-        if _may_run(inst, user_id) and importer is not None and isinstance(importer, FetchImporter):
+        if may_manage(inst, user_id) and importer is not None and isinstance(importer, FetchImporter):
             out.append((inst, importer))
     return out
 
@@ -292,7 +282,7 @@ def _need_instance(
     ).one_or_none()
     if inst is None:
         raise InstanceMissing(instance_id)
-    if not _may_run(inst, user_id):
+    if not may_manage(inst, user_id):
         raise InstanceForbidden(instance_id)
     if inst.disabled:
         raise InstanceDisabled(instance_id)
