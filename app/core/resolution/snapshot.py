@@ -38,7 +38,6 @@ LOOKBACK_DAYS = 365
 TOKEN_REACH = 0.5
 
 _SortKey = tuple[int, int]  # (booked_on ordinal, entry id)
-_EQUALITY_KEYS = ("counterparty_ref", "counterparty_name", "booking_text")
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,7 +77,6 @@ class HistorySnapshot:
         self._by: dict[str, dict[str | int, _Bucket]] = {
             "counterparty_ref": defaultdict(_Bucket),
             "counterparty_name": defaultdict(_Bucket),
-            "booking_text": defaultdict(_Bucket),
             "payee": defaultdict(_Bucket),
             "tokens": defaultdict(_Bucket),
             "document_merchant": defaultdict(_Bucket),
@@ -114,7 +112,6 @@ class HistorySnapshot:
                 continue
             put("counterparty_ref", canonical_text(v.counterparty_ref), k, v)
             put("counterparty_name", canonical_text(v.counterparty_name), k, v)
-            put("booking_text", canonical_text(v.booking_text), k, v)
             if v.payee_id is not None:
                 put("payee", v.payee_id, k, v)
             vote_tokens = tokens(v.counterparty_name, v.purpose)
@@ -151,10 +148,8 @@ class HistorySnapshot:
                 value = canonical_text(entry.document_merchant)
             elif key == "counterparty_ref":
                 value = canonical_text(entry.counterparty_ref)
-            elif key == "counterparty_name":
-                value = canonical_text(entry.counterparty_name)
             else:
-                value = canonical_text(entry.booking_text)
+                value = canonical_text(entry.counterparty_name)
             bucket = buckets.get(value) if value is not None else None
             found = bucket.window(lo, hi) if bucket is not None else []
         if exclude_entry_ids:
@@ -209,7 +204,6 @@ def touches(grown: Grown, entry: EntryInput, payee_id: int | None) -> bool:
     for key, raw in (
         ("counterparty_ref", entry.counterparty_ref),
         ("counterparty_name", entry.counterparty_name),
-        ("booking_text", entry.booking_text),
     ):
         value = canonical_text(raw)
         if value and (key, value) in b:

@@ -482,7 +482,7 @@ def test_a_payee_condition_on_a_rule_that_does_not_set_a_category_is_refused(
 
 def _sonnenkorn(conn: Connection, acct: int, decided: int, proposed: int) -> tuple[list[int], list[int]]:
     """`decided` unconfirmed entries whose counterparty is Sonnenkorn, `proposed` unconfirmed ones with
-    the words only in the purpose (key 5 of history reaches them once the first group is confirmed)."""
+    the words only in the purpose (key 4 of history reaches them once the first group is confirmed)."""
     by_name = [
         rs.new_entry(conn, acct, counterparty_name="Sonnenkorn Bio", purpose="Einkauf Obst")
         for _ in range(decided)

@@ -43,8 +43,6 @@ class ListHistory:
                 ok = canonical_text(v.counterparty_name) == canonical_text(entry.counterparty_name)
             elif key == "payee":
                 ok = payee_id is not None and v.payee_id == payee_id
-            elif key == "booking_text":
-                ok = canonical_text(v.booking_text) == canonical_text(entry.booking_text)
             else:
                 ok = bool(
                     tokens(v.counterparty_name, v.purpose) & tokens(entry.counterparty_name, entry.purpose)

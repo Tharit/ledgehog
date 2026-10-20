@@ -29,7 +29,6 @@ _MATCHED_ON: dict[HistoryKey, str] = {
     "counterparty_ref": "counterparty_ref",
     "counterparty_name": "counterparty_name+booking_text",
     "payee": "payee",
-    "booking_text": "booking_text",
     "tokens": "tokens",
     "document_merchant": "document_merchant",
 }
@@ -103,9 +102,6 @@ class HistoryClassifier:
         elif key == "payee":
             if field != "category" or resolved_payee is None:
                 return None
-        elif key == "booking_text":
-            if not canonical_text(entry.booking_text):
-                return None
         else:
             entry_tokens = tokens(entry.counterparty_name, entry.purpose)
             if not entry_tokens:
@@ -127,8 +123,6 @@ class HistoryClassifier:
             if not booking:
                 return list(candidates)
             return [v for v in candidates if not _other_code(booking, v.booking_text)]
-        if key == "booking_text":
-            return [v for v in candidates if v.account_id == entry.account_id]
         if key == "tokens":
             return [
                 v

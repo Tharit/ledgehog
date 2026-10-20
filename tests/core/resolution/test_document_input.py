@@ -196,7 +196,7 @@ def test_the_snapshot_answers_key6_from_documented_votes_only_and_keys_1_to_5_fr
         1, acct, "EUR", DAY, -1, counterparty_name="PAYPAL *X", document_merchant="cloudnotes, gmbh"
     )
     assert [v.entry_id for v in snap.candidates("document_merchant", asking)] == [documented_vote]
-    # an undocumented entry has no merchant: key 6 finds nothing
+    # an undocumented entry has no merchant: key 5 finds nothing
     assert snap.candidates("document_merchant", EntryInput(1, acct, "EUR", DAY, -1)) == []
     # the raw keys see the undocumented voter only, whatever the bank text of the documented ones
     assert [v.entry_id for v in snap.candidates("counterparty_name", asking)] == [plain]
@@ -241,5 +241,5 @@ def test_touches_reads_the_merchant_for_a_documented_entry_only(documented: bool
     )
     assert (
         touches(grown, e, None) is documented
-    )  # an undocumented entry never sees key 6, nor the voter's raw keys
+    )  # an undocumented entry never sees key 5, nor the voter's raw keys
     assert not touches(grown, EntryInput(1, 1, "EUR", DAY, -1, documented=True, document_merchant="Other"), 5)

@@ -256,7 +256,7 @@ _MERCHANTS: tuple[Merchant, ...] = (
 _SHOP_TAIL = ("giro", "paypal")
 _RECURRING: tuple[tuple[str, str, str, int, int, str], ...] = (
     # name, booking text, purpose, amount (negative = expense), day of month, channel
-    ("Hausverwaltung Muster GmbH", "Überweisung", "Miete Wohnung 3.OG", -95000, 1, "giro"),
+    ("Hausverwaltung Muster GmbH", "Dauerauftrag", "Miete Wohnung 3.OG", -95000, 1, "giro"),
     ("Stadtwerke Beispielstadt", "Lastschrift", "Abschlag Strom und Gas", -8500, 4, "giro"),
     ("NetzWerk Telekom", "Lastschrift", "Internet Anschluss", -3999, 9, "giro"),
     ("Funkwerk Mobil", "Lastschrift", "Mobilfunk Vertrag", -2499, 15, "giro"),

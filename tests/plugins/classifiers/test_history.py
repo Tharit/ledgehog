@@ -74,22 +74,14 @@ def test_key3_payee_for_category_only() -> None:
     assert run("payee", e, votes, payee=7) is None
 
 
-def test_key4_booking_text_same_account() -> None:
-    same = vote(booking_text="GA-AUSZAHLUNG", type="transfer", account_id=1)
-    other = vote(booking_text="GA-AUSZAHLUNG", type="flow", account_id=2, category_id=1)
-    p = run("type", entry(booking_text="ga auszahlung", account_id=1), [same, other])
-    assert p is not None and p.value == "transfer"
-    assert p.basis["matched_on"] == "booking_text" and p.basis["of"] == 1
-
-
-def test_key5_tokens() -> None:
+def test_key4_tokens() -> None:
     v = vote(counterparty_name="PayPal Europe", purpose="Seeed 123", payee_id=3, category_id=2)
     p = run("payee", entry(counterparty_name="PAYPAL *SEEED", purpose="Seeed"), [v])
     # tokens {paypal, europe, seeed} vs {paypal, seeed}: 2/3
     assert p == Proposal("payee", 3, {"matched_on": "tokens", "agree": 1, "of": 1, "since": "2026-03-01"})
 
 
-def test_key5_jaccard_boundary() -> None:
+def test_key4_jaccard_boundary() -> None:
     e = entry(purpose="alpha beta")
     at = vote(purpose="alpha gamma", category_id=1)  # 1/3? no: {alpha,beta} vs {alpha,gamma} = 1/3
     assert run("category", e, [at]) is None
@@ -101,7 +93,7 @@ def test_key5_jaccard_boundary() -> None:
     assert run("category", e, [below]) is None
 
 
-def test_key5_skipped_without_tokens() -> None:
+def test_key4_skipped_without_tokens() -> None:
     assert run("category", entry(purpose="12 34"), flows(2, purpose="12 34", category_id=1)) is None
 
 
@@ -178,9 +170,9 @@ def test_falls_through_when_no_majority() -> None:
 
 
 def test_falls_through_when_key_has_no_matches() -> None:
-    e = entry(counterparty_ref="NEW", booking_text="LASTSCHRIFT")
-    p = run("category", e, flows(1, booking_text="Lastschrift", category_id=4))
-    assert p is not None and p.basis["matched_on"] == "booking_text"
+    e = entry(counterparty_ref="NEW", counterparty_name="Sonnenkorn Bio")
+    p = run("category", e, flows(1, counterparty_name="Sonnenkorn Bio", category_id=4))
+    assert p is not None and p.basis["matched_on"] == "counterparty_name+booking_text"
 
 
 def test_exclude_entry_ids() -> None:
@@ -305,25 +297,27 @@ def test_second_atm_withdrawal_key2_one_of_one() -> None:
     assert c is not None and c.value == 40 and (c.basis["agree"], c.basis["of"]) == (1, 1)
 
 
-def test_cash_abroad_type_from_key4_without_counter_account() -> None:
-    # past withdrawals of the bank's domestic text went to the euro wallet (60); abroad it
-    # is in a dollar account: euro wallet fails account_ok, so no counter-account, type stands
-    past = [
-        vote(
-            booking_text="GA-AUSZAHLUNG",
-            type="transfer",
-            counter_account_id=60,
-            counterparty_name="Other ATM",
-        )
-        for _ in range(3)
-    ]
-    e = entry(booking_text="GA-AUSZAHLUNG", counterparty_name="Bank of America ATM")
-    t = run("type", e, past, account_ok=lambda a: a != 60)
-    assert t is not None and t.value == "transfer" and t.basis["matched_on"] == "booking_text"
-    assert run("counter_account", e, past, account_ok=lambda a: a != 60) is None
+def test_booking_text_alone_is_never_a_key() -> None:
+    # "Dauerauftrag" is a category of payment, shared by unrelated counterparties: a new counterparty
+    # with that booking text gets no proposal from it (spec §5.9)
+    savings = vote(
+        counterparty_ref="DE01SAVINGS",
+        booking_text="Dauerauftrag",
+        type="transfer",
+        counter_account_id=40,
+    )
+    other = vote(
+        counterparty_ref="DE02LANDLORD",
+        booking_text="Dauerauftrag",
+        type="flow",
+        category_id=3,
+    )
+    e = entry(counterparty_ref="DE03NEWPAYEE", booking_text="Dauerauftrag")
+    for field in ("type", "counter_account", "category", "payee"):
+        assert run(field, e, [savings, other]) is None  # type: ignore[arg-type]
 
 
-def test_paypal_key5_proposes_payee_not_category() -> None:
+def test_paypal_key4_proposes_payee_not_category() -> None:
     past = [
         vote(
             counterparty_name="PayPal Europe S.a.r.l.",
@@ -379,7 +373,7 @@ def test_a_tie_never_proposes(n: int, m: int) -> None:
     assert run("category", entry(counterparty_ref="CR"), votes) is None
 
 
-# ---- key 6: the document's merchant (spec §5.9, history.md §2) ----
+# ---- key 5: the document's merchant (spec §5.9, history.md §2) ----
 
 
 def documented(**kw: object) -> EntryInput:
@@ -396,21 +390,21 @@ def doc_votes(n: int, **kw: object) -> list[Vote]:
     return flows(n, **kw)
 
 
-def test_key6_proposes_the_category_of_the_same_merchant_canonically() -> None:
+def test_key5_proposes_the_category_of_the_same_merchant_canonically() -> None:
     p = run("category", documented(document_merchant="CloudNotes, GmbH"), doc_votes(2))
     assert p == Proposal(
         "category", 5, {"matched_on": "document_merchant", "agree": 2, "of": 2, "since": "2026-03-01"}
     )
 
 
-def test_key6_is_for_the_category_only() -> None:
+def test_key5_is_for_the_category_only() -> None:
     votes = doc_votes(3, payee_id=9)
     assert run("category", documented(), votes) is not None
     for f in ("type", "payee", "counter_account"):
         assert run(f, documented(), votes) is None  # type: ignore[arg-type]
 
 
-def test_key6_needs_a_strict_majority() -> None:
+def test_key5_needs_a_strict_majority() -> None:
     votes = doc_votes(2, category_id=5) + doc_votes(2, category_id=6)
     assert run("category", documented(), votes) is None  # a marketplace: no majority, history is silent
     assert (
@@ -418,14 +412,14 @@ def test_key6_needs_a_strict_majority() -> None:
     )
 
 
-def test_key6_counts_only_votes_of_the_same_merchant() -> None:
+def test_key5_counts_only_votes_of_the_same_merchant() -> None:
     other = doc_votes(3, document_merchant="Somebody Else", category_id=8)
     p = run("category", documented(), doc_votes(1) + other)
     assert p is not None and (p.value, p.basis["agree"], p.basis["of"]) == (5, 1, 1)
     assert run("category", documented(), other) is None
 
 
-def test_an_undocumented_entry_never_sees_key6_and_documented_votes_do_not_vote_for_keys_1_to_5() -> None:
+def test_an_undocumented_entry_never_sees_key5_and_documented_votes_do_not_vote_for_keys_1_to_5() -> None:
     # same raw text on both sides, so every raw key would match: only an undocumented voter counts for them
     raw = {"counterparty_name": "PAYPAL *CLOUDNOTES", "counterparty_ref": "R1", "booking_text": "CARD"}
     votes = doc_votes(3, **raw)

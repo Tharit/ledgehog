@@ -23,17 +23,14 @@ NO_PAYEE = "none"
 # `derivation` pass names (spec §5.9). Standing: own_account, rule. Proposals: history, llm.
 STANDING_PASSES = frozenset({"own_account", "rule", "matcher_decision", "user"})
 
-# the history keys of spec §5.9 / classifiers/history.md: the five raw-text keys, in order, which an entry
-# without a document is asked, and the sixth, the document's merchant, the only one an entry WITH a document
-# is asked (for the category only)
-HistoryKey = Literal[
-    "counterparty_ref", "counterparty_name", "payee", "booking_text", "tokens", "document_merchant"
-]
+# the history keys of spec §5.9 / classifiers/history.md: the four raw-text keys, in order, which an entry
+# without a document is asked, and the fifth, the document's merchant, the only one an entry WITH a document
+# is asked (for the category only). The booking text is never a key on its own; it only refines key 2.
+HistoryKey = Literal["counterparty_ref", "counterparty_name", "payee", "tokens", "document_merchant"]
 HISTORY_KEYS: tuple[HistoryKey, ...] = (
     "counterparty_ref",
     "counterparty_name",
     "payee",
-    "booking_text",
     "tokens",
 )
 DOCUMENT_KEY: HistoryKey = "document_merchant"

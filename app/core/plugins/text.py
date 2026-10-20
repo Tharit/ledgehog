@@ -25,7 +25,7 @@ def normalise_name(s: str | None) -> str:
 
 @lru_cache(maxsize=1 << 16)
 def tokens(name: str | None, purpose: str | None) -> frozenset[str]:
-    """History key 5 tokens of counterparty name and purpose together (history.md §2).
+    """History key 4 tokens of counterparty name and purpose together (history.md §2).
 
     NFKC, casefolded, split on anything not alphanumeric, tokens of at least 3 characters
     with no digit kept.
