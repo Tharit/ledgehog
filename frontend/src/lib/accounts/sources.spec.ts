@@ -14,10 +14,37 @@ describe('sourceLines', () => {
 
 	it('keeps the instances the account is linked to, each with its importer kind', () => {
 		expect(sourceLines(7, instances, catalog)).toEqual([
-			{ instanceId: 1, label: 'Giro file', importer: 'csv', kind: 'file', disabled: false },
-			{ instanceId: 2, label: 'Bank', importer: 'fints', kind: 'fetch', disabled: false }
+			{
+				instanceId: 1,
+				label: 'Giro file',
+				importer: 'csv',
+				kind: 'file',
+				disabled: false,
+				otherLogin: null
+			},
+			{
+				instanceId: 2,
+				label: 'Bank',
+				importer: 'fints',
+				kind: 'fetch',
+				disabled: false,
+				otherLogin: null
+			}
 		]);
 		expect(sourceLines(9, instances, catalog)).toEqual([]);
+	});
+
+	it('marks the other user’s login with whose it is, and nothing else', () => {
+		const lines = sourceLines(
+			7,
+			[
+				{ ...instances[1], access: 'owner', owner_name: 'Ben', manageable: false },
+				{ ...instances[0], manageable: true }
+			],
+			catalog
+		);
+
+		expect(lines.map((l) => l.otherLogin)).toEqual([{ name: 'Ben' }, null]);
 	});
 
 	it('links the upload page with the instance chosen', () => {

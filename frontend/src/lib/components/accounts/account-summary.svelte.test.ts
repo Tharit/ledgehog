@@ -9,14 +9,16 @@ const file: SourceLine = {
 	label: 'Giro export',
 	importer: 'csv',
 	kind: 'file',
-	disabled: false
+	disabled: false,
+	otherLogin: null
 };
 const fetcher: SourceLine = {
 	instanceId: 2,
 	label: 'Giro login',
 	importer: 'testfetch',
 	kind: 'fetch',
-	disabled: false
+	disabled: false,
+	otherLogin: null
 };
 
 function summary(sources: SourceLine[]) {
@@ -56,6 +58,14 @@ describe('AccountSummary: the sources', () => {
 		await fireEvent.click(screen.getByRole('button', { name: 'Fetch' }));
 
 		expect(onfetch).toHaveBeenCalledWith(2);
+	});
+
+	it('shows whose login the other user’s source is, in place of its action', () => {
+		summary([{ ...fetcher, otherLogin: { name: 'Ben' } }, file]);
+
+		expect(within(line(2)).getByText('Ben’s login')).toBeInTheDocument();
+		expect(within(line(2)).queryByRole('button', { name: 'Fetch' })).toBeNull();
+		expect(within(line(1)).getByRole('link', { name: 'Upload file' })).toBeInTheDocument();
 	});
 
 	it('cannot fetch from a disabled instance', () => {

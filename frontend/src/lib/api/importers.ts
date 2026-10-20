@@ -28,6 +28,10 @@ export type ImporterInstance = {
 	/** whose login: `owner` (only its owner runs it) or `shared`; a file importer is always shared */
 	access: 'owner' | 'shared';
 	owner_id: number | null;
+	/** the owner's display name; null for a shared instance */
+	owner_name: string | null;
+	/** whether this user may run and manage it (spec §5.11); false is the other user's login: read-only */
+	manageable: boolean;
 	settings: ImporterSettings;
 	disabled: boolean;
 	/** an ISO instant; null when it never ran */

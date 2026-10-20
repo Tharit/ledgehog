@@ -10,12 +10,15 @@
 		instance,
 		lookups,
 		refreshable = false,
+		readOnly = false,
 		onlink,
 		onrefresh,
 		onunlink
 	}: {
 		instance: ImporterInstance;
 		lookups: Lookups;
+		/** the other user's login: the accounts are listed, with no action (spec §5.11) */
+		readOnly?: boolean;
 		/** the importer fetches and emits transactions: its accounts are found at the bank */
 		refreshable?: boolean;
 		onlink: () => void;
@@ -38,14 +41,16 @@
 					: 'A file of this format is uploaded to one of these accounts, from the account’s page.'}
 			</p>
 		</div>
-		<ActionButton
-			variant="outline"
-			disabled={instance.disabled}
-			reason={instance.disabled ? 'Enable the importer first.' : undefined}
-			onclick={refreshable ? onrefresh : onlink}
-		>
-			{refreshable ? 'Refresh accounts' : 'Link account'}
-		</ActionButton>
+		{#if !readOnly}
+			<ActionButton
+				variant="outline"
+				disabled={instance.disabled}
+				reason={instance.disabled ? 'Enable the importer first.' : undefined}
+				onclick={refreshable ? onrefresh : onlink}
+			>
+				{refreshable ? 'Refresh accounts' : 'Link account'}
+			</ActionButton>
+		{/if}
 	</div>
 	{#if instance.accounts.length === 0}
 		<p class="text-sm text-muted-foreground">No account is linked yet.</p>
@@ -62,13 +67,15 @@
 					>
 						{name}
 					</a>
-					<ActionButton
-						variant="ghost"
-						aria-label={`Unlink ${name}`}
-						onclick={() => onunlink(link.account_id)}
-					>
-						Unlink…
-					</ActionButton>
+					{#if !readOnly}
+						<ActionButton
+							variant="ghost"
+							aria-label={`Unlink ${name}`}
+							onclick={() => onunlink(link.account_id)}
+						>
+							Unlink…
+						</ActionButton>
+					{/if}
 				</li>
 			{/each}
 		</ul>

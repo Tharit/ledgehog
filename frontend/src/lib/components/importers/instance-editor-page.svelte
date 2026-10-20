@@ -10,6 +10,7 @@
 	import LeaveGuard from '#lib/components/rules/leave-guard.svelte';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import { canRefreshAccounts } from '#lib/importers/discovery.js';
+	import { lastRunText, loginText } from '#lib/importers/list.js';
 	import { refreshNotice, startRefresh } from '#lib/importers/refresh.js';
 	import { sync } from '#lib/stores/sync.svelte.js';
 	import { InstanceDecisionFlow } from '#lib/importers/decision-flow.svelte.js';
@@ -126,7 +127,14 @@
 				);
 			}
 			// a fetch importer's accounts come from discovery, with their reference: no picker for them
-			if (!fetches && !stored.disabled && stored.emits.includes('transactions')) link.start(stored);
+			if (
+				stored.manageable &&
+				!fetches &&
+				!stored.disabled &&
+				stored.emits.includes('transactions')
+			) {
+				link.start(stored);
+			}
 			ontidy?.();
 		}
 	});
@@ -156,14 +164,24 @@
 	const title = $derived(store.editing ? (store.instance?.label ?? 'Importer') : 'Add importer');
 	const isCsv = $derived(store.importer === 'csv');
 	// the description is about the file format: for the CSV importer only
-	const description = $derived(
-		!isCsv
-			? undefined
-			: store.editing
-				? 'Change the importer’s settings. Saving changes later uploads only: rows already imported keep saying what the file said.'
-				: 'Name the importer and describe the file format (csv). Link an account once it is saved, then check the profile with a dry run on the upload page.'
-	);
 	const locale = $derived(session.config?.locale ?? 'en');
+	// the other user's login is read-only (spec §5.11): it shows everything and offers nothing
+	const readOnly = $derived(store.editing && store.instance !== null && !store.instance.manageable);
+	const login = $derived(store.instance ? loginText(store.instance, store.catalog) : null);
+	const lastRun = $derived(
+		store.instance
+			? lastRunText(store.instance.last_run_at, session.config?.timezone ?? 'UTC', locale)
+			: null
+	);
+	const description = $derived.by(() => {
+		if (readOnly) {
+			return `You can read this importer, but only ${store.instance?.owner_name ?? 'its owner'} can change it.`;
+		}
+		if (!isCsv) return undefined;
+		return store.editing
+			? 'Change the importer’s settings. Saving changes later uploads only: rows already imported keep saying what the file said.'
+			: 'Name the importer and describe the file format (csv). Link an account once it is saved, then check the profile with a dry run on the upload page.';
+	});
 </script>
 
 <LeaveGuard dirty={store.dirty && !leaving} subject="this importer" />
@@ -177,6 +195,13 @@
 		All importers
 	</a>
 	<PageHeader {title} {description} />
+
+	{#if readOnly && login && lastRun}
+		<p class="text-sm text-muted-foreground" data-slot="login-line">
+			{login} ·
+			<span title={lastRun.title}>{lastRun.text}</span>
+		</p>
+	{/if}
 
 	<NoticeLine notice={refused ?? notice}>
 		{#snippet action()}
@@ -243,7 +268,12 @@
 				error={store.errorFor('label')}
 			>
 				{#snippet children(control)}
-					<Input {...control} bind:value={store.label} readonly={store.saving} autocomplete="off" />
+					<Input
+						{...control}
+						bind:value={store.label}
+						readonly={store.saving || readOnly}
+						autocomplete="off"
+					/>
 				{/snippet}
 			</Field>
 
@@ -251,29 +281,31 @@
 				importer={store.importer}
 				draft={store.draft}
 				errors={store.errors}
-				disabled={store.saving}
+				disabled={store.saving || readOnly}
 			/>
 
-			{#if store.failure}
-				<p role="alert" class="text-sm text-destructive" data-slot="save-failure">
-					{store.failure}
-				</p>
-			{/if}
+			{#if !readOnly}
+				{#if store.failure}
+					<p role="alert" class="text-sm text-destructive" data-slot="save-failure">
+						{store.failure}
+					</p>
+				{/if}
 
-			<div class="flex justify-end gap-2">
-				<ActionButton variant="outline" href={IMPORTERS_PATH} disabled={store.saving}>
-					Cancel
-				</ActionButton>
-				<ActionButton
-					busy={store.saving}
-					busyLabel="Saving…"
-					disabled={!store.label.trim()}
-					reason={!store.label.trim() ? 'Give the importer a label first.' : undefined}
-					onclick={() => void save()}
-				>
-					Save importer
-				</ActionButton>
-			</div>
+				<div class="flex justify-end gap-2">
+					<ActionButton variant="outline" href={IMPORTERS_PATH} disabled={store.saving}>
+						Cancel
+					</ActionButton>
+					<ActionButton
+						busy={store.saving}
+						busyLabel="Saving…"
+						disabled={!store.label.trim()}
+						reason={!store.label.trim() ? 'Give the importer a label first.' : undefined}
+						onclick={() => void save()}
+					>
+						Save importer
+					</ActionButton>
+				</div>
+			{/if}
 		</form>
 
 		{#if store.editing && store.instance}
@@ -282,6 +314,7 @@
 					instance={store.instance}
 					lookups={lookupsStore.lookups}
 					refreshable={canRefreshAccounts(store.instance, store.catalog)}
+					{readOnly}
 					onrefresh={() => store.instance && void refresh(store.instance.id)}
 					onlink={() => store.instance && link.start(store.instance)}
 					onunlink={(accountId) =>

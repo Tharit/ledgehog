@@ -6,7 +6,7 @@
 	import RowActions, { type RowAction } from '#lib/components/common/row-actions.svelte';
 	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
 	import { canRefreshAccounts } from '#lib/importers/discovery.js';
-	import { canReset, hasRuns, lastRunText } from '#lib/importers/list.js';
+	import { canReset, hasRuns, lastRunText, loginText } from '#lib/importers/list.js';
 	import { accountUrl, instanceUrl } from '#lib/importers/links.js';
 	import type { CatalogEntry, ImporterInstance } from '#lib/types/domain.js';
 	import type { Lookups } from '#lib/ledger/lookups.js';
@@ -16,7 +16,9 @@
 	// settings-row rule (patterns §11.3): "Edit" and "Link account" ("Refresh accounts" for an
 	// importer that fetches) as icons, one `⋯` menu with
 	// Disable or Enable, Reset… (an importer that keeps state) and, last, Delete…, which stays visible
-	// but disabled, with its reason, on an instance that has run.
+	// but disabled, with its reason, on an instance that has run. An instance that holds a login says
+	// whose ("your login", "<Name>’s login" or "shared"); the other user's login is read-only: its row
+	// has no actions and opens its page.
 	let {
 		instances,
 		catalog,
@@ -133,6 +135,7 @@
 	<ul class="flex flex-col rounded-xl border bg-card shadow-card" data-slot="importer-list">
 		{#each instances as instance (instance.id)}
 			{@const run = lastRunText(instance.last_run_at, timeZone, locale)}
+			{@const login = loginText(instance, catalog)}
 			<li
 				class="group grid min-h-12 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-x-4 border-b border-border px-4 py-1.5 last:border-b-0"
 				data-instance-id={instance.id}
@@ -153,6 +156,10 @@
 						{importerName(instance)}
 						·
 						<span title={run.title}>{run.text}</span>
+						{#if login}
+							·
+							<span data-slot="login">{login}</span>
+						{/if}
 					</span>
 				</div>
 				<div class="flex min-w-0 flex-wrap items-center gap-x-3 text-sm">
@@ -167,7 +174,9 @@
 						<span class="text-muted-foreground">no accounts linked</span>
 					{/each}
 				</div>
-				<RowActions name={instance.label} primary={primary(instance)} menu={menu(instance)} />
+				{#if instance.manageable}
+					<RowActions name={instance.label} primary={primary(instance)} menu={menu(instance)} />
+				{/if}
 			</li>
 		{/each}
 	</ul>

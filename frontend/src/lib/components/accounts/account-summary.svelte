@@ -1,6 +1,7 @@
 <script lang="ts">
 	import EllipsisIcon from '@lucide/svelte/icons/ellipsis';
 	import { uploadHref, type SourceLine } from '#lib/accounts/sources.js';
+	import { otherLoginText } from '#lib/importers/list.js';
 	import ActionButton from '#lib/components/common/action-button.svelte';
 	import IconButton from '#lib/components/common/icon-button.svelte';
 	import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.js';
@@ -103,7 +104,11 @@
 						<span class="text-muted-foreground">
 							{source.importer}{source.disabled ? ' · disabled' : ''}
 						</span>
-						{#if source.kind === 'file'}
+						{#if source.otherLogin}
+							<span class="text-muted-foreground" data-slot="other-login">
+								{otherLoginText(source.otherLogin.name)}
+							</span>
+						{:else if source.kind === 'file'}
 							<ActionButton
 								variant="outline"
 								href={uploadHref(account.id, source.instanceId)}

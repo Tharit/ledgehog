@@ -25,6 +25,27 @@ export function canReset(instance: ImporterInstance, catalog: readonly CatalogEn
 	return catalog.find((entry) => entry.name === instance.importer)?.kind === 'fetch';
 }
 
+/** The other user's name as "<Name>’s login" (spec §5.11); the fallback when it is not known. */
+export function otherLoginText(ownerName: string | null): string {
+	return `${ownerName ?? 'The other user'}’s login`;
+}
+
+/**
+ * Whose login an instance holds, for the list and the page: "your login", "<Name>’s login" or
+ * "shared" (ux/views/importers.md); null for a file importer, which holds none.
+ */
+export function loginText(
+	instance: ImporterInstance,
+	catalog: readonly CatalogEntry[]
+): string | null {
+	if (instance.access === 'owner') {
+		return instance.manageable ? 'your login' : otherLoginText(instance.owner_name);
+	}
+	return catalog.find((entry) => entry.name === instance.importer)?.kind === 'fetch'
+		? 'shared'
+		: null;
+}
+
 /** The catalog's words for how an importer is fed. */
 export function kindText(kind: CatalogEntry['kind']): string {
 	return kind === 'file' ? 'takes a file' : 'fetches';

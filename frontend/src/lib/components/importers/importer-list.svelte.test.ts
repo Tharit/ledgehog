@@ -114,6 +114,52 @@ describe('ImporterList', () => {
 		expect(fn.ondelete).not.toHaveBeenCalled();
 	});
 
+	it('says whose login an instance holds: yours, the other user’s, or shared', () => {
+		list([
+			instance({ id: 1, label: 'Mine', importer: 'fints', access: 'owner', owner_id: 1 }),
+			instance({
+				id: 2,
+				label: 'Theirs',
+				importer: 'fints',
+				access: 'owner',
+				owner_id: 2,
+				owner_name: 'Ben',
+				manageable: false
+			}),
+			instance({ id: 3, label: 'Joint', importer: 'fints' }),
+			instance({ id: 4, label: 'Export', importer: 'csv' })
+		]);
+
+		const logins = [1, 2, 3, 4].map(
+			(id) =>
+				document.querySelector(`[data-instance-id="${id}"] [data-slot="login"]`)?.textContent ??
+				null
+		);
+		expect(logins).toEqual(['your login', 'Ben’s login', 'shared', null]);
+	});
+
+	it('shows no actions on the other user’s login, which still opens its page', () => {
+		list([
+			instance({
+				id: 2,
+				label: 'Theirs',
+				importer: 'fints',
+				access: 'owner',
+				owner_name: 'Ben',
+				manageable: false
+			}),
+			instance({ id: 3, label: 'Joint', importer: 'fints' })
+		]);
+
+		expect(screen.getByRole('link', { name: 'Theirs' })).toHaveAttribute(
+			'href',
+			'/settings/importers/2'
+		);
+		expect(screen.queryByRole('button', { name: 'More actions for Theirs' })).toBeNull();
+		expect(screen.queryByRole('button', { name: /Theirs/ })).toBeNull();
+		expect(screen.getByRole('button', { name: 'More actions for Joint' })).toBeInTheDocument();
+	});
+
 	it('says what is missing and offers Add importer when there is none', async () => {
 		const fn = list([]);
 

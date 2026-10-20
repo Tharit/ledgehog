@@ -301,3 +301,56 @@ describe('the instance page, editing', () => {
 		expect(await screen.findByText('No account is linked yet.')).toBeInTheDocument();
 	});
 });
+
+describe('the instance page, for the other user’s login', () => {
+	const theirs = {
+		access: 'owner' as const,
+		owner_id: 2,
+		owner_name: 'Ben',
+		manageable: false
+	};
+
+	it('shows everything read-only: label, settings, whose login, accounts and last run', async () => {
+		await editing(theirs);
+
+		expect(screen.getByRole('heading', { name: 'Giro' })).toBeInTheDocument();
+		expect(screen.getByLabelText('Label')).toHaveAttribute('readonly');
+		expect(screen.getByLabelText('Booking date column')).toHaveValue('Buchung');
+		expect(screen.getByLabelText('Booking date column')).toBeDisabled();
+		expect(screen.getByText(/Ben’s login/)).toBeInTheDocument();
+		expect(screen.getByText('never run')).toBeInTheDocument();
+		expect(screen.getByRole('link', { name: 'Main giro' })).toBeInTheDocument();
+		expect(screen.getByText(/only Ben can change it/)).toBeInTheDocument();
+	});
+
+	it('offers no editor and none of the actions', async () => {
+		await editing(theirs);
+
+		for (const name of ['Save importer', 'Cancel', 'Link account', 'Unlink Main giro']) {
+			expect(screen.queryByRole('button', { name })).toBeNull();
+		}
+		expect(screen.queryByRole('link', { name: 'Cancel' })).toBeNull();
+	});
+
+	it('offers no "Refresh accounts" on a fetch importer', async () => {
+		api.listImporters.mockResolvedValue([
+			catalogEntry({ name: 'testfetch', kind: 'fetch', presets: {} })
+		]);
+		await editing({ ...theirs, importer: 'testfetch', settings: {} });
+
+		expect(screen.queryByRole('button', { name: 'Refresh accounts' })).toBeNull();
+	});
+
+	it('does not open the link dialog on arrival, whatever the intent', async () => {
+		await editing(theirs, 'link');
+
+		expect(screen.queryByRole('dialog')).toBeNull();
+	});
+
+	it('keeps the editor for one’s own login', async () => {
+		await editing({ ...theirs, owner_name: 'Anna', manageable: true });
+
+		expect(screen.getByRole('button', { name: 'Save importer' })).toBeInTheDocument();
+		expect(screen.queryByText(/only Anna can change it/)).toBeNull();
+	});
+});

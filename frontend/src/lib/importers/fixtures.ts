@@ -27,6 +27,8 @@ export function instance(over: Partial<ImporterInstance> = {}): ImporterInstance
 		emits: ['transactions'],
 		access: 'shared',
 		owner_id: null,
+		owner_name: null,
+		manageable: true,
 		settings: {},
 		disabled: false,
 		last_run_at: null,

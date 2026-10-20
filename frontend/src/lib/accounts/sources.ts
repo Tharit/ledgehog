@@ -9,6 +9,10 @@ export type InstanceLike = {
 	importer: string;
 	label: string;
 	disabled?: boolean;
+	access?: 'owner' | 'shared';
+	owner_name?: string | null;
+	/** may this user run it: false is the other user's login (spec §5.11) */
+	manageable?: boolean;
 	accounts: readonly { account_id: number }[];
 };
 
@@ -20,6 +24,8 @@ export type SourceLine = {
 	importer: string;
 	kind: 'file' | 'fetch';
 	disabled: boolean;
+	/** set when the line is the other user's login: whose, shown in place of the action (spec §5.11) */
+	otherLogin: { name: string | null } | null;
 };
 
 /** The instances `accountId` is linked to, in the order given, each with the importer's kind. */
@@ -38,7 +44,8 @@ export function sourceLines(
 				catalog.find((entry) => entry.name === instance.importer)?.kind === 'file'
 					? 'file'
 					: 'fetch',
-			disabled: instance.disabled === true
+			disabled: instance.disabled === true,
+			otherLogin: instance.manageable === false ? { name: instance.owner_name ?? null } : null
 		}));
 }
 
