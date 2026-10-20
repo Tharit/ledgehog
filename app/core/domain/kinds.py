@@ -2,6 +2,6 @@
 
 from __future__ import annotations
 
-# whether an account is an investment account is fixed at creation (I38); its balance records
-# are valuations, not reconciliations
+# an account's kind is fixed at creation, and with it whether it is an investment account (I38);
+# an investment account's balance records are valuations, not reconciliations
 INVESTMENT_KINDS = frozenset({"depot", "asset"})
