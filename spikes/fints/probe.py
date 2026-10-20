@@ -219,7 +219,8 @@ def patch_force_tan() -> None:
     def need(self, seg):
         # Consorsbank rejects a redundant HKTAN on SCA-exempt calls (9010 + 3076 'Keine starke
         # Authentifizierung erforderlich'), so this is opt-in per segment type, set by run().
-        if seg.header.type in FORCE_TAN and self.get_current_tan_mechanism() not in (None, "999"):
+        mech = self.get_current_tan_mechanism()
+        if seg.header.type in FORCE_TAN and mech and mech != "999":
             return True
         return orig(self, seg)
 
@@ -308,6 +309,24 @@ def get_tan_media_via_init(client: FinTS3PinTanClient):
     return None, []
 
 
+def use_one_step(client: FinTS3PinTanClient) -> None:
+    """Experiment (--mechanism 999): talk to the bank with plain PIN authentication, no TAN method, no TAN
+    device, no HKTAN, to see which requests the bank serves anyway (e.g. SCA-exempt account data).
+    The library would otherwise switch to a two-step method as soon as the bank sends its 3920 list, and add an
+    HKTAN to every init when it knows any method, so: hide the methods and ignore 3920."""
+    print("\n!! one-step experiment: no TAN method, no TAN device, no HKTAN; expect 9xxx if the bank insists")
+    client.allowed_security_functions = []
+    client.set_tan_mechanism("999")
+    orig = FinTS3PinTanClient._process_response
+
+    def process_response(self, dialog, segment, response):
+        if response.code == "3920":
+            return  # do not let the library pick a two-step method
+        return orig(self, dialog, segment, response)
+
+    FinTS3PinTanClient._process_response = process_response
+
+
 def pick_tan_mechanism(client: FinTS3PinTanClient, preset: str | None = None) -> None:
     client.fetch_tan_mechanisms()  # one anonymous dialog to read BPD; populates the mechanism list
     mechs = client.get_tan_mechanisms()
@@ -315,6 +334,9 @@ def pick_tan_mechanism(client: FinTS3PinTanClient, preset: str | None = None) ->
     for code, m in mechs.items():
         print(f"  {code}: {m.name}  (type={getattr(m, 'tan_process', '?')}, "
               f"zka={getattr(m, 'zka_id', '?')}, decoupled={getattr(m, 'decoupled_max_poll_number', None) is not None})")
+    if preset == "999":
+        use_one_step(client)
+        return
     if preset and preset not in mechs:
         # Experiment: the bank never sent its allowed-procedures list (3920), so the library filters
         # every method out. The BPD still describes them, so declare the wanted one allowed ourselves.

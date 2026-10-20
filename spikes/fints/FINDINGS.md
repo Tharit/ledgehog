@@ -188,5 +188,9 @@ The PIN is prompted (the bank-account password), `--yes` skips the 'about to con
   Consorsbank, 921 on Deutsche Bank) for account data. Every call in this spike fell inside the exemption
   (`3076`), so the push flow for operations was never exercised.
 - Deutsche Bank card balance (`HKKKS`) and the `HKKKU` touchdown/paging for long ranges (not needed for 36 rows).
+- Whether an active TAN device is needed at all for SCA-exempt reads. Only tested: no method / forced method with no
+  device -> `9960`, before activation. NOT tested: plain one-step (`--mechanism 999`, no HKTAN, no device) with an
+  ID that has an active device, or with an ID that never enrolled (e.g. a second household member's card). The
+  probe has the experiment (`use_one_step`): the library otherwise swaps in a two-step method on every `3920`.
 - Whether BLZ `50070010` (regular Deutsche Bank access) also lists the card.
 - Whether a card-only ID can ever work with only the Miles & More app's BestSign (it did not for this ID).
