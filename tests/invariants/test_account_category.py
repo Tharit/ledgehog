@@ -149,7 +149,7 @@ def test_investment_status_is_fixed(
     old: str, new: str, db_conn: Connection, make_account: MakeAccount
 ) -> None:
     acct = make_account(db_conn, kind=old)
-    with rejects(db_conn, sqlstate=RAISE_EXCEPTION, message="whether it is an investment account is fixed"):
+    with rejects(db_conn, sqlstate=RAISE_EXCEPTION, message="kind is fixed"):
         db_conn.execute(text("UPDATE account SET kind = :k WHERE id = :i"), {"k": new, "i": acct})
 
 
@@ -157,12 +157,12 @@ def test_investment_status_is_fixed(
     ("old", "new"),
     [("checking", "savings"), ("card", "cash"), ("loan", "paypal"), ("depot", "asset"), ("asset", "depot")],
 )
-def test_kind_may_change_within_its_class(
+def test_kind_is_fixed_within_its_class(
     old: str, new: str, db_conn: Connection, make_account: MakeAccount
 ) -> None:
     acct = make_account(db_conn, kind=old)
-    db_conn.execute(text("UPDATE account SET kind = :k WHERE id = :i"), {"k": new, "i": acct})
-    assert scalar(db_conn, "SELECT kind FROM account WHERE id = :i", i=acct) == new
+    with rejects(db_conn, sqlstate=RAISE_EXCEPTION, message="kind is fixed"):
+        db_conn.execute(text("UPDATE account SET kind = :k WHERE id = :i"), {"k": new, "i": acct})
 
 
 def test_external_ref_is_unique_where_set(db_conn: Connection, make_account: MakeAccount) -> None:
