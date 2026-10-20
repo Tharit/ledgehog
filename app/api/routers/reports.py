@@ -10,12 +10,14 @@ its drill-down lists. Money travels as `{"amount": <minor units>, "currency": <c
 from __future__ import annotations
 
 from datetime import date
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel, Field
 
 from app.api.errors import map_error
 from app.api.routers.accounts import AccountOut, Money, facts
+from app.api.routers.entries import Ids
 from app.api.session import CurrentUser, EngineDep
 from app.core import reporting as rp
 from app.core.reporting import Line, Savings
@@ -201,4 +203,83 @@ def get_overview(user: CurrentUser, engine: EngineDep, request: Request) -> Over
             ),
         ),
         accounts=accounts,
+    )
+
+
+# ---- By category
+
+Kind = Literal["expense", "income"]
+Required = Annotated[date, Query()]
+
+
+class CategoryRowOut(BaseModel):
+    category_id: int
+    parent_id: int | None
+    own: LineOut  # the entries booked to the category itself
+    total: LineOut  # with its descendants
+    share_bp: int | None  # of the kind's total in basis points; null for a net of the other sign
+
+
+class SliceOut(BaseModel):
+    category_id: int
+    total: LineOut
+
+
+class ByCategoryOut(BaseModel):
+    base_currency: str
+    from_: date = Field(serialization_alias="from")
+    to: date
+    kind: Kind
+    total: LineOut  # the kind's flows over the range, refunds netting
+    categories: list[CategoryRowOut]  # flat, depth-first, siblings by magnitude; only those with entries
+    slices: list[SliceOut] | None  # with `top`: the largest top-level categories of the kind's sign
+    other: LineOut | None  # with `top`: the remaining ones, summed; null when there are none
+    unclassified_out: LineOut
+    unclassified_in: LineOut
+    reconciliations: LineOut
+    unconfirmed_count: int  # entries of the range not confirmed yet (their proposals are in the table)
+
+
+@router.get("/by-category")
+def get_by_category(
+    user: CurrentUser,
+    engine: EngineDep,
+    request: Request,
+    from_: Annotated[date, Query(alias="from")],
+    to: Required,
+    kind: Kind = "expense",
+    account_id: Ids = None,
+    tag_id: Ids = None,
+    top: Annotated[int | None, Query(ge=1, le=50)] = None,
+) -> ByCategoryOut:
+    """Spend (or income) by category over a range, as the category tree, with the unclassified and
+    reconciliation lines beside it. `account_id` and `tag_id` are the ledger list's filters."""
+    base: str = request.app.state.config.base_currency
+    flt = rp.entry_filter(from_, to, account_id or (), tag_id or ())
+    with engine.connect() as conn:
+        got = rp.by_category(conn, flt, kind, top)
+    return ByCategoryOut(
+        base_currency=base,
+        from_=from_,
+        to=to,
+        kind=kind,
+        total=LineOut.of(got.total, base),
+        categories=[
+            CategoryRowOut(
+                category_id=r.category_id,
+                parent_id=r.parent_id,
+                own=LineOut.of(r.own, base),
+                total=LineOut.of(r.total, base),
+                share_bp=r.share_bp,
+            )
+            for r in got.categories
+        ],
+        slices=None
+        if got.slices is None
+        else [SliceOut(category_id=s.category_id, total=LineOut.of(s.total, base)) for s in got.slices],
+        other=None if got.other is None else LineOut.of(got.other, base),
+        unclassified_out=LineOut.of(got.unclassified_out, base),
+        unclassified_in=LineOut.of(got.unclassified_in, base),
+        reconciliations=LineOut.of(got.reconciliations, base),
+        unconfirmed_count=got.unconfirmed_count,
     )

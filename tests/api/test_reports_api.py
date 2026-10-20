@@ -64,7 +64,7 @@ def usd_unvalued(amount: int, count: int = 1) -> dict[str, Any]:
     return {"amount": {"amount": amount, "currency": "USD"}, "count": count}
 
 
-@pytest.mark.parametrize("url", [OVERVIEW])
+@pytest.mark.parametrize("url", [OVERVIEW, BY_CATEGORY])
 def test_every_report_requires_a_session(client: TestClient, url: str):
     assert_envelope(client.get(url), 401, "unauthenticated")
 
@@ -174,3 +174,99 @@ def test_an_unvalued_foreign_account_is_a_remainder_until_a_rate_arrives(
         rate(conn, "USD", TODAY, "2.0")
     after = get(anna, OVERVIEW)["net_worth"]
     assert after["unvalued"] == [] and after["total"] == eur(640_000 + 14_000)
+
+
+# ---- By category
+
+
+def error_locations(response: Any) -> list[list[str]]:
+    return [d["location"] for d in response.json()["error"]["details"]]
+
+
+def test_by_category_needs_its_range_and_names_what_is_wrong(anna: TestClient):
+    for params, named in (
+        ({"to": "2026-10-31"}, "from"),
+        ({"from": "2026-10-01"}, "to"),
+        ({"from": "2026-10-31", "to": "2026-10-01"}, "to"),  # reversed
+        ({"from": "2026-10-01", "to": "2026-10-31", "kind": "transfer"}, "kind"),
+        ({"from": "2026-10-01", "to": "2026-10-31", "top": 0}, "top"),
+        ({"from": "2026-10-01", "to": "2026-10-31", "account_id": 0}, "account_id"),
+    ):
+        r = anna.get(BY_CATEGORY, params=params)
+        assert_envelope(r, 422, "validation_error")
+        assert any(loc[:2] == ["query", named] for loc in error_locations(r)), params
+
+
+def test_by_category_of_a_household_month(anna: TestClient, seeded: Household):
+    body = get(anna, BY_CATEGORY, **{"from": "2026-10-01", "to": "2026-10-31"}, top=5)
+    assert (body["from"], body["to"], body["kind"], body["base_currency"]) == (
+        "2026-10-01",
+        "2026-10-31",
+        "expense",
+        "EUR",
+    )
+    assert body["total"] == line(-9_500, 4, [usd_unvalued(-2_000)])
+    rows = {r["category_id"]: r for r in body["categories"]}
+    assert [r["category_id"] for r in body["categories"]] == [seeded.food, seeded.groceries, seeded.travel]
+    assert rows[seeded.groceries]["parent_id"] == seeded.food
+    assert rows[seeded.food]["own"] == line(0, 0) and rows[seeded.food]["total"] == line(-10_200, 2)
+    assert rows[seeded.travel]["share_bp"] is None  # refunds beyond purchases
+    assert [s["category_id"] for s in body["slices"]] == [seeded.food]
+    assert body["other"] is None
+    assert body["unclassified_out"] == line(-300, 1) and body["unclassified_in"] == line(2_500, 1)
+    assert body["reconciliations"] == line(-700, 1)
+    assert body["unconfirmed_count"] == 1
+
+
+def test_by_category_without_top_has_no_slices_and_income_is_the_other_kind(
+    anna: TestClient, seeded: Household
+):
+    body = get(anna, BY_CATEGORY, **{"from": "2026-10-01", "to": "2026-10-31"}, kind="income")
+    assert body["slices"] is None and body["other"] is None
+    assert body["total"] == line(301_000, 2)
+    assert {r["category_id"] for r in body["categories"]} == {seeded.salary, seeded.gifts}
+
+
+def test_by_category_takes_the_ledgers_filters_with_several_values_as_alternatives(
+    anna: TestClient, seeded: Household
+):
+    sep = {"from": "2026-09-01", "to": "2026-09-30"}
+    assert get(anna, BY_CATEGORY, **sep, tag_id=seeded.trip)["total"] == line(-40_000, 1)
+    cash = get(anna, BY_CATEGORY, **{"from": "2026-10-01", "to": "2026-10-31"}, account_id=seeded.cash)
+    assert cash["total"] == line(-1_200, 1)
+    both = get(
+        anna, BY_CATEGORY, **{"from": "2026-10-01", "to": "2026-10-31"}, account_id=[seeded.cash, seeded.giro]
+    )
+    assert both["total"]["count"] == 3
+
+
+def test_the_overviews_spend_is_by_categorys_total_of_the_same_range(anna: TestClient, seeded: Household):
+    ov = get(anna, OVERVIEW)["spend"]
+    month = get(anna, BY_CATEGORY, **{"from": "2026-10-01", "to": "2026-10-20"})
+    assert ov["this_month"]["spend"] == month["total"]
+    assert ov["this_month"]["unclassified_out"] == month["unclassified_out"]
+    assert ov["this_month"]["reconciliations"] == month["reconciliations"]
+    last = get(anna, BY_CATEGORY, **{"from": "2026-09-01", "to": "2026-09-30"})
+    assert ov["last_month"]["spend"] == last["total"]
+    same_day = get(anna, BY_CATEGORY, **{"from": "2026-09-01", "to": "2026-09-20"})
+    assert ov["last_month_to_date"]["spend"] == same_day["total"]
+
+
+def test_every_node_of_by_category_counts_what_the_ledger_list_lists_for_its_drilldown(
+    anna: TestClient, seeded: Household
+):
+    rng = {"from": "2026-08-01", "to": "2026-10-31"}
+    body = get(anna, BY_CATEGORY, **rng)
+
+    def listed(**params: Any) -> int:
+        return int(get(anna, "/api/ledger/entries", limit=1, **rng, **params)["total"])
+
+    for row in body["categories"]:
+        assert row["total"]["count"] == listed(category_id=row["category_id"])
+        assert row["own"]["count"] == listed(category_id=row["category_id"], category_descendants="false")
+    roots = [r["category_id"] for r in body["categories"] if r["parent_id"] is None]
+    assert body["total"]["count"] == listed(category_id=roots)  # a whole kind: its top-level categories
+    assert body["unclassified_out"]["count"] == listed(uncategorised="true", direction="out")
+    assert body["unclassified_in"]["count"] == listed(uncategorised="true", direction="in")
+    assert body["reconciliations"]["count"] == listed(type="reconciliation")
+    assert body["unconfirmed_count"] == listed(flag="unconfirmed")
