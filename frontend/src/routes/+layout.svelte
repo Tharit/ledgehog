@@ -3,6 +3,7 @@
 	import { afterNavigate, goto, pushState, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
+	import ChartColumnIcon from '@lucide/svelte/icons/chart-column';
 	import FileTextIcon from '@lucide/svelte/icons/file-text';
 	import HouseIcon from '@lucide/svelte/icons/house';
 	import LandmarkIcon from '@lucide/svelte/icons/landmark';
@@ -46,6 +47,7 @@
 		{ href: '/review', label: 'Review', icon: ListChecksIcon, count: reviewCount.count },
 		{ href: '/documents', label: 'Documents', icon: FileTextIcon },
 		{ href: '/accounts', label: 'Accounts', icon: LandmarkIcon },
+		{ href: '/reports', label: 'Reports', icon: ChartColumnIcon, match: '/reports' },
 		{
 			href: syncStatus && sync.status !== 'ended' ? sync.homePath : '/sync',
 			label: 'Sync',
