@@ -43,7 +43,8 @@ def test_giro_rows_pending_placeholders_and_zero() -> None:
     assert first.counterparty_name == "Beispiel Markt"
     assert first.counterparty_ref == "DE00 2222 2222 2222 2222 22"
     assert first.counterparty_bic is None  # n/a placeholder
-    assert first.purpose == f"Lastschrift {LONG_PURPOSE}"
+    assert first.purpose == LONG_PURPOSE
+    assert first.booking_text == "Lastschrift"
     assert first.source_format == "csv:giro"
     assert pf.importer_stats["filtered"] == 1  # the zero booking only, not the pending row
     assert pf.report.filtered.count == 1
