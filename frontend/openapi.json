@@ -1,6 +1,42 @@
 {
   "components": {
     "schemas": {
+      "AccountBalancesOut": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "integer"
+          },
+          "balances": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Money"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Balances",
+            "type": "array"
+          },
+          "native": {
+            "items": {
+              "$ref": "#/components/schemas/Money"
+            },
+            "title": "Native",
+            "type": "array"
+          }
+        },
+        "required": [
+          "account_id",
+          "balances",
+          "native"
+        ],
+        "title": "AccountBalancesOut",
+        "type": "object"
+      },
       "AccountCountOut": {
         "properties": {
           "account_id": {
@@ -250,6 +286,133 @@
           "accounts"
         ],
         "title": "AccountsOut",
+        "type": "object"
+      },
+      "BalancesOut": {
+        "properties": {
+          "accounts": {
+            "items": {
+              "$ref": "#/components/schemas/AccountBalancesOut"
+            },
+            "title": "Accounts",
+            "type": "array"
+          },
+          "base_currency": {
+            "title": "Base Currency",
+            "type": "string"
+          },
+          "net_worth": {
+            "items": {
+              "$ref": "#/components/schemas/PointNetWorthOut"
+            },
+            "title": "Net Worth",
+            "type": "array"
+          },
+          "points": {
+            "items": {
+              "format": "date",
+              "type": "string"
+            },
+            "title": "Points",
+            "type": "array"
+          }
+        },
+        "required": [
+          "base_currency",
+          "points",
+          "net_worth",
+          "accounts"
+        ],
+        "title": "BalancesOut",
+        "type": "object"
+      },
+      "ByCategoryOut": {
+        "properties": {
+          "base_currency": {
+            "title": "Base Currency",
+            "type": "string"
+          },
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/CategoryRowOut"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
+          "from": {
+            "format": "date",
+            "title": "From",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "expense",
+              "income"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "other": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LineOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reconciliations": {
+            "$ref": "#/components/schemas/LineOut"
+          },
+          "slices": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SliceOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slices"
+          },
+          "to": {
+            "format": "date",
+            "title": "To",
+            "type": "string"
+          },
+          "total": {
+            "$ref": "#/components/schemas/LineOut"
+          },
+          "unclassified_in": {
+            "$ref": "#/components/schemas/LineOut"
+          },
+          "unclassified_out": {
+            "$ref": "#/components/schemas/LineOut"
+          },
+          "unconfirmed_count": {
+            "title": "Unconfirmed Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "base_currency",
+          "from",
+          "to",
+          "kind",
+          "total",
+          "categories",
+          "slices",
+          "other",
+          "unclassified_out",
+          "unclassified_in",
+          "reconciliations",
+          "unconfirmed_count"
+        ],
+        "title": "ByCategoryOut",
         "type": "object"
       },
       "CarrierOut": {
@@ -633,6 +796,96 @@
           "color"
         ],
         "title": "CategoryOut",
+        "type": "object"
+      },
+      "CategoryRowOut": {
+        "properties": {
+          "category_id": {
+            "title": "Category Id",
+            "type": "integer"
+          },
+          "own": {
+            "$ref": "#/components/schemas/LineOut"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "share_bp": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Share Bp"
+          },
+          "total": {
+            "$ref": "#/components/schemas/LineOut"
+          }
+        },
+        "required": [
+          "category_id",
+          "parent_id",
+          "own",
+          "total",
+          "share_bp"
+        ],
+        "title": "CategoryRowOut",
+        "type": "object"
+      },
+      "CategorySeriesOut": {
+        "properties": {
+          "category_id": {
+            "title": "Category Id",
+            "type": "integer"
+          },
+          "own": {
+            "items": {
+              "$ref": "#/components/schemas/LineOut"
+            },
+            "title": "Own",
+            "type": "array"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "sum": {
+            "$ref": "#/components/schemas/LineOut"
+          },
+          "total": {
+            "items": {
+              "$ref": "#/components/schemas/LineOut"
+            },
+            "title": "Total",
+            "type": "array"
+          }
+        },
+        "required": [
+          "category_id",
+          "parent_id",
+          "own",
+          "total",
+          "sum"
+        ],
+        "title": "CategorySeriesOut",
         "type": "object"
       },
       "CategoryUpdateBody": {
@@ -2261,6 +2514,38 @@
         "title": "InstanceStartedEvent",
         "type": "object"
       },
+      "LineOut": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unvalued": {
+            "items": {
+              "$ref": "#/components/schemas/UnvaluedOut"
+            },
+            "title": "Unvalued",
+            "type": "array"
+          }
+        },
+        "required": [
+          "total",
+          "count",
+          "unvalued"
+        ],
+        "title": "LineOut",
+        "type": "object"
+      },
       "LinkAccount": {
         "additionalProperties": false,
         "properties": {
@@ -2468,6 +2753,30 @@
         "title": "Money",
         "type": "object"
       },
+      "MonthSpendOut": {
+        "properties": {
+          "from": {
+            "format": "date",
+            "title": "From",
+            "type": "string"
+          },
+          "spend": {
+            "$ref": "#/components/schemas/LineOut"
+          },
+          "to": {
+            "format": "date",
+            "title": "To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "spend"
+        ],
+        "title": "MonthSpendOut",
+        "type": "object"
+      },
       "MovedChildOut": {
         "properties": {
           "from_id": {
@@ -2507,6 +2816,465 @@
           "currency"
         ],
         "title": "NeedsAccountOut",
+        "type": "object"
+      },
+      "NetWorthOut": {
+        "properties": {
+          "since": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NetWorthSinceOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "total": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unpaired_transfers": {
+            "$ref": "#/components/schemas/LineOut"
+          },
+          "unvalued": {
+            "items": {
+              "$ref": "#/components/schemas/NetWorthUnvaluedOut"
+            },
+            "title": "Unvalued",
+            "type": "array"
+          }
+        },
+        "required": [
+          "total",
+          "unvalued",
+          "unpaired_transfers",
+          "since"
+        ],
+        "title": "NetWorthOut",
+        "type": "object"
+      },
+      "NetWorthSinceOut": {
+        "properties": {
+          "change": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "on": {
+            "format": "date",
+            "title": "On",
+            "type": "string"
+          }
+        },
+        "required": [
+          "on",
+          "change"
+        ],
+        "title": "NetWorthSinceOut",
+        "type": "object"
+      },
+      "NetWorthUnvaluedOut": {
+        "properties": {
+          "accounts": {
+            "title": "Accounts",
+            "type": "integer"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/Money"
+          }
+        },
+        "required": [
+          "amount",
+          "accounts"
+        ],
+        "title": "NetWorthUnvaluedOut",
+        "type": "object"
+      },
+      "OverTimeOut": {
+        "description": "Only the fields of the chosen mode are present.",
+        "properties": {
+          "base_currency": {
+            "title": "Base Currency",
+            "type": "string"
+          },
+          "categories": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/CategorySeriesOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Categories"
+          },
+          "kind": {
+            "enum": [
+              "expense",
+              "income"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "other": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/LineOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Other"
+          },
+          "periods": {
+            "items": {
+              "$ref": "#/components/schemas/PeriodOut"
+            },
+            "title": "Periods",
+            "type": "array"
+          },
+          "savings": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SavingsOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Savings"
+          },
+          "slices": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SliceIdOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slices"
+          },
+          "step": {
+            "enum": [
+              "month",
+              "quarter",
+              "year"
+            ],
+            "title": "Step",
+            "type": "string"
+          },
+          "sum": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LineOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "total": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SavingsOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "totals": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/LineOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totals"
+          }
+        },
+        "required": [
+          "base_currency",
+          "kind",
+          "step",
+          "periods"
+        ],
+        "title": "OverTimeOut",
+        "type": "object"
+      },
+      "OverviewAccountOut": {
+        "properties": {
+          "anchored": {
+            "title": "Anchored",
+            "type": "boolean"
+          },
+          "balance": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "closed_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed On"
+          },
+          "color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "data_age_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Age Days"
+          },
+          "external_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Ref"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "last_data_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Data On"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "records_since_zero": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Records Since Zero"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "synced": {
+            "title": "Synced",
+            "type": "boolean"
+          },
+          "synced_through": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Synced Through"
+          },
+          "unexplained_difference": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "currency",
+          "external_ref",
+          "closed_on",
+          "sort_order",
+          "note",
+          "icon",
+          "color",
+          "synced",
+          "synced_through",
+          "last_data_on",
+          "unexplained_difference",
+          "anchored",
+          "balance",
+          "records_since_zero",
+          "data_age_days"
+        ],
+        "title": "OverviewAccountOut",
+        "type": "object"
+      },
+      "OverviewOut": {
+        "properties": {
+          "accounts": {
+            "items": {
+              "$ref": "#/components/schemas/OverviewAccountOut"
+            },
+            "title": "Accounts",
+            "type": "array"
+          },
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "base_currency": {
+            "title": "Base Currency",
+            "type": "string"
+          },
+          "net_worth": {
+            "$ref": "#/components/schemas/NetWorthOut"
+          },
+          "savings": {
+            "$ref": "#/components/schemas/OverviewSavingsOut"
+          },
+          "spend": {
+            "$ref": "#/components/schemas/OverviewSpendOut"
+          }
+        },
+        "required": [
+          "as_of",
+          "base_currency",
+          "net_worth",
+          "savings",
+          "spend",
+          "accounts"
+        ],
+        "title": "OverviewOut",
+        "type": "object"
+      },
+      "OverviewSavingsOut": {
+        "properties": {
+          "last_12": {
+            "$ref": "#/components/schemas/SavingsSpanOut"
+          },
+          "last_month": {
+            "$ref": "#/components/schemas/SavingsSpanOut"
+          },
+          "this_month": {
+            "$ref": "#/components/schemas/SavingsSpanOut"
+          }
+        },
+        "required": [
+          "last_12",
+          "last_month",
+          "this_month"
+        ],
+        "title": "OverviewSavingsOut",
+        "type": "object"
+      },
+      "OverviewSpendOut": {
+        "properties": {
+          "last_month": {
+            "$ref": "#/components/schemas/MonthSpendOut"
+          },
+          "last_month_to_date": {
+            "$ref": "#/components/schemas/MonthSpendOut"
+          },
+          "this_month": {
+            "$ref": "#/components/schemas/ThisMonthSpendOut"
+          }
+        },
+        "required": [
+          "this_month",
+          "last_month",
+          "last_month_to_date"
+        ],
+        "title": "OverviewSpendOut",
         "type": "object"
       },
       "PartnerOut": {
@@ -2961,6 +3729,27 @@
         "title": "PayeesOut",
         "type": "object"
       },
+      "PeriodOut": {
+        "description": "A calendar month, quarter or year, clipped to the range.",
+        "properties": {
+          "from": {
+            "format": "date",
+            "title": "From",
+            "type": "string"
+          },
+          "to": {
+            "format": "date",
+            "title": "To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "title": "PeriodOut",
+        "type": "object"
+      },
       "PlanAccountOut": {
         "properties": {
           "account_id": {
@@ -3047,6 +3836,33 @@
           "documents_since"
         ],
         "title": "PlanInstanceOut",
+        "type": "object"
+      },
+      "PointNetWorthOut": {
+        "properties": {
+          "total": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unvalued": {
+            "items": {
+              "$ref": "#/components/schemas/NetWorthUnvaluedOut"
+            },
+            "title": "Unvalued",
+            "type": "array"
+          }
+        },
+        "required": [
+          "total",
+          "unvalued"
+        ],
+        "title": "PointNetWorthOut",
         "type": "object"
       },
       "PreviewListOut": {
@@ -3480,10 +4296,20 @@
           "count": {
             "title": "Count",
             "type": "integer"
+          },
+          "needs_account": {
+            "title": "Needs Account",
+            "type": "integer"
+          },
+          "pending_review": {
+            "title": "Pending Review",
+            "type": "integer"
           }
         },
         "required": [
-          "count"
+          "count",
+          "pending_review",
+          "needs_account"
         ],
         "title": "QueueCountOut",
         "type": "object"
@@ -4315,6 +5141,108 @@
         "title": "RunStartedEvent",
         "type": "object"
       },
+      "SavingsOut": {
+        "properties": {
+          "expense": {
+            "$ref": "#/components/schemas/LineOut"
+          },
+          "income": {
+            "$ref": "#/components/schemas/LineOut"
+          },
+          "incomplete": {
+            "title": "Incomplete",
+            "type": "boolean"
+          },
+          "rate_bp": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Bp"
+          },
+          "reconciliations": {
+            "$ref": "#/components/schemas/LineOut"
+          },
+          "savings": {
+            "$ref": "#/components/schemas/LineOut"
+          },
+          "unclassified": {
+            "$ref": "#/components/schemas/LineOut"
+          }
+        },
+        "required": [
+          "income",
+          "expense",
+          "unclassified",
+          "reconciliations",
+          "savings",
+          "rate_bp",
+          "incomplete"
+        ],
+        "title": "SavingsOut",
+        "type": "object"
+      },
+      "SavingsSpanOut": {
+        "properties": {
+          "expense": {
+            "$ref": "#/components/schemas/LineOut"
+          },
+          "from": {
+            "format": "date",
+            "title": "From",
+            "type": "string"
+          },
+          "income": {
+            "$ref": "#/components/schemas/LineOut"
+          },
+          "incomplete": {
+            "title": "Incomplete",
+            "type": "boolean"
+          },
+          "rate_bp": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Bp"
+          },
+          "reconciliations": {
+            "$ref": "#/components/schemas/LineOut"
+          },
+          "savings": {
+            "$ref": "#/components/schemas/LineOut"
+          },
+          "to": {
+            "format": "date",
+            "title": "To",
+            "type": "string"
+          },
+          "unclassified": {
+            "$ref": "#/components/schemas/LineOut"
+          }
+        },
+        "required": [
+          "income",
+          "expense",
+          "unclassified",
+          "reconciliations",
+          "savings",
+          "rate_bp",
+          "incomplete",
+          "from",
+          "to"
+        ],
+        "title": "SavingsSpanOut",
+        "type": "object"
+      },
       "SecretPromptBody": {
         "properties": {
           "kind": {
@@ -4423,6 +5351,36 @@
           "error"
         ],
         "title": "SettleOut",
+        "type": "object"
+      },
+      "SliceIdOut": {
+        "properties": {
+          "category_id": {
+            "title": "Category Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "category_id"
+        ],
+        "title": "SliceIdOut",
+        "type": "object"
+      },
+      "SliceOut": {
+        "properties": {
+          "category_id": {
+            "title": "Category Id",
+            "type": "integer"
+          },
+          "total": {
+            "$ref": "#/components/schemas/LineOut"
+          }
+        },
+        "required": [
+          "category_id",
+          "total"
+        ],
+        "title": "SliceOut",
         "type": "object"
       },
       "SourceCreateBody": {
@@ -6011,6 +6969,38 @@
           "subject"
         ],
         "title": "TextPromptBody",
+        "type": "object"
+      },
+      "ThisMonthSpendOut": {
+        "properties": {
+          "from": {
+            "format": "date",
+            "title": "From",
+            "type": "string"
+          },
+          "reconciliations": {
+            "$ref": "#/components/schemas/LineOut"
+          },
+          "spend": {
+            "$ref": "#/components/schemas/LineOut"
+          },
+          "to": {
+            "format": "date",
+            "title": "To",
+            "type": "string"
+          },
+          "unclassified_out": {
+            "$ref": "#/components/schemas/LineOut"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "spend",
+          "unclassified_out",
+          "reconciliations"
+        ],
+        "title": "ThisMonthSpendOut",
         "type": "object"
       },
       "UnitCommitConsequenceOut": {
@@ -7877,6 +8867,23 @@
           "synced_through"
         ],
         "title": "UnitWaitingForOut",
+        "type": "object"
+      },
+      "UnvaluedOut": {
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "amount",
+          "count"
+        ],
+        "title": "UnvaluedOut",
         "type": "object"
       },
       "UpdateBody": {
@@ -12832,6 +13839,399 @@
         "summary": "Run Settle",
         "tags": [
           "maintenance"
+        ]
+      }
+    },
+    "/api/reports/balances": {
+      "get": {
+        "description": "Net worth and every account's balance at the month-ends of a range. A balance is every entry\nbooked on or before the point (openings, valuations and reconciliations included), converted at that\ndate's rate; an amount that cannot be valued is listed, never counted as zero.",
+        "operationId": "get_balances",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "from",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "From",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "To",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BalancesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Get Balances",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/api/reports/by-category": {
+      "get": {
+        "description": "Spend (or income) by category over a range, as the category tree, with the unclassified and\nreconciliation lines beside it. `account_id` and `tag_id` are the ledger list's filters.",
+        "operationId": "get_by_category",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "from",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "From",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "To",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "default": "expense",
+              "enum": [
+                "expense",
+                "income"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "account_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740992,
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Account Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tag_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740992,
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tag Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "top",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 50,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Top"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ByCategoryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Get By Category",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/api/reports/over-time": {
+      "get": {
+        "description": "A range cut into calendar months, quarters or years (at most 120): the savings and rate of each,\nor each category's amount. The ledger list's account and tag filters apply to every figure.",
+        "operationId": "get_over_time",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "from",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "From",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "To",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "step",
+            "required": false,
+            "schema": {
+              "default": "month",
+              "enum": [
+                "month",
+                "quarter",
+                "year"
+              ],
+              "title": "Step",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "default": "savings",
+              "enum": [
+                "savings",
+                "category"
+              ],
+              "title": "Mode",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "default": "expense",
+              "enum": [
+                "expense",
+                "income"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "account_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740992,
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Account Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tag_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740992,
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tag Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OverTimeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Get Over Time",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/api/reports/overview": {
+      "get": {
+        "description": "Net worth, savings of the last 12 months, last month and this month, this month's spend against\nlast month's, and the accounts by data age; the day is the household's today.",
+        "operationId": "get_overview",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OverviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Get Overview",
+        "tags": [
+          "reports"
         ]
       }
     },
