@@ -135,3 +135,17 @@ account the currency rule allows) 76-139 ms. Inside the same 0.5 s.
 
 A commit and the settle that follows (the same test, ~70% confirmed, after the first settle): median
 531-534 ms, max 558 ms, inside the settle budget (`BUDGET_SECONDS`)."""
+
+REPORTS_BUDGET_SECONDS = 1.0
+"""A report request (`tests/perf/test_reports_budget.py`): the Overview, *By category* over the year,
+*Over time* over 12 months in both modes and *Balances* over 12 months, as the core functions compute them.
+
+Derivation: on the ~70% confirmed backfill (8,000 entries over 6 accounts and a year, with categories), with
+the base currency written and a USD rate every three days, so that `base_value()` runs for every entry and
+looks a rate up for the foreign account. Measured on the dev machine (Postgres 18, localhost), max of 7
+samples over three runs: Overview 0.20-0.22 s, By category over the year 0.18-0.21 s, Over time 12 months
+0.16-0.21 s (savings) and 0.17-0.26 s (by category), Balances 12 months 0.01 s. The statement values each
+entry once (a MATERIALIZED CTE: the planner may not inline the conversion into each aggregate); a
+per-statement read of the setting in `base_value()` was not needed. 2 x the largest (0.26 s) is 0.52 s, so
+the step's stated one second is the budget. A failure justifies a change inside `base_value()` (read the
+setting once per statement), not a bypass of it."""
