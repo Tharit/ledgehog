@@ -208,10 +208,10 @@ A card the UPD lists with the card transaction request (HKKKU) is fetched with
 it instead of the MT940 statements: one dialog, the card's transactions from
 `since` to the day before `today`, with a TAN request attached by the rule of §4
 (a bank may mark HKKKU as needing one, and `tan_for` learns it). The request
-carries the card's full account connection — card number, sub-account, country
-and bank code — which a bank requires although its parameters may read
-otherwise. python-fints has no card support: the request and its answer are the
-importer's own segments over the library's.
+carries the card's full account connection — the account number the bank lists,
+sub-account, country and bank code — which a bank requires although its
+parameters may read otherwise. python-fints has no card support: the request and
+its answer are the importer's own segments over the library's.
 
 **The answer** holds the card's current balance with its date and one entry
 per booking. An entry the bank marks as not yet billed is the card's pending
