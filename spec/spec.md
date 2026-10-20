@@ -646,7 +646,7 @@ account.
 
 ```
 source_transaction  #20  Giro  -20000  counterparty_name='EURONET 4711'
-                                       booking_text='GA-AUSZAHLUNG'
+                                       booking_text='Lastschrift'
 ledger_entry   #30 Giro  -20000  type=NULL
 ```
 
@@ -669,7 +669,7 @@ its destination, and no counter-leg yet.
 
 ```
 source_transaction  #21  Giro  -10000  counterparty_name='EURONET 4711'
-                                       booking_text='GA-AUSZAHLUNG'
+                                       booking_text='Lastschrift'
 ledger_entry   #32 Giro  -10000  transfer  → Cash
 ```
 
@@ -688,8 +688,8 @@ One precedent is thin evidence, and the review queue shows it as 1 of 1
 creates its cash leg #33 and confirms the pair in one keystroke. Each
 confirmation adds evidence; after a few, these withdrawals arrive backed by
 several precedents, sorted next to each other in the queue and confirmed one
-keystroke each. A rule — booking text `GA-AUSZAHLUNG`, counter-account Cash
-(§5.9) — makes even that certain: its keys are standing, so each withdrawal
+keystroke each. A rule — counterparty name `EURONET 4711`, counter-account
+Cash (§5.9) — makes even that certain: its keys are standing, so each withdrawal
 arrives decided, with its cash leg proposed, and is confirmed in one keystroke
 that creates the leg (§5.7). Individual cash
 expenses are entered on the cash account through the entry form (§3.9).
@@ -699,16 +699,17 @@ account yet.
 
 ```
 source_transaction  #22  Giro  -18734 EUR  instructed=-20000 USD
-                                           booking_text='GA-AUSZAHLUNG'
-ledger_entry   #34 Giro  -18734 EUR  transfer  counter_account=—
+                                           booking_text='Lastschrift'
+ledger_entry   #34 Giro  -18734 EUR  type=NULL
 ```
 
-History types #34 as a transfer: key 4, the booking text alone on this
-account, has only ever meant a withdrawal. It proposes no counter-account,
-because its counter-account evidence is filtered by the currency rule (§5.7)
-— the money arrived in dollars, and no past withdrawal went to a dollar
-account. The entry is an unmatched transfer that needs an account in USD.
-The review queue groups such entries by the currency they need:
+No history key knows a foreign operator, so #34 arrives unclassified, as the
+first withdrawal at home did. In the review panel the user converts it to a
+transfer; its counter-account cannot be the cash account, which holds euros,
+because the money arrived in dollars (the currency rule, §5.7). It is an
+unmatched transfer that needs an account in USD, and so is each of the other
+two once converted. The review queue groups such entries by the currency they
+need:
 
 ```
 3 withdrawals need an account in USD          [ add account … ]
@@ -2122,7 +2123,7 @@ keys on source signals, raw on both sides, and on the document's merchant name. 
 a source transaction** (I19) — confirmed by a human, or standing — because no
 other entry carries the source signals it keys on. A user-authored row brings
 only its purpose among the bank's fields, so of the keys on source fields only
-key 5 applies to it, beside key 3 on the payee once that is decided — which is
+key 4 applies to it, beside key 3 on the payee once that is decided — which is
 what lets a typed "coffee at Starbucks" find its category the next time. A value still awaiting review never
 teaches, so one wrong guess cannot become history that the next similar
 transaction repeats with more weight. **Each ledger entry is one vote**; the
@@ -2142,10 +2143,14 @@ outputs. Keys, most specific first:
 3. `payee_id`, where one has resolved — for the category only, since the type
    and counter-account are resolved before the payee; it pools evidence across
    a curated merchant's varying descriptors;
-4. `booking_text` alone, per account;
-5. normalised tokens of `counterparty_name` and `purpose`;
-6. the document's merchant name (canonicalised as in §5.2), for a transaction
+4. normalised tokens of `counterparty_name` and `purpose`;
+5. the document's merchant name (canonicalised as in §5.2), for a transaction
    with a document and for the category only.
+
+The booking text is never a key on its own: a bank's booking texts are
+categories of payment ("Lastschrift", "Dauerauftrag"), shared by unrelated
+counterparties, and a majority among them proposes for one counterparty what
+others were. It only refines key 2.
 
 For each key it counts the matches within a lookback period and proposes the
 value a strict majority of them share; the basis records how many agree, of
@@ -2170,10 +2175,11 @@ needed", and every later one proposes the dollar cash account, with no special
 logic in either case (§4).
 
 This is what handles recurring merchants and recurring transfers after one
-classification each. An ATM operator is recognised by key 2 — which also
-separates the bank's own withdrawals from its fees. Where the booking text
-alone is distinctive, such as a domestic `GA-AUSZAHLUNG`, key 4 also recognises
-operators seen for the first time. Key 5 recognises the token `PAYPAL` across
+classification each. An ATM operator is recognised by key 2 once one of its
+withdrawals is confirmed — which also separates the bank's own withdrawals
+from its fees; an operator seen for the first time is left to the model, which
+may propose it, and otherwise to the user, or to a rule. Key 4 recognises the
+token `PAYPAL` across
 PayPal merchants and proposes the curated PayPal payee, while proposing no
 category — the token says nothing about what was bought, so agreement there is
 low.

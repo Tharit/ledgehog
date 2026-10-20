@@ -15,7 +15,7 @@ is counted, and the parameters.
 A **vote** is a confirmed entry with a source transaction (`spec.md` I19),
 booked within the **lookback** of the entry being resolved, and not in the unit
 being re-resolved (`spec.md` §5.9), whose transaction carries no document, for
-keys 1 to 5. A vote for the document key (§2) is a confirmed entry, otherwise
+keys 1 to 4. A vote for the document key (§2) is a confirmed entry, otherwise
 as above, whose transaction's linked document has the same merchant name. Each
 entry is one vote; the entries of a
 split vote separately. The plugin asks core's history source for the votes
@@ -36,21 +36,20 @@ only) unless said otherwise.
    a booking text, votes with a different one are left out; votes without one
    still count.
 3. **`payee_id`** — equal; for the category only (`spec.md` §5.9).
-4. **`booking_text`** — equal, and on the same account.
-5. **tokens** — the tokens of `counterparty_name` and `purpose` together: NFKC,
+4. **tokens** — the tokens of `counterparty_name` and `purpose` together: NFKC,
    casefolded, split on anything not alphanumeric, keeping tokens of at least
    **3 characters with no digit**. A vote matches when the Jaccard similarity of
    the two token sets is at least **0.5**. An entry without tokens skips the
    key.
-6. **`document_merchant`** — canonical equality of the document's merchant name
+5. **`document_merchant`** — canonical equality of the document's merchant name
    (`spec.md` §5.2), for the category only. It is the only key asked for an
    entry whose transaction has a linked or picked document, and such an entry
-   is not asked on keys 1 to 5. An entry without a document never sees it.
+   is not asked on keys 1 to 4. An entry without a document never sees it.
 
 A key whose input the entry lacks — no `counterparty_ref`, no name — is
-skipped. Keys 1 to 5 never see a document: a transaction with a document is
-not asked on them and does not vote for them; key 6 reads the merchant name
-only. On keys 1 to 5 both sides are always the raw source fields.
+skipped. Keys 1 to 4 never see a document: a transaction with a document is
+not asked on them and does not vote for them; key 5 reads the merchant name
+only. On keys 1 to 4 both sides are always the raw source fields.
 
 ## 3. What is counted, per field
 
@@ -80,7 +79,7 @@ after the filters above — the matches of `spec.md` §5.9.
 ```
 
 `matched_on` is one of `counterparty_ref`, `counterparty_name+booking_text`,
-`payee`, `booking_text`, `tokens`, `document_merchant`; `since` is the earliest booking date among
+`payee`, `tokens`, `document_merchant`; `since` is the earliest booking date among
 the votes counted. A counter-account basis adds the proposed `account_id`, as
 in `spec.md` §4.
 
@@ -89,16 +88,16 @@ in `spec.md` §4.
 | Parameter | Start | Watch for |
 |---|---|---|
 | lookback | 365 days, both sides | merchants whose category drifts; seasonal counterparties |
-| key 5 similarity | Jaccard ≥ 0.5 | PayPal and card descriptors matching too broadly or not at all |
-| key 5 token length | ≥ 3, no digits | reference numbers and dates leaking into tokens |
+| key 4 similarity | Jaccard ≥ 0.5 | PayPal and card descriptors matching too broadly or not at all |
+| key 4 token length | ≥ 3, no digits | reference numbers and dates leaking into tokens |
 | strict majority | fixed for now | mixed payees and counterparties (Amazon, a supermarket selling household goods) proposing one category systematically |
 
-A stop list for key 5 (`gmbh`, `sagt`, `danke`, city names) is the expected
+A stop list for key 4 (`gmbh`, `sagt`, `danke`, city names) is the expected
 first refinement once real purpose lines are seen.
 
 An **exact-line key** for documented entries is the expected refinement once
 real documents show how often lines repeat: canonical equality of the line
-description, for the category only, asked before key 6, and asked and counted
+description, for the category only, asked before key 5, and asked and counted
 only for an entry with a line (`spec.md` §5.8). It captures reorders (the same
 capsules, the same filter) with certainty and misses a reworded title safely.
 Similarity over line text stays out: titles rarely repeat, and shared filler

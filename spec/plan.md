@@ -238,7 +238,7 @@ cases they leave rough are rare. A month of real use should confirm it:
   spans categories — a supermarket's household goods, a department store —
   get one category proposed systematically, and confirmed at queue speed?
   History stays at a strict majority until this is seen (`spec.md` §5.9).
-- **History's starting parameters.** Lookback, key 5 similarity and token
+- **History's starting parameters.** Lookback, key 4 similarity and token
   rules against a year of real purpose lines.
 - **Rules carrying the recurring load.** How many units still reach the queue
   per month once rules exist for rent, salary, card payoffs and withdrawals,

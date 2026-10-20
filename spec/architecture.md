@@ -1439,7 +1439,7 @@ Transaction boundaries:
     candidates they affect, and every unconfirmed unit when it delivers a
     balance record or coverage that moves a waiting decision.
 
-  Key 5 of history (tokens) makes the first case broad, so the **baseline is a
+  Key 4 of history (tokens) makes the first case broad, so the **baseline is a
   pass over every unconfirmed unit**, and narrowing to the dirty set is an
   optimisation taken only where the budget is missed. The budget is set from
   a backfill-sized fixture — a year of history, thousands of unconfirmed
