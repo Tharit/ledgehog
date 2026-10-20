@@ -50,7 +50,7 @@ export function canRefreshAccounts(
 	);
 }
 
-/** The kind the bank hints at, when it is one this ledger has; otherwise the dialog's default. */
+/** The kind the bank hints at, when it is one this ledger has. */
 export function kindOfHint(hint: string | null): AccountKind | undefined {
 	return ACCOUNT_KINDS.find((k) => k.kind === hint)?.kind;
 }
@@ -67,7 +67,8 @@ export function addAndLinkOptions(
 	const { name, kind_hint, currency, external_ref } = entry.account;
 	return {
 		name,
-		kind: kindOfHint(kind_hint),
+		// no (known) hint: a bank account found by discovery is not money held by hand
+		kind: kindOfHint(kind_hint) ?? 'checking',
 		...(currency ? { currency, currencyHint: 'The currency the bank reports for it.' } : {}),
 		externalRef: external_ref,
 		verb: 'Add and link',

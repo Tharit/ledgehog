@@ -71,12 +71,16 @@ describe('the add dialog for a row not in the ledger', () => {
 		});
 	});
 
-	it('takes the dialog’s default kind for a hint this ledger does not know, and leaves a missing currency free', () => {
+	it('prefills checking for a hint this ledger does not know or none, and leaves a missing currency free', () => {
 		const options = addAndLinkOptions(
 			discoveryEntry({ kind_hint: 'unheard-of', currency: null }),
 			undefined
 		);
-		expect(options.kind).toBeUndefined();
+		expect(options.kind).toBe('checking');
+		expect(addAndLinkOptions(discoveryEntry({ kind_hint: null }), undefined).kind).toBe('checking');
+		expect(addAndLinkOptions(discoveryEntry({ kind_hint: 'savings' }), undefined).kind).toBe(
+			'savings'
+		);
 		expect(options.currency).toBeUndefined();
 		expect(kindOfHint(null)).toBeUndefined();
 	});
