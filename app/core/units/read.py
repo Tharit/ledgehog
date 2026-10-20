@@ -223,7 +223,9 @@ _QUEUE_TOTAL = text(
     """
 )
 
-_ACTIONABLE_COUNT = text(_SECTIONED_SQL + "SELECT count(*) FROM q WHERE q.section <> 'waiting'")
+_ACTIONABLE_COUNT = text(
+    _SECTIONED_SQL + "SELECT q.section, count(*) AS n FROM q WHERE q.section <> 'waiting' GROUP BY q.section"
+)
 
 _ENTRIES_OF_UNITS = text(
     """
@@ -335,7 +337,25 @@ def review_queue(
     return ReviewQueue(sections=built, total=total)
 
 
+@dataclass(frozen=True)
+class ActionableCounts:
+    pending_review: int
+    needs_account: int
+
+    @property
+    def count(self) -> int:
+        return self.pending_review + self.needs_account
+
+
+def actionable_counts(conn: Connection) -> ActionableCounts:
+    """Units that can be acted on now, by section: pending review and needs an account, not waiting (a
+    waiting unit completes itself). The queue's own sections, one cheap pass."""
+    n = {str(r.section): int(r.n) for r in conn.execute(_ACTIONABLE_COUNT, units_binds())}
+    return ActionableCounts(
+        pending_review=n.get("pending_review", 0), needs_account=n.get("needs_account", 0)
+    )
+
+
 def actionable_count(conn: Connection) -> int:
-    """Units that can be acted on now: pending review and needs an account, not waiting (a waiting unit
-    completes itself). The queue's own sections, one cheap pass; what the Review item shows."""
-    return int(conn.execute(_ACTIONABLE_COUNT, units_binds()).scalar_one())
+    """Both sections together: what the Review item shows."""
+    return actionable_counts(conn).count

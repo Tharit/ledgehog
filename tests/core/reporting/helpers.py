@@ -98,6 +98,13 @@ def household(conn: Connection) -> Household:
     w = e(conn, g, amount=-5_000, on=d(2026, 10, 14), type="transfer")
     k = e(conn, c, amount=5_000, on=d(2026, 10, 14), type="transfer")
     pair(conn, w, k)
+    conn.execute(
+        text(
+            "UPDATE ledger_entry SET counter_account_id = CASE id WHEN :w THEN :c ELSE :g END"
+            " WHERE id IN (:w, :k)"
+        ),
+        {"w": w, "k": k, "c": c, "g": g},
+    )
     e(conn, g, amount=-4_000, on=d(2026, 10, 15), type="transfer", flags=("waiting",))
     e(conn, g, amount=-3_000, on=d(2026, 10, 16), type="transfer", flags=("unmatched_transfer",))
     return Household(g, c, u, food, groceries, travel, salary, gifts, trip)

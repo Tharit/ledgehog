@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 from sqlalchemy import Connection, text
 
-from app.core.units.read import actionable_count, review_queue
+from app.core.units.read import actionable_count, actionable_counts, review_queue
 from tests.core.units.helpers import Bench
 from tests.invariants.helpers import link_account, make_instance, make_run, make_source
 
@@ -207,5 +207,7 @@ def test_the_count_is_pending_review_and_needs_account_never_waiting(
     assert actionable_count(db_conn) == 1  # a waiting unit is not counted
     bench.flow(bench.source(), done=False)  # pending review
     assert actionable_count(db_conn) == 2
+    split = actionable_counts(db_conn)
+    assert (split.pending_review, split.needs_account, split.count) == (1, 1, 2)
     queue = _sections(review_queue(db_conn))
     assert actionable_count(db_conn) == len(queue["pending_review"]) + len(queue["needs_account"])

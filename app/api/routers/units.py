@@ -35,7 +35,7 @@ from app.core.units.read import (
     InvalidCursor,
     QueueSection,
     UnitView,
-    actionable_count,
+    actionable_counts,
     review_queue,
 )
 from app.core.units.read import get_unit as read_unit
@@ -136,7 +136,9 @@ class ReviewQueueOut(BaseModel):
 
 
 class QueueCountOut(BaseModel):
-    count: int  # units pending review or needing an account; not those waiting
+    count: int  # units pending review or needing an account; not those waiting: the sum of the two below
+    pending_review: int
+    needs_account: int
 
 
 @router.get("/queue")
@@ -164,7 +166,10 @@ def get_review_queue(
 def get_queue_count(user: CurrentUser, engine: EngineDep) -> QueueCountOut:
     """How many units can be acted on now: pending review and needs an account, not waiting."""
     with engine.connect() as conn:
-        return QueueCountOut(count=actionable_count(conn))
+        counts = actionable_counts(conn)
+    return QueueCountOut(
+        count=counts.count, pending_review=counts.pending_review, needs_account=counts.needs_account
+    )
 
 
 class UnitMissing(LookupError):

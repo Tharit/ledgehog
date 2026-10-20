@@ -217,17 +217,42 @@ def test_queue_parameter_errors(anna: TestClient) -> None:
 
 
 def test_queue_count(anna: TestClient, api_engine: Engine, world: Bench) -> None:
-    assert anna.get(f"{QUEUE}/count").json() == {"count": 0}
+    assert anna.get(f"{QUEUE}/count").json() == {"count": 0, "pending_review": 0, "needs_account": 0}
 
     def build(b: Bench) -> None:
         b.flow(b.source(), done=False)  # pending review
         b.flow(b.source())  # confirmed: not in the queue
 
     _make(api_engine, world, build)
-    assert anna.get(f"{QUEUE}/count").json() == {"count": 1}
+    assert anna.get(f"{QUEUE}/count").json() == {"count": 1, "pending_review": 1, "needs_account": 0}
     sections = {s["kind"]: s["total"] for s in anna.get(QUEUE).json()["sections"]}
-    actionable = sections["pending_review"] + sections["needs_account"]
-    assert anna.get(f"{QUEUE}/count").json()["count"] == actionable
+    got = anna.get(f"{QUEUE}/count").json()
+    assert got["pending_review"] == sections["pending_review"]
+    assert got["needs_account"] == sections["needs_account"]
+    assert got["count"] == got["pending_review"] + got["needs_account"]
+
+
+def test_queue_count_splits_the_sections_and_leaves_waiting_out(
+    anna: TestClient, api_engine: Engine, world: Bench
+) -> None:
+    def build(b: Bench) -> None:
+        b.flow(b.source(), done=False)  # pending review
+        usd = make_source(
+            b.conn,
+            b.a,
+            amount=-100,
+            booked_on=date(2026, 3, 1),
+            columns={"instructed_currency": "USD", "instructed_amount": -110},
+        )
+        b._each.update({usd: -100})
+        b.transfer(usd)  # needs an account
+        wait = b.transfer(b.source(on=date(2026, 3, 3)), counter_account_id=b.b)
+        b.conn.execute(
+            text("UPDATE ledger_entry SET review_flags = ARRAY['waiting'] WHERE id = :i"), {"i": wait}
+        )
+
+    _make(api_engine, world, build)
+    assert anna.get(f"{QUEUE}/count").json() == {"count": 2, "pending_review": 1, "needs_account": 1}
 
 
 def test_operation_ids(anna: TestClient) -> None:
