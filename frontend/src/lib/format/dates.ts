@@ -28,6 +28,12 @@ export function formatDate(isoDate: IsoDate, locale = 'en'): string {
 	return format.format(utcDate(isoDate));
 }
 
+/** A calendar date written out in full ("Sunday, October 11, 2026"), for a page's date line. */
+export function formatLongDate(isoDate: IsoDate, locale = 'en'): string {
+	const format = new Intl.DateTimeFormat(locale, { dateStyle: 'full', timeZone: 'UTC' });
+	return format.format(utcDate(isoDate));
+}
+
 /** An instant (a run's start, a session) in the household's zone, with date and time. */
 export function formatInstant(iso: string, timeZone: string, locale = 'en'): string {
 	const instant = new Date(iso);
@@ -90,6 +96,12 @@ export function formatDateRange(from: IsoDate, to: IsoDate, locale = 'en'): stri
 	});
 	if (from === to) return format.format(start);
 	return `${format.format(start)} ${EN_DASH} ${format.format(end)}`;
+}
+
+/** The month of a calendar date spelled out ("October"). */
+export function formatMonthName(isoDate: IsoDate, locale = 'en'): string {
+	const format = new Intl.DateTimeFormat(locale, { month: 'long', timeZone: 'UTC' });
+	return format.format(utcDate(isoDate));
 }
 
 /** The month of a calendar date ("Mar 2026"), for evidence that spans time. */

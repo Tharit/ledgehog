@@ -9,6 +9,7 @@ export type { Query, RequestOptions } from './http.js';
 export * from './importers.js';
 export * from './lookups.js';
 export * from './payees.js';
+export * from './reports.js';
 export * from './rules.js';
 export * from './session.js';
 export * from './sources.js';

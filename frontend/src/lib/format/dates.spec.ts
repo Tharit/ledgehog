@@ -3,7 +3,9 @@ import {
 	formatDate,
 	formatDateRange,
 	formatInstant,
+	formatLongDate,
 	formatMonth,
+	formatMonthName,
 	formatTime,
 	relativeDay,
 	todayIso
@@ -121,6 +123,20 @@ describe('formatDateRange', () => {
 
 	it('collapses a one-day range', () => {
 		expect(formatDateRange('2026-03-01', '2026-03-01', 'en-GB')).toBe('1 Mar');
+	});
+});
+
+describe('formatLongDate', () => {
+	it('writes the weekday and the whole date, never shifted by a time zone', () => {
+		expect(formatLongDate('2026-10-11', 'en')).toBe('Sunday, October 11, 2026');
+		expect(formatLongDate('2026-10-11', 'de')).toBe('Sonntag, 11. Oktober 2026');
+	});
+});
+
+describe('formatMonthName', () => {
+	it('spells the month out, whatever the day', () => {
+		expect(formatMonthName('2026-10-20', 'en')).toBe('October');
+		expect(formatMonthName('2026-10-01', 'de')).toBe('Oktober');
 	});
 });
 
