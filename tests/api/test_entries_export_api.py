@@ -80,9 +80,9 @@ def test_empty_ledger_is_just_the_header(anna: TestClient):
 
 def test_dimensions_are_joined_by_name(anna: TestClient, api_engine: Engine, acct: int):
     with api_engine.begin() as conn:
-        root = seed.category(conn, "Expense")
-        food = seed.category(conn, "Food", root)
+        food = seed.category(conn, "Food")  # a top-level category: the kind is the root (spec §3.5)
         groceries = seed.category(conn, "Groceries", food)
+        salary = seed.category(conn, "Salary", kind="income")
         shop = seed.payee(conn, "Shop")
         t1, t2 = seed.tag(conn, "trip"), seed.tag(conn, "annual")
         e = seed.entry(
@@ -102,7 +102,10 @@ def test_dimensions_are_joined_by_name(anna: TestClient, api_engine: Engine, acc
             imported=True,
             source_cols={"instructed_amount": -1500, "instructed_currency": "USD"},
         )
-    [row] = exported(anna)
+    paid = add(api_engine, acct, amount=300000, on=date(2026, 3, 1), category_id=salary)
+    rows = {int(r["id"]): r for r in exported(anna)}
+    assert rows[paid]["category"] == "Income > Salary"
+    row = rows[e]
     assert row == {
         "id": str(e),
         "booked_on": "2026-03-10",

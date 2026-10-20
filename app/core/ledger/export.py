@@ -43,6 +43,7 @@ COLUMNS = (
 
 _JOIN = "; "
 _CATEGORY_SEP = " > "
+_KINDS = {"expense": "Expense", "income": "Income"}
 # a spreadsheet executes a text cell that starts with one of these; an apostrophe makes it text
 _FORMULA_STARTS = ("=", "+", "-", "@")
 
@@ -75,12 +76,13 @@ class _Names:
         by_id = {c.id: c for c in list_categories(conn)}
         self.categories: dict[int, str] = {}
         for cid in by_id:
-            path: list[str] = []
+            path: list[str] = [_KINDS.get(by_id[cid].kind, by_id[cid].kind)]  # the kind is the root (spec §3.5)
             node = by_id.get(cid)
+            names: list[str] = []
             while node is not None:
-                path.append(node.name)
+                names.append(node.name)
                 node = by_id.get(node.parent_id) if node.parent_id is not None else None
-            self.categories[cid] = _CATEGORY_SEP.join(reversed(path))
+            self.categories[cid] = _CATEGORY_SEP.join([*path, *reversed(names)])
 
 
 def _names(conn: Connection, table: str) -> dict[int, str]:
