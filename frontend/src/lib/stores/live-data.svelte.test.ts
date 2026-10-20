@@ -1,6 +1,6 @@
 import { flushSync } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getQueueCount, readChanges } from '#lib/api/index.js';
+import { getQueueCounts, readChanges } from '#lib/api/index.js';
 import { ChangeWatcher } from './changes.svelte.js';
 import { runLiveData } from './live-data.svelte.js';
 import { ReviewCount } from './review-count.svelte.js';
@@ -8,10 +8,16 @@ import { ReviewCount } from './review-count.svelte.js';
 vi.mock('#lib/api/index.js', async (importOriginal) => ({
 	...(await importOriginal<typeof import('#lib/api/index.js')>()),
 	readChanges: vi.fn(),
-	getQueueCount: vi.fn()
+	getQueueCounts: vi.fn()
 }));
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+const counts = (pending_review: number, needs_account: number) => ({
+	count: pending_review + needs_account,
+	pending_review,
+	needs_account
+});
 
 const read = (ledger: string, active_task: string | null = null) => ({
 	ledger,
@@ -32,7 +38,7 @@ let stop: () => void;
 beforeEach(() => {
 	vi.resetAllMocks();
 	vi.mocked(readChanges).mockResolvedValue(read('b:1'));
-	vi.mocked(getQueueCount).mockResolvedValue(3);
+	vi.mocked(getQueueCounts).mockResolvedValue(counts(3, 1));
 	watcher = new ChangeWatcher();
 	count = new ReviewCount();
 	auth.in = false;
@@ -49,7 +55,7 @@ describe('what runs for the life of a session', () => {
 		flushSync();
 		await flush();
 		expect(readChanges).not.toHaveBeenCalled();
-		expect(getQueueCount).not.toHaveBeenCalled();
+		expect(getQueueCounts).not.toHaveBeenCalled();
 	});
 
 	it('reads once signed in, hands the active task to the task store, and counts the Review item', async () => {
@@ -61,8 +67,11 @@ describe('what runs for the life of a session', () => {
 
 		expect(readChanges).toHaveBeenCalledTimes(1);
 		expect(tasks.follow).toHaveBeenCalledWith('t1');
-		expect(getQueueCount).toHaveBeenCalledTimes(1);
-		expect(count.count).toBe(3);
+		expect(getQueueCounts).toHaveBeenCalledTimes(1);
+		expect(count.count).toBe(4);
+		expect(count.pendingReview).toBe(3);
+		expect(count.needsAccount).toBe(1);
+		expect(count.known).toBe(true);
 	});
 
 	it('reads the count again when the ledger moves, and not for a poll that finds no change', async () => {
@@ -71,19 +80,19 @@ describe('what runs for the life of a session', () => {
 		await flush();
 		flushSync();
 		await flush();
-		expect(getQueueCount).toHaveBeenCalledTimes(1);
+		expect(getQueueCounts).toHaveBeenCalledTimes(1);
 
 		await watcher.read();
 		flushSync();
 		await flush();
-		expect(getQueueCount).toHaveBeenCalledTimes(1);
+		expect(getQueueCounts).toHaveBeenCalledTimes(1);
 
 		vi.mocked(readChanges).mockResolvedValue(read('b:2'));
-		vi.mocked(getQueueCount).mockResolvedValue(5);
+		vi.mocked(getQueueCounts).mockResolvedValue(counts(5, 0));
 		await watcher.read();
 		flushSync();
 		await flush();
-		expect(getQueueCount).toHaveBeenCalledTimes(2);
+		expect(getQueueCounts).toHaveBeenCalledTimes(2);
 		expect(count.count).toBe(5);
 	});
 
@@ -105,17 +114,17 @@ describe('what runs for the life of a session', () => {
 
 describe('ReviewCount', () => {
 	it('keeps only the latest read and the number held when a read fails', async () => {
-		let answerFirst!: (n: number) => void;
-		vi.mocked(getQueueCount)
+		let answerFirst!: (n: ReturnType<typeof counts>) => void;
+		vi.mocked(getQueueCounts)
 			.mockImplementationOnce(() => new Promise((resolve) => (answerFirst = resolve)))
-			.mockResolvedValueOnce(2);
+			.mockResolvedValueOnce(counts(2, 0));
 		const first = count.refresh();
 		await count.refresh();
-		answerFirst(9);
+		answerFirst(counts(9, 0));
 		await first;
 		expect(count.count).toBe(2);
 
-		vi.mocked(getQueueCount).mockRejectedValue(new Error('offline'));
+		vi.mocked(getQueueCounts).mockRejectedValue(new Error('offline'));
 		await count.refresh();
 		expect(count.count).toBe(2);
 	});

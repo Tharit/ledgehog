@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from './http.js';
-import { commitUnit, getQueue, getQueueCount, getUnit, previewUnit } from './units.js';
+import { commitUnit, getQueue, getQueueCounts, getUnit, previewUnit } from './units.js';
 
 const fetchMock = vi.fn();
 
@@ -52,10 +52,12 @@ describe('getQueue', () => {
 	});
 });
 
-describe('getQueueCount', () => {
-	it('reads the count of the units that can be acted on', async () => {
-		fetchMock.mockImplementation(async () => reply({ count: 7 }));
-		expect(await getQueueCount()).toBe(7);
+describe('getQueueCounts', () => {
+	it('reads the count of the units that can be acted on, with its split', async () => {
+		fetchMock.mockImplementation(async () =>
+			reply({ count: 7, pending_review: 5, needs_account: 2 })
+		);
+		expect(await getQueueCounts()).toEqual({ count: 7, pending_review: 5, needs_account: 2 });
 		expect(lastUrl()).toBe('/api/units/queue/count');
 	});
 });

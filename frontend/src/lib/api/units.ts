@@ -35,10 +35,12 @@ export function getQueue({
 	return request('GET', '/api/units/queue', { query: { limit, section, cursor }, signal });
 }
 
-/** How many units can be acted on now (pending review and needs an account): the Review item's count. */
-export async function getQueueCount(signal?: AbortSignal): Promise<number> {
-	const out = await request<QueueCount>('GET', '/api/units/queue/count', { signal });
-	return out.count;
+/**
+ * How many units can be acted on now: the Review item's `count`, split into the units pending
+ * review and those that need an account (the Overview's card says both).
+ */
+export function getQueueCounts(signal?: AbortSignal): Promise<QueueCount> {
+	return request('GET', '/api/units/queue/count', { signal });
 }
 
 /** What committing the draft would do; nothing is written (architecture §4.1, §6.3). */

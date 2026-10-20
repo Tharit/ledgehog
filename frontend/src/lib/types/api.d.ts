@@ -855,6 +855,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/reports/balances": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Balances
+         * @description Net worth and every account's balance at the month-ends of a range. A balance is every entry
+         *     booked on or before the point (openings, valuations and reconciliations included), converted at that
+         *     date's rate; an amount that cannot be valued is listed, never counted as zero.
+         */
+        get: operations["get_balances"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reports/by-category": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get By Category
+         * @description Spend (or income) by category over a range, as the category tree, with the unclassified and
+         *     reconciliation lines beside it. `account_id` and `tag_id` are the ledger list's filters.
+         */
+        get: operations["get_by_category"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reports/over-time": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Over Time
+         * @description A range cut into calendar months, quarters or years (at most 120): the savings and rate of each,
+         *     or each category's amount. The ledger list's account and tag filters apply to every figure.
+         */
+        get: operations["get_over_time"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reports/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Overview
+         * @description Net worth, savings of the last 12 months, last month and this month, this month's spend against
+         *     last month's, and the accounts by data age; the day is the household's today.
+         */
+        get: operations["get_overview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/session": {
         parameters: {
             query?: never;
@@ -1129,6 +1214,15 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AccountBalancesOut */
+        AccountBalancesOut: {
+            /** Account Id */
+            account_id: number;
+            /** Balances */
+            balances: (components["schemas"]["Money"] | null)[];
+            /** Native */
+            native: components["schemas"]["Money"][];
+        };
         /** AccountCountOut */
         AccountCountOut: {
             /** Account Id */
@@ -1198,6 +1292,48 @@ export interface components {
         AccountsOut: {
             /** Accounts */
             accounts: components["schemas"]["AccountOut"][];
+        };
+        /** BalancesOut */
+        BalancesOut: {
+            /** Accounts */
+            accounts: components["schemas"]["AccountBalancesOut"][];
+            /** Base Currency */
+            base_currency: string;
+            /** Net Worth */
+            net_worth: components["schemas"]["PointNetWorthOut"][];
+            /** Points */
+            points: string[];
+        };
+        /** ByCategoryOut */
+        ByCategoryOut: {
+            /** Base Currency */
+            base_currency: string;
+            /** Categories */
+            categories: components["schemas"]["CategoryRowOut"][];
+            /**
+             * From
+             * Format: date
+             */
+            from: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "expense" | "income";
+            other: components["schemas"]["LineOut"] | null;
+            reconciliations: components["schemas"]["LineOut"];
+            /** Slices */
+            slices: components["schemas"]["SliceOut"][] | null;
+            /**
+             * To
+             * Format: date
+             */
+            to: string;
+            total: components["schemas"]["LineOut"];
+            unclassified_in: components["schemas"]["LineOut"];
+            unclassified_out: components["schemas"]["LineOut"];
+            /** Unconfirmed Count */
+            unconfirmed_count: number;
         };
         /**
          * CarrierOut
@@ -1321,6 +1457,29 @@ export interface components {
             parent_id: number | null;
             /** Sort Order */
             sort_order: number;
+        };
+        /** CategoryRowOut */
+        CategoryRowOut: {
+            /** Category Id */
+            category_id: number;
+            own: components["schemas"]["LineOut"];
+            /** Parent Id */
+            parent_id: number | null;
+            /** Share Bp */
+            share_bp: number | null;
+            total: components["schemas"]["LineOut"];
+        };
+        /** CategorySeriesOut */
+        CategorySeriesOut: {
+            /** Category Id */
+            category_id: number;
+            /** Own */
+            own: components["schemas"]["LineOut"][];
+            /** Parent Id */
+            parent_id: number | null;
+            sum: components["schemas"]["LineOut"];
+            /** Total */
+            total: components["schemas"]["LineOut"][];
         };
         /**
          * CategoryUpdateBody
@@ -1832,6 +1991,14 @@ export interface components {
             /** Instance Id */
             instance_id: number;
         };
+        /** LineOut */
+        LineOut: {
+            /** Count */
+            count: number;
+            total: components["schemas"]["Money"] | null;
+            /** Unvalued */
+            unvalued: components["schemas"]["UnvaluedOut"][];
+        };
         /** LinkAccount */
         LinkAccount: {
             /** Account Id */
@@ -1899,6 +2066,20 @@ export interface components {
             /** Currency */
             currency: string;
         };
+        /** MonthSpendOut */
+        MonthSpendOut: {
+            /**
+             * From
+             * Format: date
+             */
+            from: string;
+            spend: components["schemas"]["LineOut"];
+            /**
+             * To
+             * Format: date
+             */
+            to: string;
+        };
         /** MovedChildOut */
         MovedChildOut: {
             /** From Id */
@@ -1914,6 +2095,125 @@ export interface components {
         NeedsAccountOut: {
             /** Currency */
             currency: string;
+        };
+        /** NetWorthOut */
+        NetWorthOut: {
+            since: components["schemas"]["NetWorthSinceOut"] | null;
+            total: components["schemas"]["Money"] | null;
+            unpaired_transfers: components["schemas"]["LineOut"];
+            /** Unvalued */
+            unvalued: components["schemas"]["NetWorthUnvaluedOut"][];
+        };
+        /** NetWorthSinceOut */
+        NetWorthSinceOut: {
+            change: components["schemas"]["Money"];
+            /**
+             * On
+             * Format: date
+             */
+            on: string;
+        };
+        /** NetWorthUnvaluedOut */
+        NetWorthUnvaluedOut: {
+            /** Accounts */
+            accounts: number;
+            amount: components["schemas"]["Money"];
+        };
+        /**
+         * OverTimeOut
+         * @description Only the fields of the chosen mode are present.
+         */
+        OverTimeOut: {
+            /** Base Currency */
+            base_currency: string;
+            /** Categories */
+            categories?: components["schemas"]["CategorySeriesOut"][] | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "expense" | "income";
+            /** Other */
+            other?: components["schemas"]["LineOut"][] | null;
+            /** Periods */
+            periods: components["schemas"]["PeriodOut"][];
+            /** Savings */
+            savings?: components["schemas"]["SavingsOut"][] | null;
+            /** Slices */
+            slices?: components["schemas"]["SliceIdOut"][] | null;
+            /**
+             * Step
+             * @enum {string}
+             */
+            step: "month" | "quarter" | "year";
+            sum?: components["schemas"]["LineOut"] | null;
+            total?: components["schemas"]["SavingsOut"] | null;
+            /** Totals */
+            totals?: components["schemas"]["LineOut"][] | null;
+        };
+        /** OverviewAccountOut */
+        OverviewAccountOut: {
+            /** Anchored */
+            anchored: boolean;
+            balance: components["schemas"]["Money"];
+            /** Closed On */
+            closed_on: string | null;
+            /** Color */
+            color: string | null;
+            /** Currency */
+            currency: string;
+            /** Data Age Days */
+            data_age_days: number | null;
+            /** External Ref */
+            external_ref: string | null;
+            /** Icon */
+            icon: string | null;
+            /** Id */
+            id: number;
+            /** Kind */
+            kind: string;
+            /** Last Data On */
+            last_data_on: string | null;
+            /** Name */
+            name: string;
+            /** Note */
+            note: string | null;
+            /** Records Since Zero */
+            records_since_zero: number[] | null;
+            /** Sort Order */
+            sort_order: number;
+            /** Synced */
+            synced: boolean;
+            /** Synced Through */
+            synced_through: string | null;
+            unexplained_difference: components["schemas"]["Money"] | null;
+        };
+        /** OverviewOut */
+        OverviewOut: {
+            /** Accounts */
+            accounts: components["schemas"]["OverviewAccountOut"][];
+            /**
+             * As Of
+             * Format: date
+             */
+            as_of: string;
+            /** Base Currency */
+            base_currency: string;
+            net_worth: components["schemas"]["NetWorthOut"];
+            savings: components["schemas"]["OverviewSavingsOut"];
+            spend: components["schemas"]["OverviewSpendOut"];
+        };
+        /** OverviewSavingsOut */
+        OverviewSavingsOut: {
+            last_12: components["schemas"]["SavingsSpanOut"];
+            last_month: components["schemas"]["SavingsSpanOut"];
+            this_month: components["schemas"]["SavingsSpanOut"];
+        };
+        /** OverviewSpendOut */
+        OverviewSpendOut: {
+            last_month: components["schemas"]["MonthSpendOut"];
+            last_month_to_date: components["schemas"]["MonthSpendOut"];
+            this_month: components["schemas"]["ThisMonthSpendOut"];
         };
         /**
          * PartnerOut
@@ -2041,6 +2341,22 @@ export interface components {
             /** Payees */
             payees: components["schemas"]["PayeeOut"][];
         };
+        /**
+         * PeriodOut
+         * @description A calendar month, quarter or year, clipped to the range.
+         */
+        PeriodOut: {
+            /**
+             * From
+             * Format: date
+             */
+            from: string;
+            /**
+             * To
+             * Format: date
+             */
+            to: string;
+        };
         /** PlanAccountOut */
         PlanAccountOut: {
             /** Account Id */
@@ -2074,6 +2390,12 @@ export interface components {
             instance_id: number;
             /** Label */
             label: string;
+        };
+        /** PointNetWorthOut */
+        PointNetWorthOut: {
+            total: components["schemas"]["Money"] | null;
+            /** Unvalued */
+            unvalued: components["schemas"]["NetWorthUnvaluedOut"][];
         };
         /** PreviewListOut */
         PreviewListOut: {
@@ -2190,6 +2512,10 @@ export interface components {
         QueueCountOut: {
             /** Count */
             count: number;
+            /** Needs Account */
+            needs_account: number;
+            /** Pending Review */
+            pending_review: number;
         };
         /** QueueSectionOut */
         QueueSectionOut: {
@@ -2450,6 +2776,40 @@ export interface components {
              */
             since: string;
         };
+        /** SavingsOut */
+        SavingsOut: {
+            expense: components["schemas"]["LineOut"];
+            income: components["schemas"]["LineOut"];
+            /** Incomplete */
+            incomplete: boolean;
+            /** Rate Bp */
+            rate_bp: number | null;
+            reconciliations: components["schemas"]["LineOut"];
+            savings: components["schemas"]["LineOut"];
+            unclassified: components["schemas"]["LineOut"];
+        };
+        /** SavingsSpanOut */
+        SavingsSpanOut: {
+            expense: components["schemas"]["LineOut"];
+            /**
+             * From
+             * Format: date
+             */
+            from: string;
+            income: components["schemas"]["LineOut"];
+            /** Incomplete */
+            incomplete: boolean;
+            /** Rate Bp */
+            rate_bp: number | null;
+            reconciliations: components["schemas"]["LineOut"];
+            savings: components["schemas"]["LineOut"];
+            /**
+             * To
+             * Format: date
+             */
+            to: string;
+            unclassified: components["schemas"]["LineOut"];
+        };
         /** SecretPromptBody */
         SecretPromptBody: {
             /**
@@ -2491,6 +2851,17 @@ export interface components {
             error: string | null;
             /** Touched Entry Ids */
             touched_entry_ids: number[];
+        };
+        /** SliceIdOut */
+        SliceIdOut: {
+            /** Category Id */
+            category_id: number;
+        };
+        /** SliceOut */
+        SliceOut: {
+            /** Category Id */
+            category_id: number;
+            total: components["schemas"]["LineOut"];
         };
         /** SourceCreateBody */
         SourceCreateBody: {
@@ -2983,6 +3354,22 @@ export interface components {
             kind: "text";
             /** Subject */
             subject: string;
+        };
+        /** ThisMonthSpendOut */
+        ThisMonthSpendOut: {
+            /**
+             * From
+             * Format: date
+             */
+            from: string;
+            reconciliations: components["schemas"]["LineOut"];
+            spend: components["schemas"]["LineOut"];
+            /**
+             * To
+             * Format: date
+             */
+            to: string;
+            unclassified_out: components["schemas"]["LineOut"];
         };
         /** UnitCommitConsequenceOut */
         UnitCommitConsequenceOut: {
@@ -3619,6 +4006,12 @@ export interface components {
             account_id: number;
             /** Synced Through */
             synced_through: string | null;
+        };
+        /** UnvaluedOut */
+        UnvaluedOut: {
+            amount: components["schemas"]["Money"];
+            /** Count */
+            count: number;
         };
         /**
          * UpdateBody
@@ -6917,6 +7310,176 @@ export interface operations {
             };
             /** @description Conflicts with the current state. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_balances: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BalancesOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_by_category: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+                kind?: "expense" | "income";
+                account_id?: number[] | null;
+                tag_id?: number[] | null;
+                top?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ByCategoryOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_over_time: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+                step?: "month" | "quarter" | "year";
+                mode?: "savings" | "category";
+                kind?: "expense" | "income";
+                account_id?: number[] | null;
+                tag_id?: number[] | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OverTimeOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_overview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OverviewOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
