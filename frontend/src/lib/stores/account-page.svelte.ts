@@ -54,6 +54,8 @@ export class AccountPageStore {
 		this.status = 'loading';
 		this.error = null;
 		this.notice = null;
+		await this.news.prepare();
+		if (generation !== this.#generation) return;
 		void this.statement.load(accountId);
 		try {
 			const found = await this.#fetchAccount(accountId);
@@ -91,7 +93,8 @@ export class AccountPageStore {
 		const id = this.accountId;
 		if (id === null) return;
 		const generation = this.#generation;
-		this.news.take();
+		await this.news.prepare();
+		if (generation !== this.#generation) return;
 		const [account] = await Promise.allSettled([
 			this.#fetchAccount(id),
 			this.statement.refetch(),

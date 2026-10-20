@@ -9,6 +9,7 @@ import { DocumentDetailStore, DocumentsStore } from './documents.svelte.js';
 vi.mock('#lib/api/index.js', async (importOriginal) => ({
 	...(await importOriginal<typeof import('#lib/api/index.js')>()),
 	listDocuments: vi.fn(),
+	readChanges: vi.fn(),
 	getDocument: vi.fn(),
 	listDocumentProviders: vi.fn(),
 	listAccounts: vi.fn(async () => []),
@@ -96,6 +97,7 @@ describe('DocumentsStore', () => {
 		vi.mocked(listDocuments).mockResolvedValueOnce(page([9], 1));
 		const store = new DocumentsStore(new LookupsStore());
 		store.applyFilter(emptyDocumentFilter());
+		await flush(); // the first request is out
 		store.applyFilter({ ...emptyDocumentFilter(), q: 'x' });
 		await flush();
 		resolveFirst(page([1], 1));

@@ -31,6 +31,16 @@ export class NewDataWatch {
 		this.#seen = this.#now();
 	}
 
+	/**
+	 * The view is about to fetch: read the values from the server first, so that what a background
+	 * write changed since the last poll (a sync) is in the view, not news to it. Await it before the
+	 * request goes out. A read that fails falls back to the value the watcher holds; it never blocks.
+	 */
+	async prepare(): Promise<void> {
+		await this.#watcher.read();
+		this.take();
+	}
+
 	/** The view shows something else (another account): watch its key, fetched now. */
 	rekey(key: ChangeKey): void {
 		this.#key = key;

@@ -158,7 +158,6 @@ export class LedgerStore {
 		const controller = new AbortController();
 		this.#controller = controller;
 		const generation = ++this.#generation;
-		this.news.take();
 		this.status = 'loading';
 		this.error = null;
 		this.moreError = null;
@@ -169,6 +168,8 @@ export class LedgerStore {
 		this.movedIds = NO_IDS;
 		this.marks = noMarks();
 		this.notice = null;
+		await this.news.prepare();
+		if (generation !== this.#generation) return;
 		try {
 			const page = await listEntries(this.filter, {
 				limit: DEFAULT_PAGE_SIZE,

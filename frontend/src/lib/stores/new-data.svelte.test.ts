@@ -220,10 +220,62 @@ describe('the views that hold a snapshot', () => {
 		);
 		const store = new LedgerStore();
 		const loading = store.reload();
+		await flush(); // the change read is done and the request is out
 		await poll({ ledger: 'b:2' });
 		release();
 		await loading;
 
 		expect(store.news.stale).toBe(true);
+	});
+});
+
+describe('a background write the watcher has not polled yet', () => {
+	// the watcher holds V1; the server has V2 (a sync wrote, no header reached this tab)
+	const background = (over: Partial<ChangeRead>) =>
+		vi.mocked(readChanges).mockResolvedValue(values(over));
+
+	it('the account page reads the values before it fetches: the next poll is no news', async () => {
+		vi.mocked(listAccounts).mockResolvedValue([account({ id: 7 })]);
+		vi.mocked(getStatement).mockResolvedValue({ items: [], total: 0, limit: 100, offset: 0 });
+		vi.mocked(listRuns).mockResolvedValue([]);
+		await poll({ accounts: { '7': 'b:1' } });
+		background({ accounts: { '7': 'b:2' } });
+
+		const store = new AccountPageStore();
+		await store.open(7);
+		await flush();
+		await poll({ accounts: { '7': 'b:2' } });
+		expect(store.news.stale).toBe(false);
+	});
+
+	it('the ledger list and the review queue read the values before they fetch', async () => {
+		vi.mocked(listEntries).mockResolvedValue({ entries: [], total: 0, limit: 100, offset: 0 });
+		vi.mocked(getQueue).mockResolvedValue(queueFixture());
+		const list = new LedgerStore();
+		const queue = new ReviewQueueStore();
+		background({ ledger: 'b:2' });
+		await list.reload();
+		await queue.load();
+		await poll({ ledger: 'b:2' });
+		expect(list.news.stale).toBe(false);
+		expect(queue.news.stale).toBe(false);
+	});
+
+	it('the documents list reads the values before it fetches', async () => {
+		vi.mocked(listDocuments).mockResolvedValue({ documents: [], total: 0, limit: 50, offset: 0 });
+		const store = new DocumentsStore();
+		background({ documents: 'b:2' });
+		await store.reload();
+		await poll({ documents: 'b:2' });
+		expect(store.news.stale).toBe(false);
+	});
+
+	it('a failing change read falls back to the held value and does not block the fetch', async () => {
+		vi.mocked(listDocuments).mockResolvedValue({ documents: [], total: 0, limit: 50, offset: 0 });
+		const store = new DocumentsStore();
+		vi.mocked(readChanges).mockRejectedValue(new Error('offline'));
+		await store.reload();
+		expect(store.status).toBe('ready');
+		expect(store.news.stale).toBe(false);
 	});
 });

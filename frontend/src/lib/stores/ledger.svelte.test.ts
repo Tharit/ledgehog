@@ -20,6 +20,7 @@ import { session } from './session.svelte.js';
 vi.mock('#lib/api/index.js', async (importOriginal) => ({
 	...(await importOriginal<typeof import('#lib/api/index.js')>()),
 	listEntries: vi.fn(),
+	readChanges: vi.fn(),
 	listAccounts: vi.fn(),
 	listCategories: vi.fn(),
 	listPayees: vi.fn(),
@@ -72,8 +73,10 @@ describe('LedgerStore: entries', () => {
 		const store = new LedgerStore();
 
 		store.applyFilter(emptyFilter());
+		await flush();
 		store.applyFilter({ ...emptyFilter(), account_id: [] });
 		store.applyFilter({ ...emptyFilter(), account_id: [2, 1] });
+		await flush();
 		store.applyFilter({ ...emptyFilter(), account_id: [1, 2] });
 		await flush();
 
@@ -87,7 +90,9 @@ describe('LedgerStore: entries', () => {
 		const store = new LedgerStore();
 
 		store.applyFilter({ ...emptyFilter(), q: 'a' });
+		await flush(); // the first request is out
 		store.applyFilter({ ...emptyFilter(), q: 'b' });
+		await flush();
 		second.resolve(page([2], 1));
 		await flush();
 		first.resolve(page([1], 1));
@@ -107,7 +112,9 @@ describe('LedgerStore: entries', () => {
 		const store = new LedgerStore();
 
 		store.applyFilter({ ...emptyFilter(), q: 'a' });
+		await flush(); // the first request is out
 		store.applyFilter({ ...emptyFilter(), q: 'b' });
+		await flush();
 		first.reject(new DOMException('aborted', 'AbortError'));
 		await flush();
 

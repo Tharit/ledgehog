@@ -133,9 +133,10 @@ export class ReviewQueueStore {
 		const controller = new AbortController();
 		this.#controller = controller;
 		const generation = ++this.#generation;
-		this.news.take();
 		this.status = 'loading';
 		this.error = null;
+		await this.news.prepare();
+		if (generation !== this.#generation) return;
 		try {
 			const queue = await getQueue({ signal: controller.signal });
 			if (generation !== this.#generation) return;

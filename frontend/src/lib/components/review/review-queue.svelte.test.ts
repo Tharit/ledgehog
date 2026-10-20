@@ -446,7 +446,7 @@ describe('ReviewQueue: needs an account and waiting', () => {
 
 		getQueue.mockClear();
 		await fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
-		expect(getQueue).toHaveBeenCalledTimes(1);
+		await waitFor(() => expect(getQueue).toHaveBeenCalledTimes(1));
 		await waitFor(() => expect(screen.queryByText(/can now be completed/)).toBeNull());
 		open.mockRestore();
 	});

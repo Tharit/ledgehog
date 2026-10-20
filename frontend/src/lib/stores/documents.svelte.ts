@@ -98,13 +98,14 @@ export class DocumentsStore {
 		const controller = new AbortController();
 		this.#controller = controller;
 		const generation = ++this.#generation;
-		this.news.take();
 		this.status = 'loading';
 		this.error = null;
 		this.moreError = null;
 		this.loadingMore = false;
 		this.documents = [];
 		this.total = 0;
+		await this.news.prepare();
+		if (generation !== this.#generation) return;
 		try {
 			const page = await listDocuments(this.filter, {
 				limit: DOCUMENT_PAGE_SIZE,
