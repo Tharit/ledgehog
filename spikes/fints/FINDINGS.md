@@ -1,9 +1,20 @@
 # FinTS spike: findings
 
-Library: `python-fints` 5.0.1 (+ `mt-940` 5.1.1). Bank tested: Consorsbank (BLZ 76030080, `brokerage-hbci.consorsbank.de/hbci`).
-Probe: `probe.py`. Debug log `out/fints.log` is the ground truth (contains account data, PIN masked).
+Library: `python-fints` 5.0.1 (+ `mt-940` 5.1.1). Banks tested: Consorsbank (a normal account, MT940) and the
+Deutsche Bank Miles & More credit card (`HKKKU`, G112). Probe: `probe.py`. Debug log `out/fints.log` is the
+ground truth (contains account data, PIN masked). Sections: Consorsbank (items 1-15), Deutsche Bank card
+(items 16-21), cross-bank lessons, how to run, open questions.
 
 ## Status
+
+| Step | Deutsche Bank card | Consorsbank |
+|---|---|---|
+| Login, TAN device | works after DB-side activation (17, 18) | works (1, 2) |
+| Account discovery | works from UPD, `HKSPA` has nothing for a card (19) | works |
+| Transactions | `HKKKU`/G112, own implementation (20, 21): 36 bookings / 30 days | MT940 via `HKKAZ` (4): 17 tx / 30 days |
+| Balance | not implemented (`HKKKS`) | `HKSAL`, same flow as `HKKAZ` |
+
+Consorsbank details (BLZ 76030080, `brokerage-hbci.consorsbank.de/hbci`):
 
 | Step | Result |
 |---|---|
@@ -15,7 +26,7 @@ Probe: `probe.py`. Debug log `out/fints.log` is the ground truth (contains accou
 | Balance (`HKSAL`) | same flow as HKKAZ |
 | camt (`HKCAZ`) | not offered by this bank; known up front from UPD `supported_operations` (see 13) |
 
-## Things the importer must know
+## Things the importer must know (Consorsbank, MT940)
 
 1. **Signature profile.** The library writes `HNSHK` with PIN profile v1 even for two-step; the bank wants v2
    (matching `HNVSK`). Otherwise `9010 Ungültiger Signaturaufbau`. Needs a patch/subclass of
@@ -91,125 +102,91 @@ Probe: `probe.py`. Debug log `out/fints.log` is the ground truth (contains accou
 
 ## Second bank: Deutsche Bank / Miles & More credit card (card-only customer)
 
-Per Deutsche Bank and Outbank docs: FinTS URL `https://fints.deutsche-bank.de/`; card-only customers use BLZ
-50070439 (BLZ 50070010 for customers with other DB products); login = Deutsche Bank ID + its password (not the
-phone PIN, not the BestSign password); 2FA via (Miles & More) BestSign; FinTS for the card exists since
-~2026-04-22. Credit cards have no IBAN: select accounts from UPD, not from HKSPA (probe does).
+**Result: works end to end** (login, BestSign device selection, card discovery, `HKKKU` transactions: 36 bookings
+in 30 days), after a multi-day bank-side activation and a custom `HKKKU` implementation. What it took:
 
-16. **PIN accepted but no TAN procedure** (so far, not resolved): the bank's BPD lists photoTAN 902, BestSign 920,
-    photoTAN-Push 903, BestSign-Push 921, but for this user it never sends the allowed-procedures answer
-    (`3920`), and the next dialog is rejected with `9960 Kein aktives TAN Verfahren ermittelt. Bitte
-    Kundenservice kontaktieren.` `0940` says last login 1901 (never logged in via an online channel). Likely
-    cause: BestSign is registered for the Miles & More app/portal but not as a TAN procedure for FinTS under
-    this ID. The BPD's mechanism list is global, not per user: only the 3920 list says what a user may use.
-    Importer: treat "no allowed TAN method" as its own, user-facing state (needs bank-side activation), not a
-    generic failure.
+16. **Connection data.** URL `https://fints.deutsche-bank.de/`, BLZ `50070439` (the card-only code; the regular
+    Deutsche Bank code `50070010` was not tried). Login name = Deutsche Bank ID, PIN = the Deutsche Bank ID
+    *password*. Not the BestSign password (rejected at login with `9040 Anmeldung fehlgeschlagen`), not the phone PIN.
+17. **A TAN device must be activated on the bank's side; the Miles & More app's BestSign alone was not enough for
+    this ID.** The ID was card-only with BestSign inside the M&M app. Symptoms until fixed: login OK (SCA-exempt,
+    `3076`), the bank never sent the allowed-procedures list (`3920`) and answered every request with `9960 Kein
+    aktives TAN Verfahren ermittelt`, even with the method forced and the TAN device name sent. What fixed it: the
+    Deutsche Bank website/app enrollment (own BestSign), then activation (SMS, or a letter by post, 2-3 working
+    days). After enrolling but before activation the bank lists 920/921 (`3920`) but answers TAN-needing requests
+    with `9075` + `9940 Kein aktives TAN-Geraet verfuegbar` and returns an empty `HITAB` (python-fints' parser
+    warns `HITAB4.tan_usage_option was not present`). Public sources disagree about card-only access (StarMoney:
+    'in progress'; support: 'not yet possible'; Outbank/one forum user: works), so expect this to vary per
+    customer. The importer needs distinct user-facing states: wrong password (`9040`), no TAN procedure (`9960`),
+    enrolled but not activated (`9940`).
+18. **TAN medium (device) name is required at login (`9210`).** It is the device name shown in the bank app (the
+    'Seal One-ID' is not needed). The bank cannot deliver the device list in an init that carries an `HKTAN`
+    (`9210` + empty `HITAB`), and the library's own HKTAB dialog fails the same way (it only works around it for
+    Postbank). Working approach: ask for HKTAB in an init *without* HKTAN (`get_tan_media_via_init`), then send
+    the chosen name in every `HKTAN`. A method not listed by the bank can still be forced (`--mechanism 921`
+    with `allowed_security_functions`), the bank's list is not authoritative.
+19. **Credit cards are a different product on the wire.** UPD account type 50 (`Lufthansa Senator Credit Card`), no
+    IBAN, account number = card number (sensitive), sub-account set. Allowed operations: `HKKKU` (transactions),
+    `HKKKS` (balance), `HKSPA`, `HKTAB`, ... but **not `HKKAZ`/`HKSAL`**; so `supported_operations` in
+    python-fints shows nothing useful for it (read the raw UPD, `raw_allowed()`). The UPD also contains placeholder
+    rows without an account (ignore). `HKSPA` answers `3010 Es liegen keine Eintraege vor` (no IBAN, no SEPA
+    accounts): normal, but python-fints raises `FinTSNoResponseError`. A library helper (`KTV4.from_sepa_account`)
+    crashes without a BIC. python-fints has no credit-card support at all.
+20. **`HKKKU` v1 (credit-card transactions), implemented in the probe** (`HKKKU1`, `fetch_credit_card_transactions`,
+    `show_credit_card_pages`; offline test `test_hkku.py`). The layout comes from the open-source Rust crate
+    `floatingpixels/fints` and worked here on the second try.
+    - Request: `HKKKU:n:1 + <account group> + <card number> + <sub-account> + <from YYYYMMDD> + <to> [+ <max
+      entries, empty> + <touchdown point>]`. The account group (`IBAN:BIC:account:sub-account:country:bank code`,
+      for a card `::<card>:<sub>:280:<BLZ>`) **is required** (`9210 Angabe der Kontoverbindung erforderlich`
+      without it) although the BPD `HIKKUS` parameters read like 'not required'. `HIPINS` marks `HKKKU` as
+      TAN-requiring (`J`), so the library attaches `HKTAN`; inside the SCA window the bank answers `3076` and
+      delivers the data with no push. NeedTANResponse resumes through a *named client method*, so the resume hook
+      must be a method on the client class (`_return_response`).
+    - Response `HIKKU:n:1` (parsed from python-fints' generic segment, `_additional_data`): element 1 card number,
+      2 account id, 3 current balance (`D/C:amount:currency:date[:time]`), 4 last statement date, 5 next statement
+      date, 6+ one group per booking, last group empty. Booking group (29 components): 0 card, 1 receipt date,
+      2 booking date, 3 statement date, 4 value date, 5-7 original amount/currency/direction, 8 exchange rate,
+      9-11 booked amount/currency/direction (`C`/`D`), 12-19 description lines, 20 country, 21 merchant name,
+      22 terminal, 23 billed flag (`J`/`N`), 24 booking reference, 25 fee code, 26 statement marker, 27 cash fee,
+      28 foreign-use fee. Decimal comma, dates `YYYYMMDD`. 'G112' is not MT940.
+21. **What this bank actually delivered for 36 bookings:** always present: card number (full, on every row: treat
+    as sensitive and never log it), receipt date (equal to the booking date on all rows), booking date, booked
+    amount + currency + `C`/`D` (35 debits, 1 credit), original amount + currency + direction (also when it
+    equals the booked one; 2 rows in CZK/USD), merchant name, 1-2 description lines. Present on billed items only
+    (34 of 36): statement date, value date, booking reference. `billed = N` marks items not yet billed (2 rows, no
+    statement date/value date/reference): the card equivalent of pending, and they can change or disappear.
+    Never sent: exchange rate, country, terminal, fee fields (even for the foreign-currency rows). Whole 30-day
+    window in one response, no touchdown point needed. No stable booking id for the unbilled ones.
 
-17. **The 9960 was caused by the empty method choice, not by a missing activation.** The bank never sends the
-    allowed-procedures list (3920) for this user, so the library lists no methods and, with an empty choice, falls
-    back to one-step (999) -> `9960`. Naming the method explicitly (`--mechanism 921`, BestSign-Push, forced past
-    the library's filter) works. The bank's own TAN-method list can't be trusted to be present; importer needs a
-    configured/remembered method per bank connection. Login credential here: the Deutsche Bank ID password (the
-    BestSign password is rejected with `9040 Anmeldung fehlgeschlagen`).
-18. **TAN medium name required at login (`9210`).** The init with HKTAN is rejected until the device name is
-    given, and the library's separate HKTAB dialog can't open for the same reason (it only works around this
-    for Postbank): ask for HKTAB inside the init message (`get_tan_media_via_init`).
-19. **Credit cards are a different product on the wire.** UPD account type 50 (`Lufthansa Senator Credit Card`),
-    no IBAN, account number = masked card number, allowed ops: HKKKU (transactions), HKKKS (balance), HKSPA,
-    HKTAB, HKPRO ... but **not HKKAZ/HKSAL**. BPD advertises HIKKUS/HIKKSS. Transactions come as G112 segment
-    data (not MT940); python-fints has no HKKKU/HKKKS support (a Rust crate `floatingpixels/fints` claims
-    it, verified live). So for cards the importer needs its own segment definitions + G112 parser, or another
-    library. Also: the UPD contains placeholder rows without account (ignore), and a library helper
-    (`KTV4.from_sepa_account`) crashes without a BIC.
-    The debug log and `information.txt` contain the full card number: keep `out/` private.
+## Cross-bank lessons for the importer
 
-20. **Deutsche Bank card: final state of this spike = blocked bank-side.** With method 921 forced and the TAN
-    medium name in HKTAN the *login* is accepted (0020, 3076 'no SCA needed', last-login timestamp updates),
-    but every following request in the dialog (HKSPA, also with HKTAN(4)+medium name) gets `9960 Kein aktives
-    TAN Verfahren ermittelt`, and the bank never sends the allowed-procedures list (3920) for this ID. Other
-    card-only users get 921 in that list. Reading: the ID has no TAN procedure that the FinTS channel treats as
-    active (BestSign registered in the Miles & More app only); login is merely SCA-exempt. Next steps are
-    outside the code: check the card portal login, complete the Deutsche Bank website enrollment, or ask
-    support (cite: login OK with 921 + device name, 3076, then 9960 on any request, no 3920).
-    TAN medium name entered = the device name shown in the app (the 'Seal One-ID' was not needed).
-    Even then: transactions need HKKKU/G112, unsupported by python-fints.
+- Bank parameters (`HIPINS`, `HITANS`, `HIKKUS`, TAN-method lists) do not reliably predict behavior on either
+  bank. React to the answer: `9075` means 'wrap in HKTAN', `3076` means 'exempt, data follows', `9210` means a
+  required field (account group, device name) is missing; keep a per-bank learned profile as a first guess.
+- Per-connection settings to store: BLZ, URL, login name, TAN method code, TAN device name, learned
+  'needs HKTAN' set, account list with raw UPD operations, and which statement operation applies per account
+  type (`HKKAZ` for accounts, `HKKKU` for cards).
+- python-fints needs several patches for these two banks (signature profile v2, login-TAN detection, bootstrap
+  mode, full account group, card operations) or the importer should own its FinTS layer; the Rust crate above
+  supports cards and was the best reference found.
+- Never print or log full card or account numbers, and keep raw dialog logs private: the debug log contains
+  them (PINs are masked by the library).
 
-21. **Resolution of 9960: the TAN procedure must be activated on the bank's side, via the Deutsche Bank website/app
-    enrollment.** After starting it, the bank immediately lists 920 BestSign and 921 BestSign-Push for the ID
-    (the allowed-procedures list now exists), but full activation needs a **physical activation letter** by
-    post. So for a card-only Miles & More customer the FinTS setup has a multi-day offline step, and until it is
-    done the symptoms are: login OK (SCA-exempt), no 3920 list, `9960` on every request. The importer's
-    onboarding for this bank needs a clear "not activated yet" state and instructions, not a generic error.
-    The M&M-app BestSign alone does NOT make FinTS usable.
+## Running the probe
 
-22. **What "enrolled but not yet activated" looks like on the wire** (after starting the DB website enrollment):
-    - the login works (0020, 3076) and now returns the allowed-procedures list `3920` = 920, 921;
-    - a request that needs a TAN device is answered `9075 Dialog abgebrochen - starke Authentifizierung
-      erforderlich` plus `9940 Kein aktives TAN-Geraet verfuegbar. Die Freigabe von Auftraegen ist nicht moeglich`
-      / `9940 Melden Sie sich im Online-Banking an oder kontaktieren den Support`;
-    - the TAN-media request (HKTAB) then returns an empty HITAB without `tan_usage_option`, which python-fints'
-      parser rejects (`FinTSParserWarning ... HITAB4.tan_usage_option was not present`, generic object);
-    - HKSPA for a card is answered normally with `3010 Es liegen keine Eintraege vor` (no IBAN, no SEPA
-      accounts) and the library raises FinTSNoResponseError: that is not an auth failure.
-    So the distinguishing signal for "not activated" is `9940`, not `9960`. The importer should map 9940 to a
-    clear user-facing state, and treat a data-less 3010 as "empty", not as failure.
-
-23. **Two parallel setups seem to exist for the M&M card (from public sources; the StarMoney note was only
-    readable via search summaries, its page returned 404):**
-    - (B) Full Deutsche Bank online-banking customer with a *Deutsche Bank* BestSign (DB app, activated by SMS or
-      activation letter, 2-3 working days by post): the card is then queried 'über den Onlinebanking-Zugang der
-      Deutschen Bank' (StarMoney, since 2026-04-22). `9940 Kein aktives TAN-Geraet verfuegbar` is the known
-      symptom while no DB TAN device is active (cf. a Banking4 forum thread: fixed once the DB app device was
-      active and the connection set up correctly).
-    - (A) Card-only customer with only the BestSign inside the *Miles & More app* (separate registration, per
-      the M&M FAQ): StarMoney says for card-only 'wird an einer Loesung gearbeitet', BLZ 50070439; support
-      told the user 'not possible yet'. One forum user reports it works (ALF-BanCo, June 2026), Outbank
-      documents it. Evidence for (A) is mixed; for this ID the M&M BestSign was never offered as a FinTS TAN method.
-    The enrollment done in this spike moved the ID from (A) to (B). Untested: which BLZ the card appears under
-    after activation (50070010 for the regular DB access vs 50070439), and whether the card then shows up.
-
-24. **After activating the Deutsche Bank BestSign (letter received):** the same ID (BLZ 50070439) now gets past the
-    media step: the TAN-media request is answered with `9075`/`9050` first, then the device list comes back
-    including the newly activated device; the card is listed in the UPD and can be selected. No TAN/push was
-    requested yet because no TAN-requiring operation had been sent (HKSPA/HKTAB do not need one).
-25. **HKKKU v1 (credit-card transactions) layout and response**, taken from the open-source Rust crate
-    `floatingpixels/fints` (`credit_card_transactions_request`, `response/credit_card.rs`), implemented in
-    `probe.py` (`HKKKU1`, `fetch_credit_card_transactions`, `show_credit_card_pages`; offline-tested with made-up
-    data in `test_hkku.py`; NOT yet verified against the bank):
-    - request: `HKKKU:n:1 + <account group or empty> + <card number> + <sub-account> + <from YYYYMMDD> +
-      <to> [+ <max entries, empty> + <touchdown point>]`. HIKKUS (BPD) says whether the account group and a date
-      range are allowed; HIPINS says HKKKU needs a TAN (`J`), so the library attaches HKTAN automatically.
-    - live result 1: with an empty account group the bank answers `9210 Angabe der Kontoverbindung erforderlich`
-      (+ follow-ons `9210 ... Keine Daten zur uebermittelten Auftragsreferenz vorhanden` on the HKTAN). So the
-      group is required here even though the HIKKUS parameters (`990:0:0:745:N:J:J`) read like 'not required':
-      bank parameters mislead once more. Group for a card = `::<card number>:<sub-account>:280:<BLZ>`
-      (no IBAN/BIC).
-    - response `HIKKU:n:1`: element 1 card number, 2 account id, 3 current balance DEG (D/C : amount : currency :
-      date [: time]), 4 last statement date, 5 next statement date, 6+ one DEG per booking, last element an
-      empty DEG. A booking DEG has 29 components: 0 card, 1 receipt date, 2 booking date, 3 statement date,
-      4 value date, 5-7 original amount/currency/direction, 8 exchange rate, 9-11 booked amount/currency/direction
-      (C/D), 12-19 description lines, 20 country, 21 merchant name, 22 terminal, 23 billed flag, 24 booking
-      reference, 25 fee code, 26 statement marker, 27 cash fee, 28 foreign-use fee. Decimals use a comma, dates
-      `YYYYMMDD`. The format is called G112 (not MT940), richer than MT940 for cards: merchant, country, original
-      currency + exchange rate, fees, statement assignment.
-    - python-fints keeps unknown segments as generic objects (`_additional_data`: nested lists), so parsing needs
-      no library change; for requests, `NeedTANResponse` resumes through a *named client method*, so the resume
-      hook has to be a method on the client class.
-
-### Resuming the Deutsche Bank experiment (after the activation letter)
-
-1. Activate per the letter. Check the bank now lists 920/921 with the probe. Try BOTH `--blz 50070010` and
-   `--blz 50070439` (see 23) and compare which one lists the card.
-2. `uv run probe.py --blz 50070439 --url https://fints.deutsche-bank.de/ --user <Deutsche Bank ID> --product-id <ID> --hnshk-v2 --mechanism 921`
-   (PIN prompt = Deutsche Bank ID password, NOT the BestSign password; enter the device name when asked;
-   approve the BestSign push on the phone). Add `--tan-for HKSPA` if requests still get 9960.
-3. Expected next wall: the card's transactions are HKKKU (G112 data), which python-fints cannot do. Decide
-   then between a hand-built HKKKU segment + G112 parser, another library, or leaving cards out of FinTS.
+```
+uv sync
+uv run probe.py --blz <BLZ> --url <FINTS URL> --user <login name> --product-id <DK product id> --hnshk-v2 [--mechanism <code>]
+```
+Consorsbank: BLZ 76030080, `https://brokerage-hbci.consorsbank.de/hbci`, method 900/901.
+Deutsche Bank card: BLZ 50070439, `https://fints.deutsche-bank.de/`, `--mechanism 921`, enter the TAN device name.
+The PIN is prompted (the bank-account password), `--yes` skips the 'about to connect' confirmation.
 
 ## Open questions
 
-- Resolved: Consorsbank account-data access (full KTI1 + HKTAN on HKKAZ/HKSAL).
-- What does the challenge look like when the SCA window expires (0030 typed TAN with 900, 3955 app push with
-  901)? Not seen yet for account data; the login-time challenge handling is patched, the 901 push is untested.
-- Pagination/touchdown for long ranges, pending items, the 90-day SCA-free history limit.
-- Does a second bank behave differently (camt, IBAN fields, SCA rules)? Worth one more probe run.
+- What the challenge looks like once the SCA-exempt window ends: typed TAN (Consorsbank 900) or app push (901 on
+  Consorsbank, 921 on Deutsche Bank) for account data. Every call in this spike fell inside the exemption
+  (`3076`), so the push flow for operations was never exercised.
+- Deutsche Bank card balance (`HKKKS`) and the `HKKKU` touchdown/paging for long ranges (not needed for 36 rows).
+- Whether BLZ `50070010` (regular Deutsche Bank access) also lists the card.
+- Whether a card-only ID can ever work with only the Miles & More app's BestSign (it did not for this ID).
