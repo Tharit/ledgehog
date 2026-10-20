@@ -140,7 +140,7 @@ invariant leaves the table, and its number stays unused.
 | I35 | A transaction has at most one document, carried by one of its entries, and a document explains at most one transaction. | 5.8 |
 | I36 | A reported balance record is never dated after its run's coverage. | 5.1 |
 | I37 | Every write ends by settling, after which derived state reflects current data; a model answer arrives later as a write of its own. | 5 |
-| I38 | Whether an account is an investment account (depot, asset) is fixed at creation. | 3.3 |
+| I38 | An account's kind is fixed at creation; with it, whether the account is an investment account (depot, asset). | 3.3 |
 | I39 | Ingest is serialised per account, settling as a whole. | 5 |
 | I40 | User-authored source transactions — entered, or created as counter-legs — exist only on unsynced accounts; those made before an account became synced stay. | 3.3, 3.9, 5.7 |
 
@@ -210,7 +210,8 @@ alone. Balance records may be set on any account, and every one reconciles
 (§3.10).
 
 **Investment accounts.** Depots and other assets are *investment accounts*.
-Whether an account is one is fixed at creation (I38), because it decides how
+An account's kind, and with it whether it is an investment account, is fixed
+at creation (I38), because it decides how
 the entries derived from its balance records are reported (§3.10, §8);
 changing it would move history between report lines silently.
 

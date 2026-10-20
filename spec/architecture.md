@@ -369,9 +369,9 @@ POST   /api/ledger/accounts                    create an account; creates
                                                nothing else (spec §5.7)
 PUT    /api/ledger/accounts/{id}               name, sort order, note, icon,
                                                colour, external_ref (a write: pass 0
-                                               reads it, so it settles); the
-                                               kind only within its class
-                                               (spec I38), never the currency
+                                               reads it, so it settles); never
+                                               the kind or the currency
+                                               (spec I38)
 DELETE /api/ledger/accounts/{id}               only an account that holds
                                                nothing: no entries, source
                                                rows, runs, records or links;
