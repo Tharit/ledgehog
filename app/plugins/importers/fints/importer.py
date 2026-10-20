@@ -16,6 +16,7 @@ from urllib.parse import urlsplit
 
 from app.core.plugins.errors import (
     AccountUnsupported,
+    BankSetupRequired,
     ChallengeAbandoned,
     InvalidProfile,
     NotRegistered,
@@ -181,6 +182,12 @@ class _Session(FetchSessionBase):
     def set_up(self) -> None:
         procedures = self._call(self._bank.procedures)
         self._learn_system_id()
+        if not procedures:
+            # the bank's list is authoritative (§2): a procedure none of whose is listed is not forced
+            raise BankSetupRequired(
+                "the bank lists no TAN procedure for this login: activate one with the bank "
+                "(its own app or website), then run again"
+            )
         by_code = {p.code: p for p in procedures}
         remembered = self._state.get("tan_mechanism")
         if remembered is not None and str(remembered) not in by_code:
@@ -199,7 +206,7 @@ class _Session(FetchSessionBase):
         self._bank.finish_setup()
 
     def _choose_procedure(self, candidates: list[Any], by_code: Mapping[str, Any]) -> str:
-        if not candidates:  # one-step, or a bank that lists none: let the bank decide
+        if not candidates:  # only the one-step procedure is listed
             return ONE_STEP
         if len(candidates) == 1:
             code = str(candidates[0].code)

@@ -193,10 +193,22 @@ def test_a_bank_that_allows_only_the_one_step_procedure_is_not_asked_and_nothing
     assert asker.kinds() == ["pin"] and bank.used_procedure == "999" and "tan_mechanism" not in state
 
 
-def test_a_bank_that_lists_no_procedure_goes_on_one_step_and_lets_the_bank_say() -> None:
+def test_a_bank_that_lists_no_procedure_is_bank_setup_required_and_none_is_forced() -> None:
+    """Deutsche Bank sends no list until a TAN device is activated: forcing a procedure did not work."""
     bank = FakeBank(Dialog(), procedures=[])
-    _, _, state, _ = open_session(bank)
-    assert bank.used_procedure == "999" and state == {}
+    with pytest.raises(BankSetupRequired) as err:
+        open_session(bank)
+    assert "activate" in str(err.value)
+    assert bank.used_procedure is None and not bank.setup_finished and bank.closed
+    assert bank.opened == 0  # no dialog was opened on a guess
+
+
+def test_a_remembered_procedure_does_not_outlive_an_empty_list() -> None:
+    bank = FakeBank(Dialog(), procedures=[])
+    state = {"tan_mechanism": "900", "tan_medium": "iPad"}
+    with pytest.raises(BankSetupRequired):
+        open_session(bank, state=state)
+    assert bank.used_procedure is None
 
 
 def test_a_cancelled_or_invalid_procedure_choice_ends_the_open() -> None:
