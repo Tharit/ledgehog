@@ -64,13 +64,14 @@ export function addAndLinkOptions(
 	entry: DiscoveryEntry,
 	onadded: AddAccountOptions['onadded']
 ): AddAccountOptions {
-	const { name, kind_hint, currency, external_ref } = entry.account;
+	const { name, kind_hint, currency } = entry.account;
 	return {
 		name,
 		// no (known) hint: a bank account found by discovery is not money held by hand
 		kind: kindOfHint(kind_hint) ?? 'checking',
 		...(currency ? { currency, currencyHint: 'The currency the bank reports for it.' } : {}),
-		externalRef: external_ref,
+		// the form an account stores, so the field does not change when the account is opened later
+		externalRef: entry.account_ref,
 		verb: 'Add and link',
 		busyVerb: 'Adding…',
 		description: 'It is added to the ledger and linked to this login at once.',

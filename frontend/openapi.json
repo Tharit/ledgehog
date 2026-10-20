@@ -1201,6 +1201,10 @@
           "account": {
             "$ref": "#/components/schemas/DiscoveredAccountOut"
           },
+          "account_ref": {
+            "title": "Account Ref",
+            "type": "string"
+          },
           "linked_account_id": {
             "anyOf": [
               {
@@ -1226,7 +1230,8 @@
         "required": [
           "account",
           "linked_account_id",
-          "matches_account"
+          "matches_account",
+          "account_ref"
         ],
         "title": "DiscoveryEntryOut",
         "type": "object"

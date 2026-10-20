@@ -71,6 +71,7 @@ class DiscoveryEntryOut(BaseModel):
     account: DiscoveredAccountOut
     linked_account_id: int | None  # already linked to this instance under this reference
     matches_account: AccountMatchOut | None  # not linked, but an account holds this reference
+    account_ref: str  # the reference in the form an account stores it; the add dialog prefills it
 
 
 class DiscoveryResultOut(BaseModel):

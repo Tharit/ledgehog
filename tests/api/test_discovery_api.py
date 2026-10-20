@@ -48,6 +48,7 @@ def test_a_discovery_is_a_task_whose_result_is_the_matched_account_list(sync: Sy
     assert list(by_ref) == [a["ref"] for a in accounts]  # in the importer's order
     assert by_ref["LINKED"]["linked_account_id"] == linked and by_ref["LINKED"]["matches_account"] is None
     assert by_ref["KNOWN"]["linked_account_id"] is None
+    assert by_ref["KNOWN"]["account_ref"] == "known"  # the form an account stores
     assert by_ref["KNOWN"]["matches_account"] == {"id": known, "closed": False}
     assert by_ref["GONE"]["matches_account"] == {"id": gone, "closed": True}  # a closed account is reported
     assert by_ref["NEW"]["linked_account_id"] is None and by_ref["NEW"]["matches_account"] is None

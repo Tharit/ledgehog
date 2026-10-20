@@ -259,7 +259,7 @@ describe('the Refresh accounts page, ended', () => {
 		expect(within(dialog).getByLabelText('Name')).toHaveValue('Testbank Dollars');
 		expect(within(dialog).getByRole('button', { name: 'Kind' })).toHaveTextContent('Checking');
 		expect(within(dialog).getByLabelText('Currency')).toHaveValue('USD');
-		expect(within(dialog).getByLabelText('External reference')).toHaveValue('R5');
+		expect(within(dialog).getByLabelText('External reference')).toHaveValue('r5'); // as an account stores it, not the bank's raw 'R5'
 
 		syncApi.getTaskStatus.mockResolvedValue(
 			status(
@@ -276,13 +276,13 @@ describe('the Refresh accounts page, ended', () => {
 					name: 'Testbank Dollars',
 					kind: 'checking',
 					currency: 'USD',
-					external_ref: 'R5'
+					external_ref: 'r5'
 				})
 			)
 		);
 		await waitFor(() =>
 			expect(importersApi.linkAccount).toHaveBeenCalledWith(4, 21, { externalRef: 'R5' })
-		);
+		); // the link keeps the bank's raw reference
 		// the link was not previewed: a new account holds no rows to warn about
 		expect(importersApi.linkAccount).toHaveBeenCalledTimes(1);
 		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());

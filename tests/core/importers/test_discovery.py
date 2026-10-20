@@ -44,6 +44,13 @@ def test_an_account_with_the_same_external_reference_matches_under_the_canonical
     assert (entry.linked_account_id, entry.matches_account) == (None, AccountMatch(acct, False))
 
 
+def test_an_entry_carries_the_reference_as_an_account_stores_it(db: Db) -> None:
+    iid = make_instance(db, importer="bank")
+    [entry] = match(db, iid, found("1234000000005678/123456"))
+    assert entry.account_ref == "1234000000005678123456"
+    assert entry.account.external_ref == "1234000000005678/123456"  # the bank's own stays raw
+
+
 def test_a_match_to_a_closed_account_is_flagged_closed(db: Db) -> None:
     iid = make_instance(db, importer="bank")
     acct = create_account(db.engine, name="Old", kind="checking", currency="EUR", external_ref="OLD1")

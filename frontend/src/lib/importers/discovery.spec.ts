@@ -65,7 +65,7 @@ describe('the add dialog for a row not in the ledger', () => {
 			name: 'Testbank Giro',
 			kind: 'checking',
 			currency: 'EUR',
-			externalRef: 'TB-GIRO',
+			externalRef: 'tbgiro',
 			verb: 'Add and link',
 			onadded
 		});

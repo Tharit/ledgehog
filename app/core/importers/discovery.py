@@ -31,6 +31,7 @@ class DiscoveryEntry:
     account: DiscoveredAccount
     linked_account_id: int | None  # already linked to this instance under this reference
     matches_account: AccountMatch | None  # not linked, but an account holds this external reference
+    account_ref: str  # the reference as an account stores it (canonicalised): what "Add" prefills
 
 
 def match_discovered(
@@ -56,7 +57,8 @@ def match_discovered(
     out: list[DiscoveryEntry] = []
     for account in accounts:
         if (account_id := linked.get(account.external_ref)) is not None:
-            out.append(DiscoveryEntry(account, account_id, None))
+            out.append(DiscoveryEntry(account, account_id, None, canonical[account.external_ref]))
         else:
-            out.append(DiscoveryEntry(account, None, by_ref.get(canonical[account.external_ref])))
+            ref = canonical[account.external_ref]
+            out.append(DiscoveryEntry(account, None, by_ref.get(ref), ref))
     return out

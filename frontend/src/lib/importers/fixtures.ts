@@ -47,6 +47,7 @@ export function discoveryEntry(
 		capabilities?: ('transactions' | 'balance')[];
 		linked_account_id?: number | null;
 		matches_account?: { id: number; closed: boolean } | null;
+		account_ref?: string;
 	} = {}
 ): DiscoveryEntry {
 	return {
@@ -58,7 +59,9 @@ export function discoveryEntry(
 			capabilities: over.capabilities ?? ['transactions', 'balance']
 		},
 		linked_account_id: over.linked_account_id ?? null,
-		matches_account: over.matches_account ?? null
+		matches_account: over.matches_account ?? null,
+		account_ref:
+			over.account_ref ?? (over.external_ref ?? 'TB-GIRO').toLowerCase().replace(/[^a-z0-9]/g, '')
 	};
 }
 

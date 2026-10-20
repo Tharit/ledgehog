@@ -138,6 +138,7 @@ def status_out(engine: Engine, task: Task) -> TaskStatusOut:
                         capabilities=sorted(e.account.capabilities),  # type: ignore[arg-type]
                     ),
                     linked_account_id=e.linked_account_id,
+                    account_ref=e.account_ref,
                     matches_account=(
                         None
                         if e.matches_account is None

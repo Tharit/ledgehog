@@ -1513,6 +1513,8 @@ export interface components {
         /** DiscoveryEntryOut */
         DiscoveryEntryOut: {
             account: components["schemas"]["DiscoveredAccountOut"];
+            /** Account Ref */
+            account_ref: string;
             /** Linked Account Id */
             linked_account_id: number | null;
             matches_account: components["schemas"]["AccountMatchOut"] | null;
