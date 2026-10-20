@@ -189,9 +189,10 @@ rule, and none is required.
 **Closing balance.** Reported only from the statements, never from the bank's
 balance request: its figure is the balance now, which may include pending items,
 so the run would report none by the rule of `spec.md` §5.1, and the request costs
-one more dialog and TAN. The figure is the closing balance of the last *final*
-statement (`62F`, not `62M`) whose balance date is not after the day before
-`today`. Its date and the dating rule (earliest of the figure's date, the last
+one more dialog and TAN. The figure is the closing balance of the last *final* statement (`62F`, not
+`62M`) in the delivery, whatever its date: a statement that runs into `today`
+is rolled back by the dating rule below, which subtracts the bookings after the
+last closed day. Its date and the dating rule (earliest of the figure's date, the last
 closed day and the coverage; later forward-dated lines subtracted) are those of
 `spec.md` §5.1. **No final statement in the delivery means no balance**:
 a quiet account whose bank issues no statement for an empty range reconciles
