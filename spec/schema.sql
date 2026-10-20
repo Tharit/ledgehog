@@ -127,8 +127,9 @@ CREATE TABLE ledger_setting (
 -- read from (spec §3.11), and where rows may be made by hand: user-authored
 -- source transactions, counter-legs included, only on unsynced accounts
 -- (I40, trg_user_source_unsynced). Depots and assets are INVESTMENT accounts: their later balance
--- records derive valuations, any other account's reconciliations; whether an
--- account is one is fixed at creation (trigger 8.5, I38). Spec §3.3, §3.8, I5.
+-- records derive valuations, any other account's reconciliations; an
+-- account's kind, and with it whether the account is one, is fixed at
+-- creation (trigger 8.5, I38). Spec §3.3, §3.8, I5.
 CREATE TABLE account (
     id             bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     name           text NOT NULL,
@@ -1230,20 +1231,20 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER trg_category_acyclic BEFORE UPDATE OF parent_id ON category
     FOR EACH ROW EXECUTE FUNCTION assert_category_acyclic();
 
--- 8.5 whether an account is an investment account (depot, asset) is fixed at
--- creation: it decides whether later balance records derive valuations or
--- reconciliations (spec §3.3, I38).
-CREATE OR REPLACE FUNCTION assert_account_investment_fixed() RETURNS trigger AS $$
+-- 8.5 an account's kind is fixed at creation, and with it whether it is an
+-- investment account (depot, asset), which decides whether later balance
+-- records derive valuations or reconciliations (spec §3.3, I38).
+CREATE OR REPLACE FUNCTION assert_account_kind_fixed() RETURNS trigger AS $$
 BEGIN
-    IF (OLD.kind IN ('depot','asset')) IS DISTINCT FROM (NEW.kind IN ('depot','asset')) THEN
-        RAISE EXCEPTION 'account %: whether it is an investment account is fixed at creation', OLD.id;
+    IF NEW.kind IS DISTINCT FROM OLD.kind THEN
+        RAISE EXCEPTION 'account %: kind is fixed at creation', OLD.id;
     END IF;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trg_account_investment_fixed BEFORE UPDATE OF kind ON account
-    FOR EACH ROW EXECUTE FUNCTION assert_account_investment_fixed();
+CREATE TRIGGER trg_account_kind_fixed BEFORE UPDATE OF kind ON account
+    FOR EACH ROW EXECUTE FUNCTION assert_account_kind_fixed();
 
 -- 8.5b an account's currency is fixed, permanently, even while it holds
 -- nothing (spec §3.3, I5); the composite FKs alone would allow it on an

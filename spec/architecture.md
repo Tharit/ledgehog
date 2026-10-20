@@ -1269,7 +1269,7 @@ enforcement point:
 | I35 one document per transaction and per document | `ledger_entry.document_id`, with the partial unique indexes `ux_le_document` and `ux_le_document_per_transaction` |
 | I36 a reported record never dated after its run's coverage | `ingest`; integrity view `v_check_reported_after_coverage` |
 | I37 every write ends by settling | every write operation ends by calling `core/settle`; a model answer is a write of its own |
-| I38 investment accounts fixed at creation | trigger `trg_account_investment_fixed`; integrity view `v_check_derived_type` |
+| I38 investment accounts fixed at creation | trigger `trg_account_kind_fixed`; integrity view `v_check_derived_type` |
 | I39 ingest serialised per account, settling as a whole | the advisory locks of §5.2 |
 | I40 user-authored source transactions, counter-legs included, only on unsynced accounts | Postgres trigger `trg_user_source_unsynced`; `core/units` offers and creates counter-legs nowhere else; nothing automatic creates them |
 | pass ordering and field order | `core/resolution`, never a plugin |
