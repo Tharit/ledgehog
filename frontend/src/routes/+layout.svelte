@@ -4,6 +4,7 @@
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import FileTextIcon from '@lucide/svelte/icons/file-text';
+	import HouseIcon from '@lucide/svelte/icons/house';
 	import LandmarkIcon from '@lucide/svelte/icons/landmark';
 	import ListIcon from '@lucide/svelte/icons/list';
 	import ListChecksIcon from '@lucide/svelte/icons/list-checks';
@@ -40,6 +41,7 @@
 
 	// Only routes that exist (design §10).
 	const nav: NavItem[] = $derived([
+		{ href: '/', label: 'Overview', icon: HouseIcon },
 		{ href: '/ledger', label: 'Ledger', icon: ListIcon },
 		{ href: '/review', label: 'Review', icon: ListChecksIcon, count: reviewCount.count },
 		{ href: '/documents', label: 'Documents', icon: FileTextIcon },
@@ -104,7 +106,7 @@
 	// The auth gate: anonymous visitors go to /login, signed-in ones leave it.
 	$effect(() => {
 		if (session.status === 'anonymous' && !onLogin) void goto('/login');
-		if (session.status === 'authenticated' && onLogin) void goto('/ledger');
+		if (session.status === 'authenticated' && onLogin) void goto('/');
 	});
 </script>
 
