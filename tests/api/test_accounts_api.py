@@ -178,17 +178,11 @@ def test_update_changes_what_is_given_and_returns_the_account(anna: TestClient, 
     aid = seed_account(api_engine)
     r = anna.put(
         f"/api/ledger/accounts/{aid}",
-        json={"name": "Main", "sort_order": 9, "note": "x", "external_ref": "AB 12", "kind": "savings"},
+        json={"name": "Main", "sort_order": 9, "note": "x", "external_ref": "AB 12"},
     )
     assert r.status_code == 200
     acc = r.json()["account"]
-    assert (acc["name"], acc["sort_order"], acc["note"], acc["external_ref"], acc["kind"]) == (
-        "Main",
-        9,
-        "x",
-        "ab12",
-        "savings",
-    )
+    assert (acc["name"], acc["sort_order"], acc["note"], acc["external_ref"]) == ("Main", 9, "x", "ab12")
     assert r.json()["settle"]["error"] is None
 
 
@@ -207,17 +201,15 @@ def test_update_can_clear_the_external_ref_and_leaves_it_alone_when_absent(
 
 
 def test_update_refusals(anna: TestClient, api_engine: Engine) -> None:
-    a = seed_account(api_engine, external_ref="one")
+    seed_account(api_engine, external_ref="one")
     b = seed_account(api_engine, "B")
     e = assert_envelope(anna.put(f"/api/ledger/accounts/{b}", json={"external_ref": "ONE"}), 409, "conflict")
     assert e["details"]["reason"] == "duplicate_external_ref"
-    e = assert_envelope(anna.put(f"/api/ledger/accounts/{a}", json={"kind": "depot"}), 409, "conflict")
-    assert e["details"]["reason"] == "kind_class_change"
     assert_envelope(anna.put("/api/ledger/accounts/99999", json={"name": "x"}), 404, "not_found")
 
 
 @pytest.mark.parametrize(
-    "body", [{"currency": "USD"}, {"closed_on": "2026-01-01"}, {"sort_order": "x"}, {"kind": "nope"}]
+    "body", [{"currency": "USD"}, {"closed_on": "2026-01-01"}, {"sort_order": "x"}, {"kind": "depot"}]
 )
 def test_update_rejects_currency_and_unknown_fields_at_validation(
     anna: TestClient, api_engine: Engine, body: dict

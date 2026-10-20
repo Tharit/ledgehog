@@ -3622,7 +3622,7 @@ export interface components {
          * UpdateBody
          * @description Absent fields stay; `null` clears `external_ref`, `note`, `icon` and `color`.
          *
-         *     No currency: it never changes.
+         *     No currency, no kind: they never change.
          */
         UpdateBody: {
             /** Color */
@@ -3631,8 +3631,6 @@ export interface components {
             external_ref?: string | null;
             /** Icon */
             icon?: string | null;
-            /** Kind */
-            kind?: ("checking" | "savings" | "card" | "cash" | "paypal" | "depot" | "loan" | "asset") | null;
             /** Name */
             name?: string | null;
             /** Note */

@@ -7876,7 +7876,7 @@
       },
       "UpdateBody": {
         "additionalProperties": false,
-        "description": "Absent fields stay; `null` clears `external_ref`, `note`, `icon` and `color`.\n\nNo currency: it never changes.",
+        "description": "Absent fields stay; `null` clears `external_ref`, `note`, `icon` and `color`.\n\nNo currency, no kind: they never change.",
         "properties": {
           "color": {
             "anyOf": [
@@ -7910,27 +7910,6 @@
               }
             ],
             "title": "Icon"
-          },
-          "kind": {
-            "anyOf": [
-              {
-                "enum": [
-                  "checking",
-                  "savings",
-                  "card",
-                  "cash",
-                  "paypal",
-                  "depot",
-                  "loan",
-                  "asset"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Kind"
           },
           "name": {
             "anyOf": [

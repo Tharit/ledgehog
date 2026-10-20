@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from datetime import date
 from types import EllipsisType
 
-import psycopg.errors
 from sqlalchemy import Connection, Engine, text
 from sqlalchemy.exc import DBAPIError
 
@@ -42,16 +41,6 @@ class DuplicateExternalRef(AccountError):
 
     def __init__(self, external_ref: str) -> None:
         super().__init__(f"another account already has the external reference {external_ref!r}")
-
-
-class KindClassChange(AccountError):
-    """A depot or asset stays one, and any other kind never becomes one (I38)."""
-
-    def __init__(self, account_id: int, kind: str) -> None:
-        super().__init__(
-            f"account {account_id} cannot become {kind!r}: whether an account is an investment "
-            "account (depot, asset) is fixed at creation"
-        )
 
 
 class AccountNotEmpty(AccountError):
@@ -191,13 +180,12 @@ def update_account(
     sort_order: int | None = None,
     note: str | None | EllipsisType = ...,
     external_ref: str | None | EllipsisType = ...,
-    kind: str | None = None,
     icon: str | None | EllipsisType = ...,
     color: str | None | EllipsisType = ...,
 ) -> SettleResult:
     """Change what is given (`...` leaves `note`, `external_ref`, `icon` or `color` alone, `None` clears it).
 
-    Never the currency. A kind changes only within its class (investment or not). Setting or
+    Never the currency or the kind (I38). Setting or
     clearing the external reference settles; any other change returns an empty result.
     """
     sets: dict[str, object] = {}
@@ -211,8 +199,6 @@ def update_account(
         sets["icon"] = icon
     if color is not ...:
         sets["color"] = color
-    if kind is not None:
-        sets["kind"] = kind
     ref_given = external_ref is not ...
     if ref_given:
         assert not isinstance(external_ref, EllipsisType)
@@ -231,10 +217,6 @@ def update_account(
             except DBAPIError as exc:
                 if constraint_name(exc) == "ux_account_external_ref":
                     raise DuplicateExternalRef(str(sets["external_ref"])) from exc
-                if isinstance(exc.orig, psycopg.errors.RaiseException) and "investment account" in str(
-                    exc.orig
-                ):
-                    raise KindClassChange(account_id, str(kind)) from exc
                 raise
 
     retry_on_deadlock(run)

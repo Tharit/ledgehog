@@ -16,7 +16,6 @@ from app.core.accounts import (
     AccountMissing,
     AccountNotEmpty,
     DuplicateExternalRef,
-    KindClassChange,
     UnknownCurrency,
     close_account,
     create_account,
@@ -128,18 +127,10 @@ def test_currency_cannot_change(db: Db) -> None:
         db.run("UPDATE account SET currency = 'USD' WHERE id = :i", i=aid)
 
 
-def test_kind_changes_within_its_class_only(db: Db) -> None:
-    giro = _acct(db, kind="checking")
-    depot = _acct(db, name="D", kind="depot")
-    update_account(db.engine, giro, kind="savings")
-    update_account(db.engine, depot, kind="asset")
-    assert db.one("SELECT kind FROM account WHERE id = :i", i=giro)[0] == "savings"
-    assert db.one("SELECT kind FROM account WHERE id = :i", i=depot)[0] == "asset"
-    with pytest.raises(KindClassChange):
-        update_account(db.engine, giro, kind="depot")
-    with pytest.raises(KindClassChange):
-        update_account(db.engine, depot, kind="checking")
-    assert db.one("SELECT kind FROM account WHERE id = :i", i=giro)[0] == "savings"
+def test_kind_cannot_change(db: Db) -> None:
+    aid = _acct(db, kind="checking")
+    with pytest.raises(TypeError):
+        update_account(db.engine, aid, kind="savings")  # type: ignore[call-arg]
 
 
 def test_update_missing_account(db: Db) -> None:

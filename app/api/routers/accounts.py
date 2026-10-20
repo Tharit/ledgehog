@@ -27,7 +27,6 @@ from app.core.accounts import (
     AccountNotEmpty,
     AccountView,
     DuplicateExternalRef,
-    KindClassChange,
     UnknownCurrency,
     close_account,
     create_account_result,
@@ -51,7 +50,6 @@ map_error(
     "conflict",
     details=lambda e: {"reason": "account_not_empty", "held": e.held},
 )
-map_error(KindClassChange, 409, "conflict", details=lambda e: {"reason": "kind_class_change"})
 map_error(UnknownCurrency, 422, "validation_error", details=lambda e: {"reason": "unknown_currency"})
 map_error(AccountError, 409, "conflict", details=lambda e: {"reason": "account_refused"})
 
@@ -160,7 +158,7 @@ class CreateBody(BaseModel):
 class UpdateBody(BaseModel):
     """Absent fields stay; `null` clears `external_ref`, `note`, `icon` and `color`.
 
-    No currency: it never changes.
+    No currency, no kind: they never change.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -169,7 +167,6 @@ class UpdateBody(BaseModel):
     sort_order: StrictInt | None = None
     note: str | None = None
     external_ref: str | None = None
-    kind: Kind | None = None
     icon: str | None = None
     color: str | None = None
 
@@ -213,7 +210,6 @@ def update_ledger_account(
         sort_order=body.sort_order,
         note=body.note if "note" in body.model_fields_set else ...,
         external_ref=body.external_ref if "external_ref" in body.model_fields_set else ...,
-        kind=body.kind,
         icon=body.icon if "icon" in body.model_fields_set else ...,
         color=body.color if "color" in body.model_fields_set else ...,
     )
