@@ -7,6 +7,7 @@ Nothing here is recorded data: the structure is what the spike's log showed, the
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -18,11 +19,16 @@ from fints.formals import (
     ParameterTwostepTAN6,
     Response,
     SegmentHeader,
+    TANMedia4,
+    TANMediaClass3,
+    TANMediumStatus,
+    TANUsageOption,
     TwoStepParameters6,
     UPDUsage,
 )
 from fints.message import FinTSInstituteMessage
-from fints.segments.auth import HITAN6, HITANS6
+from fints.parser import FinTS3Parser
+from fints.segments.auth import HITAB4, HITAN6, HITANS6
 from fints.segments.bank import HIUPA4, HIUPD6
 from fints.segments.base import FinTS3Segment
 from fints.segments.dialog import HIRMG2, HIRMS2
@@ -30,6 +36,7 @@ from fints.segments.message import HNHBK3, HNHBS1
 from fints.segments.statement import HIKAZ7
 from fints.types import SegmentSequence
 
+from app.plugins.importers.fints.hkku import ENTRY_FIELDS
 from app.plugins.importers.fints.patches import LedgerClient
 
 DIALOG_ID = "DLG1"
@@ -106,6 +113,44 @@ def upd_row(
 
 def page(text: str, answers: str = "HKKAZ") -> Item:
     return answers, HIKAZ7(statement_booked=text.encode("iso-8859-1"))
+
+
+CARD = "1111222233334444"  # an invented card number
+
+
+def card_entry(**fields: str) -> str:
+    """One HIKKU booking group of 29 components, by the names of `hkku.ENTRY_FIELDS` (plus
+    `description_1` to `description_8`). The card number is always there, as the bank sends it."""
+    positions = {name: i for i, name in ENTRY_FIELDS.items()}
+    positions.update({f"description_{n}": 11 + n for n in range(1, 9)})
+    components = [""] * 29
+    components[0] = CARD
+    for name, value in fields.items():
+        components[positions[name]] = value
+    return ":".join(components)
+
+
+def card_page(
+    *entries: str,
+    balance: str | None = "D:1234,56:EUR:20261016:101500",
+    answers: str = "HKKKU",
+) -> Item:
+    """A HIKKU answer: card number, account id, the current balance, the two statement dates, one group
+    per entry and the empty last group. Parsed by the library's own parser, as a bank's answer is."""
+    groups = [CARD, "ACC1", balance or "", "20260901", "20261001", *entries, ":".join([""] * 29)]
+    raw = ("HIKKU:5:1:4+" + "+".join(groups) + "'").encode("iso-8859-1")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        segment = FinTS3Parser().parse_message(raw).segments[0]
+    return answers, segment
+
+
+def tan_media(*names: str, answers: str = "HKTAB") -> Item:
+    media = [
+        TANMedia4(tan_medium_class=TANMediaClass3.MOBILE, status=TANMediumStatus.ACTIVE, tan_medium_name=n)
+        for n in names
+    ]
+    return answers, HITAB4(tan_usage_option=TANUsageOption.ALL_ACTIVE, tan_media_list=media)
 
 
 Answer = Callable[[Request], Sequence[Item]]

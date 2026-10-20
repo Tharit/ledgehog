@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import datetime
 import logging
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any, NoReturn
 
 from fints.client import FinTSOperations, NeedTANResponse
@@ -29,6 +29,7 @@ from app.core.plugins.errors import (
 from app.plugins.importers.fints.bank import (
     BankLogin,
     BankSession,
+    CardAnswer,
     Challenge,
     DialogFailed,
     Procedure,
@@ -36,7 +37,8 @@ from app.plugins.importers.fints.bank import (
     TanHandler,
     UpdAccount,
 )
-from app.plugins.importers.fints.patches import LedgerClient
+from app.plugins.importers.fints.hkku import CARD_REQUEST
+from app.plugins.importers.fints.patches import STATEMENT_REQUEST, LedgerClient
 
 log = logging.getLogger("ledgehog.fints")
 
@@ -95,12 +97,10 @@ class LibrarySession:
     def media(self) -> Sequence[str] | None:
         start = len(self._client.codes)
         try:
-            result = self._client.get_tan_media()
+            result = self._client.tan_media_without_tan_request()
         except Exception as exc:
             self.raise_failure(start, exc)
-        if not result:
-            return None
-        names = [str(m.tan_medium_name) for m in result[1] if getattr(m, "tan_medium_name", None)]
+        names = [str(m.tan_medium_name) for m in result if getattr(m, "tan_medium_name", None)]
         return names or None
 
     def use_medium(self, name: str) -> None:
@@ -196,24 +196,48 @@ class LibraryDialog:
         self, account: UpdAccount, since: datetime.date, until: datetime.date, *, with_tan: bool
     ) -> str:
         client = self._client
-        client.tan_for = {"HKKAZ"} if with_tan else set()
-        sepa = SEPAAccount(
+        before = len(client.codes)
+        result = self._request(
+            STATEMENT_REQUEST, with_tan, lambda: client.booked_statements(self._sepa(account), since, until)
+        )
+        if not isinstance(result, str):
+            raise DialogFailed(client.codes[before:], type(result).__name__)
+        return result
+
+    def card(
+        self, account: UpdAccount, since: datetime.date, until: datetime.date, *, with_tan: bool
+    ) -> CardAnswer:
+        client = self._client
+        before = len(client.codes)
+        result = self._request(
+            CARD_REQUEST, with_tan, lambda: client.card_transactions(self._sepa(account), since, until)
+        )
+        if not isinstance(result, CardAnswer):
+            raise DialogFailed(client.codes[before:], type(result).__name__)
+        return result
+
+    def _sepa(self, account: UpdAccount) -> SEPAAccount:
+        # a card has no IBAN: its card number is the account number
+        return SEPAAccount(
             iban=account.iban,
             bic=None,
             accountnumber=account.account_number,
             subaccount=account.subaccount,
             blz=account.bank_code or self._session.login.bank_code,
         )
+
+    def _request(self, request: str, with_tan: bool, send: Callable[[], Any]) -> Any:
+        """One data request of this dialog, its challenges answered; a library failure is told by the
+        codes it left (`before`), and a 9075 marks the dialog as closed by the bank."""
+        client = self._client
+        client.tan_for = {request} if with_tan else set()
         before = len(client.codes)
         try:
-            result = self._resolve(client.booked_statements(sepa, since, until))
+            return self._resolve(send())
         except Exception as exc:
             if isinstance(exc, FinTSSCARequiredError):
                 self._sca = True
             self._session.raise_failure(before, exc)
-        if not isinstance(result, str):
-            raise DialogFailed(client.codes[before:], type(result).__name__)
-        return result
 
     # ---- TAN challenges ----
 
@@ -271,7 +295,13 @@ def _unsupported_challenge(name: str | None) -> Exception:
 
 def _upd_accounts(client: LedgerClient) -> list[UpdAccount]:
     rows: list[UpdAccount] = []
-    for a in client.get_information()["accounts"]:
+    accounts = client.get_information()["accounts"]
+    # The library's own operation table does not show the card request: read what the bank listed.
+    allowed = [
+        {t.transaction for t in seg.allowed_transactions if t.transaction}
+        for seg in client.upd.find_segments("HIUPD")
+    ]
+    for index, a in enumerate(accounts):
         bank = a.get("bank_identifier")
         kind = a.get("type")
         rows.append(
@@ -284,6 +314,7 @@ def _upd_accounts(client: LedgerClient) -> list[UpdAccount]:
                 product_name=_text(a.get("product_name")),
                 currency=_text(a.get("currency")),
                 statements=bool((a.get("supported_operations") or {}).get(FinTSOperations.GET_TRANSACTIONS)),
+                cards=CARD_REQUEST in (allowed[index] if index < len(allowed) else ()),
             )
         )
     return rows

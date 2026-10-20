@@ -13,6 +13,10 @@ behaviour. **A fix is deleted when its test passes without it** (upstream: pytho
     P5  a TAN request is attached to the statement request when `tan_for` names its type
     P6  the raw booked MT940 text comes back (all pages), not the library's transaction list
     P7  every HTTP request has a timeout
+    P8  the TAN device list is asked for in a login without a TAN request (Deutsche Bank refuses it
+        in one that carries one, 9210)
+
+Beyond the fixes, `card_transactions` is the card request (`hkku.py`), which the library lacks.
 """
 
 from __future__ import annotations
@@ -31,12 +35,21 @@ from fints.client import (
 )
 from fints.connection import FinTSHTTPSConnection
 from fints.dialog import FinTSDialog
-from fints.formals import KTI1, BankIdentifier, SecurityMethod, SecurityProfile
+from fints.formals import (
+    KTI1,
+    BankIdentifier,
+    SecurityMethod,
+    SecurityProfile,
+    TANMediaClass4,
+    TANMediaType2,
+)
 from fints.models import SEPAAccount
 from fints.security import PinTanTwoStepAuthenticationMechanism
+from fints.segments.auth import HKTAB4, HKTAB5
 from fints.segments.dialog import HIRMG2, HIRMS2
 
-from app.plugins.importers.fints.bank import ReturnCode
+from app.plugins.importers.fints.bank import CardAnswer, ReturnCode
+from app.plugins.importers.fints.hkku import HKKKU1, read_answer
 
 HTTP_TIMEOUT_S = 30
 STATEMENT_REQUEST = "HKKAZ"
@@ -111,6 +124,7 @@ class LedgerClient(FinTS3PinTanClient):  # type: ignore[misc]
     def __init__(self, bank_identifier: str, user_id: str, pin: str, server: str, **kwargs: Any) -> None:
         super().__init__(bank_identifier, user_id, pin, server, **kwargs)
         self.connection = LedgerConnection(server)
+        self.allowed_security_functions: list[str] = []  # the library's own, typed here for P8
         self.tan_for: set[str] = set()
         self.codes: list[ReturnCode] = []
 
@@ -186,3 +200,49 @@ class LedgerClient(FinTS3PinTanClient):  # type: ignore[misc]
             _join_booked,
             "HIKAZ",
         )
+
+    def card_transactions(
+        self, account: SEPAAccount, start: datetime.date, end: datetime.date
+    ) -> CardAnswer | NeedTANResponse:
+        """The card request (`hkku.py`): the card's bookings and balance, pages joined by the library's
+        touchdown loop; a `NeedTANResponse` where the bank wants a TAN first, which resumes through the
+        loop's own client method. `account` holds the card number as its account number. The account
+        connection is complete (P4), as the bank requires. Must run in the standing dialog."""
+        dialog = self._get_dialog()
+        return self._fetch_with_touchdowns(
+            dialog,
+            lambda touchdown: HKKKU1(
+                account=self.account_field(HKKKU1, account),
+                card_number=account.accountnumber,
+                subaccount=account.subaccount or "",
+                date_start=start,
+                date_end=end,
+                touchdown_point=touchdown,
+            ),
+            read_answer,
+            "HIKKU",
+        )
+
+    def tan_media_without_tan_request(self) -> list[Any]:
+        """P8: the bank's TAN media, asked for in a login that carries no TAN request. The library
+        appends one to every login once it knows the procedures, so they are hidden for this one dialog;
+        the bank (Deutsche Bank) answers 9210 and an empty list to a login that has one. The list rides
+        on the login (a lazy dialog), as the library does for Postbank."""
+        self._ensure_system_id()
+        saved: list[str] = list(self.allowed_security_functions)
+        self.allowed_security_functions = []
+        try:
+            with self._new_dialog(lazy_init=True) as dialog:
+                request = self._find_highest_supported_command(HKTAB4, HKTAB5)(
+                    tan_media_type=TANMediaType2.ALL, tan_media_class=str(TANMediaClass4.ALL)
+                )
+                self._bootstrap_mode = True
+                try:
+                    response = dialog.init(request)
+                finally:
+                    self._bootstrap_mode = False
+                for answer in response.response_segments(request, "HITAB"):
+                    return list(getattr(answer, "tan_media_list", None) or [])
+        finally:
+            self.allowed_security_functions = saved
+        return []

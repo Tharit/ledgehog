@@ -6,20 +6,27 @@ from __future__ import annotations
 from datetime import date
 
 import pytest
+from fints.client import FinTSOperations
 from fints.exceptions import FinTSConnectionError
+from fints.formals import SegmentHeader
+from fints.segments.base import FinTS3Segment
 
 from app.core.plugins.errors import AccountUnsupported, BankSetupRequired, SourceUnavailable
 from app.core.plugins.fetch import SecretText
 from app.plugins.importers.fints.bank import BankLogin, Challenge, DialogFailed, UpdAccount
 from app.plugins.importers.fints.library import LibrarySession
 from tests.plugins.importers.fints.wire import (
+    CARD,
     END_OK,
     Item,
     ScriptedConnection,
+    card_entry,
+    card_page,
     codes,
     page,
     prime,
     tan_challenge,
+    tan_media,
     upd_row,
     upd_rows,
 )
@@ -93,6 +100,70 @@ def test_a_row_without_the_statement_request_says_so() -> None:
     session = session_with([codes(None, ("0010", "ok")), codes("HKIDN", OK), *rows], END_OK)
     with session.dialog(Handler()) as dialog:
         assert [a.statements for a in dialog.accounts] == [False, True]
+
+
+def test_the_card_request_is_read_from_the_raw_upd_list_not_the_librarys_operation_table() -> None:
+    card_row = upd_row(iban=None, number=CARD, kind=50, name="Credit Card", transactions=("HKKKU", "HKSPA"))
+    session = session_with(
+        [codes(None, ("0010", "ok")), codes("HKIDN", OK), *upd_rows(card_row, upd_row())], END_OK
+    )
+    with session.dialog(Handler()) as dialog:
+        card, girokonto = dialog.accounts
+    assert (card.cards, card.statements, card.account_type, card.iban) == (True, False, 50, None)
+    assert (girokonto.cards, girokonto.statements) == (False, True)
+    # the library's own table has nothing for it, which is why the raw list is read
+    info = session.client.get_information()["accounts"][0]
+    operations = info["supported_operations"]
+    assert not operations[FinTSOperations.GET_CREDIT_CARD_TRANSACTIONS]  # it knows DKKKU, not HKKKU
+
+
+def test_the_card_comes_back_as_plain_values_with_its_account_connection_in_the_request() -> None:
+    card_row = upd_row(iban=None, number=CARD, kind=50, transactions=("HKKKU",))
+    session = session_with(
+        [codes(None, ("0010", "ok")), codes("HKIDN", OK), *upd_rows(card_row)],
+        [codes(None, ("0010", "ok")), codes("HKKKU", OK), card_page(card_entry(booking_date="20261012"))],
+        END_OK,
+    )
+    with session.dialog(Handler()) as dialog:
+        answer = dialog.card(dialog.accounts[0], date(2026, 9, 20), date(2026, 10, 20), with_tan=False)
+        assert [c.code for c in dialog.codes][-1] == "0020"
+    assert answer.balance is not None and answer.balance.on == "20261016"
+    assert [dict(e) for e in answer.entries] == [{"booking_date": "20261012"}]
+    request = sent(session).requests[1].first("HKKKU")
+    assert (request.card_number, request.subaccount) == (CARD, "01")
+    connection = request.account
+    assert (connection.account_number, connection.bank_identifier.country_identifier) == (CARD, "280")
+
+
+def test_a_9075_on_the_card_request_is_a_failed_dialog_that_carries_its_codes() -> None:
+    card_row = upd_row(iban=None, number=CARD, kind=50, transactions=("HKKKU",))
+    session = session_with(
+        [codes(None, ("0010", "ok")), codes("HKIDN", OK), *upd_rows(card_row)],
+        [codes(None, ("0010", "ok")), codes("HKKKU", ("9075", "SCA erforderlich"))],
+    )
+    with pytest.raises(DialogFailed) as err, session.dialog(Handler()) as dialog:
+        dialog.card(dialog.accounts[0], date(2026, 9, 20), date(2026, 10, 20), with_tan=False)
+    assert [c.code for c in err.value.codes][-1] == "9075"
+    assert len(sent(session).requests) == 2
+
+
+def test_the_media_list_comes_back_as_names_from_a_login_without_a_tan_request() -> None:
+    session = session_with(
+        [codes(None, ("0010", "ok")), codes("HKIDN", OK), tan_media("iPhone", "iPad")], END_OK
+    )
+    session.client.bpd.segments.append(FinTS3Segment(header=SegmentHeader("HITABS", 8, 4)))
+    assert session.media() == ["iPhone", "iPad"]
+    assert "HKTAN" not in sent(session).requests[0].types()
+
+
+def test_a_bank_that_refuses_the_media_list_fails_with_its_codes() -> None:
+    session = session_with(
+        [codes(None, ("0010", "ok")), codes("HKIDN", ("9210", "Name des TAN-Mediums erforderlich"))]
+    )
+    session.client.bpd.segments.append(FinTS3Segment(header=SegmentHeader("HITABS", 8, 4)))
+    with pytest.raises(DialogFailed) as err:
+        session.media()
+    assert "9210" in [c.code for c in err.value.codes]
 
 
 def test_a_login_challenge_is_answered_through_the_handler_and_the_dialog_goes_on() -> None:

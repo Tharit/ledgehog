@@ -11,7 +11,7 @@ the importer sends at most one request through it, and leaving the `with` ends i
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from typing import Literal, Protocol
@@ -47,6 +47,27 @@ class UpdAccount:
     product_name: str | None
     currency: str | None
     statements: bool  # the UPD allows the MT940 statement request (HKKAZ)
+    cards: bool = False  # the UPD's own list allows the card transaction request (HKKKU)
+
+
+@dataclass(frozen=True, slots=True)
+class CardBalance:
+    """The card's current balance as the bank wrote it (fints.md §6a): the credit or debit mark
+    (`C`/`D`), the amount with a decimal comma, the currency and the date as `YYYYMMDD`."""
+
+    mark: str
+    amount: str
+    currency: str
+    on: str
+
+
+@dataclass(frozen=True, slots=True)
+class CardAnswer:
+    """The card request's answer, plain: the current balance and one mapping of the entry's fields
+    as received (named, empty ones left out) per booking. Never carries the card number."""
+
+    balance: CardBalance | None
+    entries: tuple[Mapping[str, str], ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,6 +114,11 @@ class Dialog(Protocol):
         `with_tan` attaches a TAN request to the request. A challenge goes to the TAN handler."""
         ...
 
+    def card(self, account: UpdAccount, since: date, until: date, *, with_tan: bool) -> CardAnswer:
+        """The card's transactions of `since` to `until` (all pages) with its current balance
+        (fints.md §6a). `with_tan` as for `statements`."""
+        ...
+
 
 class DialogContext(Protocol):
     def __enter__(self) -> Dialog: ...
@@ -122,7 +148,8 @@ class BankSession(Protocol):
         ...
 
     def media(self) -> Sequence[str] | None:
-        """One dialog: the bank's list of media. None where the bank gives none."""
+        """One dialog, without a TAN request in its login (a bank refuses the list in one that carries
+        one): the bank's list of media. None where the bank gives none."""
         ...
 
     def use_medium(self, name: str) -> None: ...

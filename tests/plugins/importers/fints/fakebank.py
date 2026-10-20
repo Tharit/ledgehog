@@ -17,6 +17,7 @@ from app.core.plugins.fetch import (
     TextPrompt,
 )
 from app.plugins.importers.fints.bank import (
+    CardAnswer,
     Challenge,
     DialogFailed,
     Procedure,
@@ -24,6 +25,7 @@ from app.plugins.importers.fints.bank import (
     TanHandler,
     UpdAccount,
 )
+from tests.plugins.importers.fints.wire import CARD
 
 OK = ReturnCode("0020", "Auftrag ausgefuehrt")
 
@@ -41,8 +43,14 @@ def upd(
     name: str | None = "Girokonto",
     currency: str | None = "EUR",
     statements: bool = True,
+    cards: bool = False,
 ) -> UpdAccount:
-    return UpdAccount(iban, number, sub, "12030000", kind, name, currency, statements)
+    return UpdAccount(iban, number, sub, "12030000", kind, name, currency, statements, cards)
+
+
+def card_upd(*, number: str = CARD, sub: str | None = "01", name: str | None = "Credit Card") -> UpdAccount:
+    """A card row: no IBAN, the card number as account number, the card request and no statements."""
+    return upd(iban=None, number=number, sub=sub, kind=50, name=name, statements=False, cards=True)
 
 
 @dataclass
@@ -53,6 +61,7 @@ class Dialog:
     login_codes: Sequence[ReturnCode] = (OK,)
     challenge: Challenge | None = None  # a TAN at login
     text: str = ""  # the statements' answer
+    card: CardAnswer = CardAnswer(None, ())  # the card request's answer
     request_codes: Sequence[ReturnCode] = ()  # codes of the data request, no exception
     fail: Sequence[ReturnCode] | None = None  # the library fails in the data request, with these codes
     fail_login: Sequence[ReturnCode] | None = None  # the library fails at login, with these codes
@@ -99,6 +108,14 @@ class _Open:
             self._script.before_text()
         return self._script.text
 
+    def card(self, account: UpdAccount, since: date, until: date, *, with_tan: bool) -> CardAnswer:
+        self._bank.card_requests.append((account, since, until, with_tan))
+        if self._script.fail is not None:
+            self._codes.extend(self._script.fail)
+            raise DialogFailed(self._codes, "FinTSSCARequiredError")
+        self._codes.extend(self._script.request_codes)
+        return self._script.card
+
 
 class FakeBank:
     """Satisfies `BankSession`."""
@@ -120,6 +137,7 @@ class FakeBank:
         self._procedures_codes = procedures_codes
         self.system_id: str | None = None
         self.requests: list[tuple[UpdAccount, date, date, bool]] = []
+        self.card_requests: list[tuple[UpdAccount, date, date, bool]] = []
         self.challenges: list[Challenge] = []
         self.answers: list[str | None] = []
         self.opened = 0

@@ -14,9 +14,10 @@ import pytest
 import requests
 from fints.client import HKKAZ7
 from fints.exceptions import FinTSConnectionError, FinTSSCARequiredError
-from fints.formals import SystemIDStatus
+from fints.formals import SegmentHeader, SystemIDStatus
 from fints.models import SEPAAccount
 from fints.segments.auth import HKIDN2
+from fints.segments.base import FinTS3Segment
 from fints.types import SegmentSequence
 
 from app.core.plugins.errors import SourceUnavailable
@@ -33,6 +34,7 @@ from tests.plugins.importers.fints.wire import (
     codes,
     page,
     tan_challenge,
+    tan_media,
 )
 
 ACCOUNT = SEPAAccount(
@@ -196,6 +198,48 @@ def test_p6_a_range_without_bookings_is_an_empty_text() -> None:
         END_OK,
     )
     assert statements_dialog(client, tan_for=set()) == ""
+
+
+# ---- P8: the device list is asked for in a login without a TAN request ----------------------------------
+
+
+def media_client(*answers):  # type: ignore[no-untyped-def]
+    client = banked_client(*answers)
+    client.bpd.segments.append(FinTS3Segment(header=SegmentHeader("HITABS", 8, 4)))
+    return client
+
+
+def test_p8_the_media_list_rides_on_a_login_that_carries_no_tan_request() -> None:
+    client = media_client(
+        [
+            codes(None, ("0010", "ok")),
+            codes("HKIDN", ("3076", "Keine starke Authentifizierung erforderlich")),
+            tan_media("iPhone", "iPad"),
+        ],
+        END_OK,
+    )
+    media = client.tan_media_without_tan_request()
+    assert [m.tan_medium_name for m in media] == ["iPhone", "iPad"]
+    assert isinstance(client.connection, ScriptedConnection)
+    login = client.connection.requests[0]
+    assert login.types() == ["HNSHK", "HKIDN", "HKVVB", "HKTAB", "HNSHA"]  # no HKTAN
+    assert client.allowed_security_functions == ["900"]  # the procedures are known again afterwards
+
+
+def test_p8_a_login_without_the_hiding_carries_the_tan_request() -> None:
+    """The control: it is the library's own login that appends the TAN request P8 leaves out."""
+    client = media_client([codes(None, ("0010", "ok")), codes("HKIDN", OK)], END_OK)
+    client._new_dialog().init()
+    assert isinstance(client.connection, ScriptedConnection)
+    assert "HKTAN" in client.connection.requests[0].types()
+
+
+def test_p8_a_bank_that_answers_with_no_list_gives_none() -> None:
+    client = media_client(
+        [codes(None, ("0010", "ok")), codes("HKIDN", OK), codes("HKTAB", ("3010", "keine Eintraege"))],
+        END_OK,
+    )
+    assert client.tan_media_without_tan_request() == []
 
 
 # ---- P7: a bank that never answers cannot hold the thread --------------------------------------------
