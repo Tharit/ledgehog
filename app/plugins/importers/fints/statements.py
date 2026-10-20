@@ -91,13 +91,18 @@ def read_statements(text: str, *, until: date, minor_units_of: Callable[[str], i
     if not final:
         return Read(tuple(rows), filtered, None, None)
     chosen = max(final, key=lambda f: (f[0], f[1]))[2]
-    # One rule (spec §5.1): dated at the earliest of the figure's date and the last closed day (the
-    # coverage is that day); a figure moved back loses the rows booked in (record date, figure date].
-    on = min(chosen.on, until)
-    amount = chosen.minor
-    if on < chosen.on:
-        amount -= sum(r.amount_minor for r in rows if on < r.booked_on <= chosen.on)
+    amount, on = roll_back(chosen.minor, chosen.on, rows, until)
     return Read(tuple(rows), filtered, amount, on)
+
+
+def roll_back(figure: int, figure_on: date, rows: Sequence[IncomingRow], coverage: date) -> tuple[int, date]:
+    """The one dating rule (spec §5.1), for statements and cards alike: the figure is dated at the earliest
+    of its own date and `coverage` (which is never after the last closed day); a figure moved back loses
+    the rows booked in (record date, figure date]. Returns the amount and the date of the record."""
+    on = min(figure_on, coverage)
+    if on < figure_on:
+        figure -= sum(r.amount_minor for r in rows if on < r.booked_on <= figure_on)
+    return figure, on
 
 
 def _parse(text: str) -> list[Any]:
