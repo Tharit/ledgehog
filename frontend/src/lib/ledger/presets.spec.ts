@@ -6,12 +6,14 @@ function byId(today: string) {
 }
 
 describe('datePresets', () => {
-	it('names the four presets', () => {
+	it('names the six presets', () => {
 		expect(datePresets('2026-10-11').map((p) => p.label)).toEqual([
 			'This month',
 			'Last month',
 			'Last 30 days',
-			'This year'
+			'Last 12 months',
+			'This year',
+			'Last year'
 		]);
 	});
 
@@ -20,8 +22,16 @@ describe('datePresets', () => {
 			'this-month': ['2026-10-01', '2026-10-31'],
 			'last-month': ['2026-09-01', '2026-09-30'],
 			'last-30-days': ['2026-09-12', '2026-10-11'],
-			'this-year': ['2026-01-01', '2026-12-31']
+			'last-12-months': ['2025-10-01', '2026-09-30'],
+			'this-year': ['2026-01-01', '2026-12-31'],
+			'last-year': ['2025-01-01', '2025-12-31']
 		});
+	});
+
+	it('last 12 months are the twelve complete months before this one, across new year', () => {
+		expect(byId('2026-01-15')['last-12-months']).toEqual(['2025-01-01', '2025-12-31']);
+		expect(byId('2026-03-31')['last-12-months']).toEqual(['2025-03-01', '2026-02-28']);
+		expect(byId('2026-01-15')['last-year']).toEqual(['2025-01-01', '2025-12-31']);
 	});
 
 	it('crosses a year boundary for last month', () => {

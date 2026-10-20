@@ -17,6 +17,14 @@ export function datePresets(today: IsoDate): DatePreset[] {
 		{ id: 'this-month', label: 'This month', from: iso(year, m, 1), to: iso(year, m + 1, 0) },
 		{ id: 'last-month', label: 'Last month', from: iso(year, m - 1, 1), to: iso(year, m, 0) },
 		{ id: 'last-30-days', label: 'Last 30 days', from: iso(year, m, day - 29), to: today },
-		{ id: 'this-year', label: 'This year', from: iso(year, 0, 1), to: iso(year, 11, 31) }
+		// the twelve complete months before this one: the Overview's "last 12 months" (spec §8)
+		{
+			id: 'last-12-months',
+			label: 'Last 12 months',
+			from: iso(year, m - 12, 1),
+			to: iso(year, m, 0)
+		},
+		{ id: 'this-year', label: 'This year', from: iso(year, 0, 1), to: iso(year, 11, 31) },
+		{ id: 'last-year', label: 'Last year', from: iso(year - 1, 0, 1), to: iso(year - 1, 11, 31) }
 	];
 }
