@@ -1237,8 +1237,8 @@ app/
       paypal/
       csv/
     classifiers/         passes 1–3 of spec §5.9 (pass 0 is core), behind
-      rules/             one protocol: propose a value and a machine-readable
-      history/           basis. Ordered by authority.
+      rules/             one protocol: propose a value, or its absence, and a
+      history/           machine-readable basis. Ordered by authority.
       llm/               the model, asked in the background (§5.4)
   utils/                 Infrastructure with no domain knowledge.
     db/                  engine, connection, SQL helpers
@@ -1569,14 +1569,21 @@ Passes 1 to 3 of `spec.md` §5.9 are one protocol with three
 implementations, ordered by authority. A classifier receives an entry's
 inputs — its source transaction, a linked or picked document, and the
 fields the review draft fixes — and returns zero or more proposals, each
-carrying the field it proposes, the value and a **machine-readable basis** —
-never a prose string alone. For history the basis carries the evidence: how
+carrying the field it proposes, the value — or none: a proposal may explain
+why the field stays empty — and a **machine-readable basis**, never a prose
+string alone. For history the basis carries the evidence: how
 many matches agree, of how many, since when. The basis is what
 is written to `ledger_entry.derivation` and what the review panel renders, so
 producing one is part of the contract rather than an optional extra.
 **Classifiers are pure**: they write nothing to the ledger, so ingest,
 settling and the review preview call them alike (`spec.md` §5.9). The model's
 stored answer — the field's `llm` key (below) — is read as an input.
+Whether a stored answer still stands for the entry as it is now is the
+classifier's to judge: the model's stands while the payload it was given is
+the entry's payload, and only then does its classifier propose it, value or
+absence. That classifier asks nothing, so it is registered whether or not a
+model is configured: without one, nothing is asked, and answers stored earlier
+still stand.
 
 **Classifiers do not query the database** (§5.1). `core/resolution` hands
 them their evidence: the rules, read once per settle or preview, and a

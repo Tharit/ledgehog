@@ -2276,7 +2276,7 @@ value. All other keys are **standing**, and a standing value is decided:
 - `user` — what a user decided in a commit, including a document picked, or
   "none", in which case the key carries no link.
 
-A key of pass `llm` may also explain an absence: when the model finds no category that fits, the category stays empty and its key records that (`"none": true`) with the model's rationale, which says what would fit. It is a proposal like any other model key, and it is the answer that is not asked again for the same payload.
+A proposal may also explain an absence: the field stays empty and its key says why (`"none": true`). The model's is the one so far: when it finds no category that fits, its key carries its rationale, which says what would fit. It stays while its classifier proposes it, like any proposal, and the model is not asked again for the same payload.
 
 `matcher_proposal` is a link that settling made to a document of several
 lines (§5.8): a proposal, so that the unit is reviewed once and the split
