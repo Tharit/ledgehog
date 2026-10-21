@@ -92,7 +92,7 @@
 					<Input
 						{...control}
 						type="file"
-						accept=".csv,.txt,text/csv,text/plain"
+						accept=".csv,.txt,.xls,.xlsx,.ods,text/csv,text/plain,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.oasis.opendocument.spreadsheet"
 						disabled={store.blocked !== null || uploading}
 						onchange={onfile}
 					/>

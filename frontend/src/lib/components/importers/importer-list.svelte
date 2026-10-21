@@ -6,7 +6,7 @@
 	import RowActions, { type RowAction } from '#lib/components/common/row-actions.svelte';
 	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
 	import { canRefreshAccounts } from '#lib/importers/discovery.js';
-	import { canReset, hasRuns, lastRunText, loginText } from '#lib/importers/list.js';
+	import { canReset, hasRuns, importerTitle, lastRunText, loginText } from '#lib/importers/list.js';
 	import { accountUrl, instanceUrl } from '#lib/importers/links.js';
 	import type { CatalogEntry, ImporterInstance } from '#lib/types/domain.js';
 	import type { Lookups } from '#lib/ledger/lookups.js';
@@ -57,7 +57,7 @@
 		ondelete?: (instance: ImporterInstance) => void;
 	} = $props();
 
-	const importerName = (instance: ImporterInstance) => instance.importer;
+	const importerName = (instance: ImporterInstance) => importerTitle(instance.importer);
 
 	function primary(instance: ImporterInstance): RowAction[] {
 		const edit: RowAction = {

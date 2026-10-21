@@ -46,6 +46,11 @@ export function loginText(
 		: null;
 }
 
+/** An importer as the user reads it: the CSV importer also reads spreadsheets (csv.md §2). */
+export function importerTitle(name: string): string {
+	return name === 'csv' ? 'CSV or spreadsheet' : name;
+}
+
 /** The catalog's words for how an importer is fed. */
 export function kindText(kind: CatalogEntry['kind']): string {
 	return kind === 'file' ? 'takes a file' : 'fetches';

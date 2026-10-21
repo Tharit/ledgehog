@@ -2,7 +2,7 @@
 	import ActionDialog from '#lib/components/common/action-dialog.svelte';
 	import Picker, { type PickerItem } from '#lib/components/common/picker.svelte';
 	import { hasSettingsForm } from '#lib/importers/forms.js';
-	import { kindText } from '#lib/importers/list.js';
+	import { importerTitle, kindText } from '#lib/importers/list.js';
 	import type { CatalogEntry } from '#lib/types/domain.js';
 
 	// "Add importer": a pick dialog over the importer catalog (ux/views/importers.md; patterns
@@ -24,7 +24,7 @@
 	const items = $derived<PickerItem[]>(
 		catalog.map((entry, id) => ({
 			id,
-			label: `${entry.name} — ${kindText(entry.kind)}`,
+			label: `${importerTitle(entry.name)} — ${kindText(entry.kind)}`,
 			disabled: hasSettingsForm(entry.name) ? undefined : 'no setup form for it yet'
 		}))
 	);
