@@ -77,6 +77,23 @@ def test_a_restart_does_not_ask_again(rig: Rig, isolated_engine: Engine, acct: i
         configure_model_queue(rig.queue)
 
 
+def test_without_a_model_the_key_stands_while_the_payload_does(rig: Rig, acct: int) -> None:
+    e = _asked_none(rig, acct)
+    before = entry_row(rig.engine, e).derivation
+    configure_model_queue(None)  # no model configured: no queue, no worker
+    assert settle(rig.engine).touched_entry_ids == ()
+    assert entry_row(rig.engine, e).derivation == before
+
+
+def test_without_a_model_a_changed_payload_drops_the_key(rig: Rig, acct: int) -> None:
+    e = _asked_none(rig, acct)
+    configure_model_queue(None)
+    with rig.engine.begin() as conn:
+        _edit_payload(conn, "something else")
+    settle(rig.engine)
+    assert "category" not in entry_row(rig.engine, e).derivation
+
+
 def test_a_changed_payload_drops_the_key_and_asks_anew(rig: Rig, acct: int) -> None:
     e = _asked_none(rig, acct)
     with rig.engine.begin() as conn:

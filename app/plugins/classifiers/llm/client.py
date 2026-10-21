@@ -22,7 +22,7 @@ import httpx
 
 from app.core.plugins.classifier import EntryInput
 from app.core.plugins.model import CategoryPath, ModelAnswer, ModelUnavailable, NoAnswer
-from app.plugins.classifiers.llm.payload import fingerprint_of, payload_of, user_message
+from app.plugins.classifiers.llm.payload import payload_fingerprint, payload_of, user_message
 
 log = logging.getLogger("ledgehog.model")
 
@@ -106,8 +106,7 @@ class OpenAIModelClient:
         self._http = httpx.AsyncClient(timeout=timeout, headers=headers, transport=transport)
 
     def fingerprint(self, entry: EntryInput) -> str | None:
-        payload = payload_of(entry)
-        return fingerprint_of(payload) if payload is not None else None
+        return payload_fingerprint(entry)
 
     def request_body(self, payload: dict[str, str], categories: Sequence[CategoryPath]) -> dict[str, Any]:
         return {
