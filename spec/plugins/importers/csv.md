@@ -37,6 +37,12 @@ the same way: by the dry run (§7), which parses a file and writes nothing.
 | delimiter, quote | Detected, overridable. A quoted cell may span lines. |
 | header marker | The column names that identify the header row: the first row containing all of them. Everything above it is the preamble (§5); rows before it are never transactions. Not a fixed line number, so a preamble that grows does not break the profile. A file with no such row fails the run. |
 
+**Spreadsheets.** An `.xls`, `.xlsx` or `.ods` file is recognised by its
+first bytes and read from its first sheet; encoding, delimiter and quote do
+not apply. A cell the sheet stores as a date or a number is taken as that
+value, and the profile's date and number formats apply to text cells only.
+Everything else in this importer applies unchanged.
+
 **Whitespace.** Each cell is trimmed, and runs of whitespace in the normalised
 columns collapse to one space; `raw` keeps the original text.
 
@@ -209,7 +215,8 @@ resources, and carry neutral names, not bank names.
 ## 9. Not in this importer
 
 MT940 and camt statements, which have their own parsers and checks
-(`spec.md` §5.1). Spreadsheets. Files holding several tables or accounts.
+(`spec.md` §5.1). Files holding several tables or accounts, and a
+spreadsheet's sheets after the first.
 Extracting a counterparty from free text: the text stays in `purpose`, and
 rules and history read it (`spec.md` §5.9).
 

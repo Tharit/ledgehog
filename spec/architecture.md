@@ -36,6 +36,7 @@ architecture.
 | Data access | SQLAlchemy Core over psycopg3, **synchronous**. No ORM. `core` is plain synchronous code; the API runs it in FastAPI's threadpool (`def` endpoints) and the sync task in `asyncio.to_thread`. |
 | Migrations | Alembic, explicit SQL only, autogenerate never used |
 | Bank access | python-fints, in process |
+| Spreadsheets | python-calamine, read only, for the CSV importer |
 | Frontend | Svelte 5 + SvelteKit **in SPA mode** — no SSR, no prerendering |
 | UI components | shadcn-svelte, **copied into the repository**, on Bits UI primitives; Tailwind CSS, compiled at build time |
 | Charts | LayerChart, through shadcn-svelte's chart component |
