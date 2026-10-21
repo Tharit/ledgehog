@@ -34,6 +34,8 @@ export interface paths {
         /**
          * Config View
          * @description Read-only configuration for the client; never a secret (architecture §5.7).
+         *
+         *     Needs no session: the login page asks it whether OIDC sign-in is offered or enforced.
          */
         get: operations["config_view"];
         put?: never;
@@ -1622,7 +1624,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "checking" | "savings" | "card" | "cash" | "paypal" | "depot" | "loan" | "asset";
+            kind: "checking" | "savings" | "card" | "cash" | "digital_wallet" | "depot" | "loan" | "asset";
             /** Name */
             name: string;
             /** Note */
@@ -2022,7 +2024,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "checking" | "savings" | "card" | "cash" | "paypal" | "depot" | "loan" | "asset";
+            kind: "checking" | "savings" | "card" | "cash" | "digital_wallet" | "depot" | "loan" | "asset";
             /** Net Worth */
             net_worth: components["schemas"]["PointNetWorthOut"][];
         };
@@ -4167,24 +4169,6 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
-                };
-            };
-            /** @description Not signed in (or wrong login or password). */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description The request is not valid. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
         };

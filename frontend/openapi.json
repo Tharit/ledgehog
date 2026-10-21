@@ -1231,7 +1231,7 @@
               "savings",
               "card",
               "cash",
-              "paypal",
+              "digital_wallet",
               "depot",
               "loan",
               "asset"
@@ -2534,7 +2534,7 @@
               "savings",
               "card",
               "cash",
-              "paypal",
+              "digital_wallet",
               "depot",
               "loan",
               "asset"
@@ -9171,7 +9171,7 @@
     },
     "/api/config": {
       "get": {
-        "description": "Read-only configuration for the client; never a secret (architecture \u00a75.7).",
+        "description": "Read-only configuration for the client; never a secret (architecture \u00a75.7).\n\nNeeds no session: the login page asks it whether OIDC sign-in is offered or enforced.",
         "operationId": "config_view",
         "responses": {
           "200": {
@@ -9185,26 +9185,6 @@
               }
             },
             "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Not signed in (or wrong login or password)."
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "The request is not valid."
           }
         },
         "summary": "Config View"
