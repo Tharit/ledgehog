@@ -122,13 +122,14 @@ def test_the_request_carries_the_payload_text_only(rig: Rig, acct: int) -> None:
     assert "DE89370400440532013000" not in body and "MANDATE-9" not in body
 
 
-def test_no_category_fits_stores_nothing_and_is_not_asked_again(rig: Rig, acct: int) -> None:
+def test_an_invalid_reply_stores_nothing_and_is_not_asked_again_until_a_restart(rig: Rig, acct: int) -> None:
     e, _ = _toll(rig.engine, acct)
     settle(rig.engine)
-    rig.endpoint.category_id = None
+    rig.endpoint.category_id = 987654  # an id that is not listed
     _process_head(rig)
-    assert entry_row(rig.engine, e).category_id is None and rig.queue.pending() == 0
-    settle(rig.engine)  # the same payload: not listed again
+    row = entry_row(rig.engine, e)
+    assert row.category_id is None and "category" not in row.derivation and rig.queue.pending() == 0
+    settle(rig.engine)  # the same payload: not listed again (in memory only)
     assert rig.queue.pending() == 0 and len(rig.endpoint.requests) == 1
 
 

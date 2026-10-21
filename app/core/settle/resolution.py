@@ -22,6 +22,7 @@ from typing import Any
 
 from sqlalchemy import Connection, text
 
+from app.core.model.answer import holds_none_answer, none_key_of
 from app.core.model.queue import current_model_queue
 from app.core.plugins.classifier import FIELD_ORDER, AccountFact, Classifier, Field, HistorySource
 from app.core.resolution import Decided, Resolved, diff, rederive
@@ -97,10 +98,22 @@ def new_derivation(old: Mapping[str, Any], new: Resolved) -> dict[str, Any]:
     return out
 
 
-def _stale_keys(row: UnconfirmedEntry, current: Mapping[Field, Decided | None]) -> bool:
-    """A key of a field that has no value: it is removed (a key explains a value). The user's decision of
-    no payee is the exception: a standing key on a NULL (`stored_decisions` reads it as a decision)."""
-    return any(f in row.derivation and current[f] is None for f in _COLUMN)
+def _kept_none_key(row: UnconfirmedEntry, new: Resolved) -> Mapping[str, Any] | None:
+    """The model's "none" answer the entry keeps: its key on a category that stays empty, while the
+    payload is the one the model was asked about. A category some pass decides replaces it; a transfer has
+    no category; a changed payload asks anew (the key goes)."""
+    kind = new.get("type")
+    if "category" in new or (kind is not None and kind.value == "transfer"):
+        return None
+    return none_key_of(row.derivation) if holds_none_answer(row.derivation, row.input) else None
+
+
+def _stale_keys(row: UnconfirmedEntry, current: Mapping[Field, Decided | None], new: Resolved) -> bool:
+    """A key of a field that has no value: it is removed (a key explains a value). Two exceptions: the
+    user's decision of no payee, a standing key on a NULL (`stored_decisions` reads it as a decision), and
+    the model's "none" answer, the key that explains an absence."""
+    kept = _kept_none_key(row, new) is not None
+    return any(f in row.derivation and current[f] is None and not (f == "category" and kept) for f in _COLUMN)
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,12 +140,15 @@ def _value(d: Decided | None) -> int | None:
 
 def _rewrite(row: UnconfirmedEntry, new: Resolved, *, unpair: bool = False) -> Rewrite:
     kind = new.get("type")
+    derivation = new_derivation(row.derivation, new)
+    if (none_key := _kept_none_key(row, new)) is not None:
+        derivation["category"] = dict(none_key)
     return Rewrite(
         type=str(kind.value) if kind is not None else None,
         payee_id=_value(new.get("payee")),
         category_id=_value(new.get("category")),
         counter_account_id=_value(new.get("counter_account")),
-        derivation=new_derivation(row.derivation, new),
+        derivation=derivation,
         unpair=unpair,
     )
 
@@ -155,7 +171,7 @@ def rewrite_of(
     if row.paired:
         return None
     current, new = _rederived(row, accounts=accounts, classifiers=classifiers, history=history, reopen=reopen)
-    if not diff(current, new) and not _stale_keys(row, current):
+    if not diff(current, new) and not _stale_keys(row, current, new):
         return None
     return _checked(row, new)
 
@@ -270,7 +286,7 @@ def settle_rewrites(
             released.add(row.input.entry_id)
             if row.counterpart_id in by_id:
                 released.add(row.counterpart_id)
-        elif (diff(current, new) or _stale_keys(row, current)) and (rewrite := _checked(row, new)):
+        elif (diff(current, new) or _stale_keys(row, current, new)) and (rewrite := _checked(row, new)):
             out[row.input.entry_id] = rewrite
     for entry_id in released:
         out[entry_id] = rewrite_released(
@@ -322,6 +338,8 @@ def _list_for_model(rows: Sequence[UnconfirmedEntry], rewrites: Mapping[int, Rew
         kind, category = (rewrite.type, rewrite.category_id) if rewrite else (row.type, row.category_id)
         if kind not in (None, "flow") or category is not None:
             continue
+        if holds_none_answer(rewrite.derivation if rewrite else row.derivation, row.input):
+            continue  # answered: the model found no category for this payload (the key survives a restart)
         if (fingerprint := queue.fingerprint(row.input)) is not None:
             wanted.append((row.input.entry_id, fingerprint))
     queue.sync(wanted)

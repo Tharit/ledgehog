@@ -3,7 +3,9 @@
 The model is never asked here: settling must not wait for it. The worker (`core/model`) asks in the
 background and stores the answer as the category's `llm` key with the payload's fingerprint; this pass
 proposes that answer again while the entry's payload still has the fingerprint, and nothing otherwise
-(a changed payload, a stale answer: the worker asks anew). Category only, never a payee.
+(a changed payload, a stale answer: the worker asks anew). Category only, never a payee. The model's "none"
+answer has no value to propose: this pass proposes nothing for it, and settling keeps its key
+(`core/model/answer.py`) while the payload stands.
 """
 
 from __future__ import annotations

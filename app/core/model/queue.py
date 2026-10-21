@@ -8,8 +8,8 @@ and from the worker's event loop, so every access takes the lock.
 Unavailable: when the model cannot be reached the list empties and what it held is remembered as
 `dropped`. Settling hands it new work again only for an item not among them (an entry that was not
 waiting when the model failed); otherwise the worker retries after its delay and settles, which refills.
-An entry the model had no answer for (no category fits, an invalid reply) is not asked again for the same
-payload until a restart.
+An entry the model gave no valid reply for is not asked again for the same payload until a restart; one it
+answered "no category fits" is not listed again at all, its stored key says so (`answer.py`).
 """
 
 from __future__ import annotations

@@ -118,7 +118,8 @@ async def test_an_empty_payload_is_not_asked() -> None:
         "not json at all",
         '["a"]',
         {"category_id": 99, "rationale": "invented id"},
-        {"category_id": None, "rationale": "none fits"},
+        {"category_id": None, "rationale": "  "},  # a "none" without what to show of it
+        {"category_id": None},
         {"category_id": "none", "rationale": "none fits"},
         {"category_id": True, "rationale": "bool is not an id"},
         {"category_id": 3},
@@ -129,6 +130,20 @@ async def test_an_invalid_reply_is_no_answer(reply: object) -> None:
     client = _client(Endpoint(reply))
     assert await client.ask(_entry(counterparty_name="x"), CATEGORIES) is None
     await client.aclose()
+
+
+async def test_null_with_a_rationale_is_the_answer_that_no_category_fits() -> None:
+    reply = {"category_id": None, "rationale": "a Catalan motorway toll; no category for tolls"}
+    client = _client(Endpoint(reply))
+    answer = await client.ask(_entry(counterparty_name="x"), CATEGORIES)
+    assert answer is not None and answer.category_id is None
+    assert answer.rationale == reply["rationale"] and answer.model == "m-1"
+    await client.aclose()
+
+
+def test_the_instruction_asks_for_what_would_fit_when_nothing_does() -> None:
+    text = system_message(CATEGORIES)
+    assert "answer null for category_id" in text and "what kind of category would fit" in text
 
 
 def test_the_rationale_is_one_capped_line() -> None:

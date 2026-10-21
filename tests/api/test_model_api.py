@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import pytest
@@ -9,6 +10,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine
 
 from app.core.model.queue import ModelQueue
+from app.core.settle.flags import recompute_review_flags
 from tests.api.conftest import login
 from tests.core.units.helpers import Bench
 
@@ -48,6 +50,23 @@ def test_the_queue_marks_the_units_the_model_is_looking_at(
     queue.finish((looked_at, "f1"), answered=True)  # read at request time: it follows the list
     body = anna.get("/api/units/queue").json()
     assert not any(u["model_pending"] for s in body["sections"] for u in s["units"])
+
+
+def test_the_unit_and_the_queue_carry_the_models_none_key(
+    anna: TestClient, api_engine: Engine, world: Bench
+) -> None:
+    key = {"pass": "llm", "basis": {"model": "m", "rationale": "a toll", "fingerprint": "f", "none": True}}
+    with api_engine.begin() as conn:
+        world.conn = conn
+        e = world.flow(world.source(), done=False, derivation=json.dumps({"category": key}))
+        recompute_review_flags(conn)
+
+    body = anna.get(f"/api/units/{e}").json()
+    (entry,) = body["entries"]
+    assert entry["derivation"] == {"category": key} and entry["category_id"] is None
+    assert entry["review_flags"] == ["unclassified", "unconfirmed"]
+    queued = [u for s in anna.get("/api/units/queue").json()["sections"] for u in s["units"]]
+    assert [u["entries"][0]["derivation"] for u in queued if u["anchor_entry_id"] == e] == [{"category": key}]
 
 
 def test_without_a_model_no_unit_is_pending(anna: TestClient, api_engine: Engine, world: Bench) -> None:

@@ -3,9 +3,11 @@
 It takes the head of the `ModelQueue`, one entry at a time, reads the entry afresh, asks the model for the
 category and stores the answer with a write that settles like any other (`settle(before=...)`): the
 category and its `llm` key (the payload's fingerprint, the model's name and one-line rationale), the type
-`flow` keyed the same when none was decided. Nothing changes under the user: the answer is dropped when the
-entry is confirmed, its payload changed, or its category now has a value of a user or of a pass of higher
-authority. Settling never waits for the worker.
+`flow` keyed the same when none was decided. "No category fits" is stored too: the `llm` key with `none`
+and the rationale on the empty category, nothing else touched, which settling then keeps and does not
+list again for that payload (`answer.py`); an invalid reply is not stored. Nothing changes under the user:
+the answer is dropped when the entry is confirmed, its payload changed, or its category now has a value of
+a user or of a pass of higher authority. Settling never waits for the worker.
 
 An unreachable model (timeout, refused, an HTTP error): the queue is marked unavailable and emptied, one
 WARNING is logged, and the worker tries again after `retry_after` seconds by settling, which refills the
@@ -41,6 +43,15 @@ _STORE = text(
                         || jsonb_build_object('category', CAST(:key AS jsonb))
                         || CASE WHEN type IS NULL THEN jsonb_build_object('type', CAST(:key AS jsonb))
                                 ELSE '{}'::jsonb END
+     WHERE id = :id
+    """
+)
+
+# the "none" answer (no category fits): the key alone, the category left empty and the type as it is
+_STORE_NONE = text(
+    """
+    UPDATE ledger_entry
+       SET derivation = (derivation - 'category') || jsonb_build_object('category', CAST(:key AS jsonb))
      WHERE id = :id
     """
 )
@@ -197,21 +208,27 @@ class ModelWorker:
                 row is None
                 or not _may_take_answer(row)
                 or self.client.fingerprint(row.input) != fingerprint
-                or conn.execute(
-                    text("SELECT 1 FROM category WHERE id = :c"), {"c": answer.category_id}
-                ).first()
-                is None
+                or (
+                    answer.category_id is not None
+                    and conn.execute(
+                        text("SELECT 1 FROM category WHERE id = :c"), {"c": answer.category_id}
+                    ).first()
+                    is None
+                )
             ):
                 return None
-            key: dict[str, Any] = {
-                "pass": "llm",
-                "basis": {
-                    "model": answer.model,
-                    "rationale": answer.rationale,
-                    "fingerprint": fingerprint,
-                },
+            basis: dict[str, Any] = {
+                "model": answer.model,
+                "rationale": answer.rationale,
+                "fingerprint": fingerprint,
             }
-            conn.execute(_STORE, {"id": entry_id, "category": answer.category_id, "key": json.dumps(key)})
+            if answer.category_id is None:
+                basis["none"] = True
+            key: dict[str, Any] = {"pass": "llm", "basis": basis}
+            if answer.category_id is None:
+                conn.execute(_STORE_NONE, {"id": entry_id, "key": json.dumps(key)})
+            else:
+                conn.execute(_STORE, {"id": entry_id, "category": answer.category_id, "key": json.dumps(key)})
             written = True
             return [entry_id]
 

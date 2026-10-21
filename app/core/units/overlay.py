@@ -60,6 +60,7 @@ from typing import Any
 
 from app.core.matching import Leg, counter_leg_amount, leg_of, pair_all, unmatched, waiting
 from app.core.matching.documents import DocTxn
+from app.core.model.answer import none_key_of
 from app.core.plugins.classifier import (
     FIELD_ORDER,
     STANDING_PASSES,
@@ -1403,6 +1404,8 @@ def _write_accepted(r: _Row, decisions: Mapping[Field, Decided | None]) -> None:
         )
         if key is not None:
             derivation[f] = key
+    if decisions["category"] is None and not _transfer(decisions) and (k := none_key_of(r.s0_derivation)):
+        derivation["category"] = dict(k)  # the model's "none" answer stands until a category replaces it
     if r.original and r.stored is not None:
         _write_document_key(r, derivation)
 
@@ -1465,8 +1468,13 @@ def _field_results(r: _Row) -> dict[Field, FieldResult]:
             and r.s1_derivation.get(f) == der.get(f)
         )
         evidence = (r.evidence or {}).get(f) if untouched else after.get(f)
-        # an empty payee that carries the user's key is a decision, shown like a value
-        shown = value is not None or is_user_no_payee(evidence)
+        # an empty payee that carries the user's key is a decision, shown like a value; an empty category
+        # that carries the model's "none" answer shows it
+        shown = (
+            value is not None
+            or is_user_no_payee(evidence)
+            or (f == "category" and none_key_of(der) is not None)
+        )
         out[f] = FieldResult(
             value=value,
             evidence=evidence if shown else None,

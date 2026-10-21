@@ -28,9 +28,10 @@ class CategoryPath:
 
 @dataclass(frozen=True, slots=True)
 class ModelAnswer:
-    """A valid answer: an existing category id and a one-line rationale."""
+    """A valid answer: an existing category id and a one-line rationale; or no id, the model's answer that
+    no category fits, with the rationale that says what would."""
 
-    category_id: int
+    category_id: int | None
     rationale: str
     model: str
 
@@ -43,7 +44,7 @@ class ModelClient(Protocol):
         ...
 
     async def ask(self, entry: EntryInput, categories: Sequence[CategoryPath]) -> ModelAnswer | None:
-        """The model's answer, or None when it has none (no category fits, or the reply was not valid).
+        """The model's answer, or None when it has none (the reply was not valid).
         Raises `ModelUnavailable` when the model cannot be reached."""
         ...
 

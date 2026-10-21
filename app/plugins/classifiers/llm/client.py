@@ -4,9 +4,9 @@ One request per entry, `temperature` 0, structured output: `response_format` of 
 `category_id` is one of the listed ids or null, plus a one-line rationale. llama.cpp's server accepts the
 OpenAI form (`json_schema.schema`) and its own (`schema` beside `type`); servers without constrained
 output ignore the field, so the reply is validated whatever the server does: malformed JSON or an id that
-is not listed is no answer. The system message is the same for every request while the categories do not
-change (instruction, then the whole tree as `id | path` in a fixed order), so a server that caches a
-prompt prefix processes only the entry's own text.
+is not listed is no answer; null with a rationale is the answer "no category fits". The system message is
+the same for every request while the categories do not change (instruction, then the whole tree as
+`id | path` in a fixed order), so a server that caches a prompt prefix processes only the entry's own text.
 
 Nothing of the payload, the reply or the key is ever logged.
 """
@@ -32,7 +32,9 @@ RATIONALE_MAX = 120
 INSTRUCTION = (
     "You categorise one bank transaction of a household's personal finances. "
     "Choose the single best category for the transaction below from the list, by its id. "
-    "If none fits, or the text says too little, answer null for category_id. "
+    "If no listed category fits, or the text says too little, answer null for category_id; "
+    "then the rationale says what the transaction is and what kind of category would fit it, "
+    'for example "a Catalan motorway toll; there is no category for tolls". '
     "Never invent an id. "
     "Answer with a JSON object: category_id (the id, or null) and rationale "
     f"(one short line, at most {RATIONALE_MAX} characters, saying why)."
@@ -60,8 +62,9 @@ def response_format(categories: Sequence[CategoryPath]) -> dict[str, Any]:
     return {"type": "json_schema", "json_schema": {"name": "category", "strict": True, "schema": schema}}
 
 
-def parse_reply(content: object, categories: Sequence[CategoryPath]) -> tuple[int, str] | None:
-    """The category id and rationale of a valid reply, else None (malformed, unknown id, or no category)."""
+def parse_reply(content: object, categories: Sequence[CategoryPath]) -> tuple[int | None, str] | None:
+    """The category id (None: the model says no category fits) and rationale of a valid reply, else None
+    (malformed, an unknown id, or a "none" without the rationale that is all there is to show of it)."""
     if not isinstance(content, str):
         return None
     try:
@@ -73,11 +76,14 @@ def parse_reply(content: object, categories: Sequence[CategoryPath]) -> tuple[in
     category_id, rationale = data.get("category_id"), data.get("rationale")
     if not isinstance(rationale, str):
         return None
+    line = " ".join(rationale.split())[:RATIONALE_MAX]
+    if category_id is None:
+        return (None, line) if line else None
     if isinstance(category_id, bool) or not isinstance(category_id, int):
-        return None  # null, "none", anything else: no answer
+        return None  # "none", anything else: no answer
     if category_id not in {c.id for c in categories}:
         return None
-    return category_id, " ".join(rationale.split())[:RATIONALE_MAX]
+    return category_id, line
 
 
 class OpenAIModelClient:

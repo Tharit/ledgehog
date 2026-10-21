@@ -296,12 +296,15 @@ class UnitFieldOut(BaseModel):
         from app.core.plugins.classifier import STANDING_PASSES
 
         key = None
+        proposal = f.evidence is not None and f.evidence.pass_name not in STANDING_PASSES
         if f.evidence is not None:
             key = UnitKeyOut.model_validate({"pass": f.evidence.pass_name, "basis": dict(f.evidence.basis)})
+        elif f.value is None and (none := UnitKeyOut.of(f.key)) is not None and none.pass_ == "llm":
+            key, proposal = none, True  # the model's "none" answer: a key on an empty field (spec §5.9)
         return UnitFieldOut(
             value=f.value,
             key=key,
-            is_proposal=f.evidence is not None and f.evidence.pass_name not in STANDING_PASSES,
+            is_proposal=proposal,
             commit_key=UnitKeyOut.of(f.key),
             stored=UnitStoredFieldOut(value=f.stored_value, key=UnitKeyOut.of(f.stored_key))
             if stored
