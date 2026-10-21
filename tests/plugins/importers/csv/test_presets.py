@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 from datetime import date
 
 import pytest
@@ -7,11 +8,12 @@ import pytest
 from app.plugins.importers.csv import CsvImporter, load_presets
 from tests.plugins.importers.csv.fixtures import LONG_PURPOSE, PRIVATE, card_a_bytes, card_b_bytes, giro_bytes
 from tests.plugins.importers.csv.helpers import run
+from tests.plugins.importers.csv.sheets import Cell, xlsx_bytes
 
-NAMES = ["consorsbank_giro", "deutschebank_card", "amex_card"]
+NAMES = ["consorsbank_giro", "deutschebank_card", "amex_card", "caixabank_giro"]
 
 
-def test_presets_are_loaded_by_neutral_name_and_validate() -> None:
+def test_presets_are_loaded_by_name_and_validate() -> None:
     presets = load_presets()
     assert sorted(presets) == sorted(NAMES)
     for settings in presets.values():
@@ -114,3 +116,44 @@ def test_failure_reports_hold_no_preamble_either() -> None:
     with pytest.raises(ParseFailed, match="Nirgends") as ei:
         run(giro_bytes(), profile=profile, today=date(2026, 8, 10))
     assert PRIVATE not in str(ei.value) and PRIVATE not in repr(ei.value.report)
+
+
+# -- caixabank_giro: a spreadsheet, newest first, typed cells, a running balance ----------------
+
+needs_calamine = pytest.mark.skipif(
+    importlib.util.find_spec("python_calamine") is None, reason="python-calamine is not installed"
+)
+
+CAIXA_ROWS: list[list[Cell]] = [
+    ["Movimientos de la cuenta (synthetic)"],
+    ["Importes expresados en euros"],
+    ["Fecha", "Fecha valor", "Movimiento", "Más datos", "Importe", "Saldo"],
+    [date(2026, 8, 18), date(2026, 8, 18), "Recibo luz", "Referencia 1", -45.5, 1954.5],  # newest first
+    [date(2026, 8, 18), date(2026, 8, 18), "Nomina", None, 1500.0, 2000.0],  # same day, earlier
+    ["17.08.2026", "17.08.2026", "Compra tienda", "Tarjeta 0000", "-1.250,25", "500,00"],  # text cells
+    [date(2026, 8, 14), date(2026, 8, 14), "Ingreso", "Efectivo", 1750.25, 1750.25],
+]
+
+
+@needs_calamine
+def test_caixabank_rows_signs_texts_and_purpose() -> None:
+    pf = run(xlsx_bytes(CAIXA_ROWS), profile=load_presets()["caixabank_giro"], today=date(2026, 8, 20))
+    assert [r.amount_minor for r in pf.rows] == [-4550, 150000, -125025, 175025]
+    assert [r.booked_on for r in pf.rows] == [date(2026, 8, d) for d in (18, 18, 17, 14)]
+    assert pf.rows[0].value_on == date(2026, 8, 18)
+    assert [r.booking_text for r in pf.rows] == ["Recibo luz", "Nomina", "Compra tienda", "Ingreso"]
+    assert [r.purpose for r in pf.rows] == [
+        "Recibo luz Referencia 1",
+        "Nomina",  # the empty Más datos adds nothing
+        "Compra tienda Tarjeta 0000",
+        "Ingreso Efectivo",
+    ]
+    assert pf.rows[0].counterparty_name is None and pf.rows[0].end_to_end_id is None
+    assert pf.covered_through == date(2026, 8, 18) and pf.data_start == date(2026, 8, 14)
+
+
+@needs_calamine
+def test_caixabank_balance_is_the_newest_row_of_the_last_day() -> None:
+    pf = run(xlsx_bytes(CAIXA_ROWS), profile=load_presets()["caixabank_giro"], today=date(2026, 8, 20))
+    # two rows share the 18th, newest first: the running balance after the day is the first one
+    assert (pf.reported_balance, pf.balance_on) == (195450, date(2026, 8, 18))
