@@ -88,6 +88,19 @@ def test_a_truncated_reply(rig: Rig, acct: int, caplog: pytest.LogCaptureFixture
     assert line.startswith(f"model asked about entry {e}: no answer (truncated) in ")
 
 
+def test_a_truncated_reply_says_how_many_tokens_it_took(
+    rig: Rig, acct: int, caplog: pytest.LogCaptureFixture
+) -> None:
+    e, _ = _toll(rig.engine, acct)
+    settle(rig.engine)
+    rig.endpoint.raw = f'{{"category_id": 1, "rationale": "{SECRET}'
+    rig.endpoint.finish_reason = "length"
+    rig.endpoint.completion_tokens = 1024
+    line = _process(rig, caplog)
+    assert line.startswith(f"model asked about entry {e}: no answer (truncated after 1024 tokens) in ")
+    assert SECRET not in caplog.text
+
+
 def test_dropped_because_the_user_decided(rig: Rig, acct: int, caplog: pytest.LogCaptureFixture) -> None:
     e, cat = _toll(rig.engine, acct)
     settle(rig.engine)

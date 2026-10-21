@@ -180,7 +180,8 @@ class ModelWorker:
             self.queue.finish(item, answered=False)
             return
         if isinstance(answer, NoAnswer):
-            outcome, stored = f"no answer ({answer.reason})", False
+            spent = f" after {answer.tokens} tokens" if answer.tokens is not None else ""
+            outcome, stored = f"no answer ({answer.reason}{spent})", False
         else:
             outcome = await asyncio.to_thread(self._store, item, answer)
             stored = outcome.startswith("stored")

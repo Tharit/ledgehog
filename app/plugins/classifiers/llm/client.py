@@ -27,6 +27,8 @@ from app.plugins.classifiers.llm.payload import payload_fingerprint, payload_of,
 log = logging.getLogger("ledgehog.model")
 
 TIMEOUT_SECONDS = 30.0
+# room for a reasoning model's thinking, which counts against the limit, besides the short reply
+MAX_TOKENS = 1024
 RATIONALE_MIN = 3
 RATIONALE_MAX = 120
 
@@ -89,6 +91,13 @@ def parse_reply(content: object, categories: Sequence[CategoryPath]) -> tuple[in
     return category_id, line
 
 
+def _completion_tokens(body: object) -> int | None:
+    """`usage.completion_tokens` when the reply carries it as a number; nothing else of the reply."""
+    usage = body.get("usage") if isinstance(body, dict) else None
+    tokens = usage.get("completion_tokens") if isinstance(usage, dict) else None
+    return tokens if isinstance(tokens, int) and not isinstance(tokens, bool) else None
+
+
 class OpenAIModelClient:
     def __init__(
         self,
@@ -96,12 +105,14 @@ class OpenAIModelClient:
         model: str,
         api_key: str | None = None,
         *,
+        reasoning_effort: str | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
         timeout: float = TIMEOUT_SECONDS,
     ) -> None:
         base = endpoint.rstrip("/")
         self._url = base if base.endswith("/chat/completions") else f"{base}/chat/completions"
         self.name = model
+        self._effort = reasoning_effort
         headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
         self._http = httpx.AsyncClient(timeout=timeout, headers=headers, transport=transport)
 
@@ -112,13 +123,15 @@ class OpenAIModelClient:
         return {
             "model": self.name,
             "temperature": 0,
-            "max_tokens": 200,
+            "max_tokens": MAX_TOKENS,
             "stream": False,
             "messages": [
                 {"role": "system", "content": system_message(categories)},
                 {"role": "user", "content": user_message(payload)},
             ],
             "response_format": response_format(categories),
+            # llama.cpp documents `reasoning_effort` as a top-level field, passed on to the model's template
+            **({"reasoning_effort": self._effort} if self._effort is not None else {}),
         }
 
     async def ask(self, entry: EntryInput, categories: Sequence[CategoryPath]) -> ModelAnswer | NoAnswer:
@@ -143,7 +156,8 @@ class OpenAIModelClient:
         except (KeyError, IndexError, TypeError):
             return NoAnswer("not_json")  # no choices[0].message.content
         if isinstance(choice, dict) and choice.get("finish_reason") == "length":
-            return NoAnswer("truncated")  # cut off at max_tokens: whatever is there is not the whole reply
+            # cut off at max_tokens: whatever is there is not the whole reply
+            return NoAnswer("truncated", _completion_tokens(body))
         parsed = parse_reply(content, categories)
         if isinstance(parsed, NoAnswer):
             return parsed

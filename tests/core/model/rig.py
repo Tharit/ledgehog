@@ -26,6 +26,7 @@ class Endpoint:
         self.status = 200
         self.raw: str | None = None  # the reply's content as is, instead of the id and rationale
         self.finish_reason: str | None = None
+        self.completion_tokens: int | None = None
         self.during: Callable[[], None] | None = None
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
@@ -40,7 +41,10 @@ class Endpoint:
         choice: dict[str, Any] = {"message": {"content": content}}
         if self.finish_reason is not None:
             choice["finish_reason"] = self.finish_reason
-        return httpx.Response(200, json={"choices": [choice]})
+        reply: dict[str, Any] = {"choices": [choice]}
+        if self.completion_tokens is not None:
+            reply["usage"] = {"completion_tokens": self.completion_tokens}
+        return httpx.Response(200, json=reply)
 
 
 @dataclass

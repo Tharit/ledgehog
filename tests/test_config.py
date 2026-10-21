@@ -168,6 +168,16 @@ def test_model_is_optional_and_needs_endpoint_and_name_together():
         load(MODEL_ENDPOINT="http://llm")
 
 
+def test_model_reasoning_effort_is_optional_and_strict():
+    base = {"MODEL_ENDPOINT": "http://llm", "MODEL_NAME": "m"}
+    assert load(**base).model.reasoning_effort is None  # type: ignore[union-attr]
+    for effort in ("low", "medium", "high"):
+        assert load(**base, MODEL_REASONING_EFFORT=effort).model.reasoning_effort == effort  # type: ignore[union-attr]
+    for bad in ("max", "High", ""):
+        with pytest.raises(ConfigError, match="MODEL_REASONING_EFFORT"):
+            load(**base, MODEL_REASONING_EFFORT=bad)
+
+
 def test_config_is_immutable():
     c = load()
     with pytest.raises(dataclasses.FrozenInstanceError):

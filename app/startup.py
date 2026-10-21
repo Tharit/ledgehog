@@ -205,7 +205,12 @@ def configure_model(config: Config, engine: Engine) -> ModelWorker | None:
         configure_model_queue(None)
         return None
     key = config.model.api_key
-    client = OpenAIModelClient(config.model.endpoint, config.model.name, key.reveal() if key else None)
+    client = OpenAIModelClient(
+        config.model.endpoint,
+        config.model.name,
+        key.reveal() if key else None,
+        reasoning_effort=config.model.reasoning_effort,
+    )
     queue = ModelQueue(client.fingerprint)
     configure_model_queue(queue)
     log.info("the model answers for categories in the background: %s", config.model.name)

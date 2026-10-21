@@ -223,6 +223,14 @@ def test_the_classifier_proposes_the_stored_answer_while_the_payload_stands() ->
     assert p is not None and p.value == 3 and dict(p.basis) == dict(stored.basis)
 
 
+def test_the_body_has_room_for_thinking_and_sends_the_reasoning_effort_only_when_set() -> None:
+    plain = OpenAIModelClient("http://model.test/v1", "m")
+    body = plain.request_body({"counterparty": "x"}, CATEGORIES)
+    assert body["max_tokens"] == 1024 and "reasoning_effort" not in body
+    effort = OpenAIModelClient("http://model.test/v1", "m", reasoning_effort="low")
+    assert effort.request_body({"counterparty": "x"}, CATEGORIES)["reasoning_effort"] == "low"
+
+
 def test_the_classifier_proposes_the_stored_absence_while_the_payload_stands() -> None:
     entry = _entry(counterparty_name="AUCAT")
     stored = _stored(entry, None)

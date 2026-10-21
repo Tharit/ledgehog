@@ -42,6 +42,7 @@ class NoAnswer:
     that says why and never carries any of the reply."""
 
     reason: str
+    tokens: int | None = None  # for `truncated`: the completion tokens spent, a number, nothing of the reply
 
 
 class ModelClient(Protocol):

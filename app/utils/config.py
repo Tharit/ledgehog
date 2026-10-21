@@ -87,6 +87,7 @@ class ModelConfig:
     endpoint: str
     name: str
     api_key: Secret | None
+    reasoning_effort: str | None = None  # `low`, `medium` or `high`; None: not sent
 
 
 @dataclass(frozen=True, slots=True)
@@ -257,10 +258,14 @@ class _Reader:
         endpoint, name = self.env.get("MODEL_ENDPOINT"), self.env.get("MODEL_NAME")
         if endpoint is None and name is None:
             return None
+        effort = self.optional_text("MODEL_REASONING_EFFORT")
+        if effort is not None and effort not in ("low", "medium", "high"):
+            raise ConfigError("MODEL_REASONING_EFFORT", "must be low, medium or high")
         return ModelConfig(
             self.text("MODEL_ENDPOINT"),
             self.text("MODEL_NAME"),
             self.secret("MODEL_API_KEY", required=False),
+            effort,
         )
 
     def read(self) -> Config:
