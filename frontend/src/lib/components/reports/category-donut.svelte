@@ -38,7 +38,9 @@
 	const money = (minor: number) => formatMoney(sign * minor, currency, { locale });
 </script>
 
-<Chart.Container {config} class="mx-auto aspect-square max-h-64" data-slot="category-donut">
+<!-- An explicit width: in a grid cell the auto margins make the box shrink to its content, and the
+	chart (width: 100%) is that content, so the square collapsed to nothing. -->
+<Chart.Container {config} class="mx-auto aspect-square w-full max-w-64" data-slot="category-donut">
 	<PieChart
 		{data}
 		key="key"

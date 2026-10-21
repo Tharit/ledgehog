@@ -55,6 +55,16 @@ describe('ByCategoryView', () => {
 		);
 	});
 
+	it('gives the donut an explicit width, or its grid cell collapses it to nothing', () => {
+		const { container } = render(ByCategoryView, {
+			props: { report: byCategoryTree(), categories, scope }
+		});
+
+		// jsdom has no layout; the collapse (auto margins + a width: 100% child) is a class matter.
+		const donut = container.querySelector('[data-slot="category-donut"]')!;
+		expect(donut).toHaveClass('w-full', 'max-w-64', 'aspect-square');
+	});
+
 	it('beneath it, what is not in the categories above, each a link', () => {
 		const { container } = render(ByCategoryView, {
 			props: { report: byCategoryTree(), categories, scope }
