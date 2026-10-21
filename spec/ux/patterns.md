@@ -419,7 +419,7 @@ an unsaved draft) is a dialog, a popover or a new tab, never a page. A task
 that must outlive navigation lives on a page and in a store that outlives it.
 A popover never makes a write that needs a decision; choosing or toggling is
 its only write. **There is no inline form**: adding, and editing more than one
-field, are dialogs or pages. The entry form is a form dialog; once it has created the transaction the work panel opens on it. It offers a secondary "Add and add another" beside "Add", which clears the form for the next transaction instead.
+field, are dialogs or pages. The entry form is a form dialog; once it has created the transaction it closes, and the new entry is reviewed in the queue like any other. It offers a secondary "Add and add another" beside "Add", which clears the form for the next transaction instead.
 
 In the work panel, a transfer leg's partner offers and the amount received of a
 counter-leg are fields of the draft editor, not inline forms. The transfer block shows the
