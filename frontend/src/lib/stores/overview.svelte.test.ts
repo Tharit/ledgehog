@@ -29,7 +29,8 @@ const values = (ledger: string) => ({
 	ledger,
 	documents: 'b:1',
 	accounts: {},
-	active_task: null
+	active_task: null,
+	model_pending: 0
 });
 
 beforeEach(() => {

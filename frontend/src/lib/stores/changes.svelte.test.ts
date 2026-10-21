@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { readChanges, setChangesListener, type ChangeRead } from '#lib/api/index.js';
-import { ChangeWatcher, POLL_MS } from './changes.svelte.js';
+import {
+	readChanges,
+	setChangesListener,
+	type ChangeRead,
+	type ChangeValues
+} from '#lib/api/index.js';
+import { ChangeWatcher, MODEL_POLL_MS, POLL_MS } from './changes.svelte.js';
 import { NewDataWatch } from './new-data.svelte.js';
 
 vi.mock('#lib/api/index.js', async (importOriginal) => ({
@@ -14,11 +19,12 @@ const read = (over: Partial<ChangeRead> = {}): ChangeRead => ({
 	documents: 'b:1',
 	accounts: { '7': 'b:1' },
 	active_task: null,
+	model_pending: 0,
 	...over
 });
 
 /** the write response header's values, as the request layer hands them over */
-function writeResponse(values: Omit<ChangeRead, 'active_task'>): void {
+function writeResponse(values: ChangeValues): void {
 	const listener = vi.mocked(setChangesListener).mock.calls.at(-1)?.[0];
 	listener?.(values);
 }
@@ -54,6 +60,37 @@ describe('ChangeWatcher: when it reads', () => {
 		expect(readChanges).toHaveBeenCalledTimes(2);
 		await vi.advanceTimersByTimeAsync(POLL_MS);
 		expect(readChanges).toHaveBeenCalledTimes(3);
+	});
+
+	it('reads every 5 s while the model has entries pending, and back every 30 s at zero', async () => {
+		vi.mocked(readChanges).mockResolvedValue(read({ model_pending: 3 }));
+		watcher.start();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(watcher.modelPending).toBe(3);
+		expect(readChanges).toHaveBeenCalledTimes(1);
+		await vi.advanceTimersByTimeAsync(MODEL_POLL_MS);
+		expect(readChanges).toHaveBeenCalledTimes(2);
+		await vi.advanceTimersByTimeAsync(MODEL_POLL_MS);
+		expect(readChanges).toHaveBeenCalledTimes(3);
+
+		vi.mocked(readChanges).mockResolvedValue(read({ model_pending: 0 }));
+		await vi.advanceTimersByTimeAsync(MODEL_POLL_MS); // the read that sees zero
+		expect(watcher.modelPending).toBe(0);
+		expect(readChanges).toHaveBeenCalledTimes(4);
+		await vi.advanceTimersByTimeAsync(MODEL_POLL_MS * 5);
+		expect(readChanges).toHaveBeenCalledTimes(4);
+		await vi.advanceTimersByTimeAsync(POLL_MS);
+		expect(readChanges).toHaveBeenCalledTimes(5);
+	});
+
+	it('speeds up when a later read finds the model pending', async () => {
+		watcher.start();
+		await vi.advanceTimersByTimeAsync(POLL_MS); // 2 reads
+		vi.mocked(readChanges).mockResolvedValue(read({ model_pending: 1 }));
+		await vi.advanceTimersByTimeAsync(POLL_MS); // 3rd read, pending
+		expect(readChanges).toHaveBeenCalledTimes(3);
+		await vi.advanceTimersByTimeAsync(MODEL_POLL_MS);
+		expect(readChanges).toHaveBeenCalledTimes(4);
 	});
 
 	it('reads when the tab becomes visible, not when it is hidden', async () => {
