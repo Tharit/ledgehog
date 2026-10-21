@@ -3974,3 +3974,22 @@ Architecture §2, §4.1, §4.5, §5.6, §5.7, the start sequence; schema `app_us
 - **A claim missing from the ID token is taken from userinfo**, one generic fallback; `OIDC_CLAIMS_SOURCE` is
   not a setting.
 - **Sign-out is local.** The provider's session is the provider's.
+
+## D227 The model is asked in the background, for the category
+
+Spec §5.9 pass 3; architecture §4.1, §4.2, §5.4; `ux/views/review-queue.md`.
+
+- **Category only.** Payees are left to rules and history. Rejected: *both fields at once* (a payee list in every
+  prompt, and context per payee, for little gain).
+- **A worker with an in-memory list, not a review flag.** Review flags stay derived from stored data; whether the
+  model has answered yet depends on whether it is reachable, which only the running process knows. Rejected: *a
+  `waiting` reason for the model* (entries would wait for days behind an unreachable model, and the flag would need
+  re-settling whenever it came back).
+- **Shown where its results land**: the Review item and the queue, not `/sync`. Rejected: *on `/sync`* (bank tasks
+  and guesses are different things, and the guesses are reviewed in Review).
+- **The change poll carries the remaining count, every 5 s while there is work.** Rejected: *a stream* (as for the
+  change values, §4.2).
+- **One short rationale.** It costs generation time, in the background, and is what makes a guess for an unfamiliar
+  name checkable.
+- **Structured output and a stable prompt prefix.** Few tokens generated, no invented id, the category list
+  processed once by a server that caches it.

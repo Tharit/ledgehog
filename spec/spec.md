@@ -2188,10 +2188,10 @@ low.
 
 #### Pass 3 — AI model
 
-Runs for a field whenever passes 0 to 2 produce no value for it — but not for
-a payee history found most often absent (Pass 2) —
-whether or not the counterparty has been seen before — mixed history is often
-exactly where the purpose text tells cases apart. It answers what kind of
+Runs for the category whenever passes 0 to 2 produce none, whether or not the
+counterparty has been seen before — mixed history is often
+exactly where the purpose text tells cases apart. It is not asked for a payee.
+It answers what kind of
 spending an entry is: it exists because no rule and no history can know that
 `AUCAT BAR CUBELLES N BA` is a Catalan motorway toll, knowledge that matters
 precisely when travelling, which is when unfamiliar counterparties cluster.
@@ -2199,11 +2199,10 @@ precisely when travelling, which is when unfamiliar counterparties cluster.
 Constraints on pass 3:
 
 - **It selects, it never creates.** A proposal must reference an existing
-  category or payee. Creating entities is a separate flow (below), never part
-  of deriving. In practice its value is almost entirely categorisation; that is
-  an expectation, not a restriction.
+  category. Creating entities is a separate flow (below), never part
+  of deriving.
 - **Never auto-confirmed.** Its output is always shown as a guess, with the
-  model's rationale, and lands in the review queue.
+  model's rationale, one short line, and lands in the review queue.
 - **Asked once per input while its answer stands.** The model is slow and
   may be costly: its answer is the `llm` key of the field it answers, kept
   with a fingerprint of the payload it was given, and reused whenever the
@@ -2214,6 +2213,13 @@ Constraints on pass 3:
   for it in the review panel, or when the field falls to pass 3 again.
   Settling never waits for it: an answer is stored when it arrives, and that
   write settles like any other.
+- **Asked in the background.** An entry whose category falls to the model
+  waits on a list in memory for one worker, which asks the model one entry at
+  a time and stores each answer as it arrives. While an entry is on that list
+  the review queue and the panel say the model is still looking at it; this
+  is not a review flag, and nothing of it is stored. When the model is
+  unreachable the list empties and its entries are unclassified, as with no
+  model; they are asked when it answers again.
 - **Limited payload.** The counterparty name, booking text and purpose, and
   for an entry with a linked or picked document, the document's merchant
   name, and the entry's line (§5.8) if it has one. Never the counterparty IBAN, BIC, end-to-end id

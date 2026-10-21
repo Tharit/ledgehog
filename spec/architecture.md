@@ -258,7 +258,9 @@ GET    /api/units/queue                        the units not confirmed, in
                                                entry id; units decided entirely
                                                by pass 0 and rules appear only
                                                while they wait for a partner or
-                                               a document
+                                               a document; each unit says
+                                               whether the model is still
+                                               looking at it
 GET    /api/units/queue/count                  how many units can be acted on
                                                now: `count`, the sum of
                                                `pending_review` and
@@ -507,8 +509,10 @@ GET    /api/session                            who am I
   changes — whether what a view shows has changed (§4.2)
 GET    /api/changes                            the change value of the ledger,
                                                of the documents and of each
-                                               account, and the current user's
-                                               active task; a write's response
+                                               account, the current user's
+                                               active task, and how many
+                                               entries the model still has to
+                                               look at; a write's response
                                                carries the values after it
 
   configuration — read-only (§5.7)
@@ -1085,7 +1089,9 @@ queue alike), `documents`, and one per account (its source transactions, balance
 records and derived entries, for its page) — in process memory (§3). A value is
 opaque: it is a start token and a counter, so a restart makes every value new
 and a view shows the notice once, never misses one. The client reads them, with
-the current user's active task, every 30 s and whenever the tab regains focus.
+the current user's active task and the model's remaining entries, every 30 s
+— every 5 s while the model has entries to look at — and whenever the tab
+regains focus.
 A view remembers the value of its key read before it fetched, and shows "New
 data — Refresh" when it moves. A write's response carries the values after it,
 so the tab that wrote takes them and shows no notice for its own change. A
@@ -1233,8 +1239,7 @@ app/
     classifiers/         passes 1–3 of spec §5.9 (pass 0 is core), behind
       rules/             one protocol: propose a value and a machine-readable
       history/           basis. Ordered by authority.
-      llm/               (not v1 — the protocol exists so it is a package,
-                         not a refactor)
+      llm/               the model, asked in the background (§5.4)
   utils/                 Infrastructure with no domain knowledge.
     db/                  engine, connection, SQL helpers
     auth/                sessions, password and OIDC sign-in
@@ -1633,8 +1638,19 @@ Three properties the implementation must have:
   user requests it. Settling never waits for the model: the request runs
   outside it, and storing the answer is a write that settles like any other.
 
-Timeouts are short and failure is non-fatal: an unreachable model leaves the
-entry unclassified, exactly as an unconfigured one would.
+**One worker asks, in the background.** Settling puts an entry whose category
+falls to the model, with no answer standing for its payload, on an in-memory
+list; one worker takes them in order, one request at a time, and stores each
+answer with a write that settles like any other. An answer for a category a
+user or a pass of higher authority decided meanwhile is dropped, so nothing
+changes under the user. A restart loses the list and the start's settling
+refills it. The request asks for structured output — the category as one of
+the listed ids or none, and a one-line rationale — and the category list is
+the same system message on every request, the whole tree in a fixed order,
+so a server that caches a prompt prefix processes only the entry's text.
+Timeouts are short and failure is non-fatal: an unreachable model leaves its
+entries unclassified, exactly as an unconfigured one would; the worker tries
+again after ten minutes, or when settling hands it new work.
 
 ### 5.5 Importer interface and error taxonomy
 

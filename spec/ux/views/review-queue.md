@@ -20,7 +20,15 @@ recurring unit leaves the queue for good once a rule decides it.
 
 **The navigation counts what can be done.** The Review item shows, beside its
 label, how many units are pending review or need an account — not those
-waiting — muted, and nothing at zero (architecture §6.5).
+waiting — muted, and nothing at zero (architecture §6.5). While the model is
+looking at entries, a small activity mark beside the count says so, and its
+tooltip how many.
+
+**What the model has not yet answered says so.** A unit the model is still
+looking at is marked in its row, one quiet line above the list says how many
+there are, and the panel says the model's guess is still coming; a unit can
+be decided meanwhile, and the guess then gives way. Its answers arrive as new
+data.
 
 **Evidence is shown, not confidence.** Each derived value shows its basis as
 the pass recorded it: "1 of 1 since March" for history, the rule for a rule,
