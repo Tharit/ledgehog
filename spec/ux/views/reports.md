@@ -33,7 +33,7 @@ entries, amount, share, and a bar; a parent's own entries are a child row
 and in, reconciliations, and the count of entries not yet confirmed (the table
 includes their proposed categories).
 
-**Tab 2: Trends over time.** A range cut into months, quarters or years in the household's
+**Tab 2: Over time.** A range cut into months, quarters or years in the household's
 calendar; a period the range cuts is labelled with its days. Default mode,
 *Income and expense*: income above the zero line, expense below it, a savings
 line over them; a table of the rows Income, Expense, Unclassified,
