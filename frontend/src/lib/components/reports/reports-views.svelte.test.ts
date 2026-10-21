@@ -191,6 +191,32 @@ describe('BalancesView', () => {
 		expect(unvalued).toHaveTextContent('80.00 USD');
 	});
 
+	it('shows no balance yet as a plain muted dash, and keeps "unvalued" as an absent value', () => {
+		const base = balances();
+		const report = balances({
+			accounts: [
+				{
+					...base.accounts[0],
+					balances: [null, ...base.accounts[0].balances.slice(1)],
+					native: [{ amount: 0, currency: 'EUR' }, ...base.accounts[0].native.slice(1)]
+				},
+				{
+					...base.accounts[1],
+					balances: [null, ...base.accounts[1].balances.slice(1)],
+					native: [{ amount: 5000, currency: 'USD' }, ...base.accounts[1].native.slice(1)]
+				}
+			]
+		});
+		const { container } = render(BalancesView, { props: { report, accounts } });
+
+		const empty = container.querySelector('[data-row="a1"] td') as HTMLElement;
+		expect(empty).toHaveTextContent('no balance yet');
+		expect(empty.querySelector('[data-slot="absent-value"]')).toBeNull();
+		expect(empty.querySelector('.text-muted-foreground')).toHaveTextContent('—');
+		const unvalued = container.querySelector('[data-row="a2"] td') as HTMLElement;
+		expect(unvalued.querySelector('[data-slot="absent-value"]')).toHaveTextContent('unvalued');
+	});
+
 	it('toggles an account into the chart by checkbox', async () => {
 		render(BalancesView, { props: { report: balances(), accounts } });
 		const toggle = screen.getByRole('checkbox', { name: 'Giro' });

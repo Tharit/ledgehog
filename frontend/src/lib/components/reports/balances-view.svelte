@@ -36,11 +36,12 @@
 </script>
 
 {#snippet figure(cell: BalanceCell)}
-	{#if cell.minor === null}
-		<AbsentValue
-			label={cell.note ? 'unvalued' : '—'}
-			explanation={cell.note ?? 'No balance yet.'}
-		/>
+	{#if cell.minor === null && cell.note}
+		<AbsentValue label="unvalued" explanation={cell.note} />
+	{:else if cell.minor === null}
+		<!-- no balance yet is not an absent value (design §7), just nothing to show -->
+		<span class="text-muted-foreground" aria-hidden="true">—</span>
+		<span class="sr-only">no balance yet</span>
 	{:else}
 		<span title={cell.note}>
 			<MoneyDisplay minor={cell.minor} currency={cell.currency} {locale} showPlus={false} />
