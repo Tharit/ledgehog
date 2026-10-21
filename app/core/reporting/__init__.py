@@ -5,10 +5,12 @@ through the ledger list's own predicate (`app.core.ledger.compose`), so a drill-
 """
 
 from app.core.reporting.balances import (
+    KIND_ORDER,
     MAX_POINTS,
     AccountBalance,
     AccountSeries,
     BalancesReport,
+    KindSeries,
     NetWorth,
     UnvaluedAccounts,
     balances_on,
@@ -50,6 +52,7 @@ from app.core.reporting.spend import ByCategory, CategoryRow, Slice, by_category
 
 __all__ = [
     "EMPTY",
+    "KIND_ORDER",
     "KIND_SIGN",
     "MAX_PERIODS",
     "MAX_POINTS",
@@ -62,6 +65,7 @@ __all__ = [
     "CategoryRow",
     "CategorySeries",
     "Facts",
+    "KindSeries",
     "Line",
     "MonthSpend",
     "NetWorth",

@@ -350,6 +350,8 @@ def test_over_time_by_category_carries_the_tree_per_period(anna: TestClient, see
     assert rows[seeded.food]["total"] == [line(-9_500, 3), line(-10_200, 2)]
     assert rows[seeded.food]["own"] == [line(-2_000, 1), line(0, 0)]
     assert rows[seeded.food]["sum"] == line(-19_700, 5)
+    assert rows[seeded.food]["own_sum"] == line(-2_000, 1)  # its own entries over the range
+    assert rows[seeded.groceries]["own_sum"] == rows[seeded.groceries]["sum"]
     assert [s["category_id"] for s in body["slices"]] == [seeded.travel, seeded.food]
     assert body["other"] == [line(0, 0), line(0, 0)]
     assert body["totals"] == [line(-49_500, 4), line(-9_500, 4, [usd_unvalued(-2_000)])]
@@ -426,6 +428,19 @@ def test_balances_at_the_month_ends_with_today_as_the_current_months_point(
     foreign = accounts[seeded.usd]
     assert foreign["balances"] == [None, None, None]  # no rate: unvalued, never zero
     assert foreign["native"] == [usd(30_000), usd(30_000), usd(28_000)]
+
+
+def test_balances_carry_each_kinds_net_worth_in_the_kind_order(anna: TestClient, seeded: Household):
+    body = get(anna, BALANCES, **AUG_OCT)
+    assert [k["kind"] for k in body["kinds"]] == ["checking", "card", "cash"]  # Giro, Travel card, Cash
+    by_kind = {k["kind"]: k["net_worth"] for k in body["kinds"]}
+    accounts = {a["account_id"]: a for a in body["accounts"]}
+    assert [n["total"] for n in by_kind["cash"]] == accounts[seeded.cash]["balances"]  # its one account
+    assert by_kind["card"][0] == {"total": None, "unvalued": [{"amount": usd(30_000), "accounts": 1}]}
+    assert [n["total"] for n in by_kind["checking"]] == accounts[seeded.giro]["balances"]
+    for i, worth in enumerate(body["net_worth"]):  # the kinds add up to the net worth, here
+        parts = [k["net_worth"][i]["total"] for k in body["kinds"] if k["net_worth"][i]["total"]]
+        assert sum(p["amount"] for p in parts) == worth["total"]["amount"]
 
 
 def test_balances_at_today_are_the_overviews_net_worth(anna: TestClient, seeded: Household):

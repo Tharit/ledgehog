@@ -45,6 +45,7 @@ class CategorySeries:
     parent_id: int | None
     own: tuple[Line, ...]  # per period
     total: tuple[Line, ...]
+    own_sum: Line  # the entries booked to the node itself, over the range
     sum: Line  # the node's total over the range
 
 
@@ -86,7 +87,7 @@ def categories_over_time(conn: Connection, flt: LedgerFilter, step: Step, kind: 
         kind=kind,
         periods=tuple(cut),
         categories=tuple(
-            CategorySeries(n.category_id, n.parent_id, n.own, n.total, n.total_sum) for n in nodes
+            CategorySeries(n.category_id, n.parent_id, n.own, n.total, n.own_sum, n.total_sum) for n in nodes
         ),
         slices=tuple(n.category_id for n in chosen),
         other=other,

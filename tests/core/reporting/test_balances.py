@@ -106,3 +106,46 @@ def test_more_than_120_month_ends_is_refused_naming_from(ledger: Connection):
     with pytest.raises(TooManyPeriods) as caught:
         balances_report(ledger, D(2015, 1, 1), D(2026, 12, 31), D(2026, 10, 20))
     assert caught.value.parameter == "from"
+
+
+def test_each_kind_is_the_net_worth_of_its_listed_accounts_in_the_kind_order(ledger: Connection):
+    depot = seed.account(ledger, "Depot", kind="depot")
+    seed.derived(ledger, depot, type="opening", on=D(2026, 1, 1), amount=10_000)
+    cash = seed.account(ledger, "Cash", kind="cash")
+    seed.entry(ledger, cash, amount=400, on=D(2026, 1, 5))
+    giro = seed.account(ledger, "Giro")
+    seed.entry(ledger, giro, amount=1_000, on=D(2026, 1, 5))
+    seed.account(ledger, "Unused savings", kind="savings")  # open, no entries: listed, holds nothing
+    got = balances_report(ledger, D(2026, 1, 1), D(2026, 2, 28), D(2026, 10, 20))
+    assert [k.kind for k in got.kinds] == ["checking", "savings", "cash", "depot"]  # not by name or creation
+    by_kind = {k.kind: k.net_worth for k in got.kinds}
+    assert [n.total for n in by_kind["depot"]] == [10_000, 10_000]
+    assert [n.total for n in by_kind["savings"]] == [0, 0]
+    for i, total in enumerate(got.net_worth):  # all valued: the kinds sum to the net worth
+        assert sum(k.net_worth[i].total or 0 for k in got.kinds) == total.total
+
+
+def test_a_kind_with_unvalued_and_valued_accounts_behaves_as_net_worth_does(ledger: Connection):
+    eur = seed.account(ledger, "Card EUR", kind="card")
+    seed.entry(ledger, eur, amount=-300, on=D(2026, 1, 5))
+    usd = seed.account(ledger, "Card USD", currency="USD", kind="card")
+    seed.entry(ledger, usd, amount=-500, on=D(2026, 1, 6), currency="USD")
+    only_usd = seed.account(ledger, "Loan USD", currency="USD", kind="loan")
+    seed.entry(ledger, only_usd, amount=-9_000, on=D(2026, 1, 6), currency="USD")
+    got = balances_report(ledger, D(2026, 1, 1), D(2026, 1, 31), D(2026, 10, 20))
+    by_kind = {k.kind: k.net_worth[0] for k in got.kinds}
+    assert by_kind["card"].total == -300  # the valued one; the other is a remainder, never zero
+    assert by_kind["card"].unvalued == (UnvaluedAccounts("USD", -500, 1),)
+    assert by_kind["loan"].total is None  # balances exist and none could be valued
+    assert by_kind["loan"].unvalued == (UnvaluedAccounts("USD", -9_000, 1),)
+
+
+def test_a_closed_account_is_in_its_kind_only_when_it_is_listed(ledger: Connection):
+    old = seed.account(ledger, "Old", kind="savings")
+    seed.entry(ledger, old, amount=700, on=D(2026, 2, 10))
+    ledger.execute(text("UPDATE account SET closed_on = DATE '2026-03-10' WHERE id = :i"), {"i": old})
+    never = seed.account(ledger, "Never used", kind="loan")
+    ledger.execute(text("UPDATE account SET closed_on = DATE '2026-01-01' WHERE id = :i"), {"i": never})
+    got = balances_report(ledger, D(2026, 1, 1), D(2026, 2, 28), D(2026, 10, 20))
+    assert [k.kind for k in got.kinds] == ["savings"]  # a kind of closed, empty accounts only is absent
+    assert [n.total for n in got.kinds[0].net_worth] == [0, 700]

@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 
 from app.api.errors import map_error
 from app.api.routers.accounts import AccountOut, Money, facts
+from app.api.routers.accounts import Kind as AccountKind
 from app.api.routers.entries import Ids
 from app.api.session import CurrentUser, EngineDep
 from app.core import reporting as rp
@@ -298,6 +299,7 @@ class CategorySeriesOut(BaseModel):
     parent_id: int | None
     own: list[LineOut]  # per period
     total: list[LineOut]  # per period, with the descendants
+    own_sum: LineOut  # the entries booked to the category itself, over the range
     sum: LineOut  # the category's total over the range
 
 
@@ -363,6 +365,7 @@ def get_over_time(
                 parent_id=c.parent_id,
                 own=[LineOut.of(x, base) for x in c.own],
                 total=[LineOut.of(x, base) for x in c.total],
+                own_sum=LineOut.of(c.own_sum, base),
                 sum=LineOut.of(c.sum, base),
             )
             for c in by_cat.categories
@@ -382,6 +385,13 @@ class PointNetWorthOut(BaseModel):
     unvalued: list[NetWorthUnvaluedOut]
 
 
+def _point_worth(n: rp.NetWorth, base: str) -> PointNetWorthOut:
+    return PointNetWorthOut(
+        total=None if n.total is None else Money(amount=n.total, currency=base),
+        unvalued=_worth_unvalued(n.unvalued),
+    )
+
+
 class AccountBalancesOut(BaseModel):
     account_id: int
     # the base-currency value at each point; null where the account has no balance yet or it is unvalued
@@ -389,10 +399,16 @@ class AccountBalancesOut(BaseModel):
     native: list[Money]  # the balance in the account's own currency at each point
 
 
+class KindNetWorthOut(BaseModel):
+    kind: AccountKind
+    net_worth: list[PointNetWorthOut]  # per point: the net worth of the listed accounts of this kind
+
+
 class BalancesOut(BaseModel):
     base_currency: str
     points: list[date]  # the range's month-ends, a future one replaced by today, today when in the range
     net_worth: list[PointNetWorthOut]  # per point
+    kinds: list[KindNetWorthOut]  # only kinds with a listed account, in the account kinds' usual order
     accounts: list[AccountBalancesOut]  # open accounts, and closed ones that held a balance in the range
 
 
@@ -416,12 +432,13 @@ def get_balances(
     return BalancesOut(
         base_currency=base,
         points=list(got.points),
-        net_worth=[
-            PointNetWorthOut(
-                total=None if n.total is None else Money(amount=n.total, currency=base),
-                unvalued=_worth_unvalued(n.unvalued),
+        net_worth=[_point_worth(n, base) for n in got.net_worth],
+        kinds=[
+            KindNetWorthOut(
+                kind=k.kind,  # type: ignore[arg-type]
+                net_worth=[_point_worth(n, base) for n in k.net_worth],
             )
-            for n in got.net_worth
+            for k in got.kinds
         ],
         accounts=[
             AccountBalancesOut(

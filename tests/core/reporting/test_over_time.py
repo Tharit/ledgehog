@@ -110,6 +110,10 @@ def test_categories_per_period_with_slices_and_other(ledger: Connection):
     # the range's magnitude orders the siblings; a node's sum is its periods' totals
     assert [c.category_id for c in got.categories if c.parent_id is None] == [h.travel, h.food]
     assert series[h.food].sum == add(series[h.food].total)
+    for c in got.categories:  # a node's own total is its own entries over the range
+        assert c.own_sum == add(c.own)
+    assert series[h.food].own_sum == Line(-2_000, 1)
+    assert series[h.travel].own_sum == add(series[h.travel].own)  # includes October's unvalued USD
     # the same figures the range's own report gives
     whole = by_category(ledger, flt, "expense")
     assert got.sum == whole.total

@@ -21,6 +21,9 @@ from app.core.reporting.periods import TooManyPeriods, add_months, month_end
 
 MAX_POINTS = 120
 
+# the account kinds in the order of the schema's check constraint (spec §3.3), which the API's `Kind` follows
+KIND_ORDER = ("checking", "savings", "card", "cash", "paypal", "depot", "loan", "asset")
+
 _BALANCES = text(
     """
     WITH pts AS (SELECT unnest(CAST(:dates AS date[])) AS p),
@@ -127,16 +130,24 @@ class AccountSeries:
 
 
 @dataclass(frozen=True)
+class KindSeries:
+    kind: str
+    net_worth: tuple[NetWorth, ...]  # per point: the net worth of the listed accounts of this kind
+
+
+@dataclass(frozen=True)
 class BalancesReport:
     points: tuple[date, ...]
     net_worth: tuple[NetWorth, ...]  # per point
+    kinds: tuple[KindSeries, ...]  # in KIND_ORDER; only kinds with a listed account
     accounts: tuple[AccountSeries, ...]
 
 
 def balances_report(conn: Connection, start: date, end: date, today: date) -> BalancesReport:
-    """Net worth and every account's balance at the range's month-ends.
+    """Net worth, each account kind's net worth and every account's balance at the range's month-ends.
 
-    All open accounts are listed; a closed one only when it held a balance at some point.
+    All open accounts are listed; a closed one only when it held a balance at some point. A kind's net
+    worth is `net_worth_of` its listed accounts, so unvalued amounts are handled exactly as in the total.
     """
     dates = points(start, end, today)
     if len(dates) > MAX_POINTS:
@@ -145,8 +156,13 @@ def balances_report(conn: Connection, start: date, end: date, today: date) -> Ba
     by_account: dict[int, list[AccountBalance]] = {}
     for r in rows:
         by_account.setdefault(r.account_id, []).append(r)
-    closed = {
-        int(r.id) for r in conn.execute(text("SELECT id FROM account WHERE closed_on IS NOT NULL")).all()
+    account_rows = conn.execute(text("SELECT id, kind, closed_on IS NOT NULL AS closed FROM account")).all()
+    closed = {int(r.id) for r in account_rows if r.closed}
+    kind_of = {int(r.id): str(r.kind) for r in account_rows}
+    listed = {
+        account_id: series_rows
+        for account_id, series_rows in by_account.items()
+        if account_id not in closed or any(r.balance != 0 for r in series_rows)
     }
     series = tuple(
         AccountSeries(
@@ -155,8 +171,18 @@ def balances_report(conn: Connection, start: date, end: date, today: date) -> Ba
             base=tuple(r.base for r in series_rows),
             native=tuple(r.balance for r in series_rows),
         )
-        for account_id, series_rows in by_account.items()
-        if account_id not in closed or any(r.balance != 0 for r in series_rows)
+        for account_id, series_rows in listed.items()
     )
     net_worth = tuple(net_worth_of([r for r in rows if r.on == d]) for d in dates)
-    return BalancesReport(tuple(dates), net_worth, series)
+    kinds = tuple(
+        KindSeries(
+            kind,
+            tuple(
+                net_worth_of([r for a, rs in listed.items() if kind_of[a] == kind for r in rs if r.on == d])
+                for d in dates
+            ),
+        )
+        for kind in KIND_ORDER
+        if any(kind_of[a] == kind for a in listed)
+    )
+    return BalancesReport(tuple(dates), net_worth, kinds, series)
