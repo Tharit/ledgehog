@@ -515,7 +515,8 @@ GET    /api/changes                            the change value of the ledger,
 GET    /api/config                             base currency, the windows,
                                                default locale, whether OIDC
                                                sign-in is offered or enforced;
-                                               never a secret
+                                               never a secret, and read
+                                               without a session
 
   reporting — read-only aggregates over core/reporting (spec §8)
 GET    /api/reports/overview                   the Overview's figures and
@@ -1772,7 +1773,7 @@ limiting: a household, self-hosted — a conscious omission.
 against the issuer's discovery document. The ID token is verified —
 signature, issuer, audience, expiry, nonce — and a claim it lacks is taken
 from the userinfo endpoint, whose subject must match. The login claim
-(`OIDC_LOGIN_ATTRIBUTE`) is the user's login; when it is `email` and the
+(`OIDC_LOGIN_ATTRIBUTE`) is the user's login, compared without regard to case; when it is `email` and the
 provider marks it unverified, the sign-in is refused. A matching user signs
 in; an unknown one is created, with no password. With `OIDC_ALLOWED_GROUP`
 set, every OIDC sign-in needs that group in the `groups` claim, and a
