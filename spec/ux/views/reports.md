@@ -45,10 +45,14 @@ categories and "Other"; the category tree with a column per period and a total.
 **Tab 3: Balances.** The balance at each month-end of the range (the current month's
 point is today), in the base currency: net worth by default, individual
 accounts added by toggle, grouped by kind; a table of the lines against the
-month-ends. Openings, valuations and reconciliations are in the balances. An
+month-ends: net worth, then each kind with the net worth of its accounts, its
+accounts beneath it. Openings, valuations and reconciliations are in the balances. An
 account with no valued balance is listed beneath as unvalued and is not
 charted.
 
 Amounts follow `ux/patterns.md` §2: signed, and a total with unvalued entries
 says so. Charts follow `ux/design.md` §8; every chart has its table beside it
 as the readable data. A report is a computed view (`ux/patterns.md` §7).
+A table with groups (the category tree, the accounts by kind) opens collapsed to
+its top level; a group row expands as the category tree in Settings does, and a
+group's figures are its whole.
