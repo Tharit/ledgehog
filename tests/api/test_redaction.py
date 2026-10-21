@@ -99,3 +99,33 @@ def test_a_template_with_a_percent_s_after_a_key_still_formats(logger_and_stream
     logger, stream = logger_and_stream
     logger.info("login with token: %s", "abc")
     assert "abc" not in stream.getvalue() and REDACTED in stream.getvalue()
+
+
+def _record(msg, args):
+    return logging.LogRecord("uvicorn.test", logging.INFO, "f", 1, msg, args, None)
+
+
+def test_a_record_with_innocent_message_keeps_its_msg_and_args():
+    record = _record("Uvicorn running on %s://%s:%d", ("http", "127.0.0.1", 8000))
+    RedactionFilter().filter(record)
+    assert record.msg == "Uvicorn running on %s://%s:%d"
+    assert record.args == ("http", "127.0.0.1", 8000)
+
+
+def test_an_access_record_keeps_its_five_args_with_the_secret_redacted():
+    from uvicorn.logging import AccessFormatter
+
+    record = _record('%s - "%s %s HTTP/%s" %d', ("127.0.0.1:1234", "GET", "/api?token=abc", "1.1", 200))
+    RedactionFilter().filter(record)
+    assert isinstance(record.args, tuple) and len(record.args) == 5
+    out = AccessFormatter("%(message)s").format(record)
+    assert "abc" not in out and REDACTED in out
+
+
+def test_a_default_formatter_still_fills_color_message_from_args():
+    from uvicorn.logging import DefaultFormatter
+
+    record = _record("Uvicorn running on %s://%s:%d", ("http", "127.0.0.1", 8000))
+    record.color_message = "Uvicorn running on %s://%s:%d (Press CTRL+C to quit)"
+    RedactionFilter().filter(record)
+    assert "http://127.0.0.1:8000" in DefaultFormatter("%(message)s").format(record)

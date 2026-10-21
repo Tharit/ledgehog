@@ -70,9 +70,13 @@ class RedactionFilter(logging.Filter):
             record.args = tuple(_scrub(a) for a in record.args)
         if isinstance(record.msg, str):
             if record.args:
-                # scrub the formatted line: scrubbing the template could eat its `%s`
-                # ("token: %s" -> "token: [redacted]") and break the formatting
-                record.msg, record.args = _scrub(record.getMessage()), ()
+                # args are scrubbed above; scrub the formatted line, not the template (it could
+                # eat a `%s`: "token: %s"). Only a secret in the template text itself collapses
+                # the record - formatters like uvicorn's need the original args otherwise.
+                formatted = record.getMessage()
+                scrubbed = _scrub(formatted)
+                if scrubbed != formatted:
+                    record.msg, record.args = scrubbed, ()
             else:
                 record.msg = _scrub(record.msg)
         return True
