@@ -10,6 +10,7 @@ dependencies = [
     "fastapi>=0.115",
     "fints==5.0.1",
     "httpx>=0.28.1",
+    "joserfc>=1.7.7",
     "mt-940==5.1.1",
     "psycopg[binary]>=3.2",
     "python-calamine>=0.9.0",
