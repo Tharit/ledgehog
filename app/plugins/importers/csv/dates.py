@@ -6,6 +6,8 @@ import re
 from datetime import date
 from functools import lru_cache
 
+from app.plugins.importers.csv.cells import DateCell
+
 _TOKENS = re.compile(r"(yyyy|dd|d|MM|M|HH|mm|ss)")
 _DAY, _MONTH = ("dd", "d"), ("MM", "M")
 
@@ -49,7 +51,12 @@ def _compile(fmt: str) -> re.Pattern[str]:
 
 
 def parse_date(text: str, fmt: str) -> date | None:
-    """The date in `text` (whole trimmed text), or None if it does not match or is no date."""
+    """The date in `text` (whole trimmed text), or None if it does not match or is no date.
+
+    A cell a spreadsheet stored as a date is that date; the format applies to text only.
+    """
+    if isinstance(text, DateCell):
+        return text.value
     m = _compile(fmt).fullmatch(text.strip())
     if m is None:
         return None

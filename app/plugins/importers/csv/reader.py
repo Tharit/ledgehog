@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import csv
+import importlib
 import io
+import math
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
+from datetime import date, datetime
+from decimal import Decimal
 
 from app.core.plugins.errors import ParseFailed
+from app.plugins.importers.csv.cells import DateCell, NumberCell
 
 _CANDIDATES = (";", ",", "\t", "|")
 
@@ -24,7 +29,7 @@ class Record:
 @dataclass(frozen=True, slots=True)
 class ReadFile:
     encoding: str
-    delimiter: str
+    delimiter: str | None  # None for a spreadsheet
     records: list[Record]  # the whole file, preamble and footer included
     header_index: int
     header: list[str]
@@ -104,9 +109,60 @@ def _detect_delimiter(text: str, quote: str, markers: Sequence[str]) -> str | No
     return None if best is None else best[1]
 
 
+_ZIP = b"PK\x03\x04"  # xlsx and ods are zip containers
+_OLE2 = b"\xd0\xcf\x11\xe0"  # xls (BIFF in an OLE2 compound file)
+
+
+def is_spreadsheet(data: bytes) -> bool:
+    """Whether the first bytes are those of an `.xls`, `.xlsx` or `.ods` file (csv.md §2)."""
+    return data.startswith((_ZIP, _OLE2))
+
+
+def _typed(value: object) -> str:
+    """One sheet cell as a cell: a stored date or number keeps its value, anything else is its text."""
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "TRUE" if value else "FALSE"
+    if isinstance(value, datetime):
+        return DateCell(value.date())
+    if isinstance(value, date):
+        return DateCell(value)
+    if isinstance(value, int):
+        return NumberCell(Decimal(value))
+    if isinstance(value, float):
+        # repr is the shortest text that round-trips the stored double: no float arithmetic
+        return NumberCell(Decimal(repr(value))) if math.isfinite(value) else repr(value)
+    return str(value)
+
+
+def _read_sheet(data: bytes, markers: Sequence[str]) -> ReadFile:
+    """The first sheet as records: one per sheet row, `line` the row number counted from 1."""
+    try:
+        calamine = importlib.import_module("python_calamine")
+        book = calamine.CalamineWorkbook.from_filelike(io.BytesIO(data))
+        if not book.sheet_names:
+            raise ParseFailed("the spreadsheet has no sheet")
+        rows = book.get_sheet_by_index(0).to_python(skip_empty_area=False)
+    except ParseFailed:
+        raise
+    except Exception as exc:  # the library raises its own error types, and others on a damaged file
+        raise ParseFailed("the file cannot be read as a spreadsheet (corrupt or unsupported)") from exc
+    records: list[Record] = []
+    for n, row in enumerate(rows, start=1):
+        cells = [_typed(v) for v in row]
+        records.append(Record(n, cells, "\t".join(str(c) for c in cells).rstrip("\t")))
+    for i, rec in enumerate(records):
+        if _is_header(rec.cells, markers):
+            return ReadFile("spreadsheet", None, records, i, [_clean(c) for c in rec.cells])
+    raise ParseFailed(f"no header row found: no row contains all of {list(markers)}")
+
+
 def read_file(
     data: bytes, *, encoding: str | None, delimiter: str | None, quote: str, markers: Sequence[str]
 ) -> ReadFile:
+    if is_spreadsheet(data):
+        return _read_sheet(data, markers)
     text, used = decode(data, encoding)
     delim = delimiter if delimiter is not None else _detect_delimiter(text, quote, markers)
     if delim is None:

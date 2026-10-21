@@ -261,7 +261,7 @@ def _read_rows(
             currency=row_currency,
             booked_on=booked_on,
             source_format=source_format,
-            raw={"header": list(header), "cells": list(rec.cells), "text": rec.text},
+            raw={"header": list(header), "cells": [str(c) for c in rec.cells], "text": rec.text},
             value_on=value_on,
             instructed_amount_minor=instr_amount,
             instructed_currency=instr_currency,
