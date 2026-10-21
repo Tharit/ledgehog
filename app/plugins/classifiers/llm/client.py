@@ -27,6 +27,7 @@ from app.plugins.classifiers.llm.payload import fingerprint_of, payload_of, user
 log = logging.getLogger("ledgehog.model")
 
 TIMEOUT_SECONDS = 30.0
+RATIONALE_MIN = 3
 RATIONALE_MAX = 120
 
 INSTRUCTION = (
@@ -54,7 +55,7 @@ def response_format(categories: Sequence[CategoryPath]) -> dict[str, Any]:
         "type": "object",
         "properties": {
             "category_id": {"enum": [*ids, None]},
-            "rationale": {"type": "string", "maxLength": RATIONALE_MAX},
+            "rationale": {"type": "string", "minLength": RATIONALE_MIN, "maxLength": RATIONALE_MAX},
         },
         "required": ["category_id", "rationale"],
         "additionalProperties": False,

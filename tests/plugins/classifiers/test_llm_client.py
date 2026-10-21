@@ -13,7 +13,7 @@ from app.core.plugins.classifier import ClassifierContext, EntryInput
 from app.core.plugins.model import CategoryPath, ModelUnavailable
 from app.core.resolution import Decided
 from app.plugins.classifiers.llm import LlmClassifier, OpenAIModelClient
-from app.plugins.classifiers.llm.client import RATIONALE_MAX, parse_reply, system_message
+from app.plugins.classifiers.llm.client import RATIONALE_MAX, RATIONALE_MIN, parse_reply, system_message
 from app.plugins.classifiers.llm.payload import fingerprint_of, payload_of
 
 pytestmark = pytest.mark.anyio
@@ -88,6 +88,7 @@ async def test_the_request_has_a_stable_system_message_and_the_schema() -> None:
     assert fmt["type"] == "json_schema"
     schema = fmt["json_schema"]["schema"]
     assert schema["properties"]["category_id"]["enum"] == [1, 3, 2, None]
+    assert schema["properties"]["rationale"]["minLength"] == RATIONALE_MIN  # a reason is always required
     assert schema["properties"]["rationale"]["maxLength"] == RATIONALE_MAX
     assert first["model"] == "m-1" and first["temperature"] == 0 and first["stream"] is False
     await client.aclose()
