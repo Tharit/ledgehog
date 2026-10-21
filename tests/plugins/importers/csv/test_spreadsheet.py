@@ -18,7 +18,7 @@ from app.core.plugins.errors import ParseFailed
 from app.plugins.importers.csv.amounts import parse_amount
 from app.plugins.importers.csv.cells import DateCell, NumberCell
 from app.plugins.importers.csv.dates import parse_date
-from app.plugins.importers.csv.reader import is_spreadsheet
+from app.plugins.importers.csv.reader import _typed, is_spreadsheet
 from tests.plugins.importers.csv.helpers import TODAY, run
 from tests.plugins.importers.csv.sheets import Cell, xlsx_bytes
 
@@ -177,10 +177,17 @@ def test_signs_and_inversion() -> None:
 def test_money_is_exact_and_follows_the_currency_exponent() -> None:
     rows: list[list[Cell]] = [
         ["Booking", "Amount"],
-        [date(2026, 8, 17), 0.1 + 0.2],  # stored as 0.30000000000000004: never rounded away silently
+        [date(2026, 8, 17), 0.1 + 0.2],  # stored as 0.30000000000000004: float noise, shown as 0.3
     ]
+    assert run(xlsx_bytes(rows), profile=MINI).rows[0].amount_minor == 30
+    rows[1][1] = 12.345  # genuine excess precision for EUR still fails
     with pytest.raises(ParseFailed, match="amount"):
         run(xlsx_bytes(rows), profile=MINI)
+    big: list[list[Cell]] = [["Booking", "Amount"], [date(2026, 8, 17), 1e20], [date(2026, 8, 18), 1e-5]]
+    assert [str(c) for c in (_typed(1e20), _typed(1e-5))] == ["100000000000000000000", "0.00001"]
+    assert run(xlsx_bytes(big[:2]), profile=MINI, currency="JPY").rows[0].amount_minor == 10**20
+    with pytest.raises(ParseFailed, match="amount"):
+        run(xlsx_bytes(big), profile=MINI)  # 1e-5 is excess precision
     yen: list[list[Cell]] = [["Booking", "Amount"], [date(2026, 8, 17), -1500]]
     out = run(xlsx_bytes(yen), profile=MINI, currency="JPY")
     assert out.rows[0].amount_minor == -1500

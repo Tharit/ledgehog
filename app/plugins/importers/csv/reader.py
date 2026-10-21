@@ -131,8 +131,9 @@ def _typed(value: object) -> str:
     if isinstance(value, int):
         return NumberCell(Decimal(value))
     if isinstance(value, float):
-        # repr is the shortest text that round-trips the stored double: no float arithmetic
-        return NumberCell(Decimal(repr(value))) if math.isfinite(value) else repr(value)
+        # 15 significant digits, as a spreadsheet itself shows a number: floating-point noise
+        # (0.30000000000000004 -> 0.3) disappears, real excess precision (12.345 in EUR) remains
+        return NumberCell(Decimal(format(value, ".15g"))) if math.isfinite(value) else repr(value)
     return str(value)
 
 
