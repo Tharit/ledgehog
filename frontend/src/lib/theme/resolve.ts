@@ -22,7 +22,7 @@ export const ACCOUNT_KIND_ICONS: Readonly<Record<string, string>> = {
 	savings: 'piggy-bank',
 	card: 'credit-card',
 	cash: 'wallet',
-	paypal: 'wallet-cards',
+	digital_wallet: 'wallet-cards',
 	depot: 'chart-line',
 	loan: 'hand-coins',
 	asset: 'gem'

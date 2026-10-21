@@ -6,7 +6,7 @@ export const ACCOUNT_KINDS: readonly { kind: AccountKind; label: string }[] = [
 	{ kind: 'savings', label: 'Savings' },
 	{ kind: 'card', label: 'Card' },
 	{ kind: 'cash', label: 'Cash' },
-	{ kind: 'paypal', label: 'PayPal' },
+	{ kind: 'digital_wallet', label: 'Digital wallet' },
 	{ kind: 'depot', label: 'Depot' },
 	{ kind: 'loan', label: 'Loan' },
 	{ kind: 'asset', label: 'Asset' }
