@@ -34,7 +34,7 @@
 </script>
 
 <div class="flex flex-col gap-2" data-slot="category-stack-chart">
-	<Chart.Container {config} class={CHART_SIZE} data-slot="category-stack-chart">
+	<Chart.Container {config} class={CHART_SIZE}>
 		<BarChart
 			data={[...rows]}
 			x="label"
