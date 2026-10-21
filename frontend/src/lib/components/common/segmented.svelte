@@ -2,8 +2,8 @@
 	import * as Tooltip from '#lib/components/ui/tooltip/index.js';
 	import { cn } from '#lib/utils.js';
 
-	// A choice among a few (design §5): one 32px box split into segments, the chosen one filled
-	// `primary`. As a `group` the segments are pressed buttons (a report's kind, step, mode; an
+	// A choice among a few (design §5): one 32px box split into segments, the chosen one tinted
+	// `accent`, as an active filter chip. As a `group` the segments are pressed buttons (a report's kind, step, mode; an
 	// entry's type); as a `radio` group they are radios (a filter's direction, link state). A
 	// disabled segment may say why (`reason`, as a tooltip).
 	let {
@@ -34,10 +34,10 @@
 		disabled={option.disabled}
 		data-chosen={chosen}
 		class={cn(
-			'h-full px-3 text-sm font-medium whitespace-nowrap outline-none select-none',
+			'h-full px-3 text-sm whitespace-nowrap outline-none select-none',
 			'focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
 			'disabled:opacity-50',
-			chosen ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+			chosen ? 'bg-accent font-medium text-foreground' : 'hover:bg-muted'
 		)}
 		onclick={() => onchange(option.value)}>{option.label}</button
 	>

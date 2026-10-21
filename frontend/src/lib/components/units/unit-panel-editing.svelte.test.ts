@@ -1377,8 +1377,8 @@ describe('type buttons', () => {
 
 		expect(flowButton).toHaveAttribute('aria-pressed', 'true');
 		expect(transfer).toHaveAttribute('aria-pressed', 'false');
-		expect(flowButton).toHaveClass('bg-primary');
-		expect(transfer).not.toHaveClass('bg-primary');
+		expect(flowButton).toHaveClass('bg-accent');
+		expect(transfer).not.toHaveClass('bg-accent');
 		expect(within(dialog).getByRole('group', { name: 'Type' })).toHaveAttribute(
 			'data-slot',
 			'segmented'

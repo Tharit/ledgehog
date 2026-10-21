@@ -16,10 +16,10 @@ describe('Segmented', () => {
 		expect(group).toHaveClass('h-8', 'border', 'divide-x');
 		const alpha = screen.getByRole('button', { name: 'Alpha' });
 		expect(alpha).toHaveAttribute('aria-pressed', 'true');
-		expect(alpha).toHaveClass('bg-primary', 'text-primary-foreground');
+		expect(alpha).toHaveClass('bg-accent', 'font-medium', 'text-foreground');
 		const beta = screen.getByRole('button', { name: 'Beta' });
 		expect(beta).toHaveAttribute('aria-pressed', 'false');
-		expect(beta).not.toHaveClass('bg-primary');
+		expect(beta).not.toHaveClass('bg-accent');
 	});
 
 	it('reports the segment pressed', async () => {
