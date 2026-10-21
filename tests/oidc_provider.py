@@ -37,6 +37,7 @@ class MockProvider:
         self.claims: dict[str, Any] = {}  # merged over the defaults of the ID token
         self.drop: set[str] = set()  # ID token claims to leave out
         self.userinfo: dict[str, Any] | None = None  # None: no userinfo endpoint answers
+        self.userinfo_status = 200  # what the userinfo endpoint answers, when it has claims to give
         self.sign_with = self.key
         self.token_requests: list[dict[str, str]] = []
         self.token_auth: list[str | None] = []
@@ -106,5 +107,7 @@ class MockProvider:
             self.userinfo_auth.append(request.headers.get("authorization"))
             if request.headers.get("authorization") != f"Bearer {ACCESS_TOKEN}" or self.userinfo is None:
                 return httpx.Response(401)
+            if self.userinfo_status != 200:
+                return httpx.Response(self.userinfo_status, text="secret-body")
             return httpx.Response(200, json=self.userinfo)
         return httpx.Response(404)

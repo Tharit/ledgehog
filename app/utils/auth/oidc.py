@@ -259,6 +259,8 @@ class OidcFlow:
             raise OidcError(FAILED, "the token response carries no id_token")
         claims = self._verified_claims(id_token, pending.nonce, doc, now)
         claims = self._complete_claims(claims, doc, token.get("access_token"))
+        if "groups" in claims:
+            log.info("oidc: groups claim: %s", _groups_shape(claims["groups"]))
         return identity_from(claims, self.cfg)
 
     # -- verification -------------------------------------------------------------------------
@@ -297,6 +299,7 @@ class OidcFlow:
             raise OidcError(FAILED, "the id_token's nonce does not match")
         if not isinstance(claims.get("sub"), str) or not claims["sub"]:
             raise OidcError(FAILED, "the id_token has no subject")
+        log.info("oidc: id_token claims: %s", _names(claims))
         return claims
 
     def _complete_claims(
@@ -309,16 +312,23 @@ class OidcFlow:
         missing = [name for name in needed if claims.get(name) in (None, "", [])]
         if not missing:
             return claims
+        log.info("oidc: claims missing from the id_token: %s", ", ".join(sorted(missing)))
         required = any(needed[name] for name in missing)
         endpoint = doc.get("userinfo_endpoint")
-        if not isinstance(endpoint, str) or not isinstance(access_token, str) or not access_token:
+        if not isinstance(endpoint, str):
+            log.info("oidc: userinfo not asked: the provider has no userinfo endpoint")
             return claims  # nothing to ask: the rules refuse what is still missing (fail closed)
+        if not isinstance(access_token, str) or not access_token:
+            log.info("oidc: userinfo not asked: the token response carries no access token")
+            return claims
         try:
             info = self._get_json(endpoint, bearer=access_token)
-        except OidcError:
+        except OidcError as exc:
+            log.info("oidc: the userinfo request failed: %s", exc)
             if required:
                 raise
             return claims
+        log.info("oidc: userinfo claims: %s", _names(info))
         if info.get("sub") != claims["sub"]:
             raise OidcError(FAILED, "the userinfo subject does not match the id_token")
         merged = dict(claims)
@@ -326,6 +336,34 @@ class OidcFlow:
             if name not in merged or merged[name] in (None, "", []):
                 merged[name] = value
         return merged
+
+
+def _names(claims: Mapping[str, Any]) -> str:
+    """The claim names, sorted: what arrived, never what it said."""
+    return ", ".join(sorted(str(name) for name in claims))
+
+
+def _groups_shape(value: object) -> str:
+    """How the groups claim is built (type, size, separators), never what a group is called."""
+    if isinstance(value, str):
+        parts = [f"str, {len(value)} chars"]
+        parts += [
+            f"contains {label}"
+            for label, mark in (("comma", ","), ("space", " "), ("semicolon", ";"))
+            if mark in value
+        ]
+        if "@" in value:
+            parts.append("contains @")
+        return ", ".join(parts)
+    if isinstance(value, list):
+        kinds = ", ".join(sorted({type(item).__name__ for item in value}))
+        parts = [f"list, {len(value)} entries"]
+        if kinds:
+            parts.append(f"item types {kinds}")
+        if any(isinstance(item, str) and "@" in item for item in value):
+            parts.append("an entry contains @")
+        return ", ".join(parts)
+    return type(value).__name__
 
 
 def _where(url: str) -> str:

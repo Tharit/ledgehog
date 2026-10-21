@@ -275,6 +275,54 @@ def test_the_allowed_group_is_needed_at_every_sign_in(make_oidc, provider, api_e
         assert user_row(api_engine, "zoe@home.test") is None
 
 
+def _log_text(caplog) -> str:
+    return "\n".join(r.getMessage() for r in caplog.records if r.name != "httpx")
+
+
+def test_the_group_refusal_log_tells_an_absent_claim_from_a_missing_group(make_oidc, provider, caplog):
+    client = make_oidc(allowed_group="family")
+    provider.claims = {"email": "zoe@home.test"}
+    with caplog.at_level(logging.INFO):
+        refused(sign_in(client, provider), "oidc_not_allowed")
+    text = _log_text(caplog)
+    assert "oidc_not_allowed: the groups claim is absent" in text
+    assert "oidc: groups claim:" not in text
+    caplog.clear()
+    provider.claims = {"email": "zoe@home.test", "groups": ["guests-club", "staff-team"]}
+    with caplog.at_level(logging.INFO):
+        refused(sign_in(client, provider), "oidc_not_allowed")
+    text = _log_text(caplog)
+    assert "oidc_not_allowed: the allowed group is not among the user's 2 groups" in text
+    for name in ("guests-club", "staff-team", "family"):
+        assert name not in text
+
+
+@pytest.mark.parametrize(
+    ("groups", "shape"),
+    [
+        ("family,guests-club", "oidc: groups claim: str, 18 chars, contains comma"),
+        ("a b;c", "oidc: groups claim: str, 5 chars, contains space, contains semicolon"),
+        (
+            ["guests-club", "x@y.test"],
+            "oidc: groups claim: list, 2 entries, item types str, an entry contains @",
+        ),
+        (["guests-club", 7], "oidc: groups claim: list, 2 entries, item types int, str"),
+        (5, "oidc: groups claim: int"),
+    ],
+)
+def test_the_log_gives_the_shape_of_the_groups_claim_never_a_group(
+    make_oidc, provider, caplog, groups, shape
+):
+    client = make_oidc(allowed_group="family")
+    provider.claims = {"email": "zoe@home.test", "groups": groups}
+    with caplog.at_level(logging.INFO):
+        sign_in(client, provider)
+    text = _log_text(caplog)
+    assert shape in text
+    for name in ("guests-club", "family", "x@y.test"):
+        assert name not in text
+
+
 def test_a_known_user_needs_the_group_too(make_oidc, provider, api_engine):
     client = make_oidc(allowed_group="family", login_attribute="preferred_username")
     provider.claims = {"preferred_username": "anna", "groups": ["guests"]}
@@ -385,6 +433,57 @@ def test_a_missing_name_is_not_fatal_when_userinfo_fails(make_oidc, provider):
     provider.claims = {"email": "zoe@home.test"}
     provider.userinfo = None  # no endpoint: the name stays absent
     assert sign_in(client, provider).headers["location"] == "/"
+
+
+def _oidc_lines(caplog) -> list[str]:
+    return [r.getMessage() for r in caplog.records if r.name == "ledgehog.oidc"]
+
+
+def _assert_no_values(caplog, *values: str) -> None:
+    text = "\n".join(r.getMessage() for r in caplog.records if r.name != "httpx")
+    for value in (ACCESS_TOKEN, CODE, CLIENT_SECRET, *values):
+        assert value not in text
+
+
+def test_the_log_names_the_id_token_claims_and_the_userinfo_claims_never_their_values(
+    make_oidc, provider, caplog
+):
+    client = make_oidc()
+    provider.drop = {"email"}
+    provider.userinfo = {"sub": "sub-1", "email": "zoe@home.test", "name": "Zoe U."}
+    with caplog.at_level(logging.INFO, logger="ledgehog.oidc"):
+        assert sign_in(client, provider).headers["location"] == "/"
+    lines = _oidc_lines(caplog)
+    assert "oidc: id_token claims: aud, exp, iat, iss, nonce, sub" in lines
+    assert "oidc: claims missing from the id_token: email, name" in lines
+    assert "oidc: userinfo claims: email, name, sub" in lines
+    # the new user's login is logged by the existing "user created" line, so only the other values are checked
+    _assert_no_values(caplog, "Zoe U.", provider.id_token())
+
+
+def test_the_log_says_why_userinfo_was_not_asked_and_what_refused(make_oidc, provider, caplog):
+    client = make_oidc()
+    provider.drop = {"email"}
+    with caplog.at_level(logging.INFO, logger="ledgehog.oidc"):
+        refused(sign_in(client, provider), "oidc_no_login")
+    lines = _oidc_lines(caplog)
+    assert "oidc: id_token claims: aud, exp, iat, iss, nonce, sub" in lines
+    assert "oidc: claims missing from the id_token: email, name" in lines
+    assert "oidc: userinfo not asked: the provider has no userinfo endpoint" in lines
+    _assert_no_values(caplog)
+
+
+def test_the_log_says_when_the_userinfo_request_failed_without_its_body(make_oidc, provider, caplog):
+    client = make_oidc()
+    provider.drop = {"email"}
+    provider.userinfo = {"sub": "sub-1", "email": "zoe@home.test"}
+    provider.userinfo_status = 500
+    with caplog.at_level(logging.INFO, logger="ledgehog.oidc"):
+        refused(sign_in(client, provider), "oidc_unavailable")
+    failed = [m for m in _oidc_lines(caplog) if m.startswith("oidc: the userinfo request failed")]
+    assert len(failed) == 1
+    assert "HTTPStatusError" in failed[0]
+    _assert_no_values(caplog, "zoe@home.test", "secret-body")
 
 
 def test_unverified_email_from_userinfo_is_refused(make_oidc, provider):
@@ -608,7 +707,7 @@ def test_no_secret_reaches_a_log_or_a_response(make_oidc, provider, caplog):
         provider.nonce,
     ):
         assert secret and secret not in out
-    assert "id_token" not in out
+    assert '"id_token"' not in out  # the log names the id_token's claims, but never dumps a token response
 
 
 def test_the_oidc_config_does_not_render_the_secret():

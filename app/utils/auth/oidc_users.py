@@ -29,10 +29,13 @@ def admit(conn: Connection, cfg: OidcConfig, identity: OidcIdentity) -> int:
         raise OidcError(NO_LOGIN, f"the {cfg.login_attribute} claim is missing")
     if cfg.login_attribute == "email" and identity.email_verified is False:
         raise OidcError(UNVERIFIED, "the provider marks the e-mail unverified")
-    if cfg.allowed_group is not None and (
-        identity.groups is None or cfg.allowed_group not in identity.groups
-    ):
-        raise OidcError(NOT_ALLOWED, "the allowed group is not among the user's groups")
+    if cfg.allowed_group is not None:
+        if identity.groups is None:
+            raise OidcError(NOT_ALLOWED, "the groups claim is absent")
+        if cfg.allowed_group not in identity.groups:
+            raise OidcError(
+                NOT_ALLOWED, f"the allowed group is not among the user's {len(identity.groups)} groups"
+            )
 
     # the claim is compared without regard to case; `app_user.login` is unique per exact spelling only,
     # so two users differing in case make the match ambiguous, and nobody is signed in
