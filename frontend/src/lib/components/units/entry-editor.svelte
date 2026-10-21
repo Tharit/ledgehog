@@ -6,6 +6,7 @@
 	import DateDisplay from '#lib/components/common/date-display.svelte';
 	import MoneyDisplay from '#lib/components/common/money-display.svelte';
 	import ReviewBadge from '#lib/components/common/review-badge.svelte';
+	import Segmented from '#lib/components/common/segmented.svelte';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import { accounts as accountDialog } from '#lib/accounts/controller.svelte.js';
 	import type { Lookups } from '#lib/ledger/lookups.js';
@@ -114,7 +115,17 @@
 		}
 	});
 
-	const TYPES = ['flow', 'transfer'] as const;
+	// an entry with no type yet has no segment chosen
+	const TYPES = $derived<
+		{ value: string | null; label: string; disabled: boolean; reason: string }[]
+	>(
+		(['flow', 'transfer'] as const).map((value) => ({
+			value,
+			label: value === 'flow' ? 'Flow' : 'Transfer',
+			disabled: !canConvert,
+			reason: 'Only the original entry of a split can change its type'
+		}))
+	);
 
 	function setType(next: 'flow' | 'transfer') {
 		if (view.type !== next) flow.setType(view.id, next);
@@ -254,21 +265,14 @@
 		{#if !view.isNew}
 			<dt class="pt-1.5 text-muted-foreground">Type</dt>
 			<dd class="min-w-0">
-				<div role="group" aria-label="Type" class="inline-flex gap-1">
-					{#each TYPES as kind (kind)}
-						<!-- the chosen one is tinted and bordered in the primary colour: it never looks like a hover -->
-						<ActionButton
-							variant={view.type === kind ? 'secondary' : 'outline'}
-							aria-pressed={view.type === kind}
-							class={cn(view.type === kind && 'border-primary font-semibold text-primary')}
-							disabled={!canConvert}
-							reason="Only the original entry of a split can change its type"
-							onclick={() => setType(kind)}
-						>
-							{kind === 'flow' ? 'Flow' : 'Transfer'}
-						</ActionButton>
-					{/each}
-				</div>
+				<Segmented
+					label="Type"
+					options={TYPES}
+					value={view.type}
+					onchange={(next) => {
+						if (next === 'flow' || next === 'transfer') setType(next);
+					}}
+				/>
 				<div class="flex flex-wrap items-baseline gap-x-3">
 					<EvidenceLine evidence={view.fields.type.evidence} />
 					{@render ruleOffer(view.fields.type)}

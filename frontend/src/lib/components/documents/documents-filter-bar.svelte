@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onDestroy, untrack } from 'svelte';
 	import { Button } from '#lib/components/ui/button/index.js';
+	import Segmented from '#lib/components/common/segmented.svelte';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import AmountChip, { type AmountPatch } from '#lib/components/ledger/amount-chip.svelte';
 	import DateChip from '#lib/components/ledger/date-chip.svelte';
@@ -60,10 +61,10 @@
 		});
 	}
 
-	const LINKS: { value: boolean | undefined; text: string }[] = [
-		{ value: undefined, text: 'Any' },
-		{ value: true, text: 'Linked' },
-		{ value: false, text: 'Not linked' }
+	const LINKS: { value: boolean | undefined; label: string }[] = [
+		{ value: undefined, label: 'Any' },
+		{ value: true, label: 'Linked' },
+		{ value: false, label: 'Not linked' }
 	];
 	let linkOpen = $state(false);
 
@@ -140,19 +141,16 @@
 		width="w-64"
 	>
 		<span class="text-xs font-medium text-muted-foreground">Carried by a transaction</span>
-		<div class="flex gap-1" role="radiogroup" aria-label="Link state">
-			{#each LINKS as option (option.text)}
-				<Button
-					variant={filter.linked === option.value ? 'secondary' : 'outline'}
-					role="radio"
-					aria-checked={filter.linked === option.value}
-					onclick={() => {
-						update({ linked: option.value });
-						linkOpen = false;
-					}}>{option.text}</Button
-				>
-			{/each}
-		</div>
+		<Segmented
+			label="Link state"
+			role="radio"
+			options={LINKS}
+			value={filter.linked}
+			onchange={(linked) => {
+				update({ linked });
+				linkOpen = false;
+			}}
+		/>
 	</FilterChip>
 	<Input
 		bind:value={text}

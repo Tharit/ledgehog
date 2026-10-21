@@ -11,6 +11,7 @@
 	import { untrack } from 'svelte';
 	import ChoiceSelect from '#lib/components/common/choice-select.svelte';
 	import Field from '#lib/components/common/field.svelte';
+	import Segmented from '#lib/components/common/segmented.svelte';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import { formatMoney, parseMoneyInput, type MoneyParseError } from '#lib/format/index.js';
@@ -113,10 +114,10 @@
 		open = false;
 	}
 
-	const DIRECTIONS: { value: 'in' | 'out' | ''; text: string }[] = [
-		{ value: '', text: 'Any' },
-		{ value: 'out', text: 'Out' },
-		{ value: 'in', text: 'In' }
+	const DIRECTIONS: { value: 'in' | 'out' | ''; label: string }[] = [
+		{ value: '', label: 'Any' },
+		{ value: 'out', label: 'Out' },
+		{ value: 'in', label: 'In' }
 	];
 </script>
 
@@ -126,16 +127,13 @@
 			Compares the size of an amount and ignores its sign. Out is money leaving an account
 			(negative), In is money arriving (positive).
 		</p>
-		<div class="flex gap-1" role="radiogroup" aria-label="Direction">
-			{#each DIRECTIONS as option (option.value)}
-				<Button
-					variant={chosenDirection === option.value ? 'secondary' : 'outline'}
-					role="radio"
-					aria-checked={chosenDirection === option.value}
-					onclick={() => (chosenDirection = option.value)}>{option.text}</Button
-				>
-			{/each}
-		</div>
+		<Segmented
+			label="Direction"
+			role="radio"
+			options={DIRECTIONS}
+			value={chosenDirection}
+			onchange={(direction) => (chosenDirection = direction)}
+		/>
 	{:else}
 		<p class="text-xs text-muted-foreground">
 			Compares the size of an amount and ignores its sign.

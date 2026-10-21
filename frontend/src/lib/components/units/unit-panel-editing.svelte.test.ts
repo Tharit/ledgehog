@@ -1370,16 +1370,19 @@ describe('taking a choice back (the X) and "No payee"', () => {
 });
 
 describe('type buttons', () => {
-	it('mark the chosen type with a style that is not the hover of the others', async () => {
+	it('mark the chosen type as the filled segment of one control', async () => {
 		const { dialog } = await openPanel();
 		const flowButton = within(dialog).getByRole('button', { name: 'Flow' });
 		const transfer = within(dialog).getByRole('button', { name: 'Transfer' });
 
 		expect(flowButton).toHaveAttribute('aria-pressed', 'true');
 		expect(transfer).toHaveAttribute('aria-pressed', 'false');
-		expect(flowButton.className).toContain('border-primary');
-		expect(flowButton.className).not.toContain('bg-accent');
-		expect(transfer.className).not.toContain('border-primary');
+		expect(flowButton).toHaveClass('bg-primary');
+		expect(transfer).not.toHaveClass('bg-primary');
+		expect(within(dialog).getByRole('group', { name: 'Type' })).toHaveAttribute(
+			'data-slot',
+			'segmented'
+		);
 	});
 
 	it('Flow on an entry with no type yet makes a flow, Transfer a transfer', async () => {

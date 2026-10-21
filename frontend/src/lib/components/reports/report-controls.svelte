@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Segmented from '#lib/components/common/segmented.svelte';
 	import DateChip from '#lib/components/ledger/date-chip.svelte';
 	import OptionsChip, { type ChipOption } from '#lib/components/ledger/options-chip.svelte';
 	import { formatDateRange } from '#lib/format/index.js';
@@ -12,7 +13,6 @@
 	} from '#lib/reports/params.js';
 	import type { Kind, Step } from '#lib/reports/shapes.js';
 	import { resolveAccount, resolveTag } from '#lib/theme/resolve.js';
-	import Segmented from './segmented.svelte';
 
 	// The controls shared by the reports (reports.md): the period (the ledger's date chip with its
 	// presets), the ledger's own account and tag filters, and what belongs to one report: the kind,
@@ -75,7 +75,7 @@
 	];
 </script>
 
-<div class="flex flex-wrap items-center gap-2" role="group" aria-label="Report controls">
+<div class="flex flex-wrap items-center gap-3" role="group" aria-label="Report controls">
 	<DateChip
 		label={formatDateRange(params.from, params.to, locale)}
 		from={params.from}
