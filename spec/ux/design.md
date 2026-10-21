@@ -158,7 +158,7 @@ deletion. A form dialog and a decision dialog put their buttons at the right
 of the footer, Cancel first, the primary last; a page editor puts them after
 the form, left-aligned, with the destructive action at the far right.
 
-**A choice among a few** (a report's kind, step or mode, an entry's type, a filter's direction) is a segmented control: one 32px box with a 1px `border`, split into segments by 1px dividers, the chosen segment filled `primary` with `primary-foreground` text. Controls side by side keep a 12px gap, so each box reads as one group. A set of swatches or icons (colours, looks) is not a segmented control.
+**A choice among a few** (a report's kind, step or mode, an entry's type, a filter's direction) is a segmented control: one 32px box with a 1px `border`, split into segments by 1px dividers, the chosen segment tinted `accent` with medium-weight text, as an active filter chip. Controls side by side keep a 12px gap, so each box reads as one group. A set of swatches or icons (colours, looks) is not a segmented control.
 
 **Row actions** (`patterns.md` §11.3) have `opacity: 0` and become `1` on row
 hover, `:focus-within` and an open menu of the row; under `(hover: none)` they
