@@ -281,14 +281,12 @@ export function categoryTrendTable(
 		list.map((c) => ({
 			category_id: c.category_id,
 			parent_id: c.parent_id,
-			own: sumLines(c.own, report.base_currency)
+			own: c.own_sum
 		})),
 		categories
 	).map((row) => {
 		const source = byId.get(row.categoryId)!;
-		const lines = row.itself
-			? [...source.own, sumLines(source.own, report.base_currency)]
-			: [...source.total, source.sum];
+		const lines = row.itself ? [...source.own, source.own_sum] : [...source.total, source.sum];
 		return {
 			...row,
 			cells: lines.map((line, i) => ({
@@ -315,31 +313,6 @@ export function categoryTrendTable(
 	};
 }
 
-/** Lines added up: a total of the valued ones, null when entries exist and none could be valued. */
-export function sumLines(lines: readonly Line[], currency: string): Line {
-	const count = lines.reduce((n, l) => n + l.count, 0);
-	const valued = lines.filter((l) => l.total !== null);
-	const merged = new Map<string, { amount: number; count: number }>();
-	for (const l of lines) {
-		for (const u of l.unvalued) {
-			const held = merged.get(u.amount.currency) ?? { amount: 0, count: 0 };
-			merged.set(u.amount.currency, {
-				amount: held.amount + u.amount.amount,
-				count: held.count + u.count
-			});
-		}
-	}
-	const unvalued = [...merged].map(([cur, v]) => ({
-		amount: { amount: v.amount, currency: cur },
-		count: v.count
-	}));
-	const total =
-		valued.length === 0 && count > 0
-			? null
-			: { amount: valued.reduce((n, l) => n + (l.total?.amount ?? 0), 0), currency };
-	return { total, count, unvalued };
-}
-
 // ---- Balances
 
 export type BalanceCell = {
@@ -356,11 +329,32 @@ export type BalanceTableRow = {
 	accountId: number | null;
 	cells: BalanceCell[];
 };
-export type BalanceGroup = { key: string; label: string; rows: BalanceTableRow[] };
+/** A kind: the net worth of its accounts (the server's) against the month-ends, its accounts beneath. */
+export type BalanceGroup = {
+	key: string;
+	label: string;
+	cells: BalanceCell[];
+	rows: BalanceTableRow[];
+};
+
+/** A net worth at a point, as the table shows it: the figure, or what it leaves out. */
+function netWorthCells(points: Balances['net_worth'], currency: string): BalanceCell[] {
+	return points.map((p) => ({
+		minor: p.total?.amount ?? null,
+		currency,
+		note:
+			p.total === null
+				? 'No balance could be valued.'
+				: p.unvalued.length > 0
+					? `${p.unvalued.reduce((n, u) => n + u.accounts, 0)} account(s) could not be valued and are not in it.`
+					: undefined
+	}));
+}
 
 /**
- * The lines against the month-ends: net worth, then the accounts grouped by kind. An account
- * with no valued balance at any point is not in the table: it is listed as unvalued.
+ * The lines against the month-ends: net worth, then each kind with the net worth of its accounts
+ * and the accounts beneath it. An account with no valued balance at any point is not in the
+ * table: it is listed as unvalued.
  */
 export function balanceTable(
 	report: Balances,
@@ -376,16 +370,7 @@ export function balanceTable(
 		key: 'net-worth',
 		label: 'Net worth',
 		accountId: null,
-		cells: report.net_worth.map((p) => ({
-			minor: p.total?.amount ?? null,
-			currency: base,
-			note:
-				p.total === null
-					? 'No balance could be valued.'
-					: p.unvalued.length > 0
-						? `${p.unvalued.reduce((n, u) => n + u.accounts, 0)} account(s) could not be valued and are not in it.`
-						: undefined
-		}))
+		cells: netWorthCells(report.net_worth, base)
 	};
 	const unvalued: { accountId: number; name: string; native: string }[] = [];
 	const byKind = new Map<string, BalanceTableRow[]>();
@@ -422,10 +407,12 @@ export function balanceTable(
 		const kind = account?.kind ?? 'asset';
 		byKind.set(kind, [...(byKind.get(kind) ?? []), row]);
 	}
-	const groups = ACCOUNT_KINDS.filter(({ kind }) => byKind.has(kind)).map(({ kind, label }) => ({
+	const labels = new Map(ACCOUNT_KINDS.map(({ kind, label }) => [kind, label]));
+	const groups = report.kinds.map(({ kind, net_worth }) => ({
 		key: kind,
-		label,
-		rows: byKind.get(kind) as BalanceTableRow[]
+		label: labels.get(kind) ?? kind,
+		cells: netWorthCells(net_worth, base),
+		rows: byKind.get(kind) ?? []
 	}));
 	return { net, groups, unvalued };
 }

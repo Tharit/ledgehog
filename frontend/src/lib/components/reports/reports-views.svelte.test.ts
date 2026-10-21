@@ -20,17 +20,57 @@ function hrefOf(row: HTMLElement): string | null {
 }
 
 describe('ByCategoryView', () => {
-	it('lists the category tree with every amount linking to the ledger', () => {
-		render(ByCategoryView, { props: { report: byCategoryTree(), categories, scope } });
+	const rowsOf = (table: HTMLElement) =>
+		[...table.querySelectorAll('tbody:not([data-slot]) tr')].map((tr) =>
+			tr.getAttribute('data-category')
+		);
 
-		const table = screen.getByRole('table');
-		const food = within(table).getByRole('row', { name: /^Food\b(?! \(itself\))/ });
+	it('lists the category tree with every amount linking to the ledger', async () => {
+		const { container } = render(ByCategoryView, {
+			props: { report: byCategoryTree(), categories, scope }
+		});
+
+		const table = container.querySelector('[data-slot="category-table"]') as HTMLElement;
+		await fireEvent.click(screen.getByRole('button', { name: 'Expand Food' }));
+		const food = table.querySelector('[data-category="1"][data-itself="false"]') as HTMLElement;
 		expect(hrefOf(food)).toBe('/ledger?from=2026-10-01&to=2026-10-31&category_id=1');
-		const itself = within(table).getByRole('row', { name: /Food \(itself\)/ });
+		const itself = table.querySelector('[data-itself="true"]') as HTMLElement;
 		expect(hrefOf(itself)).toBe(
 			'/ledger?from=2026-10-01&to=2026-10-31&category_id=1&category_descendants=false'
 		);
-		expect(within(table).getByRole('row', { name: /Home/ })).toBeInTheDocument();
+		expect(table.querySelector('[data-category="4"]')).toBeInTheDocument();
+	});
+
+	it('opens collapsed to the top level; a group row expands and collapses its children', async () => {
+		const { container } = render(ByCategoryView, {
+			props: { report: byCategoryTree(), categories, scope }
+		});
+		const table = container.querySelector('[data-slot="category-table"]') as HTMLElement;
+
+		// Home, Food and Refunds only: no "(itself)", no Groceries or Eating out
+		expect(rowsOf(table)).toEqual(['4', '1', '6']);
+		const toggle = screen.getByRole('button', { name: 'Expand Food' });
+		expect(toggle).toHaveAttribute('aria-expanded', 'false');
+		// a category without children has no toggle
+		expect(screen.queryByRole('button', { name: /Expand Home/ })).toBeNull();
+		// the group's figure is its whole, a link
+		expect(table.querySelector('[data-category="1"] a')).toHaveAttribute(
+			'href',
+			'/ledger?from=2026-10-01&to=2026-10-31&category_id=1'
+		);
+
+		// a real button: focusable, and Enter and Space activate it natively
+		toggle.focus();
+		expect(document.activeElement).toBe(toggle);
+		await fireEvent.click(toggle);
+		expect(rowsOf(table)).toEqual(['4', '1', '1', '2', '3', '6']);
+		expect(screen.getByRole('button', { name: 'Collapse Food' })).toHaveAttribute(
+			'aria-expanded',
+			'true'
+		);
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Collapse Food' }));
+		expect(rowsOf(table)).toEqual(['4', '1', '6']);
 	});
 
 	it('names the category of the other sign in a note rather than drawing it', () => {
@@ -80,7 +120,17 @@ describe('ByCategoryView', () => {
 			'href',
 			'/ledger?from=2026-10-01&to=2026-10-31&flag=unconfirmed'
 		);
-		expect(side.querySelector('[data-line="unconfirmed"]')).toHaveTextContent('3 entries');
+		// tabular: the count in the Entries column, the amount in the Amount column, the rest empty
+		const unconfirmed = side.querySelector('[data-line="unconfirmed"]') as HTMLElement;
+		expect(unconfirmed.querySelectorAll('td')[0]).toHaveTextContent(/^3$/);
+		expect(unconfirmed.querySelectorAll('td')[1]).toBeEmptyDOMElement();
+		expect(unconfirmed.querySelector('a')).toHaveAccessibleName('3 entries not yet confirmed');
+		const out = side.querySelector('[data-line="unclassified-out"]') as HTMLElement;
+		expect(out.querySelectorAll('td')).toHaveLength(4);
+		expect(out.querySelectorAll('td')[0]).toHaveTextContent(/^\d+$/);
+		expect(side.querySelector('th[scope="colgroup"]')).toHaveTextContent(
+			'Not in the categories above'
+		);
 	});
 
 	it('says so when the period has nothing', () => {
@@ -138,12 +188,30 @@ describe('OverTimeView, income and expense', () => {
 });
 
 describe('OverTimeView, by category', () => {
-	it('has the tree with a column per period and a total, each cell a link', () => {
+	it('opens collapsed to the top level and expands a group like the tree in Settings', async () => {
 		const { container } = render(OverTimeView, {
 			props: { report: overTimeCategories(), categories, scope }
 		});
 
 		const table = container.querySelector('[data-slot="category-trend-table"]') as HTMLElement;
+		expect(table.querySelectorAll('tbody tr')).toHaveLength(2);
+		expect(table.querySelector('[data-category="2"]')).toBeNull();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Expand Food' }));
+		expect(table.querySelectorAll('tbody tr')).toHaveLength(4);
+		await fireEvent.click(screen.getByRole('button', { name: 'Collapse Food' }));
+		expect(table.querySelectorAll('tbody tr')).toHaveLength(2);
+	});
+
+	it('has the tree with a column per period and a total, each cell a link', async () => {
+		const { container } = render(OverTimeView, {
+			props: { report: overTimeCategories(), categories, scope }
+		});
+
+		const table = container.querySelector('[data-slot="category-trend-table"]') as HTMLElement;
+		await fireEvent.click(screen.getByRole('button', { name: 'Expand Food' }));
+		// the "(itself)" total is the server's own_sum
+		expect(table.querySelector('[data-itself="true"] td:last-child')).toHaveTextContent('−50.00');
 		const groceries = table.querySelector('[data-category="2"]') as HTMLElement;
 		const links = [...groceries.querySelectorAll('a')].map((a) => a.getAttribute('href'));
 		expect(links).toEqual([
@@ -168,8 +236,40 @@ describe('OverTimeView, by category', () => {
 });
 
 describe('BalancesView', () => {
-	it('has net worth and the accounts grouped by kind against the month-ends', () => {
+	it('opens collapsed to net worth and the kinds, each kind with its own net worth', async () => {
 		const { container } = render(BalancesView, { props: { report: balances(), accounts } });
+
+		const table = container.querySelector('[data-slot="balances-table"]') as HTMLElement;
+		expect(
+			[...table.querySelectorAll('tbody tr')].map(
+				(tr) => tr.getAttribute('data-row') ?? tr.getAttribute('data-group')
+			)
+		).toEqual(['net-worth', 'checking', 'savings', 'depot']);
+		// the kind's figures are the server's; the depot has none valued
+		expect(table.querySelector('[data-group="checking"]')).toHaveTextContent('Checking');
+		expect(table.querySelector('[data-group="checking"]')).toHaveTextContent('1,000.00');
+		expect(table.querySelector('[data-group="savings"]')).toHaveTextContent('4,000.00');
+		expect(
+			table.querySelector('[data-group="depot"] [data-slot="absent-value"]')
+		).toHaveTextContent('unvalued');
+		// no toggle for a kind with no account beneath it
+		expect(screen.queryByRole('button', { name: /Depot/ })).toBeNull();
+
+		const toggle = screen.getByRole('button', { name: 'Expand Checking' });
+		expect(toggle).toHaveAttribute('aria-expanded', 'false');
+		await fireEvent.click(toggle);
+		expect(
+			[...table.querySelectorAll('tbody tr')].map(
+				(tr) => tr.getAttribute('data-row') ?? tr.getAttribute('data-group')
+			)
+		).toEqual(['net-worth', 'checking', 'a1', 'savings', 'depot']);
+		await fireEvent.click(screen.getByRole('button', { name: 'Collapse Checking' }));
+		expect(table.querySelector('[data-row="a1"]')).toBeNull();
+	});
+
+	it('has net worth and the accounts grouped by kind against the month-ends', async () => {
+		const { container } = render(BalancesView, { props: { report: balances(), accounts } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Expand Checking' }));
 
 		const table = container.querySelector('[data-slot="balances-table"]') as HTMLElement;
 		expect([...table.querySelectorAll('thead th')].map((th) => th.textContent?.trim())).toEqual([
@@ -193,7 +293,7 @@ describe('BalancesView', () => {
 		expect(unvalued).toHaveTextContent('80.00 USD');
 	});
 
-	it('shows no balance yet as a plain muted dash, and keeps "unvalued" as an absent value', () => {
+	it('shows no balance yet as a plain muted dash, and keeps "unvalued" as an absent value', async () => {
 		const base = balances();
 		const report = balances({
 			accounts: [
@@ -210,6 +310,8 @@ describe('BalancesView', () => {
 			]
 		});
 		const { container } = render(BalancesView, { props: { report, accounts } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Expand Checking' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Expand Savings' }));
 
 		const empty = container.querySelector('[data-row="a1"] td') as HTMLElement;
 		expect(empty).toHaveTextContent('no balance yet');

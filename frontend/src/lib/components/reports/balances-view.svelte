@@ -2,7 +2,9 @@
 	import AbsentValue from '#lib/components/common/absent-value.svelte';
 	import AccountDot from '#lib/components/common/account-dot.svelte';
 	import MoneyDisplay from '#lib/components/common/money-display.svelte';
+	import TreeToggle from '#lib/components/common/tree-toggle.svelte';
 	import { balanceRows, pointColumnLabel } from '#lib/reports/charts.js';
+	import { toggled } from '#lib/reports/fold.js';
 	import type { Balances } from '#lib/reports/shapes.js';
 	import { balanceTable, type BalanceCell } from '#lib/reports/tables.js';
 	import { resolveAccount } from '#lib/theme/resolve.js';
@@ -24,6 +26,8 @@
 
 	let shown = $state<number[]>([]);
 	let showNet = $state(true);
+	// the table opens collapsed to the kinds
+	let expanded = $state.raw<ReadonlySet<string>>(new Set());
 
 	const table = $derived(balanceTable(report, accounts, locale));
 	const chart = $derived(balanceRows(report, accounts, new Set(shown), locale, showNet));
@@ -82,8 +86,8 @@
 					</span>
 				</label>
 			</div>
-			{#if table.groups.length > 0}
-				{#each table.groups as group (group.key)}
+			{#each table.groups as group (group.key)}
+				{#if group.rows.length > 0}
 					<div class="flex flex-wrap items-center gap-x-4 gap-y-1">
 						<span class="w-20 text-xs text-muted-foreground">{group.label}</span>
 						{#each group.rows as row (row.key)}
@@ -103,8 +107,8 @@
 							</label>
 						{/each}
 					</div>
-				{/each}
-			{/if}
+				{/if}
+			{/each}
 		</fieldset>
 
 		<div class="overflow-x-auto">
@@ -132,33 +136,49 @@
 						{/each}
 					</tr>
 					{#each table.groups as group (group.key)}
-						<tr data-group={group.key}>
-							<th
-								scope="colgroup"
-								colspan={columns.length + 1}
-								class="pt-4 pb-1 text-left text-xs font-medium text-muted-foreground"
-							>
-								{group.label}
+						{@const open = expanded.has(group.key)}
+						<tr class="border-b border-border/60 font-medium" data-group={group.key}>
+							<th scope="row" class="sticky left-0 bg-background py-2 pr-4 text-left">
+								<span class="flex items-center gap-2">
+									<TreeToggle
+										name={group.label}
+										expanded={open}
+										toggleable={group.rows.length > 0}
+										ontoggle={() => (expanded = toggled(expanded, group.key))}
+									/>
+									{group.label}
+								</span>
 							</th>
+							{#each group.cells as cell, i (columns[i].key)}
+								<td class="px-3 py-2 text-right whitespace-nowrap">{@render figure(cell)}</td>
+							{/each}
 						</tr>
-						{#each group.rows as row (row.key)}
-							<tr class="border-b border-border/60" data-row={row.key}>
-								<th scope="row" class="sticky left-0 bg-background py-2 pr-4 text-left font-normal">
-									{#if row.accountId !== null}
-										<a
-											href={`/accounts/${row.accountId}`}
-											class="rounded-sm outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-											>{row.label}</a
-										>
-									{:else}
-										{row.label}
-									{/if}
-								</th>
-								{#each row.cells as cell, i (columns[i].key)}
-									<td class="px-3 py-2 text-right whitespace-nowrap">{@render figure(cell)}</td>
-								{/each}
-							</tr>
-						{/each}
+						{#if open}
+							{#each group.rows as row (row.key)}
+								<tr class="border-b border-border/60" data-row={row.key}>
+									<th
+										scope="row"
+										class="sticky left-0 bg-background py-2 pr-4 text-left font-normal"
+									>
+										<span class="flex items-center gap-2 pl-6">
+											<span class="size-6 shrink-0" aria-hidden="true"></span>
+											{#if row.accountId !== null}
+												<a
+													href={`/accounts/${row.accountId}`}
+													class="rounded-sm outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+													>{row.label}</a
+												>
+											{:else}
+												{row.label}
+											{/if}
+										</span>
+									</th>
+									{#each row.cells as cell, i (columns[i].key)}
+										<td class="px-3 py-2 text-right whitespace-nowrap">{@render figure(cell)}</td>
+									{/each}
+								</tr>
+							{/each}
+						{/if}
 					{/each}
 				</tbody>
 			</table>

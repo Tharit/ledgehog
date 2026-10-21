@@ -179,7 +179,7 @@ export function indexById(categories: readonly Category[]): Map<number, Category
 }
 
 /** The set with `id` added, or removed when it is in. */
-export function toggled(ids: ReadonlySet<number>, id: number): Set<number> {
+export function toggled<T>(ids: ReadonlySet<T>, id: T): Set<T> {
 	const next = new Set(ids);
 	if (!next.delete(id)) next.add(id);
 	return next;

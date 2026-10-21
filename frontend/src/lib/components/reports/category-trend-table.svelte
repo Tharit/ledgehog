@@ -1,5 +1,7 @@
 <script lang="ts">
 	import DimensionIcon from '#lib/components/common/dimension-icon.svelte';
+	import TreeToggle from '#lib/components/common/tree-toggle.svelte';
+	import { foldedRows, toggled } from '#lib/reports/fold.js';
 	import type { CategoryTrendRow, Column, TrendRow } from '#lib/reports/tables.js';
 	import { resolveCategory } from '#lib/theme/resolve.js';
 	import type { Category } from '#lib/types/domain.js';
@@ -22,6 +24,10 @@
 		currency: string;
 		locale?: string;
 	} = $props();
+
+	// opens collapsed to the top level; the state is per row key, so a refetch keeps what is open
+	let expanded = $state.raw<ReadonlySet<string>>(new Set());
+	const shown = $derived(foldedRows(rows, expanded));
 </script>
 
 <div class="overflow-x-auto">
@@ -40,7 +46,7 @@
 			</tr>
 		</thead>
 		<tbody>
-			{#each rows as row (row.key)}
+			{#each shown as row (row.key)}
 				{@const look = resolveCategory(categories.get(row.categoryId), categories)}
 				<tr
 					class="border-b border-border/60"
@@ -52,6 +58,12 @@
 							class="flex items-center gap-2 whitespace-nowrap"
 							style:padding-left={`${row.depth * 1.5}rem`}
 						>
+							<TreeToggle
+								name={row.name}
+								expanded={row.expanded}
+								toggleable={row.hasChildren}
+								ontoggle={() => (expanded = toggled(expanded, row.key))}
+							/>
 							{#if row.itself}
 								<span class="text-muted-foreground">{row.name}</span>
 							{:else}

@@ -1,13 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { line } from './fixtures.js';
 import type { Scope } from './links.js';
 import {
 	balanceTable,
 	categoryTable,
 	categoryTrendTable,
 	notInCategories,
-	savingsTable,
-	sumLines
+	savingsTable
 } from './tables.js';
 import {
 	balances,
@@ -172,17 +170,6 @@ describe('categoryTrendTable', () => {
 	});
 });
 
-describe('sumLines', () => {
-	it('adds valued totals and counts, and is null only when entries exist and none was valued', () => {
-		expect(sumLines([line(100, { count: 1 }), line(50, { count: 2 })], 'EUR')).toMatchObject({
-			total: { amount: 150, currency: 'EUR' },
-			count: 3
-		});
-		expect(sumLines([line(null, { count: 2 })], 'EUR').total).toBeNull();
-		expect(sumLines([], 'EUR').total).toEqual({ amount: 0, currency: 'EUR' });
-	});
-});
-
 describe('balanceTable', () => {
 	const table = balanceTable(balances(), accounts);
 
@@ -190,8 +177,20 @@ describe('balanceTable', () => {
 		expect(table.net.cells.map((c) => c.minor)).toEqual([500000, 520000, 530000]);
 		expect(table.groups.map((g) => [g.label, g.rows.map((r) => r.label)])).toEqual([
 			['Checking', ['Giro']],
-			['Savings', ['Savings']]
+			['Savings', ['Savings']],
+			['Depot', []]
 		]);
+	});
+
+	it("gives each kind the server's net worth of its accounts, an unvalued kind with no figure", () => {
+		expect(table.groups.map((g) => g.key)).toEqual(['checking', 'savings', 'depot']);
+		expect(table.groups[0].cells.map((c) => c.minor)).toEqual([100000, 120000, 130000]);
+		expect(table.groups[2].cells.map((c) => [c.minor, c.note])).toEqual([
+			[null, 'No balance could be valued.'],
+			[null, 'No balance could be valued.'],
+			[null, 'No balance could be valued.']
+		]);
+		expect(table.groups[2].rows).toEqual([]);
 	});
 
 	it('says what the net worth leaves out', () => {

@@ -1,6 +1,4 @@
 <script lang="ts">
-	import AbsentValue from '#lib/components/common/absent-value.svelte';
-	import { formatCount } from '#lib/format/index.js';
 	import { donutSlices } from '#lib/reports/charts.js';
 	import { categoryHref, type Scope } from '#lib/reports/links.js';
 	import { notInCategories } from '#lib/reports/tables.js';
@@ -13,7 +11,7 @@
 
 	// *By category* (reports.md): the largest six categories and "Other" as a donut with its legend
 	// (colour and name; the amounts are in the tooltips and the table), the category tree as a
-	// table, and beneath it what is not in the categories above. The table is the readable data of
+	// table with what is not in the categories above as a section of it. The table is the readable data of
 	// the chart.
 	let {
 		report,
@@ -81,39 +79,5 @@
 		{/if}
 
 		<CategoryTable {report} {categories} {scope} {locale} />
-
-		<section class="flex flex-col gap-2" aria-labelledby="not-in-categories">
-			<h2 id="not-in-categories" class="text-base font-semibold">Not in the categories above</h2>
-			<ul class="flex flex-col divide-y divide-border/60 text-sm" data-slot="not-in-categories">
-				{#each side.lines as item (item.key)}
-					<li class="flex items-baseline justify-between gap-3 py-2" data-line={item.key}>
-						<AbsentValue label={item.label} explanation={item.explanation} />
-						<span class="flex items-baseline gap-4">
-							<span class="text-muted-foreground tabular-nums"
-								>{formatCount(item.line.count, locale)}</span
-							>
-							<FigureLink line={item.line} href={item.href} {locale} />
-						</span>
-					</li>
-				{/each}
-				<li class="flex items-baseline justify-between gap-3 py-2" data-line="unconfirmed">
-					<AbsentValue
-						label="Not yet confirmed"
-						explanation="Entries of this period whose values are proposals. The table includes their proposed categories."
-					/>
-					{#if side.unconfirmed.count > 0}
-						<a
-							href={side.unconfirmed.href}
-							class="rounded-sm tabular-nums outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-						>
-							{formatCount(side.unconfirmed.count, locale)}
-							{side.unconfirmed.count === 1 ? 'entry' : 'entries'}
-						</a>
-					{:else}
-						<span class="text-muted-foreground tabular-nums">0 entries</span>
-					{/if}
-				</li>
-			</ul>
-		</section>
 	</div>
 {/if}

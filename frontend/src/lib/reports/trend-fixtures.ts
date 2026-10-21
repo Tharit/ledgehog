@@ -117,6 +117,10 @@ function series(
 		category_id,
 		parent_id,
 		own: lines(own),
+		own_sum: line(
+			own.reduce((a, b) => a + b, 0),
+			{ count: own.filter((v) => v !== 0).length }
+		),
 		total: lines(total),
 		sum: line(total.reduce((a, b) => a + b, 0))
 	};
@@ -152,6 +156,32 @@ export function balances(over: Partial<Balances> = {}): Balances {
 			{ total: money(500000), unvalued: [] },
 			{ total: money(520000), unvalued: [] },
 			{ total: money(530000), unvalued: [{ amount: money(0), accounts: 1 }] }
+		],
+		kinds: [
+			{
+				kind: 'checking',
+				net_worth: [
+					{ total: money(100000), unvalued: [] },
+					{ total: money(120000), unvalued: [] },
+					{ total: money(130000), unvalued: [] }
+				]
+			},
+			{
+				kind: 'savings',
+				net_worth: [
+					{ total: money(400000), unvalued: [] },
+					{ total: money(400000), unvalued: [] },
+					{ total: money(400000), unvalued: [] }
+				]
+			},
+			{
+				kind: 'depot',
+				net_worth: [
+					{ total: null, unvalued: [{ amount: { amount: 7000, currency: 'USD' }, accounts: 1 }] },
+					{ total: null, unvalued: [{ amount: { amount: 7500, currency: 'USD' }, accounts: 1 }] },
+					{ total: null, unvalued: [{ amount: { amount: 8000, currency: 'USD' }, accounts: 1 }] }
+				]
+			}
 		],
 		accounts: [
 			{

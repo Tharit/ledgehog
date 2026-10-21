@@ -1,6 +1,4 @@
 <script lang="ts">
-	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
-	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import PencilIcon from '@lucide/svelte/icons/pencil';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import type { CategoriesStore } from '#lib/categories/store.svelte.js';
@@ -8,7 +6,7 @@
 	import type { TreeRow } from '#lib/categories/tree.js';
 	import InlineEdit from '#lib/components/common/inline-edit.svelte';
 	import RowActions, { type RowAction } from '#lib/components/common/row-actions.svelte';
-	import { Button } from '#lib/components/ui/button/index.js';
+	import TreeToggle from '#lib/components/common/tree-toggle.svelte';
 	import { describeFailure } from '#lib/dimensions/errors.js';
 	import { CATEGORY_ICONS } from '#lib/theme/icon-sets.js';
 	import { resolveCategory } from '#lib/theme/resolve.js';
@@ -99,21 +97,12 @@
 		)}
 		style:padding-left={`${row.depth * 24}px`}
 	>
-		{#if row.hasChildren}
-			<Button
-				variant="ghost"
-				size="icon-xs"
-				aria-label={row.collapsed ? `Expand ${category.name}` : `Collapse ${category.name}`}
-				aria-expanded={!row.collapsed}
-				onclick={() => store.toggle(category.id)}
-			>
-				{#if row.collapsed}<ChevronRightIcon aria-hidden="true" />{:else}<ChevronDownIcon
-						aria-hidden="true"
-					/>{/if}
-			</Button>
-		{:else}
-			<span class="size-6 shrink-0" aria-hidden="true"></span>
-		{/if}
+		<TreeToggle
+			name={category.name}
+			expanded={!row.collapsed}
+			toggleable={row.hasChildren}
+			ontoggle={() => store.toggle(category.id)}
+		/>
 
 		<LookPicker
 			name={category.name}
