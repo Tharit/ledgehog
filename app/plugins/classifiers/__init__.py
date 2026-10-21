@@ -18,9 +18,7 @@ __all__ = [
 ]
 
 
-def default_classifiers(rules: Sequence[RuleSpec], *, model: bool = False) -> Sequence[Classifier]:
-    """Pass 1 (rules) then pass 2 (history), and pass 3 (the model's stored answer) when one is configured."""
-    chain: list[Classifier] = [RulesClassifier(rules), HistoryClassifier()]
-    if model:
-        chain.append(LlmClassifier())
-    return chain
+def default_classifiers(rules: Sequence[RuleSpec]) -> Sequence[Classifier]:
+    """Pass 1 (rules), pass 2 (history), pass 3 (the model's stored answer). Pass 3 only reads what is stored,
+    so it is here with or without a model configured: answers stored earlier stand either way."""
+    return [RulesClassifier(rules), HistoryClassifier(), LlmClassifier()]

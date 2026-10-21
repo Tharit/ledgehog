@@ -149,10 +149,15 @@ class RuleInvalid(ValueError):
 @dataclass(frozen=True, slots=True)
 class Proposal:
     """A classifier's answer for one field: the value (an id, or `"flow"`/`"transfer"` for the
-    type) and the machine-readable basis that is stored in the key and rendered in review."""
+    type) and the machine-readable basis that is stored in the key and rendered in review.
+
+    No value (`None`) is an explained absence: the field stays empty and the basis says why (a payee or
+    a category; the type and a counter-account always have a value). It is a proposal like any other:
+    the first one for a field ends the search, a human never accepts it, and it stands exactly as long as
+    its classifier proposes it."""
 
     field: Field
-    value: int | str
+    value: int | str | None
     basis: Mapping[str, Any]
 
 
@@ -217,8 +222,8 @@ class ClassifierContext:
     account_ok: Callable[[int], bool] = lambda _account_id: True
     history: HistorySource | None = None
     exclude_entry_ids: frozenset[int] = frozenset()
-    # what is stored on the entry now (value and key per field): how the model's answer, its `llm` key, is
-    # read as an input (architecture §5.4)
+    # what is stored on the entry now (value and key per field, an explained absence included): how the
+    # model's answer, its `llm` key, is read as an input (architecture §5.4)
     stored: Mapping[Field, Any] = field(default_factory=dict)
 
 

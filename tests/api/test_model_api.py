@@ -69,6 +69,19 @@ def test_the_unit_and_the_queue_carry_the_models_none_key(
     assert [u["entries"][0]["derivation"] for u in queued if u["anchor_entry_id"] == e] == [{"category": key}]
 
 
+def test_an_explained_absence_reads_as_a_proposal_on_an_empty_value() -> None:
+    from app.api.routers.unit_drafts import UnitFieldOut
+    from app.core.resolution.types import Decided
+    from app.core.units.plan import FieldResult
+
+    basis = {"model": "m", "rationale": "a toll", "fingerprint": "f", "none": True}
+    key = {"pass": "llm", "basis": basis}
+    out = UnitFieldOut.of(FieldResult(None, Decided(None, "llm", basis), key, None, key), stored=False)
+    assert out.value is None and out.is_proposal is True
+    assert out.key is not None and out.key.pass_ == "llm" and out.key.basis == basis
+    assert out.commit_key is not None and out.commit_key.basis == basis
+
+
 def test_without_a_model_no_unit_is_pending(anna: TestClient, api_engine: Engine, world: Bench) -> None:
     _two_flows(api_engine, world)
     body = anna.get("/api/units/queue").json()

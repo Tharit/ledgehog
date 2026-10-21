@@ -37,6 +37,7 @@ from app.core.resolution.confirmed import units_binds, units_sql
 from app.core.resolution.load import load_accounts, load_rules
 from app.core.resolution.registry import classifiers_for
 from app.core.resolution.snapshot import load_snapshot
+from app.core.resolution.types import column_of
 from app.core.settle.resolution import new_derivation
 from app.core.settle.settle import SettleResult, settle
 from app.core.stale import StaleReference
@@ -505,8 +506,7 @@ def _afresh(
 
 
 def _value(resolved: Resolved, name: Any) -> int | None:
-    d = resolved.get(name)
-    return None if d is None else int(d.value)
+    return column_of(resolved.get(name))
 
 
 _ENTRY_ROWS = text(

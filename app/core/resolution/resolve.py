@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from typing import Literal
 
 from app.core.plugins.classifier import (
@@ -63,6 +64,9 @@ class _Run:
     fixed: Mapping[Field, Decided]
     decided: dict[Field, Decided]
     stored: Mapping[Field, Decided | None]
+    # the explained absences (a proposal with no value) met while looking for a type, by field: when no
+    # pass decides a type, nothing proposes a value either, but an absence still stands
+    explained: dict[Field, Decided] = dataclass_field(default_factory=dict)
 
     def ctx(self) -> ClassifierContext:
         return ClassifierContext(
@@ -86,10 +90,23 @@ class _Run:
         if field == "type":
             ok = p.value in _TYPES
         else:
-            ok = _is_id(p.value) or (field == "payee" and p.value == NO_PAYEE)
+            ok = (
+                _is_id(p.value)
+                or (field == "payee" and p.value == NO_PAYEE)
+                or (p.value is None and field in _FLOW_FIELDS)  # an explained absence
+            )
         if not ok:
             raise ValueError(f"{c.pass_name} proposed {p.value!r} for {field}")
         return p
+
+    @staticmethod
+    def decision(c: Classifier, p: Proposal) -> Decided:
+        """A proposal as a decision: its key carries `"none": true` when it has no value (the key that
+        explains an absence, whatever the classifier put in its basis)."""
+        basis = dict(p.basis)
+        if p.value is None:
+            basis["none"] = True
+        return Decided(p.value, c.pass_name, basis)
 
     def counter_proposal(self, c: Classifier) -> Proposal | None:
         """A counter-account proposal that passes core's tests, else None (dropped)."""
@@ -107,8 +124,10 @@ class _Run:
         if (d := self.fixed.get("type")) is not None:
             return d if d.value in _TYPES else None
         for field in ("payee", "category", "counter_account"):
-            if (f := self.fixed.get(field)) is not None and not (
-                field == "counter_account" and f.value == self.entry.account_id
+            if (
+                (f := self.fixed.get(field)) is not None
+                and f.value is not None  # an absence implies no type
+                and not (field == "counter_account" and f.value == self.entry.account_id)
             ):
                 kind = "transfer" if field == "counter_account" else "flow"
                 return Decided(kind, f.pass_name, f.basis)
@@ -123,8 +142,12 @@ class _Run:
                 return Decided("transfer", c.pass_name, p.basis)
             for field in _FLOW_FIELDS:
                 p = self.ask(c, field)
-                if p is not None and p.value != NO_PAYEE:
-                    return Decided("flow", c.pass_name, p.basis)
+                if p is None or p.value == NO_PAYEE:
+                    continue
+                if p.value is None:  # an absence implies no type
+                    self.explained.setdefault(field, self.decision(c, p))
+                    continue
+                return Decided("flow", c.pass_name, p.basis)
         return None
 
     def counter_account(self) -> Decided | None:
@@ -147,13 +170,13 @@ class _Run:
                 continue
             if p.value == NO_PAYEE:
                 return None
-            return Decided(p.value, c.pass_name, p.basis)
+            return self.decision(c, p)
         return None
 
     def run(self) -> Resolved:
         kind = self.type_()
         if kind is None:
-            return Resolved()
+            return Resolved(self.explained)
         self.decided["type"] = kind
         if kind.value == "transfer":
             if (d := self.counter_account()) is not None:

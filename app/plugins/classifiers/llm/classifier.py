@@ -2,10 +2,10 @@
 
 The model is never asked here: settling must not wait for it. The worker (`core/model`) asks in the
 background and stores the answer as the category's `llm` key with the payload's fingerprint; this pass
-proposes that answer again while the entry's payload still has the fingerprint, and nothing otherwise
-(a changed payload, a stale answer: the worker asks anew). Category only, never a payee. The model's "none"
-answer has no value to propose: this pass proposes nothing for it, and settling keeps its key
-(`core/model/answer.py`) while the payload stands.
+proposes that answer again while the entry's payload still has the fingerprint, and nothing otherwise (a
+changed payload, a stale answer: the worker asks anew). The answer is a category, or the explained absence of
+one: "no category fits" (`basis.none`), proposed with no value. Category only, never a payee. It asks nothing,
+so it is registered with or without a model configured: answers stored earlier stand either way.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.plugins.classifier import ClassifierContext, EntryInput, Field, Proposal
-from app.plugins.classifiers.llm.payload import fingerprint_of, payload_of
+from app.plugins.classifiers.llm.payload import payload_fingerprint
 
 
 class LlmClassifier:
@@ -23,9 +23,11 @@ class LlmClassifier:
         if field != "category":
             return None
         stored: Any = ctx.stored.get("category")
-        if stored is None or stored.pass_name != self.pass_name or not isinstance(stored.value, int):
+        if stored is None or stored.pass_name != self.pass_name:
             return None
-        payload = payload_of(entry)
-        if payload is None or stored.basis.get("fingerprint") != fingerprint_of(payload):
+        if stored.value is not None and not isinstance(stored.value, int):
+            return None
+        fingerprint = payload_fingerprint(entry)
+        if fingerprint is None or stored.basis.get("fingerprint") != fingerprint:
             return None
         return Proposal("category", stored.value, dict(stored.basis))

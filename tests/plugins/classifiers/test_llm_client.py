@@ -210,7 +210,7 @@ async def test_a_timeout_or_refused_connection_is_unavailable() -> None:
 # ---- the classifier reads the stored answer --------------------------------------------------------
 
 
-def _stored(entry: EntryInput, value: int = 3) -> Decided:
+def _stored(entry: EntryInput, value: int | None = 3) -> Decided:
     payload = payload_of(entry)
     assert payload is not None
     return Decided(value, "llm", {"model": "m", "rationale": "r", "fingerprint": fingerprint_of(payload)})
@@ -221,6 +221,15 @@ def test_the_classifier_proposes_the_stored_answer_while_the_payload_stands() ->
     stored = _stored(entry)
     p = LlmClassifier().propose("category", entry, ClassifierContext(stored={"category": stored}))
     assert p is not None and p.value == 3 and dict(p.basis) == dict(stored.basis)
+
+
+def test_the_classifier_proposes_the_stored_absence_while_the_payload_stands() -> None:
+    entry = _entry(counterparty_name="AUCAT")
+    stored = _stored(entry, None)
+    ctx = ClassifierContext(stored={"category": stored})
+    p = LlmClassifier().propose("category", entry, ctx)
+    assert p is not None and p.value is None and p.basis["fingerprint"] == stored.basis["fingerprint"]
+    assert LlmClassifier().propose("category", _entry(counterparty_name="AUCAT", purpose="new"), ctx) is None
 
 
 def test_the_classifier_proposes_nothing_otherwise() -> None:

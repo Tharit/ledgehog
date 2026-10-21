@@ -5,7 +5,8 @@ category and stores the answer with a write that settles like any other (`settle
 category and its `llm` key (the payload's fingerprint, the model's name and one-line rationale), the type
 `flow` keyed the same when none was decided. "No category fits" is stored too: the `llm` key with `none`
 and the rationale on the empty category, nothing else touched, which settling then keeps and does not
-list again for that payload (`answer.py`); an invalid reply is not stored. Every entry asked gets one INFO
+list again for that payload (the pass-3 classifier proposes the absence while the payload stands); an
+invalid reply is not stored. Every entry asked gets one INFO
 line saying what came of it and why (stored, dropped, no answer: a reason code). Nothing changes under
 the user: the answer is dropped when the entry is confirmed, its payload changed, or its category now has a
 value of a user or of a pass of higher authority. Settling never waits for the worker.

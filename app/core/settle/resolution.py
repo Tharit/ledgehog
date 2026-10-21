@@ -22,14 +22,20 @@ from typing import Any
 
 from sqlalchemy import Connection, text
 
-from app.core.model.answer import holds_none_answer, none_key_of
 from app.core.model.queue import current_model_queue
-from app.core.plugins.classifier import FIELD_ORDER, AccountFact, Classifier, Field, HistorySource
+from app.core.plugins.classifier import (
+    FIELD_ORDER,
+    STANDING_PASSES,
+    AccountFact,
+    Classifier,
+    Field,
+    HistorySource,
+)
 from app.core.resolution import Decided, Resolved, diff, rederive
 from app.core.resolution.load import UnconfirmedEntry, load_accounts, load_rules, load_unconfirmed
 from app.core.resolution.registry import classifiers_for
 from app.core.resolution.snapshot import load_snapshot, load_votes_of, touches
-from app.core.resolution.types import USER_NO_PAYEE, is_user_no_payee
+from app.core.resolution.types import USER_NO_PAYEE, column_of, is_user_no_payee
 from app.core.settle.run import ResolutionContext, SettleRun, StepOutcome, current_run
 
 _COLUMN: dict[Field, str] = {
@@ -66,6 +72,17 @@ def _context(conn: Connection, run: SettleRun) -> ResolutionContext:
     return run.resolution
 
 
+def _stored_absence(key: object) -> Decided | None:
+    """The key of an empty field that explains the absence (`"none": true`, a proposal's: a standing pass
+    has no such key), as the decision it is; any other key on an empty field is none."""
+    if not isinstance(key, Mapping) or not isinstance(key.get("pass"), str) or key["pass"] in STANDING_PASSES:
+        return None
+    basis = key.get("basis")
+    if not isinstance(basis, Mapping) or basis.get("none") is not True:
+        return None
+    return Decided(None, key["pass"], dict(basis))
+
+
 def stored_decisions(row: UnconfirmedEntry) -> dict[Field, Decided | None]:
     """The decisions on the entry now. A value without a key is kept as a user's: never destroyed."""
     values: dict[Field, int | str | None] = {
@@ -79,9 +96,10 @@ def stored_decisions(row: UnconfirmedEntry) -> dict[Field, Decided | None]:
         value = values[f]
         key = row.derivation.get(f)
         if value is None:
-            # the one key a NULL carries: the user's decision of no payee (a standing key)
+            # the keys a NULL carries: the user's decision of no payee (a standing key) and a proposal's
+            # explained absence
             is_decision = f == "payee" and isinstance(key, Mapping) and key.get("pass") == "user"
-            current[f] = USER_NO_PAYEE if is_decision else None
+            current[f] = USER_NO_PAYEE if is_decision else _stored_absence(key)
             continue
         if isinstance(key, Mapping) and isinstance(key.get("pass"), str):
             basis = key.get("basis")
@@ -98,22 +116,11 @@ def new_derivation(old: Mapping[str, Any], new: Resolved) -> dict[str, Any]:
     return out
 
 
-def _kept_none_key(row: UnconfirmedEntry, new: Resolved) -> Mapping[str, Any] | None:
-    """The model's "none" answer the entry keeps: its key on a category that stays empty, while the
-    payload is the one the model was asked about. A category some pass decides replaces it; a transfer has
-    no category; a changed payload asks anew (the key goes)."""
-    kind = new.get("type")
-    if "category" in new or (kind is not None and kind.value == "transfer"):
-        return None
-    return none_key_of(row.derivation) if holds_none_answer(row.derivation, row.input) else None
-
-
-def _stale_keys(row: UnconfirmedEntry, current: Mapping[Field, Decided | None], new: Resolved) -> bool:
-    """A key of a field that has no value: it is removed (a key explains a value). Two exceptions: the
-    user's decision of no payee, a standing key on a NULL (`stored_decisions` reads it as a decision), and
-    the model's "none" answer, the key that explains an absence."""
-    kept = _kept_none_key(row, new) is not None
-    return any(f in row.derivation and current[f] is None and not (f == "category" and kept) for f in _COLUMN)
+def _stale_keys(row: UnconfirmedEntry, current: Mapping[Field, Decided | None]) -> bool:
+    """A key of a field that has no decision: it is removed (a key explains a value or an absence).
+    `stored_decisions` reads the user's decision of no payee and a proposal's explained absence as
+    decisions; they stand while resolution produces them again (`diff`)."""
+    return any(f in row.derivation and current[f] is None for f in _COLUMN)
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,21 +141,14 @@ def _is_pair_set(key: object) -> bool:
     return isinstance(basis, Mapping) and basis.get("from") == "counterpart"
 
 
-def _value(d: Decided | None) -> int | None:
-    return int(d.value) if d is not None and not is_user_no_payee(d) else None
-
-
 def _rewrite(row: UnconfirmedEntry, new: Resolved, *, unpair: bool = False) -> Rewrite:
     kind = new.get("type")
-    derivation = new_derivation(row.derivation, new)
-    if (none_key := _kept_none_key(row, new)) is not None:
-        derivation["category"] = dict(none_key)
     return Rewrite(
         type=str(kind.value) if kind is not None else None,
-        payee_id=_value(new.get("payee")),
-        category_id=_value(new.get("category")),
-        counter_account_id=_value(new.get("counter_account")),
-        derivation=derivation,
+        payee_id=column_of(new.get("payee")),
+        category_id=column_of(new.get("category")),
+        counter_account_id=column_of(new.get("counter_account")),
+        derivation=new_derivation(row.derivation, new),
         unpair=unpair,
     )
 
@@ -171,7 +171,7 @@ def rewrite_of(
     if row.paired:
         return None
     current, new = _rederived(row, accounts=accounts, classifiers=classifiers, history=history, reopen=reopen)
-    if not diff(current, new) and not _stale_keys(row, current, new):
+    if not diff(current, new) and not _stale_keys(row, current):
         return None
     return _checked(row, new)
 
@@ -214,7 +214,7 @@ def pair_falls(row: UnconfirmedEntry, new: Resolved) -> bool:
         return True
     if _is_pair_set(row.derivation.get("counter_account")):
         return False
-    return _value(new.get("counter_account")) != row.counter_account_id
+    return column_of(new.get("counter_account")) != row.counter_account_id
 
 
 def _stripped(row: UnconfirmedEntry) -> UnconfirmedEntry:
@@ -286,7 +286,7 @@ def settle_rewrites(
             released.add(row.input.entry_id)
             if row.counterpart_id in by_id:
                 released.add(row.counterpart_id)
-        elif (diff(current, new) or _stale_keys(row, current, new)) and (rewrite := _checked(row, new)):
+        elif (diff(current, new) or _stale_keys(row, current)) and (rewrite := _checked(row, new)):
             out[row.input.entry_id] = rewrite
     for entry_id in released:
         out[entry_id] = rewrite_released(
@@ -325,8 +325,9 @@ def resolve_step(conn: Connection) -> StepOutcome:
 
 def _list_for_model(rows: Sequence[UnconfirmedEntry], rewrites: Mapping[int, Rewrite]) -> None:
     """Hand the model's list the entries whose category falls to pass 3 (spec §5.9, architecture §5.4):
-    a flow, or an entry without a type yet, left without a category, whose payload is not empty. Settling
-    never waits for the model: this only fills an in-memory list. No model configured: nothing is listed."""
+    a flow, or an entry without a type yet, that no pass proposed a category for (no value, no explained
+    absence: such a key says the field is answered), whose payload is not empty. Settling never waits for
+    the model: this only fills an in-memory list. No model configured: nothing is listed."""
     queue = current_model_queue()
     if queue is None:
         return
@@ -336,10 +337,10 @@ def _list_for_model(rows: Sequence[UnconfirmedEntry], rewrites: Mapping[int, Rew
             continue
         rewrite = rewrites.get(row.input.entry_id)
         kind, category = (rewrite.type, rewrite.category_id) if rewrite else (row.type, row.category_id)
-        if kind not in (None, "flow") or category is not None:
-            continue
-        if holds_none_answer(rewrite.derivation if rewrite else row.derivation, row.input):
-            continue  # answered: the model found no category for this payload (the key survives a restart)
+        derivation = rewrite.derivation if rewrite else row.derivation
+        if kind not in (None, "flow") or category is not None or "category" in derivation:
+            continue  # a key on the empty category is a proposal's explained absence (an entry settling
+            # does not rewrite carries only keys resolution produced)
         if (fingerprint := queue.fingerprint(row.input)) is not None:
             wanted.append((row.input.entry_id, fingerprint))
     queue.sync(wanted)

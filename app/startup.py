@@ -19,10 +19,8 @@ from app.core.model.queue import ModelQueue, configure_model_queue
 from app.core.model.worker import ModelWorker
 from app.core.plugins.fetch import FetchImporter
 from app.core.plugins.importer import FileImporter
-from app.core.resolution.registry import configure_classifiers
 from app.core.settle import SettleResult, settle
 from app.core.tasks import TaskRegistry
-from app.plugins.classifiers import default_classifiers
 from app.plugins.classifiers.llm import OpenAIModelClient
 from app.utils import clock
 from app.utils.auth import hash_password, revoke_sessions, verify_password
@@ -201,8 +199,8 @@ def run_settle(engine: Engine) -> SettleResult:
 
 def configure_model(config: Config, engine: Engine) -> ModelWorker | None:
     """Pass 3 (architecture §5.4): with `MODEL_ENDPOINT` and `MODEL_NAME` configured, the model's list for
-    settling to fill, pass 3 in the classifier chain and the worker that asks (started with the app).
-    Without them nothing is listed and nothing runs."""
+    settling to fill and the worker that asks (started with the app). Without them nothing is listed and
+    nothing runs; the pass-3 classifier is registered either way (`default_classifiers`): it asks nothing."""
     if config.model is None:
         configure_model_queue(None)
         return None
@@ -210,7 +208,6 @@ def configure_model(config: Config, engine: Engine) -> ModelWorker | None:
     client = OpenAIModelClient(config.model.endpoint, config.model.name, key.reveal() if key else None)
     queue = ModelQueue(client.fingerprint)
     configure_model_queue(queue)
-    configure_classifiers(lambda rules: default_classifiers(rules, model=True))
     log.info("the model answers for categories in the background: %s", config.model.name)
     return ModelWorker(queue, client, engine)
 

@@ -113,6 +113,20 @@ def test_an_answer_is_stored_as_the_llm_key_and_settles_like_any_write(rig: Rig,
     assert rig.queue.pending() == 0 and len(rig.endpoint.requests) == 1  # asked once per input
 
 
+def test_without_a_model_a_stored_category_answer_stands(rig: Rig, acct: int) -> None:
+    from app.core.model.queue import configure_model_queue
+
+    e, cat = _toll(rig.engine, acct)
+    settle(rig.engine)
+    rig.endpoint.category_id = cat
+    _process_head(rig)
+    before = entry_row(rig.engine, e).derivation
+    configure_model_queue(None)  # no model configured: the classifier is registered all the same
+    assert settle(rig.engine).touched_entry_ids == ()
+    row = entry_row(rig.engine, e)
+    assert row.category_id == cat and row.derivation == before
+
+
 def test_the_request_carries_the_payload_text_only(rig: Rig, acct: int) -> None:
     _toll(rig.engine, acct, counterparty_ref="DE89370400440532013000", mandate_ref="MANDATE-9")
     settle(rig.engine)

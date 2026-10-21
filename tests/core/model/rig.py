@@ -12,8 +12,6 @@ from sqlalchemy import Engine, text
 
 from app.core.model.queue import ModelQueue, configure_model_queue
 from app.core.model.worker import ModelWorker
-from app.core.resolution.registry import configure_classifiers
-from app.plugins.classifiers import default_classifiers
 from app.plugins.classifiers.llm import OpenAIModelClient
 
 
@@ -59,7 +57,6 @@ def make_rig(engine: Engine, retry_after: float = 600.0) -> Rig:
     client = OpenAIModelClient("http://model.test/v1", "m-1", None, transport=httpx.MockTransport(endpoint))
     queue = ModelQueue(client.fingerprint)
     configure_model_queue(queue)
-    configure_classifiers(lambda rules: default_classifiers(rules, model=True))
     return Rig(endpoint, queue, ModelWorker(queue, client, engine, retry_after=retry_after), engine, client)
 
 

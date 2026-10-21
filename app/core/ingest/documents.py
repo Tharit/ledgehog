@@ -32,7 +32,7 @@ from app.core.resolution import Resolved, resolve_afresh
 from app.core.resolution.load import load_accounts, load_rules, load_unconfirmed
 from app.core.resolution.registry import classifiers_for
 from app.core.resolution.snapshot import load_snapshot
-from app.core.resolution.types import is_user_no_payee
+from app.core.resolution.types import column_of
 from app.core.settle.resolution import new_derivation
 from app.core.settle.settle import SettleResult, settle
 from app.utils.db.changes import DOCUMENTS, note_change
@@ -348,6 +348,4 @@ def reresolve_unconfirmed_carrier(conn: Connection, entry_ids: Sequence[int]) ->
 
 
 def _id(decided: Any) -> int | None:
-    if decided is None or is_user_no_payee(decided):
-        return None
-    return int(decided.value)
+    return column_of(decided)

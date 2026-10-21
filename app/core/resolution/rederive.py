@@ -45,9 +45,9 @@ def resolve_afresh(
 def _walk(type_value: int | str | None) -> tuple[Field, ...]:
     if type_value == "transfer":
         return ("counter_account",)
-    if type_value == "flow":
-        return ("payee", "category")
-    return ()
+    # an entry without a type has no value to find, but a pass may still explain why its payee or category
+    # stays empty (`resolve` returns that and nothing else for it)
+    return ("payee", "category")
 
 
 def rederive(
@@ -103,6 +103,8 @@ def rederive(
     kind = step("type")
     for field in _walk(kind.value if kind else None):
         step(field)
+    if kind is None:  # nothing but an explained absence can stand without a type
+        fixed = {f: d for f, d in fixed.items() if d.value is None}
     return Resolved(fixed)
 
 

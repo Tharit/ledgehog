@@ -38,6 +38,7 @@ from app.core.resolution import counter_account_ok, rederive
 from app.core.resolution.load import UnconfirmedEntry, load_accounts, load_movements
 from app.core.resolution.registry import RuleTools, classifiers_for, rule_tools
 from app.core.resolution.snapshot import load_snapshot
+from app.core.resolution.types import column_of
 from app.core.settle.resolution import new_derivation, stored_decisions
 
 DEFAULT_LIMIT = 100
@@ -232,8 +233,7 @@ def _units_confirmed(
                 if not (kind is not None and kind.value == "transfer" and not row.original):
                     derivation = new_derivation(row.derivation, new)
                     type_ = str(kind.value) if kind is not None else None
-                    cat = new.get("category")
-                    category = int(cat.value) if cat is not None else None
+                    category = column_of(new.get("category"))
             complete = (
                 type_ is not None
                 and (type_ != "flow" or category is not None)
