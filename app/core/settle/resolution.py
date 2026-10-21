@@ -22,6 +22,7 @@ from typing import Any
 
 from sqlalchemy import Connection, text
 
+from app.core.model.queue import current_model_queue
 from app.core.plugins.classifier import FIELD_ORDER, AccountFact, Classifier, Field, HistorySource
 from app.core.resolution import Decided, Resolved, diff, rederive
 from app.core.resolution.load import UnconfirmedEntry, load_accounts, load_rules, load_unconfirmed
@@ -291,8 +292,9 @@ def resolve_step(conn: Connection) -> StepOutcome:
         # do not change within a settle, and a second pass over unchanged inputs writes nothing
         return ctx.grown is None or touches(ctx.grown, row.input, row.payee_id)
 
+    rows = load_unconfirmed(conn)
     rewrites = settle_rewrites(
-        load_unconfirmed(conn),
+        rows,
         reach=reach,
         accounts=ctx.accounts,
         classifiers=ctx.classifiers,
@@ -300,7 +302,29 @@ def resolve_step(conn: Connection) -> StepOutcome:
     )
     if rewrites:
         run.documents_dirty = True  # a payee may have changed: step 2 looks again
-    return write_rewrites(conn, rewrites)
+    outcome = write_rewrites(conn, rewrites)
+    _list_for_model(rows, rewrites)
+    return outcome
+
+
+def _list_for_model(rows: Sequence[UnconfirmedEntry], rewrites: Mapping[int, Rewrite]) -> None:
+    """Hand the model's list the entries whose category falls to pass 3 (spec §5.9, architecture §5.4):
+    a flow, or an entry without a type yet, left without a category, whose payload is not empty. Settling
+    never waits for the model: this only fills an in-memory list. No model configured: nothing is listed."""
+    queue = current_model_queue()
+    if queue is None:
+        return
+    wanted: list[tuple[int, str]] = []
+    for row in rows:
+        if row.paired:
+            continue
+        rewrite = rewrites.get(row.input.entry_id)
+        kind, category = (rewrite.type, rewrite.category_id) if rewrite else (row.type, row.category_id)
+        if kind not in (None, "flow") or category is not None:
+            continue
+        if (fingerprint := queue.fingerprint(row.input)) is not None:
+            wanted.append((row.input.entry_id, fingerprint))
+    queue.sync(wanted)
 
 
 def write_rewrites(conn: Connection, rewrites: Mapping[int, Rewrite]) -> StepOutcome:

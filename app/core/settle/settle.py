@@ -21,7 +21,7 @@ unit; narrowing to a dirty set is an optimisation to take only if the time budge
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 from sqlalchemy import Connection, Engine, text
@@ -95,14 +95,27 @@ def _run_rounds(conn: Connection) -> tuple[set[int], bool]:
     raise RuntimeError(f"settling did not converge within {MAX_ROUNDS} rounds")
 
 
-def settle(engine: Engine) -> SettleResult:
-    """Settle derived state in its own transaction; never raises for a failure of its own."""
+def settle(
+    engine: Engine, *, before: Callable[[Connection], Sequence[int] | None] | None = None
+) -> SettleResult:
+    """Settle derived state in its own transaction; never raises for a failure of its own.
+
+    `before(conn)` runs first, under the lock, in the same transaction: a write that settles like any other
+    (the model's answer, architecture §5.4). It returns the entry ids it wrote, or None for nothing written,
+    which ends the settle without a round."""
     try:
         with engine.begin() as conn:
             lock_settle_exclusive(conn)
             # transaction-local: settling's rewrites must not bump `version` (schema 8.6)
             conn.execute(text("SELECT set_config('ledger.settling', 'on', true)"))
+            written: set[int] = set()
+            if before is not None:
+                wrote = before(conn)
+                if wrote is None:
+                    return SettleResult()
+                written.update(wrote)
             touched, document_linked = _run_rounds(conn)
+            touched |= written
             # the change values move when this transaction commits (architecture §5.2)
             if touched:
                 note_change(conn, LEDGER)
