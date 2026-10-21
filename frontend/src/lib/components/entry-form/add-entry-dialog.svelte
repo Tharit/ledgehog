@@ -14,8 +14,8 @@
 	import { session } from '#lib/stores/session.svelte.js';
 
 	// "Add entry": a form dialog (patterns §11.1, §11.2) with the account, date, amount with its sign
-	// and the purpose. "Add" enters the transaction, closes and opens the work panel on it; "Add and
-	// add another" enters it and keeps the dialog for the next one. No draft survives closing.
+	// and the purpose. "Add" enters the transaction and closes (it is reviewed in the queue like
+	// any other); "Add and add another" enters it and keeps the dialog for the next one. No draft survives closing.
 	let {
 		open,
 		options = {},
@@ -29,7 +29,6 @@
 	} = $props();
 
 	let amountInput = $state<HTMLInputElement | null>(null);
-	let added = false;
 
 	$effect(() => {
 		if (!open) return;
@@ -54,10 +53,7 @@
 	});
 
 	async function add() {
-		if ((await flow.submit(false)) === 'added') {
-			added = true;
-			onclose();
-		}
+		if ((await flow.submit(false)) === 'added') onclose();
 	}
 
 	async function addAnother() {
@@ -101,12 +97,6 @@
 	onsubmit={add}
 	{feedback}
 	secondary={another}
-	oncloseautofocus={(event) => {
-		// the work panel opens on the new unit and takes the focus itself
-		if (!added) return;
-		event.preventDefault();
-		added = false;
-	}}
 >
 	{#if noAccounts}
 		<EmptyState title="No account to add to">

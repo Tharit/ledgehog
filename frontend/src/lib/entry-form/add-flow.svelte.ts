@@ -1,5 +1,4 @@
-// The add form's state and its two submissions: "Add" (creates, closes, opens the work panel on the
-// new unit) and "Add and add another" (creates, keeps the dialog, resets the
+// The add form's state and its two submissions: "Add" (creates, closes) and "Add and add another" (creates, keeps the dialog, resets the
 // amount to its sign and clears the purpose).
 // A submission keeps its client id while its values do not change, so a retry after a lost answer
 // is the same request and the server cannot enter the row twice (architecture §4.1).
@@ -108,7 +107,7 @@ export class AddFlow {
 		this.#pending = null;
 		writeLastAccount(session.user?.id ?? null, input.account_id);
 		if (another) this.#clearForNext(input);
-		entryForm.created(out, !another);
+		entryForm.created(out);
 		return 'added';
 	}
 

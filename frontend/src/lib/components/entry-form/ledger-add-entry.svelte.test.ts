@@ -50,7 +50,7 @@ describe('the ledger header: Add entry', () => {
 		render(Page);
 		await waitFor(() => expect(api.listEntries).toHaveBeenCalledTimes(1));
 
-		entryForm.created(written(), false);
+		entryForm.created(written());
 
 		await waitFor(() => expect(api.listEntries).toHaveBeenCalledTimes(2));
 	});

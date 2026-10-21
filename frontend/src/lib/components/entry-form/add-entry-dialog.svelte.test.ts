@@ -209,7 +209,7 @@ describe('AddEntryDialog: account and date controls', () => {
 });
 
 describe('AddEntryDialog: Add', () => {
-	it('enters the transaction with a signed amount, closes, and opens the panel on the new unit', async () => {
+	it('enters the transaction with a signed amount, and closes without opening the panel', async () => {
 		vi.mocked(api.createSource).mockResolvedValue(written({ anchor_entry_id: 77 }));
 		const created = vi.fn();
 		const stop = entryForm.listen({ created });
@@ -227,7 +227,7 @@ describe('AddEntryDialog: Add', () => {
 			purpose: 'groceries'
 		});
 		expect(body().id).toMatch(/^[A-Za-z0-9_-]{1,100}$/);
-		expect(panel.open).toHaveBeenCalledWith(77, null);
+		expect(panel.open).not.toHaveBeenCalled();
 		expect(created).toHaveBeenCalledOnce();
 		stop();
 	});

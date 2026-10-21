@@ -100,14 +100,13 @@ export class EntryFormController {
 		for (const listener of this.#listeners) listener.notify?.(text, error);
 	}
 
-	/** A transaction was entered. `open`: the work panel opens on its unit (Add, not "Add and add another"). */
-	created(out: SourceWriteOut, open: boolean): void {
+	/** A transaction was entered: the lists follow; the new entry is reviewed in the queue like any other. */
+	created(out: SourceWriteOut): void {
 		for (const listener of this.#listeners) {
 			void listener.created?.(out);
 			void listener.changed?.();
 		}
 		if (out.settle.error) this.notify(`Added. ${SETTLE_STALE}`);
-		if (open && out.anchor_entry_id !== null) unitPanel.open(out.anchor_entry_id, this.opener);
 	}
 
 	/** An edit was saved: the rows held follow the answer, and the open unit is loaded again. */
