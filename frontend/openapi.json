@@ -1016,13 +1016,18 @@
           "ledger": {
             "title": "Ledger",
             "type": "string"
+          },
+          "model_pending": {
+            "title": "Model Pending",
+            "type": "integer"
           }
         },
         "required": [
           "ledger",
           "documents",
           "accounts",
-          "active_task"
+          "active_task",
+          "model_pending"
         ],
         "title": "ChangesOut",
         "type": "object"
@@ -7930,6 +7935,11 @@
             },
             "title": "Entries",
             "type": "array"
+          },
+          "model_pending": {
+            "default": false,
+            "title": "Model Pending",
+            "type": "boolean"
           },
           "needs_account": {
             "anyOf": [

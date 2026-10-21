@@ -1543,6 +1543,8 @@ export interface components {
             documents: string;
             /** Ledger */
             ledger: string;
+            /** Model Pending */
+            model_pending: number;
         };
         /** CheckOut */
         CheckOut: {
@@ -3747,6 +3749,11 @@ export interface components {
             anchor_entry_id: number;
             /** Entries */
             entries: components["schemas"]["EntryOut"][];
+            /**
+             * Model Pending
+             * @default false
+             */
+            model_pending: boolean;
             needs_account?: components["schemas"]["NeedsAccountOut"] | null;
             state: components["schemas"]["UnitStateOut"];
             /** Unit Key */
