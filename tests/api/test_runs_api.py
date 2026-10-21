@@ -26,8 +26,8 @@ RUN_KEYS = {
 
 def _two_accounts(api: Api) -> tuple[int, int, int, int]:
     """(giro instance, giro account, card instance, card account), each with a first upload."""
-    gi, ga = api.world("giro_with_preamble")
-    ci, ca = api.world("card_footer_balance", name="Card", kind="card")
+    gi, ga = api.world("consorsbank_giro")
+    ci, ca = api.world("deutschebank_card", name="Card", kind="card")
     assert api.upload(gi, ga, giro_bytes()).status_code == 200
     assert api.upload(ci, ca, card_a_bytes()).status_code == 200
     return gi, ga, ci, ca
@@ -277,7 +277,7 @@ def test_revert_bodies_are_strict(api: Api, body):
 def test_the_whole_flow_leaves_the_integrity_views_empty(api: Api):
     c = api.client
     account = api.account("Giro", kind="checking", currency="EUR")
-    inst = api.instance("giro_with_preamble")  # create from a preset
+    inst = api.instance("consorsbank_giro")  # create from a preset
     assert api.link(inst, account, dry_run=True)["dry_run"] is True  # preview: nothing linked yet
     assert c.get("/api/importers/instances").json()[0]["accounts"] == []
     api.link(inst, account)

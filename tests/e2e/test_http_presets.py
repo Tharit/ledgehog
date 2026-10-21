@@ -43,19 +43,19 @@ GIRO_ENTRIES = [GIRO_OPENING, *GIRO_MOVEMENTS]
 
 def _giro_world(http: Http, name: str = "Giro") -> tuple[int, int]:
     account = http.create_account(name)
-    instance = http.create_instance("giro_with_preamble")
+    instance = http.create_instance("consorsbank_giro")
     http.link(instance, account)
     return instance, account
 
 
-# ---- giro_with_preamble ---------------------------------------------------------------------
+# ---- consorsbank_giro ---------------------------------------------------------------------
 
 
 def test_giro_first_upload_by_hand(api: Api):
     http = Http(api)
     account = http.create_account("Giro")
     http.check()
-    instance = http.create_instance("giro_with_preamble")
+    instance = http.create_instance("consorsbank_giro")
     link = http.link(instance, account)
     assert link["account_becomes_synced"] is True and link["user_authored_count"] == 0
 
@@ -65,9 +65,9 @@ def test_giro_first_upload_by_hand(api: Api):
     assert http.records(account) == [GIRO_RECORD]
     # the booked amounts as the bank's source rows carry them
     assert [(s.amount, s.booked_on, s.source_format) for s in http.sources(account)] == [
-        (-4550, D(2026, 8, 18), "csv:giro_with_preamble (e2e)"),
-        (150000, D(2026, 8, 19), "csv:giro_with_preamble (e2e)"),
-        (-1000, D(2026, 8, 20), "csv:giro_with_preamble (e2e)"),
+        (-4550, D(2026, 8, 18), "csv:consorsbank_giro (e2e)"),
+        (150000, D(2026, 8, 19), "csv:consorsbank_giro (e2e)"),
+        (-1000, D(2026, 8, 20), "csv:consorsbank_giro (e2e)"),
     ]
     # the balance report: figure and dating
     bal = body["report"]["balance"]
@@ -193,7 +193,7 @@ def test_quiet_account_still_reports_its_balance_dated_at_its_coverage(api: Api)
     assert http.facts(account)["synced_through"] == "2026-08-19"
 
 
-# ---- card_footer_balance -----------------------------------------------------------------
+# ---- deutschebank_card -----------------------------------------------------------------
 
 
 def test_card_with_footer_balance_and_a_statement_payment(api: Api):
@@ -201,7 +201,7 @@ def test_card_with_footer_balance_and_a_statement_payment(api: Api):
     giro = http.create_account("Paying giro", external_ref="GIRO-PAYER")
     card = http.create_account("Card", kind="card")
     instance = http.create_instance(
-        "card_footer_balance",
+        "deutschebank_card",
         statement_payment={
             "counter_account_ref": "GIRO-PAYER",
             "purpose": "Card statement {statement_date}",
@@ -215,9 +215,9 @@ def test_card_with_footer_balance_and_a_statement_payment(api: Api):
     # negated, +51,10, dated 4 days after the statement: 7.8.
     assert body["summary"]["inserted"] == 4
     assert [(s.amount, s.booked_on, s.source_format) for s in http.sources(card)] == [
-        (-3001, D(2026, 7, 31), "csv:card_footer_balance (e2e)"),
-        (-1200, D(2026, 8, 2), "csv:card_footer_balance (e2e)"),
-        (-909, D(2026, 8, 3), "csv:card_footer_balance (e2e)"),
+        (-3001, D(2026, 7, 31), "csv:deutschebank_card (e2e)"),
+        (-1200, D(2026, 8, 2), "csv:deutschebank_card (e2e)"),
+        (-909, D(2026, 8, 3), "csv:deutschebank_card (e2e)"),
         (5110, D(2026, 8, 7), "csv:synthetic"),
     ]
     payment = http.sources(card)[-1]
@@ -249,13 +249,13 @@ def test_card_with_footer_balance_and_a_statement_payment(api: Api):
     assert PRIVATE not in str(body) and PRIVATE not in str(again)
 
 
-# ---- card_inverted_signs -----------------------------------------------------------------
+# ---- amex_card -----------------------------------------------------------------
 
 
 def test_card_with_inverted_signs_and_no_balance(api: Api):
     http = Http(api)
     card = http.create_account("Card B", kind="card")
-    instance = http.create_instance("card_inverted_signs")
+    instance = http.create_instance("amex_card")
     http.link(instance, card)
     body = http.upload_ok(instance, card, card_b_bytes())
     # by hand: the file lists purchases positive: 12,50 -> -1250 (5.8.), -100,00 (a payment) ->
@@ -328,7 +328,7 @@ def test_a_user_authored_row_before_linking_is_counted_and_never_deduplicated(ap
     http.check()
     assert http.facts(account)["synced"] is False
 
-    instance = http.create_instance("giro_with_preamble")
+    instance = http.create_instance("consorsbank_giro")
     url = f"{BASE}/{instance}/links"
     preview = api.client.post(url, json={"account_id": account, "dry_run": True}).json()
     assert preview["user_authored_count"] == 1

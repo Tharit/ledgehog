@@ -22,7 +22,7 @@ def run_cli(tmp_path: Path, data: bytes, *args: str) -> tuple[int, str]:
 
 
 def test_prints_the_privacy_safe_report(tmp_path: Path) -> None:
-    code, out = run_cli(tmp_path, giro_bytes(), "--preset", "giro_with_preamble")
+    code, out = run_cli(tmp_path, giro_bytes(), "--preset", "consorsbank_giro")
     assert code == 0
     assert PRIVATE not in out and "DE00 0000" not in out and LONG_PURPOSE not in out
     for needle in (
@@ -41,7 +41,7 @@ def test_prints_the_privacy_safe_report(tmp_path: Path) -> None:
 
 
 def test_card_shows_synthetic_payment(tmp_path: Path) -> None:
-    code, out = run_cli(tmp_path, card_a_bytes(), "--preset", "card_footer_balance")
+    code, out = run_cli(tmp_path, card_a_bytes(), "--preset", "deutschebank_card")
     assert code == 0 and "synthetic payment" in out and "51.10" in out and "2026-08-07" in out
 
 
@@ -50,7 +50,7 @@ def test_set_overrides_a_setting(tmp_path: Path) -> None:
         tmp_path,
         card_a_bytes(),
         "--preset",
-        "card_footer_balance",
+        "deutschebank_card",
         "--set",
         "statement_payment.date_offset_days=6",
         "--set",
@@ -61,7 +61,7 @@ def test_set_overrides_a_setting(tmp_path: Path) -> None:
 
 def test_failure_is_shown_with_exit_code_1(tmp_path: Path) -> None:
     code, out = run_cli(
-        tmp_path, giro_bytes(), "--preset", "giro_with_preamble", "--set", "balance.label=Nirgends"
+        tmp_path, giro_bytes(), "--preset", "consorsbank_giro", "--set", "balance.label=Nirgends"
     )
     assert code == 1
     assert "FAILED" in out and "Nirgends" in out and PRIVATE not in out

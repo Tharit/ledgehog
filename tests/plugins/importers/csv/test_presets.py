@@ -8,7 +8,7 @@ from app.plugins.importers.csv import CsvImporter, load_presets
 from tests.plugins.importers.csv.fixtures import LONG_PURPOSE, PRIVATE, card_a_bytes, card_b_bytes, giro_bytes
 from tests.plugins.importers.csv.helpers import run
 
-NAMES = ["giro_with_preamble", "card_footer_balance", "card_inverted_signs"]
+NAMES = ["consorsbank_giro", "deutschebank_card", "amex_card"]
 
 
 def test_presets_are_loaded_by_neutral_name_and_validate() -> None:
@@ -25,13 +25,13 @@ def test_presets_carry_no_account_details() -> None:
 
 def test_load_presets_returns_independent_copies() -> None:
     a = load_presets()
-    a["giro_with_preamble"]["quote"] = "changed"
-    assert load_presets()["giro_with_preamble"]["quote"] != "changed"
+    a["consorsbank_giro"]["quote"] = "changed"
+    assert load_presets()["consorsbank_giro"]["quote"] != "changed"
 
 
 def giro(**kw: object) -> object:
     return run(
-        giro_bytes(**kw), profile=load_presets()["giro_with_preamble"], today=date(2030, 1, 1), name="giro"
+        giro_bytes(**kw), profile=load_presets()["consorsbank_giro"], today=date(2030, 1, 1), name="giro"
     )  # type: ignore[arg-type]
 
 
@@ -66,7 +66,7 @@ def test_giro_survives_crlf_trailing_newline_and_a_longer_preamble(kw: dict[str,
 
 
 def test_card_a() -> None:
-    pf = run(card_a_bytes(), profile=load_presets()["card_footer_balance"], today=date(2026, 8, 10))
+    pf = run(card_a_bytes(), profile=load_presets()["deutschebank_card"], today=date(2026, 8, 10))
     assert [r.amount_minor for r in pf.rows[:3]] == [-1200, -909, -3001]
     ticket = pf.rows[1]
     assert (ticket.instructed_amount_minor, ticket.instructed_currency) == (-1000, "USD")
@@ -81,7 +81,7 @@ def test_card_a() -> None:
 
 
 def test_card_b() -> None:
-    pf = run(card_b_bytes(), profile=load_presets()["card_inverted_signs"], today=date(2026, 8, 10))
+    pf = run(card_b_bytes(), profile=load_presets()["amex_card"], today=date(2026, 8, 10))
     assert [r.amount_minor for r in pf.rows] == [-1250, 10000, -123456]
     assert pf.rows[0].purpose == "BEISPIEL SHOP"
     assert pf.reported_balance is None and pf.balance_on is None
@@ -94,9 +94,9 @@ def test_card_b() -> None:
 
 def test_reports_never_hold_preamble_content_or_untruncated_cells() -> None:
     for name, data in (
-        ("giro_with_preamble", giro_bytes()),
-        ("card_footer_balance", card_a_bytes()),
-        ("card_inverted_signs", card_b_bytes()),
+        ("consorsbank_giro", giro_bytes()),
+        ("deutschebank_card", card_a_bytes()),
+        ("amex_card", card_b_bytes()),
     ):
         pf = run(data, profile=load_presets()[name], today=date(2026, 8, 10))
         blob = repr(pf.report)
@@ -109,7 +109,7 @@ def test_reports_never_hold_preamble_content_or_untruncated_cells() -> None:
 def test_failure_reports_hold_no_preamble_either() -> None:
     from app.core.plugins.errors import ParseFailed
 
-    profile = load_presets()["giro_with_preamble"]
+    profile = load_presets()["consorsbank_giro"]
     profile["balance"]["label"] = "Kontostand Nirgends"
     with pytest.raises(ParseFailed, match="Nirgends") as ei:
         run(giro_bytes(), profile=profile, today=date(2026, 8, 10))

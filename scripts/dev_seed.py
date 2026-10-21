@@ -88,9 +88,9 @@ _ALWAYS = frozenset({"Rent", "Salary", "Insurance"})  # recurring items are neve
 
 # preset -> (accounts it feeds: (account key, reference at the login))
 _LINKS: dict[str, tuple[tuple[str, str], ...]] = {
-    "giro_with_preamble": (("giro", data.IBAN["giro"]), ("savings", data.IBAN["savings"])),
-    "card_footer_balance": (("visa", "visa-0000"),),
-    "card_inverted_signs": (("amex", "amex-0000"), ("paypal", "paypal-login")),
+    "consorsbank_giro": (("giro", data.IBAN["giro"]), ("savings", data.IBAN["savings"])),
+    "deutschebank_card": (("visa", "visa-0000"),),
+    "amex_card": (("amex", "amex-0000"), ("paypal", "paypal-login")),
 }
 
 

@@ -18,7 +18,7 @@ from tests.invariants.helpers import make_entry, make_source
 BASE = "/api/importers/instances"
 api = h.api  # fixtures shared by the importer API tests
 make_api = h.make_api
-PROFILE = load_presets()["giro_with_preamble"]
+PROFILE = load_presets()["consorsbank_giro"]
 
 ROUTES = [
     ("GET", "/api/importers"),

@@ -71,9 +71,9 @@ req "POST /api/ledger/accounts" -H 'content-type: application/json' \
   -d '{"name":"Smoke Giro","kind":"checking","currency":"EUR"}' "$URL/api/ledger/accounts"
 ACCT=$(jqb .account.id)
 
-PRESET=$($UV python -c 'import json; from app.plugins.importers.csv import load_presets; print(json.dumps(load_presets()["giro_with_preamble"]))')
+PRESET=$($UV python -c 'import json; from app.plugins.importers.csv import load_presets; print(json.dumps(load_presets()["consorsbank_giro"]))')
 BODY=$(jq -c -n --argjson s "$PRESET" '{importer:"csv",label:"Smoke giro",settings:$s}')
-req "POST /api/importers/instances (giro_with_preamble)" -H 'content-type: application/json' -d "$BODY" "$URL/api/importers/instances"
+req "POST /api/importers/instances (consorsbank_giro)" -H 'content-type: application/json' -d "$BODY" "$URL/api/importers/instances"
 INST=$(jqb .id)
 
 req "POST links (dry run)" -H 'content-type: application/json' -d "{\"account_id\":$ACCT,\"dry_run\":true}" "$URL/api/importers/instances/$INST/links"

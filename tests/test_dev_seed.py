@@ -65,7 +65,7 @@ def test_the_generated_files_parse_through_the_real_importer_with_the_shipped_pr
 
 def test_files_carry_what_the_importer_must_drop_and_what_the_card_converts():
     plan = _plan()
-    giro = next(f for f in plan.files() if f.preset == "giro_with_preamble")
+    giro = next(f for f in plan.files() if f.preset == "consorsbank_giro")
     parsed = parse_csv(giro.data, profile=load_presets()[giro.preset], today=END)
     assert parsed.importer_stats["filtered"] >= 1  # the zero-amount notice
     assert b"vorgemerkt" in giro.data  # the pending row the profile filters

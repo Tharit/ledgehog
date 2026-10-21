@@ -616,7 +616,7 @@ def _giro_file(
     return SeedFile(
         label,
         account,
-        "giro_with_preamble",
+        "consorsbank_giro",
         data,
         len(rows),
         balance,
@@ -656,7 +656,7 @@ def _visa_statement(label: str, rows: list[Txn], *, opening: int, statement_on: 
     return SeedFile(
         label,
         "visa",
-        "card_footer_balance",
+        "deutschebank_card",
         data,
         len(rows),
         balance,
@@ -677,7 +677,7 @@ def _inverted_file(label: str, account: str, rows: list[Txn]) -> SeedFile:
     return SeedFile(
         label,
         account,
-        "card_inverted_signs",
+        "amex_card",
         data,
         len(rows),
         None,

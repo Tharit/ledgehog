@@ -1,6 +1,6 @@
 """Run the CSV importer on a file and print ONLY its privacy-safe report.
 
-    uv run --no-sync python scripts/csv_dry_run.py --preset giro_with_preamble \\
+    uv run --no-sync python scripts/csv_dry_run.py --preset consorsbank_giro \\
         --file export.csv --currency EUR [--today YYYY-MM-DD] [--set key=value ...]
 
 Nothing is written anywhere and no database is needed. The report holds counts, the mapped

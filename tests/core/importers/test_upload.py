@@ -59,7 +59,7 @@ class Preset:
 
 PRESETS = [
     Preset(
-        "giro_with_preamble",
+        "consorsbank_giro",
         giro_bytes,
         "checking",
         date(2030, 1, 1),
@@ -69,7 +69,7 @@ PRESETS = [
         1,
     ),
     Preset(
-        "card_footer_balance",
+        "deutschebank_card",
         card_a_bytes,
         "card",
         date(2026, 8, 10),
@@ -79,7 +79,7 @@ PRESETS = [
         0,  # the synthetic payment brings the card back to zero: the opening is zero, so none
     ),
     Preset(
-        "card_inverted_signs",
+        "amex_card",
         card_b_bytes,
         "card",
         date(2026, 8, 10),
@@ -128,7 +128,7 @@ class World:
 
 def world(
     db: Db,
-    preset: str | Mapping[str, Any] = "giro_with_preamble",
+    preset: str | Mapping[str, Any] = "consorsbank_giro",
     *,
     kind: str = "checking",
     currency: str = "EUR",
@@ -213,7 +213,7 @@ def test_real_upload_end_to_end(db: Db, p: Preset) -> None:
 def test_giro_stats_and_started_by(db: Db) -> None:
     db.run("INSERT INTO app_user (login, pw_hash, display_name) VALUES ('anna', 'x', 'Anna')")
     uid = int(db.one("SELECT id FROM app_user")[0])
-    p = BY_NAME["giro_with_preamble"]
+    p = BY_NAME["consorsbank_giro"]
     w = preset_world(db, p)
     result = w.up(p.data(), today=p.today, user_id=uid)
     assert result.summary["importer"] == {"filtered": 1, "synthetic_skipped": 0}
@@ -226,7 +226,7 @@ def db_conn(db: Db) -> Any:
 
 
 def test_the_card_payment_is_a_synthetic_row(db: Db) -> None:
-    p = BY_NAME["card_footer_balance"]
+    p = BY_NAME["deutschebank_card"]
     w = preset_world(db, p)
     w.up(p.data(), today=p.today)
     rows = db.q("SELECT amount, source_format FROM source_transaction WHERE source_format = 'csv:synthetic'")
@@ -257,7 +257,7 @@ def test_reupload_of_the_same_file_adds_nothing(db: Db, p: Preset) -> None:
 
 
 def test_a_changed_purpose_pairs_as_a_duplicate_by_amount(db: Db) -> None:
-    p = BY_NAME["giro_with_preamble"]
+    p = BY_NAME["consorsbank_giro"]
     w = preset_world(db, p)
     w.up(p.data(), today=p.today)
     changed = p.data().replace(b"Abschlag", b"Abschlag Neu")
@@ -290,7 +290,7 @@ def test_a_parse_error_fails_the_run_and_is_reraised(db: Db) -> None:
 
 
 def test_a_missing_balance_label_fails_the_run(db: Db) -> None:
-    settings = load_presets()["giro_with_preamble"]
+    settings = load_presets()["consorsbank_giro"]
     settings["balance"]["label"] = "Kontostand Nirgends"
     w = world(db, settings)
     with pytest.raises(ParseFailed, match="Nirgends"):
@@ -366,7 +366,7 @@ def test_an_importer_error_fails_the_run_with_its_message(db: Db) -> None:
 
 
 def test_the_importer_gets_the_profile_currency_exponents_and_today(db: Db) -> None:
-    settings = load_presets()["giro_with_preamble"]
+    settings = load_presets()["consorsbank_giro"]
     w = world(db, settings)
     stub = Stub(parsed([irow(-100, 5)], through=date(2026, 8, 10)))
     w.up(b"x", importer=stub, today=date(2026, 8, 11), dry_run=True)
@@ -422,7 +422,7 @@ def test_the_parse_runs_outside_any_database_transaction(db: Db) -> None:
 
 
 def test_a_currency_mismatch_fails_a_real_run(db: Db) -> None:
-    p = BY_NAME["giro_with_preamble"]
+    p = BY_NAME["consorsbank_giro"]
     w = world(db, p.name, kind=p.kind, currency="USD")
     with pytest.raises(ContractViolation) as exc:
         w.up(p.data(), today=p.today)
@@ -470,7 +470,7 @@ def test_a_dry_run_equals_the_real_run_and_persists_nothing(
 
 
 def test_a_dry_run_of_a_reupload_shows_everything_skipped(db: Db) -> None:
-    p = BY_NAME["giro_with_preamble"]
+    p = BY_NAME["consorsbank_giro"]
     w = preset_world(db, p)
     w.up(p.data(), today=p.today)
     before = w.counts()
@@ -509,7 +509,7 @@ def test_a_dry_run_invalid_profile_is_a_failure(db: Db) -> None:
 
 
 def test_a_dry_run_currency_mismatch_is_a_failure_with_the_report(db: Db) -> None:
-    p = BY_NAME["giro_with_preamble"]
+    p = BY_NAME["consorsbank_giro"]
     w = world(db, p.name, kind=p.kind, currency="USD")
     result = w.up(p.data(), today=p.today, dry_run=True)
     assert result.failure is not None

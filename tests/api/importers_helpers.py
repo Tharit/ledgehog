@@ -56,7 +56,7 @@ class Api:
         return create_account(self.engine, name=name, kind=kind, currency=currency)
 
     def instance(
-        self, preset: str | Mapping[str, Any] = "giro_with_preamble", *, label: str = "Giro CSV"
+        self, preset: str | Mapping[str, Any] = "consorsbank_giro", *, label: str = "Giro CSV"
     ) -> int:
         settings = load_presets()[preset] if isinstance(preset, str) else dict(preset)
         r = self.client.post(
@@ -72,7 +72,7 @@ class Api:
         assert r.status_code == 200, r.text
         return r.json()
 
-    def world(self, preset: str = "giro_with_preamble", **account: Any) -> tuple[int, int]:
+    def world(self, preset: str = "consorsbank_giro", **account: Any) -> tuple[int, int]:
         """(instance id, account id) with the account linked."""
         acct = self.account(**account)
         inst = self.instance(preset)

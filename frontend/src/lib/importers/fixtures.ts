@@ -14,7 +14,7 @@ export function catalogEntry(over: Partial<CatalogEntry> = {}): CatalogEntry {
 		name: 'csv',
 		kind: 'file',
 		emits: ['transactions'],
-		presets: { giro_with_preamble: { booked_on: 'Buchungstag' } },
+		presets: { consorsbank_giro: { booked_on: 'Buchungstag' } },
 		...over
 	};
 }

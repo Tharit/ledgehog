@@ -65,7 +65,7 @@ def _parsed(*, balance: int | None = None, balance_on: date | None = None) -> Pa
 
 def _stub_world(make_api, stub: Stub) -> tuple[Api, int, int]:
     api = make_api(importers={"csv": stub})
-    inst, acct = api.world("giro_with_preamble")
+    inst, acct = api.world("consorsbank_giro")
     return api, inst, acct
 
 
@@ -167,7 +167,7 @@ def test_the_dry_flag_defaults_to_a_real_run(api: Api):
 
 
 def test_a_reupload_skips_everything(api: Api):
-    inst, acct = api.world("card_footer_balance", kind="card")
+    inst, acct = api.world("deutschebank_card", kind="card")
     first = api.upload(inst, acct, card_a_bytes()).json()
     again = api.upload(inst, acct, card_a_bytes()).json()
     assert again["summary"]["inserted"] == 0
