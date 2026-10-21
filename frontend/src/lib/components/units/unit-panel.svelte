@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { MODEL_GUESS_COMING } from '#lib/units/model-pending.js';
 	import { tick, untrack } from 'svelte';
 	import EllipsisIcon from '@lucide/svelte/icons/ellipsis';
 	import ActionButton from '#lib/components/common/action-button.svelte';
@@ -394,6 +395,11 @@
 				<div class={cn('flex flex-col gap-3', panel.status === 'loading' && 'opacity-60')}>
 					{#if !multi}
 						<SourceStrip {groups} {locale} />
+					{/if}
+					{#if unit.model_pending}
+						<p class="text-sm text-muted-foreground" data-slot="model-pending">
+							{MODEL_GUESS_COMING}
+						</p>
 					{/if}
 					{#if flow.draft?.reresolveAll}
 						<p class="text-sm text-muted-foreground" data-slot="reresolved">

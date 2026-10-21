@@ -29,6 +29,8 @@
 	import KeyboardHelp, { type HelpGroup } from '#lib/components/common/keyboard-help.svelte';
 	import EntryRow from '#lib/components/ledger/entry-row.svelte';
 	import { COLUMNS, GRID_TEMPLATE, ROW_GRID } from '#lib/components/ledger/columns.js';
+	import { changes } from '#lib/stores/changes.svelte.js';
+	import { modelQueueLine } from '#lib/units/model-pending.js';
 	import { formatCount } from '#lib/format/index.js';
 	import { ledgerKey, moveCursor } from '#lib/ledger/keys.js';
 	import { UNIT_FRAME, unitTotal } from '#lib/ledger/unit-runs.js';
@@ -80,6 +82,8 @@
 	const showCurrency = $derived(
 		new Set(units.flatMap((u) => u.entries.map((e) => e.amount.currency))).size > 1
 	);
+	// the poll's count, not the snapshot's: the queue itself stays as loaded
+	const modelLine = $derived(modelQueueLine(changes.modelPending));
 	const failure = $derived(
 		store.error ? describeUnitLoadError(store.error.code, 'The review queue') : null
 	);
@@ -185,6 +189,9 @@
 		class="flex flex-col gap-6 outline-none"
 		aria-busy={store.status === 'loading'}
 	>
+		{#if modelLine}
+			<p class="text-sm text-muted-foreground" data-slot="model-pending-line">{modelLine}</p>
+		{/if}
 		{#each store.sections as section (section.kind)}
 			{@const info = SECTION_INFO[section.kind]}
 			<section aria-labelledby={`section-${section.kind}`} data-section={section.kind}>
@@ -274,6 +281,7 @@
 										<EntryRow
 											joined={unit.entries.length > 1}
 											unitTotal={entry.id === unit.entries[0].id ? total : null}
+											modelPending={unit.model_pending && entry.id === unit.entries[0].id}
 											{entry}
 											{lookups}
 											{locale}

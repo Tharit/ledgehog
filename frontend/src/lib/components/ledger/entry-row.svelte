@@ -11,6 +11,8 @@
 	import DateDisplay from '#lib/components/common/date-display.svelte';
 	import DimensionIcon from '#lib/components/common/dimension-icon.svelte';
 	import MoneyDisplay from '#lib/components/common/money-display.svelte';
+	import ModelActivityMark from '#lib/components/common/model-activity-mark.svelte';
+	import { MODEL_STILL_LOOKING } from '#lib/units/model-pending.js';
 	import ReviewBadge from '#lib/components/common/review-badge.svelte';
 	import TagChip from '#lib/components/common/tag-chip.svelte';
 	import type { Lookups } from '#lib/ledger/lookups.js';
@@ -37,6 +39,7 @@
 		joined = false,
 		unitCursor = false,
 		unitTotal = null,
+		modelPending = false,
 		onselect,
 		onopen,
 		ontags
@@ -60,6 +63,8 @@
 		unitCursor?: boolean;
 		/** a split's total: the first row of the split shows a marker whose tooltip says it */
 		unitTotal?: Money | null;
+		/** the model is still looking at this row's unit: a quiet mark in the badge slot */
+		modelPending?: boolean;
 		onselect?: () => void;
 		/** a click on the row (not on its tags cell): open the unit panel */
 		onopen?: () => void;
@@ -231,6 +236,9 @@
 					{#each entry.review_flags as flag (flag)}
 						<ReviewBadge {flag} {entry} />
 					{/each}
+				{/if}
+				{#if modelPending}
+					<ModelActivityMark label={MODEL_STILL_LOOKING} />
 				{/if}
 			</div>
 		{:else if column.id === 'amount'}

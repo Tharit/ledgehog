@@ -19,6 +19,8 @@
 	import PanelNavigationGuard from '#lib/components/units/panel-navigation-guard.svelte';
 	import UnitPanelView from '#lib/components/units/unit-panel.svelte';
 	import { entryForm } from '#lib/entry-form/controller.svelte.js';
+	import { changes } from '#lib/stores/changes.svelte.js';
+	import { modelActivity } from '#lib/units/model-pending.js';
 	import { runLiveData } from '#lib/stores/live-data.svelte.js';
 	import { lookupsStore } from '#lib/stores/lookups.svelte.js';
 	import { reviewCount } from '#lib/stores/review-count.svelte.js';
@@ -44,7 +46,13 @@
 	const nav: NavItem[] = $derived([
 		{ href: '/', label: 'Overview', icon: HouseIcon },
 		{ href: '/ledger', label: 'Ledger', icon: ListIcon },
-		{ href: '/review', label: 'Review', icon: ListChecksIcon, count: reviewCount.count },
+		{
+			href: '/review',
+			label: 'Review',
+			icon: ListChecksIcon,
+			count: reviewCount.count,
+			activity: modelActivity(changes.modelPending)
+		},
 		{ href: '/documents', label: 'Documents', icon: FileTextIcon },
 		{ href: '/accounts', label: 'Accounts', icon: LandmarkIcon },
 		{ href: '/reports', label: 'Reports', icon: ChartColumnIcon, match: '/reports' },

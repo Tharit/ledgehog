@@ -68,6 +68,22 @@ beforeEach(() => {
 	vi.mocked(listRules).mockResolvedValue([rule({ id: 3, name: 'Rewe' })]);
 });
 
+describe('UnitPanel: what the model has not yet answered', () => {
+	it("says the model's guess is still coming, while the unit stays editable", async () => {
+		const { dialog } = await openPanel(unit({ model_pending: true }));
+
+		expect(
+			within(dialog).getByText("The model's guess for the category is still coming.")
+		).toBeVisible();
+	});
+
+	it('says nothing when the model is not looking', async () => {
+		const { dialog } = await openPanel(unit());
+
+		expect(within(dialog).queryByText(/guess for the category/)).toBeNull();
+	});
+});
+
 describe('UnitPanel: a flow unit', () => {
 	it('is a modal dialog labelled by the unit title, with the state under it', async () => {
 		const { dialog } = await openPanel(

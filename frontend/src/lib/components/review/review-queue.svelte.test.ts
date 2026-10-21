@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/sve
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { account, category, entry, payee } from '#lib/ledger/fixtures.js';
 import { buildLookups } from '#lib/ledger/lookups.js';
+import { changes } from '#lib/stores/changes.svelte.js';
 import { ReviewQueueStore } from '#lib/stores/review-queue.svelte.js';
 import { apiError, queue, section, unit } from '#lib/units/fixtures.js';
 import { unitPanel } from '#lib/units/panel-instance.js';
@@ -61,6 +62,39 @@ const key = (name: string) => fireEvent.keyDown(document.body, { key: name });
 
 beforeEach(() => {
 	vi.resetAllMocks();
+	changes.modelPending = 0;
+});
+
+describe('ReviewQueue: what the model has not yet answered', () => {
+	it('marks a unit the model is still looking at, and no other', async () => {
+		await shown({
+			pending_review: [{ ...flow(1, 'REWE'), model_pending: true }, flow(2, 'Edeka')]
+		});
+
+		const marks = screen.getAllByRole('img', { name: 'The model is still looking at this' });
+		expect(marks).toHaveLength(1);
+		expect(marks[0]).toHaveAttribute('title', 'The model is still looking at this');
+		expect(marks[0].closest('[data-unit]')).toHaveAttribute('data-unit', '1');
+	});
+
+	it('says how many entries the model is looking at, from the change poll, only while there are some', async () => {
+		await shown({ pending_review: [flow(1, 'REWE')] });
+		expect(screen.queryByText(/The model is looking at/)).toBeNull();
+
+		changes.modelPending = 2;
+		expect(await screen.findByText('The model is looking at 2 entries.')).toBeInTheDocument();
+		changes.modelPending = 1;
+		expect(await screen.findByText('The model is looking at 1 entry.')).toBeInTheDocument();
+		changes.modelPending = 0;
+		await waitFor(() => expect(screen.queryByText(/The model is looking at/)).toBeNull());
+	});
+
+	it('stays a snapshot: the poll count does not reload the queue', async () => {
+		await shown({ pending_review: [{ ...flow(1, 'REWE'), model_pending: true }] });
+		changes.modelPending = 3;
+		await screen.findByText('The model is looking at 3 entries.');
+		expect(getQueue).toHaveBeenCalledTimes(1);
+	});
 });
 
 describe('ReviewQueue', () => {

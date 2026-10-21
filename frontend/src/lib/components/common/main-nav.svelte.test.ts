@@ -43,7 +43,8 @@ beforeEach(() => {
 		ledger: 'b:1',
 		documents: 'b:1',
 		accounts: {},
-		active_task: null
+		active_task: null,
+		model_pending: 0
 	});
 	api.getQueueCounts.mockResolvedValue({ count: 0, pending_review: 0, needs_account: 0 });
 });
@@ -53,6 +54,47 @@ async function mainNav(path: string) {
 	render(Layout, { props: { data: {}, params: {}, children } });
 	return within(await screen.findByRole('navigation', { name: 'Main' }));
 }
+
+describe('the main navigation: the model is looking', () => {
+	const pending = (n: number) =>
+		api.readChanges.mockResolvedValue({
+			ledger: 'b:1',
+			documents: 'b:1',
+			accounts: {},
+			active_task: null,
+			model_pending: n
+		});
+
+	it('shows an activity mark on Review with the count in its tooltip, even at a count of zero', async () => {
+		pending(3);
+		const nav = await mainNav('/');
+
+		const mark = await nav.findByRole('img', { name: 'The model is looking at 3 entries' });
+		expect(mark).toHaveAttribute('title', 'The model is looking at 3 entries');
+		expect(nav.getByRole('link', { name: /Review/ })).toContainElement(mark);
+		expect(
+			nav.getByRole('link', { name: /Review/ }).querySelector('[data-slot="nav-count"]')
+		).toBeNull();
+		expect(mark).toHaveClass('motion-reduce:animate-none');
+	});
+
+	it('says "1 entry" for one', async () => {
+		pending(1);
+		const nav = await mainNav('/');
+
+		expect(
+			await nav.findByRole('img', { name: 'The model is looking at 1 entry' })
+		).toBeInTheDocument();
+	});
+
+	it('shows no mark while the model has nothing pending', async () => {
+		pending(0);
+		const nav = await mainNav('/');
+		await nav.findByRole('link', { name: /Review/ });
+
+		expect(nav.queryByRole('img', { name: /The model is looking/ })).toBeNull();
+	});
+});
 
 describe('the main navigation', () => {
 	it('starts with the Overview, ahead of the Ledger', async () => {

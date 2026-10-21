@@ -20,6 +20,8 @@
 		busy?: boolean;
 		/** a quiet number at the end of the item (Review); nothing at zero */
 		count?: number;
+		/** the model is looking at entries: a small activity mark whose tooltip is this text (Review) */
+		activity?: string;
 	};
 </script>
 
@@ -27,6 +29,7 @@
 	import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle';
 	import LogOutIcon from '@lucide/svelte/icons/log-out';
 	import IconButton from './icon-button.svelte';
+	import ModelActivityMark from './model-activity-mark.svelte';
 
 	// The shell: a 232px sidebar (wordmark, navigation, user) beside the content (design §5).
 	// The mascot head beside the wordmark is raster for now; design §9 wants it redrawn as SVG.
@@ -74,6 +77,9 @@
 			<span class="shrink-0 text-xs text-muted-foreground tabular-nums" data-slot="nav-count">
 				{item.count}
 			</span>
+		{/if}
+		{#if item.activity}
+			<ModelActivityMark label={item.activity} size={12} />
 		{/if}
 		{#if item.busy}
 			<span class="shrink-0" data-slot="nav-spinner">
