@@ -312,7 +312,7 @@ class OidcFlow:
         missing = [name for name in needed if claims.get(name) in (None, "", [])]
         if not missing:
             return claims
-        log.info("oidc: claims missing from the id_token: %s", ", ".join(sorted(missing)))
+        log.info("oidc: the id_token lacks these claims: %s", ", ".join(sorted(missing)))
         required = any(needed[name] for name in missing)
         endpoint = doc.get("userinfo_endpoint")
         if not isinstance(endpoint, str):

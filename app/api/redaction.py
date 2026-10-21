@@ -69,7 +69,12 @@ class RedactionFilter(logging.Filter):
         elif isinstance(record.args, tuple):
             record.args = tuple(_scrub(a) for a in record.args)
         if isinstance(record.msg, str):
-            record.msg = _scrub(record.msg)
+            if record.args:
+                # scrub the formatted line: scrubbing the template could eat its `%s`
+                # ("token: %s" -> "token: [redacted]") and break the formatting
+                record.msg, record.args = _scrub(record.getMessage()), ()
+            else:
+                record.msg = _scrub(record.msg)
         return True
 
 
@@ -77,8 +82,8 @@ _FILTER = RedactionFilter()
 
 
 def install_redaction() -> None:
-    """Attach the filter to every handler the root and uvicorn loggers have (idempotent)."""
-    names = ("", "uvicorn", "uvicorn.error", "uvicorn.access")
+    """Attach the filter to every handler the root, `ledgehog` and uvicorn loggers have (idempotent)."""
+    names = ("", "ledgehog", "uvicorn", "uvicorn.error", "uvicorn.access")
     for name in names:
         for handler in logging.getLogger(name).handlers:
             if _FILTER not in handler.filters:

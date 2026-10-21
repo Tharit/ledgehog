@@ -93,3 +93,9 @@ def test_prefixed_and_standalone_sensitive_keys_are_still_redacted(logger_and_st
     logger, stream = logger_and_stream
     logger.info(text)
     assert secret not in stream.getvalue() and REDACTED in stream.getvalue()
+
+
+def test_a_template_with_a_percent_s_after_a_key_still_formats(logger_and_stream):
+    logger, stream = logger_and_stream
+    logger.info("login with token: %s", "abc")
+    assert "abc" not in stream.getvalue() and REDACTED in stream.getvalue()

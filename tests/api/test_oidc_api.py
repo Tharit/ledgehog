@@ -460,7 +460,7 @@ def test_the_log_names_the_id_token_claims_and_the_userinfo_claims_never_their_v
         assert sign_in(client, provider).headers["location"] == "/"
     lines = _oidc_lines(caplog)
     assert "oidc: id_token claims: aud, exp, iat, iss, nonce, sub" in lines
-    assert "oidc: claims missing from the id_token: email, name" in lines
+    assert "oidc: the id_token lacks these claims: email, name" in lines
     assert "oidc: userinfo claims: email, name, sub" in lines
     # the new user's login is logged by the existing "user created" line, so only the other values are checked
     _assert_no_values(caplog, "Zoe U.", provider.id_token())
@@ -473,7 +473,7 @@ def test_the_log_says_why_userinfo_was_not_asked_and_what_refused(make_oidc, pro
         refused(sign_in(client, provider), "oidc_no_login")
     lines = _oidc_lines(caplog)
     assert "oidc: id_token claims: aud, exp, iat, iss, nonce, sub" in lines
-    assert "oidc: claims missing from the id_token: email, name" in lines
+    assert "oidc: the id_token lacks these claims: email, name" in lines
     assert "oidc: userinfo not asked: the provider has no userinfo endpoint" in lines
     _assert_no_values(caplog)
 
