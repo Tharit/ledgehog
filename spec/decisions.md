@@ -3953,3 +3953,24 @@ with its own line in the preview but with all lines after the commit.
   the schema refuses a document on a transfer (`ck_document_not_on_transfer`). Entries cut before this change are
   dropped: there is no real data yet.
 - **The model as the reviewer of weak history** is recorded as an open question (spec §9), to be decided with pass 3.
+
+## D226 OIDC sign-in, and users it creates
+
+Architecture §2, §4.1, §4.5, §5.6, §5.7, the start sequence; schema `app_user`.
+
+- **An OIDC sign-in may create a user.** The login claim is the login; an unknown one is created without a
+  password, gated by `OIDC_ALLOWED_GROUP` when it is set. Configured users and OIDC users coexist; the start
+  reconciles only the configured ones (`app_user.source`). Supersedes "users are configured, never created through
+  the app" (D176) for OIDC. Rejected: *matching the provider's `sub`* (the login
+  attribute is what the household configures and reads, and the provider is the household's own).
+- **A user is the configuration's or the provider's, never both.** A configured user's first OIDC sign-in hands
+  them to the provider and drops their password, so no password outlives the configuration's control; the start
+  then ignores their configured login and logs it. Accepted cost: no password fallback when the provider is down.
+  Rejected: *a flag per field* (`named_by_oidc`) and *handing over but keeping the password* (both a rule per
+  field).
+- **The group is checked at every OIDC sign-in, not per request.** Revoking at once is deleting sessions.
+  Rejected: *re-asking the provider per request* (a network call per request, and the provider must be up).
+- **The name claim wins over the configured name**: a handed-over user is no longer the configuration's.
+- **A claim missing from the ID token is taken from userinfo**, one generic fallback; `OIDC_CLAIMS_SOURCE` is
+  not a setting.
+- **Sign-out is local.** The provider's session is the provider's.

@@ -29,17 +29,24 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 -- ---------------------------------------------------------------------
 
 -- `user` is reserved in PostgreSQL, hence the prefix.
+-- A user is the configuration's or the OIDC provider's (`source`); the start
+-- reconciles only the configuration's. The first OIDC sign-in of a configured
+-- user hands them to the provider and drops their password. `pw_hash` is null
+-- for a user with no password: the provider's, or a configured one while OIDC
+-- is enforced.
 CREATE TABLE app_user (
     id            bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     login         text        NOT NULL UNIQUE,
-    pw_hash       text        NOT NULL,
+    pw_hash       text,
     display_name  text        NOT NULL,
-    disabled      boolean     NOT NULL DEFAULT false
+    disabled      boolean     NOT NULL DEFAULT false,
+    source        text        NOT NULL DEFAULT 'config' CHECK (source IN ('config','oidc')),
+    CONSTRAINT ck_app_user_oidc_no_password CHECK (source = 'config' OR pw_hash IS NULL)
 );
 
 -- A login session. The cookie holds the opaque id, not a token that carries
--- claims, so revoking a session is deleting its row. `method` is the seam for
--- adding OIDC later: a new method, not a rewrite. A session is an event
+-- claims, so revoking a session is deleting its row. `method` records how the
+-- user signed in. A session is an event
 -- record, so it may carry when (spec §3.2).
 CREATE TABLE session (
     id          text        PRIMARY KEY,

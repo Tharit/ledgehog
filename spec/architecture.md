@@ -37,12 +37,13 @@ architecture.
 | Migrations | Alembic, explicit SQL only, autogenerate never used |
 | Bank access | python-fints, in process |
 | Spreadsheets | python-calamine, read only, for the CSV importer |
+| Sign-in | argon2-cffi for passwords; Authlib over httpx for OIDC |
 | Frontend | Svelte 5 + SvelteKit **in SPA mode** — no SSR, no prerendering |
 | UI components | shadcn-svelte, **copied into the repository**, on Bits UI primitives; Tailwind CSS, compiled at build time |
 | Charts | LayerChart, through shadcn-svelte's chart component |
 | Database | PostgreSQL, external to the container |
 | Packaging | One container; local development in a venv against a separate external development database |
-| Tooling | uv with a hash-pinned lockfile, npm with a committed lockfile for the frontend; pytest and hypothesis; ruff; mypy in strict mode; import-linter for the module boundaries (§5.1); httpx for API tests; argon2-cffi for password hashing |
+| Tooling | uv with a hash-pinned lockfile, npm with a committed lockfile for the frontend; pytest and hypothesis; ruff; mypy in strict mode; import-linter for the module boundaries (§5.1); httpx for API tests |
 
 ### Why pure Python
 
@@ -494,8 +495,12 @@ GET    /api/sync/tasks/{task_id}/events        SSE stream, replayed from the
 POST   /api/sync/tasks/{task_id}/input         answer a prompt, or cancel it
 POST   /api/sync/tasks/{task_id}/abort
 
-  session — password login today; OIDC replaces it, not the rest (§5.6)
-POST   /api/session                            log in
+  session — a password or an OIDC sign-in (§5.6)
+POST   /api/session                            log in with a password
+GET    /api/session/oidc                       log in with OIDC: redirects to
+                                               the provider
+GET    /api/session/oidc/callback              the provider's return: signs in
+                                               or refuses, back to the app
 DELETE /api/session                            log out: deletes the session row
 GET    /api/session                            who am I
 
@@ -508,7 +513,9 @@ GET    /api/changes                            the change value of the ledger,
 
   configuration — read-only (§5.7)
 GET    /api/config                             base currency, the windows,
-                                               default locale; never a secret
+                                               default locale, whether OIDC
+                                               sign-in is offered or enforced;
+                                               never a secret
 
   reporting — read-only aggregates over core/reporting (spec §8)
 GET    /api/reports/overview                   the Overview's figures and
@@ -1157,8 +1164,8 @@ retryable while the other is not.
 Stated once here; enforcement is in §5 and §6.
 
 **Session model.** A session references a user and records the authentication
-method used. It is never coupled to a password, so adding OIDC later is a new
-method rather than a rewrite. Transport is an `HttpOnly`, `SameSite=Lax`
+method used. It is never coupled to a password: a password and an OIDC
+sign-in are two methods ending in the same session. Transport is an `HttpOnly`, `SameSite=Lax`
 cookie, `Secure` except to localhost (§5.6).
 
 **Secret redaction.** No PIN, TAN or session token ever reaches a log, a
@@ -1229,7 +1236,7 @@ app/
                          not a refactor)
   utils/                 Infrastructure with no domain knowledge.
     db/                  engine, connection, SQL helpers
-    auth/                sessions, password verification, OIDC seam
+    auth/                sessions, password and OIDC sign-in
     clock.py             the only caller of the system clock
     config.py            the one reader of the environment: typed, validated at
                          start, read-only (§5.7)
@@ -1752,15 +1759,33 @@ above).
 
 ### 5.6 Enforcing the cross-cutting constraints
 
-**Sessions.** A `session` row references `app_user` and records the method
-(`password` today, `oidc` later). Cookie holds an opaque id, not a JWT, so
-revocation is a delete. Passwords hashed with argon2id. The OIDC seam is the
-method column plus a single "establish session for this verified identity"
-function. The cookie is `ledgehog_session`, `HttpOnly`, `SameSite=Lax`, and
+**Sessions.** A `session` row references `app_user` and records the method,
+`password` or `oidc`. Cookie holds an opaque id, not a JWT, so revocation is
+a delete. Passwords hashed with argon2id. Both methods end in one
+"establish session for this verified identity" function. The cookie is `ledgehog_session`, `HttpOnly`, `SameSite=Lax`, and
 `Secure` whenever the request is not to localhost; expiry slides, 30 days from
 last use. There is no CSRF token, because the API accepts only JSON and
 `SameSite=Lax` keeps the cookie off cross-site requests. There is no login rate
-limiting in v1: two users, self-hosted — a conscious omission.
+limiting: a household, self-hosted — a conscious omission.
+
+**OIDC sign-in** is the authorization code flow with PKCE, state and nonce,
+against the issuer's discovery document. The ID token is verified —
+signature, issuer, audience, expiry, nonce — and a claim it lacks is taken
+from the userinfo endpoint, whose subject must match. The login claim
+(`OIDC_LOGIN_ATTRIBUTE`) is the user's login; when it is `email` and the
+provider marks it unverified, the sign-in is refused. A matching user signs
+in; an unknown one is created, with no password. With `OIDC_ALLOWED_GROUP`
+set, every OIDC sign-in needs that group in the `groups` claim, and a
+missing claim refuses. A disabled user is refused. A configured user's first
+OIDC sign-in hands them to the provider: from then on they have no password
+and the configuration no longer manages them. The name claim
+(`OIDC_DISPLAYNAME_ATTRIBUTE`), when present, becomes the display name. A
+refusal returns to the login page with its reason. The login page offers
+"Log in with SSO" beside the password form, and only that when
+`OIDC_ENFORCED`, which also refuses `POST /api/session`. Signing out ends the
+app's session, not the provider's. The provider is asked only at sign-in: a
+group removed there takes effect at the next sign-in, and revoking at once
+is deleting the user's sessions.
 
 **Redaction.** Secrets live only in local variables inside the importer and
 in the session it holds; neither is ever placed on the task, the event
@@ -1799,7 +1824,7 @@ name on a bad or missing value, and exposes one immutable, typed object that is
 passed to what needs it — `core` never reads the environment itself. Nothing at
 run time writes configuration: changing a value means changing the variable and
 restarting. Each variable that holds a secret (`POSTGRES_PASSWORD`,
-`USER_<n>_PASSWORD`, `MODEL_API_KEY`) also accepts a `_FILE` variant
+`USER_<n>_PASSWORD`, `OIDC_CLIENT_SECRET`, `MODEL_API_KEY`) also accepts a `_FILE` variant
 naming a file (Docker and Compose secrets), and no secret is ever logged or
 returned by `GET /api/config`.
 
@@ -1808,7 +1833,8 @@ returned by `GET /api/config`.
 | Database | `POSTGRES_HOST` (`localhost`), `POSTGRES_PORT` (`5432`), `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` (the last three required); no single database URL; the name stays a variable so each context has its own database (§9) |
 | Ledger | `BASE_CURRENCY` (required, a three-letter code); `MAX_RATE_AGE_DAYS`, `MATCHING_WINDOW_DAYS`, `DOCUMENT_WINDOW_DAYS` (7 each, at least 0) — `spec.md` §3.8 |
 | Household | `TIMEZONE` (required, an IANA zone; `spec.md` §5.4), `LOCALE` (`en`) |
-| Users | indexed groups `USER_<n>_LOGIN`, `USER_<n>_NAME`, `USER_<n>_PASSWORD`, `n` contiguous from 1, logins unique; none is allowed |
+| Users | indexed groups `USER_<n>_LOGIN`, `USER_<n>_NAME`, `USER_<n>_PASSWORD` (the password optional when `OIDC_ENFORCED`), `n` contiguous from 1, logins unique; none is allowed |
+| OIDC | `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` (all three or none; none means no OIDC sign-in), and with them `BASE_URL`, the app's external address, from which the redirect address `<BASE_URL>/api/session/oidc/callback` is built; `OIDC_SCOPES` (`openid email profile`); `OIDC_LOGIN_ATTRIBUTE` (`email`); `OIDC_DISPLAYNAME_ATTRIBUTE` (`name`); `OIDC_ALLOWED_GROUP` (optional; its users need the `groups` scope); `OIDC_ENFORCED` (`false`; `true` or `false`, anything else fails the start; `true` requires OIDC and turns the password path off) |
 | Model | `MODEL_ENDPOINT` and `MODEL_NAME` (both or neither), optional `MODEL_API_KEY`; absent means pass 3 does not run (§5.4) |
 | Bank access | `FINTS_PRODUCT_ID` (optional): the registration number of `spec.md` §7.1, sent with every FinTS request; absent means a FinTS login stops before asking for a PIN (`NotRegistered`), and nothing else is affected |
 | Development | `ENABLE_TEST_IMPORTERS` (`false`; `true` or `false`, anything else fails the start): registers the deterministic test importers in the composition root — `testdocs`, so documents can be exercised before a real document importer exists (`features/documents.md`), and `testfetch`, scripted by its settings to exercise every prompt kind and failure class without a bank; a deployment leaves it off. `EXPOSE_OPENAPI` (`false`; `true` or `false`, anything else fails the start): serves the OpenAPI document at `/api/openapi.json`, without a session, so the frontend's types can be generated from a running server (§6.7); a deployment leaves it off. `/docs` and `/redoc` never exist, whatever the value: they load scripts from a third-party host |
@@ -1824,13 +1850,16 @@ returned by `GET /api/config`.
    Afterwards the configured value must equal the stored one, or the app
    refuses to start: rates are stored against it (`spec.md` §3.8), and a
    changed variable would silently misvalue every foreign amount.
-5. **Users.** Reconcile `app_user` with the configured users, matched by
-   login: create a missing one; update the display name; set the password hash
-   when the configured password no longer verifies against it, and delete that
-   user's sessions. A user no longer configured is **disabled**, never deleted
-   — runs and importer instances reference them — and loses their sessions. A
-   password change is therefore a changed variable and a restart; the
-   application has no password-change flow.
+5. **Users.** Reconcile the configured users with `app_user`, matched by
+   login: create a missing one; update the display name; set the password
+   hash when the configured password no longer verifies against it, and
+   delete that user's sessions. A configured user no longer configured is
+   **disabled**, never deleted — runs and importer instances reference them —
+   and loses their sessions. A user who is the OIDC provider's (§5.6) is
+   not the configuration's and is left alone; a configured login that names
+   one is ignored, and the log says so. A password change is therefore a
+   changed variable and a restart; the application has no password-change
+   flow.
 6. Set the connection settings that reach SQL (`ledger.max_rate_age`,
    `ledger.matching_window_days`) on every connection the pool opens.
 7. **Settle.** Settling runs once, so a changed window or any other changed
@@ -1838,11 +1867,10 @@ returned by `GET /api/config`.
    §5, I37).
 8. Bind.
 
-The household is two people, but nothing enforces it: any number of indexed
-groups is created. There is no setup operation, wizard or sign-up. When OIDC
-is added, it establishes sessions for verified identities instead
-(§5.6), and the configured users remain as the password path or are dropped;
-the ledger's data does not change either way.
+The household is two people, but nothing enforces it. A user comes from the
+configuration or from an OIDC sign-in (§5.6); there is no setup operation,
+wizard or sign-up form. How a user signs in changes nothing in the ledger's
+data.
 
 ---
 
@@ -2437,8 +2465,6 @@ not assume it can be recovered by re-importing.
 
 ## 11. Open decisions
 
-- **OIDC provider and library.** Deferred until the password path works; the
-  session model already accommodates it.
 - **Natural-language querying** ("how much did I spend on shoes last month")
   is planned as a later feature with its own spec. Recorded here because the
   question of whether it needs accommodating *now* has been asked and
