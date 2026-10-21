@@ -524,7 +524,8 @@ GET    /api/reports/by-category                a date range, as a category
 GET    /api/reports/over-time                  a range cut into periods: the
                                                savings and rate of each, or
                                                each category's amount
-GET    /api/reports/balances                   net worth and every account's
+GET    /api/reports/balances                   net worth, each account kind's
+                                               net worth and every account's
                                                balance at month-ends
 GET    /api/ledger/entries/export              CSV of the ledger list's filter,
                                                dimensions joined
