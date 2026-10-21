@@ -200,7 +200,7 @@ wrench  hammer  leaf  sparkles  repeat  shapes  circle-ellipsis
 | savings | `piggy-bank` |
 | card | `credit-card` |
 | cash | `wallet` |
-| paypal | `wallet-cards` |
+| digital_wallet | `wallet-cards` |
 | depot | `chart-line` |
 | loan | `hand-coins` |
 | asset | `gem` |

@@ -184,7 +184,8 @@ timestamp. If that is ever needed, it is an audit log, not columns.
 
 ### 3.3 Accounts
 
-Accounts hold balances: checking, savings, card, cash, PayPal, depot, loan, and
+Accounts hold balances: checking, savings, card, cash, digital wallet (a balance
+held with a provider outside a bank, such as PayPal or Wise), depot, loan, and
 other assets valued by hand. Each holds exactly one currency, permanently
 (§3.8). An entry and a source transaction are denominated in their account's
 currency, so a balance is always a sum in one currency. **A balance is always

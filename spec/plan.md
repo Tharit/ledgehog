@@ -1,6 +1,6 @@
 # Household ledger — implementation plan
 
-Status: **seed.** What gets built, in what order, and what "done" means for
+Status: **executed, kept as documentation.** What gets built, in what order, and what "done" means for
 v1. `spec.md` says what the system does and `architecture.md` how it is put
 together; neither says when. See `README.md` for the document map.
 

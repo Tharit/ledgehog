@@ -142,7 +142,7 @@ CREATE TABLE account (
     name           text NOT NULL,
     kind           text NOT NULL CHECK (kind IN (
                        'checking','savings','card','cash',
-                       'paypal','depot','loan','asset')),
+                       'digital_wallet','depot','loan','asset')),
     currency       char(3) NOT NULL REFERENCES currency(code),
     -- opaque identifier at the remote side: IBAN, PayPal account and pocket,
     -- whatever the importer uses. STORED CANONICALISED (spec §5.2), by the
