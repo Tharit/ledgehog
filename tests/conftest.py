@@ -19,6 +19,7 @@ Fixtures
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import uuid
 from collections.abc import Callable, Iterator
@@ -37,8 +38,13 @@ CLOCK_START = datetime(2026, 3, 15, 12, 0, tzinfo=UTC)
 _created: set[str] = set()
 
 
+def _is_deployment_setting(var: str) -> bool:
+    """OIDC_*, BASE_URL(_FILE) and USER_<n>_* (with their _FILE variants): tests set them explicitly."""
+    return var.startswith(("OIDC_", "USER_")) or var in {"BASE_URL", "BASE_URL_FILE"}
+
+
 def _test_config(database: str) -> Config:
-    env = dict(os.environ)
+    env = {k: v for k, v in os.environ.items() if not _is_deployment_setting(k)}
     env.setdefault("BASE_CURRENCY", "EUR")
     env.setdefault("TIMEZONE", "UTC")
     env["POSTGRES_DB"] = database
@@ -203,6 +209,23 @@ def _classifiers() -> Iterator[None]:
             unconfigure_rule_tools()
         else:
             configure_rule_tools(previous_tools)
+
+
+@pytest.fixture(autouse=True)
+def _hermetic_environment(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """The developer's OIDC and user settings (sourced from test.env) never reach a test, and a
+    test that builds the app does not leave the `ledgehog` logger cut off from caplog."""
+    for var in list(os.environ):
+        if _is_deployment_setting(var):
+            monkeypatch.delenv(var, raising=False)
+    ledger = logging.getLogger("ledgehog")
+    saved = (list(ledger.handlers), ledger.level, ledger.propagate)
+    try:
+        yield
+    finally:
+        ledger.handlers[:] = saved[0]
+        ledger.setLevel(saved[1])
+        ledger.propagate = saved[2]
 
 
 @pytest.fixture
