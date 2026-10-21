@@ -137,7 +137,8 @@ Every derived value can show its basis, rendered from the derivation key
 | `own_account` | "own account" |
 | `rule` | "rule: *its name*", linking to the rule; "rule deleted" where the rule is gone |
 | `history` | "history: 3 of 4 since Mar 2026" |
-| `llm` | "suggested by the model", rationale on demand |
+| `llm` | "AI model: *its rationale*" |
+| `llm` with no value (`"none"`) | "AI model: no fitting category — *its rationale*" |
 | `matcher_decision` | "matched automatically" |
 | `matcher_proposal` | "document matched — check the split" |
 | `user` with a basis | "confirmed by you, proposed by *…*" |
