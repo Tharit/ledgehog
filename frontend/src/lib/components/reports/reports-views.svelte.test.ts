@@ -41,18 +41,18 @@ describe('ByCategoryView', () => {
 		expect(screen.queryByText('Refunds', { selector: '[data-slice] *' })).toBeNull();
 	});
 
-	it('writes the legend with "Other" and no link for it', () => {
+	it('writes the legend as colour and name only, with "Other", and no amounts', () => {
 		const { container } = render(ByCategoryView, {
 			props: { report: byCategoryTree(), categories, scope }
 		});
 
 		const other = container.querySelector('[data-slice="other"]')!;
-		expect(other).toHaveTextContent('Other');
-		expect(other.querySelector('a')).toBeNull();
-		expect(container.querySelector('[data-slice="c4"] a')).toHaveAttribute(
-			'href',
-			'/ledger?from=2026-10-01&to=2026-10-31&category_id=4'
-		);
+		expect(other).toHaveTextContent(/^Other$/);
+		const legend = container.querySelector('[data-slot="donut-legend"]')!;
+		expect(legend.querySelector('a')).toBeNull();
+		for (const item of legend.querySelectorAll('li')) {
+			expect(item.textContent).not.toMatch(/\d/);
+		}
 	});
 
 	it('gives the donut an explicit width, or its grid cell collapses it to nothing', () => {

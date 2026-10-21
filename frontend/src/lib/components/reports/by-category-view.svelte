@@ -11,9 +11,10 @@
 	import CategoryTable from './category-table.svelte';
 	import FigureLink from './figure-link.svelte';
 
-	// *By category* (reports.md): the largest six categories and "Other" as a donut with its legend,
-	// the category tree as a table, and beneath it what is not in the categories above. The legend
-	// and the table are the readable data of the chart.
+	// *By category* (reports.md): the largest six categories and "Other" as a donut with its legend
+	// (colour and name; the amounts are in the tooltips and the table), the category tree as a
+	// table, and beneath it what is not in the categories above. The table is the readable data of
+	// the chart.
 	let {
 		report,
 		categories,
@@ -45,8 +46,13 @@
 {:else}
 	<div class="flex flex-col gap-8">
 		{#if donut.slices.length > 0}
-			<div class="grid items-center gap-6 md:grid-cols-[16rem_1fr]" data-slot="donut-section">
-				<CategoryDonut slices={donut.slices} currency={report.base_currency} {locale} {sign} />
+			<div
+				class="flex flex-wrap items-center justify-center gap-x-10 gap-y-6"
+				data-slot="donut-section"
+			>
+				<div class="w-64 max-w-full">
+					<CategoryDonut slices={donut.slices} currency={report.base_currency} {locale} {sign} />
+				</div>
 				<ul class="flex flex-col gap-1 text-sm" data-slot="donut-legend">
 					{#each donut.slices as slice (slice.key)}
 						<li class="flex items-center gap-2" data-slice={slice.key}>
@@ -55,12 +61,7 @@
 								style:background-color={dimensionVars(slice.color).fg}
 								aria-hidden="true"
 							></span>
-							<span class="flex-1">{slice.label}</span>
-							<FigureLink
-								line={slice.line}
-								href={slice.categoryId === null ? undefined : categoryHref(scope, slice.categoryId)}
-								{locale}
-							/>
+							<span>{slice.label}</span>
 						</li>
 					{/each}
 				</ul>
