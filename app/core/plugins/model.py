@@ -36,6 +36,14 @@ class ModelAnswer:
     model: str
 
 
+@dataclass(frozen=True, slots=True)
+class NoAnswer:
+    """The model gave no usable answer; `reason` is a short code (`not_json`, `unknown_id`, `truncated`, ...)
+    that says why and never carries any of the reply."""
+
+    reason: str
+
+
 class ModelClient(Protocol):
     name: str
 
@@ -43,8 +51,8 @@ class ModelClient(Protocol):
         """A fingerprint of the payload the model would be given, or None when the payload is empty."""
         ...
 
-    async def ask(self, entry: EntryInput, categories: Sequence[CategoryPath]) -> ModelAnswer | None:
-        """The model's answer, or None when it has none (the reply was not valid).
+    async def ask(self, entry: EntryInput, categories: Sequence[CategoryPath]) -> ModelAnswer | NoAnswer:
+        """The model's answer, or `NoAnswer` with the reason when it has none (the reply was not valid).
         Raises `ModelUnavailable` when the model cannot be reached."""
         ...
 

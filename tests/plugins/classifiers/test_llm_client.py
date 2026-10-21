@@ -10,7 +10,7 @@ import httpx
 import pytest
 
 from app.core.plugins.classifier import ClassifierContext, EntryInput
-from app.core.plugins.model import CategoryPath, ModelUnavailable
+from app.core.plugins.model import CategoryPath, ModelUnavailable, NoAnswer
 from app.core.resolution import Decided
 from app.plugins.classifiers.llm import LlmClassifier, OpenAIModelClient
 from app.plugins.classifiers.llm.client import RATIONALE_MAX, RATIONALE_MIN, parse_reply, system_message
@@ -108,28 +108,64 @@ async def test_no_authorization_header_without_a_key_and_a_full_url_is_kept() ->
 async def test_an_empty_payload_is_not_asked() -> None:
     endpoint = Endpoint()
     client = _client(endpoint)
-    assert await client.ask(_entry(counterparty_ref="DE89370400440532013000"), CATEGORIES) is None
+    assert await client.ask(_entry(counterparty_ref="DE89370400440532013000"), CATEGORIES) == NoAnswer(
+        "empty_payload"
+    )
     assert endpoint.requests == []
     await client.aclose()
 
 
 @pytest.mark.parametrize(
-    "reply",
+    ("reply", "reason"),
     [
-        "not json at all",
-        '["a"]',
-        {"category_id": 99, "rationale": "invented id"},
-        {"category_id": None, "rationale": "  "},  # a "none" without what to show of it
-        {"category_id": None},
-        {"category_id": "none", "rationale": "none fits"},
-        {"category_id": True, "rationale": "bool is not an id"},
-        {"category_id": 3},
-        {"category_id": 3, "rationale": 7},
+        ("not json at all", "not_json"),
+        ('["a"]', "not_object"),
+        ({"category_id": 99, "rationale": "invented id"}, "unknown_id"),
+        ({"category_id": None, "rationale": "  "}, "empty_rationale"),  # a "none" without what to show of it
+        ({"category_id": None}, "no_rationale"),
+        ({"category_id": "none", "rationale": "none fits"}, "bad_id_type"),
+        ({"category_id": True, "rationale": "bool is not an id"}, "bad_id_type"),
+        ({"category_id": 3}, "no_rationale"),
+        ({"category_id": 3, "rationale": 7}, "no_rationale"),
     ],
 )
-async def test_an_invalid_reply_is_no_answer(reply: object) -> None:
+async def test_an_invalid_reply_is_no_answer_with_its_reason(reply: object, reason: str) -> None:
     client = _client(Endpoint(reply))
-    assert await client.ask(_entry(counterparty_name="x"), CATEGORIES) is None
+    assert await client.ask(_entry(counterparty_name="x"), CATEGORIES) == NoAnswer(reason)
+    await client.aclose()
+
+
+@pytest.mark.parametrize(
+    ("body", "reason"),
+    [
+        ({"choices": []}, "not_json"),
+        ({"choices": [{"message": {}}]}, "not_json"),
+        ({"choices": [{"message": {"content": None}}]}, "not_json"),
+        ({"error": "x"}, "not_json"),
+        (
+            {
+                "choices": [
+                    {
+                        "message": {"content": '{"category_id": 3, "rationale": "mot'},
+                        "finish_reason": "length",
+                    }
+                ]
+            },
+            "truncated",
+        ),
+    ],
+)
+async def test_a_reply_without_content_or_cut_off_is_no_answer(body: dict[str, Any], reason: str) -> None:
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, json=body))
+    client = OpenAIModelClient("http://model.test/v1", "m", None, transport=transport)
+    assert await client.ask(_entry(counterparty_name="x"), CATEGORIES) == NoAnswer(reason)
+    await client.aclose()
+
+
+async def test_a_body_that_is_not_json_is_no_answer() -> None:
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, text="<html>"))
+    client = OpenAIModelClient("http://model.test/v1", "m", None, transport=transport)
+    assert await client.ask(_entry(counterparty_name="x"), CATEGORIES) == NoAnswer("not_json")
     await client.aclose()
 
 
@@ -149,7 +185,7 @@ def test_the_instruction_asks_for_what_would_fit_when_nothing_does() -> None:
 
 def test_the_rationale_is_one_capped_line() -> None:
     parsed = parse_reply(json.dumps({"category_id": 1, "rationale": "a\nb  " + "x" * 500}), CATEGORIES)
-    assert parsed is not None and parsed[0] == 1
+    assert isinstance(parsed, tuple) and parsed[0] == 1
     assert "\n" not in parsed[1] and len(parsed[1]) == RATIONALE_MAX and parsed[1].startswith("a b ")
 
 

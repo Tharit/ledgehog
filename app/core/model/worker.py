@@ -5,9 +5,10 @@ category and stores the answer with a write that settles like any other (`settle
 category and its `llm` key (the payload's fingerprint, the model's name and one-line rationale), the type
 `flow` keyed the same when none was decided. "No category fits" is stored too: the `llm` key with `none`
 and the rationale on the empty category, nothing else touched, which settling then keeps and does not
-list again for that payload (`answer.py`); an invalid reply is not stored. Nothing changes under the user:
-the answer is dropped when the entry is confirmed, its payload changed, or its category now has a value of
-a user or of a pass of higher authority. Settling never waits for the worker.
+list again for that payload (`answer.py`); an invalid reply is not stored. Every entry asked gets one INFO
+line saying what came of it and why (stored, dropped, no answer: a reason code). Nothing changes under
+the user: the answer is dropped when the entry is confirmed, its payload changed, or its category now has a
+value of a user or of a pass of higher authority. Settling never waits for the worker.
 
 An unreachable model (timeout, refused, an HTTP error): the queue is marked unavailable and emptied, one
 WARNING is logged, and the worker tries again after `retry_after` seconds by settling, which refills the
@@ -26,7 +27,7 @@ from sqlalchemy import Connection, Engine, text
 
 from app.core.model.queue import Item, ModelQueue
 from app.core.plugins.classifier import EntryInput
-from app.core.plugins.model import CategoryPath, ModelAnswer, ModelClient, ModelUnavailable
+from app.core.plugins.model import CategoryPath, ModelAnswer, ModelClient, ModelUnavailable, NoAnswer
 from app.core.resolution.load import UnconfirmedEntry, load_units_of
 from app.core.settle import settle
 
@@ -177,14 +178,14 @@ class ModelWorker:
             log.error("asking the model failed: %s", type(exc).__name__)
             self.queue.finish(item, answered=False)
             return
-        stored = answer is not None and await asyncio.to_thread(self._store, item, answer)
+        if isinstance(answer, NoAnswer):
+            outcome, stored = f"no answer ({answer.reason})", False
+        else:
+            outcome = await asyncio.to_thread(self._store, item, answer)
+            stored = outcome.startswith("stored")
         self.queue.finish(item, answered=stored)
-        log.debug(
-            "model asked about entry %d: %s in %.1f s",
-            item[0],
-            "stored" if stored else "no answer",
-            loop_time() - started,
-        )
+        # the outcome and its reason only: never the payload, the reply or the key
+        log.info("model asked about entry %d: %s in %.1f s", item[0], outcome, loop_time() - started)
 
     # ---- reading and writing (threads) ----------------------------------------------------------
 
@@ -196,26 +197,32 @@ class ModelWorker:
                 return None
             return row.input, load_category_paths(conn)
 
-    def _store(self, item: Item, answer: ModelAnswer) -> bool:
-        """Write the answer inside a settle; False when it is dropped (nothing is written)."""
+    def _store(self, item: Item, answer: ModelAnswer) -> str:
+        """Write the answer inside a settle. The outcome for the log: `stored`, `stored, no fitting
+        category`, or `dropped (why)` when nothing is written."""
         entry_id, fingerprint = item
-        written = False
+        outcome = "dropped (not written)"
 
         def write(conn: Connection) -> list[int] | None:
-            nonlocal written
+            nonlocal outcome
             row = _row_of(conn, entry_id)
+            if row is None:
+                outcome = "dropped (entry gone or confirmed)"
+                return None
+            if not _may_take_answer(row):
+                outcome = "dropped (category decided meanwhile)"
+                return None
+            if self.client.fingerprint(row.input) != fingerprint:
+                outcome = "dropped (payload changed)"
+                return None
             if (
-                row is None
-                or not _may_take_answer(row)
-                or self.client.fingerprint(row.input) != fingerprint
-                or (
-                    answer.category_id is not None
-                    and conn.execute(
-                        text("SELECT 1 FROM category WHERE id = :c"), {"c": answer.category_id}
-                    ).first()
-                    is None
-                )
+                answer.category_id is not None
+                and conn.execute(
+                    text("SELECT 1 FROM category WHERE id = :c"), {"c": answer.category_id}
+                ).first()
+                is None
             ):
+                outcome = "dropped (category gone)"
                 return None
             basis: dict[str, Any] = {
                 "model": answer.model,
@@ -229,14 +236,14 @@ class ModelWorker:
                 conn.execute(_STORE_NONE, {"id": entry_id, "key": json.dumps(key)})
             else:
                 conn.execute(_STORE, {"id": entry_id, "category": answer.category_id, "key": json.dumps(key)})
-            written = True
+            outcome = "stored, no fitting category" if answer.category_id is None else "stored"
             return [entry_id]
 
         result = settle(self.engine, before=write)
         if result.error is not None:
             log.error("storing the model's answer failed: %s", result.error)
-            return False
-        return written
+            return "dropped (storing failed)"
+        return outcome
 
 
 def loop_time() -> float:

@@ -26,6 +26,8 @@ class Endpoint:
         self.category_id: int | None = None
         self.rationale = "a short reason"
         self.status = 200
+        self.raw: str | None = None  # the reply's content as is, instead of the id and rationale
+        self.finish_reason: str | None = None
         self.during: Callable[[], None] | None = None
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
@@ -34,8 +36,13 @@ class Endpoint:
             self.during()
         if self.status != 200:
             return httpx.Response(self.status, text="down")
-        content = json.dumps({"category_id": self.category_id, "rationale": self.rationale})
-        return httpx.Response(200, json={"choices": [{"message": {"content": content}}]})
+        content = self.raw
+        if content is None:
+            content = json.dumps({"category_id": self.category_id, "rationale": self.rationale})
+        choice: dict[str, Any] = {"message": {"content": content}}
+        if self.finish_reason is not None:
+            choice["finish_reason"] = self.finish_reason
+        return httpx.Response(200, json={"choices": [choice]})
 
 
 @dataclass

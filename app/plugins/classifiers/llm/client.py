@@ -21,7 +21,7 @@ from typing import Any
 import httpx
 
 from app.core.plugins.classifier import EntryInput
-from app.core.plugins.model import CategoryPath, ModelAnswer, ModelUnavailable
+from app.core.plugins.model import CategoryPath, ModelAnswer, ModelUnavailable, NoAnswer
 from app.plugins.classifiers.llm.payload import fingerprint_of, payload_of, user_message
 
 log = logging.getLogger("ledgehog.model")
@@ -63,27 +63,29 @@ def response_format(categories: Sequence[CategoryPath]) -> dict[str, Any]:
     return {"type": "json_schema", "json_schema": {"name": "category", "strict": True, "schema": schema}}
 
 
-def parse_reply(content: object, categories: Sequence[CategoryPath]) -> tuple[int | None, str] | None:
-    """The category id (None: the model says no category fits) and rationale of a valid reply, else None
-    (malformed, an unknown id, or a "none" without the rationale that is all there is to show of it)."""
+def parse_reply(content: object, categories: Sequence[CategoryPath]) -> tuple[int | None, str] | NoAnswer:
+    """The category id (None: the model says no category fits) and rationale of a valid reply, else the
+    reason it is no answer: `not_json`, `not_object`, `no_rationale` (missing or not text),
+    `empty_rationale` (a "none" without the rationale that is all there is to show of it), `bad_id_type`
+    (the string "none", a bool, anything but an integer or null) or `unknown_id`."""
     if not isinstance(content, str):
-        return None
+        return NoAnswer("not_json")
     try:
         data = json.loads(content)
     except ValueError:
-        return None
+        return NoAnswer("not_json")
     if not isinstance(data, dict):
-        return None
+        return NoAnswer("not_object")
     category_id, rationale = data.get("category_id"), data.get("rationale")
     if not isinstance(rationale, str):
-        return None
+        return NoAnswer("no_rationale")
     line = " ".join(rationale.split())[:RATIONALE_MAX]
     if category_id is None:
-        return (None, line) if line else None
+        return (None, line) if line else NoAnswer("empty_rationale")
     if isinstance(category_id, bool) or not isinstance(category_id, int):
-        return None  # "none", anything else: no answer
+        return NoAnswer("bad_id_type")
     if category_id not in {c.id for c in categories}:
-        return None
+        return NoAnswer("unknown_id")
     return category_id, line
 
 
@@ -120,10 +122,12 @@ class OpenAIModelClient:
             "response_format": response_format(categories),
         }
 
-    async def ask(self, entry: EntryInput, categories: Sequence[CategoryPath]) -> ModelAnswer | None:
+    async def ask(self, entry: EntryInput, categories: Sequence[CategoryPath]) -> ModelAnswer | NoAnswer:
         payload = payload_of(entry)
-        if payload is None or not categories:
-            return None
+        if payload is None:
+            return NoAnswer("empty_payload")
+        if not categories:
+            return NoAnswer("no_categories")
         try:
             response = await self._http.post(self._url, json=self.request_body(payload, categories))
             response.raise_for_status()
@@ -133,14 +137,17 @@ class OpenAIModelClient:
         except httpx.HTTPError as exc:
             raise ModelUnavailable(type(exc).__name__) from None
         except ValueError:
-            return None  # a reply that is not JSON at all
+            return NoAnswer("not_json")  # a reply that is not JSON at all
         try:
-            content = body["choices"][0]["message"]["content"]
+            choice = body["choices"][0]
+            content = choice["message"]["content"]
         except (KeyError, IndexError, TypeError):
-            return None
+            return NoAnswer("not_json")  # no choices[0].message.content
+        if isinstance(choice, dict) and choice.get("finish_reason") == "length":
+            return NoAnswer("truncated")  # cut off at max_tokens: whatever is there is not the whole reply
         parsed = parse_reply(content, categories)
-        if parsed is None:
-            return None
+        if isinstance(parsed, NoAnswer):
+            return parsed
         return ModelAnswer(category_id=parsed[0], rationale=parsed[1], model=self.name)
 
     async def aclose(self) -> None:
