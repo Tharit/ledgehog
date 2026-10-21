@@ -47,4 +47,29 @@ describe('LoginForm', () => {
 		expect(screen.getByLabelText('Password')).toHaveAttribute('type', 'password');
 		expect(screen.getByLabelText('Login')).toHaveAttribute('autocomplete', 'username');
 	});
+
+	it('offers no SSO link unless asked', () => {
+		render(LoginForm, { props: { onsubmit: vi.fn() } });
+
+		expect(screen.queryByRole('link', { name: 'Log in with SSO' })).not.toBeInTheDocument();
+	});
+
+	it('offers SSO beside the password form, as a full navigation to the server', () => {
+		render(LoginForm, { props: { onsubmit: vi.fn(), sso: true } });
+
+		const link = screen.getByRole('link', { name: 'Log in with SSO' });
+		expect(link).toHaveAttribute('href', '/api/session/oidc');
+		expect(link).toHaveAttribute('data-sveltekit-reload');
+		expect(screen.getByLabelText('Password')).toBeInTheDocument();
+		expect(screen.getByRole('button', { name: 'Log in' })).toBeInTheDocument();
+	});
+
+	it('offers only SSO when the password is off', () => {
+		render(LoginForm, { props: { onsubmit: vi.fn(), sso: true, passwordLogin: false } });
+
+		expect(screen.getByRole('link', { name: 'Log in with SSO' })).toBeInTheDocument();
+		expect(screen.queryByLabelText('Password')).not.toBeInTheDocument();
+		expect(screen.queryByLabelText('Login')).not.toBeInTheDocument();
+		expect(screen.queryByRole('button', { name: 'Log in' })).not.toBeInTheDocument();
+	});
 });

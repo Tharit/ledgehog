@@ -7,10 +7,16 @@
 	let {
 		pending = false,
 		error = null,
+		sso = false,
+		passwordLogin = true,
 		onsubmit
 	}: {
 		pending?: boolean;
 		error?: string | null;
+		/** offer "Log in with SSO" (a full navigation to the provider's sign-in) */
+		sso?: boolean;
+		/** offer the login and password fields; off when OIDC is enforced */
+		passwordLogin?: boolean;
 		onsubmit: (login: string, password: string) => void;
 	} = $props();
 
@@ -29,25 +35,37 @@
 >
 	<!-- Placeholder wordmark: the raster mascot must be redrawn as SVG before it ships (design §9). -->
 	<h1 class="text-[28px] font-semibold text-primary">Ledgehog</h1>
-	<Field label="Login">
-		{#snippet children(control)}
-			<Input {...control} name="login" autocomplete="username" required bind:value={login} />
-		{/snippet}
-	</Field>
-	<Field label="Password">
-		{#snippet children(control)}
-			<Input
-				{...control}
-				name="password"
-				type="password"
-				autocomplete="current-password"
-				required
-				bind:value={password}
-			/>
-		{/snippet}
-	</Field>
+	{#if passwordLogin}
+		<Field label="Login">
+			{#snippet children(control)}
+				<Input {...control} name="login" autocomplete="username" required bind:value={login} />
+			{/snippet}
+		</Field>
+		<Field label="Password">
+			{#snippet children(control)}
+				<Input
+					{...control}
+					name="password"
+					type="password"
+					autocomplete="current-password"
+					required
+					bind:value={password}
+				/>
+			{/snippet}
+		</Field>
+	{/if}
 	{#if error}
 		<Notice role="alert">{error}</Notice>
 	{/if}
-	<ActionButton type="submit" busy={pending} busyLabel="Logging in…">Log in</ActionButton>
+	{#if passwordLogin}
+		<ActionButton type="submit" busy={pending} busyLabel="Logging in…">Log in</ActionButton>
+	{/if}
+	{#if sso}
+		<!-- a full navigation: the server redirects to the provider and back -->
+		<ActionButton
+			variant={passwordLogin ? 'outline' : 'primary'}
+			href="/api/session/oidc"
+			data-sveltekit-reload>Log in with SSO</ActionButton
+		>
+	{/if}
 </form>

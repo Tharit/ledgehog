@@ -16,6 +16,9 @@ export type AppConfig = {
 	max_rate_age_days: number;
 	matching_window_days: number;
 	document_window_days: number;
+	/** whether "Log in with SSO" is offered, and whether it is the only way in */
+	oidc_offered: boolean;
+	oidc_enforced: boolean;
 };
 
 export type Account = {
