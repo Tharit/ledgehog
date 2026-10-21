@@ -18,6 +18,8 @@ export default defineConfig({
 		})
 	],
 	server: {
+		// 127.0.0.1, not localhost: the OIDC provider accepts only this redirect address, and localhost may resolve to ::1
+		host: '127.0.0.1',
 		// same origin as the page, so the SameSite=Lax session cookie is sent (architecture §6.7)
 		proxy: { '/api': process.env.LEDGEHOG_API ?? 'http://127.0.0.1:8000' }
 	},
