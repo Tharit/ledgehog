@@ -14,6 +14,7 @@ import logging
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import FastAPI, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import Engine
@@ -30,6 +31,7 @@ from app.core.plugins.importer import FileImporter
 from app.core.tasks import TaskRegistry
 from app.core.tasks.changes import ChangeRegister
 from app.utils import clock
+from app.utils.auth import OidcFlow
 from app.utils.config import Config
 from app.utils.db.changes import install_change_hooks
 
@@ -46,6 +48,7 @@ def create_app(
     importers: Mapping[str, FileImporter | FetchImporter] | None = None,
     tasks: TaskRegistry | None = None,
     changes: ChangeRegister | None = None,
+    oidc_transport: httpx.BaseTransport | None = None,
 ) -> FastAPI:
     """Build the API. Time comes from `app.utils.clock` only (tests freeze it with `clock.frozen`).
 
@@ -77,6 +80,8 @@ def create_app(
     app.state.config = config
     app.state.engine = engine
     app.state.instant = clock.now
+    # the provider is contacted lazily, at the first sign-in: the app starts with it down
+    app.state.oidc = OidcFlow(config.oidc, oidc_transport) if config.oidc is not None else None
     app.state.importers = dict(importers or {})
     app.state.tasks = tasks if tasks is not None else TaskRegistry()
     app.state.loop = None  # set when the lifespan starts

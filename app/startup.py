@@ -55,6 +55,7 @@ class ReconcileResult:
     rehashed: tuple[str, ...] = ()
     enabled: tuple[str, ...] = ()
     disabled: tuple[str, ...] = ()
+    ignored: tuple[str, ...] = ()  # configured logins that name a provider's user
 
 
 @dataclass(slots=True)
@@ -100,32 +101,50 @@ def reconcile_users(conn: Connection, users: Sequence[UserConfig]) -> ReconcileR
     them), and loses their sessions. A disabled user whose login is configured
     again is re-enabled with the same id (so history stays theirs); the sessions
     were already deleted when they were disabled.
+
+    Only the configuration's users (`source = 'config'`) are managed. A user the OIDC provider
+    owns is left alone, never disabled for being absent from the environment; a configured login
+    that names one is ignored and reported. A configured user without a password (OIDC enforced)
+    has no hash: password sign-in cannot succeed for them.
     """
     created: list[str] = []
     renamed: list[str] = []
     rehashed: list[str] = []
     enabled: list[str] = []
     disabled: list[str] = []
+    ignored: list[str] = []
     existing = {
         r.login: r
-        for r in conn.execute(text("SELECT id, login, pw_hash, display_name, disabled FROM app_user"))
+        for r in conn.execute(text("SELECT id, login, pw_hash, display_name, disabled, source FROM app_user"))
     }
     for cfg in users:
         row = existing.get(cfg.login)
-        password = cfg.password.reveal()
+        password = cfg.password.reveal() if cfg.password is not None else None
         if row is None:
             conn.execute(
                 text("INSERT INTO app_user (login, pw_hash, display_name) VALUES (:l, :h, :n)"),
-                {"l": cfg.login, "h": hash_password(password), "n": cfg.name},
+                {
+                    "l": cfg.login,
+                    "h": hash_password(password) if password is not None else None,
+                    "n": cfg.name,
+                },
             )
             created.append(cfg.login)
+            continue
+        if row.source != "config":
+            ignored.append(cfg.login)
             continue
         if row.display_name != cfg.name:
             conn.execute(
                 text("UPDATE app_user SET display_name = :n WHERE id = :i"), {"n": cfg.name, "i": row.id}
             )
             renamed.append(cfg.login)
-        if not verify_password(row.pw_hash, password):
+        if password is None:
+            if row.pw_hash is not None:  # a password the configuration no longer holds stops working
+                conn.execute(text("UPDATE app_user SET pw_hash = NULL WHERE id = :i"), {"i": row.id})
+                revoke_sessions(conn, row.id)
+                rehashed.append(cfg.login)
+        elif row.pw_hash is None or not verify_password(row.pw_hash, password):
             conn.execute(
                 text("UPDATE app_user SET pw_hash = :h WHERE id = :i"),
                 {"h": hash_password(password), "i": row.id},
@@ -137,11 +156,13 @@ def reconcile_users(conn: Connection, users: Sequence[UserConfig]) -> ReconcileR
             enabled.append(cfg.login)
     configured = {u.login for u in users}
     for login, row in existing.items():
-        if login not in configured and not row.disabled:
+        if row.source == "config" and login not in configured and not row.disabled:
             conn.execute(text("UPDATE app_user SET disabled = true WHERE id = :i"), {"i": row.id})
             revoke_sessions(conn, row.id)
             disabled.append(login)
-    return ReconcileResult(tuple(created), tuple(renamed), tuple(rehashed), tuple(enabled), tuple(disabled))
+    return ReconcileResult(
+        tuple(created), tuple(renamed), tuple(rehashed), tuple(enabled), tuple(disabled), tuple(ignored)
+    )
 
 
 def assert_pool_settings(engine: Engine, config: Config) -> None:
@@ -202,6 +223,7 @@ def start(
             ("password changed", reconciled.rehashed),
             ("re-enabled", reconciled.enabled),
             ("disabled", reconciled.disabled),
+            ("ignored (the OIDC provider's, not the configuration's)", reconciled.ignored),
         ):
             if logins:
                 log.info("users %s: %s", verb, ", ".join(logins))

@@ -1,3 +1,5 @@
+from app.utils.auth.oidc import OidcError, OidcFlow, OidcIdentity
+from app.utils.auth.oidc_users import admit
 from app.utils.auth.passwords import hash_password, needs_rehash, verify_password
 from app.utils.auth.sessions import (
     SESSION_LIFETIME,
@@ -14,6 +16,10 @@ from app.utils.auth.sessions import (
 __all__ = [
     "SESSION_LIFETIME",
     "AuthUser",
+    "OidcError",
+    "OidcFlow",
+    "OidcIdentity",
+    "admit",
     "authenticate_password",
     "establish_session",
     "hash_password",

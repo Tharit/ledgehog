@@ -104,8 +104,12 @@ def test_every_operation_lists_the_envelope_for_its_4xx(schema):
         for status, resp in op["responses"].items():
             if status.startswith(("4", "5")):
                 assert envelope_ref(resp) == "#/components/schemas/ErrorEnvelope", (path, method, status)
-        # authenticated routes: 401 and 422 at minimum
-        if (path, method) not in {("/api/session", "post"), ("/api/session", "delete")}:
+        # authenticated routes: 401 and 422 at minimum (the config is read before there is a session)
+        if (path, method) not in {
+            ("/api/session", "post"),
+            ("/api/session", "delete"),
+            ("/api/config", "get"),
+        }:
             assert "401" in op["responses"], (path, method)
             assert "422" in op["responses"], (path, method)
     login = schema["paths"]["/api/session"]["post"]["responses"]

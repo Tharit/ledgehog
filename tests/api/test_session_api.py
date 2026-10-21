@@ -149,12 +149,13 @@ def test_rapid_use_does_not_rewrite_the_session(client, api_engine, clock):
         assert conn.execute(text("SELECT expires_at FROM session")).scalar_one() == before
 
 
-def test_config_needs_a_session_and_contains_no_secret(client, api_config):
-    _assert_envelope(client.get("/api/config"), 401, "unauthenticated")
-    login(client)
+def test_config_needs_no_session_and_contains_no_secret(client, api_config):
+    # the login page asks it whether OIDC sign-in is offered, before there is a session
     r = client.get("/api/config")
     assert r.status_code == 200
     assert r.json() == {
+        "oidc_offered": False,
+        "oidc_enforced": False,
         "base_currency": "EUR",
         "timezone": api_config.timezone.key,
         "locale": "en",

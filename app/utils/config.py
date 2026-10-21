@@ -12,6 +12,7 @@ import os
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
@@ -59,7 +60,26 @@ class DatabaseConfig:
 class UserConfig:
     login: str
     name: str
-    password: Secret
+    password: Secret | None  # absent only while OIDC is enforced: no password sign-in
+
+
+@dataclass(frozen=True, slots=True)
+class OidcConfig:
+    """OIDC sign-in (architecture §5.6, §5.7). Present only when the provider is configured."""
+
+    issuer: str
+    client_id: str
+    client_secret: Secret
+    base_url: str  # the app's external address, no trailing slash
+    scopes: tuple[str, ...] = ("openid", "email", "profile")
+    login_attribute: str = "email"
+    displayname_attribute: str = "name"
+    allowed_group: str | None = None
+    enforced: bool = False
+
+    @property
+    def redirect_uri(self) -> str:
+        return f"{self.base_url}/api/session/oidc/callback"
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +100,7 @@ class Config:
     document_window_days: int
     users: tuple[UserConfig, ...]
     model: ModelConfig | None
+    oidc: OidcConfig | None = None
     expose_openapi: bool = False  # development only: serve /api/openapi.json
     enable_test_importers: bool = False  # development only: register the deterministic test importers
     fints_product_id: str | None = None  # the DK product registration id (spec §7.1); not a secret
@@ -163,7 +184,59 @@ class _Reader:
             raise ConfigError(var, f"required but not set (or {file_var})")
         return None
 
-    def users(self) -> tuple[UserConfig, ...]:
+    def url(self, var: str, *, allow_path: bool) -> str:
+        """An http(s) address without a trailing slash, query or fragment; a base address has no path."""
+        raw = self.text(var).strip()
+        parts = urlsplit(raw)
+        if parts.scheme not in ("http", "https") or not parts.hostname:
+            raise ConfigError(var, "must be an http or https address")
+        if parts.query or parts.fragment or parts.username or parts.password:
+            raise ConfigError(var, "must not carry credentials, a query or a fragment")
+        if not allow_path and parts.path not in ("", "/"):
+            raise ConfigError(var, "must not carry a path")
+        return raw.rstrip("/")
+
+    def oidc(self, *, enforced: bool) -> OidcConfig | None:
+        names = ("OIDC_ISSUER", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET")
+        present = [
+            n
+            for n in names
+            if n in self.env or (n == "OIDC_CLIENT_SECRET" and "OIDC_CLIENT_SECRET_FILE" in self.env)
+        ]
+        if not present:
+            if enforced:
+                raise ConfigError(
+                    "OIDC_ENFORCED", "requires OIDC_ISSUER, OIDC_CLIENT_ID and OIDC_CLIENT_SECRET"
+                )
+            return None
+        for n in names:
+            if n not in present:
+                raise ConfigError(
+                    n, "required when any other OIDC_ISSUER, OIDC_CLIENT_ID or OIDC_CLIENT_SECRET is set"
+                )
+        issuer = self.url("OIDC_ISSUER", allow_path=True)
+        client_id = self.text("OIDC_CLIENT_ID").strip()
+        client_secret = self.secret("OIDC_CLIENT_SECRET")
+        assert client_secret is not None
+        if "BASE_URL" not in self.env:
+            raise ConfigError("BASE_URL", "required with OIDC: the app's external address")
+        base_url = self.url("BASE_URL", allow_path=False)
+        scopes = tuple(self.text("OIDC_SCOPES", "openid email profile").split())
+        if "openid" not in scopes:
+            raise ConfigError("OIDC_SCOPES", "must include openid")
+        return OidcConfig(
+            issuer=issuer,
+            client_id=client_id,
+            client_secret=client_secret,
+            base_url=base_url,
+            scopes=scopes,
+            login_attribute=self.text("OIDC_LOGIN_ATTRIBUTE", "email").strip(),
+            displayname_attribute=self.text("OIDC_DISPLAYNAME_ATTRIBUTE", "name").strip(),
+            allowed_group=self.optional_text("OIDC_ALLOWED_GROUP"),
+            enforced=enforced,
+        )
+
+    def users(self, *, password_optional: bool = False) -> tuple[UserConfig, ...]:
         indexes = sorted({int(m.group(1)) for k in self.env if (m := _USER_VAR.match(k))})
         if indexes != list(range(1, len(indexes) + 1)):
             expected = next(i for i in range(1, len(indexes) + 2) if i not in indexes)
@@ -173,8 +246,7 @@ class _Reader:
         for n in indexes:
             login = self.text(f"USER_{n}_LOGIN")
             name = self.text(f"USER_{n}_NAME")
-            password = self.secret(f"USER_{n}_PASSWORD")
-            assert password is not None
+            password = self.secret(f"USER_{n}_PASSWORD", required=not password_optional)
             if login in seen:
                 raise ConfigError(f"USER_{n}_LOGIN", "duplicate login")
             seen.add(login)
@@ -209,6 +281,7 @@ class _Reader:
             tz = ZoneInfo(tz_name)
         except (ZoneInfoNotFoundError, ValueError, OSError):
             raise ConfigError("TIMEZONE", "unknown time zone") from None
+        enforced = self.boolean("OIDC_ENFORCED", False)
         return Config(
             db=db,
             base_currency=base,
@@ -217,8 +290,9 @@ class _Reader:
             max_rate_age_days=self.integer("MAX_RATE_AGE_DAYS", 7, 0),
             matching_window_days=self.integer("MATCHING_WINDOW_DAYS", 7, 0),
             document_window_days=self.integer("DOCUMENT_WINDOW_DAYS", 7, 0),
-            users=self.users(),
+            users=self.users(password_optional=enforced),
             model=self.model(),
+            oidc=self.oidc(enforced=enforced),
             expose_openapi=self.boolean("EXPOSE_OPENAPI", False),
             enable_test_importers=self.boolean("ENABLE_TEST_IMPORTERS", False),
             fints_product_id=self.optional_text("FINTS_PRODUCT_ID"),

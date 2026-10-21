@@ -1,9 +1,8 @@
 """Login sessions (architecture §4.5, §5.6).
 
 A session row references a user and records the method that established it
-(`password` today, `oidc` later). The cookie carries only the opaque id, so
-revocation is deleting the row. `establish_session` is the single seam an OIDC
-login would call after verifying an identity.
+(`password` or `oidc`). The cookie carries only the opaque id, so revocation
+is deleting the row. `establish_session` is the single seam both methods end in.
 
 Expiry slides: 30 days from last use. `touch_session` writes only when that
 would move the expiry by more than `TOUCH_GRANULARITY`, so a burst of requests
@@ -13,8 +12,8 @@ Time is the injected clock (`app.utils.clock`), never the database's `now()`:
 `created_at` is written explicitly so `ck_session_expiry` holds under a frozen
 clock too.
 
-Conscious omission (architecture §5.6): there is no login rate limiting in v1 -
-two users, self-hosted.
+Conscious omission (architecture §5.6): there is no login rate limiting - a
+household, self-hosted.
 """
 
 from __future__ import annotations
@@ -117,7 +116,7 @@ def authenticate_password(conn: Connection, login: str, password: str) -> int | 
     row = conn.execute(
         text("SELECT id, pw_hash, disabled FROM app_user WHERE login = :login"), {"login": login}
     ).one_or_none()
-    if row is None or row.disabled:
+    if row is None or row.disabled or row.pw_hash is None:  # no password: fails like a wrong one
         verify_dummy(password)
         return None
     if not verify_password(row.pw_hash, password):
