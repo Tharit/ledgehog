@@ -4,6 +4,7 @@
 	import { formatCompactAmount, formatMoney } from '#lib/format/index.js';
 	import type { StackRow, StackSeries } from '#lib/reports/charts.js';
 	import { dimensionVars } from '#lib/theme/dimensions.js';
+	import { CHART_SIZE } from './chart-size.js';
 	import FigureTooltip from './figure-tooltip.svelte';
 
 	// The top categories and "Other" as stacked bars per period, in the categories' resolved colours
@@ -33,7 +34,7 @@
 </script>
 
 <div class="flex flex-col gap-2" data-slot="category-stack-chart">
-	<Chart.Container {config} class="aspect-[2/1] w-full">
+	<Chart.Container {config} class={CHART_SIZE} data-slot="category-stack-chart">
 		<BarChart
 			data={[...rows]}
 			x="label"

@@ -3,6 +3,7 @@
 	import * as Chart from '#lib/components/ui/chart/index.js';
 	import { formatCompactAmount, formatMoney } from '#lib/format/index.js';
 	import type { IncomeExpensePoint } from '#lib/reports/charts.js';
+	import { CHART_SIZE } from './chart-size.js';
 	import FigureTooltip from './figure-tooltip.svelte';
 
 	// Income above the zero line, expense below it, the savings as a 2px primary line over them
@@ -38,7 +39,7 @@
 		minor === null ? 'unvalued' : formatMoney(minor, currency, { locale });
 </script>
 
-<Chart.Container {config} class="aspect-[2/1] w-full" data-slot="income-expense-chart">
+<Chart.Container {config} class={CHART_SIZE} data-slot="income-expense-chart">
 	<BarChart
 		data={[...points]}
 		x="label"

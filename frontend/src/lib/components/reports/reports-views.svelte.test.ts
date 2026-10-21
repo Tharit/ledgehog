@@ -126,6 +126,15 @@ describe('OverTimeView, income and expense', () => {
 		expect(row('rate').querySelector('[data-slot="incomplete-marker"]')).not.toBeNull();
 		expect(screen.getByRole('columnheader', { name: 'Total' })).toBeInTheDocument();
 	});
+
+	it('draws the chart at a fixed height, not an aspect ratio', () => {
+		const { container } = render(OverTimeView, {
+			props: { report: overTimeSavings(), categories, scope }
+		});
+
+		const chart = container.querySelector('[data-slot="income-expense-chart"]')!;
+		expect(chart).toHaveClass('h-72', 'aspect-auto');
+	});
 });
 
 describe('OverTimeView, by category', () => {
@@ -144,6 +153,15 @@ describe('OverTimeView, by category', () => {
 		]);
 		expect(table.querySelector('[data-itself="true"]')).toHaveTextContent('Food (itself)');
 		expect(table.querySelector('[data-row="total"]')).toHaveTextContent('−915.00');
+	});
+
+	it('draws the stack chart at a fixed height', () => {
+		const { container } = render(OverTimeView, {
+			props: { report: overTimeCategories(), categories, scope }
+		});
+
+		const chart = container.querySelector('[data-slot="category-stack-chart"]')!;
+		expect(chart).toHaveClass('h-72', 'aspect-auto');
 	});
 });
 

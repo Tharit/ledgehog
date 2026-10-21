@@ -4,6 +4,7 @@
 	import { formatCompactAmount, formatMoney, formatPointLabel } from '#lib/format/index.js';
 	import type { BalanceLine, BalanceRow } from '#lib/reports/charts.js';
 	import { dimensionVars } from '#lib/theme/dimensions.js';
+	import { CHART_SIZE } from './chart-size.js';
 	import FigureTooltip from './figure-tooltip.svelte';
 
 	// The balance at each month-end: the net worth in the primary colour (2px), each account toggled
@@ -38,7 +39,7 @@
 		typeof value === 'number' ? formatMoney(value, currency, { locale }) : 'unvalued';
 </script>
 
-<Chart.Container {config} class="aspect-[2/1] w-full" data-slot="balance-chart">
+<Chart.Container {config} class={CHART_SIZE} data-slot="balance-chart">
 	<LineChart
 		data={[...rows]}
 		x="date"
