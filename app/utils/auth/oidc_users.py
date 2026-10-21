@@ -3,8 +3,8 @@
 What a verified identity may do: the login claim is the login; a matching user signs in, an unknown
 one is created without a password; a configured user's first sign-in hands them to the provider
 (`source` becomes `oidc`, the password is dropped); a disabled user, an unverified e-mail and a
-missing group are refused. One transaction, supplied by the caller. Logs name logins, never claims
-beyond that.
+missing group are refused. One transaction, supplied by the caller. Logs name logins and, for a group refusal,
+group names; never tokens, codes or other claims.
 """
 
 from __future__ import annotations
@@ -34,7 +34,9 @@ def admit(conn: Connection, cfg: OidcConfig, identity: OidcIdentity) -> int:
             raise OidcError(NOT_ALLOWED, "the groups claim is absent")
         if cfg.allowed_group not in identity.groups:
             raise OidcError(
-                NOT_ALLOWED, f"the allowed group is not among the user's {len(identity.groups)} groups"
+                NOT_ALLOWED,
+                f"the allowed group {cfg.allowed_group!r} is not among the user's groups "
+                f"{list(identity.groups)!r}",
             )
 
     # the claim is compared without regard to case; `app_user.login` is unique per exact spelling only,

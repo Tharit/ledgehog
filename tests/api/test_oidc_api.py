@@ -292,9 +292,15 @@ def test_the_group_refusal_log_tells_an_absent_claim_from_a_missing_group(make_o
     with caplog.at_level(logging.INFO):
         refused(sign_in(client, provider), "oidc_not_allowed")
     text = _log_text(caplog)
-    assert "oidc_not_allowed: the allowed group is not among the user's 2 groups" in text
-    for name in ("guests-club", "staff-team", "family"):
-        assert name not in text
+    assert (
+        "oidc_not_allowed: the allowed group 'family' is not among the user's groups "
+        "['guests-club', 'staff-team']"
+    ) in text
+    caplog.clear()
+    provider.claims = {"email": "zoe@home.test", "groups": ["Family\r", " family"]}
+    with caplog.at_level(logging.INFO):
+        refused(sign_in(client, provider), "oidc_not_allowed")
+    assert "the user's groups ['Family\\r', ' family']" in _log_text(caplog)
 
 
 @pytest.mark.parametrize(
@@ -310,17 +316,16 @@ def test_the_group_refusal_log_tells_an_absent_claim_from_a_missing_group(make_o
         (5, "oidc: groups claim: int"),
     ],
 )
-def test_the_log_gives_the_shape_of_the_groups_claim_never_a_group(
-    make_oidc, provider, caplog, groups, shape
-):
+def test_the_shape_line_of_the_groups_claim_names_no_group(make_oidc, provider, caplog, groups, shape):
     client = make_oidc(allowed_group="family")
     provider.claims = {"email": "zoe@home.test", "groups": groups}
     with caplog.at_level(logging.INFO):
         sign_in(client, provider)
     text = _log_text(caplog)
     assert shape in text
+    shape_line = next(line for line in text.splitlines() if "oidc: groups claim:" in line)
     for name in ("guests-club", "family", "x@y.test"):
-        assert name not in text
+        assert name not in shape_line
 
 
 def test_a_known_user_needs_the_group_too(make_oidc, provider, api_engine):
