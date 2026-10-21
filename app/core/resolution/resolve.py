@@ -62,9 +62,11 @@ class _Run:
     exclude_entry_ids: frozenset[int]
     fixed: Mapping[Field, Decided]
     decided: dict[Field, Decided]
+    stored: Mapping[Field, Decided | None]
 
     def ctx(self) -> ClassifierContext:
         return ClassifierContext(
+            stored=self.stored,
             resolved={f: Proposal(f, d.value, d.basis) for f, d in self.decided.items()},
             account_ok=self.account_ok,
             history=self.history,
@@ -171,8 +173,11 @@ def resolve(
     history: HistorySource | None = None,
     fixed: Mapping[Field, Decided] | None = None,
     exclude_entry_ids: frozenset[int] = frozenset(),
+    stored: Mapping[Field, Decided | None] | None = None,
 ) -> Resolved:
     """What the passes decide for `entry`, around the `fixed` fields; `classifiers` by authority.
+
+    `stored` is what the entry carries now: the model's answer, its `llm` key, is read from it.
 
     A fixed later field without a fixed type implies the type (payee or category a flow,
     counter-account a transfer), keyed as that field. Fixed fields the type does not allow are
@@ -186,4 +191,5 @@ def resolve(
         exclude_entry_ids=exclude_entry_ids,
         fixed=fixed or {},
         decided={},
+        stored=stored or {},
     ).run()

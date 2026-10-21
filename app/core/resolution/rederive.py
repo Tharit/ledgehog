@@ -92,6 +92,7 @@ def rederive(
                     history=history,
                     fixed=fixed,
                     exclude_entry_ids=exclude_entry_ids,
+                    stored=current,
                 )
             new = last.get(field)
             changed = changed or (new.value if new else None) != (cur.value if cur else None)

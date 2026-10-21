@@ -483,6 +483,7 @@ class _Walk:
                     history=history,
                     fixed=hints,
                     exclude_entry_ids=frozenset({row.id}),
+                    stored=cur,
                 ).get("type")
             if last is None or any(last.get(k) != d for k, d in fixed.items()):
                 last = resolve(
@@ -492,6 +493,7 @@ class _Walk:
                     history=history,
                     fixed=fixed,
                     exclude_entry_ids=frozenset({row.id}),
+                    stored=cur,
                 )
             return last.get(f)
 

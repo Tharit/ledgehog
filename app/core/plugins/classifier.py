@@ -217,6 +217,9 @@ class ClassifierContext:
     account_ok: Callable[[int], bool] = lambda _account_id: True
     history: HistorySource | None = None
     exclude_entry_ids: frozenset[int] = frozenset()
+    # what is stored on the entry now (value and key per field): how the model's answer, its `llm` key, is
+    # read as an input (architecture §5.4)
+    stored: Mapping[Field, Any] = field(default_factory=dict)
 
 
 class Classifier(Protocol):
