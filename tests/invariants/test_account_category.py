@@ -155,7 +155,13 @@ def test_investment_status_is_fixed(
 
 @pytest.mark.parametrize(
     ("old", "new"),
-    [("checking", "savings"), ("card", "cash"), ("loan", "paypal"), ("depot", "asset"), ("asset", "depot")],
+    [
+        ("checking", "savings"),
+        ("card", "cash"),
+        ("loan", "digital_wallet"),
+        ("depot", "asset"),
+        ("asset", "depot"),
+    ],
 )
 def test_kind_is_fixed_within_its_class(
     old: str, new: str, db_conn: Connection, make_account: MakeAccount

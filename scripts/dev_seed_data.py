@@ -24,7 +24,7 @@ ACCOUNTS: tuple[tuple[str, str, str, str | None], ...] = (
     ("savings", "Tagesgeld", "savings", IBAN["savings"]),
     ("visa", "Visa Karte", "card", None),
     ("amex", "Amex Karte", "card", None),
-    ("paypal", "PayPal", "paypal", None),
+    ("paypal", "PayPal", "digital_wallet", None),
     ("cash", "Bargeld", "cash", None),
 )
 

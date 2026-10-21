@@ -41,7 +41,7 @@ END = date(2025, 12, 31)
 ACCOUNT_PLAN: tuple[tuple[str, str, str, str], ...] = (
     ("Checking", "checking", "EUR", "source_id"),
     ("Credit card", "card", "EUR", "source_id"),
-    ("PayPal", "paypal", "EUR", "hash"),
+    ("PayPal", "digital_wallet", "EUR", "hash"),
     ("Travel card", "card", "USD", "hash"),
     ("Savings", "savings", "EUR", "hash"),
     ("Cash", "cash", "EUR", "hash"),

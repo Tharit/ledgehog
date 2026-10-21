@@ -53,7 +53,7 @@ map_error(
 map_error(UnknownCurrency, 422, "validation_error", details=lambda e: {"reason": "unknown_currency"})
 map_error(AccountError, 409, "conflict", details=lambda e: {"reason": "account_refused"})
 
-Kind = Literal["checking", "savings", "card", "cash", "paypal", "depot", "loan", "asset"]
+Kind = Literal["checking", "savings", "card", "cash", "digital_wallet", "depot", "loan", "asset"]
 CurrencyCode = Annotated[str, Field(pattern=r"^[A-Z]{3}$")]
 
 
