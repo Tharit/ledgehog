@@ -1621,7 +1621,7 @@ be external and configurable; this is how.
 
 Three properties the implementation must have:
 
-- **Absent configuration, the pass does not run.** No default endpoint, no
+- **Absent configuration, nothing is asked.** No default endpoint, no
   fallback provider. Entries fall through to the review queue unclassified
   and the system stays fully usable — this is the state a deployment without
   a model is permanently in, not a degraded mode.
