@@ -35,8 +35,6 @@ export type Evidence = {
 	proposal: boolean;
 	/** where the rule is edited, for a `rule` key whose rule exists */
 	href?: string;
-	/** the model's rationale, shown on demand */
-	rationale?: string;
 };
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -137,11 +135,12 @@ export function describeKey(
 			};
 		}
 		case 'llm': {
+			// the rationale is the line itself; a "none" answer is a key on an empty field
 			const rationale = typeof basis?.rationale === 'string' ? basis.rationale.trim() : '';
+			const lead = basis?.none === true ? 'AI model: no fitting category' : 'AI model';
 			return {
-				text: 'suggested by the model',
-				proposal: true,
-				...(rationale ? { rationale } : {})
+				text: rationale ? `${lead}${basis?.none === true ? ' — ' : ': '}${rationale}` : lead,
+				proposal: true
 			};
 		}
 		case 'matcher_decision':
@@ -166,8 +165,7 @@ export function describeKey(
 						: was.text.replace(/^history: (.*)$/, 'history ($1)');
 			return {
 				text: `confirmed by you, proposed by ${proposedBy}`,
-				proposal: false,
-				...(was?.rationale ? { rationale: was.rationale } : {})
+				proposal: false
 			};
 		}
 		default:

@@ -192,7 +192,7 @@ describe('UnitPanel: a flow unit', () => {
 		expect(panel.isOpen).toBe(true);
 	});
 
-	it('shows the model rationale on demand', async () => {
+	it('shows the model rationale inline, and a "none" answer on the empty category', async () => {
 		const { dialog } = await openPanel(
 			unit({
 				anchor_entry_id: 1,
@@ -206,10 +206,29 @@ describe('UnitPanel: a flow unit', () => {
 			})
 		);
 
-		expect(within(dialog).getByText('suggested by the model')).toBeInTheDocument();
-		expect(screen.queryByText('Looks like groceries')).toBeNull();
-		await fireEvent.click(within(dialog).getByRole('button', { name: 'Show rationale' }));
-		expect(await screen.findByText('Looks like groceries')).toBeInTheDocument();
+		expect(within(dialog).getByText('AI model: Looks like groceries')).toBeInTheDocument();
+		expect(within(dialog).queryByRole('button', { name: 'Show rationale' })).toBeNull();
+	});
+
+	it('shows the model\'s "none" answer on a category that stays empty', async () => {
+		const { dialog } = await openPanel(
+			unit({
+				anchor_entry_id: 1,
+				entries: [
+					entry({
+						id: 1,
+						unit_key: 1,
+						category_id: null,
+						derivation: {
+							category: { pass: 'llm', basis: { none: true, rationale: 'a motorway toll' } }
+						}
+					})
+				]
+			})
+		);
+
+		const line = within(dialog).getByText('AI model: no fitting category — a motorway toll');
+		expect(line).toHaveAttribute('data-proposal');
 	});
 });
 

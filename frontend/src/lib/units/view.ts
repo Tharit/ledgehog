@@ -228,7 +228,7 @@ function fieldView(
 		proposal,
 		edit,
 		shown:
-			key && proposal
+			key && proposal && value !== null
 				? { pass: key.pass, basis: (key.basis as Record<string, unknown>) ?? {} }
 				: null,
 		canReset: edit !== undefined && (changed ?? fallback),

@@ -75,15 +75,27 @@ describe('describeKey', () => {
 		expect(describeIt({ pass: 'history' })?.text).toBe('history');
 	});
 
-	it('keeps the model rationale for a popover', () => {
-		expect(
-			describeIt({ pass: 'llm', basis: { rationale: ' Looks like groceries ' } })
-		).toMatchObject({
-			text: 'suggested by the model',
-			proposal: true,
-			rationale: 'Looks like groceries'
+	it('shows the model rationale inline', () => {
+		expect(describeIt({ pass: 'llm', basis: { rationale: ' Looks like groceries ' } })).toEqual({
+			text: 'AI model: Looks like groceries',
+			proposal: true
 		});
-		expect(describeIt({ pass: 'llm', basis: { model: 'x' } })?.rationale).toBeUndefined();
+		expect(describeIt({ pass: 'llm', basis: { model: 'x' } })?.text).toBe('AI model');
+	});
+
+	it('words the model\'s "none" answer as no fitting category, with its rationale', () => {
+		expect(
+			describeIt({
+				pass: 'llm',
+				basis: { none: true, rationale: 'a motorway toll; there is no category for tolls' }
+			})
+		).toEqual({
+			text: 'AI model: no fitting category — a motorway toll; there is no category for tolls',
+			proposal: true
+		});
+		expect(describeIt({ pass: 'llm', basis: { none: true } })?.text).toBe(
+			'AI model: no fitting category'
+		);
 	});
 
 	it('matcher keys: a decision is decided, a proposal is not', () => {
@@ -110,10 +122,9 @@ describe('describeKey', () => {
 		expect(e?.proposal).toBe(false);
 	});
 
-	it('user over a model proposal keeps the rationale', () => {
+	it('user over a model proposal names the model', () => {
 		const e = describeIt({ pass: 'user', basis: { pass: 'llm', basis: { rationale: 'because' } } });
 		expect(e?.text).toBe('confirmed by you, proposed by the model');
-		expect(e?.rationale).toBe('because');
 	});
 
 	it("words a matcher decision on the type of a documented entry as the linked document's", () => {
