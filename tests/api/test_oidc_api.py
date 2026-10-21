@@ -230,7 +230,10 @@ def test_users_differing_only_in_case_make_the_match_ambiguous(make_oidc, provid
     with api_engine.begin() as conn:
         for login in ("Bob@home.test", "bob@home.test"):
             conn.execute(
-                text("INSERT INTO app_user (login, pw_hash, display_name, source) VALUES (:l, NULL, :l, 'oidc')"),
+                text(
+                    "INSERT INTO app_user (login, pw_hash, display_name, source) "
+                    "VALUES (:l, NULL, :l, 'oidc')"
+                ),
                 {"l": login},
             )
     before = count_users(api_engine)
