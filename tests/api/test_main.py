@@ -104,3 +104,28 @@ def test_the_test_importer_registers_only_behind_the_flag_and_fills_the_provider
         assert registered_providers() == []
     finally:
         reset_document_providers()
+
+
+def test_configure_logging_shows_info_once():
+    import io
+    import logging
+
+    from app import main
+
+    ledger = logging.getLogger("ledgehog")
+    saved = (list(ledger.handlers), ledger.level, ledger.propagate)
+    ledger.handlers.clear()
+    try:
+        main.configure_logging()
+        main.configure_logging()
+        assert len(ledger.handlers) == 1
+        assert ledger.propagate is False
+        assert logging.getLogger("ledgehog.startup").isEnabledFor(logging.INFO)
+        buf = io.StringIO()
+        ledger.handlers[0].setStream(buf)  # type: ignore[attr-defined]
+        logging.getLogger("ledgehog.startup").info("hello")
+        assert buf.getvalue() == "INFO:     ledgehog.startup: hello\n"
+    finally:
+        ledger.handlers[:] = saved[0]
+        ledger.setLevel(saved[1])
+        ledger.propagate = saved[2]

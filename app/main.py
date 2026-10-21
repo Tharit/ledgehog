@@ -36,6 +36,21 @@ from app.utils.config import Config
 
 log = logging.getLogger("ledgehog")
 
+
+def configure_logging() -> None:
+    """Show the application's INFO lines (`ledgehog.*`) on stderr, in uvicorn's console style.
+
+    Idempotent. Touches neither the root logger nor uvicorn's loggers."""
+    if any(getattr(h, "_ledgehog", False) for h in log.handlers):
+        return
+    handler = logging.StreamHandler()  # stderr
+    handler.setFormatter(logging.Formatter("%(levelname)s:     %(name)s: %(message)s"))
+    handler._ledgehog = True  # type: ignore[attr-defined]
+    log.addHandler(handler)
+    log.setLevel(logging.INFO)
+    log.propagate = False
+
+
 Scope = MutableMapping[str, Any]
 Receive = Callable[[], Awaitable[MutableMapping[str, Any]]]
 Send = Callable[[MutableMapping[str, Any]], Awaitable[None]]
@@ -72,6 +87,7 @@ def build() -> FastAPI:
 
     This is where concrete plugins are registered: core and the API only see the protocols.
     """
+    configure_logging()
     configure_classifiers(default_classifiers)  # before start: the start sequence settles
     configure_rule_tools(default_rule_tools())
     config = Config.from_env()
