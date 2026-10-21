@@ -9,11 +9,12 @@ from __future__ import annotations
 from datetime import date
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel
 
 from app.api.errors import ApiError, map_error
 from app.api.ids import PathId
+from app.api.routers.changes import model_queue_of
 from app.api.routers.entries import EntryOut
 from app.api.routers.unit_drafts import (
     UnitCommitOut,
@@ -87,10 +88,13 @@ class UnitOut(BaseModel):
     waiting: WaitingOut | None = None
     # ... for a document instead of a partner: set instead of `waiting`
     waiting_document: WaitingDocumentOut | None = None
+    # the model is still looking at one of its entries (read from its list when the response is built)
+    model_pending: bool = False
 
     @staticmethod
-    def of(view: UnitView) -> UnitOut:
+    def of(view: UnitView, model_pending: frozenset[int] = frozenset()) -> UnitOut:
         return UnitOut(
+            model_pending=any(e.id in model_pending for e in view.entries),
             anchor_entry_id=view.anchor_entry_id,
             unit_key=view.unit_key,
             state=UnitStateOut.of(view.state),
@@ -120,11 +124,11 @@ class QueueSectionOut(BaseModel):
     groups: list[CurrencyGroupOut]  # `needs_account` only: units per required currency, by code; else []
 
     @staticmethod
-    def of(section: QueueSection) -> QueueSectionOut:
+    def of(section: QueueSection, model_pending: frozenset[int] = frozenset()) -> QueueSectionOut:
         return QueueSectionOut(
             kind=section.kind,
             total=section.total,
-            units=[UnitOut.of(u) for u in section.units],
+            units=[UnitOut.of(u, model_pending) for u in section.units],
             next_cursor=section.next_cursor,
             groups=[CurrencyGroupOut(currency=g.currency, count=g.count) for g in section.groups],
         )
@@ -141,8 +145,15 @@ class QueueCountOut(BaseModel):
     needs_account: int
 
 
+def _model_pending(request: Request) -> frozenset[int]:
+    """The entries the model is still looking at, now (empty without a model)."""
+    queue = model_queue_of(request)
+    return queue.entry_ids() if queue is not None else frozenset()
+
+
 @router.get("/queue")
 def get_review_queue(
+    request: Request,
     user: CurrentUser,
     engine: EngineDep,
     limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = DEFAULT_LIMIT,
@@ -159,7 +170,10 @@ def get_review_queue(
         )
     with engine.connect() as conn:
         queue = review_queue(conn, limit=limit, section=section, cursor=cursor)
-    return ReviewQueueOut(sections=[QueueSectionOut.of(s) for s in queue.sections], total=queue.total)
+    pending = _model_pending(request)
+    return ReviewQueueOut(
+        sections=[QueueSectionOut.of(s, pending) for s in queue.sections], total=queue.total
+    )
 
 
 @router.get("/queue/count")
@@ -182,13 +196,13 @@ map_error(UnitMissing, 404, "not_found")
 
 
 @router.get("/{entry_id}")
-def get_unit(entry_id: PathId, user: CurrentUser, engine: EngineDep) -> UnitOut:
+def get_unit(request: Request, entry_id: PathId, user: CurrentUser, engine: EngineDep) -> UnitOut:
     """The unit holding the entry, as stored: its state and every entry with its derivation."""
     with engine.connect() as conn:
         view = read_unit(conn, entry_id)
     if view is None:
         raise UnitMissing(entry_id)
-    return UnitOut.of(view)
+    return UnitOut.of(view, _model_pending(request))
 
 
 # a draft that makes no sense against the stored unit: one 422 with the machine code in `details.code`

@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from sqlalchemy import Engine, text
 
 from app.api.session import CurrentUser, EngineDep
+from app.core.model.queue import ModelQueue
 from app.core.tasks import TaskRegistry
 from app.core.tasks.changes import DOCUMENTS, LEDGER, ChangeRegister
 
@@ -32,6 +33,12 @@ class ChangeValues(BaseModel):
 
 class ChangesOut(ChangeValues):
     active_task: str | None  # the current user's running sync or discovery task
+    model_pending: int  # entries the model still has to look at (0 without a model); the client polls faster
+
+
+def model_queue_of(request: Request) -> ModelQueue | None:
+    queue: ModelQueue | None = getattr(request.app.state, "model", None)
+    return queue
 
 
 def register_of(request: Request) -> ChangeRegister:
@@ -55,4 +62,9 @@ def get_changes(request: Request, user: CurrentUser, engine: EngineDep) -> Chang
     values = values_of(register_of(request), engine)
     tasks: TaskRegistry = request.app.state.tasks
     active = tasks.active(user.id)
-    return ChangesOut(**values.model_dump(), active_task=active.task_id if active is not None else None)
+    queue = model_queue_of(request)
+    return ChangesOut(
+        **values.model_dump(),
+        active_task=active.task_id if active is not None else None,
+        model_pending=queue.pending() if queue is not None else 0,
+    )

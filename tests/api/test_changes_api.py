@@ -25,7 +25,8 @@ def test_the_read_has_every_account_and_a_start_value_for_one_no_write_touched(s
     with sync.engine.begin() as conn:  # rows inserted outside the server move nothing
         ids = [int(conn.execute(insert, {"n": n}).scalar_one()) for n in "AB"]
     body = sync.client.get("/api/changes").json()
-    assert set(body) == {"ledger", "documents", "accounts", "active_task"}
+    assert set(body) == {"ledger", "documents", "accounts", "active_task", "model_pending"}
+    assert body["model_pending"] == 0
     assert set(body["accounts"]) == {str(i) for i in ids} and body["active_task"] is None
     start = sync.app.state.changes.start_value
     assert body["ledger"] == body["documents"] == start and set(body["accounts"].values()) == {start}
