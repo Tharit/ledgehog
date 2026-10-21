@@ -210,7 +210,8 @@ columns and no payments; a card with inverted signs, multi-line cells and no
 balance — are the importer's tests. Their fixtures are written for the
 purpose: real exports carry names and account numbers and are not committed.
 The presets are JSON files shipped as package data, loaded as package
-resources, and carry neutral names, not bank names.
+resources, and named after the bank and account whose export they read
+(`consorsbank_giro`).
 
 ## 9. Not in this importer
 
