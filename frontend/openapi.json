@@ -301,6 +301,13 @@
             "title": "Base Currency",
             "type": "string"
           },
+          "kinds": {
+            "items": {
+              "$ref": "#/components/schemas/KindNetWorthOut"
+            },
+            "title": "Kinds",
+            "type": "array"
+          },
           "net_worth": {
             "items": {
               "$ref": "#/components/schemas/PointNetWorthOut"
@@ -321,6 +328,7 @@
           "base_currency",
           "points",
           "net_worth",
+          "kinds",
           "accounts"
         ],
         "title": "BalancesOut",
@@ -856,6 +864,9 @@
             "title": "Own",
             "type": "array"
           },
+          "own_sum": {
+            "$ref": "#/components/schemas/LineOut"
+          },
           "parent_id": {
             "anyOf": [
               {
@@ -883,6 +894,7 @@
           "parent_id",
           "own",
           "total",
+          "own_sum",
           "sum"
         ],
         "title": "CategorySeriesOut",
@@ -2512,6 +2524,37 @@
           "instance_id"
         ],
         "title": "InstanceStartedEvent",
+        "type": "object"
+      },
+      "KindNetWorthOut": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "checking",
+              "savings",
+              "card",
+              "cash",
+              "paypal",
+              "depot",
+              "loan",
+              "asset"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "net_worth": {
+            "items": {
+              "$ref": "#/components/schemas/PointNetWorthOut"
+            },
+            "title": "Net Worth",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "net_worth"
+        ],
+        "title": "KindNetWorthOut",
         "type": "object"
       },
       "LineOut": {

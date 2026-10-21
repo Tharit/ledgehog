@@ -1321,6 +1321,8 @@ export interface components {
             accounts: components["schemas"]["AccountBalancesOut"][];
             /** Base Currency */
             base_currency: string;
+            /** Kinds */
+            kinds: components["schemas"]["KindNetWorthOut"][];
             /** Net Worth */
             net_worth: components["schemas"]["PointNetWorthOut"][];
             /** Points */
@@ -1497,6 +1499,7 @@ export interface components {
             category_id: number;
             /** Own */
             own: components["schemas"]["LineOut"][];
+            own_sum: components["schemas"]["LineOut"];
             /** Parent Id */
             parent_id: number | null;
             sum: components["schemas"]["LineOut"];
@@ -2012,6 +2015,16 @@ export interface components {
         InstanceStartedEvent: {
             /** Instance Id */
             instance_id: number;
+        };
+        /** KindNetWorthOut */
+        KindNetWorthOut: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "checking" | "savings" | "card" | "cash" | "paypal" | "depot" | "loan" | "asset";
+            /** Net Worth */
+            net_worth: components["schemas"]["PointNetWorthOut"][];
         };
         /** LineOut */
         LineOut: {
