@@ -163,3 +163,24 @@ def test_run_not_running_is_refused(env: Env) -> None:
         ingest_delivery(env.engine, res.run_id, [row(source_id="b")], covered_through=THROUGH)
     assert env.run_row(res.run_id).status == "ok"
     assert env.count("source_transaction") == 1
+
+
+def test_a_run_that_brings_no_new_rows_still_moves_the_ledger_value(env: Env) -> None:
+    """The run's write takes the shared settle lock, which notes the ledger (architecture §4.2, §5.2): a
+    completed run moves the ledger value and its account's even when every row was already imported."""
+    from app.core.tasks.changes import ChangeRegister
+    from app.utils.db.changes import account_key, install_change_hooks
+
+    first = env.deliver([row(source_id="a")])
+    assert first.run_id is not None and env.run_row(first.run_id).status == "ok"
+    assert env.count("source_transaction") == 1
+
+    register = ChangeRegister()
+    install_change_hooks(env.engine, register.bump)
+    before = register.value("ledger")
+
+    again = env.deliver([row(source_id="a")])  # the same row: nothing new arrives
+    assert again.run_id is not None and env.run_row(again.run_id).status == "ok"
+    assert env.count("source_transaction") == 1
+    assert register.value("ledger") != before
+    assert register.value(account_key(env.account)) != register.start_value
