@@ -130,6 +130,14 @@ describe('balanceRows', () => {
 		]);
 	});
 
+	it('leaves the net worth out when it is toggled off', () => {
+		const { lines, rows } = balanceRows(balances(), accounts, new Set([2]), 'en', false);
+
+		expect(lines.map((l) => l.label)).toEqual(['Savings']);
+		expect(rows[0]).not.toHaveProperty('net_worth');
+		expect(balanceRows(balances(), accounts, new Set(), 'en', false).lines).toEqual([]);
+	});
+
 	it('does not chart an account without a valued balance, even when toggled', () => {
 		const { lines } = balanceRows(balances(), accounts, new Set([3]));
 

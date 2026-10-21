@@ -194,18 +194,19 @@ export type BalanceRow = {
 };
 
 /**
- * The month-end points of the net worth and of the accounts toggled on, one row per point. A
- * balance that could not be valued is null: a gap, never a zero.
+ * The month-end points of the net worth (unless toggled off) and of the accounts toggled on, one
+ * row per point. A balance that could not be valued is null: a gap, never a zero.
  */
 export function balanceRows(
 	report: Balances,
 	accounts: ReadonlyMap<number, Account>,
 	shown: ReadonlySet<number>,
-	locale = 'en'
+	locale = 'en',
+	netWorth = true
 ): { lines: BalanceLine[]; rows: BalanceRow[] } {
-	const lines: BalanceLine[] = [
-		{ key: 'net_worth', label: 'Net worth', color: 'primary', accountId: null }
-	];
+	const lines: BalanceLine[] = netWorth
+		? [{ key: 'net_worth', label: 'Net worth', color: 'primary', accountId: null }]
+		: [];
 	const chosen = report.accounts.filter(
 		(a) => shown.has(a.account_id) && a.balances.some((b) => b !== null)
 	);
@@ -222,9 +223,9 @@ export function balanceRows(
 		const row: BalanceRow = {
 			key: point,
 			date: new Date(`${point}T00:00:00Z`),
-			label: formatPointLabel(point, locale),
-			net_worth: report.net_worth[i].total?.amount ?? null
+			label: formatPointLabel(point, locale)
 		};
+		if (netWorth) row.net_worth = report.net_worth[i].total?.amount ?? null;
 		for (const a of chosen) row[`a${a.account_id}`] = a.balances[i]?.amount ?? null;
 		return row;
 	});

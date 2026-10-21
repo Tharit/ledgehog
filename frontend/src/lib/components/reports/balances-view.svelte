@@ -23,9 +23,10 @@
 	} = $props();
 
 	let shown = $state<number[]>([]);
+	let showNet = $state(true);
 
 	const table = $derived(balanceTable(report, accounts, locale));
-	const chart = $derived(balanceRows(report, accounts, new Set(shown), locale));
+	const chart = $derived(balanceRows(report, accounts, new Set(shown), locale, showNet));
 	const columns = $derived(
 		report.points.map((p) => ({ key: p, label: pointColumnLabel(p, locale) }))
 	);
@@ -53,11 +54,35 @@
 	{#if report.points.length === 0}
 		<p class="text-sm text-muted-foreground" data-slot="nothing">No month-end in this period.</p>
 	{:else}
-		<BalanceChart lines={chart.lines} rows={chart.rows} currency={report.base_currency} {locale} />
+		{#if chart.lines.length === 0}
+			<p
+				class="flex h-72 items-center justify-center text-sm text-muted-foreground"
+				data-slot="nothing-selected"
+			>
+				Nothing selected.
+			</p>
+		{:else}
+			<BalanceChart
+				lines={chart.lines}
+				rows={chart.rows}
+				currency={report.base_currency}
+				{locale}
+			/>
+		{/if}
 
-		{#if table.groups.length > 0}
-			<fieldset class="flex flex-col gap-2" data-slot="account-toggles">
-				<legend class="mb-1 text-sm font-medium">Show accounts in the chart</legend>
+		<fieldset class="flex flex-col gap-2" data-slot="account-toggles">
+			<legend class="mb-1 text-sm font-medium">Show in the chart</legend>
+			<div class="flex flex-wrap items-center gap-x-4 gap-y-1">
+				<span class="w-20 text-xs text-muted-foreground">Total</span>
+				<label class="flex items-center gap-2 text-sm">
+					<input type="checkbox" class="size-4 accent-primary" bind:checked={showNet} />
+					<span class="inline-flex items-center gap-1.5">
+						<span class="size-2 shrink-0 rounded-full bg-primary" aria-hidden="true"></span>
+						Net worth
+					</span>
+				</label>
+			</div>
+			{#if table.groups.length > 0}
 				{#each table.groups as group (group.key)}
 					<div class="flex flex-wrap items-center gap-x-4 gap-y-1">
 						<span class="w-20 text-xs text-muted-foreground">{group.label}</span>
@@ -79,8 +104,8 @@
 						{/each}
 					</div>
 				{/each}
-			</fieldset>
-		{/if}
+			{/if}
+		</fieldset>
 
 		<div class="overflow-x-auto">
 			<table class="w-full text-sm" data-slot="balances-table">

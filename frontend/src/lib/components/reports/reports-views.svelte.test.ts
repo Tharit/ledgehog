@@ -160,7 +160,9 @@ describe('OverTimeView, by category', () => {
 			props: { report: overTimeCategories(), categories, scope }
 		});
 
-		const chart = container.querySelector('[data-slot="category-stack-chart"]')!;
+		const chart = container.querySelector(
+			'[data-slot="category-stack-chart"] [data-slot="chart"]'
+		)!;
 		expect(chart).toHaveClass('h-72', 'aspect-auto');
 	});
 });
@@ -225,5 +227,25 @@ describe('BalancesView', () => {
 		await fireEvent.click(toggle);
 
 		expect(toggle).toBeChecked();
+	});
+
+	it('toggles the net worth out of the chart, and says so when nothing is left', async () => {
+		const { container } = render(BalancesView, { props: { report: balances(), accounts } });
+		const net = screen.getByRole('checkbox', { name: 'Net worth' });
+		expect(net).toBeChecked();
+		expect(container.querySelector('[data-slot="balance-chart"]')).not.toBeNull();
+
+		await fireEvent.click(net);
+
+		expect(net).not.toBeChecked();
+		expect(container.querySelector('[data-slot="balance-chart"]')).toBeNull();
+		expect(container.querySelector('[data-slot="nothing-selected"]')).toHaveTextContent(
+			'Nothing selected.'
+		);
+		// the table stays as it is
+		expect(container.querySelector('[data-row="net-worth"]')).toHaveTextContent('5,000.00');
+
+		await fireEvent.click(screen.getByRole('checkbox', { name: 'Giro' }));
+		expect(container.querySelector('[data-slot="balance-chart"]')).not.toBeNull();
 	});
 });
