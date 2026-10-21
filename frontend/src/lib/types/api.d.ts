@@ -509,6 +509,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ledger/entries/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Entries
+         * @description Every entry matching the list's filter, in the list's order, as CSV (one row per entry).
+         *
+         *     Declared before `/{entry_id}`. Streamed from a server-side cursor: no page, no cap.
+         */
+        get: operations["export_entries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ledger/entries/{entry_id}": {
         parameters: {
             query?: never;
@@ -5857,6 +5879,8 @@ export interface operations {
     list_entries_view: {
         parameters: {
             query?: {
+                limit?: number;
+                offset?: number;
                 from?: string | null;
                 to?: string | null;
                 account_id?: number[] | null;
@@ -5872,8 +5896,6 @@ export interface operations {
                 q?: string | null;
                 type?: string[] | null;
                 flag?: string[] | null;
-                limit?: number;
-                offset?: number;
             };
             header?: never;
             path?: never;
@@ -5888,6 +5910,60 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EntryPageOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    export_entries: {
+        parameters: {
+            query?: {
+                from?: string | null;
+                to?: string | null;
+                account_id?: number[] | null;
+                category_id?: number[] | null;
+                category_descendants?: boolean;
+                uncategorised?: boolean;
+                payee_id?: number[] | null;
+                tag_id?: number[] | null;
+                amount_min?: number | null;
+                amount_max?: number | null;
+                currency?: string | null;
+                direction?: ("in" | "out") | null;
+                q?: string | null;
+                type?: string[] | null;
+                flag?: string[] | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The CSV. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
                 };
             };
             /** @description Not signed in (or wrong login or password). */
