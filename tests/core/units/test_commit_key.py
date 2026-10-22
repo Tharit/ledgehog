@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 
 from app.core.resolution import Decided
-from app.core.resolution.types import USER_NO_PAYEE
 from app.core.units.overlay import _commit_key
 from tests.core.units.scene import Scene
 
@@ -30,7 +29,7 @@ def test_a_value_the_user_fixed_and_no_payee_are_the_users_and_an_empty_field_ha
     assert _commit_key(Decided("x", "user", {}), None) == {"pass": "user"}
     shown = {"pass": "history", "basis": {"matches": 2}}
     assert _commit_key(Decided("x", "user", {}), shown) == {"pass": "user", "basis": shown}
-    assert _commit_key(USER_NO_PAYEE, None) == {"pass": "user"}
+    assert _commit_key(Decided(None, "user", {}), None) == {"pass": "user"}
     assert _commit_key(None, shown) is None
 
 

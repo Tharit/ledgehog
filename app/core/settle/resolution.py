@@ -35,7 +35,7 @@ from app.core.resolution import Decided, Resolved, diff, rederive
 from app.core.resolution.load import UnconfirmedEntry, load_accounts, load_rules, load_unconfirmed
 from app.core.resolution.registry import classifiers_for
 from app.core.resolution.snapshot import load_snapshot, load_votes_of, touches
-from app.core.resolution.types import USER_NO_PAYEE, column_of, is_user_no_payee
+from app.core.resolution.types import column_of, is_standing_empty
 from app.core.settle.run import ResolutionContext, SettleRun, StepOutcome, current_run
 
 _COLUMN: dict[Field, str] = {
@@ -99,7 +99,7 @@ def stored_decisions(row: UnconfirmedEntry) -> dict[Field, Decided | None]:
             # the keys a NULL carries: the user's decision of no payee (a standing key) and a proposal's
             # explained absence
             is_decision = f == "payee" and isinstance(key, Mapping) and key.get("pass") == "user"
-            current[f] = USER_NO_PAYEE if is_decision else _stored_absence(key)
+            current[f] = Decided(None, "user", {}) if is_decision else _stored_absence(key)
             continue
         if isinstance(key, Mapping) and isinstance(key.get("pass"), str):
             basis = key.get("basis")
@@ -112,7 +112,7 @@ def stored_decisions(row: UnconfirmedEntry) -> dict[Field, Decided | None]:
 def new_derivation(old: Mapping[str, Any], new: Resolved) -> dict[str, Any]:
     out = {k: v for k, v in old.items() if k not in _COLUMN}
     for f, d in new.items():
-        out[f] = {"pass": "user"} if is_user_no_payee(d) else {"pass": d.pass_name, "basis": dict(d.basis)}
+        out[f] = {"pass": "user"} if is_standing_empty(d) else {"pass": d.pass_name, "basis": dict(d.basis)}
     return out
 
 

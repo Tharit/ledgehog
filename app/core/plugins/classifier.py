@@ -17,7 +17,8 @@ from typing import Any, Literal, Protocol
 Field = Literal["type", "payee", "category", "counter_account"]
 FIELD_ORDER: tuple[Field, ...] = ("type", "payee", "category", "counter_account")
 
-# The value of a `payee` proposal meaning "no payee": history's majority for none (history.md §3).
+# The value of a `payee` Proposal that says "the majority has no payee" (history.md §3): the payee field
+# ends with nothing stored and no key, and no later pass is tried for it (spec §5.9 Pass 2).
 NO_PAYEE = "none"
 
 # `derivation` pass names (spec §5.9). Standing: own_account, rule. Proposals: history, llm.
@@ -34,11 +35,6 @@ HISTORY_KEYS: tuple[HistoryKey, ...] = (
     "tokens",
 )
 DOCUMENT_KEY: HistoryKey = "document_merchant"
-
-
-# The value of a `payee` Proposal that says "the majority has no payee": the payee field ends with
-# nothing stored and no later pass is tried for it (spec §5.9 Pass 2).
-NO_PAYEE = "none"
 
 
 @dataclass(frozen=True, slots=True)

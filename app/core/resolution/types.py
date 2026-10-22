@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any
 
-from app.core.plugins.classifier import FIELD_ORDER, NO_PAYEE, Field
+from app.core.plugins.classifier import FIELD_ORDER, Field
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,21 +22,36 @@ class Decided:
     basis: Mapping[str, Any]
 
 
-# A flow's payee is in one of three states: a payee, undecided (NULL, no key) or NO PAYEE BY THE USER'S
-# DECISION (NULL with the standing key `{"pass": "user"}`). Resolution carries the third as this decision on
-# the payee: the value is the `NO_PAYEE` sentinel (a stored column holds NULL), the pass is `user`.
-USER_NO_PAYEE = Decided(NO_PAYEE, "user", {})
+# An empty field with a key: a standing key is a decision to leave it empty (only the payee permits that: a
+# flow's payee is a payee, undecided (NULL, no key) or no payee by the user's decision, NULL with the key
+# `{"pass": "user"}`), a proposal's key explains why it is empty. An empty field without a key is undecided.
+def is_standing_empty(d: Decided | None) -> bool:
+    """A decision to leave the field empty: `Decided(None, "user", {})`, never a pass's proposal."""
+    return d is not None and d.value is None and d.pass_name == "user"
 
 
-def is_user_no_payee(d: Decided | None) -> bool:
-    """The user's decision of no payee (the standing third state), never a pass's proposal."""
-    return d is not None and d.value == NO_PAYEE and d.pass_name == "user"
+def is_explained_absence(d: Decided | None) -> bool:
+    """A pass's proposal that the field stays empty (its basis says why)."""
+    return d is not None and d.value is None and d.pass_name != "user"
+
+
+def stands_for(d: Decided | None) -> tuple[int | str | None, bool]:
+    """What a decision stands for, to tell whether a field has changed along the walk: its value, and
+    whether it is a decision to leave the field empty. That decision is not the same as no decision or an
+    explained absence, though all three store NULL."""
+    return (None, False) if d is None else (d.value, is_standing_empty(d))
+
+
+def check_standing_empty(field: Field, d: Decided | None) -> None:
+    """Only the payee may be decided empty: any other field with a standing empty is a bug."""
+    if field != "payee" and is_standing_empty(d):
+        raise ValueError(f"a standing empty is only valid for the payee, not {field}")
 
 
 def column_of(d: Decided | None) -> int | None:
-    """The id a decision stores in its column: none for no decision, an explained absence or the user's
-    decision of no payee."""
-    return None if d is None or d.value is None or is_user_no_payee(d) else int(d.value)
+    """The id a decision stores in its column: none for no decision, an explained absence or a standing
+    empty."""
+    return None if d is None or d.value is None else int(d.value)
 
 
 class Resolved(Mapping[Field, Decided]):
@@ -46,6 +61,8 @@ class Resolved(Mapping[Field, Decided]):
 
     def __init__(self, items: Mapping[Field, Decided] | None = None) -> None:
         ordered = {f: items[f] for f in FIELD_ORDER if items and f in items}
+        for f, d in ordered.items():
+            check_standing_empty(f, d)
         self._items: Mapping[Field, Decided] = MappingProxyType(ordered)
 
     def __getitem__(self, key: Field) -> Decided:

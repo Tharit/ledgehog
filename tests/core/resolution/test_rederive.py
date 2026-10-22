@@ -107,12 +107,12 @@ def test_a_second_settle_writes_nothing() -> None:
 
 
 def test_a_user_none_payee_is_kept_while_earlier_fields_change_and_never_proposed_over() -> None:
-    from app.core.resolution.types import USER_NO_PAYEE
+    user_no_payee = Decided(None, "user", {})
 
-    current = {"payee": USER_NO_PAYEE, "category": dec(8, "rule")}  # the type is derived: changed
+    current = {"payee": user_no_payee, "category": dec(8, "rule")}  # the type is derived: changed
     s = Script("rule", {"type": "flow", "payee": 6, "category": 9})
     r = go(current, [s])
-    assert r["payee"] == USER_NO_PAYEE
+    assert r["payee"] == user_no_payee
     assert r["category"].value == 9
 
 

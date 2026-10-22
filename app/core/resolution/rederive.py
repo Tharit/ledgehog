@@ -19,7 +19,7 @@ from app.core.plugins.classifier import (
     HistorySource,
 )
 from app.core.resolution.resolve import Decided, Resolved, document_type, resolve
-from app.core.resolution.types import is_user_no_payee
+from app.core.resolution.types import is_explained_absence, is_standing_empty, stands_for
 
 __all__ = ["diff", "rederive", "resolve_afresh"]
 
@@ -79,7 +79,7 @@ def rederive(
         if field == "type" and (doc := document_type(entry, cur)) is not None:
             new = doc  # a linked document decides the type first, whatever stands (spec §5.9, field order)
             changed = changed or new.value != (cur.value if cur else None)
-        elif is_user_no_payee(cur):
+        elif is_standing_empty(cur):
             new = cur  # the user's decision stays until the user changes it (I18, I20)
         elif cur is not None and cur.pass_name in STANDING_PASSES and not changed and not own:
             new = cur
@@ -95,7 +95,7 @@ def rederive(
                     stored=current,
                 )
             new = last.get(field)
-            changed = changed or (new.value if new else None) != (cur.value if cur else None)
+            changed = changed or stands_for(new) != stands_for(cur)
         if new is not None:
             fixed[field] = new
         return new
@@ -104,7 +104,7 @@ def rederive(
     for field in _walk(kind.value if kind else None):
         step(field)
     if kind is None:  # nothing but an explained absence can stand without a type
-        fixed = {f: d for f, d in fixed.items() if d.value is None}
+        fixed = {f: d for f, d in fixed.items() if is_explained_absence(d)}
     return Resolved(fixed)
 
 

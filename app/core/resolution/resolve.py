@@ -27,7 +27,7 @@ from app.core.plugins.classifier import (
 )
 from app.core.resolution.accounts import counter_account_ok
 from app.core.resolution.pass0 import own_account_index, pass0
-from app.core.resolution.types import Decided, Resolved
+from app.core.resolution.types import Decided, Resolved, is_standing_empty
 
 __all__ = ["Decided", "Resolved", "document_type", "resolve"]
 
@@ -126,7 +126,7 @@ class _Run:
         for field in ("payee", "category", "counter_account"):
             if (
                 (f := self.fixed.get(field)) is not None
-                and f.value is not None  # an absence implies no type
+                and (f.value is not None or is_standing_empty(f))  # an explained absence implies no type
                 and not (field == "counter_account" and f.value == self.entry.account_id)
             ):
                 kind = "transfer" if field == "counter_account" else "flow"

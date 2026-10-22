@@ -73,7 +73,7 @@ from app.core.resolution.enrich import LinkedDocument, with_document
 from app.core.resolution.load import UnconfirmedEntry
 from app.core.resolution.resolve import document_type
 from app.core.resolution.snapshot import LayeredHistory
-from app.core.resolution.types import USER_NO_PAYEE, is_user_no_payee
+from app.core.resolution.types import check_standing_empty, is_standing_empty, stands_for
 from app.core.settle.flags import NONE_KEY
 from app.core.settle.pairing import PAIR_COUNTER_KEY_VALUE, PAIR_KEY_VALUE
 from app.core.settle.resolution import Rewrite, settle_rewrites, stored_decisions
@@ -458,7 +458,7 @@ class _Walk:
         # a drafted payee or category makes the entry a flow, a drafted counter-account a transfer (§5.9)
         # (a payee drafted as none is the user's decision of no payee: a drafted payee all the same)
         hints: dict[Field, Decided] = {
-            f: USER_NO_PAYEE if d.value is None else Decided(d.value, "user", {})
+            f: Decided(d.value, "user", {})
             for f in ("payee", "category", "counter_account")
             if (d := _normalised(row.draft.field(f), f)).mode == "fixed"
             and (d.value is not None or f == "payee")
@@ -504,7 +504,7 @@ class _Walk:
             new: Decided | None
             if d.mode == "fixed":
                 if d.value is None:  # only the payee: 'no payee' is the user's decision (three states)
-                    new = c if is_user_no_payee(c) else USER_NO_PAYEE
+                    new = c if is_standing_empty(c) else Decided(None, "user", {})
                 elif c is not None and c.value == d.value:
                     new = c
                 else:
@@ -523,7 +523,7 @@ class _Walk:
                 own = f == "counter_account" and c is not None and c.value == entry.account_id
                 if owned and f in ("type", "counter_account"):
                     new = c  # the pair's, until the draft moves it
-                elif is_user_no_payee(c):
+                elif is_standing_empty(c):
                     new = c  # the user's 'no payee' stands until the user changes it (I18, I20)
                 elif c is not None and c.pass_name in STANDING_PASSES and not changed and not own:
                     new = c
@@ -540,7 +540,8 @@ class _Walk:
                 and (c is None or c.value != "transfer")
             ):
                 new = c  # only a source's original may become a transfer (I31); settling leaves it as it is
-            changed = changed or (new.value if new else None) != (c.value if c else None)
+            changed = changed or stands_for(new) != stands_for(c)
+            check_standing_empty(f, new)
             if new is not None:
                 fixed[f] = new
             return new
@@ -607,7 +608,7 @@ def _commit_key(final: Decided | None, shown: Mapping[str, Any] | None) -> Mappi
     the basis of a value the draft fixes."""
     if final is None:
         return None
-    if is_user_no_payee(final):
+    if is_standing_empty(final):
         return _USER
     if final.value is None:
         return {"pass": final.pass_name, "basis": dict(final.basis)}
@@ -1417,7 +1418,7 @@ def _write_accepted(r: _Row, decisions: Mapping[Field, Decided | None]) -> None:
 
     r.type = None if decisions["type"] is None else str(decisions["type"].value)
     r.payee_id, r.category_id, r.counter_account_id = (
-        None if is_user_no_payee(decisions["payee"]) else value("payee"),
+        value("payee"),
         value("category"),
         value("counter_account"),
     )
