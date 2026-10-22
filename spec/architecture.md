@@ -655,11 +655,12 @@ with that proposal's key nested as its basis, a `user` value left unchanged
 stays, anything else is `user` without one. The client may name a basis only
 for the passes `history`, `llm` and `matcher_proposal`; it is stored wrapped
 under `user`, never trusted as evidence, so a client can never assert a `rule`
-or `own_account` key. Empty fields carry no key, with one exception: a payee
-draft with `mode: fixed` and no value is the user's "no payee" decision
-(`spec.md` §5.9, state 3), stored as the key `user` with a NULL `payee_id`. A
-`fixed` draft of type, category or counter-account without a value is not a
-decision: it is treated as re-resolve. A commit does not confirm (`spec.md`
+or `own_account` key. A field that may be empty, such as the payee, and that the
+commit leaves empty — cleared (`mode: fixed`, no value) or left so — is decided
+empty: the key `user` on a NULL column (`spec.md` §5.9, field order). A field
+that may not be empty — type, category, counter-account — is not decided by a
+`fixed` draft without a value, which is treated as re-resolve, and an empty one
+carries no key. A commit does not confirm (`spec.md`
 §5.9, §6). A counter-account that a pick
 fills on a leg that had none is the pair's: it takes the pair's pass with the
 basis `{"from": "counterpart"}`, and leaves with the pair (`spec.md` §5.7). Besides an invalid result and a missing document decision, it

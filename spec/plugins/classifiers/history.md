@@ -62,9 +62,8 @@ strict majority wins (`spec.md` §5.9).
   entry's `booked_on` (`spec.md` §5.7, §3.3). The filters remove votes; they
   never change the result.
 - **Payee**, then **category** — only for a flow; every matching vote that is a
-  flow counts. A vote without a payee votes for *no payee*, which can win; it then
-  ends the search with the payee undecided (`spec.md` §5.9, the three states of
-  the payee) — payees are optional (`spec.md` §3.6), so most matches carrying
+  flow counts. A vote without a payee votes for *no payee*, which can win: an empty result,
+  which ends the search and stores nothing (`spec.md` §5.9) — payees are optional (`spec.md` §3.6), so most matches carrying
   none is evidence. Confirmed flows always carry a category.
   Key 3 applies to the category only, and only once the payee is resolved.
 

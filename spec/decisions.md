@@ -3993,3 +3993,21 @@ Spec §5.9 pass 3; architecture §4.1, §4.2, §5.4; `ux/views/review-queue.md`.
   name checkable.
 - **Structured output and a stable prompt prefix.** Few tokens generated, no invented id, the category list
   processed once by a server that caches it.
+
+## D228 Empty is a value
+
+Spec §5.9 (field order, keys), §6; architecture §4.1; history.md; patterns §4.3. Supersedes D217's three payee
+states.
+
+- **A standing key fixes a value, empty included.** Whether a field may be empty is the field's own rule: the payee
+  may, a type, a flow's category and a transfer's counter-account may not. There are no payee states, only values,
+  keys and that rule.
+- **An empty result ends the search and stores no key.** On a field that may be empty, a pass's empty result wins
+  like a value and needs no review; history's majority for *no payee* is that, not a special case.
+- **A commit decides what the user saw, empty included where the field may be empty,** whether cleared or left
+  empty. A confirmed unit is never resolved again, so this only matters for a unit still incomplete after the
+  commit — and there it keeps the user's value from being proposed over, whichever way it became empty.
+- **On a field that may be empty, the clear control works on any value, a proposal included;** the empty value reads
+  muted ("No payee"); the payee picker's separate "No payee" item goes.
+- Rejected: *dropping the user's empty payee key* (an incomplete unit could be pulled back into review by a payee
+  the user had removed); *keeping a key only for a cleared payee* (two empty states the user cannot tell apart).

@@ -158,7 +158,10 @@ into a percentage.
 
 The clear control on a type, category or counter-account is offered only on a
 value the user decided; it means "remove my choice", and the passes propose
-again. On a payee it means "no payee" (spec §5.9, state 3). "Reset to
+again. On a field that may be empty, such as the payee, it is offered on any
+value, a proposal included, and makes it empty. An empty field that may be empty
+reads as its empty value, muted — "No payee" — where an empty field that may
+not be empty shows its prompt. "Reset to
 proposal" is offered only when the value shown differs from the value stored.
 
 ### 4.4 Account facts

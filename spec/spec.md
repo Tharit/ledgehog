@@ -1945,27 +1945,21 @@ it. Then:
      history, then the model. The payee comes first because category rules and
      history may key on it.
 
-**A flow's payee, which is optional (§3.6), is in one of three states:**
+**A field holds a value, and empty is a value too.** A standing key fixes the
+value it carries, whatever it is, empty included: rederiving keeps it, and no
+pass proposes over it (I18, I20). Whether a field may be empty is the field's
+own rule. A flow's payee is optional (§3.6) and may be decided empty; a type,
+a flow's category and a transfer's counter-account may not, because without
+them an entry is not complete (§3.4) — clearing one removes its value and
+its key, whatever set them, and the passes propose again. There is no deciding
+"no category": a flow without a category is unclassified (§3.4, §6).
 
-1. **A payee**, with the key of the pass that decided it, or `user`.
-2. **Undecided**: empty, with no key. The passes may propose. History's
-   majority for *no payee* ends the search in this state (Pass 2, below):
-   nothing is proposed, and no later key or the model is tried. It stores
-   nothing and carries no key, so it never keeps a unit unconfirmed — a stored
-   proposal would hold back units whose category a rule already decided.
-3. **No payee by the user's decision**: empty, with the key `user` and no
-   basis — the derivation is `{"pass": "user"}` on the payee field, the
-   `payee_id` column NULL. It is a standing key: rederiving keeps it, no pass
-   proposes over it, and a payee rule does not override it either — a
-   standing value stays until the user changes it (I18, I20). It does not make
-   a unit unconfirmed. A user chooses it by clearing the payee in the work
-   panel; picking a payee, or re-resolving the field, replaces it; changing
-   the entry's type to transfer drops it with the payee (I9).
-
-For the other derived fields — type, category, counter-account — an emptied
-field is not a decision: clearing one the user decided withdraws the decision,
-and the passes propose again. There is no deciding "no category": a flow
-without a category is unclassified (§3.4, §6).
+An empty field with no key is **undecided**: nothing is decided, and either
+no pass found anything or a pass's result was empty, which stores nothing
+(below). A value decided
+empty is a decision like any other: it does not make a unit unconfirmed,
+picking a value or re-resolving replaces it, and a type the field does not
+belong to drops it with its key (I9).
 
 A field fixed by the review draft (§6) is taken as decided, and the fields
 after it are resolved around it.
@@ -1979,9 +1973,12 @@ counter-account changes, the pair is released on both legs and may be made again
 in the same round (§5.7). Settling writes only the differences, so a second
 settle writes nothing.
 
-For each field, the first pass to produce a value wins; a pass without the
-evidence it requires proposes nothing, and the next pass is tried — except
-that history's majority for *no payee* ends the payee search, the payee staying undecided (above). Pass 0 and
+For each field, the first pass to produce a result wins; on a field that may
+be empty, empty is a result too (above). A pass without the evidence it
+requires produces nothing, and the next pass is tried. An empty result stores
+no key: a field that may be empty needs no review when it is empty, so it
+never keeps a unit unconfirmed — a stored proposal would hold back units whose
+category a rule already decided. Pass 0 and
 rules are certain when they match, history needs a majority (below), and the
 model always answers as a guess. Whatever wins carries its basis, shown in
 review (§6). What pass 0 and rules decide is **standing**: a fact or a
@@ -2157,10 +2154,10 @@ others were. It only refines key 2.
 For each key it counts the matches within a lookback period and proposes the
 value a strict majority of them share; the basis records how many agree, of
 how many, and since when — "3 of 4 since March". A key without a majority
-proposes nothing, and the next key is tried. For the payee, which is optional
-(§3.6), a majority for *no payee* is itself the result: the payee stays
-undecided (§5.9, field order), nothing is proposed, and neither a later key nor
-the model is tried. The length of the lookback period
+proposes nothing, and the next key is tried. A
+majority for empty, on a field that may be empty such as the payee, is a
+result like any other (field order): the field stays empty, with no key, and
+neither a later key nor a later pass is tried. The length of the lookback period
 is a tuning parameter of the history pass, not a rule of the ledger.
 
 **Hard constraints filter history's evidence; they never transform its
@@ -2302,9 +2299,9 @@ value left unchanged stays, anything else is `user` without a basis. The client
 may name a basis only of pass `history`, `llm` or `matcher_proposal`; it is
 stored wrapped under `user` and never trusted as evidence, and a client can
 never assert `rule`, `own_account` or any other standing key. A value the user
-sets or picks by hand becomes `user` without a basis, and an empty field carries no
-key — except the payee a user decided to leave empty (field order, state 3),
-which carries `user`. A counter-account a pair fills is the pair's,
+sets or picks by hand becomes `user` without a basis, empty included where the
+field may be empty (field order); an empty field that may not be empty carries
+no key. A counter-account a pair fills is the pair's,
 with the basis `{"from": "counterpart"}` (§5.7). A `user` key left unchanged by a later commit
 stays as it is, so one never wraps another. An entry without a `user` key is
 one on which no derived value was decided by a human: a unit confirmed by pass
@@ -2393,9 +2390,12 @@ What the panel offers, each previewed before the commit:
   zero is refused in the preview, because an entry has a non-zero amount. Splitting a paired leg can leave a same-currency pair unequal; the
   preview shows it invalid and offers the remedies of §5.7.
 - **Picking a document** (§5.8).
-- **Clearing a value the user decided** — type, category, counter-account:
-  the choice is removed and the passes propose again. Clearing the payee
-  decides "no payee" (§5.9, field order, state 3).
+- **Clearing a value.** Clearing a field that may be empty, such as the payee,
+  makes it empty, whatever value it showed, a proposal included, and the commit
+  decides it so. Clearing a field that may not be empty — type, category,
+  counter-account — removes its value and its key, whatever set them, and the
+  passes propose again; it changes something only where the passes would now
+  propose otherwise, as for a value the user decided (§5.9, field order).
 - **Re-resolving** a unit: a preview of what resolution proposes now, to keep
   or adjust — for values a human decided, what the passes would say instead.
 - **Creating a rule from a change.** Where the draft changes a value a rule
@@ -2638,10 +2638,10 @@ committed with it.
 **A commit writes the full state the user saw**, in one transaction — the
 link decisions, the split, the values, a counter-leg where §5.7 creates one —
 with the keys of §5.9: every proposal shown is accepted, and every value left
-as it is is decided as it is. An empty field stays empty and carries no key,
-except the payee a user decided to leave empty (§5.9, field order, state 3)
-and the document: a commit without a document picked decides "none"
-(§5.8), which the server requires to be said explicitly where documents are
+as it is is decided as it is, empty included where the field may be empty
+(§5.9, field order). A field that may not be empty and is empty stays so and
+carries no key. The document may be empty: a commit without a document picked
+decides "none" (§5.8), which the server requires to be said explicitly where documents are
 suggested or one is awaited. **A commit does not
 confirm**; confirmation is never an action. Settling then derives the unit's
 state like any other (above): it is confirmed when it meets every requirement
