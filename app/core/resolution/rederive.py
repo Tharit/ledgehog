@@ -19,7 +19,7 @@ from app.core.plugins.classifier import (
     HistorySource,
 )
 from app.core.resolution.resolve import Decided, Resolved, document_type, resolve
-from app.core.resolution.types import is_decided_empty, is_explained_absence, stands_for
+from app.core.resolution.types import is_explained_absence, stands_for
 
 __all__ = ["diff", "rederive", "resolve_afresh"]
 
@@ -63,8 +63,8 @@ def rederive(
     """The values of an unconfirmed entry now, given what is stored (`current`).
 
     `reopen` says a value BEFORE the first field changed (a document was linked, spec §5.9): every standing
-    value is derived again, as it is once a value changes along the walk. A value decided empty stays, as
-    it does there."""
+    value is derived again, as it is once a value changes along the walk. A value decided empty is a
+    standing value like any other."""
     fixed: dict[Field, Decided] = {}
     changed = reopen
     # The last afresh resolution. Resolving around values it decided itself gives the same answer,
@@ -79,8 +79,6 @@ def rederive(
         if field == "type" and (doc := document_type(entry, cur)) is not None:
             new = doc  # a linked document decides the type first, whatever stands (spec §5.9, field order)
             changed = changed or new.value != (cur.value if cur else None)
-        elif is_decided_empty(cur):
-            new = cur  # a value decided empty stays until the user changes it (I18, I20)
         elif cur is not None and cur.pass_name in STANDING_PASSES and not changed and not own:
             new = cur
         else:

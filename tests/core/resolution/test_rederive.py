@@ -106,14 +106,34 @@ def test_a_second_settle_writes_nothing() -> None:
 # ---- the third payee state: no payee by the user's decision (a standing key on a NULL) ------------
 
 
-def test_a_user_none_payee_is_kept_while_earlier_fields_change_and_never_proposed_over() -> None:
+def test_a_value_decided_empty_is_a_standing_value_like_any_other() -> None:
     user_no_payee = Decided(None, "user", {})
-
-    current = {"payee": user_no_payee, "category": dec(8, "rule")}  # the type is derived: changed
     s = Script("rule", {"type": "flow", "payee": 6, "category": 9})
-    r = go(current, [s])
+
+    # nothing before it changes: kept, and never proposed over
+    kept = {"type": dec("flow", "rule"), "payee": user_no_payee, "category": dec(8, "rule")}
+    r = go(kept, [s])
     assert r["payee"] == user_no_payee
+    assert diff(r, go(r, [s])) == {}
+
+    # an earlier value changes (the type is derived afresh): it is derived again
+    current = {"payee": user_no_payee, "category": dec(8, "rule")}
+    r = go(current, [s])
+    assert r["payee"].value == 6
     assert r["category"].value == 9
+
+
+def test_a_link_reopens_a_value_decided_empty_as_it_does_any_standing_value() -> None:
+    user_no_payee = Decided(None, "user", {})
+    current = {"type": dec("flow", "rule"), "payee": user_no_payee, "category": dec(1, "rule")}
+    e = entry(documented=True, document_pass="matcher_decision")
+    s = Script("rule", {"payee": 7, "category": 2})
+    assert rederive(e, current, accounts=ACCOUNTS, classifiers=[s])["payee"] == user_no_payee  # plain: kept
+    r = rederive(e, current, accounts=ACCOUNTS, classifiers=[s], reopen=True)
+    assert r["payee"].value == 7 and r["payee"].pass_name == "rule"
+    # nothing proposes: the payee is undecided afterwards, not decided empty
+    r = rederive(e, current, accounts=ACCOUNTS, classifiers=[], reopen=True)
+    assert "payee" not in r or not (r["payee"].value is None and r["payee"].pass_name == "user")
 
 
 # ---- a document decides the type first, with the link's key (spec §5.9 field order) -----------------

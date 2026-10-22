@@ -524,8 +524,6 @@ class _Walk:
                 own = f == "counter_account" and c is not None and c.value == entry.account_id
                 if owned and f in ("type", "counter_account"):
                     new = c  # the pair's, until the draft moves it
-                elif is_decided_empty(c):
-                    new = c  # a value decided empty stands until the user changes it (I18, I20)
                 elif c is not None and c.pass_name in STANDING_PASSES and not changed and not own:
                     new = c
                 elif not rederive_ok and not changed:
