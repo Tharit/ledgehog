@@ -2304,9 +2304,8 @@ field may be empty (field order); an empty field that may not be empty carries
 no key. A counter-account a pair fills is the pair's,
 with the basis `{"from": "counterpart"}` (§5.7). A `user` key left unchanged by a later commit
 stays as it is, so one never wraps another. An entry without a `user` key is
-one on which no derived value was decided by a human: a unit confirmed by pass
-0, rules and matcher decisions alone, even if a user has since edited an authored
-field such as its note.
+one no commit has decided: a unit confirmed by pass 0, rules and matcher
+decisions alone. A commit decides every value the user saw.
 
 Which values get a key is a deliberate rule, because the keys that are not
 standing *are*, with completeness and pairing, the review state (§6):
