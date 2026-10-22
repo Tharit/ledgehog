@@ -24,7 +24,6 @@
 		invalid = false,
 		clearable = false,
 		emptyText,
-		none,
 		disabled = false,
 		disabledReason,
 		add,
@@ -37,12 +36,10 @@
 		label: string;
 		proposal?: boolean;
 		invalid?: boolean;
-		/** show the X: the payee's means "no payee", the others' "remove my choice" */
+		/** show the X: the payee's makes it empty, the others' means "remove my choice" */
 		clearable?: boolean;
-		/** what an empty field says instead of "Choose a …" ("No payee": the user's decision) */
+		/** what an empty field says instead of "Choose a …": the empty value of a field that may be empty ("No payee") */
 		emptyText?: string;
-		/** a first item "No payee": the user's decision that there is none; `selected` while it stands */
-		none?: { selected: boolean };
 		disabled?: boolean;
 		/** why an item cannot be chosen */
 		disabledReason?: (id: number) => string | undefined;
@@ -54,15 +51,12 @@
 	let open = $state(false);
 	let trigger = $state<HTMLElement | null>(null);
 
-	// the "No payee" item has no id of its own: 0 is no payee's
-	const NONE = 0;
-	const items = $derived([
-		...(none ? [{ id: NONE, label: 'No payee' }] : []),
-		...targetOptions(kind, lookups, value).map((option) => ({
+	const items = $derived(
+		targetOptions(kind, lookups, value).map((option) => ({
 			...option,
 			disabled: disabledReason?.(option.id)
 		}))
-	]);
+	);
 	const manage = $derived(
 		kind === 'category'
 			? { href: '/settings/categories', text: 'Manage categories' }
@@ -73,7 +67,7 @@
 
 	function choose(next: number) {
 		open = false;
-		onchange(next === NONE ? null : next);
+		onchange(next);
 	}
 </script>
 
@@ -105,7 +99,7 @@
 		<Popover.Content align="start" class="w-80 gap-0 p-1" aria-label={`Choose a ${kindWord(kind)}`}>
 			<Picker
 				{items}
-				selectedId={none?.selected ? NONE : value}
+				selectedId={value}
 				label="Choices"
 				findLabel={`Search ${kindWord(kind)}`}
 				placeholder={`Find a ${kindWord(kind)}…`}
@@ -113,11 +107,7 @@
 				onselect={choose}
 			>
 				{#snippet row(option)}
-					{#if option.id === NONE}
-						<span>{option.label}</span>
-					{:else}
-						<RuleTarget sets={kind} id={option.id} {lookups} full />
-					{/if}
+					<RuleTarget sets={kind} id={option.id} {lookups} full />
 				{/snippet}
 			</Picker>
 			{#if add}
@@ -148,8 +138,8 @@
 	</Popover.Root>
 	{#if clearable && value !== null && !disabled}
 		<IconButton
-			verb={kind === 'payee' ? 'No payee' : 'Remove my choice'}
-			label={kind === 'payee' ? 'No payee' : `Remove my choice of ${kindWord(kind)}`}
+			verb={kind === 'payee' ? 'Clear payee' : 'Remove my choice'}
+			label={kind === 'payee' ? 'Clear payee' : `Remove my choice of ${kindWord(kind)}`}
 			onclick={() => onchange(null)}
 		>
 			<XIcon aria-hidden="true" />

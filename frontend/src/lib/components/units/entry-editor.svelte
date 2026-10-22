@@ -98,7 +98,7 @@
 	}
 
 	function pick(field: FieldView, value: number | null) {
-		// the X: the user takes their choice back (a payee: "no payee"; the rest is proposed again)
+		// the X: the user takes their choice back (a payee: empty; the rest is proposed again)
 		if (value === null) {
 			flow.clearField(view.id, field.name);
 			return;
@@ -350,8 +350,7 @@
 					value={typeof view.fields.payee.value === 'number' ? view.fields.payee.value : null}
 					{lookups}
 					clearable={view.fields.payee.clearable}
-					emptyText={view.fields.payee.decidedNone ? 'No payee' : undefined}
-					none={{ selected: view.fields.payee.decidedNone }}
+					emptyText="No payee"
 					proposal={view.fields.payee.proposal}
 					invalid={invalid('payee')}
 					onchange={(id) => pick(view.fields.payee, id)}

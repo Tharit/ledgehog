@@ -404,27 +404,27 @@ describe('the X and "Reset to proposal" follow what the preview shows', () => {
 		expect(field(empty, Draft.of(empty), preview(empty), 'payee').clearable).toBe(false);
 	});
 
-	it('tells "no payee" (the user’s decision) from an undecided empty payee', () => {
+	it('shows a payee decided empty as set by you, an undecided empty payee with no evidence', () => {
 		const decided = stored({ payee_id: null, derivation: { payee: { pass: 'user' } } });
 		const open = stored({ payee_id: null });
 		expect(field(decided, Draft.of(decided), preview(decided), 'payee')).toMatchObject({
 			value: null,
-			decidedNone: true,
 			clearable: false,
 			evidence: { text: 'set by you' }
 		});
 		expect(field(open, Draft.of(open), preview(open), 'payee')).toMatchObject({
-			decidedNone: false,
+			value: null,
+			clearable: false,
 			evidence: null
 		});
 	});
 
-	it('offers Reset on "no payee" chosen over an undecided or a set payee, not over the same decision', () => {
+	it('offers Reset on a payee cleared over an undecided or a set payee, not over the same decision', () => {
 		const open = stored({ payee_id: null });
 		const answer = preview(open);
 		answer.rows[0].fields.payee = fieldOut(null, { pass: 'user' });
 		const none = Draft.of(open).clearField(1, 'payee');
-		expect(field(open, none, answer, 'payee')).toMatchObject({ decidedNone: true, canReset: true });
+		expect(field(open, none, answer, 'payee')).toMatchObject({ canReset: true });
 		// before any preview, the fixed null still differs from an undecided payee
 		expect(field(open, none, null, 'payee').canReset).toBe(true);
 

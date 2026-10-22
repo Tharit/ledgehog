@@ -350,7 +350,7 @@ describe('clearField (the X)', () => {
 	const flowEntry = (over: Parameters<typeof entry>[0] = {}) =>
 		Draft.of(unit({ anchor_entry_id: 1, entries: [entry({ id: 1, unit_key: 1, ...over })] }));
 
-	it('is the user’s "no payee" decision on a payee: fixed null, a standing value', () => {
+	it('makes a payee empty, a proposal included: fixed null, a standing value', () => {
 		const draft = flowEntry({ payee_id: 20 }).clearField(1, 'payee');
 		expect(draft.fieldEdit(1, 'payee')).toEqual({ mode: 'fixed', value: null, shown: null });
 		expect(first(draft).payee).toEqual({ mode: 'fixed', value: null });

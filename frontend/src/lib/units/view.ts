@@ -45,10 +45,8 @@ export type FieldView = {
 	shown: ShownBasis | null;
 	/** "Reset to proposal" applies: the value shown (or its key) differs from the stored one, by an edit */
 	canReset: boolean;
-	/** the X applies: the value is the user's own decision (a payee: any value, X means "no payee") */
+	/** the X applies: the value is the user's own decision (a payee, which may be empty: any value, X makes it empty) */
 	clearable: boolean;
-	/** an empty payee by the user's decision ("No payee"), not one still open to proposals */
-	decidedNone: boolean;
 	/**
 	 * The user's draft changes a value a RULE set (the stored key's pass is `rule`, the value
 	 * shown is another and no rule says it): the offer to create a rule from the transaction
@@ -237,7 +235,6 @@ function fieldView(
 			(name === 'payee' ||
 				(key?.pass === 'user' && !viaPair && !isPartnerBasis(key)) ||
 				edit?.mode === 'fixed'),
-		decidedNone: name === 'payee' && value === null && key?.pass === 'user',
 		changedFromRule
 	};
 }
