@@ -16,7 +16,8 @@ from dataclasses import field as dataclass_field
 from typing import Literal
 
 from app.core.plugins.classifier import (
-    NO_PAYEE,
+    EMPTY,
+    MAY_BE_EMPTY,
     AccountFact,
     Classifier,
     ClassifierContext,
@@ -27,7 +28,7 @@ from app.core.plugins.classifier import (
 )
 from app.core.resolution.accounts import counter_account_ok
 from app.core.resolution.pass0 import own_account_index, pass0
-from app.core.resolution.types import Decided, Resolved, is_standing_empty
+from app.core.resolution.types import Decided, Resolved, is_decided_empty
 
 __all__ = ["Decided", "Resolved", "document_type", "resolve"]
 
@@ -92,8 +93,9 @@ class _Run:
         else:
             ok = (
                 _is_id(p.value)
-                or (field == "payee" and p.value == NO_PAYEE)
-                or (p.value is None and field in _FLOW_FIELDS)  # an explained absence
+                or (field in MAY_BE_EMPTY and p.value == EMPTY)  # an empty result
+                # an explained absence, on a field that may not be empty (where empty is a result instead)
+                or (p.value is None and field in _FLOW_FIELDS and field not in MAY_BE_EMPTY)
             )
         if not ok:
             raise ValueError(f"{c.pass_name} proposed {p.value!r} for {field}")
@@ -126,7 +128,7 @@ class _Run:
         for field in ("payee", "category", "counter_account"):
             if (
                 (f := self.fixed.get(field)) is not None
-                and (f.value is not None or is_standing_empty(f))  # an explained absence implies no type
+                and (f.value is not None or is_decided_empty(f))  # an explained absence implies no type
                 and not (field == "counter_account" and f.value == self.entry.account_id)
             ):
                 kind = "transfer" if field == "counter_account" else "flow"
@@ -142,7 +144,7 @@ class _Run:
                 return Decided("transfer", c.pass_name, p.basis)
             for field in _FLOW_FIELDS:
                 p = self.ask(c, field)
-                if p is None or p.value == NO_PAYEE:
+                if p is None or p.value == EMPTY:  # an empty result decides no type
                     continue
                 if p.value is None:  # an absence implies no type
                     self.explained.setdefault(field, self.decision(c, p))
@@ -168,7 +170,7 @@ class _Run:
             p = self.ask(c, field)
             if p is None:
                 continue
-            if p.value == NO_PAYEE:
+            if p.value == EMPTY:  # an empty result wins like a value, ends the search, stores nothing
                 return None
             return self.decision(c, p)
         return None

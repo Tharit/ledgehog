@@ -62,6 +62,7 @@ from app.core.matching import Leg, counter_leg_amount, leg_of, pair_all, unmatch
 from app.core.matching.documents import DocTxn
 from app.core.plugins.classifier import (
     FIELD_ORDER,
+    MAY_BE_EMPTY,
     STANDING_PASSES,
     AccountFact,
     EntryInput,
@@ -73,7 +74,7 @@ from app.core.resolution.enrich import LinkedDocument, with_document
 from app.core.resolution.load import UnconfirmedEntry
 from app.core.resolution.resolve import document_type
 from app.core.resolution.snapshot import LayeredHistory
-from app.core.resolution.types import check_standing_empty, is_standing_empty, stands_for
+from app.core.resolution.types import check_may_be_empty, is_decided_empty, stands_for
 from app.core.settle.flags import NONE_KEY
 from app.core.settle.pairing import PAIR_COUNTER_KEY_VALUE, PAIR_KEY_VALUE
 from app.core.settle.resolution import Rewrite, settle_rewrites, stored_decisions
@@ -456,12 +457,12 @@ class _Walk:
         entry = _resolution_input(row)
         history = self.world.history  # a documented entry is asked the merchant key only (the classifier)
         # a drafted payee or category makes the entry a flow, a drafted counter-account a transfer (§5.9)
-        # (a payee drafted as none is the user's decision of no payee: a drafted payee all the same)
+        # (a field that may be empty drafted with no value is decided empty: a drafted payee all the same)
         hints: dict[Field, Decided] = {
             f: Decided(d.value, "user", {})
             for f in ("payee", "category", "counter_account")
             if (d := _normalised(row.draft.field(f), f)).mode == "fixed"
-            and (d.value is not None or f == "payee")
+            and (d.value is not None or f in MAY_BE_EMPTY)
         }
         implied: str | None = None
         if any(f in hints for f in ("payee", "category")):
@@ -503,8 +504,8 @@ class _Walk:
             c = cur.get(f)
             new: Decided | None
             if d.mode == "fixed":
-                if d.value is None:  # only the payee: 'no payee' is the user's decision (three states)
-                    new = c if is_standing_empty(c) else Decided(None, "user", {})
+                if d.value is None:  # only a field that may be empty (`_normalised`): decided empty
+                    new = c if is_decided_empty(c) else Decided(None, "user", {})
                 elif c is not None and c.value == d.value:
                     new = c
                 else:
@@ -523,8 +524,8 @@ class _Walk:
                 own = f == "counter_account" and c is not None and c.value == entry.account_id
                 if owned and f in ("type", "counter_account"):
                     new = c  # the pair's, until the draft moves it
-                elif is_standing_empty(c):
-                    new = c  # the user's 'no payee' stands until the user changes it (I18, I20)
+                elif is_decided_empty(c):
+                    new = c  # a value decided empty stands until the user changes it (I18, I20)
                 elif c is not None and c.pass_name in STANDING_PASSES and not changed and not own:
                     new = c
                 elif not rederive_ok and not changed:
@@ -541,7 +542,7 @@ class _Walk:
             ):
                 new = c  # only a source's original may become a transfer (I31); settling leaves it as it is
             changed = changed or stands_for(new) != stands_for(c)
-            check_standing_empty(f, new)
+            check_may_be_empty(f, new)
             if new is not None:
                 fixed[f] = new
             return new
@@ -593,22 +594,22 @@ def _release(e: Stored) -> tuple[int | None, dict[str, Any]]:
 
 
 def _normalised(d: FieldDraft, f: Field) -> FieldDraft:
-    """An emptied type, category or counter-account is not a decision: the passes propose again. Only the
-    payee has the decision 'no payee' (`fixed` with no value; the three states)."""
-    if d.mode == "fixed" and d.value is None and f != "payee":
+    """An emptied field that may not be empty is not a decision: the passes propose again. A field that may
+    be empty (`MAY_BE_EMPTY`) is decided empty by `fixed` with no value."""
+    if d.mode == "fixed" and d.value is None and f not in MAY_BE_EMPTY:
         return RERESOLVE
     return d
 
 
 def _commit_key(final: Decided | None, shown: Mapping[str, Any] | None) -> Mapping[str, Any] | None:
     """The key a commit writes for a value (§5.9, D212), a function of the FINAL decision alone: a standing
-    pass keeps its own key, a proposal is accepted (`user`, the proposal as its basis), the user's decision
-    of no payee is the key `user`, an empty field has none, but for a proposal's explained absence, which
-    there is nothing to accept of: its key stays. `shown`: the proposal the user accepted in the panel,
-    the basis of a value the draft fixes."""
+    pass keeps its own key, a proposal is accepted (`user`, the proposal as its basis), a decided empty is
+    the key `user`, an empty field has none (`_write_accepted` decides one that may be empty, left so), but
+    for a proposal's explained absence, which there is nothing to accept of: its key stays. `shown`: the
+    proposal the user accepted in the panel, the basis of a value the draft fixes."""
     if final is None:
         return None
-    if is_standing_empty(final):
+    if is_decided_empty(final):
         return _USER
     if final.value is None:
         return {"pass": final.pass_name, "basis": dict(final.basis)}
@@ -1401,12 +1402,15 @@ def _write_accepted(r: _Row, decisions: Mapping[Field, Decided | None]) -> None:
     """The row as a commit writes it: the decided values, each with the key the commit derives for it."""
     assert r.s0 is not None and r.s0_derivation is not None
     derivation = {k: v for k, v in r.s0_derivation.items() if k not in FIELD_ORDER}
+    kind = decisions["type"]
+    is_flow = kind is not None and kind.value == "flow"
     for f in DERIVED_FIELDS:
         shown = r.draft.field(f).shown_basis
         key = _commit_key(
-            decisions[f],
-            None if shown is None else {"pass": shown.pass_name, "basis": dict(shown.basis)},
+            decisions[f], None if shown is None else {"pass": shown.pass_name, "basis": dict(shown.basis)}
         )
+        if key is None and decisions[f] is None and f in MAY_BE_EMPTY and is_flow:
+            key = _USER  # a field that may be empty and is left so is decided empty, as the user saw it
         if key is not None:
             derivation[f] = key
     if r.original and r.stored is not None:
@@ -1471,13 +1475,13 @@ def _field_results(r: _Row) -> dict[Field, FieldResult]:
             and r.s1_derivation.get(f) == der.get(f)
         )
         evidence = (r.evidence or {}).get(f) if untouched else after.get(f)
-        # an empty field that has a decision is shown like a value: the user's of no payee, or a proposal's
-        # explained absence
+        # an empty field that has a decision is shown like a value: a decided empty, or a proposal's explained
+        # absence; the key a commit writes on an empty field that may be empty is shown without evidence
         shown = value is not None or evidence is not None
         out[f] = FieldResult(
             value=value,
             evidence=evidence if shown else None,
-            key=der.get(f) if shown else None,
+            key=der.get(f) if shown or f in MAY_BE_EMPTY else None,
             stored_value=stored_values[f],
             stored_key=r.stored.derivation.get(f) if r.stored else None,
         )

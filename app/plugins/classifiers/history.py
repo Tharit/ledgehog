@@ -12,8 +12,8 @@ from collections.abc import Sequence
 from app.core.ingest.identity import canonical_text
 from app.core.plugins.classifier import (
     DOCUMENT_KEY,
+    EMPTY,
     HISTORY_KEYS,
-    NO_PAYEE,
     ClassifierContext,
     EntryInput,
     Field,
@@ -147,7 +147,7 @@ class HistoryClassifier:
                     out.append((v.counter_account_id, v))
             elif v.type == "flow":
                 if field == "payee":
-                    out.append((v.payee_id if v.payee_id is not None else NO_PAYEE, v))
+                    out.append((v.payee_id if v.payee_id is not None else EMPTY, v))
                 elif v.category_id is not None:
                     out.append((v.category_id, v))
         return out

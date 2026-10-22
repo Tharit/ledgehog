@@ -6,7 +6,7 @@ from datetime import timedelta
 
 import pytest
 
-from app.core.plugins.classifier import NO_PAYEE
+from app.core.plugins.classifier import EMPTY
 from app.core.resolution import Decided, resolve
 from tests.core.resolution.helpers import DAY, Boom, Script, account, entry
 
@@ -140,7 +140,7 @@ def test_a_category_rule_reads_the_resolved_payee() -> None:
 
 
 def test_no_payee_ends_the_payee_field_and_category_still_resolves() -> None:
-    history = Script("history", {"type": "flow", "payee": NO_PAYEE, "category": 8})
+    history = Script("history", {"type": "flow", "payee": EMPTY, "category": 8})
     llm = Script("llm", {"payee": 9})
     r = run([history, llm])
     assert values(r) == {"type": "flow", "category": 8}
@@ -148,7 +148,7 @@ def test_no_payee_ends_the_payee_field_and_category_still_resolves() -> None:
 
 
 def test_no_payee_alone_does_not_decide_the_type() -> None:
-    assert dict(run([Script("history", {"payee": NO_PAYEE})])) == {}
+    assert dict(run([Script("history", {"payee": EMPTY})])) == {}
 
 
 def test_a_later_pass_is_tried_when_an_earlier_has_none() -> None:

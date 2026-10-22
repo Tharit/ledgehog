@@ -25,6 +25,7 @@ from sqlalchemy import Connection, text
 from app.core.model.queue import current_model_queue
 from app.core.plugins.classifier import (
     FIELD_ORDER,
+    MAY_BE_EMPTY,
     STANDING_PASSES,
     AccountFact,
     Classifier,
@@ -35,7 +36,7 @@ from app.core.resolution import Decided, Resolved, diff, rederive
 from app.core.resolution.load import UnconfirmedEntry, load_accounts, load_rules, load_unconfirmed
 from app.core.resolution.registry import classifiers_for
 from app.core.resolution.snapshot import load_snapshot, load_votes_of, touches
-from app.core.resolution.types import column_of, is_standing_empty
+from app.core.resolution.types import column_of, is_decided_empty
 from app.core.settle.run import ResolutionContext, SettleRun, StepOutcome, current_run
 
 _COLUMN: dict[Field, str] = {
@@ -96,9 +97,9 @@ def stored_decisions(row: UnconfirmedEntry) -> dict[Field, Decided | None]:
         value = values[f]
         key = row.derivation.get(f)
         if value is None:
-            # the keys a NULL carries: the user's decision of no payee (a standing key) and a proposal's
-            # explained absence
-            is_decision = f == "payee" and isinstance(key, Mapping) and key.get("pass") == "user"
+            # the keys a NULL carries: a decided empty (a standing key, on a field that may be empty) and a
+            # proposal's explained absence
+            is_decision = f in MAY_BE_EMPTY and isinstance(key, Mapping) and key.get("pass") == "user"
             current[f] = Decided(None, "user", {}) if is_decision else _stored_absence(key)
             continue
         if isinstance(key, Mapping) and isinstance(key.get("pass"), str):
@@ -112,13 +113,13 @@ def stored_decisions(row: UnconfirmedEntry) -> dict[Field, Decided | None]:
 def new_derivation(old: Mapping[str, Any], new: Resolved) -> dict[str, Any]:
     out = {k: v for k, v in old.items() if k not in _COLUMN}
     for f, d in new.items():
-        out[f] = {"pass": "user"} if is_standing_empty(d) else {"pass": d.pass_name, "basis": dict(d.basis)}
+        out[f] = {"pass": "user"} if is_decided_empty(d) else {"pass": d.pass_name, "basis": dict(d.basis)}
     return out
 
 
 def _stale_keys(row: UnconfirmedEntry, current: Mapping[Field, Decided | None]) -> bool:
     """A key of a field that has no decision: it is removed (a key explains a value or an absence).
-    `stored_decisions` reads the user's decision of no payee and a proposal's explained absence as
+    `stored_decisions` reads a decided empty and a proposal's explained absence as
     decisions; they stand while resolution produces them again (`diff`)."""
     return any(f in row.derivation and current[f] is None for f in _COLUMN)
 

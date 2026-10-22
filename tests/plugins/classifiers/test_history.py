@@ -7,7 +7,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from app.core.plugins.classifier import (
-    NO_PAYEE,
+    EMPTY,
     ClassifierContext,
     EntryInput,
     Field,
@@ -259,7 +259,7 @@ def test_no_payee_majority_is_proposed_and_ends_field() -> None:
     ]
     e = entry(counterparty_ref="CR", counterparty_name="Shop")
     p = run("payee", e, votes + flows(5, counterparty_name="Shop", payee_id=9, category_id=1))
-    assert p is not None and p.value == NO_PAYEE and (p.basis["agree"], p.basis["of"]) == (2, 3)
+    assert p is not None and p.value == EMPTY and (p.basis["agree"], p.basis["of"]) == (2, 3)
 
 
 def test_no_payee_tie_falls_through() -> None:

@@ -250,7 +250,8 @@ def test_opening_a_reviewed_unit_shows_it_as_stored_and_confirmed(scene: Scene) 
     assert plan.anchor_unit.state.confirmed and plan.consequences == ()
     cat = plan.row(e).fields["category"]
     assert cat.value == food and not cat.evidence.pass_name == "history"  # type: ignore[union-attr]
-    assert plan.row(e).derivation == dict(scene.row(e).derivation)
+    # as stored, but for the empty payee, which a commit would decide as it is (spec §5.9)
+    assert plan.row(e).derivation == {**scene.row(e).derivation, "payee": {"pass": "user"}}
 
 
 def test_emptying_a_reviewed_entrys_category_returns_its_unit_to_review(scene: Scene) -> None:

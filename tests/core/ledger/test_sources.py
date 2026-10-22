@@ -505,6 +505,34 @@ def test_afresh_resolution_rewrites_a_users_values_and_keys(
     assert q(isolated_engine, "SELECT purpose FROM source_transaction")[0].purpose == "REWE again"
 
 
+def test_afresh_resolution_derives_a_payee_decided_empty_again(
+    isolated_engine: Engine, acct: int, world: dict[str, int]
+):
+    """A new input derives everything again (spec §5.9, I18): a payee decided empty is no exception."""
+    with isolated_engine.begin() as conn:
+        landlord = seed.payee(conn, "Rewe AG")
+        conn.execute(
+            text(
+                "INSERT INTO rule (name, sets, payee_id, conditions) VALUES ('rewe payee', 'payee', :p,"
+                " CAST(:cond AS jsonb))"
+            ),
+            {"p": landlord, "cond": json.dumps([{"field": "purpose", "op": "contains", "value": "REWE"}])},
+        )
+    done = enter(isolated_engine, acct, purpose="mystery")
+    (e,) = entries_of(isolated_engine, done.source_id)
+    with isolated_engine.begin() as conn:
+        conn.execute(
+            text(
+                "UPDATE ledger_entry SET type = 'flow', payee_id = NULL,"
+                ' derivation = \'{"type": {"pass": "user"}, "payee": {"pass": "user"}}\'::jsonb WHERE id = :i'
+            ),
+            {"i": e.id},
+        )
+    edit(isolated_engine, done.source_id, purpose="REWE again")
+    (after,) = entries_of(isolated_engine, done.source_id)
+    assert after.payee_id == landlord and after.derivation["payee"]["pass"] == "rule"
+
+
 def test_afresh_resolution_drops_values_the_new_input_no_longer_supports(
     isolated_engine: Engine, acct: int, world: dict[str, int]
 ):

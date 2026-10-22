@@ -42,10 +42,15 @@ def test_historys_majority_for_no_payee_stores_nothing_and_ends_the_search(scene
     assert row.category_id == scene.cats["Food"]
     plan = scene.preview(e)
     payee = UnitFieldOut.of(plan.row(e).fields["payee"], stored=True).model_dump(by_alias=True)
-    assert payee["value"] is None and payee["key"] is None and payee["commit_key"] is None
+    # nothing is proposed or shown as decided; a commit would decide the empty payee the user saw (spec §5.9)
+    assert payee["value"] is None and payee["key"] is None
+    assert payee["commit_key"] == {"pass": "user", "basis": {}}
+    scene.commit(e)
+    assert scene.row(e).derivation["payee"] == {"pass": "user"}
+    assert scene.row(e).category_id == scene.cats["Food"]
 
 
-def test_only_the_payee_may_hold_a_standing_empty() -> None:
+def test_only_a_field_that_may_be_empty_may_hold_a_decided_empty() -> None:
     standing = Decided(None, "user", {})
     assert Resolved({"payee": standing})["payee"] == standing
     for field in ("category", "counter_account", "type"):

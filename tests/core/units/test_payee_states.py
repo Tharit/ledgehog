@@ -1,13 +1,18 @@
-"""The payee's three states: a payee; undecided (NULL, no key); no payee by the user's decision (NULL with the
-standing key `{"pass": "user"}`), and an emptied type, category or counter-account that is no decision."""
+"""Empty is a value (spec §5.9, D228): a payee decided empty (NULL with the standing key `{"pass": "user"}`),
+cleared or left so by a commit, against an undecided one (NULL, no key); an emptied type, category or
+counter-account is no decision."""
 
 from __future__ import annotations
 
 import json
 from typing import Any
 
+import pytest
 from sqlalchemy import text
 
+from app.core.plugins.classifier import EMPTY
+from app.core.resolution import Decided, Resolved, resolve
+from tests.core.resolution.helpers import Script, account, entry
 from tests.core.units.equality import preview_then_commit
 from tests.core.units.scene import RERESOLVE, DraftEntry, Scene, fixed
 
@@ -156,3 +161,100 @@ def test_a_payee_none_with_a_drafted_transfer_is_dropped_without_error(scene: Sc
     assert stored.type == "transfer" and stored.payee_id is None
     assert "payee" not in stored.derivation
     assert plan.row(e).fields["payee"].key is None
+
+
+# ---- empty is a value: cleared or left empty, a commit decides it (spec §5.9, §6) ---------------------
+
+
+def _history_of_payee(scene: Scene, payee: int, category: int, *, times: int = 2) -> None:
+    der = json.dumps({"type": {"pass": "user"}, "payee": {"pass": "user"}, "category": {"pass": "user"}})
+    for _ in range(times):
+        scene.movement(
+            -500, counterparty="RENT", type="flow", payee_id=payee, category_id=category, derivation=der
+        )
+
+
+def test_auto_confirm_is_unchanged_history_majority_for_no_payee_stores_no_key(scene: Scene) -> None:
+    rent = scene.category("Rent")
+    _rule(scene, "category", rent)
+    for _ in range(3):
+        scene.movement(
+            -500,
+            counterparty="RENT",
+            type="flow",
+            category_id=rent,
+            derivation=json.dumps({"type": {"pass": "user"}, "category": {"pass": "user"}}),
+        )
+    _s, (e,) = scene.movement(-700, counterparty="RENT")
+    scene.settle()
+    row = scene.row(e)
+    assert row.payee_id is None and "payee" not in row.derivation
+    assert row.category_id == rent and row.derivation["category"]["pass"] == "rule"
+    assert row.review_flags == []  # the empty result stores nothing, so nothing is left to review
+
+
+def test_clearing_a_proposed_payee_then_committing_decides_it_empty(scene: Scene) -> None:
+    landlord, rent = scene.payee("Landlord"), scene.category("Rent")
+    _history_of_payee(scene, landlord, rent)
+    _s, (e,) = scene.movement(-700, counterparty="RENT")
+    scene.settle()
+    row = scene.row(e)
+    assert row.payee_id == landlord and row.derivation["payee"]["pass"] == "history"
+    plan, _ = preview_then_commit(
+        scene, scene.draft(e, DraftEntry(e, payee=fixed(None), category=fixed(rent, ("history", {}))))
+    )
+    payee = plan.row(e).fields["payee"]
+    assert payee.value is None and payee.key == {"pass": "user"}  # nothing proposes over it
+    assert payee.stored_value == landlord  # what "Reset to proposal" shows again
+    row = scene.row(e)
+    assert row.payee_id is None and row.derivation["payee"] == {"pass": "user"}
+    assert plan.anchor_unit.state.confirmed and row.review_flags == []
+
+
+def test_a_decided_empty_payee_on_an_incomplete_unit_is_kept_by_settling(scene: Scene) -> None:
+    landlord = scene.payee("Landlord")
+    _s, (e,) = scene.movement(-700, counterparty="RENT")
+    scene.commit(e, DraftEntry(e, type=fixed("flow"), payee=fixed(None)))
+    scene.settle()
+    row = scene.row(e)
+    assert row.payee_id is None and row.derivation["payee"] == {"pass": "user"}
+    assert row.category_id is None and row.review_flags != []  # incomplete: in review, the payee stays
+    _rule(scene, "payee", landlord)
+    assert scene.settle().touched_entry_ids == ()
+    assert scene.row(e).derivation["payee"] == {"pass": "user"}
+
+
+def test_an_empty_payee_left_as_it_is_is_decided_empty_by_the_commit(scene: Scene) -> None:
+    rent = scene.category("Rent")
+    _s, (e,) = scene.movement(-700, counterparty="NOBODY")
+    assert scene.row(e).payee_id is None and "payee" not in scene.row(e).derivation
+    plan, _ = preview_then_commit(
+        scene, scene.draft(e, DraftEntry(e, type=fixed("flow"), category=fixed(rent)))
+    )
+    assert plan.row(e).fields["payee"].value is None
+    row = scene.row(e)
+    assert row.payee_id is None and row.derivation["payee"] == {"pass": "user"}
+    assert plan.anchor_unit.state.confirmed
+    # an empty category is not: it carries no key, and an entry without a type has no payee to decide
+    _s, (u,) = scene.movement(-300, counterparty="UNKNOWN")
+    scene.commit(u, DraftEntry(u, note="x"))
+    assert "payee" not in scene.row(u).derivation
+
+
+def test_a_decided_empty_is_refused_on_a_field_that_may_not_be_empty() -> None:
+    for field in ("type", "category", "counter_account"):
+        with pytest.raises(ValueError):
+            Resolved({field: Decided(None, "user", {})})  # type: ignore[misc]
+    assert Resolved({"payee": Decided(None, "user", {})})
+
+
+def test_an_empty_result_is_valid_only_where_a_field_may_be_empty() -> None:
+    assert "category" not in resolve(
+        entry(), accounts=[account(1)], classifiers=[Script("history", {"type": "flow", "payee": EMPTY})]
+    )
+    with pytest.raises(ValueError):
+        resolve(
+            entry(),
+            accounts=[account(1)],
+            classifiers=[Script("history", {"type": "flow", "category": EMPTY})],
+        )

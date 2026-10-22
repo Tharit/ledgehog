@@ -17,9 +17,14 @@ from typing import Any, Literal, Protocol
 Field = Literal["type", "payee", "category", "counter_account"]
 FIELD_ORDER: tuple[Field, ...] = ("type", "payee", "category", "counter_account")
 
-# The value of a `payee` Proposal that says "the majority has no payee" (history.md §3): the payee field
-# ends with nothing stored and no key, and no later pass is tried for it (spec §5.9 Pass 2).
-NO_PAYEE = "none"
+# The fields that may be empty (spec §5.9, field order: "empty is a value"): the one place that says so. The
+# payee may; a type, a category and a counter-account may not, because without them an entry is not complete.
+MAY_BE_EMPTY: frozenset[Field] = frozenset({"payee"})
+
+# The value of a Proposal that says "the field is empty" (history.md §3, e.g. the majority has no payee): an
+# empty result, valid only on a field that may be empty. It ends the search for the field with nothing stored
+# and no key (spec §5.9). A proposal with no value at all is something else: an explained absence.
+EMPTY = "none"
 
 # `derivation` pass names (spec §5.9). Standing: own_account, rule. Proposals: history, llm.
 STANDING_PASSES = frozenset({"own_account", "rule", "matcher_decision", "user"})

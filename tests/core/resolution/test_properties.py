@@ -5,7 +5,7 @@ from __future__ import annotations
 from hypothesis import given
 from hypothesis import strategies as st
 
-from app.core.plugins.classifier import NO_PAYEE, STANDING_PASSES, Field, Proposal
+from app.core.plugins.classifier import EMPTY, STANDING_PASSES, Field, Proposal
 from app.core.resolution import Decided, Resolved, diff, rederive, resolve
 from tests.core.resolution.helpers import Script, account, entry
 
@@ -22,7 +22,7 @@ answers = st.fixed_dictionaries(
     {},
     optional={
         "type": st.sampled_from(["flow", "transfer"]),
-        "payee": st.one_of(st.integers(1, 3), st.just(NO_PAYEE)),
+        "payee": st.one_of(st.integers(1, 3), st.just(EMPTY)),
         "category": st.integers(1, 3),
         "counter_account": st.integers(1, 6),
     },
