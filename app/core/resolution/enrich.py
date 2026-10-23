@@ -4,14 +4,15 @@ The source row is read as stored: the document never rewrites `counterparty_name
 source field. It adds three entry-level facts the entry's input carries: `documented` (a document is linked or
 picked), `document_merchant` (its merchant name) and `document_line` (the description of the entry's OWN
 line of it, or None). Rules read the two fields (`plugins/classifiers/rules.py`), history asks the merchant
-(`plugins/classifiers/history.py`). The input is built when resolving and never stored.
+(`plugins/classifiers/history.py`). Pass 3 takes the model's stored answer for the entry's own line
+(`document_line_answer`). The input is built when resolving and never stored.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-from app.core.plugins.classifier import EntryInput
+from app.core.plugins.classifier import EntryInput, LineAnswer
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,12 +25,20 @@ class LinkedDocument:
 
     merchant_name: str | None
     lines: tuple[tuple[int, int, str], ...] = ()
+    # the model's stored answers for lines, by line number (a line without one has none here)
+    answers: tuple[tuple[int, LineAnswer], ...] = ()
 
     def description_of(self, line_no: int | None) -> str | None:
         """The description of line `line_no`, None for no line or a number the document does not have."""
         if line_no is None:
             return None
         return next((d for no, _amount, d in self.lines if no == line_no), None)
+
+    def answer_of(self, line_no: int | None) -> LineAnswer | None:
+        """The model's stored answer for line `line_no`, None for no line or no answer."""
+        if line_no is None:
+            return None
+        return next((a for no, a in self.answers if no == line_no), None)
 
 
 def with_document(
@@ -50,5 +59,6 @@ def with_document(
         documented=True,
         document_merchant=merchant,
         document_line=document.description_of(line_no),
+        document_line_answer=document.answer_of(line_no),
         document_pass=link_pass,
     )

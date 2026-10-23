@@ -11,6 +11,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel
+from sqlalchemy import Engine, text
 
 from app.api.errors import ApiError, map_error
 from app.api.ids import PathId
@@ -168,10 +169,28 @@ class QueueCountOut(BaseModel):
     needs_account: int
 
 
-def _model_pending(request: Request) -> frozenset[int]:
-    """The entries the model is still looking at, now (empty without a model)."""
+# the entries waiting for the line they take their category from: an empty category with no key (a rule, a
+# history match or an explained absence has answered it otherwise), a flow or not yet a type
+_WAITING_ON_LINE = text(
+    "SELECT id FROM ledger_entry WHERE document_line_id = ANY(CAST(:lines AS bigint[]))"
+    " AND category_id IS NULL AND NOT jsonb_exists(derivation, 'category')"
+    " AND (type IS NULL OR type = 'flow')"
+)
+
+
+def _model_pending(request: Request, engine: Engine) -> frozenset[int]:
+    """The entries the model is still looking at, now (empty without a model): the entries on its list and
+    those waiting for a line that is (spec §5.9)."""
     queue = model_queue_of(request)
-    return queue.entry_ids() if queue is not None else frozenset()
+    if queue is None:
+        return frozenset()
+    entries = queue.entry_ids()
+    if not (lines := queue.line_ids()):
+        return entries
+    with engine.connect() as conn:
+        return entries | frozenset(
+            int(i) for i in conn.execute(_WAITING_ON_LINE, {"lines": sorted(lines)}).scalars()
+        )
 
 
 @router.get("/queue")
@@ -193,7 +212,7 @@ def get_review_queue(
         )
     with engine.connect() as conn:
         queue = review_queue(conn, limit=limit, section=section, cursor=cursor)
-    pending = _model_pending(request)
+    pending = _model_pending(request, engine)
     return ReviewQueueOut(
         sections=[QueueSectionOut.of(s, pending) for s in queue.sections], total=queue.total
     )
@@ -225,7 +244,7 @@ def get_unit(request: Request, entry_id: PathId, user: CurrentUser, engine: Engi
         view = read_unit(conn, entry_id)
     if view is None:
         raise UnitMissing(entry_id)
-    return UnitOut.of(view, _model_pending(request))
+    return UnitOut.of(view, _model_pending(request, engine))
 
 
 # a draft that makes no sense against the stored unit: one 422 with the machine code in `details.code`

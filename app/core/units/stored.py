@@ -15,7 +15,7 @@ from app.core.matching.documents import DocInput, DocWindow
 from app.core.matching.lines import Line
 from app.core.resolution.doc_load import load_carriers, load_gated
 from app.core.resolution.enrich import LinkedDocument
-from app.core.resolution.load import load_accounts, load_rules
+from app.core.resolution.load import line_answer_of, load_accounts, load_rules
 from app.core.resolution.registry import classifiers_for
 from app.core.resolution.snapshot import HistorySnapshot, load_votes
 from app.core.settle.pairing import load_unpaired_legs
@@ -187,7 +187,10 @@ _DOCUMENTS = text(
     SELECT d.id, d.provider, d.occurred_on, d.total, d.currency, d.merchant_name, d.version, d.title,
            d.external_id,
            (SELECT jsonb_agg(jsonb_build_array(l.line_no, l.amount, l.description) ORDER BY l.line_no)
-              FROM external_document_line AS l WHERE l.document_id = d.id) AS lines
+              FROM external_document_line AS l WHERE l.document_id = d.id) AS lines,
+           (SELECT jsonb_agg(jsonb_build_array(l.line_no, l.category_id, l.category_key) ORDER BY l.line_no)
+              FROM external_document_line AS l
+             WHERE l.document_id = d.id AND l.category_key IS NOT NULL) AS answers
       FROM external_document AS d
      WHERE d.id = ANY(CAST(:carried AS bigint[]))
         OR EXISTS (SELECT 1 FROM unnest(CAST(:currencies AS text[]), CAST(:booked AS date[]))
@@ -204,7 +207,10 @@ _PICKED = text(
     SELECT d.id, d.provider, d.occurred_on, d.total, d.currency, d.merchant_name, d.version, d.title,
            d.external_id,
            (SELECT jsonb_agg(jsonb_build_array(l.line_no, l.amount, l.description) ORDER BY l.line_no)
-              FROM external_document_line AS l WHERE l.document_id = d.id) AS lines
+              FROM external_document_line AS l WHERE l.document_id = d.id) AS lines,
+           (SELECT jsonb_agg(jsonb_build_array(l.line_no, l.category_id, l.category_key) ORDER BY l.line_no)
+              FROM external_document_line AS l
+             WHERE l.document_id = d.id AND l.category_key IS NOT NULL) AS answers
       FROM external_document AS d
      WHERE d.id = ANY(CAST(:ids AS bigint[]))
     """
@@ -223,6 +229,11 @@ def _info(r: Any) -> DocumentInfo:
         merchant_name=r.merchant_name,
         title=r.title,
         lines=tuple((int(n), int(a), str(d)) for n, a, d in (r.lines or ())),
+        answers=tuple(
+            (int(n), answer)
+            for n, category, key in (r.answers or ())
+            if (answer := line_answer_of(category, key)) is not None
+        ),
     )
 
 
@@ -265,7 +276,9 @@ def load_doc_world(conn: Connection, stored: StoredUnit, picks: Collection[int] 
     for r in rows:
         info = _info(r)
         infos[info.id] = info
-        details[info.id] = LinkedDocument(merchant_name=info.merchant_name, lines=info.lines)
+        details[info.id] = LinkedDocument(
+            merchant_name=info.merchant_name, lines=info.lines, answers=info.answers
+        )
         docs.append(
             DocInput(
                 info.id,
@@ -281,7 +294,9 @@ def load_doc_world(conn: Connection, stored: StoredUnit, picks: Collection[int] 
         for r in conn.execute(_PICKED, {"ids": sorted(picks)}):
             info = _info(r)
             infos[info.id] = info
-            details[info.id] = LinkedDocument(merchant_name=info.merchant_name, lines=info.lines)
+            details[info.id] = LinkedDocument(
+                merchant_name=info.merchant_name, lines=info.lines, answers=info.answers
+            )
     others = load_gated(conn, closure)
     synced = [
         r.synced_through

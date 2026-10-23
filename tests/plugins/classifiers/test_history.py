@@ -442,3 +442,34 @@ def test_a_document_without_a_merchant_asks_nothing() -> None:
     e = documented(document_merchant=None)
     assert H.propose("category", e, ClassifierContext(history=hist)) is None
     assert hist.calls == []
+
+
+# ---- an entry with a line (spec §5.9 pass 2, history.md §1, §2) ----
+
+
+def with_line(**kw: object) -> EntryInput:
+    kw.setdefault("document_line", "Pro plan")
+    return documented(**kw)
+
+
+def test_an_entry_with_a_line_is_asked_no_key_on_any_field() -> None:
+    votes = doc_votes(3, counterparty_ref="R1", payee_id=9, type="flow")
+    for f in ("type", "payee", "category", "counter_account"):
+        hist = ListHistory(votes)
+        e = with_line(counterparty_ref="R1", booking_text="CARD")
+        assert H.propose(f, e, ClassifierContext(history=hist)) is None
+        assert hist.calls == []
+
+
+def test_a_vote_with_a_line_counts_for_no_key() -> None:
+    from app.core.resolution.snapshot import HistorySnapshot
+
+    plain = vote(counterparty_name="X", category_id=5, documented=True, document_merchant="Shop")
+    lined = vote(
+        counterparty_name="X", category_id=6, documented=True, document_merchant="Shop", has_line=True
+    )
+    snap = HistorySnapshot([plain, lined])
+    assert len(snap) == 2  # held, never counted
+    assert snap.candidates("document_merchant", documented(document_merchant="Shop")) == [plain]
+    p = run("category", documented(document_merchant="Shop"), [plain, lined])
+    assert p is not None and (p.value, p.basis["of"]) == (5, 1)

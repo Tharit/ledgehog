@@ -22,7 +22,7 @@ from typing import Any
 
 from sqlalchemy import Connection, text
 
-from app.core.model.queue import current_model_queue
+from app.core.model.queue import ENTRY, LINE, Item, ModelQueue, current_model_queue
 from app.core.plugins.classifier import (
     FIELD_ORDER,
     MAY_BE_EMPTY,
@@ -320,21 +320,55 @@ def resolve_step(conn: Connection) -> StepOutcome:
     if rewrites:
         run.documents_dirty = True  # a payee may have changed: step 2 looks again
     outcome = write_rewrites(conn, rewrites)
-    _list_for_model(rows, rewrites)
+    _list_for_model(conn, rows, rewrites)
     return outcome
 
 
-def _list_for_model(rows: Sequence[UnconfirmedEntry], rewrites: Mapping[int, Rewrite]) -> None:
-    """Hand the model's list the entries whose category falls to pass 3 (spec §5.9, architecture §5.4):
-    a flow, or an entry without a type yet, that no pass proposed a category for (no value, no explained
-    absence: such a key says the field is answered), whose payload is not empty. Settling never waits for
-    the model: this only fills an in-memory list. No model configured: nothing is listed."""
+_LINES = text(
+    """
+    SELECT l.id, l.description, d.merchant_name, l.category_id, l.category_key
+      FROM external_document_line AS l JOIN external_document AS d ON d.id = l.document_id
+     ORDER BY l.id
+    """
+)
+
+
+def _unanswered_lines(conn: Connection, queue: ModelQueue) -> list[Item]:
+    """Every stored line with no answer for its payload: none stored, one whose category was deleted (a
+    category and no `none`), or one made for another payload (spec §5.5, §5.9). The same set after a restart
+    as at ingest, so the list is refilled from the database alone."""
+    out: list[Item] = []
+    for r in conn.execute(_LINES):
+        fingerprint = queue.line_fingerprint(r.merchant_name, r.description)
+        if fingerprint is None:
+            continue
+        key = r.category_key
+        basis = key.get("basis") if isinstance(key, Mapping) and key.get("pass") == "llm" else None
+        if (
+            isinstance(basis, Mapping)
+            and basis.get("fingerprint") == fingerprint
+            and (r.category_id is not None or basis.get("none") is True)
+        ):
+            continue
+        out.append((LINE, int(r.id), fingerprint))
+    return out
+
+
+def _list_for_model(
+    conn: Connection, rows: Sequence[UnconfirmedEntry], rewrites: Mapping[int, Rewrite]
+) -> None:
+    """Hand the model's list what falls to pass 3 (spec §5.9, architecture §5.4): the entries without a line
+    whose category falls to it (a flow, or an entry without a type yet, that no pass proposed a category for:
+    no value, no explained absence, such a key says the field is answered) and whose payload is not empty, and
+    every document line with no answer for its payload. An entry WITH a line is never listed: it takes its
+    line's answer, and the line is asked. Settling never waits for the model: this only fills an in-memory
+    list. No model configured: nothing is listed."""
     queue = current_model_queue()
     if queue is None:
         return
-    wanted: list[tuple[int, str]] = []
+    wanted: list[Item] = []
     for row in rows:
-        if row.paired:
+        if row.paired or row.input.document_line is not None:
             continue
         rewrite = rewrites.get(row.input.entry_id)
         kind, category = (rewrite.type, rewrite.category_id) if rewrite else (row.type, row.category_id)
@@ -343,7 +377,8 @@ def _list_for_model(rows: Sequence[UnconfirmedEntry], rewrites: Mapping[int, Rew
             continue  # a key on the empty category is a proposal's explained absence (an entry settling
             # does not rewrite carries only keys resolution produced)
         if (fingerprint := queue.fingerprint(row.input)) is not None:
-            wanted.append((row.input.entry_id, fingerprint))
+            wanted.append((ENTRY, row.input.entry_id, fingerprint))
+    wanted.extend(_unanswered_lines(conn, queue))
     queue.sync(wanted)
 
 

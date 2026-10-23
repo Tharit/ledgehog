@@ -20,6 +20,7 @@ from dataclasses import dataclass, field, replace
 from datetime import date
 
 from app.core.matching.documents import DocInput, DocTxn, DocWindow, charged, match
+from app.core.plugins.classifier import LineAnswer
 from app.core.resolution.enrich import LinkedDocument
 from app.core.units.documents import (
     MATCHER_PASSES,
@@ -48,6 +49,8 @@ class DocumentInfo:
     merchant_name: str | None
     title: str | None
     lines: tuple[tuple[int, int, str], ...] = ()
+    # the model's stored answers for lines, by line number (pass 3 reads them for an entry with a line)
+    answers: tuple[tuple[int, LineAnswer], ...] = ()
 
     @property
     def line_count(self) -> int:

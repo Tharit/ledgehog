@@ -1,9 +1,10 @@
-"""The list of entries the model still has to look at (architecture §5.4): in memory, never stored.
+"""The list the model still has to look at (architecture §5.4): in memory, never stored.
 
-Settling fills it (`sync`: every settle hands over the whole set of entries whose category falls to the
-model, as (entry id, payload fingerprint)); one worker takes the head, one at a time. It is not a review
-flag: a restart loses it and the start's settling refills it. It is read from threads (settling, requests)
-and from the worker's event loop, so every access takes the lock.
+Its items are of two kinds, an entry and a document line, each as (kind, id, payload fingerprint). Settling
+fills it (`sync`: every settle hands over the whole set: the entries without a line whose category falls to
+the model, and every line with no answer for its payload); one worker takes the head, one at a time. It is
+not a review flag: a restart loses it and the start's settling refills it. It is read from threads
+(settling, requests) and from the worker's event loop, so every access takes the lock.
 
 Unavailable: when the model cannot be reached the list empties and what it held is remembered as
 `dropped`. Settling hands it new work again only for an item not among them (an entry that was not
@@ -19,12 +20,15 @@ import threading
 from collections.abc import Callable, Sequence
 
 from app.core.plugins.classifier import EntryInput
+from app.core.plugins.model import LineInput
 
-Item = tuple[int, str]  # (entry id, payload fingerprint)
+ENTRY = "entry"
+LINE = "line"
+Item = tuple[str, int, str]  # (ENTRY or LINE, entry id or document line id, payload fingerprint)
 
 
 class ModelQueue:
-    def __init__(self, fingerprint: Callable[[EntryInput], str | None]) -> None:
+    def __init__(self, fingerprint: Callable[[EntryInput | LineInput], str | None]) -> None:
         self.fingerprint = fingerprint
         # set by the worker: called (from any thread) when work arrives
         self.notify: Callable[[], None] | None = None
@@ -61,9 +65,17 @@ class ModelQueue:
         with self._lock:
             return len(self._items)
 
+    def line_fingerprint(self, document_merchant: str | None, description: str) -> str | None:
+        """The fingerprint of the payload of a line with this merchant and description."""
+        return self.fingerprint(LineInput(0, document_merchant, description))
+
     def entry_ids(self) -> frozenset[int]:
         with self._lock:
-            return frozenset(i for i, _ in self._items)
+            return frozenset(i for kind, i, _ in self._items if kind == ENTRY)
+
+    def line_ids(self) -> frozenset[int]:
+        with self._lock:
+            return frozenset(i for kind, i, _ in self._items if kind == LINE)
 
     def head(self) -> Item | None:
         with self._lock:

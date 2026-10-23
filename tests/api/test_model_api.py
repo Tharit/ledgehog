@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine
+from sqlalchemy import Engine, text
 
 from app.core.model.queue import ModelQueue
 from app.core.settle.flags import recompute_review_flags
@@ -39,7 +39,7 @@ def test_the_queue_marks_the_units_the_model_is_looking_at(
     looked_at, other = _two_flows(api_engine, world)
     queue = ModelQueue(lambda entry: None)
     anna.app.state.model = queue  # type: ignore[attr-defined]
-    queue.sync([(looked_at, "f1")])
+    queue.sync([("entry", looked_at, "f1")])
 
     body = anna.get("/api/units/queue").json()
     pending = {u["anchor_entry_id"]: u["model_pending"] for s in body["sections"] for u in s["units"]}
@@ -47,9 +47,48 @@ def test_the_queue_marks_the_units_the_model_is_looking_at(
     assert anna.get(f"/api/units/{looked_at}").json()["model_pending"] is True
     assert anna.get(f"/api/units/{other}").json()["model_pending"] is False
 
-    queue.finish((looked_at, "f1"), answered=True)  # read at request time: it follows the list
+    queue.finish(("entry", looked_at, "f1"), answered=True)  # read at request time: it follows the list
     body = anna.get("/api/units/queue").json()
     assert not any(u["model_pending"] for s in body["sections"] for u in s["units"])
+
+
+def test_an_entry_whose_line_is_on_the_list_is_pending_and_one_decided_otherwise_is_not(
+    anna: TestClient, api_engine: Engine, world: Bench
+) -> None:
+    def with_line(conn: Any, external_id: str) -> tuple[int, int]:
+        doc = int(
+            conn.execute(
+                text(
+                    "INSERT INTO external_document (provider, external_id, occurred_on, total, currency, raw)"
+                    " VALUES ('paypal', :e, '2026-03-10', -100, 'EUR', '{}') RETURNING id"
+                ),
+                {"e": external_id},
+            ).scalar_one()
+        )
+        line = int(
+            conn.execute(
+                text(
+                    "INSERT INTO external_document_line (document_id, line_no, description, amount)"
+                    " VALUES (:d, 1, 'item', -100) RETURNING id"
+                ),
+                {"d": doc},
+            ).scalar_one()
+        )
+        return doc, line
+
+    with api_engine.begin() as conn:
+        world.conn = conn
+        doc_a, line_a = with_line(conn, "a")
+        doc_b, line_b = with_line(conn, "b")
+        waiting = world.flow(world.source(), done=False, document_id=doc_a, document_line_id=line_a)
+        decided = world.flow(world.source(), done=True, document_id=doc_b, document_line_id=line_b)
+    queue = ModelQueue(lambda entry: None)
+    anna.app.state.model = queue  # type: ignore[attr-defined]
+    queue.sync([("line", line_a, "f1"), ("line", line_b, "f2")])
+    assert anna.get(f"/api/units/{waiting}").json()["model_pending"] is True
+    assert anna.get(f"/api/units/{decided}").json()["model_pending"] is False  # a category it already has
+    queue.sync([])
+    assert anna.get(f"/api/units/{waiting}").json()["model_pending"] is False
 
 
 def test_the_unit_and_the_queue_carry_the_models_none_key(
@@ -92,7 +131,7 @@ def test_the_change_poll_carries_how_many_entries_are_left(anna: TestClient) -> 
     assert anna.get("/api/changes").json()["model_pending"] == 0
     queue = ModelQueue(lambda entry: None)
     anna.app.state.model = queue  # type: ignore[attr-defined]
-    queue.sync([(1, "a"), (2, "b"), (2, "b")])
+    queue.sync([("entry", 1, "a"), ("line", 2, "b"), ("line", 2, "b")])
     assert anna.get("/api/changes").json()["model_pending"] == 2
     queue.mark_unavailable()
     assert anna.get("/api/changes").json()["model_pending"] == 0

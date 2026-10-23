@@ -7,6 +7,12 @@ external_id)`; documents belong to no account. A document's lines are replaced w
 unconfirmed carrier afresh (`reresolve_unconfirmed_carrier`); a confirmed one is left alone (I20).
 The run is set `ok` with its coverage in the same transaction, then settling runs on its own. A
 document run is never reverted (§5.5): it upserts in place.
+
+The model's answer for a line (`category_id`, `category_key`, spec §5.9 pass 3) is kept across the replacement
+of lines: a new line takes the stored answer whose payload fingerprint is the fingerprint of its own payload
+(the document's merchant and its description); a changed merchant drops the answers it makes stale. Every
+other line has no answer, and settling puts it on the model's list (`core/settle/resolution.py`). Without a
+model configured nothing can be fingerprinted: no answer is carried.
 """
 
 from __future__ import annotations
@@ -27,6 +33,7 @@ from app.core.ingest.run import (
     run_error_text,
     run_retryable,
 )
+from app.core.model.queue import current_model_queue
 from app.core.plugins.importer import IncomingDocument
 from app.core.resolution import Resolved, resolve_afresh
 from app.core.resolution.load import load_accounts, load_rules, load_unconfirmed
@@ -260,23 +267,93 @@ def _update(conn: Connection, run: Any, doc: IncomingDocument, before: _Stored) 
         {**_params(run, doc), "id": before.id, "bump": differs},
     )
     if before.lines != after_lines:
+        answers = _answers_of(conn, before.id)
         conn.execute(text("DELETE FROM external_document_line WHERE document_id = :i"), {"i": before.id})
-        _insert_lines(conn, before.id, doc)
+        _insert_lines(conn, before.id, doc, answers)
+    elif before.merchant_name != doc.merchant_name:
+        _drop_stale_answers(conn, before.id, doc.merchant_name)
     return differs
 
 
-def _insert_lines(conn: Connection, doc_id: int, doc: IncomingDocument) -> None:
+def _fingerprint(merchant: str | None, description: str) -> str | None:
+    """The fingerprint of the payload the model is given for a line; None without a model."""
+    queue = current_model_queue()
+    return queue.line_fingerprint(merchant, description) if queue is not None else None
+
+
+def _answer_fingerprint(category_id: int | None, key: Any) -> str | None:
+    """The payload fingerprint of a line's stored answer, None where it is no answer (no key, not the model's,
+    or a category that was deleted: a category and no `none`)."""
+    basis = key.get("basis") if isinstance(key, dict) and key.get("pass") == "llm" else None
+    if not isinstance(basis, dict) or not (category_id is not None or basis.get("none") is True):
+        return None
+    fingerprint = basis.get("fingerprint")
+    return fingerprint if isinstance(fingerprint, str) else None
+
+
+def _answers_of(conn: Connection, doc_id: int) -> dict[str, tuple[int | None, Any]]:
+    """The stored answers of the document's lines, by the fingerprint of the payload they were given."""
+    out: dict[str, tuple[int | None, Any]] = {}
+    for r in conn.execute(
+        text(
+            "SELECT category_id, category_key FROM external_document_line"
+            " WHERE document_id = :i AND category_key IS NOT NULL ORDER BY line_no"
+        ),
+        {"i": doc_id},
+    ):
+        if (fingerprint := _answer_fingerprint(r.category_id, r.category_key)) is not None:
+            out.setdefault(fingerprint, (r.category_id, r.category_key))
+    return out
+
+
+def _drop_stale_answers(conn: Connection, doc_id: int, merchant: str | None) -> None:
+    """The merchant changed with the lines as they were: an answer given for another payload is dropped."""
+    for r in conn.execute(
+        text(
+            "SELECT id, description, category_id, category_key FROM external_document_line"
+            " WHERE document_id = :i AND category_key IS NOT NULL"
+        ),
+        {"i": doc_id},
+    ).all():
+        if _answer_fingerprint(r.category_id, r.category_key) != _fingerprint(merchant, r.description):
+            conn.execute(
+                text(
+                    "UPDATE external_document_line SET category_id = NULL, category_key = NULL WHERE id = :i"
+                ),
+                {"i": r.id},
+            )
+
+
+def _insert_lines(
+    conn: Connection,
+    doc_id: int,
+    doc: IncomingDocument,
+    answers: dict[str, tuple[int | None, Any]] | None = None,
+) -> None:
     if not doc.lines:
         return
+    rows = []
+    for n, ln in enumerate(doc.lines, start=1):
+        fingerprint = _fingerprint(doc.merchant_name, ln.description) if answers else None
+        category, key = answers[fingerprint] if answers and fingerprint in answers else (None, None)
+        rows.append(
+            {
+                "d": doc_id,
+                "n": n,
+                "description": ln.description,
+                "amount": ln.amount_minor,
+                "qty": ln.qty,
+                "category": category,
+                "key": json.dumps(key) if key is not None else None,
+            }
+        )
     conn.execute(
         text(
-            "INSERT INTO external_document_line (document_id, line_no, description, amount, qty)"
-            " VALUES (:d, :n, :description, :amount, :qty)"
+            "INSERT INTO external_document_line (document_id, line_no, description, amount, qty,"
+            " category_id, category_key)"
+            " VALUES (:d, :n, :description, :amount, :qty, :category, CAST(:key AS jsonb))"
         ),
-        [
-            {"d": doc_id, "n": n, "description": ln.description, "amount": ln.amount_minor, "qty": ln.qty}
-            for n, ln in enumerate(doc.lines, start=1)
-        ],
+        rows,
     )
 
 

@@ -28,7 +28,9 @@ class ListHistory:
         self.calls.append(key)
         out: list[Vote] = []
         for v in self.votes:
-            if v.entry_id in exclude_entry_ids:
+            if (
+                v.entry_id in exclude_entry_ids or v.has_line
+            ):  # as the snapshot: a line's vote counts for no key
                 continue
             if key == "document_merchant":
                 # as the snapshot: a documented vote counts for this key only, an undocumented one never

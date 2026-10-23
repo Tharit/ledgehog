@@ -43,6 +43,15 @@ DOCUMENT_KEY: HistoryKey = "document_merchant"
 
 
 @dataclass(frozen=True, slots=True)
+class LineAnswer:
+    """The model's stored answer for a document line (spec §5.9 pass 3): the line's `category_id` and the
+    `basis` of its `category_key` (the rationale, the payload's fingerprint, `none` where nothing fits)."""
+
+    category_id: int | None
+    basis: Mapping[str, Any] = field(default_factory=dict, hash=False)
+
+
+@dataclass(frozen=True, slots=True)
 class EntryInput:
     """What resolution reads about one entry: its source transaction and its own columns.
 
@@ -75,6 +84,9 @@ class EntryInput:
     # the pass of the link's `document` key (`user`, `matcher_decision`, `matcher_proposal`): the key the type
     # the document decides carries (spec §5.9, field order); None reads as `user`
     document_pass: str | None = None
+    # the model's stored answer for the entry's own line (None: no line, or no answer yet): what pass 3 takes
+    # for an entry with a line instead of asking (spec §5.9)
+    document_line_answer: LineAnswer | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -185,9 +197,11 @@ class Vote:
     booking_text: str | None = None
     mandate_ref: str | None = None
     # the document its transaction carries (spec §5.9): `documented` (a merchant name or none), and its
-    # merchant name. A documented vote counts for key `document_merchant` only, never for the raw-text keys.
+    # merchant name. A documented vote counts for key `document_merchant` only, never for the raw-text keys;
+    # a vote with a line (`has_line`: the entry's own line of that document) counts for no key at all.
     documented: bool = False
     document_merchant: str | None = None
+    has_line: bool = False
 
 
 class HistorySource(Protocol):

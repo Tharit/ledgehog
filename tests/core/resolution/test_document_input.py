@@ -13,7 +13,7 @@ from sqlalchemy import Connection, text
 
 from app.core.plugins.classifier import EntryInput
 from app.core.resolution.load import load_movements, load_unconfirmed
-from app.core.resolution.snapshot import HistorySnapshot, load_snapshot, load_votes, touches
+from app.core.resolution.snapshot import Grown, HistorySnapshot, load_snapshot, load_votes, touches
 from tests.core.units.doc_helpers import make_document
 from tests.invariants.helpers import make_category, make_entry, make_source
 
@@ -243,3 +243,33 @@ def test_touches_reads_the_merchant_for_a_documented_entry_only(documented: bool
         touches(grown, e, None) is documented
     )  # an undocumented entry never sees key 5, nor the voter's raw keys
     assert not touches(grown, EntryInput(1, 1, "EUR", DAY, -1, documented=True, document_merchant="Other"), 5)
+
+
+def test_a_vote_with_a_line_is_flagged_and_teaches_no_key(
+    db_conn: Connection, make_account: MakeAccount
+) -> None:
+    acct = make_account(db_conn)
+    cat = make_category(db_conn, "Software")
+    doc = make_document(db_conn, total=-1000)
+    merchant(db_conn, doc, "CloudNotes")
+    own = line(db_conn, doc, 1, "Pro plan", -1000)
+    src = make_source(db_conn, acct, booked_on=DAY, columns={"counterparty_name": "PAYPAL *X"})
+    lined = make_entry(
+        db_conn,
+        src,
+        category_id=cat,
+        document_id=doc,
+        document_line_id=own,
+        derivation=json.dumps({**STANDING, "document": {"pass": "user"}}),
+    )
+    plain = confirmed(db_conn, acct, cat, doc=doc)  # the same document, no line
+    votes = {v.entry_id: v for v in load_votes(db_conn)}
+    assert votes[lined].has_line and not votes[plain].has_line
+    snap = load_snapshot(db_conn)
+    asking = EntryInput(1, acct, "EUR", DAY, -1, documented=True, document_merchant="CloudNotes")
+    assert [v.entry_id for v in snap.candidates("document_merchant", asking)] == [plain]
+    with_a_line = EntryInput(
+        1, acct, "EUR", DAY, -1, documented=True, document_merchant="CloudNotes", document_line="x"
+    )
+    grown = Grown(frozenset({("document_merchant", "cloudnotes")}))
+    assert touches(grown, asking, None) and not touches(grown, with_a_line, None)

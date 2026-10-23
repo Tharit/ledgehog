@@ -1,6 +1,7 @@
 """The OpenAI chat-completions client for pass 3 (architecture §5.4).
 
-One request per entry, `temperature` 0, structured output: `response_format` of type `json_schema` whose
+One request per entry or document line, `temperature` 0, structured output: `response_format` of type
+`json_schema` whose
 `category_id` is one of the listed ids or null, plus a one-line rationale. llama.cpp's server accepts the
 OpenAI form (`json_schema.schema`) and its own (`schema` beside `type`); servers without constrained
 output ignore the field, so the reply is validated whatever the server does: malformed JSON or an id that
@@ -21,7 +22,7 @@ from typing import Any
 import httpx
 
 from app.core.plugins.classifier import EntryInput
-from app.core.plugins.model import CategoryPath, ModelAnswer, ModelUnavailable, NoAnswer
+from app.core.plugins.model import CategoryPath, LineInput, ModelAnswer, ModelUnavailable, NoAnswer
 from app.plugins.classifiers.llm.payload import payload_fingerprint, payload_of, user_message
 
 log = logging.getLogger("ledgehog.model")
@@ -116,8 +117,8 @@ class OpenAIModelClient:
         headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
         self._http = httpx.AsyncClient(timeout=timeout, headers=headers, transport=transport)
 
-    def fingerprint(self, entry: EntryInput) -> str | None:
-        return payload_fingerprint(entry)
+    def fingerprint(self, subject: EntryInput | LineInput) -> str | None:
+        return payload_fingerprint(subject)
 
     def request_body(self, payload: dict[str, str], categories: Sequence[CategoryPath]) -> dict[str, Any]:
         return {
@@ -134,8 +135,10 @@ class OpenAIModelClient:
             **({"reasoning_effort": self._effort} if self._effort is not None else {}),
         }
 
-    async def ask(self, entry: EntryInput, categories: Sequence[CategoryPath]) -> ModelAnswer | NoAnswer:
-        payload = payload_of(entry)
+    async def ask(
+        self, subject: EntryInput | LineInput, categories: Sequence[CategoryPath]
+    ) -> ModelAnswer | NoAnswer:
+        payload = payload_of(subject)
         if payload is None:
             return NoAnswer("empty_payload")
         if not categories:

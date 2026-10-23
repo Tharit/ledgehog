@@ -4,6 +4,7 @@ of it equal to the stored state after a commit and the settle that follows."""
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from datetime import timedelta
 
@@ -110,6 +111,38 @@ def test_an_unsplit_linked_transaction_is_proposed_split_along_the_lines(
     # "Shipping": no rule reads that line, and an entry has its own line only (never all of them): no category
     assert plan.row(third).fields["category"].value is None
     assert all(r.fields["payee"].value == shop.seeed for r in plan.rows)
+
+
+def test_a_proposed_split_shows_the_models_answer_for_each_line(scene: Scene, docs: Docs, shop: Shop) -> None:
+    from app.core.plugins.model import LineInput
+    from app.plugins.classifiers.llm.payload import payload_fingerprint
+
+    entry, doc = order(scene, docs, *LINES)
+    third = proposed_split_id(entry, 3)
+    shipping = scene.category("Shipping")
+
+    def answer(c: Connection) -> None:
+        basis = {
+            "model": "m",
+            "rationale": "postage",
+            "fingerprint": payload_fingerprint(LineInput(0, "Seeed Studio", "Shipping")),
+        }
+        c.execute(
+            text(
+                "UPDATE external_document_line SET category_id = :c, category_key = CAST(:k AS jsonb)"
+                " WHERE document_id = :d AND line_no = 3"
+            ),
+            {"c": shipping, "d": doc, "k": json.dumps({"pass": "llm", "basis": basis})},
+        )
+
+    scene.tx(answer)
+    plan = scene.preview(entry)
+    guess = plan.row(third).fields["category"]
+    assert guess.value == shipping
+    assert guess.evidence is not None and guess.evidence.pass_name == "llm"
+    assert guess.evidence.basis["rationale"] == "postage"
+    # the lines a rule decides keep their rule's category; the model's answer is the guess for the rest
+    assert plan.row(entry).fields["category"].value == shop.gadgets
 
 
 def test_a_commit_performs_the_split_and_equals_the_preview(scene: Scene, docs: Docs, shop: Shop) -> None:

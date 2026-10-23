@@ -53,8 +53,11 @@ class HistoryClassifier:
         # a documented entry is asked on the document's merchant only, and for the category only: its bank
         # fields describe the provider, not the purchase (spec §5.9, history.md §2); an undocumented one
         # never sees that key
-        if entry.documented:
-            keys: tuple[HistoryKey, ...] = (DOCUMENT_KEY,) if field == "category" else ()
+        # an entry with a line is asked no key at all: it takes its line's answer (pass 3)
+        if entry.document_line is not None:
+            keys: tuple[HistoryKey, ...] = ()
+        elif entry.documented:
+            keys = (DOCUMENT_KEY,) if field == "category" else ()
         else:
             keys = HISTORY_KEYS
         for key in keys:

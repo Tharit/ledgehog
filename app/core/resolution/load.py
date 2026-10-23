@@ -13,7 +13,7 @@ from sqlalchemy import Connection, text
 from sqlalchemy.sql.elements import TextClause
 
 from app.core.domain.source import SourceFields
-from app.core.plugins.classifier import AccountFact, Condition, EntryInput, RuleSpec
+from app.core.plugins.classifier import AccountFact, Condition, EntryInput, LineAnswer, RuleSpec
 from app.core.resolution.confirmed import units_binds, units_sql
 
 
@@ -89,7 +89,7 @@ def _movements(where: str, *, of_entries: bool = False) -> TextClause:
            e.counterpart_entry_id AS counterpart_id, (e.counterpart_entry_id IS NOT NULL) AS paired,
            (u.first_id = e.id) AS original,
            vd.document_id AS document_id, d.merchant_name AS doc_merchant,
-           el.description AS doc_line,
+           el.description AS doc_line, el.category_id AS line_category, el.category_key AS line_key,
            (SELECT c.derivation -> 'document' ->> 'pass' FROM ledger_entry AS c
              WHERE c.source_transaction_id = e.source_transaction_id
                AND c.document_id IS NOT NULL) AS doc_pass
@@ -133,6 +133,15 @@ def load_units_of(conn: Connection, entry_ids: Sequence[int]) -> list[Unconfirme
     return _load(conn, _OF_ENTRIES, extra={"ids": list(entry_ids)})
 
 
+def line_answer_of(category_id: int | None, key: Any) -> LineAnswer | None:
+    """The answer stored on a document line (`category_id`, `category_key`), None where it has none: no key,
+    or a key that is not the model's."""
+    if not isinstance(key, Mapping) or key.get("pass") != "llm":
+        return None
+    basis = key.get("basis")
+    return LineAnswer(category_id, dict(basis) if isinstance(basis, Mapping) else {})
+
+
 def _merchant(name: str | None) -> str | None:
     return name if name is not None and name.strip() else None
 
@@ -161,6 +170,9 @@ def _load(
             documented=documented,
             document_merchant=_merchant(r.doc_merchant) if documented else None,
             document_line=r.doc_line if documented else None,
+            document_line_answer=line_answer_of(r.line_category, r.line_key)
+            if documented and r.doc_line is not None
+            else None,
             document_pass=(r.doc_pass or "user") if documented else None,
         )
         out.append(
