@@ -39,6 +39,22 @@ describe('documentField', () => {
 		expect(field.evidence).toEqual({ text: 'document matched', proposal: false });
 	});
 
+	it('says the transaction is linked and unsplit once the proposed split was removed', () => {
+		const line = { documentId: 7, lineNo: 2 };
+		const unsplit = draft()
+			.syncLineRows([{ id: -900, sourceEntryId: 1, amount: -100, documentLine: line }])
+			.removeSplit(-900);
+		const linked = rowOf(
+			rowDocument({ document: documentSummary(), key: { pass: 'user', basis: {} } })
+		);
+		expect(documentField(linked, unsplit, 1)).toMatchObject({
+			unsplit: true,
+			canReset: true,
+			state: 'linked'
+		});
+		expect(documentField(linked, draft(), 1)!.unsplit).toBe(false);
+	});
+
 	it('marks a matched document of several lines as a proposal to check', () => {
 		const field = documentField(
 			rowOf(

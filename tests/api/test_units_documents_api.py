@@ -273,6 +273,23 @@ def test_the_split_along_the_lines_is_proposed_with_server_issued_ids(
     assert all(ident >= -(2**53) for ident in ids)  # a client may echo them back
 
 
+def test_an_explicit_null_document_line_on_the_original_keeps_it_unsplit_absent_does_not(
+    anna: TestClient, scene: Scene, docs: Docs
+) -> None:
+    entry = docs.charge()
+    doc = docs.document(total=-1000)
+    docs.lines(doc, ("USB cable", -400), ("Case", -300), ("Shipping", -300))
+    scene.settle()
+    absent = anna.post(PREVIEW, json=body(scene, entry, {"id": entry})).json()
+    assert len(absent["rows"]) == 3 and absent["rows"][0]["document"]["split"]["proposed"] is True
+    null = anna.post(PREVIEW, json=body(scene, entry, {"id": entry, "document_line": None})).json()
+    assert [r["id"] for r in null["rows"]] == [entry] and null["rows"][0]["document_line"] is None
+    assert null["rows"][0]["document"]["split"]["proposed"] is False
+    r = anna.post(COMMIT, json=body(scene, entry, {"id": entry, "document_line": None}))
+    assert r.status_code == 200, r.text
+    assert scene.row(entry).derivation["document"] == {"pass": "user"}
+
+
 # ---- the commit --------------------
 
 

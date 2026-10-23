@@ -343,6 +343,45 @@ def test_the_explicit_choice_replaces_a_split_by_hand_once_the_link_is_the_users
     assert result.removed_entry_ids == (second,) and len(result.created) == 2
 
 
+def test_removing_every_proposed_row_keeps_the_carrier_unsplit_without_a_line(
+    scene: Scene, docs: Docs, shop: Shop
+) -> None:
+    entry, doc = order(scene, docs, *LINES)
+    # the original echoed with an empty document_line: the user's decision, nothing is regenerated
+    plan = scene.preview(entry, DraftEntry(entry, unsplit=True))
+    assert [r.id for r in plan.rows] == [entry]
+    assert plan.row(entry).amount == -1000 and plan.row(entry).document_line is None
+    view = plan.row(entry).document_view
+    assert view is not None and view.split is not None
+    assert (view.split.proposed, view.split.available) == (False, True)
+    # committed: linked, not split; the key is the user's, and nothing is proposed afterwards
+    _plan, result = preview_then_commit(scene, scene.draft(entry, DraftEntry(entry, unsplit=True)))
+    assert not result.created
+    stored = scene.row(entry)
+    assert stored.document_id == doc and stored.derivation["document"] == {"pass": "user"}
+    line = scene.q("SELECT document_line_id FROM ledger_entry WHERE id = :e", e=entry)[0].document_line_id
+    assert line is None
+    after = scene.preview(entry)
+    assert [r.id for r in after.rows] == [entry]
+    view = after.row(entry).document_view
+    assert view is not None and view.split is not None and not view.split.proposed
+
+
+def test_an_unsplit_decision_leaves_the_other_carriers_of_the_document_their_proposal(
+    scene: Scene, docs: Docs
+) -> None:
+    first = docs.charge(-3000)
+    second = docs.charge(-2000, on=D + timedelta(days=1))
+    doc = docs.document(total=-5000)
+    docs.lines(doc, ("USB cable", -1500), ("Case", -1500), ("Shipping", -2000))
+    scene.settle()
+    plan = scene.preview(first, DraftEntry(first, unsplit=True))
+    assert plan.row(first).document_line is None
+    assert plan.row(second).document_line is not None
+    mine = plan.row(first).source_transaction_id
+    assert [r.id for r in plan.rows if r.source_transaction_id == mine] == [first]  # nothing proposed
+
+
 def test_two_charges_of_one_order_are_each_proposed_their_own_line(scene: Scene, docs: Docs) -> None:
     first = docs.charge(-3000)
     second = docs.charge(-2000, on=D + timedelta(days=1))

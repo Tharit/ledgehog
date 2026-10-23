@@ -104,6 +104,8 @@ type State = {
 	reresolveAll: boolean;
 	/** how many rows of the split along the lines were taken over from the proposal */
 	adoptedCount: number;
+	/** originals whose carrier the user left unsplit, without a line: echoed with an empty `document_line` */
+	unsplit: readonly number[];
 };
 
 const EMPTY: EntryEdit = { fields: {} };
@@ -212,7 +214,8 @@ export class Draft {
 			splits: [],
 			removed: [],
 			reresolveAll: false,
-			adoptedCount: 0
+			adoptedCount: 0,
+			unsplit: []
 		});
 	}
 
@@ -260,6 +263,11 @@ export class Draft {
 		return adopted !== this.#s.adoptedCount || lines !== adopted;
 	}
 
+	/** The user left the carrier of this original entry unsplit: it is echoed without a line. */
+	isUnsplit(id: number): boolean {
+		return this.#s.unsplit.includes(id);
+	}
+
 	/** Has the user edited anything? A draft that has not is still committable (it accepts). */
 	get isDirty(): boolean {
 		if (this.hasOtherChanges) return true;
@@ -271,7 +279,8 @@ export class Draft {
 	 * is for the preview to say (`effectiveChanged`, view.ts): an edit can end in the stored value.
 	 */
 	get hasOtherChanges(): boolean {
-		if (this.#s.reresolveAll || this.#s.removed.length > 0) return true;
+		if (this.#s.reresolveAll || this.#s.removed.length > 0 || this.#s.unsplit.length > 0)
+			return true;
 		if (this.#s.splits.some((s) => !this.#pristine(s.id)) || this.#lineRowsChanged) return true;
 		for (const [id, edit] of this.#s.edits) {
 			if (this.#pristine(id)) continue;
@@ -559,8 +568,17 @@ export class Draft {
 		if (id < 0) {
 			const splits = this.#s.splits.filter((s) => s.id !== id);
 			// a row of the proposed split is an edit of the split like any other (spec §6): the rest is
-			// echoed and stays the user's
-			return this.#with({ splits, edits });
+			// echoed and stays the user's. Removing the last one is a decision as well: the carrier stays
+			// unsplit, echoed with an empty `document_line` (the server proposes nothing for it)
+			const gone = this.#s.splits.find((s) => s.id === id);
+			const source = gone?.documentLine ? gone.sourceEntryId : null;
+			const lastOne =
+				source !== null && !splits.some((s) => s.documentLine && s.sourceEntryId === source);
+			const unsplit =
+				lastOne && !this.#s.unsplit.includes(source)
+					? [...this.#s.unsplit, source]
+					: this.#s.unsplit;
+			return this.#with({ splits, edits, unsplit });
 		}
 		if (id === this.#s.anchorId || this.#s.removed.includes(id)) return this;
 		return this.#with({ removed: [...this.#s.removed, id], edits });
@@ -629,7 +647,12 @@ export class Draft {
 	#decide(id: number, change: Partial<Pick<EntryEdit, 'document'>>): Draft {
 		if (!this.#s.base.has(id)) return this;
 		const lines = this.#withoutLineRows();
-		const base = this.#with({ splits: lines.splits, edits: lines.edits, adoptedCount: 0 });
+		const base = this.#with({
+			splits: lines.splits,
+			edits: lines.edits,
+			adoptedCount: 0,
+			unsplit: this.#s.unsplit.filter((o) => o !== id)
+		});
 		return base.#edited(id, (e) => {
 			const next = { ...e, ...change };
 			if (next.document === undefined) delete next.document;
@@ -820,7 +843,8 @@ export class Draft {
 			splits,
 			removed: this.#s.removed.filter((id) => ids.has(id) && id !== unit.anchor_entry_id),
 			reresolveAll: this.#s.reresolveAll,
-			adoptedCount: this.#s.adoptedCount
+			adoptedCount: this.#s.adoptedCount,
+			unsplit: this.#s.unsplit.filter((id) => ids.has(id))
 		});
 	}
 
@@ -831,7 +855,9 @@ export class Draft {
 	toRequest(versions: Readonly<Record<number, number>> = this.#s.versions): UnitDraftRequest {
 		const entries: DraftEntryRequest[] = [];
 		const splitOf = new Map(this.#s.splits.map((s) => [s.id, s]));
-		const ids = [...this.#s.edits.keys()].filter((id) => id > 0).sort((a, b) => a - b);
+		const ids = [...new Set([...this.#s.edits.keys(), ...this.#s.unsplit])]
+			.filter((id) => id > 0)
+			.sort((a, b) => a - b);
 		for (const id of ids) entries.push(this.#entryRequest(id, null));
 		for (const split of this.#s.splits) {
 			if (this.#s.edits.get(split.id)?.amount == null) continue;
@@ -855,6 +881,7 @@ export class Draft {
 		if (sourceEntryId !== null) body.source_entry_id = sourceEntryId;
 		const line = this.#s.splits.find((s) => s.id === id)?.documentLine;
 		if (line) body.document_line = { document_id: line.documentId, line_no: line.lineNo };
+		else if (this.#s.unsplit.includes(id)) body.document_line = null;
 		const document = documentRequest(edit);
 		if (document) body.document = document;
 		if (edit.amount != null) body.amount = edit.amount;

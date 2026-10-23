@@ -92,6 +92,7 @@ class DocPlan:
     first_line: Mapping[
         int, int
     ]  # original entry id -> the line it takes, where the draft splits along lines
+    unsplit: frozenset[int]  # original entry ids the user decided to keep unsplit, without a line
     problems: tuple[Problem, ...]
 
 
@@ -299,6 +300,11 @@ def _is_proposal(stored: StoredUnit, src: StoredSource, doc_id: int, found: list
     )
 
 
+def _as_user(decision: DocDecision) -> DocDecision:
+    """The decision with its key the user's: an explicit decision is written as one (spec §5.9)."""
+    return dataclasses.replace(decision, key="user") if decision.key == "stored" else decision
+
+
 def plan_documents(stored: StoredUnit, draft: UnitDraft, world: World) -> DocPlan:
     """The draft's documents decided, and its split along the lines expanded (module docstring)."""
     decisions, drafted, problems = _decide(stored, draft, world)
@@ -314,6 +320,7 @@ def plan_documents(stored: StoredUnit, draft: UnitDraft, world: World) -> DocPla
         if oid not in gone_originals and (link := decisions[oid].link) is not None:
             carriers[link].append(oid)
     found: dict[int, list[tuple[int, int]] | None] = {}  # by original entry id
+    unsplit: set[int] = set()  # originals the user left unsplit: nothing is proposed for them
     proposing: set[int] = set()  # the documents whose carriers are proposed their split
     for doc_id, originals in carriers.items():
         info = infos.get(doc_id)
@@ -349,7 +356,11 @@ def plan_documents(stored: StoredUnit, draft: UnitDraft, world: World) -> DocPla
         replaced: list[int] = []
         if info is not None and split is None and drafted[oid].mode == "split_along_lines":
             problems.append(Problem("document_split_unavailable", oid, "document", {"document_id": info.id}))
-        if info is not None and info.id in proposing and split is not None:
+        listed = draft.entry(oid)
+        if info is not None and info.line_count > 1 and listed is not None and listed.unsplit:
+            unsplit.add(oid)
+            decisions[oid] = _as_user(decision)
+        if info is not None and info.id in proposing and split is not None and oid not in unsplit:
             if not _is_proposal(stored, src, info.id, split):
                 replaced = [e.id for e in stored.entries if e.source_transaction_id == src.id and e.id != oid]
                 removed.extend(i for i in replaced if i not in removed)
@@ -381,4 +392,4 @@ def plan_documents(stored: StoredUnit, draft: UnitDraft, world: World) -> DocPla
             if made and split is not None:
                 first_line[oid] = split[0][0]
     expanded = dataclasses.replace(draft, entries=entries, removed_entry_ids=removed)
-    return DocPlan(expanded, decisions, splits, first_line, tuple(problems))
+    return DocPlan(expanded, decisions, splits, first_line, frozenset(unsplit), tuple(problems))

@@ -447,8 +447,13 @@ describe('editing the amount of a row of the split along the lines', () => {
 	function echoing() {
 		vi.mocked(previewUnit).mockImplementation(async (request) => {
 			const named = request.entries!.filter((x) => x.document_line);
-			if (named.length === 0) return twoLines();
 			const base = twoLines();
+			// an original echoed with an empty line is the user's decision: nothing is proposed for it
+			if (request.entries!.some((x) => x.id === 1 && x.document_line === null)) {
+				base.rows = [base.rows[0]];
+				return base;
+			}
+			if (named.length === 0) return twoLines();
 			base.rows = [base.rows[0], ...base.rows.filter((r) => named.some((x) => x.id === r.id))];
 			return base;
 		});
@@ -495,7 +500,7 @@ describe('editing the amount of a row of the split along the lines', () => {
 		expect(flow.draft?.lineRows).toEqual([]);
 	});
 
-	it('removes a row on the explicit action; with the last one gone nothing is echoed', async () => {
+	it('removes a row on the explicit action; with the last one gone the original is echoed unsplit', async () => {
 		echoing();
 		const { flow } = setup();
 		await settle();
@@ -507,6 +512,10 @@ describe('editing the amount of a row of the split along the lines', () => {
 		flow.removeSplit(-900);
 		flow.removeSplit(-902);
 		expect(flow.draft?.lineRows).toEqual([]);
-		expect(original(lastRequest())).toBeUndefined();
+		await vi.advanceTimersByTimeAsync(500);
+		await settle();
+		expect(original(lastRequest())).toMatchObject({ id: 1, document_line: null });
+		// the server proposed nothing again: the split stays gone
+		expect(flow.draft?.lineRows).toEqual([]);
 	});
 });

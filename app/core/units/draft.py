@@ -236,6 +236,9 @@ class DraftEntry:
     pairing: PairingDraft = KEEP_PAIRING
     document: DocumentDraft = KEEP_DOCUMENT
     document_line: DocumentLineRef | None = None
+    # an original entry echoed with an explicit empty `document_line`: the user's decision that its carrier
+    # stays unsplit, without a line (spec §5.9: empty is a value)
+    unsplit: bool = False
     source_entry_id: int | None = None
     tags_add: tuple[int, ...] = ()
     tags_remove: tuple[int, ...] = ()
@@ -281,6 +284,13 @@ class DraftEntry:
             raise DraftError(
                 "invalid_document_line",
                 "only a new entry is made from a document line",
+                entry_id=self.id,
+                field="document_line",
+            )
+        if self.unsplit and self.is_new:
+            raise DraftError(
+                "invalid_document_line",
+                "only an original entry is left without a document line",
                 entry_id=self.id,
                 field="document_line",
             )

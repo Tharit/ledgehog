@@ -67,6 +67,8 @@ export type DocumentFieldView = {
 	canReset: boolean;
 	/** the split rows were edited, or taken over from the proposal and then changed */
 	splitEdited: boolean;
+	/** the user removed the proposed split: the transaction stays linked, unsplit, without a line */
+	unsplit: boolean;
 };
 
 /** The wait is for the rest of an order (not for a document). */
@@ -198,7 +200,8 @@ export function documentField(
 			(state === 'linked' ||
 				state === 'none' ||
 				(state === 'open' && key?.pass === 'matcher_decision' && linked === null)),
-		canReset: edit !== undefined || draft.lineRowsEdited,
-		splitEdited: draft.lineRowsEdited
+		canReset: edit !== undefined || draft.lineRowsEdited || draft.isUnsplit(id),
+		splitEdited: draft.lineRowsEdited,
+		unsplit: draft.isUnsplit(id)
 	};
 }

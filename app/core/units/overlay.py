@@ -417,6 +417,8 @@ def _carry_documents(stored: StoredUnit, rows: Mapping[int, _Row], world: World,
             had = stored.entry(oid)
             if first is not None:
                 original.line_no = first
+            elif oid in docs.unsplit:
+                original.line_no = None
             elif (
                 original.line_no is None
                 and linked is not None

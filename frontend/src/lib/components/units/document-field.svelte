@@ -287,6 +287,12 @@
 		</div>
 	{/if}
 
+	{#if doc.unsplit}
+		<p class="text-xs text-muted-foreground" data-slot="document-unsplit">
+			Linked, not split along the lines: you removed the proposal.
+		</p>
+	{/if}
+
 	<div class="flex flex-wrap items-center gap-x-3 gap-y-1">
 		<Popover.Root bind:open>
 			<Popover.Trigger>
@@ -380,7 +386,7 @@
 				Look for a document
 			</ActionButton>
 		{/if}
-		{#if doc.edit !== undefined}
+		{#if doc.edit !== undefined || doc.unsplit}
 			<ActionButton
 				variant="link"
 				class="h-auto p-0 text-xs"

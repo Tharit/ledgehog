@@ -176,10 +176,23 @@ describe('the rows made from a line', () => {
 		expect(original(draft)).toBeUndefined();
 	});
 
-	it('removing the last row sends no document key: there is no decline', () => {
+	it('removing the last row echoes the original with an empty document line: unsplit is the user’s decision', () => {
 		const draft = empty().syncLineRows(proposal()).removeSplit(-900).removeSplit(-901);
-		expect(draft.toRequest().entries ?? []).toEqual([]);
+		expect(draft.toRequest().entries).toEqual([{ id: 1, document_line: null }]);
+		expect(draft.isDirty).toBe(true);
+		// the document itself is not decided
+		expect(original(draft)!.document).toBeUndefined();
+	});
+
+	it('removing only one of the rows does not decide anything', () => {
+		const draft = empty().syncLineRows(proposal()).removeSplit(-900);
 		expect(original(draft)).toBeUndefined();
+	});
+
+	it('a new decision about the document, or a reset, takes the unsplit decision back', () => {
+		const unsplit = empty().syncLineRows(proposal()).removeSplit(-900).removeSplit(-901);
+		expect(original(unsplit.pickDocument(1, 8, 1))!.document_line).toBeUndefined();
+		expect(original(unsplit.resetSplit(1))!).toBeUndefined();
 	});
 
 	it('go with a new decision about the document: they belong to the old one', () => {

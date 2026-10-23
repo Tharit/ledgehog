@@ -195,7 +195,9 @@ class UnitDraftEntryIn(BaseModel):
     """One entry the draft changes. `description` and `note` are left as stored when absent and emptied when
     null. A new entry (negative `id`) names `source_entry_id`, a stored entry of the source it splits, and
     carries its `amount`; the source's original entry is the residual and takes no amount of its own. `tags`
-    is a tag change on top of the stored (or inherited) tags; absent leaves them untouched."""
+    is a tag change on top of the stored (or inherited) tags; absent leaves them untouched. `document_line`
+    null on a stored (original) entry, as against absent, is the user's decision that its transaction stays
+    unsplit, without a line: nothing is proposed for it."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -227,6 +229,7 @@ class UnitDraftEntryIn(BaseModel):
             pairing=self.pairing.to_core(),
             document=self.document.to_core(),
             document_line=None if self.document_line is None else self.document_line.to_core(),
+            unsplit=self.id > 0 and "document_line" in given and self.document_line is None,
             source_entry_id=self.source_entry_id,
             tags_add=tuple(sorted(set(self.tags.add))) if self.tags else (),
             tags_remove=tuple(sorted(set(self.tags.remove))) if self.tags else (),

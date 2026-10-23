@@ -3616,7 +3616,9 @@ export interface components {
          * @description One entry the draft changes. `description` and `note` are left as stored when absent and emptied when
          *     null. A new entry (negative `id`) names `source_entry_id`, a stored entry of the source it splits, and
          *     carries its `amount`; the source's original entry is the residual and takes no amount of its own. `tags`
-         *     is a tag change on top of the stored (or inherited) tags; absent leaves them untouched.
+         *     is a tag change on top of the stored (or inherited) tags; absent leaves them untouched. `document_line`
+         *     null on a stored (original) entry, as against absent, is the user's decision that its transaction stays
+         *     unsplit, without a line: nothing is proposed for it.
          */
         UnitDraftEntryIn: {
             /** Amount */
