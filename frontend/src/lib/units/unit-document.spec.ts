@@ -251,4 +251,15 @@ describe('waitingText', () => {
 			'Waiting for a document from amazon, not synced yet'
 		);
 	});
+
+	it('says what is left of an order that is not all charged', () => {
+		expect(
+			waitingText({
+				order: '302-1',
+				provider: 'amazon',
+				charged: { amount: -3000, currency: 'EUR' },
+				total: { amount: -5000, currency: 'EUR' }
+			})
+		).toBe('Waiting for the rest of order 302-1 from amazon: 20.00 of 50.00 not yet charged');
+	});
 });

@@ -77,6 +77,14 @@ export function waitingReason(
 		: `Waiting for ${name}, synced through ${formatDate(waiting.synced_through, locale)}`;
 }
 
+/** "Waiting for the rest of order 302-1 from amazon: 20.00 of 50.00 not yet charged". */
+export function waitingOrderReason(
+	waiting: NonNullable<Unit['waiting_order']>,
+	locale = 'en'
+): string {
+	return waitingText(waiting, locale);
+}
+
 /** "Waiting for a document from amazon, covered through 12 Oct 2026" / "…, not synced yet". */
 export function waitingDocumentReason(
 	waiting: NonNullable<Unit['waiting_document']>,

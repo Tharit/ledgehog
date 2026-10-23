@@ -163,6 +163,40 @@ def test_the_preview_carries_the_waiting_line(anna: TestClient, scene: Scene) ->
     assert doc["decision_required"] is True and doc["suggestions"] == []
 
 
+def test_the_preview_carries_the_rest_of_an_order_line(anna: TestClient, scene: Scene, docs: Docs) -> None:
+    scene.sync(scene.checking)  # fetched through 2026-03-01: not yet through the order's date plus back
+    order = docs.document(total=-5000, external_id="302-1")
+    docs.lines(order, ("a", -3000), ("b", -2000))
+    entry = docs.charge(-3000)
+    scene.settle()
+    doc = anna.post(PREVIEW, json=body(scene, entry)).json()["rows"][0]["document"]
+    assert doc["waiting"] == {
+        "order": "302-1",
+        "provider": "paypal",
+        "charged": {"amount": -3000, "currency": "EUR"},
+        "total": {"amount": -5000, "currency": "EUR"},
+    }
+    assert doc["decision_required"] is False  # the wait adds no refusal
+
+
+def test_the_queue_carries_the_rest_of_an_order(anna: TestClient, scene: Scene, docs: Docs) -> None:
+    scene.sync(scene.checking)
+    order = docs.document(total=-5000, external_id="302-1")
+    docs.lines(order, ("a", -3000), ("b", -2000))
+    entry = docs.charge(-3000)
+    scene.settle()
+    sections = {s["kind"]: s for s in anna.get("/api/units/queue").json()["sections"]}
+    (unit,) = sections["waiting"]["units"]
+    assert unit["anchor_entry_id"] == entry
+    assert unit["waiting_order"] == {
+        "order": "302-1",
+        "provider": "paypal",
+        "charged": {"amount": -3000, "currency": "EUR"},
+        "total": {"amount": -5000, "currency": "EUR"},
+    }
+    assert unit["waiting"] is None and unit["waiting_document"] is None
+
+
 def test_a_pick_previews_as_the_link_with_its_key(anna: TestClient, scene: Scene, docs: Docs) -> None:
     entry, a, _b = two_documents(docs)
     r = anna.post(PREVIEW, json=body(scene, entry, pick(entry, a)))

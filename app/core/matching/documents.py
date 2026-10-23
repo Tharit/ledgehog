@@ -54,6 +54,9 @@ class DocTxn:
     is_transfer: bool = False
     document_id: int | None = None
     line_numbers: frozenset[int] = frozenset()
+    # the `pass` of the `document` key its original entry carries (None: no key); a link a matcher made keeps
+    # the transaction waiting for the rest of the order (documents.md §7)
+    document_pass: str | None = None
 
     @property
     def considered(self) -> bool:

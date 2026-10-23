@@ -3755,6 +3755,20 @@ export interface components {
             /** Proposed */
             proposed: boolean;
         };
+        /**
+         * UnitOrderWaitingOut
+         * @description The line of a transaction that waits for the rest of its document's order (documents.md §7): "order
+         *     <order> from <provider>, <not yet charged> of <total>"; `charged` and `total` are signed like the
+         *     document's total and compared by magnitude.
+         */
+        UnitOrderWaitingOut: {
+            charged: components["schemas"]["Money"];
+            /** Order */
+            order: string;
+            /** Provider */
+            provider: string;
+            total: components["schemas"]["Money"];
+        };
         /** UnitOut */
         UnitOut: {
             /** Anchor Entry Id */
@@ -3772,6 +3786,7 @@ export interface components {
             unit_key: number;
             waiting?: components["schemas"]["WaitingOut"] | null;
             waiting_document?: components["schemas"]["WaitingDocumentOut"] | null;
+            waiting_order?: components["schemas"]["WaitingOrderOut"] | null;
         };
         /**
          * UnitPairingIn
@@ -3961,7 +3976,8 @@ export interface components {
             stored_document_id: number | null;
             /** Suggestions */
             suggestions: components["schemas"]["UnitDocumentSummaryOut"][];
-            waiting: components["schemas"]["UnitDocumentWaitingOut"] | null;
+            /** Waiting */
+            waiting: components["schemas"]["UnitDocumentWaitingOut"] | components["schemas"]["UnitOrderWaitingOut"] | null;
         };
         /**
          * UnitShownBasisIn
@@ -4115,6 +4131,19 @@ export interface components {
             covered_through: string | null;
             /** Provider */
             provider: string;
+        };
+        /**
+         * WaitingOrderOut
+         * @description A unit waiting for the rest of a document's order (documents.md §7): `charged` of the order's `total`
+         *     (signed like a charge, compared by magnitude) is carried; the queue says what remains.
+         */
+        WaitingOrderOut: {
+            charged: components["schemas"]["Money"];
+            /** Order */
+            order: string;
+            /** Provider */
+            provider: string;
+            total: components["schemas"]["Money"];
         };
         /** WaitingOut */
         WaitingOut: {

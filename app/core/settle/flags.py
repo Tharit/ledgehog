@@ -10,6 +10,8 @@ Produced: `unclassified`, `unconfirmed`, `waiting`, `unmatched_transfer` and `do
 `waiting` is also a transaction's wait for its document (spec §5.8, documents.md §7), on its original
 entry: it is set when the unit CTE says `doc_awaited` (`core/resolution/confirmed.py`), even while
 documents are suggested (a unit waiting for a document has `waiting` in addition to `document_suggested`).
+`waiting` is also set, on the original entry that carries a matcher's link, while the document's order is not
+all charged (`doc_rest`, documents.md §7); that wait holds no confirmation.
 `document_suggested` is `doc_suggested`: candidates exist and no automatic link is possible. Both are
 judged for the original entry of a transaction whose payee has a provider and which has no `document` key.
 
@@ -57,14 +59,14 @@ _RECOMPUTE = text(
                                 ('unconfirmed', x.unit_has_nonstanding),
                                 ('unmatched_transfer', x.unpaired AND NOT x.is_waiting),
                                 ('document_suggested', x.doc_suggested),
-                                ('waiting', x.is_waiting OR x.doc_awaited)
+                                ('waiting', x.is_waiting OR x.doc_awaited OR x.doc_rest)
                               ) AS t(token, applies)
                         WHERE t.applies
                         ORDER BY t.token
                    ) AS flags
               FROM (
                     SELECT le.id, le.type, le.category_id, u.unit_has_nonstanding,
-                           u.doc_awaited, u.doc_suggested,
+                           u.doc_awaited, u.doc_suggested, u.doc_rest,
                            (le.type = 'transfer' AND le.counterpart_entry_id IS NULL) AS unpaired,
                            COALESCE(le.type = 'transfer' AND le.counterpart_entry_id IS NULL
                                     AND sy.synced

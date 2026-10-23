@@ -534,6 +534,29 @@ describe('ReviewQueue: needs an account and waiting', () => {
 		expect(screen.getByRole('heading', { name: /Waiting/ })).toHaveTextContent('(2)');
 	});
 
+	it('gives a unit waiting for the rest of an order its line', async () => {
+		await shown({
+			waiting: [
+				unit({
+					...flow(1, 'Out', { review_flags: ['unconfirmed', 'waiting'] }),
+					waiting_order: {
+						order: '302-1',
+						provider: 'amazon',
+						charged: { amount: -3000, currency: 'EUR' },
+						total: { amount: -5000, currency: 'EUR' }
+					}
+				})
+			]
+		});
+
+		const lines = [...document.querySelectorAll('[data-slot="waiting-order-reason"]')].map((n) =>
+			n.textContent!.trim()
+		);
+		expect(lines).toEqual([
+			'Waiting for the rest of order 302-1 from amazon: 20.00 of 50.00 not yet charged'
+		]);
+	});
+
 	it('gives a unit waiting for a document its line, and the badges stay on the row', async () => {
 		await shown({
 			waiting: [

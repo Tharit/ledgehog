@@ -283,6 +283,15 @@ def load_doc_world(conn: Connection, stored: StoredUnit, picks: Collection[int] 
             infos[info.id] = info
             details[info.id] = LinkedDocument(merchant_name=info.merchant_name, lines=info.lines)
     others = load_gated(conn, closure)
+    synced = [
+        r.synced_through
+        for r in conn.execute(
+            text(
+                "SELECT c.synced_through FROM v_account_synced AS s"
+                " JOIN v_account_coverage AS c ON c.account_id = s.account_id WHERE s.synced"
+            )
+        )
+    ]
     delivering = instance_deliveries(conn)
     sources = [
         DocumentSource(
@@ -296,6 +305,7 @@ def load_doc_world(conn: Connection, stored: StoredUnit, picks: Collection[int] 
     return DocWorld(
         window=window,
         sources=sources,
+        synced=synced,
         payee_providers=payee_providers,
         documents=docs,
         details=details,

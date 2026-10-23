@@ -36,6 +36,10 @@ export type DocumentSummary = Schemas['UnitDocumentSummaryOut'];
 export type RowDocumentLine = Schemas['UnitRowDocumentLineOut'];
 export type DocumentSplit = Schemas['UnitDocumentSplitOut'];
 export type DocumentWaiting = Schemas['UnitDocumentWaitingOut'];
+/** The rest of the order of the document a transaction carries is awaited (documents.md §7). */
+export type OrderWaiting = Schemas['UnitOrderWaitingOut'];
+/** What a transaction waits for in the preview: its document, or the rest of an order. */
+export type DocumentWait = DocumentWaiting | OrderWaiting;
 export type UnitCommit = Schemas['UnitCommitOut'];
 
 /** The sections in the order the queue shows them. */

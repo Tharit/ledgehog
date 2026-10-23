@@ -116,6 +116,8 @@
 		doc.split !== null && doc.split.available && !splitting && doc.split.document !== null
 	);
 	const waitingLine = $derived(doc.state === 'open' && doc.waiting !== null);
+	// the rest of an order is awaited beside the document the transaction carries
+	const orderLine = $derived(doc.state === 'linked' && doc.waiting !== null);
 </script>
 
 {#snippet summaryLine(document: DocumentSummary)}
@@ -178,6 +180,11 @@
 		</p>
 	{:else}
 		<p class="text-muted-foreground" data-slot="document-line">No document</p>
+	{/if}
+	{#if orderLine && doc.waiting}
+		<p class="text-xs text-muted-foreground" data-slot="document-waiting">
+			{waitingText(doc.waiting, locale)}
+		</p>
 	{/if}
 	<EvidenceLine evidence={doc.evidence} />
 

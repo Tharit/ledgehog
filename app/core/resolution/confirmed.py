@@ -24,8 +24,10 @@ A unit is confirmed when every entry of it is complete and carries only standing
   no other transaction) keeps the unit unconfirmed too, so that a unit whose payee rules are all standing is
   not confirmed in the same settle that would link its document (`doc_candidate`, used here only).
   `doc_awaited` and `doc_suggested` are exposed per entry (the flags
-  `waiting` and `document_suggested` read them). Which importer provides which provider is the registry of
-  `core/importers/providers.py`; the candidates are found in Python, a line allocation not being SQL
+  `waiting` and `document_suggested` read them). Beside them `doc_rest`, of an original entry whose document
+  key is a matcher's: it waits for the rest of its document's order (documents.md §7), which sets the flag
+  `waiting` and holds no confirmation (see `_REST`). Which importer provides which provider is the registry
+  of `core/importers/providers.py`; the candidates are found in Python, a line allocation not being SQL
   (`core/resolution/doc_load.py`); both are bound as `units_binds(conn)`.
 
 This is computed here rather than read from `review_flags` so that it is right in the middle of a
@@ -83,6 +85,47 @@ _AWAITED = (
     + """))"""
 )
 
+
+def charged_sql(document: str) -> str:
+    """The SQL of what the carriers of the document aliased `document` charged: the sum of the amounts of the
+    sources of every entry linking it, each in the document's currency (its own, else its instructed one; a
+    source with neither counts nothing): `core.matching.documents.charged`."""
+    return f"""(SELECT COALESCE(sum(CASE WHEN rs.currency = {document}.currency THEN rs.amount
+                                       WHEN rs.instructed_currency = {document}.currency
+                                       THEN rs.instructed_amount END), 0)
+                  FROM ledger_entry AS rc
+                  JOIN source_transaction AS rs ON rs.id = rc.source_transaction_id
+                 WHERE rc.document_id = {document}.id)"""
+
+
+# The wait for the rest of an order (documents.md §7), of an original entry (only it carries a link, I31)
+# whose `document` key is a matcher's: the amounts of the document's carriers (every entry linking it; the
+# transaction's own amount in the document's currency, else its instructed one, a carrier with neither
+# counting nothing) fall short of its total in magnitude (`core.matching.documents.charged`,
+# `fully_charged`) AND some synced account has not reached the document's date plus `back`
+# (`synced_through` NULL: never fetched). The twin is `core/units/documents.py: rest_awaited`. It holds no
+# confirmation (the key does): the flag `waiting` and the queue's section read it, never `unit_ok`.
+_REST_GATE = """le.document_id IS NOT NULL
+                                AND (le.derivation -> 'document' ->> 'pass')
+                                    IN ('matcher_decision', 'matcher_proposal')"""
+_REST = (
+    """EXISTS (SELECT 1
+                                  FROM external_document AS rd
+                                 WHERE rd.id = le.document_id
+                                   AND abs("""
+    + charged_sql("rd")
+    + """) < abs(rd.total)
+                                   AND EXISTS (SELECT 1
+                                                 FROM v_account_synced AS sy
+                                                 JOIN v_account_coverage AS cv
+                                                   ON cv.account_id = sy.account_id
+                                                WHERE sy.synced
+                                                  AND (cv.synced_through IS NULL
+                                                       OR cv.synced_through < rd.occurred_on + """
+    + _DOC_BACK
+    + """)))"""
+)
+
 # The candidates (documents.md §2, §3): found in Python, since a line allocation cannot be done in SQL
 # (`core/resolution/doc_load.py: candidacy`, bound as `units_binds(conn)`): one row per gated original entry
 # that has a candidate, with `suggested` (documents.md §4: no automatic link is possible: several
@@ -96,17 +139,19 @@ _CANDIDATES = "unnest(CAST(:cand_entries AS bigint[]), CAST(:cand_suggested AS b
 # confirmed), `unit_has_nonstanding` (some entry of the unit carries a key that awaits a human: what
 # `unconfirmed` means), `first_id` (the lowest entry id of its SOURCE transaction: the original entry
 # of a split, I31) and `doc_awaited`, `doc_suggested` (the entry's transaction awaits a document, or has
-# suggestions: false for every entry the gate excludes). `{scope}` narrows to the units of given entries,
-# or to all.
+# suggestions: false for every entry the gate excludes) and `doc_rest` (it waits for the rest of its
+# document's order: of a linked original entry, which the gate excludes). `{scope}` narrows to the units of
+# given entries, or to all.
 _UNITS = """
     SELECT m.id, m.src, m.unit_key,
            bool_and(m.complete AND m.standing AND NOT (m.doc_awaited OR m.doc_candidate))
                OVER (PARTITION BY m.unit_key) AS unit_ok,
            bool_or(NOT m.standing) OVER (PARTITION BY m.unit_key) AS unit_has_nonstanding,
            min(m.id) OVER (PARTITION BY m.src) AS first_id,
-           m.doc_awaited, m.doc_suggested
+           m.doc_awaited, m.doc_suggested, m.doc_rest
       FROM (
             SELECT k.id, k.src, k.complete, k.standing, k.doc_awaited, k.doc_suggested, k.doc_candidate,
+                   k.doc_rest,
                    min(k.direct_key) OVER (PARTITION BY k.src) AS unit_key
               FROM (
                     SELECT le.id, le.source_transaction_id AS src,
@@ -120,7 +165,8 @@ _UNITS = """
                            {standing_sql} AS standing,
                            CASE WHEN {gate} THEN {awaited} ELSE false END AS doc_awaited,
                            COALESCE({gate} AND cd.entry_id IS NOT NULL, false) AS doc_candidate,
-                           COALESCE({gate} AND cd.suggested, false) AS doc_suggested
+                           COALESCE({gate} AND cd.suggested, false) AS doc_suggested,
+                           CASE WHEN {rest_gate} THEN {rest} ELSE false END AS doc_rest
                       FROM ledger_entry AS le
                       LEFT JOIN ledger_entry AS p ON p.id = le.counterpart_entry_id
                       LEFT JOIN payee AS pp ON pp.id = le.payee_id
@@ -157,6 +203,8 @@ def units_sql(*, of_entries: bool = False) -> str:
         scope=_OF_ENTRIES if of_entries else _ALL,
         gate=_GATE,
         awaited=_AWAITED,
+        rest_gate=_REST_GATE,
+        rest=_REST,
         candidates=_CANDIDATES,
         complete=COMPLETE,
         standing_sql=STANDING_SQL,

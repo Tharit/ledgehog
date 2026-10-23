@@ -45,6 +45,7 @@
 		groupHeading,
 		unitsOfGroup,
 		waitingDocumentReason,
+		waitingOrderReason,
 		waitingReason
 	} from '#lib/units/queue.js';
 	import type { QueueGroup, Unit } from '#lib/units/types.js';
@@ -315,6 +316,17 @@
 												data-slot="waiting-document-reason"
 											>
 												{waitingDocumentReason(unit.waiting_document, locale)}
+											</div>
+										</div>
+									{/if}
+									{#if unit.waiting_order}
+										<div role="row" class="border-b border-border px-3 py-1">
+											<div
+												role="gridcell"
+												class="text-xs text-muted-foreground"
+												data-slot="waiting-order-reason"
+											>
+												{waitingOrderReason(unit.waiting_order, locale)}
 											</div>
 										</div>
 									{/if}

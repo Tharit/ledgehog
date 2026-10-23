@@ -7960,6 +7960,33 @@
         "title": "UnitOfferOut",
         "type": "object"
       },
+      "UnitOrderWaitingOut": {
+        "description": "The line of a transaction that waits for the rest of its document's order (documents.md \u00a77): \"order\n<order> from <provider>, <not yet charged> of <total>\"; `charged` and `total` are signed like the\ndocument's total and compared by magnitude.",
+        "properties": {
+          "charged": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "order": {
+            "title": "Order",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "total": {
+            "$ref": "#/components/schemas/Money"
+          }
+        },
+        "required": [
+          "order",
+          "provider",
+          "charged",
+          "total"
+        ],
+        "title": "UnitOrderWaitingOut",
+        "type": "object"
+      },
       "UnitOut": {
         "properties": {
           "anchor_entry_id": {
@@ -8009,6 +8036,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/WaitingDocumentOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "waiting_order": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WaitingOrderOut"
               },
               {
                 "type": "null"
@@ -8623,9 +8660,13 @@
                 "$ref": "#/components/schemas/UnitDocumentWaitingOut"
               },
               {
+                "$ref": "#/components/schemas/UnitOrderWaitingOut"
+              },
+              {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Waiting"
           }
         },
         "required": [
@@ -9138,6 +9179,33 @@
           "covered_through"
         ],
         "title": "WaitingDocumentOut",
+        "type": "object"
+      },
+      "WaitingOrderOut": {
+        "description": "A unit waiting for the rest of a document's order (documents.md \u00a77): `charged` of the order's `total`\n(signed like a charge, compared by magnitude) is carried; the queue says what remains.",
+        "properties": {
+          "charged": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "order": {
+            "title": "Order",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "total": {
+            "$ref": "#/components/schemas/Money"
+          }
+        },
+        "required": [
+          "order",
+          "provider",
+          "charged",
+          "total"
+        ],
+        "title": "WaitingOrderOut",
         "type": "object"
       },
       "WaitingOut": {

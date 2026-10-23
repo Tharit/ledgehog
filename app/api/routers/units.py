@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from app.api.errors import ApiError, map_error
 from app.api.ids import PathId
+from app.api.routers.accounts import Money
 from app.api.routers.changes import model_queue_of
 from app.api.routers.entries import EntryOut
 from app.api.routers.unit_drafts import (
@@ -72,6 +73,16 @@ class WaitingDocumentOut(BaseModel):
     covered_through: date | None
 
 
+class WaitingOrderOut(BaseModel):
+    """A unit waiting for the rest of a document's order (documents.md §7): `charged` of the order's `total`
+    (signed like a charge, compared by magnitude) is carried; the queue says what remains."""
+
+    order: str  # the order's external id
+    provider: str
+    charged: Money
+    total: Money
+
+
 class CurrencyGroupOut(BaseModel):
     currency: str
     count: int  # units (not legs) that need an account in the currency, over the whole section
@@ -88,6 +99,8 @@ class UnitOut(BaseModel):
     waiting: WaitingOut | None = None
     # ... for a document instead of a partner: set instead of `waiting`
     waiting_document: WaitingDocumentOut | None = None
+    # ... or for the rest of the order of the document a matcher linked: set instead of the two above
+    waiting_order: WaitingOrderOut | None = None
     # the model is still looking at one of its entries (read from its list when the response is built)
     model_pending: bool = False
 
@@ -111,6 +124,16 @@ class UnitOut(BaseModel):
                     covered_through=view.waiting_document.covered_through,
                 )
                 if view.waiting_document
+                else None
+            ),
+            waiting_order=(
+                WaitingOrderOut(
+                    order=view.waiting_order.order,
+                    provider=view.waiting_order.provider,
+                    charged=Money(amount=view.waiting_order.charged, currency=view.waiting_order.currency),
+                    total=Money(amount=view.waiting_order.total, currency=view.waiting_order.currency),
+                )
+                if view.waiting_order
                 else None
             ),
         )

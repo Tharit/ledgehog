@@ -6,7 +6,13 @@ import { formatDate, formatMoney } from '#lib/format/index.js';
 import type { Draft, DocumentEdit } from './draft.js';
 import { asKey, describeDocumentKey, type Evidence } from './evidence.js';
 import type { Money } from '#lib/types/domain.js';
-import type { DocumentSummary, DocumentWaiting, PreviewRow, RowDocument } from './types.js';
+import type {
+	DocumentSummary,
+	DocumentWait,
+	OrderWaiting,
+	PreviewRow,
+	RowDocument
+} from './types.js';
 
 /** What the document row is in, in words the panel and its tests name. */
 export type DocumentState =
@@ -37,7 +43,7 @@ export type DocumentFieldView = {
 	document: DocumentSummary | null;
 	evidence: Evidence | null;
 	suggestions: readonly DocumentSummary[];
-	waiting: DocumentWaiting | null;
+	waiting: DocumentWait | null;
 	/** a commit is refused until the user picks a document or decides on none */
 	decisionRequired: boolean;
 	/** the split along the lines of the document the transaction carries */
@@ -63,8 +69,23 @@ export type DocumentFieldView = {
 	splitEdited: boolean;
 };
 
-/** The words of the wait: "Waiting for a document from amazon, covered through 12 Oct 2026". */
-export function waitingText(waiting: DocumentWaiting, locale = 'en'): string {
+/** The wait is for the rest of an order (not for a document). */
+export function isOrderWaiting(waiting: DocumentWait): waiting is OrderWaiting {
+	return 'order' in waiting;
+}
+
+/**
+ * The words of the wait: "Waiting for a document from amazon, covered through 12 Oct 2026", or
+ * "Waiting for the rest of order 302-1 from amazon: 20.00 of 50.00 not yet charged" (the remainder
+ * of the order's total, by magnitude).
+ */
+export function waitingText(waiting: DocumentWait, locale = 'en'): string {
+	if (isOrderWaiting(waiting)) {
+		const left = Math.abs(waiting.total.amount) - Math.abs(waiting.charged.amount);
+		const money = (minor: number) =>
+			formatMoney(minor, waiting.total.currency, { locale, showPlus: false });
+		return `Waiting for the rest of order ${waiting.order} from ${waiting.provider}: ${money(left)} of ${money(Math.abs(waiting.total.amount))} not yet charged`;
+	}
 	return waiting.covered_through === null
 		? `Waiting for a document from ${waiting.provider}, not synced yet`
 		: `Waiting for a document from ${waiting.provider}, covered through ${formatDate(waiting.covered_through, locale)}`;

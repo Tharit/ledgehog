@@ -20,6 +20,7 @@ from app.api.routers.entries import EntryOut
 from app.api.routers.maintenance import SettleOut
 from app.core.matching import Offer
 from app.core.units.commit import CommitResult
+from app.core.units.documents import OrderWait
 from app.core.units.draft import (
     UNSET,
     CounterLegDraft,
@@ -520,6 +521,26 @@ class UnitDocumentWaitingOut(BaseModel):
         return UnitDocumentWaitingOut(provider=w.provider, covered_through=w.covered_through)
 
 
+class UnitOrderWaitingOut(BaseModel):
+    """The line of a transaction that waits for the rest of its document's order (documents.md §7): "order
+    <order> from <provider>, <not yet charged> of <total>"; `charged` and `total` are signed like the
+    document's total and compared by magnitude."""
+
+    order: str  # the order's external id
+    provider: str
+    charged: Money
+    total: Money
+
+    @staticmethod
+    def of(w: OrderWait) -> UnitOrderWaitingOut:
+        return UnitOrderWaitingOut(
+            order=w.order,
+            provider=w.provider,
+            charged=Money(amount=w.charged, currency=w.currency),
+            total=Money(amount=w.total, currency=w.currency),
+        )
+
+
 class UnitDocumentSplitOut(BaseModel):
     """The split along the lines of the document the transaction carries (a document of several lines)."""
 
@@ -547,7 +568,8 @@ class UnitRowDocumentOut(BaseModel):
     document: UnitDocumentSummaryOut | None  # the link once committed and settled
     key: UnitKeyOut | None  # the `document` key then: matcher_decision, matcher_proposal or user
     suggestions: list[UnitDocumentSummaryOut]  # while no document is decided; nearest first
-    waiting: UnitDocumentWaitingOut | None  # the document is awaited
+    # the document is awaited, or the rest of the order of the one the transaction carries
+    waiting: UnitDocumentWaitingOut | UnitOrderWaitingOut | None
     decision_required: bool
     split: UnitDocumentSplitOut | None
 
@@ -558,7 +580,13 @@ class UnitRowDocumentOut(BaseModel):
             document=None if v.document is None else UnitDocumentSummaryOut.of(v.document),
             key=UnitKeyOut.of(v.key),
             suggestions=[UnitDocumentSummaryOut.of(d) for d in v.suggestions],
-            waiting=None if v.waiting is None else UnitDocumentWaitingOut.of(v.waiting),
+            waiting=(
+                None
+                if v.waiting is None
+                else UnitOrderWaitingOut.of(v.waiting)
+                if isinstance(v.waiting, OrderWait)
+                else UnitDocumentWaitingOut.of(v.waiting)
+            ),
             decision_required=v.decision_required,
             split=None if v.split is None else UnitDocumentSplitOut.of(v.split),
         )

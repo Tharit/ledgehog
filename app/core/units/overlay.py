@@ -80,7 +80,7 @@ from app.core.settle.pairing import PAIR_COUNTER_KEY_VALUE, PAIR_KEY_VALUE
 from app.core.settle.resolution import Rewrite, settle_rewrites, stored_decisions
 from app.core.units.closure import UnitEntry, units_of
 from app.core.units.doc_draft import DocDecision, DocPlan, plan_documents
-from app.core.units.doc_world import facts_of, links_of, suggestions_of, waits_of
+from app.core.units.doc_world import facts_of, links_of, order_waits_of, suggestions_of, waits_of
 from app.core.units.documents import DocumentFacts
 from app.core.units.draft import (
     DERIVED_FIELDS,
@@ -685,6 +685,12 @@ def confirmed_documents(entries: Sequence[UnitEntry]) -> frozenset[int]:
     return frozenset(docs)
 
 
+def _document_pass(derivation: Mapping[str, Any] | None) -> str | None:
+    """The `pass` of the `document` key of a derivation, None where there is none."""
+    key = (derivation or {}).get("document")
+    return str(key["pass"]) if isinstance(key, Mapping) and "pass" in key else None
+
+
 def _doc_txn(r: _Row, rows: Sequence[_Row], world: World, confirmed: frozenset[int]) -> DocTxn | None:
     """The original entry of a stored source as document matching reads it (the source's amounts, the
     entry's payee), None for any other row: only an original carries a link (I31). A transfer entry anywhere
@@ -707,6 +713,7 @@ def _doc_txn(r: _Row, rows: Sequence[_Row], world: World, confirmed: frozenset[i
         is_transfer=any(x.type == "transfer" for x in siblings),
         document_id=r.document_id,
         line_numbers=frozenset(x.line_no for x in siblings if x.line_no is not None),
+        document_pass=_document_pass(r.derivation),
         confirmed=r.document_id is not None and r.document_id in confirmed,
     )
 
@@ -1266,6 +1273,14 @@ def _document_views(
     facts = _doc_facts(ordered, world)
     offered = suggestions_of(txns, world.docs)
     waits = waits_of(txns, world.docs)
+    # the wait for the rest of an order is the one the stored link has: a commit makes the link the user's
+    # and ends it, so what the preview says is judged before that, on the key the entry holds now
+    held = {
+        r.id: r.stored.derivation if r.stored is not None and r.doc_key == "stored" else None for r in rows
+    }
+    orders = order_waits_of(
+        [dataclasses.replace(t, document_pass=_document_pass(held.get(t.entry_id))) for t in txns], world.docs
+    )
     out: dict[int, DocumentView] = {}
     for r in rows:
         assert r.stored is not None
@@ -1279,12 +1294,17 @@ def _document_views(
         if decision_required:
             problems.append(Problem("document_decision_required", r.id, "document"))
         wait = waits.get(r.id)
+        order = orders.get(r.id)
         out[r.id] = DocumentView(
             stored_document_id=r.stored.document_id,
             document=_summary(world, r.document_id) if r.document_id is not None else None,
             key=None,
             suggestions=tuple(s for d in offered.get(r.id, ()) if (s := _summary(world, d.document_id))),
-            waiting=None if wait is None else DocumentWaiting(wait.provider, wait.covered_through),
+            waiting=order
+            if order is not None
+            else None
+            if wait is None
+            else DocumentWaiting(wait.provider, wait.covered_through),
             decision_required=decision_required,
             split=docs.splits.get(r.id),
         )
@@ -1370,6 +1390,7 @@ def _stored_facts(stored: StoredUnit, world: World) -> dict[int, DocumentFacts]:
                 document_decided="document" in e.derivation,
                 is_transfer=any(x.type == "transfer" for x in siblings),
                 document_id=e.document_id,
+                document_pass=_document_pass(e.derivation),
                 line_numbers=frozenset(
                     x.document_line[1]
                     for x in siblings

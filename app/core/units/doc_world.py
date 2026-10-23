@@ -19,13 +19,16 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date
 
-from app.core.matching.documents import DocInput, DocTxn, DocWindow, match
+from app.core.matching.documents import DocInput, DocTxn, DocWindow, charged, match
 from app.core.resolution.enrich import LinkedDocument
 from app.core.units.documents import (
+    MATCHER_PASSES,
     DocumentFacts,
     DocumentSource,
     DocumentWait,
+    OrderWait,
     document_facts_of,
+    rest_awaited,
     waiting_for,
 )
 
@@ -55,6 +58,9 @@ class DocumentInfo:
 class DocWorld:
     window: DocWindow
     sources: Sequence[DocumentSource] = ()
+    # the `synced_through` of each synced account, None for one never fetched: what the wait for the rest of
+    # an order reads (documents.md §7)
+    synced: Sequence[date | None] = ()
     payee_providers: Mapping[int, str] = field(default_factory=dict)
     # with their lines and the carriers outside the unit (`DocInput.carriers`); the overlay adds the carriers
     # its own rows are (`_with_carriers`)
@@ -89,16 +95,21 @@ def _outside(txns: Sequence[DocTxn], world: DocWorld) -> list[DocTxn]:
 
 def facts_of(txns: Sequence[DocTxn], world: DocWorld) -> dict[int, DocumentFacts]:
     """The document facts of each of `txns` (the unit's original entries, carriers among them), by entry id:
-    awaited, suggested and candidate as the unit CTE reads them."""
-    if not world.payee_providers:
-        return {}
-    return document_facts_of(
-        txns,
-        others=_outside(txns, world),
-        documents=_with_carriers(world, txns),
-        sources=world.sources,
-        window=world.window,
+    awaited, suggested and candidate as the unit CTE reads them, and `rest` for the rest of an order."""
+    found = (
+        document_facts_of(
+            txns,
+            others=_outside(txns, world),
+            documents=_with_carriers(world, txns),
+            sources=world.sources,
+            window=world.window,
+        )
+        if world.payee_providers
+        else {}
     )
+    for entry_id in order_waits_of(txns, world):
+        found[entry_id] = replace(found.get(entry_id, DocumentFacts()), rest=True)
+    return found
 
 
 def links_of(txns: Sequence[DocTxn], world: DocWorld) -> dict[int, int]:
@@ -134,4 +145,28 @@ def waits_of(txns: Sequence[DocTxn], world: DocWorld) -> dict[int, DocumentWait]
         assert t.payee_provider is not None
         if wait := waiting_for(t.payee_provider, t.booked_on, world.window, world.sources):
             out[t.entry_id] = wait
+    return out
+
+
+def order_waits_of(txns: Sequence[DocTxn], world: DocWorld) -> dict[int, OrderWait]:
+    """What each of `txns` that carries a matcher's link waits for (documents.md §7): the rest of the
+    document's order, by entry id. The carriers are the document's, the unit's own among them."""
+    carried = [t for t in txns if t.document_id is not None and t.document_pass in MATCHER_PASSES]
+    if not carried:
+        return {}
+    documents = {d.document_id: d for d in _with_carriers(world, txns)}
+    out: dict[int, OrderWait] = {}
+    for t in carried:
+        assert t.document_id is not None
+        document = documents.get(t.document_id)
+        info = world.infos.get(t.document_id)
+        if document is None or info is None or not rest_awaited(document, world.synced, world.window):
+            continue
+        out[t.entry_id] = OrderWait(
+            order=info.external_id,
+            provider=info.provider,
+            charged=charged(document),
+            total=document.total,
+            currency=document.currency,
+        )
     return out

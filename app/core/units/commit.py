@@ -558,7 +558,9 @@ def _result(engine: Engine, plan: Plan, created: Mapping[int, int], settled: Set
         for r in unit_rows
     ]
     leg_states = leg_states_of_flags({r.id: r.review_flags for r in unit_rows})
-    facts = document_facts_of_flags([(r.id, r.review_flags) for r in unit_rows if r.type == "flow"])
+    facts = document_facts_of_flags(
+        [(r.id, r.review_flags, r.document_id) for r in unit_rows if r.type == "flow"]
+    )
     for unit in units_of(entries).values():
         units.append(
             CommittedUnit(

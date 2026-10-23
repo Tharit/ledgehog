@@ -18,6 +18,7 @@ from app.core.plugins.classifier import AccountFact, Classifier, Field
 from app.core.resolution.snapshot import HistorySnapshot
 from app.core.resolution.types import Decided
 from app.core.units.doc_world import DocWorld
+from app.core.units.documents import OrderWait
 from app.core.units.state import UnitState
 
 # ---- what is stored -----------------------------------------------------------------------------
@@ -300,14 +301,15 @@ class DocumentView:
 
     `document` is what the entry carries once committed and settled; `stored_document_id` what it carries
     now. `key` is its `document` derivation key after the commit and settle. `suggestions` are the
-    candidates while no document is decided (never stored), `waiting` the line of a document that is awaited,
+    candidates while no document is decided (never stored), `waiting` the line of a document that is awaited
+    or of the rest of the order of the one it carries,
     and `decision_required` that a commit is refused unless it picks a document or says "none"."""
 
     stored_document_id: int | None
     document: DocumentSummary | None
     key: Mapping[str, Any] | None
     suggestions: tuple[DocumentSummary, ...] = ()
-    waiting: DocumentWaiting | None = None
+    waiting: DocumentWaiting | OrderWait | None = None
     decision_required: bool = False
     split: DocumentSplit | None = None
 

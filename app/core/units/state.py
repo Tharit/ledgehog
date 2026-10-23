@@ -60,13 +60,20 @@ def leg_states_of_flags(flags: Mapping[int, Sequence[str]]) -> dict[int, LegStat
     return out
 
 
-def document_facts_of_flags(entries: Sequence[tuple[int, Sequence[str]]]) -> dict[int, DocumentFacts]:
-    """The document facts of each entry from the review flags settling stored on it: `document_suggested`,
-    and `waiting` on an entry that is not a transfer leg (a leg waits for its partner, never a document;
-    the caller passes only the flows)."""
+def document_facts_of_flags(
+    entries: Sequence[tuple[int, Sequence[str], int | None]],
+) -> dict[int, DocumentFacts]:
+    """The document facts of each `(entry id, review flags, document id)` from the flags settling stored on
+    it: `document_suggested`, and `waiting` on an entry that is not a transfer leg (a leg waits for its
+    partner; the caller passes only the flows): for its document where it carries none, for the rest of its
+    order where it carries one (documents.md §7)."""
     return {
-        i: DocumentFacts(awaited="waiting" in tokens, suggested="document_suggested" in tokens)
-        for i, tokens in entries
+        i: DocumentFacts(
+            awaited="waiting" in tokens and document_id is None,
+            suggested="document_suggested" in tokens,
+            rest="waiting" in tokens and document_id is not None,
+        )
+        for i, tokens, document_id in entries
     }
 
 
@@ -85,11 +92,14 @@ def unit_state(
     `documents` says per entry whether its transaction awaits a document, has suggestions or a candidate
     (what the SQL reads as `doc_awaited`, `doc_suggested`, `doc_candidate`). It counts only for the
     original entry of a source (the lowest id of its source among `entries`, which holds every entry of
-    each source) that has no `document` key: the gate of documents.md §1.
+    each source) that has no `document` key: the gate of documents.md §1. The wait for the rest of an order
+    (`rest`) is the exception: it is of an entry that carries a document, sets the flag `waiting` and holds
+    nothing (documents.md §7: the matcher's key keeps the unit in review by itself).
     """
     if any(not e.movement for e in entries):
         raise ValueError("a derived entry is in no unit")
-    open_docs = _open_documents(entries, documents or {})
+    documents = documents or {}
+    open_docs = _open_documents(entries, documents)
     nonstanding = any(has_nonstanding_key(e) for e in entries)
     incomplete = any(is_unclassified(e) for e in entries)
     unpaired_legs = [e for e in entries if e.type == "transfer" and e.counterpart_entry_id is None]
@@ -122,7 +132,11 @@ def unit_state(
                 ("document_suggested", open_docs[e.id].suggested if e.id in open_docs else False),
                 ("unclassified", is_unclassified(e)),
                 ("unconfirmed", nonstanding),
-                ("waiting", open_docs[e.id].awaited if e.id in open_docs else False),
+                (
+                    "waiting",
+                    (open_docs[e.id].awaited if e.id in open_docs else False)
+                    or (e.id in documents and documents[e.id].rest),
+                ),
             )
             if on
         )

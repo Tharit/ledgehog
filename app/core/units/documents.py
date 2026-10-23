@@ -14,7 +14,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from app.core.matching.documents import DocInput, DocTxn, DocWindow, match
+from app.core.matching.documents import DocInput, DocTxn, DocWindow, charged, match
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,6 +27,9 @@ class DocumentFacts:
     awaited: bool = False
     suggested: bool = False
     candidate: bool = False
+    # the transaction carries a matcher's link to a document whose order is not all charged yet and waits
+    # for the rest of it (documents.md §7): a flag and a queue line, never a reason to hold the unit
+    rest: bool = False
 
     @property
     def open(self) -> bool:
@@ -96,6 +99,40 @@ def waiting_for(
     never = any(s.covered_through is None for s in holding)
     through = None if never else min(s.covered_through for s in holding if s.covered_through is not None)
     return DocumentWait(provider, through)
+
+
+# the keys of a link settling made: the wait for the rest of an order follows them (a link the user made or
+# accepted ends it)
+MATCHER_PASSES = frozenset({"matcher_decision", "matcher_proposal"})
+
+
+@dataclass(frozen=True, slots=True)
+class OrderWait:
+    """What a transaction waits for when its document's order is not all charged (documents.md §7): the
+    order's `external_id` of `provider`, what its carriers `charged` of its `total` (both signed like the
+    document's total, in `currency`: compared by magnitude)."""
+
+    order: str
+    provider: str
+    charged: int
+    total: int
+    currency: str
+
+    @property
+    def remainder(self) -> int:
+        """Not yet charged, in magnitude: what the queue's line says."""
+        return abs(self.total) - abs(self.charged)
+
+
+def rest_awaited(document: DocInput, synced: Iterable[date | None], window: DocWindow) -> bool:
+    """§7: the amounts of the document's carriers (the one asking is among them) fall short of its total in
+    magnitude, and some synced account has not reached the document's date plus `back`; `synced` holds the
+    `synced_through` of each synced account, None for one never fetched (which holds it too). With no synced
+    account nothing holds it."""
+    if abs(charged(document)) >= abs(document.total):
+        return False
+    horizon = document.occurred_on + timedelta(days=window.back)
+    return any(s is None or s < horizon for s in synced)
 
 
 def document_facts_of(

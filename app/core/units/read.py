@@ -25,8 +25,9 @@ from typing import Any, Literal
 from sqlalchemy import Connection, Row, text
 
 from app.core.ledger.entries import EntryRow, entries_by_ids
-from app.core.resolution.confirmed import units_binds, units_sql
+from app.core.resolution.confirmed import charged_sql, units_binds, units_sql
 from app.core.units.closure import UnitEntry
+from app.core.units.documents import OrderWait
 from app.core.units.lookup import unit_ids_of
 from app.core.units.state import UnitState, document_facts_of_flags, leg_states_of_flags, unit_state
 
@@ -69,6 +70,7 @@ class UnitView:
     needs_account: str | None = None  # queue only: the instructed currency a unit in `needs_account` needs
     waiting: WaitingFor | None = None  # queue only: what a unit in `waiting` waits for (a partner)...
     waiting_document: WaitingForDocument | None = None  # ... or a document
+    waiting_order: OrderWait | None = None  # ... or the rest of a document's order
 
 
 @dataclass(frozen=True)
@@ -110,6 +112,7 @@ def _view(
     needs_account: str | None = None,
     waiting: WaitingFor | None = None,
     waiting_document: WaitingForDocument | None = None,
+    waiting_order: OrderWait | None = None,
 ) -> UnitView:
     ordered = tuple(sorted(rows, key=lambda r: r.id))
     return UnitView(
@@ -118,12 +121,15 @@ def _view(
         state=unit_state(
             [unit_entry_of(r) for r in ordered],
             leg_states_of_flags({r.id: r.review_flags for r in ordered}),
-            document_facts_of_flags([(r.id, r.review_flags) for r in ordered if r.type == "flow"]),
+            document_facts_of_flags(
+                [(r.id, r.review_flags, r.document_id) for r in ordered if r.type == "flow"]
+            ),
         ),
         entries=ordered,
         needs_account=needs_account,
         waiting=waiting,
         waiting_document=waiting_document,
+        waiting_order=waiting_order,
     )
 
 
@@ -141,7 +147,8 @@ def get_unit(conn: Connection, entry_id: int) -> UnitView | None:
 # unpaired transfer with no counter-account and an instructed currency (of its source), and no account other
 # than its own, open on its booking date, is in that currency (`arrival_currency_ok`, `open_on_booking_date`).
 # A leg is WAITING when it carries the flag `core/settle/flags.py` writes: for its partner (a transfer leg)
-# or, on a flow, for its document (`doc_waiting`, documents.md §7).
+# or, on a flow, for its document, or for the rest of the order of the document it carries (`doc_waiting`,
+# documents.md §7: told apart by the link).
 _SECTIONED = """
     WITH units AS ({units}),
          legs AS (
@@ -175,7 +182,9 @@ _QUEUE_PAGE = text(
     _SECTIONED_SQL
     + """
     SELECT p.unit_key, p.anchor, p.booked_on, p.total, p.currency, p.wait_account, cv.synced_through,
-           dw.provider AS doc_provider, dw.covered_through AS doc_covered
+           dw.provider AS doc_provider, dw.covered_through AS doc_covered,
+           ow.external_id AS order_id, ow.provider AS order_provider, ow.charged AS order_charged,
+           ow.total AS order_total, ow.currency AS order_currency
       FROM (SELECT t.*
               FROM (SELECT q.unit_key, q.anchor, q.currency, q.wait_account, q.doc_entry, e.booked_on,
                            count(*) OVER () AS total
@@ -198,11 +207,18 @@ _QUEUE_PAGE = text(
                    AND (ii.settings ->> 'start_date' IS NULL
                         OR CAST(ii.settings ->> 'start_date' AS date) <= de.booked_on)
               LEFT JOIN v_document_coverage AS dc ON dc.importer_instance_id = ii.id
-             WHERE de.id = p.doc_entry
+             WHERE de.id = p.doc_entry AND de.document_id IS NULL
                AND (dc.covered_through IS NULL
                     OR dc.covered_through
                        < de.booked_on + current_setting('ledger.document_window_ahead_days')::int)
              GROUP BY pp.document_provider) AS dw ON p.doc_entry IS NOT NULL
+      LEFT JOIN LATERAL (
+            SELECT od.external_id, od.provider, od.total, od.currency, """
+    + charged_sql("od")
+    + """ AS charged
+              FROM ledger_entry AS oe
+              JOIN external_document AS od ON od.id = oe.document_id
+             WHERE oe.id = p.doc_entry) AS ow ON p.doc_entry IS NOT NULL
      ORDER BY p.booked_on, p.anchor
     """
 )
@@ -311,17 +327,28 @@ def _units_of_page(conn: Connection, keys: list[int], facts: dict[int, Row[Any]]
     return tuple(_view(k, by_key[k], *_facts_of(facts[k])) for k in keys)
 
 
-def _facts_of(row: Row[Any]) -> tuple[str | None, WaitingFor | None, WaitingForDocument | None]:
+def _facts_of(
+    row: Row[Any],
+) -> tuple[str | None, WaitingFor | None, WaitingForDocument | None, OrderWait | None]:
     """What the section says of a unit: the currency it needs an account in, or what it waits for (the
-    account of a partner leg, else the provider of a document)."""
+    account of a partner leg, else the provider of a document, else the rest of an order)."""
     needs = str(row.currency) if row.currency is not None else None
     waiting = None
     waiting_document = None
+    waiting_order = None
     if needs is None and row.wait_account is not None:
         waiting = WaitingFor(account_id=int(row.wait_account), synced_through=row.synced_through)
     elif needs is None and row.doc_provider is not None:
         waiting_document = WaitingForDocument(provider=str(row.doc_provider), covered_through=row.doc_covered)
-    return needs, waiting, waiting_document
+    elif needs is None and row.order_id is not None:
+        waiting_order = OrderWait(
+            order=str(row.order_id),
+            provider=str(row.order_provider),
+            charged=int(row.order_charged),
+            total=int(row.order_total),
+            currency=str(row.order_currency).strip(),
+        )
+    return needs, waiting, waiting_document, waiting_order
 
 
 def review_queue(
