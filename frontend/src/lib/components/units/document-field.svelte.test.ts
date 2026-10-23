@@ -190,8 +190,7 @@ describe('the document field', () => {
 		expect(originalOf(lastRequest())!.document).toEqual({
 			mode: 'pick',
 			document_id: 21,
-			document_version: 4,
-			decline_split: false
+			document_version: 4
 		});
 	});
 
@@ -413,7 +412,7 @@ describe('waiting for a document', () => {
 		await fireEvent.click(within(field).getByRole('button', { name: 'Commit without a document' }));
 		await settled(panel);
 
-		expect(originalOf(lastRequest())!.document).toEqual({ mode: 'none', decline_split: false });
+		expect(originalOf(lastRequest())!.document).toEqual({ mode: 'none' });
 		expect(field).toHaveAttribute('data-state', 'none');
 		expect(within(field).queryByRole('button', { name: 'Commit without a document' })).toBeNull();
 		const commit = within(dialog).getByRole('button', { name: 'Commit' });
@@ -422,7 +421,7 @@ describe('waiting for a document', () => {
 		await fireEvent.click(commit);
 		await waitFor(() => expect(commitUnit).toHaveBeenCalled());
 		expect(vi.mocked(commitUnit).mock.calls[0][0].entries).toEqual([
-			{ id: 1, document: { mode: 'none', decline_split: false } }
+			{ id: 1, document: { mode: 'none' } }
 		]);
 	});
 
@@ -472,8 +471,7 @@ describe('the split along the lines', () => {
 		expect(sent.document).toEqual({
 			mode: 'split_along_lines',
 			document_id: 7,
-			document_version: 2,
-			decline_split: false
+			document_version: 2
 		});
 		expect(lastRequest().anchor_entry_id).toBe(1);
 	});
@@ -508,18 +506,14 @@ describe('the split along the lines', () => {
 		expect(panel.flow.isDirty).toBe(false);
 	});
 
-	it('is refused by "Keep one entry": the rows go and decline_split is sent', async () => {
+	it('offers no way to decline the proposal: it is committed or edited like any split', async () => {
 		const { dialog, panel } = await open(linked({ proposed: true }), {
 			rows: (request) => (request.entries?.length ? [] : [lineRow(-900, 2, -3231)])
 		});
 		await waitFor(() => expect(panel.flow.draft?.lineRows).toHaveLength(1));
 
-		await fireEvent.click(within(fieldOf(dialog)!).getByRole('button', { name: 'Keep one entry' }));
-		await settled(panel);
-
-		expect(originalOf(lastRequest())!.document).toEqual({ mode: 'keep', decline_split: true });
-		expect(lastRequest().entries!.every((x) => x.id > 0)).toBe(true);
-		expect(panel.flow.draft?.lineRows).toEqual([]);
+		expect(within(fieldOf(dialog)!).queryByRole('button', { name: 'Keep one entry' })).toBeNull();
+		expect(fieldOf(dialog)).toHaveTextContent('one entry per line');
 	});
 
 	it('echoes the proposed row once it is edited, and offers to reset the split', async () => {

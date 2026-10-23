@@ -196,9 +196,13 @@ describe('documentField', () => {
 		expect(picked.split?.document).toEqual({ id: 7, version: 5 });
 	});
 
-	it('knows a refused split', () => {
-		const field = documentField(rowOf(rowDocument()), draft().declineSplit(1), 1)!;
-		expect(field.declined).toBe(true);
+	it('names the other carriers of the document in the unit', () => {
+		const carriers = [
+			{ entryId: 2, amount: { amount: -2000, currency: 'EUR' }, bookedOn: '2026-10-10' }
+		];
+		const field = documentField(rowOf(rowDocument()), draft(), 1, null, carriers)!;
+		expect(field.carriers).toEqual(carriers);
+		expect(documentField(rowOf(rowDocument()), draft(), 1)!.carriers).toEqual([]);
 	});
 });
 

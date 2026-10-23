@@ -20,7 +20,8 @@ from app.core.domain.errors import VersionConflict
 from app.core.importers.providers import reset_document_providers
 from app.core.stale import StaleReference
 from app.core.units.commit import UnitMoved, commit_unit
-from app.core.units.draft import DocumentDraft, DraftEntry
+from app.core.units.doc_draft import proposed_split_id
+from app.core.units.draft import DocumentDraft, DocumentLineRef, DraftEntry
 from tests.core.units.doc_helpers import Docs
 from tests.core.units.equality import preview_then_commit
 from tests.core.units.scene import D, Scene, fixed, no_document
@@ -43,10 +44,6 @@ def pick(scene: Scene, entry: int, doc: int, **kw: object) -> DraftEntry:
     return DraftEntry(entry, document=DocumentDraft("pick", doc, version), **kw)  # type: ignore[arg-type]
 
 
-def decline(entry: int, **kw: object) -> DraftEntry:
-    return DraftEntry(entry, document=DocumentDraft(decline_split=True), **kw)  # type: ignore[arg-type]
-
-
 # ---- what a commit writes -----------------------------------------------------------------------------
 
 
@@ -60,7 +57,14 @@ def test_a_proposed_link_of_several_lines_becomes_the_users_once_the_unit_is_com
     assert stored.document_id == doc and stored.derivation["document"]["pass"] == "matcher_proposal"
     assert not scene.preview(entry).anchor_unit.state.confirmed
     cat = scene.category("Gadgets")
-    plan, _ = preview_then_commit(scene, scene.draft(entry, decline(entry, category=fixed(cat))))
+    second = DraftEntry(
+        proposed_split_id(entry, 2),
+        amount=-600,
+        source_entry_id=entry,
+        document_line=DocumentLineRef(doc, 2),
+        category=fixed(cat),
+    )
+    plan, _ = preview_then_commit(scene, scene.draft(entry, DraftEntry(entry, category=fixed(cat)), second))
     assert plan.row(entry).derivation["document"] == {"pass": "user"}
     committed = scene.row(entry)
     assert committed.document_id == doc and committed.derivation["document"] == {"pass": "user"}
@@ -131,6 +135,53 @@ def test_a_document_taken_since_the_preview_is_a_conflict(scene: Scene, docs: Do
         commit_unit(scene.engine, mine)
     assert (raised.value.document_id, raised.value.reason) == (doc, "taken")
     assert scene.row(second).document_id is None
+
+
+def test_a_charge_linked_to_the_units_document_since_the_preview_refuses_the_commit(
+    scene: Scene, docs: Docs
+) -> None:
+    doc = docs.document(total=-3000)
+    docs.lines(doc, ("a", -1000), ("b", -2000))
+    first = docs.charge(-1000, document_id=doc)
+    mine = scene.draft(
+        first, DraftEntry(first, category=fixed(scene.category("Gadgets"))), versions=scene.versions(first)
+    )
+    late = docs.charge(-2000, on=D + timedelta(days=1), document_id=doc)  # a new member of the unit
+    with pytest.raises(UnitMoved) as raised:
+        commit_unit(scene.engine, mine)
+    assert (raised.value.document_id, raised.value.reason) == (doc, "taken")
+    assert scene.row(first).category_id is None and scene.row(late).category_id is None
+    # the user previews again, sees the new member and commits
+    preview_then_commit(
+        scene,
+        scene.draft(
+            first,
+            DraftEntry(first, category=fixed(scene.category("Gadgets"))),
+            versions=scene.versions(first),
+        ),
+    )
+
+
+def test_a_carrier_removed_from_the_unit_since_the_preview_refuses_the_commit(
+    scene: Scene, docs: Docs
+) -> None:
+    doc = docs.document(total=-3000)
+    docs.lines(doc, ("a", -1000), ("b", -2000))
+    first = docs.charge(-1000, document_id=doc)
+    second = docs.charge(-2000, on=D + timedelta(days=1), document_id=doc)
+    mine = scene.draft(
+        first,
+        DraftEntry(first, category=fixed(scene.category("Gadgets"))),
+        versions=scene.versions(first),
+    )
+    assert set(mine.versions) == {first, second}
+    scene.tx(
+        lambda c: c.execute(text("UPDATE ledger_entry SET document_id = NULL WHERE id = :i"), {"i": second})
+    )
+    with pytest.raises(UnitMoved) as raised:
+        commit_unit(scene.engine, mine)
+    assert raised.value.reason == "taken"
+    assert scene.row(first).category_id is None
 
 
 def test_a_document_at_another_version_than_the_client_saw_is_a_conflict(scene: Scene, docs: Docs) -> None:

@@ -27,8 +27,8 @@ suggested or awaited), ``pick`` (a document, with the version the client saw), `
 that there is no document), ``reresolve`` (drop the decision and the link: matching decides afresh) and
 ``split_along_lines`` (a pick of `document_id` AND the split along its lines, replacing an existing split).
 A new entry made from a line of the document carries its `DocumentLineRef` (the client echoes it from the
-preview); a transaction the draft does not split gets the split along the lines as a proposal, which
-`DocumentDraft.decline_split` refuses.
+preview). While a link of a document is not yet the user's the draft proposes the split along the lines for
+every carrier of it (`doc_draft`); the user commits it or edits it like any split, there is no decline.
 """
 
 from __future__ import annotations
@@ -174,15 +174,12 @@ class DocumentDraft:
     """What the draft says of a transaction's document (spec §5.8), on its original entry.
 
     ``pick`` and ``split_along_lines`` name a stored document (`document_id`) and the `document_version` the
-    client saw: a commit is refused if the document has moved on. ``decline_split`` keeps the proposed split
-    along the document's lines from being made (the transaction stays as the draft has it); it is no choice of
-    its own, so ``split_along_lines`` refuses it.
+    client saw: a commit is refused if the document has moved on.
     """
 
     mode: DocumentMode = "keep"
     document_id: int | None = None
     document_version: int | None = None
-    decline_split: bool = False
 
     def __post_init__(self) -> None:
         if self.mode not in DOCUMENT_MODES:
@@ -196,10 +193,6 @@ class DocumentDraft:
                 )
         elif self.document_id is not None or self.document_version is not None:
             raise DraftError("invalid_document", "only a pick names a document", field="document")
-        if self.decline_split and self.mode == "split_along_lines":
-            raise DraftError(
-                "invalid_document", "the split along the lines is not declined", field="document"
-            )
 
 
 KEEP_DOCUMENT: Final = DocumentDraft()

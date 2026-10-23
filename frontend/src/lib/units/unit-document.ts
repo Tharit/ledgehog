@@ -5,6 +5,7 @@
 import { formatDate, formatMoney } from '#lib/format/index.js';
 import type { Draft, DocumentEdit } from './draft.js';
 import { asKey, describeDocumentKey, type Evidence } from './evidence.js';
+import type { Money } from '#lib/types/domain.js';
 import type { DocumentSummary, DocumentWaiting, PreviewRow, RowDocument } from './types.js';
 
 /** What the document row is in, in words the panel and its tests name. */
@@ -19,6 +20,14 @@ export type DocumentState =
 	| 'resolve_again'
 	/** nothing is carried: documents are suggested, or one is awaited, or neither */
 	| 'open';
+
+/** Another carrier of the document in the unit, as the panel names it. */
+export type DocumentCarrier = {
+	/** its original entry */
+	entryId: number;
+	amount: Money | null;
+	bookedOn: string | null;
+};
 
 export type DocumentFieldView = {
 	/** the original entry the decision is on */
@@ -39,8 +48,8 @@ export type DocumentFieldView = {
 		document: { id: number; version: number } | null;
 	} | null;
 	edit: DocumentEdit | undefined;
-	/** the user keeps one entry where a split along the lines is proposed */
-	declined: boolean;
+	/** the other transactions of the unit that carry the same document (each has its own split) */
+	carriers: readonly DocumentCarrier[];
 	/** the provider the payee's documents come from, for finding one by hand */
 	provider: string | null;
 	/**
@@ -103,12 +112,12 @@ export function documentField(
 	row: PreviewRow | null,
 	draft: Draft,
 	id: number,
-	payeeProvider: string | null = null
+	payeeProvider: string | null = null,
+	carriers: readonly DocumentCarrier[] = []
 ): DocumentFieldView | null {
 	const info: RowDocument | null = row?.document ?? null;
 	const edit = draft.documentEdit(id);
-	const declined = draft.declinesSplit(id);
-	if (!info && !edit && !declined) return null;
+	if (!info && !edit) return null;
 	const split = info?.split ?? null;
 	const key = asKey(info?.key);
 	const linked = info?.document ?? null;
@@ -160,7 +169,7 @@ export function documentField(
 				}
 			: null,
 		edit,
-		declined,
+		carriers,
 		provider:
 			waiting?.provider ?? linked?.provider ?? suggestions[0]?.provider ?? payeeProvider ?? null,
 		lookAgain:
@@ -168,7 +177,7 @@ export function documentField(
 			(state === 'linked' ||
 				state === 'none' ||
 				(state === 'open' && key?.pass === 'matcher_decision' && linked === null)),
-		canReset: edit !== undefined || declined || draft.lineRowsEdited,
+		canReset: edit !== undefined || draft.lineRowsEdited,
 		splitEdited: draft.lineRowsEdited
 	};
 }

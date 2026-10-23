@@ -214,6 +214,24 @@
 		</div>
 	{/if}
 
+	{#if doc.carriers.length > 0}
+		<p class="text-xs text-muted-foreground" data-slot="document-carriers">
+			Also carrying this document in this unit:
+			{#each doc.carriers as carrier, i (carrier.entryId)}
+				{i > 0 ? ', ' : ''}
+				{#if carrier.bookedOn}<DateDisplay date={carrier.bookedOn} {locale} />{/if}
+				{#if carrier.amount}
+					<MoneyDisplay
+						minor={carrier.amount.amount}
+						currency={carrier.amount.currency}
+						{locale}
+						class="inline"
+					/>
+				{/if}
+			{/each}
+		</p>
+	{/if}
+
 	{#if doc.decisionRequired}
 		<div class="flex flex-wrap items-center gap-x-3 gap-y-1" data-slot="document-decision">
 			<p class="text-xs text-muted-foreground">
@@ -241,20 +259,12 @@
 					? 'Split along the lines of the document, as you chose.'
 					: 'Split along the lines of the document: one entry per line.'}
 			</p>
-			{#if doc.split?.replacesStoredSplit && doc.edit?.mode === 'split_along_lines'}
+			{#if doc.split?.replacesStoredSplit}
 				<p class="text-xs text-muted-foreground" data-slot="document-split-replaces">
 					This replaces the existing split: its other entries are deleted, with their tags.
 				</p>
 			{/if}
 			<div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-				<ActionButton
-					variant="outline"
-					data-slot="decline-split"
-					disabled={flow.committing}
-					onclick={() => flow.declineSplit(view.id)}
-				>
-					Keep one entry
-				</ActionButton>
 				{#if doc.splitEdited}
 					<ActionButton
 						variant="link"
@@ -304,7 +314,7 @@
 							</Command.Group>
 						{/if}
 						{#if doc.provider !== null && found.length > 0}
-							<Command.Group heading="Not linked" data-group="found">
+							<Command.Group heading="Not fully charged" data-group="found">
 								{#each found as document (document.id)}
 									{@render offer(document, documentHints(document, entry, locale))}
 								{/each}
@@ -334,7 +344,7 @@
 								class="px-2 py-3 text-center text-xs text-muted-foreground"
 								data-slot="document-none-found"
 							>
-								No document of {doc.provider} that is not linked.
+								No document of {doc.provider} that is not fully charged.
 							</p>
 						{/if}
 					</Command.List>

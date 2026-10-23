@@ -61,8 +61,6 @@ export type EntryEdit = {
 	pairing?: PairingEdit;
 	/** the document decision (the original entry of a transaction only) */
 	document?: DocumentEdit;
-	/** the proposed split along the lines of the linked document is refused */
-	declineSplit?: boolean;
 };
 
 /** Tags the user added (the entry did not have them) and removed (it had). Never both, never empty. */
@@ -156,8 +154,7 @@ function isEmpty(edit: EntryEdit): boolean {
 		edit.amount === undefined &&
 		edit.tags === undefined &&
 		edit.pairing === undefined &&
-		edit.document === undefined &&
-		edit.declineSplit === undefined
+		edit.document === undefined
 	);
 }
 
@@ -284,8 +281,7 @@ export class Draft {
 				edit.amount !== undefined ||
 				edit.tags !== undefined ||
 				edit.pairing !== undefined ||
-				edit.document !== undefined ||
-				edit.declineSplit !== undefined
+				edit.document !== undefined
 			) {
 				return true;
 			}
@@ -561,15 +557,10 @@ export class Draft {
 		const edits = new Map(this.#s.edits);
 		edits.delete(id);
 		if (id < 0) {
-			const gone = this.#s.splits.find((s) => s.id === id);
 			const splits = this.#s.splits.filter((s) => s.id !== id);
-			const next = this.#with({ splits, edits });
-			// the last row of the split along the lines: nothing left to echo, so the server would
-			// propose it again: the user's word is "one entry"
-			if (gone?.documentLine && !splits.some((s) => s.documentLine)) {
-				return next.declineSplit(gone.sourceEntryId);
-			}
-			return next;
+			// a row of the proposed split is an edit of the split like any other (spec §6): the rest is
+			// echoed and stays the user's
+			return this.#with({ splits, edits });
 		}
 		if (id === this.#s.anchorId || this.#s.removed.includes(id)) return this;
 		return this.#with({ removed: [...this.#s.removed, id], edits });
@@ -613,11 +604,6 @@ export class Draft {
 		return this.edit(id).document;
 	}
 
-	/** The proposed split along the lines is refused for this original entry. */
-	declinesSplit(id: number): boolean {
-		return this.edit(id).declineSplit === true;
-	}
-
 	/** The rows made from a line of a document (the split along the lines). */
 	get lineRows(): readonly NewSplit[] {
 		return this.#s.splits.filter((s) => s.documentLine !== undefined);
@@ -640,44 +626,40 @@ export class Draft {
 	}
 
 	/** Set (or with `undefined` take away) the document decision of an original entry; the line rows go. */
-	#decide(id: number, change: Partial<Pick<EntryEdit, 'document' | 'declineSplit'>>): Draft {
+	#decide(id: number, change: Partial<Pick<EntryEdit, 'document'>>): Draft {
 		if (!this.#s.base.has(id)) return this;
 		const lines = this.#withoutLineRows();
 		const base = this.#with({ splits: lines.splits, edits: lines.edits, adoptedCount: 0 });
 		return base.#edited(id, (e) => {
 			const next = { ...e, ...change };
 			if (next.document === undefined) delete next.document;
-			if (next.declineSplit !== true) delete next.declineSplit;
 			return next;
 		});
 	}
 
 	/** The user picked this document for the transaction (the version is the one they saw). */
 	pickDocument(id: number, documentId: number, version: number): Draft {
-		return this.#decide(id, {
-			document: { mode: 'pick', documentId, version },
-			declineSplit: false
-		});
+		return this.#decide(id, { document: { mode: 'pick', documentId, version } });
 	}
 
 	/** "None of these", "Commit without a document": the user's decision that there is no document. */
 	noDocument(id: number): Draft {
-		return this.#decide(id, { document: { mode: 'none' }, declineSplit: false });
+		return this.#decide(id, { document: { mode: 'none' } });
 	}
 
 	/** Drop the decision and the link: matching decides afresh. */
 	reresolveDocument(id: number): Draft {
-		return this.#decide(id, { document: { mode: 'reresolve' }, declineSplit: false });
+		return this.#decide(id, { document: { mode: 'reresolve' } });
 	}
 
 	/** Back to what the server proposes: no decision, the proposed split proposed again. */
 	resetDocument(id: number): Draft {
-		return this.#decide(id, { document: undefined, declineSplit: false });
+		return this.#decide(id, { document: undefined });
 	}
 
 	/** The rows of the split along the lines go back to what the server proposes (the decision stays). */
 	resetSplit(id: number): Draft {
-		return this.#decide(id, { document: this.edit(id).document, declineSplit: false });
+		return this.#decide(id, { document: this.edit(id).document });
 	}
 
 	/**
@@ -700,23 +682,7 @@ export class Draft {
 			edits,
 			removed: this.#s.removed.filter((r) => !sameSource(r))
 		});
-		return cleared.#decide(id, {
-			document: { mode: 'split_along_lines', documentId, version },
-			declineSplit: false
-		});
-	}
-
-	/**
-	 * "Keep one entry": the proposed split is refused. A split the user chose along the lines goes
-	 * back to the plain pick of that document.
-	 */
-	declineSplit(id: number): Draft {
-		const held = this.edit(id).document;
-		const document: DocumentEdit | undefined =
-			held?.mode === 'split_along_lines'
-				? { mode: 'pick', documentId: held.documentId, version: held.version }
-				: held;
-		return this.#decide(id, { document, declineSplit: true });
+		return cleared.#decide(id, { document: { mode: 'split_along_lines', documentId, version } });
 	}
 
 	/** Forget a pick of a document that no longer exists, changed or was taken (any pick: no id). */
@@ -917,11 +883,8 @@ export class Draft {
 
 function documentRequest(edit: EntryEdit): DocumentDraftRequest | undefined {
 	const held = edit.document;
-	if (!held && !edit.declineSplit) return undefined;
-	const body: DocumentDraftRequest = {
-		mode: held?.mode ?? 'keep',
-		decline_split: edit.declineSplit === true
-	};
+	if (!held) return undefined;
+	const body: DocumentDraftRequest = { mode: held.mode };
 	if (held?.mode === 'pick' || held?.mode === 'split_along_lines') {
 		body.document_id = held.documentId;
 		body.document_version = held.version;

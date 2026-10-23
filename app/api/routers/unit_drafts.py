@@ -141,19 +141,19 @@ class UnitDocumentDraftIn(BaseModel):
     one that is gone or one at another version is a problem of the preview, and a conflict of a commit).
     `none` decides that there is no document. `reresolve` drops the decision and the link: matching decides
     afresh. `split_along_lines` picks `document_id` too and splits the transaction along its lines,
-    replacing an existing split (the entries it deletes are consequences of the preview). `decline_split`
-    keeps the split the preview proposes along the lines of a linked document from being made. A document
-    mode on a new entry, `document_id` or `document_version` on another mode, or `decline_split` on
-    `split_along_lines`, is 422 `invalid_draft` (`invalid_document`).
+    replacing an existing split (the entries it deletes are consequences of the preview). A document mode on
+    a new entry, or `document_id` or `document_version` on another mode, is 422 `invalid_draft`
+    (`invalid_document`).
 
-    The split along the lines is draft state made of ordinary new entries. For a transaction that is stored
-    unsplit, has a linked or picked document of several lines with an exact total, and that the draft neither
-    splits nor declines, the preview adds one row per further line with a server-issued negative id and
-    `document_line`; the original entry takes the first line and the remainder. Once the client echoes any row
-    that carries a `document_line` (its id, `source_entry_id`, `amount`, `document_line` and its edits), the
-    split is the client's: nothing is regenerated and a row left out is removed. `split_along_lines` also
-    deletes the other stored entries of an existing split (consequences of kind `deleted`, with their
-    tags) and the client's own rows for the transaction. Anchor the draft on the original entry: the
+    The split along the lines is draft state made of ordinary new entries. While a link of a document of
+    several lines is not yet the user's (a matcher link, or a pick in this draft), the preview proposes the
+    split for EVERY carrier of the document that the line allocation divides, replacing whatever split a
+    carrier has (the stored entries it deletes are consequences of kind `deleted`, with their tags): one row
+    per further line of the document's sign the allocation gives the carrier, with a server-issued negative
+    id and `document_line`; the original entry takes the first line and the remainder. Once the client
+    echoes any row that carries a `document_line` (its id, `source_entry_id`, `amount`, `document_line` and
+    its edits), the split is the client's: nothing is regenerated and a row left out is removed. There is no
+    decline: the proposal is committed or edited like any split. Anchor the draft on the original entry: the
     anchor is never deleted."""
 
     model_config = ConfigDict(extra="forbid")
@@ -161,10 +161,9 @@ class UnitDocumentDraftIn(BaseModel):
     mode: Literal["keep", "pick", "none", "reresolve", "split_along_lines"] = "keep"
     document_id: EntityId | None = None
     document_version: EntityVersion | None = None
-    decline_split: bool = False
 
     def to_core(self) -> DocumentDraft:
-        return DocumentDraft(self.mode, self.document_id, self.document_version, self.decline_split)
+        return DocumentDraft(self.mode, self.document_id, self.document_version)
 
 
 class UnitDocumentLineIn(BaseModel):

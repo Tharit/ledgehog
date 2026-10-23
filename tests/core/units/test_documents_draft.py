@@ -55,7 +55,6 @@ def test_the_document_draft_is_validated_like_a_pairing() -> None:
         lambda: DocumentDraft("pick", 0, 1),
         lambda: DocumentDraft("none", 3, 1),
         lambda: DocumentDraft("reresolve", document_version=1),
-        lambda: DocumentDraft("split_along_lines", 3, 1, decline_split=True),
         lambda: DocumentDraft("maybe"),  # type: ignore[arg-type]
         lambda: DocumentLineRef(0, 1),
         lambda: DocumentLineRef(1, 0),

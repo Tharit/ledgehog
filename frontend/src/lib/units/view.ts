@@ -22,7 +22,7 @@ import {
 	type Evidence,
 	type RuleNames
 } from './evidence.js';
-import { documentField, type DocumentFieldView } from './unit-document.js';
+import { documentField, type DocumentCarrier, type DocumentFieldView } from './unit-document.js';
 import type {
 	ConsequenceKind,
 	PreviewRow,
@@ -297,6 +297,17 @@ export function entryViews(args: {
 	const counts = new Map<number, number>();
 	for (const s of sourceIds) if (s !== null) counts.set(s, (counts.get(s) ?? 0) + 1);
 
+	// the carriers of each document in the unit: the original entries whose row carries it
+	const carriersOf = new Map<number, DocumentCarrier[]>();
+	for (const b of base) {
+		const doc = b.row?.original ? b.row.document?.document : null;
+		if (!b.row || !doc) continue;
+		const source = preview?.splits.find((s) => s.residual_entry_id === b.id)?.source_amount ?? null;
+		const list = carriersOf.get(doc.id) ?? [];
+		list.push({ entryId: b.id, amount: source ?? b.row.amount, bookedOn: b.row.booked_on });
+		carriersOf.set(doc.id, list);
+	}
+
 	return base.map((b, i) => {
 		const entry = stored.get(b.id) ?? null;
 		const split = draft.splits.find((s) => s.id === b.id) ?? null;
@@ -365,7 +376,12 @@ export function entryViews(args: {
 							b.id,
 							typeof fields.payee.value === 'number'
 								? (payeeProvider(fields.payee.value) ?? null)
-								: null
+								: null,
+							b.row?.document?.document
+								? (carriersOf.get(b.row.document.document.id) ?? []).filter(
+										(c) => c.entryId !== b.id
+									)
+								: []
 						)
 					: null,
 			documentLine: b.row ? (b.row.document_line ?? null) : storedLine(entry),

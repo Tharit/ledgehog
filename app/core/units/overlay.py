@@ -110,7 +110,7 @@ from app.core.units.plan import (
     World,
     Written,
 )
-from app.core.units.state import LegState, UnitState, unit_state
+from app.core.units.state import LegState, UnitState, has_nonstanding_key, is_unclassified, unit_state
 
 MAX_ROUNDS = 20
 RERESOLVE = FieldDraft(mode="reresolve")
@@ -672,10 +672,24 @@ def _leg_state(row: _Row, world: World) -> LegState | None:
     return None
 
 
-def _doc_txn(r: _Row, rows: Sequence[_Row], world: World) -> DocTxn | None:
+def confirmed_documents(entries: Sequence[UnitEntry]) -> frozenset[int]:
+    """The documents of `entries` none of whose carriers (the sources whose entries say they carry it) has an
+    entry that is incomplete or holds a key that is not standing: what `doc_load.load_carriers` reads in
+    SQL as a carrier being confirmed (documents.md §4: no link into a document with a confirmed carrier)."""
+    carried = {e.source_transaction_id: e.document_id for e in entries if e.document_id is not None}
+    docs = set(carried.values())
+    for e in entries:
+        doc = carried.get(e.source_transaction_id)
+        if doc is not None and (is_unclassified(e) or has_nonstanding_key(e)):
+            docs.discard(doc)
+    return frozenset(docs)
+
+
+def _doc_txn(r: _Row, rows: Sequence[_Row], world: World, confirmed: frozenset[int]) -> DocTxn | None:
     """The original entry of a stored source as document matching reads it (the source's amounts, the
     entry's payee), None for any other row: only an original carries a link (I31). A transfer entry anywhere
-    in the transaction makes it `is_transfer`; the lines its entries reference are what a carrier holds."""
+    in the transaction makes it `is_transfer`; the lines its entries reference are what a carrier holds; a
+    carrier is `confirmed` when its document is (`confirmed_documents`)."""
     if not r.original or r.stored is None or world.docs is None:
         return None
     s = r.src
@@ -693,11 +707,13 @@ def _doc_txn(r: _Row, rows: Sequence[_Row], world: World) -> DocTxn | None:
         is_transfer=any(x.type == "transfer" for x in siblings),
         document_id=r.document_id,
         line_numbers=frozenset(x.line_no for x in siblings if x.line_no is not None),
+        confirmed=r.document_id is not None and r.document_id in confirmed,
     )
 
 
 def _doc_txns(rows: Sequence[_Row], world: World) -> list[DocTxn]:
-    return [t for r in rows if (t := _doc_txn(r, rows, world)) is not None]
+    confirmed = confirmed_documents(_unit_entries(rows))
+    return [t for r in rows if (t := _doc_txn(r, rows, world, confirmed)) is not None]
 
 
 def _doc_facts(rows: Sequence[_Row], world: World) -> dict[int, DocumentFacts]:
@@ -794,15 +810,20 @@ def _apply(rewrites: Mapping[int, Rewrite], by_id: Mapping[int, _Row]) -> None:
             r.counterpart = None
 
 
-def _link_documents(rows: Sequence[_Row], world: World) -> list[_Row]:
+def _link_documents(rows: Sequence[_Row], world: World) -> tuple[list[_Row], set[int]]:
     """Settle step 2 (`settle/documents.py`): the original entry of each considered transaction that has
     exactly one candidate no other transaction has (the ledger outside the plan counts) takes the document
-    and its key, `matcher_decision` for a document of one line, `matcher_proposal` for one of several."""
+    and its key, `matcher_decision` for a document of one line, `matcher_proposal` for one of several.
+
+    Also returns the carriers of those documents that are outside the plan (original entries): the unit
+    gains them, as it does with a pick (the preview brings their units in and plans again)."""
     if world.docs is None:
-        return []
+        return [], set()
     found = links_of(_doc_txns(rows, world), world.docs)
     by_id = {r.id: r for r in rows}
     linked: list[_Row] = []
+    pulled: set[int] = set()
+    outside = {d.document_id: d.carriers for d in world.docs.documents}
     for entry_id, doc_id in sorted(found.items()):
         r = by_id[entry_id]
         detail = world.docs.details[doc_id]
@@ -814,7 +835,8 @@ def _link_documents(rows: Sequence[_Row], world: World) -> list[_Row]:
         if len(detail.lines) == 1:
             r.line_no = detail.lines[0][0]  # a document of one line: the original takes it with the link
         linked.append(r)
-    return linked
+        pulled.update(c.entry_id for c in outside.get(doc_id, ()) if c.entry_id not in by_id)
+    return linked, pulled
 
 
 def _rederive_linked(rows: Sequence[_Row], linked: Sequence[_Row], world: World) -> None:
@@ -869,7 +891,9 @@ def _settle(rows: Sequence[_Row], world: World) -> set[int]:
             history=world.history,
         )
         _apply(rewrites, by_id)
-        if linked := _link_documents(rows, world):
+        linked, joining = _link_documents(rows, world)
+        pulled |= joining
+        if linked:
             _rederive_linked(rows, linked, world)
         pulled |= _pair(rows, world)
         if all(k in taught or not st.confirmed for k, (_m, st) in _states(rows, world).items()):
@@ -1327,6 +1351,7 @@ def _stored_facts(stored: StoredUnit, world: World) -> dict[int, DocumentFacts]:
     if world.docs is None:
         return {}
     txns: list[DocTxn] = []
+    confirmed = confirmed_documents(_unit_entries_of(stored))
     for e in stored.entries:
         src = stored.sources[e.source_transaction_id]
         if e.id != stored.original_of(src.id):
@@ -1350,6 +1375,7 @@ def _stored_facts(stored: StoredUnit, world: World) -> dict[int, DocumentFacts]:
                     for x in siblings
                     if x.document_line is not None and x.document_line[0] == e.document_id
                 ),
+                confirmed=e.document_id is not None and e.document_id in confirmed,
             )
         )
     return facts_of(txns, world.docs)

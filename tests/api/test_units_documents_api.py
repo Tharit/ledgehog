@@ -74,11 +74,7 @@ def test_the_document_draft_is_validated(anna: TestClient, scene: Scene, docs: D
         ({"mode": "pick", "document_id": a}, "invalid_document"),
         ({"mode": "none", "document_id": a}, "invalid_document"),
         ({"mode": "reresolve", "document_version": 1}, "invalid_document"),
-        (
-            {"mode": "split_along_lines", "document_id": a, "document_version": 1, "decline_split": True},
-            "invalid_document",
-        ),
-    ]  # fmt: skip
+    ]
     for document, code in invalid:
         for url in (PREVIEW, COMMIT):
             r = anna.post(url, json=body(scene, entry, {"id": entry, "document": document}))
@@ -102,6 +98,9 @@ def test_a_client_cannot_mark_a_document_pick_as_a_proposal(
             "document": {"mode": "pick", "document_id": a, "document_version": 1, "is_proposal": True},
         }
         assert anna.post(url, json=body(scene, entry, forged)).status_code == 422
+    for url in (PREVIEW, COMMIT):  # there is no decline: the field is gone
+        declined = {"id": entry, "document": {"mode": "keep", "decline_split": True}}
+        assert anna.post(url, json=body(scene, entry, declined)).status_code == 422
     for bad in (
         {"mode": "maybe"},
         {"mode": "pick", "document_id": 0, "document_version": 1},

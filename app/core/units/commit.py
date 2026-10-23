@@ -24,9 +24,12 @@ entries are recomputed. A source that follows its partner's amount is written wi
 A document the draft picks (spec §5.8) is part of it: the picked documents and the ones the unit carries are
 locked, in id order, right after the settle lock and BEFORE the accounts - the order document ingest takes
 (documents, then the carriers' accounts, then the entries), so the two cannot deadlock. A pick that names a
-document that is gone is `StaleReference` (409), one at another version, or one that an entry the client
-carries no version for has been linked to since (a carrier the preview did not show), is `UnitMoved` (409,
-with the document and the reason; the unique indexes of I35 are the net under the check). A
+document that is gone is `StaleReference` (409), one at another version, or one whose members changed since
+the preview (an entry the client carries no version for carries a document of the unit: a charge linked
+since; or an entry it carries a version for has left the closure: a carrier unlinked or removed), or one
+whose lines the preview's line allocation relied on were taken, is `UnitMoved` (409, with the document and
+the reason `taken` or `version`; the unique indexes of I35, `ux_le_document_line` included, are the net
+under the check). A newly appeared carrier is never pulled into the commit: the user previews again. A
 commit that carries no document key for a transaction that is offered documents or awaits one is refused
 (`document_decision_required`, 422) unless the draft picks or says "none".
 
@@ -156,17 +159,25 @@ _UNSEEN_CARRIER = text(
     " WHERE document_id = ANY(CAST(:docs AS bigint[])) AND id <> ALL(CAST(:seen AS bigint[]))"
     " ORDER BY document_id LIMIT 1"
 )
+_VERSIONS = text("SELECT id, version FROM ledger_entry WHERE id = ANY(:ids)")
 
 
-def _taken_since(conn: Connection, draft: UnitDraft, anchor_entry_id: int, seen: Collection[int]) -> None:
-    """A document the draft picks that an entry the client carries no version for carries (the preview
-    brought every carrier into the unit): linked since, so what the client saw is not the unit (409)."""
-    docs = document_pick_ids(draft)
-    if not docs:
-        return
-    found = conn.execute(_UNSEEN_CARRIER, {"docs": docs, "seen": sorted(seen)}).scalar()
-    if found is not None:
-        raise UnitMoved(anchor_entry_id, document_id=int(found), reason="taken")
+def _members_moved(
+    conn: Connection, draft: UnitDraft, anchor_entry_id: int, docs: Collection[int], closure: Collection[int]
+) -> None:
+    """The unit's members changed since the preview (409 `unit_moved`, reason `taken`): an entry
+    carries a document of the unit that the client carries no version for (a charge linked since), or an
+    entry the client carries a version for has left the closure and is gone or has moved (a carrier
+    unlinked or removed)."""
+    if docs:
+        found = conn.execute(_UNSEEN_CARRIER, {"docs": sorted(docs), "seen": sorted(draft.versions)}).scalar()
+        if found is not None:
+            raise UnitMoved(anchor_entry_id, document_id=int(found), reason="taken")
+    left = sorted(i for i in draft.versions if i not in set(closure))
+    if left:
+        current = {int(r.id): int(r.version) for r in conn.execute(_VERSIONS, {"ids": left})}
+        if any(current.get(i) != draft.versions[i] for i in left):
+            raise UnitMoved(anchor_entry_id, reason="taken")
 
 
 def _accounts_of(conn: Connection, entry_ids: tuple[int, ...]) -> set[int]:
@@ -454,7 +465,13 @@ def _commit_once(
             lock_accounts(conn, locked)
             lock_rows(conn, "ledger_entry", before)
             after = _read_drafted_closure(conn, draft)
-            _taken_since(conn, draft, draft.anchor_entry_id, draft.versions)
+            _members_moved(
+                conn,
+                draft,
+                draft.anchor_entry_id,
+                _documents_of(conn, draft, after or before),
+                after or before,
+            )
             if after != before:
                 raise UnitMoved(draft.anchor_entry_id)
             _check_versions(conn, draft.versions, written=before)

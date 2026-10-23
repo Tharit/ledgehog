@@ -320,3 +320,40 @@ def test_a_preview_without_any_document_machinery_is_what_it_was(scene: Scene) -
     entry = scene.confirmed("REWE", "Food")
     plan = scene.preview(entry)
     assert plan.row(entry).document_id is None and plan.row(entry).flags == ()
+
+
+# ---- a link the simulation makes joins the carriers --------------------------------------------------
+
+
+def test_a_link_the_simulation_makes_brings_the_documents_carriers_into_the_unit(
+    scene: Scene, docs: Docs
+) -> None:
+    doc = docs.document(total=-5000)
+    docs.lines(doc, ("a", -3000), ("b", -2000))
+    carrier = docs.charge(-3000, document_id=doc)  # outside the unit of the charge below, until it links
+    entry = docs.charge(-2000, on=D + timedelta(days=1))
+    assert scene.unit_ids(entry) == (entry,)
+    plan = scene.preview(entry)
+    assert plan.row(entry).document_id == doc
+    assert plan.row(carrier).in_unit and plan.row(carrier).document_id == doc
+    assert {r.id for r in plan.rows if r.in_unit} == {entry, carrier}
+
+
+def test_no_automatic_link_into_a_document_with_a_confirmed_carrier(scene: Scene, docs: Docs) -> None:
+    doc = docs.document(total=-5000)
+    docs.lines(doc, ("a", -3000), ("b", -2000))
+    carrier = docs.charge(-3000, document_id=doc)
+    cat = scene.category("Gadgets")
+    scene.tx(
+        lambda c: c.execute(
+            text(
+                "UPDATE ledger_entry SET type = 'flow', category_id = :c, derivation = CAST(:d AS jsonb)"
+                " WHERE id = :i"
+            ),
+            {"c": cat, "i": carrier, "d": json.dumps({**STANDING, "document": {"pass": "user"}})},
+        )
+    )
+    entry = docs.charge(-2000, on=D + timedelta(days=1))
+    plan = scene.preview(entry)
+    assert plan.row(entry).document_id is None  # a pick would link it; settling never does
+    assert [r.id for r in plan.rows] == [entry]

@@ -5,16 +5,17 @@ of it equal to the stored state after a commit and the settle that follows."""
 from __future__ import annotations
 
 from collections.abc import Iterator
+from datetime import timedelta
 
 import pytest
-from sqlalchemy import Connection
+from sqlalchemy import Connection, text
 
 from app.core.importers.providers import reset_document_providers
 from app.core.units.doc_draft import proposed_split_id
 from app.core.units.draft import DocumentDraft, DocumentLineRef, DraftEntry
-from tests.core.units.doc_helpers import CARD, Docs, make_payee
+from tests.core.units.doc_helpers import CARD, Docs, make_payee, matcher_link, users_link, users_link_to
 from tests.core.units.equality import preview_then_commit
-from tests.core.units.scene import Scene, fixed
+from tests.core.units.scene import D, Scene, fixed
 from tests.fixtures import rule_seed as rs
 from tests.invariants.helpers import make_category
 
@@ -152,29 +153,41 @@ def test_the_client_echoes_the_proposal_and_its_edits_stick_to_the_line(
     assert plan.row(second).fields["category"].value == other
 
 
-def test_a_transaction_the_draft_splits_by_hand_gets_no_proposal(
+def test_a_split_the_draft_makes_by_hand_is_replaced_by_the_proposal(
     scene: Scene, docs: Docs, shop: Shop
 ) -> None:
     entry, _doc = order(scene, docs, *LINES)
     plan = scene.preview(entry, DraftEntry(-1, amount=-100, source_entry_id=entry))
-    assert [r.id for r in plan.rows] == [entry, -1]
+    # the link is the matcher's: the proposal replaces the client's own row
+    assert [r.id for r in plan.rows] == [entry, proposed_split_id(entry, 2), proposed_split_id(entry, 3)]
     view = plan.row(entry).document_view
-    assert view is not None and view.split is not None and not view.split.proposed and view.split.available
+    assert view is not None and view.split is not None and view.split.proposed and view.split.available
 
 
-def test_a_split_can_be_declined(scene: Scene, docs: Docs, shop: Shop) -> None:
-    entry, _doc = order(scene, docs, *LINES)
-    plan = scene.preview(entry, DraftEntry(entry, document=DocumentDraft(decline_split=True)))
+def test_once_every_link_is_the_users_nothing_is_proposed(scene: Scene, docs: Docs, shop: Shop) -> None:
+    entry, doc = order(scene, docs, *LINES)
+    users_link(scene, entry)
+    plan = scene.preview(entry)
     assert [r.id for r in plan.rows] == [entry]
     view = plan.row(entry).document_view
-    assert view is not None and view.split is not None and not view.split.proposed
-    plan, _ = preview_then_commit(
-        scene,
-        scene.draft(
-            entry, DraftEntry(entry, document=DocumentDraft(decline_split=True), category=fixed(shop.gadgets))
-        ),
-    )
-    assert len(plan.rows) == 1
+    assert view is not None and view.split is not None
+    assert (view.split.proposed, view.split.available) == (False, True)
+    # a split by hand stands
+    plan = scene.preview(entry, DraftEntry(-1, amount=-100, source_entry_id=entry))
+    assert [r.id for r in plan.rows] == [entry, -1]
+    # the explicit choice stays available
+    plan = scene.preview(entry, DraftEntry(entry, document=DocumentDraft("split_along_lines", doc, 1)))
+    assert len(plan.rows) == 3 and not plan.problems
+
+
+def test_there_is_no_decline_the_proposal_is_edited_like_any_split(
+    scene: Scene, docs: Docs, shop: Shop
+) -> None:
+    entry, doc = order(scene, docs, *LINES)
+    # one proposed row removed (the client echoes the other only): the split is the client's
+    plan = scene.preview(entry, echo(entry, doc, 3, -300))
+    assert [r.id for r in plan.rows] == [entry, proposed_split_id(entry, 3)]
+    assert [r.amount for r in plan.rows] == [-700, -300]
 
 
 def test_no_proposal_where_there_is_nothing_to_split(scene: Scene, docs: Docs, shop: Shop) -> None:
@@ -244,7 +257,7 @@ def test_picking_another_document_regenerates_the_proposal(scene: Scene, docs: D
     )
 
 
-def test_an_existing_split_stays_and_the_explicit_choice_replaces_it(
+def test_the_proposal_replaces_an_existing_split_and_lists_what_it_deletes(
     scene: Scene, docs: Docs, shop: Shop
 ) -> None:
     _src, (first, second) = scene.movement(-600, -400, counterparty=CARD)
@@ -256,26 +269,121 @@ def test_an_existing_split_stays_and_the_explicit_choice_replaces_it(
     tag = scene.tag("gift")
     scene.tag_entry(second, tag)
     plan = scene.preview(first)
-    assert [r.id for r in plan.rows] == [first, second]  # it stays
+    assert [r.id for r in plan.rows if r.stored is not None] == [first]
     view = plan.row(first).document_view
     assert view is not None and view.split is not None
-    assert (view.split.proposed, view.split.available, view.split.replaces_stored_split) == (
-        False,
-        True,
-        True,
-    )
-    choice = DraftEntry(first, document=DocumentDraft("split_along_lines", doc, 1))
-    plan = scene.preview(first, choice)
-    assert [r.id for r in plan.rows if r.stored is not None] == [first]
+    assert (view.split.proposed, view.split.available, view.split.replaces_stored_split) == (True, True, True)
     deleted = [c for c in plan.consequences if c.kind == "deleted"]
     assert [c.entry_id for c in deleted] == [second]
     assert {r.id for r in plan.removed} == {second}
     assert plan.removed[0].tag_ids == (tag,)  # the tags it deletes are shown
     assert [r.amount for r in plan.rows] == [-400, -300, -300]
-    plan, result = preview_then_commit(scene, scene.draft(first, choice))
+    plan, result = preview_then_commit(scene, scene.draft(first))
     assert result.removed_entry_ids == (second,)
     assert scene.q("SELECT 1 FROM ledger_entry WHERE id = :i", i=second) == []
     assert len(result.created) == 2
+    assert scene.preview(first).row(first).document_view.split.proposed is False  # type: ignore[union-attr]
+
+
+def test_a_stored_split_that_is_the_proposal_shows_no_change(scene: Scene, docs: Docs, shop: Shop) -> None:
+    entry, _doc = order(scene, docs, *LINES)
+    preview_then_commit(scene, scene.draft(entry))
+    matcher_link(scene, entry)  # the link is the matcher's again: something is still to be reviewed
+    plan = scene.preview(entry)
+    assert [r.id for r in plan.rows] == list(scene.unit_ids(entry))
+    assert not [c for c in plan.consequences if c.kind in ("created", "deleted")]
+
+
+def test_the_explicit_choice_replaces_a_split_by_hand_once_the_link_is_the_users(
+    scene: Scene, docs: Docs, shop: Shop
+) -> None:
+    _src, (first, second) = scene.movement(-600, -400, counterparty=CARD)
+    doc = docs.document(total=-1000)
+    docs.lines(doc, *LINES)
+    scene.settle()
+    users_link(scene, first)
+    assert [r.id for r in scene.preview(first).rows] == [first, second]  # it stands
+    choice = DraftEntry(first, document=DocumentDraft("split_along_lines", doc, 1))
+    plan = scene.preview(first, choice)
+    assert [c.entry_id for c in plan.consequences if c.kind == "deleted"] == [second]
+    plan, result = preview_then_commit(scene, scene.draft(first, choice))
+    assert result.removed_entry_ids == (second,) and len(result.created) == 2
+
+
+def test_two_charges_of_one_order_are_each_proposed_their_own_line(scene: Scene, docs: Docs) -> None:
+    first = docs.charge(-3000)
+    second = docs.charge(-2000, on=D + timedelta(days=1))
+    doc = docs.document(total=-5000)
+    docs.lines(doc, ("USB cable", -3000), ("Case", -2000))
+    scene.settle()
+    assert scene.row(first).document_id == scene.row(second).document_id == doc
+    plan = scene.preview(first)
+    assert {r.id for r in plan.rows} == {first, second}
+    for carrier, line in ((first, 1), (second, 2)):
+        row = plan.row(carrier)
+        assert row.document_line == (doc, line)  # one line each: the original takes it, no extra entry
+        view = row.document_view
+        assert view is not None and view.split is not None and view.split.available
+    assert [plan.row(first).amount, plan.row(second).amount] == [-3000, -2000]
+    _plan, result = preview_then_commit(scene, scene.draft(first, versions=scene.versions(first)))
+    assert not result.created
+    refs = scene.q(
+        "SELECT e.id, l.line_no FROM ledger_entry e"
+        " JOIN external_document_line l ON l.id = e.document_line_id WHERE e.id = ANY(:ids) ORDER BY e.id",
+        ids=[first, second],
+    )
+    assert [(r.id, r.line_no) for r in refs] == [(first, 1), (second, 2)]
+
+
+def test_two_charges_of_one_order_with_several_lines_in_one(scene: Scene, docs: Docs) -> None:
+    first = docs.charge(-1000)
+    second = docs.charge(-500, on=D + timedelta(days=1))
+    doc = docs.document(total=-1500)
+    docs.lines(doc, ("a", -600), ("b", -500), ("c", -400))
+    scene.settle()
+    plan = scene.preview(first)
+    # the earliest charge takes a and c (-1000), the next takes b
+    assert [r.id for r in plan.rows] == [first, second, proposed_split_id(first, 3)]
+    assert [r.amount for r in plan.rows] == [-600, -500, -400]
+    assert plan.row(proposed_split_id(first, 3)).document_line == (doc, 3)
+    assert plan.row(second).document_line == (doc, 2)
+    _plan, result = preview_then_commit(scene, scene.draft(first, versions=scene.versions(first)))
+    assert len(result.created) == 1
+
+
+def test_a_coupon_line_folds_into_the_originals_remainder(scene: Scene, docs: Docs, shop: Shop) -> None:
+    # items -400 -300 -400, a coupon of +100: the order's total is -1000
+    entry, doc = order(scene, docs, ("USB cable", -400), ("Case", -300), ("Cable", -400), ("Coupon", 100))
+    plan = scene.preview(entry)
+    assert [r.id for r in plan.rows] == [entry, proposed_split_id(entry, 2), proposed_split_id(entry, 3)]
+    assert [r.amount for r in plan.rows] == [-300, -300, -400]  # the original: -400 plus the coupon
+    assert [r.document_line for r in plan.rows] == [(doc, 1), (doc, 2), (doc, 3)]
+
+
+def test_a_wrongly_split_charge_is_corrected_when_a_new_charge_is_picked_in(scene: Scene, docs: Docs) -> None:
+    _src, (original, extra) = scene.movement(-1000, -2000, counterparty=CARD)  # one charge of -3000
+    doc = docs.document(total=-5000)
+    docs.lines(doc, ("a", -2000), ("b", -3000))
+    line_a = scene.q("SELECT id FROM external_document_line WHERE document_id = :d AND line_no = 1", d=doc)[
+        0
+    ].id
+    users_link_to(scene, original, doc)
+    scene.tx(
+        lambda c: c.execute(
+            text("UPDATE ledger_entry SET document_line_id = :l WHERE id = :e"), {"l": line_a, "e": extra}
+        )
+    )
+    new = docs.charge(-2000, on=D + timedelta(days=1))
+    version = scene.q("SELECT version FROM external_document WHERE id = :i", i=doc)[0].version
+    plan = scene.preview(new, DraftEntry(new, document=DocumentDraft("pick", doc, version)))
+    # the committed split referenced line a (-2000), which the new charge takes: the split is replaced
+    assert [c.entry_id for c in plan.consequences if c.kind == "deleted"] == [extra]
+    assert plan.row(original).amount == -3000 and plan.row(original).document_line == (doc, 2)
+    assert plan.row(new).document_line == (doc, 1)
+    _plan, result = preview_then_commit(
+        scene, scene.draft(new, DraftEntry(new, document=DocumentDraft("pick", doc, version)))
+    )
+    assert result.removed_entry_ids == (extra,)
 
 
 def test_the_explicit_choice_where_the_lines_do_not_fit_is_a_problem(

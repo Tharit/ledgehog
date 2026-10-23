@@ -102,8 +102,7 @@ describe('opening with a document picked', () => {
 		expect(original(lastRequest())!.document).toEqual({
 			mode: 'pick',
 			document_id: 7,
-			document_version: 2,
-			decline_split: false
+			document_version: 2
 		});
 		expect(flow.draft?.documentEdit(1)).toEqual({ mode: 'pick', documentId: 7, version: 2 });
 		expect(flow.isDirty).toBe(true);
@@ -148,8 +147,6 @@ describe('choosing the document', () => {
 			mode: 'split_along_lines',
 			document_id: 7
 		});
-		flow.declineSplit(1);
-		expect(original(lastRequest())!.document).toMatchObject({ mode: 'pick', decline_split: true });
 		flow.resetDocument(1);
 		expect(original(lastRequest())).toBeUndefined();
 	});
@@ -187,7 +184,7 @@ describe('committing where a document is suggested or awaited', () => {
 		await flow.commit();
 
 		expect(vi.mocked(commitUnit).mock.calls[0][0].entries).toEqual([
-			{ id: 1, document: { mode: 'none', decline_split: false } }
+			{ id: 1, document: { mode: 'none' } }
 		]);
 		expect(h.committed).toHaveBeenCalled();
 	});
@@ -276,17 +273,6 @@ describe('the split along the lines', () => {
 
 		await flow.commit();
 		expect(vi.mocked(commitUnit).mock.calls[0][0].entries!.map((x) => x.id)).toEqual([1, -900]);
-	});
-
-	it('is refused with "keep one entry": the row goes and decline_split is sent', async () => {
-		vi.mocked(previewUnit).mockResolvedValue(proposed());
-		const { flow } = setup();
-		await settle();
-
-		flow.declineSplit(1);
-
-		expect(flow.draft?.lineRows).toEqual([]);
-		expect(original(lastRequest())!.document).toEqual({ mode: 'keep', decline_split: true });
 	});
 
 	it('forgets the rows the server drops, such as those of a document that is no longer the transaction’s', async () => {
@@ -509,7 +495,7 @@ describe('editing the amount of a row of the split along the lines', () => {
 		expect(flow.draft?.lineRows).toEqual([]);
 	});
 
-	it('removes a row on the explicit action, and refuses the split when the last one goes', async () => {
+	it('removes a row on the explicit action; with the last one gone nothing is echoed', async () => {
 		echoing();
 		const { flow } = setup();
 		await settle();
@@ -521,6 +507,6 @@ describe('editing the amount of a row of the split along the lines', () => {
 		flow.removeSplit(-900);
 		flow.removeSplit(-902);
 		expect(flow.draft?.lineRows).toEqual([]);
-		expect(original(lastRequest())!.document).toEqual({ mode: 'keep', decline_split: true });
+		expect(original(lastRequest())).toBeUndefined();
 	});
 });

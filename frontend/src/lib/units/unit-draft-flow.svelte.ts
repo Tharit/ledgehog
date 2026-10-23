@@ -415,12 +415,6 @@ export class UnitDraftFlow {
 		this.edit((d) => d.splitAlongLines(id, document.id, document.version));
 	}
 
-	/** "Keep one entry": the proposed split along the lines is refused. */
-	declineSplit(id: number): void {
-		this.#forgetAmounts(this.draft?.lineRows.map((s) => s.id) ?? []);
-		this.edit((d) => d.declineSplit(id));
-	}
-
 	// ---- the partner of a transfer leg (spec §5.7) ----------------------------------------
 
 	/**

@@ -51,8 +51,7 @@ describe('the document of a draft', () => {
 		expect(original(draft)!.document).toEqual({
 			mode: 'pick',
 			document_id: 7,
-			document_version: 2,
-			decline_split: false
+			document_version: 2
 		});
 		expect(draft.documentEdit(1)).toEqual({ mode: 'pick', documentId: 7, version: 2 });
 		expect(draft.isDirty).toBe(true);
@@ -60,12 +59,10 @@ describe('the document of a draft', () => {
 
 	it('sends none and re-resolve with neither id nor version', () => {
 		expect(original(empty().noDocument(1))!.document).toEqual({
-			mode: 'none',
-			decline_split: false
+			mode: 'none'
 		});
 		expect(original(empty().reresolveDocument(1))!.document).toEqual({
-			mode: 'reresolve',
-			decline_split: false
+			mode: 'reresolve'
 		});
 	});
 
@@ -94,9 +91,8 @@ describe('the document of a draft', () => {
 	});
 
 	it('resets to the proposal: no decision, no refusal', () => {
-		const draft = empty().noDocument(1).declineSplit(1).resetDocument(1);
+		const draft = empty().noDocument(1).resetDocument(1);
 		expect(draft.documentEdit(1)).toBeUndefined();
-		expect(draft.declinesSplit(1)).toBe(false);
 		expect(original(draft)).toBeUndefined();
 	});
 });
@@ -109,8 +105,7 @@ describe('splitting along the lines', () => {
 		expect(request.entries!.find((e) => e.id === 1)!.document).toEqual({
 			mode: 'split_along_lines',
 			document_id: 7,
-			document_version: 2,
-			decline_split: false
+			document_version: 2
 		});
 	});
 
@@ -125,26 +120,6 @@ describe('splitting along the lines', () => {
 			.splitAlongLines(1, 7, 2);
 		expect(draft.splits).toEqual([]);
 		expect(draft.removed).toEqual([]);
-	});
-
-	it('is refused by "keep one entry", which goes back to the plain pick', () => {
-		const draft = empty().splitAlongLines(1, 7, 2).declineSplit(1);
-		expect(original(draft)!.document).toEqual({
-			mode: 'pick',
-			document_id: 7,
-			document_version: 2,
-			decline_split: true
-		});
-	});
-
-	it('refuses the proposed split of a linked document with a keep and decline_split', () => {
-		const draft = empty().declineSplit(1);
-		expect(original(draft)!.document).toEqual({ mode: 'keep', decline_split: true });
-		expect(draft.declinesSplit(1)).toBe(true);
-	});
-
-	it('a new decision lifts the refusal', () => {
-		expect(empty().declineSplit(1).pickDocument(1, 7, 2).declinesSplit(1)).toBe(false);
 	});
 });
 
@@ -201,11 +176,10 @@ describe('the rows made from a line', () => {
 		expect(original(draft)).toBeUndefined();
 	});
 
-	it('removing the last row refuses the split, or the server would propose it again', () => {
+	it('removing the last row sends no document key: there is no decline', () => {
 		const draft = empty().syncLineRows(proposal()).removeSplit(-900).removeSplit(-901);
-		const request = draft.toRequest();
-		expect(request.entries!.map((e) => e.id)).toEqual([1]);
-		expect(original(draft)!.document).toEqual({ mode: 'keep', decline_split: true });
+		expect(draft.toRequest().entries ?? []).toEqual([]);
+		expect(original(draft)).toBeUndefined();
 	});
 
 	it('go with a new decision about the document: they belong to the old one', () => {
@@ -213,7 +187,6 @@ describe('the rows made from a line', () => {
 		expect(draft.pickDocument(1, 8, 1).lineRows).toEqual([]);
 		expect(draft.noDocument(1).lineRows).toEqual([]);
 		expect(draft.reresolveDocument(1).lineRows).toEqual([]);
-		expect(draft.declineSplit(1).lineRows).toEqual([]);
 	});
 
 	it('are taken back to the proposal by reset, keeping the decision', () => {
@@ -224,7 +197,6 @@ describe('the rows made from a line', () => {
 			.resetSplit(1);
 		expect(draft.lineRows).toEqual([]);
 		expect(draft.documentEdit(1)).toEqual({ mode: 'pick', documentId: 7, version: 2 });
-		expect(draft.declinesSplit(1)).toBe(false);
 	});
 
 	it('leave the draft when the preview no longer has them', () => {

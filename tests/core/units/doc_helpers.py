@@ -133,3 +133,42 @@ class Docs:
                 text("UPDATE external_document SET merchant_name = :n WHERE id = :d"), {"n": name, "d": doc}
             )
         )
+
+
+def users_link(scene: Scene, *entries: int) -> None:
+    """Make the link of these original entries the user's (key `user`), as a commit leaves it."""
+    scene.tx(
+        lambda c: c.execute(
+            text(
+                "UPDATE ledger_entry SET derivation = jsonb_set(derivation, '{document}',"
+                ' \'{"pass": "user"}\') WHERE id = ANY(:ids)'
+            ),
+            {"ids": list(entries)},
+        )
+    )
+
+
+def matcher_link(scene: Scene, entry: int) -> None:
+    """Make the link of this original entry a matcher's proposal again."""
+    scene.tx(
+        lambda c: c.execute(
+            text(
+                "UPDATE ledger_entry SET derivation = jsonb_set(derivation, '{document}',"
+                ' \'{"pass": "matcher_proposal"}\') WHERE id = :i'
+            ),
+            {"i": entry},
+        )
+    )
+
+
+def users_link_to(scene: Scene, entry: int, doc: int) -> None:
+    """Link this original entry to `doc` as the user's decision."""
+    scene.tx(
+        lambda c: c.execute(
+            text(
+                "UPDATE ledger_entry SET document_id = :d, derivation = derivation ||"
+                ' CAST(\'{"document": {"pass": "user"}}\' AS jsonb) WHERE id = :i'
+            ),
+            {"d": doc, "i": entry},
+        )
+    )

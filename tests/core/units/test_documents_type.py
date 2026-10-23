@@ -12,7 +12,7 @@ import pytest
 
 from app.core.importers.providers import reset_document_providers
 from app.core.units.commit import CommitRefused, commit_unit
-from app.core.units.draft import DraftEntry
+from app.core.units.draft import DocumentLineRef, DraftEntry
 from tests.core.units.doc_helpers import CARD, STANDING, Docs
 from tests.core.units.equality import preview_then_commit
 from tests.core.units.scene import Scene, fixed, no_document
@@ -98,7 +98,13 @@ def test_a_stored_matcher_proposal_link_shows_its_origin_and_commits_as_the_user
     draft = scene.draft(
         entry,
         DraftEntry(entry, category=fixed(cat)),
-        DraftEntry(second, category=fixed(cat), source_entry_id=entry, amount=-600),
+        DraftEntry(
+            second,
+            category=fixed(cat),
+            source_entry_id=entry,
+            amount=-600,
+            document_line=DocumentLineRef(doc, 2),  # the client echoes the proposed row
+        ),
     )
     plan, _ = preview_then_commit(scene, draft)
     assert plan.anchor_unit.state.confirmed  # "after this commit": the unit is confirmed

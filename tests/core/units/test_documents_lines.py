@@ -18,7 +18,7 @@ from app.core.importers.providers import reset_document_providers
 from app.core.units.doc_draft import proposed_split_id
 from app.core.units.draft import DocumentDraft, DocumentLineRef, DraftEntry, PairingDraft
 from app.core.units.preview import preview_unit
-from tests.core.units.doc_helpers import Docs, make_payee
+from tests.core.units.doc_helpers import Docs, make_payee, users_link
 from tests.core.units.equality import preview_then_commit, stored_lines
 from tests.core.units.scene import Scene, fixed, no_document
 from tests.core.units.test_documents_draft import pick
@@ -109,6 +109,7 @@ def test_a_stored_split_is_read_line_by_line(scene: Scene, docs: Docs, shop: Sho
 
 def test_an_entry_of_a_hand_made_split_has_no_line(scene: Scene, docs: Docs, shop: Shop) -> None:
     entry, doc = order(scene, docs, *LINES)
+    users_link(scene, entry)  # once the link is the user's nothing is proposed over a split by hand
     new = DraftEntry(-1, amount=-300, source_entry_id=entry)
     plan = scene.preview(entry, new, DraftEntry(entry, document=DocumentDraft("keep"), note="x"))
     # a split made by hand: the new entry has none; the original, of a document of several lines, has none
@@ -189,11 +190,26 @@ def test_a_split_along_the_lines_writes_each_entrys_line_the_original_the_first(
     }
 
 
-def test_an_explicit_split_replacing_a_stored_split_keeps_one_line_each(
+def test_an_explicit_split_over_a_split_that_is_the_proposal_changes_nothing(
     scene: Scene, docs: Docs, shop: Shop
 ) -> None:
     entry, doc = order(scene, docs, *LINES)
     preview_then_commit(scene, scene.draft(entry))
+    ids = scene.unit_ids(entry)
+    version = scene.q("SELECT version FROM external_document WHERE id = :i", i=doc)[0].version
+    again = DraftEntry(entry, document=DocumentDraft("split_along_lines", doc, version))
+    plan, result = preview_then_commit(scene, scene.draft(entry, again))
+    assert not result.created and not result.removed_entry_ids and scene.unit_ids(entry) == ids
+    assert lines_of(scene, *ids) == {ids[0]: (doc, 1), ids[1]: (doc, 2), ids[2]: (doc, 3)}
+    assert not [c for c in plan.consequences if c.kind in ("created", "deleted")]
+
+
+def test_an_explicit_split_replaces_a_split_by_hand_with_one_line_each(
+    scene: Scene, docs: Docs, shop: Shop
+) -> None:
+    entry, doc = order(scene, docs, *LINES)
+    users_link(scene, entry)
+    preview_then_commit(scene, scene.draft(entry, DraftEntry(-1, amount=-100, source_entry_id=entry)))
     version = scene.q("SELECT version FROM external_document WHERE id = :i", i=doc)[0].version
     again = DraftEntry(entry, document=DocumentDraft("split_along_lines", doc, version))
     _plan, result = preview_then_commit(scene, scene.draft(entry, again))
