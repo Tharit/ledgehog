@@ -11,6 +11,7 @@ from collections.abc import Iterator
 import pytest
 
 from app.core.importers.providers import reset_document_providers
+from app.core.units.commit import CommitRefused, commit_unit
 from app.core.units.draft import DraftEntry
 from tests.core.units.doc_helpers import CARD, STANDING, Docs
 from tests.core.units.equality import preview_then_commit
@@ -191,3 +192,47 @@ def test_a_draft_that_converts_a_linked_transaction_to_a_transfer_still_drops_th
     )
     plan, _ = preview_then_commit(scene, draft)
     assert plan.row(entry).document_id is None and scene.row(entry).type == "transfer"
+
+
+def test_a_split_that_makes_another_entry_of_a_carrier_a_transfer_is_refused(
+    scene: Scene, docs: Docs
+) -> None:
+    doc = docs.document(total=-1000)
+    _src, (first, second) = scene.movement(
+        -600,
+        -400,
+        counterparty=CARD,
+        lead={
+            "type": "flow",
+            "document_id": doc,
+            "derivation": json.dumps({**STANDING, "document": {"pass": "user"}}),
+        },
+    )
+    to_savings = DraftEntry(second, type=fixed("transfer"), counter_account=fixed(scene.savings))
+    draft = scene.draft(first, to_savings)
+    plan = scene.preview(first, to_savings)
+    assert [(p.code, p.entry_id, p.field) for p in plan.problems] == [
+        ("document_with_transfer", second, "document")
+    ]
+    before = scene.fingerprint()
+    with pytest.raises(CommitRefused) as refused:
+        commit_unit(scene.engine, draft)
+    assert [p.code for p in refused.value.problems] == ["document_with_transfer"]
+    assert scene.fingerprint() == before
+
+
+def test_a_split_of_a_carrier_that_leaves_no_transfer_is_fine(scene: Scene, docs: Docs) -> None:
+    doc = docs.document(total=-1000)
+    _src, (first, second) = scene.movement(
+        -600,
+        -400,
+        counterparty=CARD,
+        lead={
+            "type": "flow",
+            "document_id": doc,
+            "derivation": json.dumps({**STANDING, "document": {"pass": "user"}}),
+        },
+    )
+    cat = scene.category("Gadgets")
+    plan, _ = preview_then_commit(scene, scene.draft(first, DraftEntry(second, category=fixed(cat))))
+    assert plan.problems == ()

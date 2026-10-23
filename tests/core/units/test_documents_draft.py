@@ -12,7 +12,7 @@ from collections.abc import Iterator
 from datetime import timedelta
 
 import pytest
-from sqlalchemy import Connection
+from sqlalchemy import Connection, text
 
 from app.core.importers.providers import reset_document_providers
 from app.core.units.draft import DocumentDraft, DocumentLineRef, DraftEntry, DraftError
@@ -169,14 +169,58 @@ def test_a_document_that_is_gone_is_a_stale_reference(scene: Scene, docs: Docs) 
     ]
 
 
-def test_a_document_another_entry_carries_is_taken(scene: Scene, docs: Docs) -> None:
+def _carries(docs: Docs, doc: int, **kw: object) -> int:
+    return docs.charge(
+        document_id=doc, derivation=json.dumps({**STANDING, "document": {"pass": "user"}}), **kw
+    )
+
+
+def test_picking_a_carried_document_brings_its_carriers_into_the_unit(scene: Scene, docs: Docs) -> None:
     doc = docs.document(total=-1000)
-    carrier = docs.charge(document_id=doc, derivation=json.dumps({**STANDING, "document": {"pass": "user"}}))
+    carrier = _carries(docs, doc)
     entry = docs.charge(on=D + timedelta(days=1))
-    plan = scene.preview(entry, pick(entry, scene, doc))
-    assert [(p.code, p.entry_id, dict(p.detail)) for p in plan.problems] == [
-        ("document_taken", entry, {"document_id": doc, "carrier": carrier})
-    ]
+    assert scene.unit_ids(entry) == (entry,)
+    both = {**scene.versions(entry), **scene.versions(carrier)}
+    draft = scene.draft(entry, pick(entry, scene, doc), versions=both)
+    plan, _ = preview_then_commit(scene, draft)
+    assert plan.problems == ()
+    assert plan.anchor_unit.entry_ids == (carrier, entry)
+    assert {r.id: r.in_unit for r in plan.rows} == {carrier: True, entry: True}
+    assert scene.row(entry).document_id == doc and scene.row(carrier).document_id == doc
+    assert scene.unit_ids(entry) == scene.unit_ids(carrier) == (carrier, entry)
+
+
+def test_none_on_a_carrier_takes_it_out_of_the_unit_and_shows_it_as_a_consequence(
+    scene: Scene, docs: Docs
+) -> None:
+    doc = docs.document(total=-1000)
+    first, second = _carries(docs, doc), _carries(docs, doc, on=D + timedelta(days=1))
+    assert scene.unit_ids(first) == (first, second)
+    plan, _ = preview_then_commit(scene, scene.draft(first, no_document(second)))
+    assert plan.problems == () and plan.anchor_unit.entry_ids == (first,)
+    assert {r.id: r.in_unit for r in plan.rows} == {first: True, second: False}
+    assert (second, "left_behind") in {(c.entry_id, c.kind) for c in plan.consequences}
+    assert scene.row(second).document_id is None and scene.row(first).document_id == doc
+    assert scene.unit_ids(first) == (first,) and scene.unit_ids(second) == (second,)
+
+
+def test_a_document_of_one_line_two_carriers_both_take_is_taken(scene: Scene, docs: Docs) -> None:
+    doc = docs.document(total=-1000)
+    docs.lines(doc, ("Only", -1000))
+    carrier = _carries(docs, doc)
+    scene.tx(
+        lambda c: c.execute(
+            text(
+                "UPDATE ledger_entry SET document_line_id = (SELECT id FROM external_document_line"
+                " WHERE document_id = :d) WHERE id = :e"
+            ),
+            {"d": doc, "e": carrier},
+        )
+    )
+    entry = docs.charge(on=D + timedelta(days=1))
+    both = {**scene.versions(entry), **scene.versions(carrier)}
+    plan = scene.preview(entry, pick(entry, scene, doc), versions=both)
+    assert [(p.code, p.entry_id) for p in plan.problems] == [("document_taken", entry)]
 
 
 def test_a_document_of_another_provider_than_the_payees_is_refused(scene: Scene, docs: Docs) -> None:

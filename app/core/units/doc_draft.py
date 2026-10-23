@@ -4,14 +4,15 @@
 ORIGINAL entry (the one that carries the link, I31/I35) and says what the draft makes of its document
 (`DocDecision`): the link as stored (``keep``), a pick, "none", or the decision dropped (``reresolve``, also
 what `reresolve_all` makes of ``keep``). A pick is validated against the documents the world holds: it must
-exist (`stale_reference`), be at the version the client saw (`document_changed`), be carried by no other entry
-(`document_taken`) and not belong to another provider than the payee's (`document_provider_mismatch`). A
-payee with no provider takes any document: documents.md §9 offers a document to a transaction "whatever its
-payee", found by hand. The payee judged is the draft's own when it fixes one, else the stored one of an entry
-that carries no link (a link's rules may have changed it); a transaction cannot be an unreachable
-duplicate here, which has no entries (I3). A transaction that the draft converts to a transfer loses its
-document (``drop``, as the payee goes, I9); a pick on a transfer is a problem the plan reports
-(`document_not_for_transfer`).
+exist (`stale_reference`), be at the version the client saw (`document_changed`) and not belong to another
+provider than the payee's (`document_provider_mismatch`). A document other transactions carry may be picked:
+its carriers are in the unit (`stored.load_drafted_unit`); a line two entries would hold is `document_taken`
+(the plan's check). A payee with no provider takes any document: documents.md §9 offers a document to a
+transaction "whatever its payee", found by hand. The payee judged is the draft's own when it fixes one, else
+the stored one of an entry that carries no link (a link's rules may have changed it); a transaction cannot
+be an unreachable duplicate here, which has no entries (I3). A transaction that the draft converts to a
+transfer loses its document (``drop``, as the payee goes, I9); a pick on a transfer is a problem the plan
+reports (`document_not_for_transfer`).
 
 The split along the lines (documents.md §6) is draft state: the rows it creates are ordinary new entries of
 the draft, so the rest of the plan treats them like any split. The preview issues them DETERMINISTIC negative
@@ -179,7 +180,7 @@ def _decide(
             decisions[oid] = DocDecision(None, "drop", True)
         else:
             decisions[oid] = DocDecision(had, "stored", False)
-    problems.extend(_refused_picks(stored, draft, world, decisions, picks))
+    problems.extend(_refused_picks(stored, draft, world, picks))
     return decisions, drafted, problems
 
 
@@ -187,32 +188,13 @@ def _refused_picks(
     stored: StoredUnit,
     draft: UnitDraft,
     world: World,
-    decisions: Mapping[int, DocDecision],
     picks: list[tuple[int, DocumentInfo]],
 ) -> list[Problem]:
     problems: list[Problem] = []
     payee_providers = world.docs.payee_providers if world.docs is not None else {}
-    taken: dict[int, int] = {}
     for oid, info in picks:
         entry = stored.entry(oid)
         assert entry is not None
-        carrier = info.carrier_entry_id
-        # carried by another entry: one outside the unit, or one of it that still carries it after the draft
-        if (
-            carrier is not None
-            and carrier != oid
-            and (carrier not in decisions or decisions[carrier].link == info.id)
-        ):
-            problems.append(
-                Problem("document_taken", oid, "document", {"document_id": info.id, "carrier": carrier})
-            )
-        elif info.id in taken:
-            problems.append(
-                Problem(
-                    "document_taken", oid, "document", {"document_id": info.id, "carrier": taken[info.id]}
-                )
-            )
-        taken.setdefault(info.id, oid)
         listed = draft.entry(oid)
         payee: int | None = None
         if listed is not None and listed.payee.mode == "fixed" and isinstance(listed.payee.value, int):

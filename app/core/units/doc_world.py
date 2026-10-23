@@ -32,7 +32,7 @@ from app.core.units.documents import (
 @dataclass(frozen=True, slots=True)
 class DocumentInfo:
     """A stored document as the draft and the preview read it: what a suggestion shows, what a pick is
-    checked against (`version`, `provider`, `carrier_entry_id`) and what the split along its lines uses."""
+    checked against (`version`, `provider`) and what the split along its lines uses."""
 
     id: int
     version: int
@@ -44,7 +44,6 @@ class DocumentInfo:
     merchant_name: str | None
     title: str | None
     lines: tuple[tuple[int, int, str], ...] = ()
-    carrier_entry_id: int | None = None  # the entry carrying it now (any entry of the ledger), None: free
 
     @property
     def line_count(self) -> int:
@@ -60,9 +59,8 @@ class DocWorld:
     documents: Sequence[DocInput] = ()
     details: Mapping[int, LinkedDocument] = field(default_factory=dict)
     others: Sequence[DocTxn] = ()  # gated original entries outside the unit
-    # every document named by the draft (picks, echoed lines) and every one `documents` holds, by id; the
-    # carrier of a picked one is any entry of the ledger (a document carried outside the unit is no candidate
-    # but may be picked: it is refused as taken)
+    # every document named by the draft (picks, echoed lines) and every one `documents` holds, by id; a
+    # picked document may be carried (its carriers are in the unit: the drafted closure holds them)
     infos: Mapping[int, DocumentInfo] = field(default_factory=dict)
 
 

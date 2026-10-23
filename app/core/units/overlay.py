@@ -269,6 +269,7 @@ def _unit_entries(rows: Sequence[_Row]) -> list[UnitEntry]:
             category_id=r.category_id,
             counterpart_entry_id=r.counterpart,
             derivation=r.derivation or {},
+            document_id=r.document_id,
         )
         for r in rows
     ]
@@ -909,10 +910,7 @@ def _apply_pairing(
     """The draft's `pairing` fields over `links` (the pairs that stand), in place. A pick that is not an offer
     is a problem and changes nothing; a no-op pick (the leg's current partner) neither."""
     out = _Picks([], set())
-    groups = units_of(
-        UnitEntry(e.id, e.source_transaction_id, e.type, e.category_id, e.counterpart_entry_id, e.derivation)
-        for e in stored.entries
-    )
+    groups = units_of(_unit_entries_of(stored))
     unit_of = {ue.id: frozenset(ue2.id for ue2 in unit) for unit in groups.values() for ue in unit}
     accounts = {a.id: a for a in world.accounts}
     window = window_of(draft.window_days, world.matching_window)
@@ -1154,8 +1152,11 @@ def _problems(rows: Sequence[_Row], world: World) -> list[Problem]:
             out.append(Problem("stale_reference", r.id, "payee_id", {"id": r.payee_id}))
     held: dict[tuple[int, int], int] = {}
     for r in rows:
-        if r.original and r.document_id is not None and r.type == "transfer":
-            out.append(Problem("document_not_for_transfer", r.id, "document", {"document_id": r.document_id}))
+        if r.document_id is not None and r.type == "transfer":
+            # a document explains a flow (I35): the original entry that carries it is no transfer, and no
+            # other entry of its transaction is one either (only a commit makes the others)
+            code = "document_not_for_transfer" if r.original else "document_with_transfer"
+            out.append(Problem(code, r.id, "document", {"document_id": r.document_id}))
         if r.document_id is not None and r.line_no is not None:  # a line is the line of one entry (I35)
             line = (r.document_id, r.line_no)
             if line in held:
@@ -1344,13 +1345,25 @@ def _stored_facts(stored: StoredUnit, world: World) -> dict[int, DocumentFacts]:
     return facts_of(txns, world.docs, {e.document_id for e in stored.entries if e.document_id})
 
 
+def _unit_entries_of(stored: StoredUnit) -> list[UnitEntry]:
+    return [
+        UnitEntry(
+            e.id,
+            e.source_transaction_id,
+            e.type,
+            e.category_id,
+            e.counterpart_entry_id,
+            e.derivation,
+            e.document_id,
+        )
+        for e in stored.entries
+    ]
+
+
 def _stored_confirmed(stored: StoredUnit, world: World) -> dict[int, bool]:
     """Per stored entry: whether its unit was reviewed before the draft (left alone if so, I20)."""
     out: dict[int, bool] = {}
-    entries = [
-        UnitEntry(e.id, e.source_transaction_id, e.type, e.category_id, e.counterpart_entry_id, e.derivation)
-        for e in stored.entries
-    ]
+    entries = _unit_entries_of(stored)
     facts = _stored_facts(stored, world)
     for unit in units_of(entries).values():
         confirmed = unit_state(
@@ -1653,7 +1666,15 @@ def plan_unit(stored: StoredUnit, draft: UnitDraft, world: World) -> Plan:
         problems=tuple(problems),
         consequences=tuple(
             _consequences(
-                stored, ordered, unpaired, anchor_key, stored_confirmed, final_states, unit_of, written
+                stored,
+                ordered,
+                unpaired,
+                anchor_key,
+                stored_confirmed,
+                final_states,
+                unit_of,
+                written,
+                draft.anchor_entry_id,
             )
         ),
         versions={e.id: e.version for e in stored.entries},
@@ -1672,11 +1693,23 @@ def _consequences(
     final_states: Mapping[int, tuple[tuple[_Row, ...], UnitState]],
     unit_of: Mapping[int, int],
     written: Mapping[int, Written],
+    anchor_id: int,
 ) -> list[Consequence]:
     """What the draft does beyond the values the user typed: rows made, removed, changed, freed, returned."""
     out: list[Consequence] = []
     kept = {r.id for r in ordered}
     out.extend(Consequence(e.id, "deleted") for e in stored.entries if e.id not in kept)
+    # the carriers of a document a decision takes out of the anchor's unit (`none` on a carrier, a pick of
+    # another document), as a pair's former partner is left behind
+    carrying = {e.source_transaction_id for e in stored.entries if e.document_id is not None}
+    was_here = next(
+        (
+            {ue.id for ue in unit}
+            for unit in units_of(_unit_entries_of(stored)).values()
+            if any(ue.id == anchor_id for ue in unit)
+        ),
+        set(),
+    )
     for r in ordered:
         s = r.stored
         if s is None:
@@ -1684,6 +1717,8 @@ def _consequences(
             continue
         if r.id in unpaired:
             out.append(Consequence(r.id, "unpaired" if unit_of[r.id] == anchor_key else "left_behind"))
+        elif r.src.id in carrying and r.id in was_here and unit_of[r.id] != anchor_key:
+            out.append(Consequence(r.id, "left_behind"))
         before = (s.type, s.payee_id, s.category_id, s.counter_account_id, s.amount, s.description, s.note)
         after = (r.type, r.payee_id, r.category_id, r.counter_account_id, r.amount, r.description, r.note)
         # a link the commit takes away is a change too (converting to a transfer drops the document, §5.8)

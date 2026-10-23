@@ -148,6 +148,11 @@ export function describeProblem(problem: UnitProblem, context: ProblemContext): 
 				text: 'A transfer cannot carry a document.',
 				remedy: 'Pick a flow, or remove the document.'
 			};
+		case 'document_with_transfer':
+			return {
+				text: 'A transaction with a document cannot also have a transfer.',
+				remedy: 'Keep every entry a flow, or remove the document.'
+			};
 		case 'stale_reference':
 			return { text: stale(problem.field), remedy: 'Choose again.' };
 		case 'invariant_violated':

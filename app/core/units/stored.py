@@ -196,14 +196,13 @@ _DOCUMENTS = text(
     """
 )
 
-# the documents a draft names (picks, lines echoed back), with the entry carrying each, wherever it is
+# the documents a draft names (picks, lines echoed back), whoever carries them
 _PICKED = text(
     """
     SELECT d.id, d.provider, d.occurred_on, d.total, d.currency, d.merchant_name, d.version, d.title,
            d.external_id,
            (SELECT jsonb_agg(jsonb_build_array(l.line_no, l.amount, l.description) ORDER BY l.line_no)
-              FROM external_document_line AS l WHERE l.document_id = d.id) AS lines,
-           (SELECT c.id FROM ledger_entry AS c WHERE c.document_id = d.id) AS carrier
+              FROM external_document_line AS l WHERE l.document_id = d.id) AS lines
       FROM external_document AS d
      WHERE d.id = ANY(CAST(:ids AS bigint[]))
     """
@@ -229,7 +228,7 @@ _OTHERS = text(
 )
 
 
-def _info(r: Any, carrier: int | None) -> DocumentInfo:
+def _info(r: Any) -> DocumentInfo:
     return DocumentInfo(
         id=int(r.id),
         version=int(r.version),
@@ -241,7 +240,6 @@ def _info(r: Any, carrier: int | None) -> DocumentInfo:
         merchant_name=r.merchant_name,
         title=r.title,
         lines=tuple((int(n), int(a), str(d)) for n, a, d in (r.lines or ())),
-        carrier_entry_id=carrier,
     )
 
 
@@ -251,8 +249,7 @@ def load_doc_world(conn: Connection, stored: StoredUnit, picks: Collection[int] 
     `picks` are the documents the draft names: read whoever carries them."""
     payee_providers = {int(r.id): str(r.document_provider) for r in conn.execute(_PAYEE_PROVIDERS)}
     closure = sorted(e.id for e in stored.entries)
-    stored_carried = {e.document_id: e.id for e in stored.entries if e.document_id is not None}
-    carried = sorted({*stored_carried, *picks})
+    carried = sorted({e.document_id for e in stored.entries if e.document_id is not None} | set(picks))
     if not payee_providers and not carried:
         return DocWorld(
             window=DocWindow(0, 0)
@@ -272,12 +269,12 @@ def load_doc_world(conn: Connection, stored: StoredUnit, picks: Collection[int] 
         _DOCUMENTS, {"closure": closure, "carried": carried, "currencies": currencies, "totals": totals}
     ):
         docs.append(DocInput(int(r.id), r.provider, r.occurred_on, int(r.total), str(r.currency).strip()))
-        info = _info(r, stored_carried.get(int(r.id)))
+        info = _info(r)
         infos[info.id] = info
         details[info.id] = LinkedDocument(merchant_name=info.merchant_name, lines=info.lines)
-    if picks:  # whoever carries them, a document the draft names is known (it may be refused as taken)
+    if picks:  # whoever carries them, a document the draft names is known
         for r in conn.execute(_PICKED, {"ids": sorted(picks)}):
-            info = _info(r, None if r.carrier is None else int(r.carrier))
+            info = _info(r)
             infos[info.id] = info
             details[info.id] = LinkedDocument(merchant_name=info.merchant_name, lines=info.lines)
     others = [
@@ -445,12 +442,35 @@ def pick_partner_ids(draft: UnitDraft) -> list[int]:
     )
 
 
+_CARRIERS = text(
+    "SELECT min(id) FROM ledger_entry WHERE document_id = ANY(CAST(:docs AS bigint[])) GROUP BY document_id"
+)
+
+
+def carriers_of(conn: Connection, documents: Collection[int]) -> list[int]:
+    """One carrying entry of each of `documents` that has any (its unit holds the other carriers)."""
+    if not documents:
+        return []
+    return [int(i) for i in conn.execute(_CARRIERS, {"docs": sorted(documents)}).scalars()]
+
+
+def drafted_closure(conn: Connection, draft: UnitDraft, anchor_ids: Iterable[int]) -> set[int]:
+    """The unit as drafted: `anchor_ids` (the anchor's own closure), the closure of every partner the draft
+    picks, and the closure of every carrier of a document the draft picks (all the carriers of one document
+    are one unit). A document that no entry carries brings nothing."""
+    return (
+        set(anchor_ids)
+        | load_closure_of(conn, pick_partner_ids(draft))
+        | load_closure_of(conn, carriers_of(conn, document_pick_ids(draft)))
+    )
+
+
 def load_drafted_unit(conn: Connection, draft: UnitDraft) -> tuple[StoredUnit, frozenset[int]] | None:
-    """The closure of the anchor extended by the closure of every partner the draft picks (the unit as
-    drafted), and the ids of the anchor's own closure. None when the anchor is in no unit. A partner that
-    is in no unit is left out: the plan refuses the pick."""
+    """The closure of the anchor extended by the closure of every partner and of every document carrier the
+    draft picks (the unit as drafted), and the ids of the anchor's own closure. None when the anchor is in no
+    unit. A partner that is in no unit is left out: the plan refuses the pick."""
     ids = unit_ids_of(conn, draft.anchor_entry_id)
     if ids is None:
         return None
-    all_ids = set(ids.entry_ids) | load_closure_of(conn, pick_partner_ids(draft))
+    all_ids = drafted_closure(conn, draft, ids.entry_ids)
     return load_stored_entries(conn, draft.anchor_entry_id, all_ids), frozenset(ids.entry_ids)

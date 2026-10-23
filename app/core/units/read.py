@@ -100,6 +100,7 @@ def unit_entry_of(row: EntryRow) -> UnitEntry:
         category_id=row.category_id,
         counterpart_entry_id=row.counterpart_entry_id,
         derivation=row.derivation,
+        document_id=row.document_id,
     )
 
 
@@ -236,6 +237,11 @@ _ENTRIES_OF_UNITS = text(
                 FROM ledger_entry AS t
                 JOIN ledger_entry AS q ON q.id = t.counterpart_entry_id
                WHERE t.source_transaction_id = ANY(:keys))
+        OR e.source_transaction_id IN (
+              SELECT c.source_transaction_id
+                FROM ledger_entry AS o
+                JOIN ledger_entry AS c ON c.document_id = o.document_id
+               WHERE o.source_transaction_id = ANY(:keys))
     """
 )
 

@@ -146,6 +146,7 @@ PROBLEM_CODES = (
     "document_decision_required",
     "document_split_unavailable",
     "document_not_for_transfer",
+    "document_with_transfer",
 )
 
 

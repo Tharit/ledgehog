@@ -71,6 +71,13 @@ describe('describeProblem', () => {
 		});
 	});
 
+	it('says a transfer beside a document, with its remedy', () => {
+		expect(words('document_with_transfer')).toEqual({
+			text: 'A transaction with a document cannot also have a transfer.',
+			remedy: 'Keep every entry a flow, or remove the document.'
+		});
+	});
+
 	it('names which pick vanished', () => {
 		expect(words('stale_reference', { field: 'category_id' }).text).toMatch(/category/);
 		expect(words('stale_reference', { field: 'payee_id' }).text).toMatch(/payee/);

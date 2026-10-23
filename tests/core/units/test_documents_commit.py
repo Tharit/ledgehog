@@ -96,6 +96,25 @@ def test_none_writes_the_key_without_a_link(scene: Scene, docs: Docs) -> None:
     assert row.document_id is None and row.derivation["document"] == {"pass": "user"}
 
 
+def test_the_carriers_of_one_document_are_committed_as_one_unit(scene: Scene, docs: Docs) -> None:
+    doc = docs.document(total=-2000)
+    first = docs.charge(document_id=doc)
+    second = docs.charge(on=D + timedelta(days=1), document_id=doc)
+    cat = scene.category("Gadgets")
+    assert scene.unit_ids(second) == (first, second)
+    _plan, result = preview_then_commit(
+        scene,
+        scene.draft(
+            second,
+            DraftEntry(first, category=fixed(cat)),
+            DraftEntry(second, category=fixed(cat)),
+            versions=scene.versions(first),
+        ),
+    )
+    assert [(u.anchor_entry_id, u.entry_ids) for u in result.units] == [(first, (first, second))]
+    assert {scene.row(e).category_id for e in (first, second)} == {cat}
+
+
 # ---- what a commit refuses ------------------------------------------------------------------------------
 
 

@@ -1,11 +1,13 @@
 """Which entries are confirmed (spec §6, I20, I22, I31), from columns and keys, never from stored flags.
 
 A UNIT is the entries of one source transaction plus, when one of them is a transfer leg that is
-paired, the entries of the partner's source transaction. A source holds at most one transfer entry
-(I31, `ux_le_one_transfer_per_source`) and a pair has exactly two legs (`ux_le_counterpart`,
-`trg_transfer_pair`), so the closure is at most two source transactions and one self-join finds it:
-the unit key of an entry is the lowest source id among its own source and its partner's, taken over
-every entry of its source (so the siblings of a transfer leg share the key of the leg).
+paired, the entries of the partner's source transaction, plus the entries of every other transaction
+carrying the same document (I21, I35). A source holds at most one transfer entry (I31,
+`ux_le_one_transfer_per_source`), a pair has exactly two legs (`ux_le_counterpart`, `trg_transfer_pair`)
+and a transaction carrying a document has no transfer entry (I35), so a unit is a pair or the carriers of
+one document and never a chain: one step finds it. The unit key of an entry is the lowest source id among
+its own source, its partner's and the carriers' of its document, taken over every entry of its source (so
+the siblings of a transfer leg, or of a carrier's original, share its key).
 
 A unit is confirmed when every entry of it is complete and carries only standing keys:
 
@@ -135,7 +137,11 @@ _UNITS = """
               FROM (
                     SELECT le.id, le.source_transaction_id AS src,
                            LEAST(le.source_transaction_id,
-                                 COALESCE(p.source_transaction_id, le.source_transaction_id)) AS direct_key,
+                                 COALESCE(p.source_transaction_id, le.source_transaction_id),
+                                 COALESCE(CASE WHEN le.document_id IS NOT NULL
+                                               THEN min(le.source_transaction_id)
+                                                    OVER (PARTITION BY le.document_id) END,
+                                          le.source_transaction_id)) AS direct_key,
                            (le.type IS NOT NULL
                             AND (le.type <> 'flow' OR le.category_id IS NOT NULL)
                             AND (le.type <> 'transfer' OR le.counterpart_entry_id IS NOT NULL)) AS complete,
@@ -155,7 +161,8 @@ _UNITS = """
 """
 
 _ALL = ""
-# the sources of the given entries, and of the partners of the transfer legs in those sources
+# the sources of the given entries, of the partners of the transfer legs in those sources, and of the other
+# carriers of the documents those sources carry (the window of `direct_key` sees only the rows in scope)
 _OF_ENTRIES = """
        AND le.source_transaction_id IN (
             SELECT x.source_transaction_id FROM ledger_entry AS x WHERE x.id = ANY(:ids)
@@ -164,6 +171,12 @@ _OF_ENTRIES = """
               FROM ledger_entry AS x
               JOIN ledger_entry AS t ON t.source_transaction_id = x.source_transaction_id
               JOIN ledger_entry AS q ON q.id = t.counterpart_entry_id
+             WHERE x.id = ANY(:ids)
+            UNION
+            SELECT c.source_transaction_id
+              FROM ledger_entry AS x
+              JOIN ledger_entry AS o ON o.source_transaction_id = x.source_transaction_id
+              JOIN ledger_entry AS c ON c.document_id = o.document_id
              WHERE x.id = ANY(:ids))
 """
 

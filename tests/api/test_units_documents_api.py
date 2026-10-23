@@ -197,6 +197,28 @@ def test_a_pick_on_a_transfer_is_a_problem_code(anna: TestClient, scene: Scene, 
     assert_envelope(anna.post(COMMIT, json=body(scene, x, pick(x, doc))), 422, "document_not_for_transfer")
 
 
+def test_a_pick_brings_the_carriers_in_and_a_transfer_beside_a_document_is_422(
+    anna: TestClient, scene: Scene, docs: Docs
+) -> None:
+    doc = docs.document(total=-1000, external_id="a")
+    carrier = docs.charge(document_id=doc)
+    entry = docs.charge()
+    both = {**scene.versions(entry), **scene.versions(carrier)}
+    request = body(scene, entry, pick(entry, doc), versions={str(k): v for k, v in both.items()})
+    out = anna.post(PREVIEW, json=request).json()
+    assert out["problems"] == []
+    assert {r["id"]: r["in_unit"] for r in out["rows"]} == {carrier: True, entry: True}
+    _src, (first, second) = scene.movement(-600, -400, lead={"type": "flow", "document_id": doc})
+    to_savings = {
+        "id": second,
+        "type": {"mode": "fixed", "value": "transfer"},
+        "counter_account": {"mode": "fixed", "value": scene.savings},
+    }
+    out = anna.post(PREVIEW, json=body(scene, first, to_savings)).json()
+    assert [(p["code"], p["entry_id"]) for p in out["problems"]] == [("document_with_transfer", second)]
+    assert_envelope(anna.post(COMMIT, json=body(scene, first, to_savings)), 422, "document_with_transfer")
+
+
 def test_the_split_along_the_lines_is_proposed_with_server_issued_ids(
     anna: TestClient, scene: Scene, docs: Docs
 ) -> None:

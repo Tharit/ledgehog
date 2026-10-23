@@ -2,7 +2,8 @@
 
 The transaction takes the settle lock shared, then the account locks ascending for every account of the
 unit, then the entry rows ascending (`utils.db.locks`). The unit is the unit AS DRAFTED: the anchor's closure
-plus the closure of every partner the draft picks (which holds the former partners of both legs). The
+plus the closure of every partner the draft picks (which holds the former partners of both legs) and of
+every carrier of a document it picks (all the carriers of a document are one unit, I21). The
 proposals the preview shows are taken as picks first (`preview.resolve_draft`, limited to those whose
 entries the client carries versions for): a commit accepts every proposal shown, as the user's decision. The
 unit is read BEFORE the locks to know which accounts to take; after them the closure is read again, and a
@@ -23,8 +24,9 @@ entries are recomputed. A source that follows its partner's amount is written wi
 A document the draft picks (spec §5.8) is part of it: the picked documents and the ones the unit carries are
 locked, in id order, right after the settle lock and BEFORE the accounts - the order document ingest takes
 (documents, then the carriers' accounts, then the entries), so the two cannot deadlock. A pick that names a
-document that is gone is `StaleReference` (409), one at another version or carried by another entry is
-`UnitMoved` (409, with the document and the reason; the unique indexes of I35 are the net under the check). A
+document that is gone is `StaleReference` (409), one at another version, or one that an entry the client
+carries no version for has been linked to since (a carrier the preview did not show), is `UnitMoved` (409,
+with the document and the reason; the unique indexes of I35 are the net under the check). A
 commit that carries no document key for a transaction that is offered documents or awaits one is refused
 (`document_decision_required`, 422) unless the draft picks or says "none".
 
@@ -67,11 +69,10 @@ from app.core.units.preview import UnitNotFound, resolve_draft
 from app.core.units.state import UnitState, document_facts_of_flags, leg_states_of_flags, unit_state
 from app.core.units.stored import (
     document_pick_ids,
-    load_closure_of,
+    drafted_closure,
     load_stored_entries,
     load_world,
     missing_tag,
-    pick_partner_ids,
 )
 from app.utils.db.errors import constraint_name
 from app.utils.db.locks import WriteConflict, lock_accounts, lock_rows, lock_settle_shared, retry_on_deadlock
@@ -142,11 +143,30 @@ def _read_closure(conn: Connection, anchor_entry_id: int) -> tuple[int, ...] | N
 
 
 def _read_drafted_closure(conn: Connection, draft: UnitDraft) -> tuple[int, ...] | None:
-    """The unit as drafted: the anchor's closure and the closure of each picked partner (ascending)."""
+    """The unit as drafted: the anchor's closure, the closure of each picked partner and of the carriers of
+    each picked document (ascending)."""
     anchor = _read_closure(conn, draft.anchor_entry_id)
     if anchor is None:
         return None
-    return tuple(sorted({*anchor, *load_closure_of(conn, pick_partner_ids(draft))}))
+    return tuple(sorted(drafted_closure(conn, draft, anchor)))
+
+
+_UNSEEN_CARRIER = text(
+    "SELECT document_id FROM ledger_entry"
+    " WHERE document_id = ANY(CAST(:docs AS bigint[])) AND id <> ALL(CAST(:seen AS bigint[]))"
+    " ORDER BY document_id LIMIT 1"
+)
+
+
+def _taken_since(conn: Connection, draft: UnitDraft, anchor_entry_id: int, seen: Collection[int]) -> None:
+    """A document the draft picks that an entry the client carries no version for carries (the preview
+    brought every carrier into the unit): linked since, so what the client saw is not the unit (409)."""
+    docs = document_pick_ids(draft)
+    if not docs:
+        return
+    found = conn.execute(_UNSEEN_CARRIER, {"docs": docs, "seen": sorted(seen)}).scalar()
+    if found is not None:
+        raise UnitMoved(anchor_entry_id, document_id=int(found), reason="taken")
 
 
 def _accounts_of(conn: Connection, entry_ids: tuple[int, ...]) -> set[int]:
@@ -434,6 +454,7 @@ def _commit_once(
             lock_accounts(conn, locked)
             lock_rows(conn, "ledger_entry", before)
             after = _read_drafted_closure(conn, draft)
+            _taken_since(conn, draft, draft.anchor_entry_id, draft.versions)
             if after != before:
                 raise UnitMoved(draft.anchor_entry_id)
             _check_versions(conn, draft.versions, written=before)
@@ -508,7 +529,15 @@ def _result(engine: Engine, plan: Plan, created: Mapping[int, int], settled: Set
     unit_rows = [r for r in rows if r.id in real]
     units: list[CommittedUnit] = []
     entries = [
-        UnitEntry(r.id, r.source_transaction_id, r.type, r.category_id, r.counterpart_entry_id, r.derivation)
+        UnitEntry(
+            r.id,
+            r.source_transaction_id,
+            r.type,
+            r.category_id,
+            r.counterpart_entry_id,
+            r.derivation,
+            r.document_id,
+        )
         for r in unit_rows
     ]
     leg_states = leg_states_of_flags({r.id: r.review_flags for r in unit_rows})
