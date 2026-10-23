@@ -2741,9 +2741,10 @@ currency rule, a transaction carrying a document has no transfer entry), but
 a category, a counter-account or a partner may still be
 missing. It is refused only where the result would be invalid, where a document
 decision is missing (§5.8), or where the unit's structure changed since the
-preview: the chosen partner was paired elsewhere, or lines of the chosen
-document that the preview's line allocation relied on were taken since, or it
-has a newer version (§5.5). Proposals
+preview: it gained or lost a member — the chosen partner was paired
+elsewhere, or a transaction joined or left the carriers of a document in the
+unit — or lines of the chosen document that the preview's line allocation
+relied on were taken since, or it has a newer version (§5.5). Proposals
 that changed in the meantime do not matter: the user commits what they saw. A partner or
 counter-leg the preview proposed is accepted as chosen: where the commit cannot make it, the
 commit is refused with the problem a chosen one would raise.
