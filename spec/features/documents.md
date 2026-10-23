@@ -17,6 +17,7 @@ meets those requirements.
 A source transaction is considered when all of the following hold:
 
 - it is not a duplicate;
+- its amount is not zero: a zero-amount booking explains nothing;
 - its unit is unconfirmed (`spec.md` I20);
 - its original entry has a payee with a `document_provider` (`spec.md` §3.6);
   the original entry's payee alone decides, since it carries the link, whatever
