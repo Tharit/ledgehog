@@ -710,15 +710,15 @@ the user's pick types it, and history learns from that pick, so the next one
 is typed on arrival. Rejected: pairing untyped entries automatically, which
 saves only the first pick.
 
-## D62 Document importers deliver one document per charge
+## D62 Document importers deliver one document per charge — *partly superseded by D229*
 
-Automatic document matching is exact and one-to-one. Amazon charges per
-shipment, often weeks after the order date, so order-level documents rarely
-match a charge. Granularity is therefore the importer's job — one document per
-charge where the provider exposes charges, dated on the charge (spec §5.5) — and
-the core rule stays exact. Rejected: sum-matching and provider-specific windows
-in the core, which are fuzzy and put provider knowledge where it does not
-belong.
+Automatic document matching is exact. Amazon charges an order in parts, often
+weeks after the order date, so an order-level document matches its charges
+only through the line allocation of D229. Granularity is still the importer's
+first choice — one document per charge where the provider exposes charges,
+dated on the charge (spec §5.5) — and the core rule stays exact. Rejected:
+provider-specific windows in the core, which are fuzzy and put provider
+knowledge where it does not belong.
 
 ## D63 A document is input to resolution, not a pass of its own
 
@@ -1248,7 +1248,7 @@ Rejected:
 - **Two write paths**, preview-and-commit in review but immediate operations
   after confirmation, which would keep both sets of operations alive.
 
-## D108 Documents: one per transaction, unconfirmed transactions only, split by line — *partly superseded by D131, D152 and D169*
+## D108 Documents: one per transaction, unconfirmed transactions only, split by line — *partly superseded by D131, D152, D169 and D229*
 
 Supersedes D52; with D107, D100; partly supersedes D96 and D97; strengthens
 D62.
@@ -1267,10 +1267,8 @@ early gives up automatic attachment.
 the rest: proposals follow the link while the transaction is unconfirmed, and
 disappear with it. No previous values are kept and nothing is reverted.
 
-**One document per transaction, and per document** (I35), enforced by two
-partial unique indexes. The only real many-to-many case is an order-level
-document for an order charged in parts, which exact matching could not link
-automatically anyway; it can now be linked to one charge.
+**One document per transaction** (I35), enforced by a partial unique index.
+D229 lets one document explain several transactions.
 
 **Auto-split by document lines** on unconfirmed transactions: one entry per
 line, converted proportionally where the document is in the instructed
@@ -2405,7 +2403,7 @@ Rejected: re-deriving only pass-derived standing values on an input change and
 keeping a user's as proposals, which would distinguish two kinds of standing
 for a case the waiting flag already signals.
 
-## D166 The panel's anchor; documents keyed and held — *partly superseded by D168 and D169*
+## D166 The panel's anchor; documents keyed and held — *partly superseded by D168, D169 and D229*
 
 Partly supersedes D152 and D163.
 
@@ -2420,12 +2418,6 @@ partner's included — which the different-amount pick of D117 already relied on
 and a split made on the partner's side leaves with it. A commit's concurrency
 check covers every entry it writes, not only the unit's, so a partner left
 behind cannot be changed by the other user unnoticed.
-
-**An existing split stays when a document is picked.** The draft proposes the
-split along the lines only for a transaction that is not split; otherwise it
-offers *split along the lines* as an explicit choice, shown with the entries
-and tags it would delete. A split is a decision, and new input does not discard
-it unless the user chooses so.
 
 **Documents are keyed and hold automatic confirmation.** Rules that decided
 every value of a charge from a provider confirmed it at ingest, before its
@@ -2647,7 +2639,7 @@ Wording and one schema fix after the last review.
 - **A form edit of the date** moves the row's entries with it (I3); a pair
   stands, its partner keeping its own date.
 
-## D172 Counter-account column, one rule table, simpler revert, documents in v1 — *partly superseded by D181*
+## D172 Counter-account column, one rule table, simpler revert, documents in v1 — *partly superseded by D181 and D229*
 
 Partly supersedes D28, D51, D55, D76, D120, D144 and D170. Settled after a
 review of `spec.md` and `schema.sql` for implementability.
@@ -2694,8 +2686,8 @@ review of `spec.md` and `schema.sql` for implementability.
   are suggested or one is awaited, the preview asks the user to confirm that.
   Supersedes D170's note that waiting for a document can make committed work
   be redone: committing gives up the document instead.
-- **The document window is a ledger setting** (spec §5.8), symmetric like the
-  matching window, replacing the matcher's fixed −7/+2 days (D76). With
+- **The document window is a ledger setting** (spec §5.8), replacing the matcher's
+  fixed −7/+2 days (D76); D229 gives it two ends. With
   several instances for one provider, a transaction waits until all that are
   not disabled have covered it: there is no knowing which one would deliver.
 - **Documents carry a version**, incremented by ingest when what resolution
@@ -2715,22 +2707,22 @@ review of `spec.md` and `schema.sql` for implementability.
 - **Document matching is in v1**, exercised with a test document importer;
   only the real document importers are not.
 
-## D173 Documents can be browsed; a late link splits like an early one
+## D173 Documents can be browsed; a late link splits like an early one — *partly superseded by D229*
 
 Follows from D172: a commit now decides "no document", and the matcher only
 considers unconfirmed transactions, so a document that arrives after its
 charge was committed is linked only by a person. Two gaps made that hard.
 
-- **Documents are browsable** (spec §5.8), each with the transaction carrying
-  it, filterable to those no transaction carries. For such a document, the
+- **Documents are browsable** (spec §5.8), each with the transactions carrying
+  it, filterable to those not fully charged. For such a document, the
   transactions it would match by amount and date are offered, confirmed ones
   included, and picking one opens the panel with the document in the draft.
   The reverse match is read-time only, like suggestions; settling still never
   links a confirmed transaction (I20). Rejected: a notice on the transaction
   when a late document arrives, which is review state on a reviewed unit.
-- **The split along the lines is proposed for any linked transaction in the
-  panel**, confirmed or not, so linking late gives the same draft as linking
-  early. An existing split still stays unless the user chooses to replace it.
+- **A late link is split like an early one**: a pick in the panel is a link not
+  yet the user's, so the draft proposes the split along the lines, confirmed
+  unit or not (D229).
 
 ## D174 Housekeeping after the implementability review — *partly superseded by D176*
 
@@ -3886,7 +3878,7 @@ meet the existing machinery; D1 to D9 of the step's plan.
 - **D9 Replacing an existing split along the lines is built last,** with the tags it deletes listed. Rejected: *cutting
   it from the first cut*.
 
-## D224 Step 9: the document decision is enforced; providers are registered
+## D224 Step 9: the document decision is enforced; providers are registered — *partly superseded by D229*
 
 Spec §3.6, §5.8, §6, `features/documents.md` §7, architecture §4.1, §5.2, patterns §6. D223 left "commit without a
 document" as something the panel asks for; the server did not check it, so a client could skip a wait unnoticed.
@@ -3898,10 +3890,8 @@ document" as something the panel asks for; the server did not check it, so a cli
   (nothing a client sends then separates a decision from a default).
 - **Documents join the lock order:** settle shared, documents ascending, accounts, rows. Ingest takes documents,
   accounts, rows in the same order, so the two never deadlock.
-- **Providers come from the registered document importers,** listed by `GET /api/documents/providers`. A payee's
-  `document_provider` is selected from that list; setting an unregistered value is 422 `unknown_document_provider`,
-  an unchanged stored value stays and clearing is always allowed. Rejected: *free text* (a typo silently matches
-  nothing and waits for nothing).
+- **A payee's `document_provider` is suggested from `GET /api/documents/providers`;**
+  D229 makes it free text, any value accepted, clearing always allowed.
 - **`ENABLE_TEST_IMPORTERS`** (default off) registers the deterministic test importer `testdocs` in the composition root.
 - **A provider mismatch applies only where the payee has a different provider;** a payee with none takes any document
   (documents.md §9 offers a document to any payee, found by hand).
@@ -4011,3 +4001,55 @@ states.
   muted ("No payee"); the payee picker's separate "No payee" item goes.
 - Rejected: *dropping the user's empty payee key* (an incomplete unit could be pulled back into review by a payee
   the user had removed); *keeping a key only for a cleared payee* (two empty states the user cannot tell apart).
+
+## D229 Order documents: one document, several charges
+
+Spec I21, I35, §3.6, §3.8, §5.1, §5.5, §5.8, §5.9 (pass 2, pass 3), §6; documents.md; history.md; architecture §4.1,
+§5.4, §5.5. Partly supersedes D62 (sum-matching rejected), D108 (one document per transaction and per document), D166
+and D173 (an existing split stays), D172 (a symmetric document window) and D224 (registered providers).
+
+- **A document may explain several charges; each of its lines explains at most one.** An email importer sees
+  orders, and Amazon charges an order in parts without saying which items each part paid. So I35 moves from the
+  document to its lines, and D108's "one document per transaction, and per document" keeps only its first half.
+  A document of one charge behaves as before. D62 rejected sum-matching as fuzzy; a line allocation is exact —
+  each charge equals the sum of the lines it takes — and bounded to documents of at most 20 lines.
+- **Which lines a charge paid is worked out, not stored: the line allocation.** It follows from the links and the
+  amounts whenever it is needed. Where a committed split already says which lines a charge paid, that split is
+  kept if the order still adds up with it. Only if it does not are those lines moved — and then the panel
+  proposes the corrected split, instead of the order no longer being suggested at all. Rejected: *treating
+  committed splits as fixed* (one wrongly split charge would hide its order for good); *a column on the line
+  naming its charge* (the same fact stored twice, kept in step with the links); *matching each charge on its own*
+  (a confirmed charge's lines would move as others arrive); *re-resolving confirmed charges as a changed input*
+  (blurs I20); *a configurable line limit* (a setting nobody can tune; 20 lines bounds the search and covers
+  real orders).
+- **Nothing automatic undoes a user's split.** Settling links a charge only where every committed split can stay
+  as it is, and only into a document none of whose charges is confirmed.
+- **The charges of one document form one unit.** A transaction carrying a document has no transfer entry, so a
+  unit never chains and its closure stays one step. The rule is the commit's: only a commit makes a split's
+  other entries. Rejected: *reviewing each charge alone* (one order's items spread over several panels); *a
+  database trigger for the transfer rule* (it would guard a write only the commit makes, already checked there).
+- **The split along the lines is proposed while any of the document's links is not yet the user's**, for every
+  charge of the document and over any split it has. The preview lists the entries it replaces, with their tags;
+  the user commits the proposal or edits it like any split. Once every link is the user's, nothing is proposed.
+  This replaces D166's and D173's "an existing split stays": the list of replaced entries is now the safeguard.
+  Rejected: *a "decline" for the proposal* (one more control and one more preview state; the draft field
+  `decline_split` goes — a yes or no on redoing the split belongs to a staged panel's document step).
+- **A partly charged order waits for its other charges**, so it is reviewed once, when complete. The wait is
+  advisory, holds no confirmation of its own and needs none to skip: a commit ends it. It ends with account
+  coverage, like every other wait. Rejected: *ending it by the calendar* (elapsed time says nothing about whether
+  a charge has been imported).
+- **The document window is asymmetric**, 60 days back and 7 ahead, replacing D172's symmetric window: an order is
+  charged when it ships, weeks later for a backorder.
+- **Discount and coupon lines go into the remainder.** No line is marked and no importer filters.
+- **Providers are open.** An email importer delivers whatever name a receipt carries, so the payee's
+  `document_provider` is free text with suggestions — the names importers give and the providers of stored
+  documents — and waiting asks each instance whether it delivers a provider. D224 rejected free text because a
+  typo silently matches nothing; the suggestions make a typo unlikely, and receipts from a shop no importer names
+  must still be nameable. Rejected: *a registry of providers* (no complete list exists once receipts can come
+  from anywhere).
+- **An entry made from a document line is classified from that line.** The model is asked about every line when
+  the document arrives, and the answer is stored on the line; every other entry is asked about itself, as
+  before. History's merchant key is not asked for an entry with a line: one merchant covers every kind of
+  spending. Rejected: *settling creating the split* (D152's reasons, worse once lines move between charges); *a
+  cache of answers by payload* (state with no owner); *asking only for stored links* (misses suggestions).
+- Deferred: a staged work panel; editing a line's category by hand; the order number as a tie-breaker.

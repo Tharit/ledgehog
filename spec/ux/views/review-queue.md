@@ -62,12 +62,15 @@ section, with the count per section.
   request.
 - **Waiting** — entries expecting information that has not had its chance to
   arrive (`spec.md` §6): a partner leg, which cannot be confirmed until
-  paired, and a document, which can be committed once the user explicitly
-decides to commit without it. Waiting is a hint; the unit stays
+  paired, a document, which can be committed once the user explicitly
+  decides to commit without it, and the rest of an order, which a commit
+  accepts as charged so far. Waiting is a hint; the unit stays
   editable. A unit waiting for a partner gives its reason in one line:
   "Waiting for <account>, synced through <date>", or "…, not synced yet" for
   an account never fetched; one waiting for a document reads "Waiting for a
-  document from <provider>, covered through <date>", or "…, not synced yet".
+  document from <provider>, covered through <date>", or "…, not synced yet"; one
+  waiting for the rest of an order reads "Waiting for the rest of order
+  <external id> from <provider>: <amount> of <total> not yet charged".
   The waiting flag wins: a unit in this section stays here even while it has
   document suggestions.
 

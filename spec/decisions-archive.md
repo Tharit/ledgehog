@@ -763,3 +763,47 @@ source, split if need be, one document.
 
 - The document comes first in field order: a payee the enriched input resolves
   differently cannot undo the link it came from.
+
+## D62 Document importers deliver one document per charge, in part — *superseded by D229*
+
+Automatic document matching is exact and one-to-one. Amazon charges per
+shipment, often weeks after the order date, so order-level documents rarely
+match a charge.
+
+Rejected: sum-matching and provider-specific windows in the core, which are
+fuzzy and put provider knowledge where it does not belong.
+
+## D108 Documents: one per transaction, unconfirmed transactions only, split by line, in part — *superseded by D229*
+
+**One document per transaction, and per document** (I35), enforced by two
+partial unique indexes. The only real many-to-many case is an order-level
+document for an order charged in parts, which exact matching could not link
+automatically anyway; it can now be linked to one charge.
+
+## D166 The panel's anchor; documents keyed and held, in part — *superseded by D229*
+
+**An existing split stays when a document is picked.** The draft proposes the
+split along the lines only for a transaction that is not split; otherwise it
+offers *split along the lines* as an explicit choice, shown with the entries
+and tags it would delete. A split is a decision, and new input does not discard
+it unless the user chooses so.
+
+## D172 Counter-account column, one rule table, simpler revert, documents in v1, in part — *superseded by D229*
+
+- **The document window is a ledger setting** (spec §5.8), symmetric like the
+  matching window, replacing the matcher's fixed −7/+2 days (D76).
+
+## D173 Documents can be browsed; a late link splits like an early one, in part — *superseded by D229*
+
+- **Documents are browsable** (spec §5.8), each with the transaction carrying
+  it, filterable to those no transaction carries.
+- **The split along the lines is proposed for any linked transaction in the
+  panel**, confirmed or not, so linking late gives the same draft as linking
+  early. An existing split still stays unless the user chooses to replace it.
+
+## D224 Step 9: the document decision is enforced; providers are registered, in part — *superseded by D229*
+
+- **Providers come from the registered document importers,** listed by `GET /api/documents/providers`. A payee's
+  `document_provider` is selected from that list; setting an unregistered value is 422 `unknown_document_provider`,
+  an unchanged stored value stays and clearing is always allowed. Rejected: *free text* (a typo silently matches
+  nothing and waits for nothing).

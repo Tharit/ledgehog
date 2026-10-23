@@ -292,29 +292,36 @@ GET    /api/documents                          filtered, paged list, newest
                                                with currency), q (word by
                                                word over merchant, title and
                                                line descriptions), linked
-                                               true or false; limit 1 to 500
-                                               (100), offset; each row with
-                                               the transaction carrying it,
-                                               as the source transaction's
+                                               true or false, fully_charged
+                                               true or false (its carriers'
+                                               amounts reach its total);
+                                               limit 1 to 500 (100), offset.
+                                               Each row has the number of
+                                               transactions carrying it.
+                                               Picking by hand in the panel
+                                               reuses the list with provider
+                                               and fully_charged=false
+GET    /api/documents/providers                the known providers, sorted,
+                                               for the payee form's
+                                               suggestions: the distinct
+                                               providers of stored documents
+                                               and the names importers give
+GET    /api/documents/{id}                     a document with its lines, each
+                                               with its category and
+                                               rationale, and its carriers,
+                                               each as the entry carrying it
+                                               and the source transaction's
                                                own date, amount and
-                                               currency (the whole
-                                               transaction for a split);
-                                               picking by hand in the panel
-                                               reuses it with the provider
-                                               and linked=false
-GET    /api/documents/providers                the providers of the registered
-                                               document importers, sorted:
-                                               what a payee can name
-GET    /api/documents/{id}                     a document with its lines; for
-                                               one carried by no entry, the
-                                               `matches`: the transactions it
-                                               would match, confirmed ones
-                                               included (entry, account,
-                                               booked date, amount,
-                                               instructed amount, display
-                                               text, payee, the document it
-                                               already carries, whether its
-                                               unit is confirmed); a linked
+                                               currency; for one not fully
+                                               charged, the `matches`: the
+                                               transactions it would match,
+                                               confirmed ones included
+                                               (entry, account, booked date,
+                                               amount, instructed amount,
+                                               display text, payee, the
+                                               document it already carries,
+                                               whether its unit is
+                                               confirmed); a fully charged
                                                document has none
 
   dimensions — created only by explicit user action (spec §5.9)
@@ -339,12 +346,9 @@ POST   /api/ledger/categories/{id}/merge       into another category of the
 GET    /api/ledger/payees
 POST   /api/ledger/payees
 PUT    /api/ledger/payees/{id}                 name, note, icon, colour,
-                                               document_provider (selected
-                                               from the registered providers,
-                                               422 unknown_document_provider
-                                               for any other being set; a
-                                               write: matching and waiting
-                                               read it, so it settles)
+                                               document_provider (free text,
+                                               trimmed; a write: matching and
+                                               waiting read it, so it settles)
 DELETE /api/ledger/payees/{id}                 only while no entry references
                                                it, taking the rules that set it;
                                                otherwise merge
@@ -664,7 +668,7 @@ carries no key. A commit does not confirm (`spec.md`
 §5.9, §6). A counter-account that a pick
 fills on a leg that had none is the pair's: it takes the pair's pass with the
 basis `{"from": "counterpart"}`, and leaves with the pair (`spec.md` §5.7). Besides an invalid result and a missing document decision, it
-refuses only on a structural divergence: a moved version, a partner or document taken, a row the draft
+refuses only on a structural divergence: a moved version, a partner or document line taken, a row the draft
 relies on gone, or a closure that changed under the locks (409 `unit_moved`).
 A commit locks in one order: the settle lock shared, then the documents it
 picks or its unit carries ascending, then the accounts it
@@ -681,15 +685,17 @@ that changes only tags is valid and, like any commit without a change, bumps no 
 move no `ledger_entry.version` in any case, so no version is involved in them.
 
 **Documents in preview and commit** (`spec.md` §5.8, §6). The draft entry carries
-`document: {mode, document_id, document_version, decline_split}`, mode one of
+`document: {mode, document_id, document_version}`, mode one of
 `keep` (also absent), `pick`, `none`, `reresolve`, `split_along_lines`; valid only
 on a transaction's original entry (422 `invalid_draft`, `document_not_original`).
 Entries made from a line carry `document_line {document_id, line_no}`. Unknown
 fields are rejected: nothing a client sends can mark a suggestion as taken. The
 preview's row block `document` holds the stored document, the link after commit and
 settle, its key, the suggestions nearest first (only while undecided),
-`waiting {provider, covered_through | null}`, `decision_required` and
-`split {document_id, proposed, available, replaces_stored_split}`. Problem codes:
+`waiting {provider, covered_through | null}` — or, for the rest of an order,
+`waiting {order: external_id, provider, charged, total}` — `decision_required`
+and `split {document_id, proposed, available, replaces_stored_split}`. Problem
+codes:
 `stale_reference` (`document_id`), `document_changed`, `document_taken`,
 `document_provider_mismatch` (only where the payee has a different provider; a
 payee with none takes any document), `document_decision_required`,
@@ -697,16 +703,23 @@ payee with none takes any document), `document_decision_required`,
 `document_decision_required` where documents are suggested or one is awaited and
 the draft has no explicit decision (a pick, `none`, `split_along_lines`; the server
 enforces it, the panel offers "Commit without a document" as mode `none`), with 409
-`unit_moved` (`reason` `taken` or `version`) for a picked document taken or changed
-since the preview, and 409 `stale_reference` for one that is gone. The proposed
+`unit_moved` (`reason` `taken` or `version`) where lines of the chosen document
+that the preview's line allocation relied on were taken since, or it has a
+newer version, and 409 `stale_reference` for one that is gone. The proposed
 split rows are ordinary new rows with server-issued ids. Once the client echoes
 any row carrying a `document_line`, the split is the client's: nothing is
 regenerated, and every kept row must be echoed, a row left out being removed.
 `split_along_lines` replaces an existing split, listing the deleted entries and
-their tags as consequences, and needs the draft anchored on the original entry;
-`decline_split` refuses the proposal. A link settling has yet to make is shown in
-the preview but written by settling after the commit; the split is proposed only
-from a stored link or a pick.
+their tags as consequences, and needs the draft anchored on the original entry.
+While a link of the document is not yet the user's, the proposal itself
+replaces an existing split, listed the same way; removing the proposed rows is
+an edit of the split like any other. A pick brings the document's other
+carriers into the draft's unit, and `none` takes the carrier out of it; each
+carrier of the unit has its own `document` block and split.
+`document_taken` reports lines of the document that the preview's line
+allocation relied on as taken since. A link settling has yet to make is shown
+in the preview but written by settling after the commit; the split is proposed
+only from a stored link or a pick.
 
 **Pairing in preview and commit** (`spec.md` §5.7). The draft carries a `pairing`
 field per transfer leg, with a mode: `keep`, `pick` (a partner entry id),
@@ -999,7 +1012,7 @@ carries versions for (`SELECT … FOR UPDATE`, in ascending id order, after
 its advisory locks, §5.2),
 compares the
 versions, and writes in the same transaction. A unique-index violation
-during a write — a leg or document taken between the check and the insert —
+during a write — a leg or document line taken between the check and the insert —
 is answered as the same named conflict, never as a server error.
 
 **Granularity is per entity, not per request.** An operation touching twelve
@@ -1217,9 +1230,10 @@ app/
                          valuations, reconciliations), unexplained differences
     resolution/          pure resolution: field order, pass 0 (own accounts),
                          the orchestration of the classifier plugins; the
-                         allocation of document lines
+                         split along a document's lines
     matching/            transfer pairing and offers; document matching and
-                         suggestions
+                         suggestions, the line allocation of a document over
+                         its carriers
     units/               unit membership, drafts, preview and commit
     settle/              bringing derived state up to date after every write:
                          rederiving unconfirmed entries, pairing, document
@@ -1313,7 +1327,7 @@ enforcement point:
 | I31 at most one transfer entry per source transaction | partial unique index `ux_le_one_transfer_per_source`; the preview refuses first |
 | I32 duplicates by identity (skipped), then by amount against imported source rows only (inserted as duplicates); first in wins | `core/ingest`, nowhere else; composite FK `fk_duplicate_same_account`, trigger `trg_duplicate_state` against chains |
 | I33 an automatic pair needs a known counter-account | `core/matching` |
-| I35 one document per transaction and per document | `ledger_entry.document_id`, with the partial unique indexes `ux_le_document` and `ux_le_document_per_transaction` |
+| I35 a transaction has one document, a document line is carried once, no transfer entry on a transaction carrying a document | `ledger_entry.document_id` and `document_line_id`, with the partial unique indexes `ux_le_document_per_transaction` and `ux_le_document_line`; the transfer rule: `ck_document_not_on_transfer` on the carrying entry, the commit's refusal for the transaction's other entries |
 | I36 a reported record never dated after its run's coverage | `ingest`; integrity view `v_check_reported_after_coverage` |
 | I37 every write ends by settling | every write operation ends by calling `core/settle`; a model answer is a write of its own |
 | I38 an account's kind fixed at creation | trigger `trg_account_kind_fixed`; integrity view `v_check_derived_type` |
@@ -1437,10 +1451,12 @@ Transaction boundaries:
      where none is;
   2. document matching, for transactions with no decided document — no link
      of any key, and no "none" — judged on step 1's result, which for them is
-     the resolution without a document. Which instance provides which
-     provider is read from a registry the composition root configures, as
-     with the classifiers (core never imports plugins); there is no schema
-     change;
+     the resolution without a document; the transactions of which a document
+     is the only candidate are linked to it together, in one write, and never
+     into a document with a confirmed carrier (`spec.md` §5.8). Whether an
+     instance provides a provider is asked through a registry the composition
+     root configures, as with the classifiers (core never imports plugins);
+     there is no schema change;
   3. resolution again of the fields after a link step 2 made;
   4. transfer pairing (`pair_transfers`), in booking-date order (`spec.md`
      §5.7), over every unpaired transfer leg, in every round; the matching window is the connection setting
@@ -1483,8 +1499,9 @@ Transaction boundaries:
   - changing a payee's `document_provider`: the unconfirmed units with that
     payee;
   - an import: the new entries, the units whose pairing candidates or document
-    candidates they affect, and every unconfirmed unit when it delivers a
-    balance record or coverage that moves a waiting decision.
+    candidates they affect, the other carriers of the documents they link, and
+    every unconfirmed unit when it delivers a balance record or coverage that
+    moves a waiting decision.
 
   Key 4 of history (tokens) makes the first case broad, so the **baseline is a
   pass over every unconfirmed unit**, and narrowing to the dirty set is an
@@ -1627,8 +1644,10 @@ Three properties the implementation must have:
   and the system stays fully usable — this is the state a deployment without
   a model is permanently in, not a degraded mode.
 - **The request payload is restricted** to the fields `spec.md` §5.9 permits:
-  counterparty name, booking text and purpose, plus a linked or picked
-  document's merchant and lines. Never IBAN, BIC, references, amounts, dates,
+  for an entry without a line, counterparty name, booking text and purpose,
+  plus a linked or picked document's merchant; for an entry with a line, and
+  for a line itself, only the document's merchant and the line's description.
+  Never IBAN, BIC, references, amounts, dates,
   accounts or balances. Enforcing that is the plugin's responsibility and is
   tested explicitly; with an empty payload the plugin is not called. Restricted
   is not anonymous: names and purpose lines include private persons' details, so
@@ -1640,19 +1659,26 @@ Three properties the implementation must have:
   response fails validation rather than inventing a category.
 
 - **It is asked at most once per input** (`spec.md` §5.9). Its answer is kept
-  only as the field's `llm` key, with a fingerprint of the payload; resolution
-  reuses it while the payload is unchanged, and the plugin keeps no table of
-  its own. A changed payload — a document linked to the entry — asks anew. A preview with a changed draft asks anew only when the
-  user requests it. Settling never waits for the model: the request runs
-  outside it, and storing the answer is a write that settles like any other.
+  only as the field's `llm` key, or, for a document's line, on the line
+  (`category_key`), with a fingerprint of the payload; resolution reuses it
+  while the payload is unchanged, and the plugin keeps no table of its own. A
+  changed payload — a document linked to the entry — asks anew; a re-fetched
+  line with an unchanged payload keeps its answer. A preview with a changed
+  draft asks anew only when the user requests it. Settling never waits for the
+  model: the request runs outside it, and storing the answer is a write that
+  settles like any other.
 
-**One worker asks, in the background.** Settling puts an entry whose category
-falls to the model, with no answer standing for its payload, on an in-memory
-list; one worker takes them in order, one request at a time, and stores each
-answer with a write that settles like any other. An answer for a category a
+**One worker asks, in the background.** Settling puts an entry without a line
+whose category falls to the model, with no answer standing for its payload, on
+an in-memory list, and with it a line with no answer for its payload: ingest
+every line of a new or changed document — a re-fetched line whose payload is
+unchanged keeps its answer — and settling the line of an entry whose category
+falls to the model. One worker takes them in order, one request at a time, and
+stores each answer with a write that settles like any other; a line's answer
+settles the unconfirmed entries with that line. An answer for a category a
 user or a pass of higher authority decided meanwhile is dropped, so nothing
 changes under the user. A restart loses the list and the start's settling
-refills it. The request asks for structured output — the category as one of
+refills it, every stored line with no answer for its payload included. The request asks for structured output — the category as one of
 the listed ids or none, and a one-line rationale — and the category list is
 the same system message on every request, the whole tree in a fixed order,
 so a server that caches a prompt prefix processes only the entry's text.
@@ -1664,7 +1690,8 @@ again after ten minutes, or when settling hands it new work.
 
 An importer that fetches implements one protocol, `FetchImporter` in
 `core/plugins/fetch.py`; a document importer is one of them. It declares the
-set of kinds it emits (`spec.md` §5.1) and, for documents, its providers,
+set of kinds it emits (`spec.md` §5.1) and, for documents, the providers it is
+built for, if any; it answers per instance whether it delivers a provider,
 validates its settings, gives a default fetch start, and opens a **session**
 from its settings, its `state` and a prompter. The session lists reachable
 accounts — one per currency pocket for multi-currency providers, each with what
@@ -1699,9 +1726,11 @@ Beyond the records, the protocol has an importer report:
   every fetch's start when its run begins (`spec.md` §5.4) and asks the
   importer only as the last resort; the plan read (§4.1) shows the start
   prefilled, editable for that run only where there is no coverage;
-- for documents: one per charge where the provider exposes charges, signed
-  totals, merchant name and lines, and the providers it delivers documents
-  for, declared in code rather than configured (`spec.md` §5.5);
+- for documents: a charge or a whole order, complete as the provider shows
+  it, with signed totals, merchant name and lines; an importer built for fixed
+  providers names them and answers per instance whether it delivers a
+  provider, one that reads receipts of any provider answers from the
+  instance's settings (`spec.md` §5.5);
 - for any token it would store: the documented scopes, and the introspection
   check where the provider has one (`spec.md` §7).
 
@@ -1856,7 +1885,7 @@ returned by `GET /api/config`.
 | Group | Variables |
 |---|---|
 | Database | `POSTGRES_HOST` (`localhost`), `POSTGRES_PORT` (`5432`), `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` (the last three required); no single database URL; the name stays a variable so each context has its own database (§9) |
-| Ledger | `BASE_CURRENCY` (required, a three-letter code); `MAX_RATE_AGE_DAYS`, `MATCHING_WINDOW_DAYS`, `DOCUMENT_WINDOW_DAYS` (7 each, at least 0) — `spec.md` §3.8 |
+| Ledger | `BASE_CURRENCY` (required, a three-letter code); `MAX_RATE_AGE_DAYS`, `MATCHING_WINDOW_DAYS` (7 each, at least 0); `DOCUMENT_WINDOW_BACK_DAYS` (60), `DOCUMENT_WINDOW_AHEAD_DAYS` (7), each at least 0 — `spec.md` §3.8 |
 | Household | `TIMEZONE` (required, an IANA zone; `spec.md` §5.4), `LOCALE` (`en`) |
 | Users | indexed groups `USER_<n>_LOGIN`, `USER_<n>_NAME`, `USER_<n>_PASSWORD` (the password optional when `OIDC_ENFORCED`), `n` contiguous from 1, logins unique; none is allowed |
 | OIDC | `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` (all three or none; none means no OIDC sign-in), and with them `BASE_URL`, the app's external address, from which the redirect address `<BASE_URL>/api/session/oidc/callback` is built; `OIDC_SCOPES` (`openid email profile`); `OIDC_LOGIN_ATTRIBUTE` (`email`); `OIDC_DISPLAYNAME_ATTRIBUTE` (`name`); `OIDC_ALLOWED_GROUP` (optional; its users need the `groups` scope); `OIDC_ENFORCED` (`false`; `true` or `false`, anything else fails the start; `true` requires OIDC and turns the password path off) |
@@ -2021,8 +2050,9 @@ keyboard speed; other screens may too, and the rule rather than a list of
 exceptions is what governs them.
 
 **The unit panel holds a draft, not a computation.** On the server, `preview`
-is the settle's own functions run on an *overlay*: resolution, matching, the
-allocation of document lines and the review state all take a unit's stored
+is the settle's own functions run on an *overlay*: resolution, matching with
+its line allocation, the split along a document's lines and the review state
+all take a unit's stored
 state with the draft laid over it, as an in-memory value, and return the
 resulting state without writing; the rows a draft creates carry negative
 temporary ids the client issues, which the preview echoes. `commit` writes that same result, and settling
@@ -2321,8 +2351,9 @@ Layers:
   of a user-authored row, a user-authored row created on a synced account, a source
   transaction inserted without an entry, coverage on a failed run, an
   entry with both or neither of a source transaction and a balance record, a
-  document carried by two entries or a transaction carrying two documents, a
-  document on a derived entry, an update to an imported source transaction other than to
+  a line carried by two entries or a transaction carrying two documents, a
+  document on a transaction with a transfer entry, a document on a derived
+  entry, an update to an imported source transaction other than to
   `duplicate_of`, an entry
   in a currency other than its account's, a child category of another kind, a
   change of a category's kind, a second opening on an account, a manual

@@ -112,7 +112,8 @@ INSERT INTO currency (code, minor_units) VALUES
 -- against it (trigger 8.7), and the application refuses to start when its
 -- configured base currency differs from this row. Every other ledger-wide
 -- setting — the maximum rate age (spec §3.8), the matching window (§5.7), the
--- document window (§5.8) — is deployment configuration, not data. The maximum
+-- document window's two ends, `back` and `ahead` (§5.8) — is deployment
+-- configuration, not data. The maximum
 -- rate age reaches SQL as the connection setting ledger.max_rate_age, set by
 -- the application on every connection (like ledger.settling, trigger 8.6).
 -- Spec §3.8.
@@ -230,8 +231,9 @@ CREATE TABLE payee (
     id                bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     name              text NOT NULL,
     -- the external_document.provider whose documents describe this payee's
-    -- charges ('paypal', 'amazon'). Drives document matching and waiting for
-    -- a document (spec §5.8).
+    -- charges ('paypal', 'amazon', any name a receipt carries): free text,
+    -- matched case-insensitively, never checked against a list. Drives
+    -- document matching and waiting for a document (spec §3.6, §5.8).
     document_provider text,
     note              text,
     -- presentation only, as category.icon/color; NULL shows a default the
@@ -351,7 +353,9 @@ CREATE TABLE importer_instance (
     external_id  text,
     -- what the user typed: FinTS URL, BLZ, login,
     -- CSV profile and column mapping (including an optional running-balance
-    -- column and the sign-inversion settings for amounts and balance).
+    -- column and the sign-inversion settings for amounts and balance), and,
+    -- for a document importer that reads receipts of any provider, the
+    -- settings that decide which providers it delivers (spec §5.5).
     -- Validated in app code against a per-importer schema. The ledger side has
     -- no opinion on its contents.
     settings     jsonb   NOT NULL DEFAULT '{}'::jsonb,
@@ -423,8 +427,9 @@ CREATE TABLE import_run (
     -- the date the run covered THROUGH, as the importer reported it, by the
     -- rules of spec §5.1: a fetch through the day before the fetch, whether or
     -- not it returned rows; a file through its period end or last booking,
-    -- never through its export day; a document run through the provider's
-    -- completeness date (spec §5.1). NULL for a run that did not succeed.
+    -- never through its export day; a document run through the date up to
+    -- which its documents are complete (spec §5.1). NULL for a run that did
+    -- not succeed.
     -- synced_through and document coverage are derived from it
     -- (v_account_coverage, v_document_coverage). covered_from is where the
     -- run's data starts, for the import log only: nothing in the domain
@@ -758,7 +763,9 @@ CREATE TABLE ledger_entry (
     -- after `version` so that the column is added to the table in place): for a
     -- document of one line, the original entry's, written with the link;
     -- for one of several, written by the split along the lines on each
-    -- entry it makes. Null for every other entry. Read only while the line
+    -- entry it makes, one of the lines the line allocation gives its
+    -- transaction; an unsplit carrier has none until a commit gives it one.
+    -- Null for every other entry. Read only while the line
     -- belongs to the document its transaction carries; a reference to
     -- another document's line is ignored. A changed document's lines are
     -- replaced (spec §5.5), which clears it. Its foreign key and unique
@@ -771,7 +778,10 @@ CREATE TABLE ledger_entry (
     -- only a movement explains a document
     CONSTRAINT ck_document_on_movement
         CHECK (document_id IS NULL OR source_transaction_id IS NOT NULL),
-    -- a transfer is not explained by a document (spec §5.8)
+    -- a transfer entry does not carry a document (spec §5.8, I35). The rule
+    -- is the transaction's: a transaction carrying a document has no transfer
+    -- entry, which spans entries — a commit that would leave one is refused
+    -- (spec §6).
     CONSTRAINT ck_document_not_on_transfer
         CHECK (document_id IS NULL OR type IS DISTINCT FROM 'transfer'),
     -- derived entries are exactly the openings, valuations and
@@ -864,12 +874,12 @@ CREATE INDEX ix_ledger_entry_tag_tag ON ledger_entry_tag (tag_id);
 
 -- Updated in place when re-fetched: a document moves no money, so it needs no
 -- immutability, and keeping the first version would drop cancellations and
--- partial shipments. One document per charge where the provider exposes
--- charges. In v1, fed by a test importer until real document importers
--- exist. Spec §5.5, §5.8.
+-- partial shipments. A charge, or a whole order where the provider shows
+-- nothing finer, complete as the provider shows it. In v1, fed by a test
+-- importer until real document importers exist. Spec §5.5, §5.8.
 CREATE TABLE external_document (
     id                   bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    provider             text NOT NULL,     -- 'amazon' | 'paypal' | 'receipt' | ...
+    provider             text NOT NULL,     -- any name the importer delivers (spec §5.5)
     external_id          text NOT NULL,     -- order id, invoice no
     importer_instance_id bigint REFERENCES importer_instance(id) ON DELETE SET NULL,
     -- nullable, unlike source_transaction: a receipt may one day be added by
@@ -902,6 +912,14 @@ CREATE TABLE external_document_line (
     -- (spec §5.5)
     amount      bigint NOT NULL,
     qty         integer,
+    -- the model's answer for the line (spec §5.9, pass 3), asked at ingest and
+    -- kept across the replacement of lines by the payload's fingerprint. The
+    -- key has the shape of an entry's: pass 'llm', the rationale, the
+    -- fingerprint, "none": true where nothing fits; a key whose category was
+    -- deleted (SET NULL) is no answer. An entry made from the line reads it at
+    -- pass 3's place.
+    category_id  bigint REFERENCES category(id) ON DELETE SET NULL,
+    category_key jsonb,
     UNIQUE (document_id, line_no)
 );
 
@@ -915,11 +933,10 @@ ALTER TABLE ledger_entry
     ADD CONSTRAINT fk_le_document
     FOREIGN KEY (document_id) REFERENCES external_document(id) ON DELETE RESTRICT;
 
--- I35, enforced on the entries: a document is carried by at most one entry,
--- and a transaction has at most one entry carrying a document — the original
--- entry, which keeps its id through splits.
-CREATE UNIQUE INDEX ux_le_document
-    ON ledger_entry (document_id) WHERE document_id IS NOT NULL;
+-- I35, enforced on the entries: a transaction has at most one entry carrying
+-- a document — the original entry, which keeps its id through splits — and a
+-- line is the line of at most one entry (below). A document may be carried by
+-- several transactions.
 CREATE UNIQUE INDEX ux_le_document_per_transaction
     ON ledger_entry (source_transaction_id) WHERE document_id IS NOT NULL;
 
@@ -941,8 +958,9 @@ SELECT e.id AS ledger_entry_id, c.document_id
     ON c.source_transaction_id = e.source_transaction_id
    AND c.document_id IS NOT NULL;
 
--- Every document with the entry carrying it, NULL where none does: the
--- document list and its "not linked" filter (spec §5.8).
+-- Every document with each entry carrying it — a row per carrier — and one row
+-- with NULL where none does: the document list and its "not linked" filter
+-- (spec §5.8).
 CREATE VIEW v_document_link AS
 SELECT d.id AS document_id, e.id AS ledger_entry_id,
        e.source_transaction_id
@@ -1493,7 +1511,7 @@ SELECT a.id AS account_id,
 
 -- an instance's document coverage, for waiting for a document (spec §5.5,
 -- §5.8). An instance with no row here has never run, and holds the
--- transactions of its providers dated from its start date on.
+-- transactions of the providers it answers for dated from its start date on.
 CREATE VIEW v_document_coverage AS
 SELECT importer_instance_id, max(covered_through) AS covered_through
   FROM import_run

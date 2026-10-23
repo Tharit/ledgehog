@@ -80,7 +80,8 @@ every entry that has one.
 
 An **external document** describes money without moving any — an Amazon
 order, a receipt. It belongs to no account, never affects a balance, and is
-linked to the transaction it explains only as context (§5.8).
+linked to the transactions it explains, one or several, only as context
+(§5.8).
 
 A **balance record** states what an account held on a date — reported by an
 importer or entered by a user. It is a fact about a balance, not a movement,
@@ -92,7 +93,7 @@ source_transaction ──► ledger_entry        1 entry, or N after a split
 
 (none)             ──► ledger_entry        derived from balance records
 
-ledger_entry       ──── external_document  carried by one entry of the
+ledger_entry       ──── external_document  carried by one entry of each
                                            transaction it explains, optional
    (the €84.31 charge)    (the order behind it)
 
@@ -125,7 +126,7 @@ invariant leaves the table, and its number stays unused.
 | I18 | Proposals are rederived from current inputs, rules and history; standing values are kept. When an entry's input changes it is resolved afresh, and when a value changes the standing values after it in field order are derived again; a merge's repointing is not a change of value, and a user-authored leg following its partner is not a change of input. | 3.5, 3.6, 5.7, 5.9 |
 | I19 | History learns only from confirmed values: a human's, or standing values. | 5.9 |
 | I20 | No automatic process changes a reviewed entry; derived entries, which are never reviewed, are the only entries recomputed. | 5.9, 6 |
-| I21 | Review is per unit — the entries of a source transaction, and of a transfer pair — and a unit's edits take effect atomically when it is committed. | 6 |
+| I21 | Review is per unit — the entries of a source transaction, of a transfer pair, and of the transactions carrying one document — and a unit's edits take effect atomically when it is committed. | 6 |
 | I22 | A transfer is confirmed only as a pair. | 5.7, 6 |
 | I23 | Review flags are derived from current state and never patched. | 6 |
 | I24 | No automatic pair is made between legs whose counter-account or end-to-end id distinguishes them. | 5.7 |
@@ -137,7 +138,7 @@ invariant leaves the table, and its number stays unused.
 | I31 | A source transaction has at most one transfer entry. | 5.9 |
 | I32 | An incoming row whose identity the account already holds is skipped. Each remaining incoming row is paired one to one with an imported source row of the same booking date and amount that no incoming identity accounted for, and inserted as its duplicate; the first one in wins. Rows of one delivery are never compared with each other. Only ingest marks rows automatically, and only rows it is inserting. | 5.2 |
 | I33 | An automatic pair requires a known counter-account on at least one leg. | 5.7 |
-| I35 | A transaction has at most one document, carried by one of its entries, and a document explains at most one transaction. | 5.8 |
+| I35 | A transaction has at most one document, carried by its original entry; a document line is carried by at most one entry, of a transaction carrying that line's document; a transaction carrying a document has no transfer entry. | 5.8 |
 | I36 | A reported balance record is never dated after its run's coverage. | 5.1 |
 | I37 | Every write ends by settling, after which derived state reflects current data; a model answer arrives later as a write of its own. | 5 |
 | I38 | An account's kind is fixed at creation; with it, whether the account is an investment account (depot, asset). | 3.3 |
@@ -348,11 +349,11 @@ one payee.
 
 A payee may name a `document_provider` — the provider of the external
 documents that describe its charges (PayPal, Amazon). That one attribute drives
-document matching and waiting for a document (§5.8). It is chosen from the
-providers of the registered document importers, never typed: a value that is
-not registered is refused when it is set, while a stored value whose importer
-is no longer registered stays until changed, and clearing is always allowed. It may also carry an
-icon and a colour, presentation only (§3.5).
+document matching and waiting for a document (§5.8). It is free text, trimmed,
+and matches a document's provider case-insensitively; the known providers —
+the names importers give (§5.5) and those of stored documents — are suggested,
+but any value is accepted, and clearing is always allowed. It may also carry
+an icon and a colour, presentation only (§3.5).
 
 Merging two payees repoints their entries, the rules that set the payee and the
 payee conditions naming it, then deletes the merged
@@ -410,10 +411,12 @@ always a sum in one currency.
 and never changed, because rates are stored against it. Every report is
 expressed in it. It is not a property of any entry, and no entry stores a
 base-currency value. Three further ledger-wide settings — the maximum rate age
-(§3.8), the matching window (§5.7) and the document window (§5.8), each 7 days
-unless configured — belong to the deployment's configuration, not to the
-ledger's data: they are changed by reconfiguring and restarting, and the
-ledger settles on start (§5).
+(§3.8), the matching window (§5.7) and the document window (§5.8) — belong to
+the deployment's configuration, not to the ledger's data: they are changed by
+reconfiguring and restarting, and the ledger settles on start (§5). The first
+two are 7 days unless configured; the document window has two ends, `back`
+and `ahead`, the days before a transaction's `booked_on` and after it, 60 and
+7 unless configured.
 
 **Currencies are reference data**: ISO code and minor-unit exponent. Every
 amount is an integer in the minor units of its own currency — JPY has none,
@@ -1014,8 +1017,8 @@ nothing else:
 - a file covers through its stated period end, else its last booking date —
   but never through the day it was exported or uploaded. A file with neither a
   stated period end nor a row has no coverage, and the run fails;
-- a document run covers through the provider's date up to which its documents
-  are complete (§5.5).
+- a document run covers through the date up to which its documents are
+  complete (§5.5).
 
 A run also records where its data starts, for the import log; nothing in the
 domain reads it.
@@ -1319,21 +1322,27 @@ Ingest routes by the kind of the run, without loading importer code:
 
 What a document importer delivers:
 
-- **One document per charge** wherever the provider exposes individual
-  charges — a shipment charged separately, a partial refund — dated on the
-  charge, with the order it belongs to kept as context in the payload. Order
-  level only where the provider shows nothing finer. A document explains at
-  most one transaction (§5.8), so this granularity is what lets matching work.
+- **A charge or a whole order, complete as the provider shows it.** A partial
+  view of an order, such as a shipping notice, is not a document. One document
+  per charge wherever the provider exposes individual charges — a shipment
+  charged separately, a partial refund — dated on the charge, with the order it
+  belongs to kept as context in the payload; the whole order where the
+  provider shows nothing finer, which may be charged in several transactions
+  (§5.8).
 - **A signed total** in ledger convention: negative for a charge, positive for
   a refund or credit note. Its lines are signed the same way: a charge's lines
   are negative.
 - **The merchant's name and the line descriptions**, where the provider
   reports them (§5.8).
-- **The providers it delivers documents for**, declared by the importer rather
-  than learnt from what it has delivered, so an instance's providers are known
-  before its first run.
+- **Whether it delivers a provider's documents**, answered for an instance
+  before its first run. An importer built for fixed providers names them and
+  answers for those; one that reads receipts of any provider answers from the
+  instance's settings. There is no list of providers: a document carries its
+  provider's name, and the core imports every document an instance emits,
+  whatever its provider, subject to the instance's start date (below).
 - **Its coverage**: the date up to which its documents are known to be
-  complete, in the provider's own dates, recorded as the run's coverage
+  complete, in the dates of the documents it delivers, recorded as the run's
+  coverage
   (§5.1). An instance's document coverage is the latest among its
   non-reverted document runs; waiting for a document is judged from it
   (§5.8).
@@ -1354,9 +1363,13 @@ Consequences:
   needs no immutability — and keeping the first version would drop what
   matters: cancellations, partial shipments, partial refunds. A change to what
   resolution reads — its total, currency, merchant or lines — is a change of
-  input for the transaction carrying it: an unconfirmed one is resolved
+  input for each transaction carrying it: an unconfirmed one is resolved
   afresh, its link included, so matching runs again (§5.9); a confirmed one
   is left alone (I20). A change elsewhere in the payload changes nothing.
+- **Ingest puts every line** of a new or changed document on the model's
+  background list (§5.9, pass 3), except a re-fetched line whose payload is
+  unchanged: it keeps its answer, matched by the payload's fingerprint across
+  the replacement of lines.
 
 ### 5.6 Who authors source transactions
 
@@ -1416,8 +1429,9 @@ the entry being removed or unpaired:
   included. An
   unpaired transfer cannot be reviewed (§6), so it returns to review by that
   alone, and the matcher may find it a new partner.
-- **A document** carried by an entry that is removed is free again, and may
-  be matched to another transaction (§5.8).
+- **A document** loses a carrier whose entries are removed: its link and the
+  lines its entries carried are free again, and may be matched to another
+  transaction (§5.8); its other carriers stand.
 - **Derived entries** of every affected account are recomputed (§5.10).
 
 #### Duplicates
@@ -1767,29 +1781,33 @@ creates the cash leg (§4).
 Linking documents to transactions is a step of settling, never called from
 inside an importer, so import order does not matter. How documents and
 transactions are found to match — through the payee whose charges a document
-describes (§3.6) — and how a document's lines allocate a split are specified
-as a subsystem of their own. The core requires this of it:
+describes (§3.6) — and how a document's line allocation (below) and the split
+along its lines are worked out are specified as a subsystem of their own. The
+core requires this of it:
 
-- **Only unconfirmed transactions are matched** (I20). A document that arrives
+- **Only unconfirmed transactions are matched** (I20), and settling links only
+  into a document none of whose carriers is confirmed. A document that arrives
   after its charge was confirmed is linked by hand in the review panel, if at
-  all. While a transaction waits for its document, settling does not confirm
-  its unit (§6), so rules that decide everything else do not keep it from its
-  document.
+  all; one that a confirmed transaction carries is only suggested to other
+  transactions, and a pick of it brings the confirmed carrier into the draft's
+  unit (§6). While a transaction waits for its document, settling does not
+  confirm its unit (§6), so rules that decide everything else do not keep it
+  from its document.
 - **A link is a value of the transaction's original entry**: `document_id`, a
   derived field keyed `document` like any other (§5.9) — a matcher key where
-  settling linked it, because the transaction and the document match each
-  other and nothing else: `matcher_decision` for a document of one line,
-  `matcher_proposal` for one of several, so that the unit is reviewed once
-  and the split along the lines is seen; `user` where a commit picked it or
-  decided "none".
-  A transaction has at most one document and a document explains at most one
-  transaction (I35), enforced on the entries. Suggestions are computed when
-  read, only while no document is decided — none is linked, whatever its
-  key, and none is "none" — and carry no key: a decision — a
-  pick or "none" — therefore keeps the other candidates from being proposed
-  again for as long as it stands. An entry that is removed frees its document
-  (§5.6); a document whose content changes resolves its transaction afresh
-  (§5.5).
+  settling linked it, because the transactions carrying the document and the
+  document match each other and nothing else: `matcher_decision` for a document
+  of one line, `matcher_proposal` for one of several, so that the unit is
+  reviewed once and the split along the lines is seen; `user` where a commit
+  picked it or decided "none".
+  A transaction has at most one document; a document may be carried by several
+  transactions, each of its lines by at most one entry (I35), enforced on the
+  entries. Suggestions are computed when read, only while no document is
+  decided — none is linked, whatever its key, and none is "none" — and carry
+  no key: a decision — a pick or "none" — therefore keeps the other candidates
+  from being proposed again for as long as it stands. A transaction whose
+  entries are removed frees its link and the lines its entries carried (§5.6);
+  a document whose content changes resolves its transactions afresh (§5.5).
 - **A link is an input to resolution** (§5.9). The source row is read as
   stored; the document adds fields that rules read: its merchant name
   (`document_merchant`) and the entry's own line (`document_line`), below. A
@@ -1799,56 +1817,99 @@ as a subsystem of their own. The core requires this of it:
   appear when a link is made and disappear with it. **The payee of a documented
   charge is the provider unless such a rule names the merchant** (§3.6: a
   payee is curated).
+- **A document may be carried by several transactions.** A transaction whose
+  original entry links a document is a **carrier** of it. A **line
+  allocation** of a document over a set of transactions assigns each of its
+  lines to at most one of them so that each transaction's lines sum exactly to
+  its amount, in the document's currency; lines left unassigned are not yet
+  charged. A single transaction whose amount equals the document's total
+  takes every line, however they sum: a whole-document match, possible for
+  any document, the remainder going to the original entry (§5.9). A
+  transaction taking some lines is a partial match, possible only for a
+  document whose lines sum exactly to its total and that has at most 20
+  lines, a fixed limit. A line allocation **keeps** the committed references
+  when it assigns every line an entry references to that entry's transaction.
+- **A line allocation is derived when read**, from the links, the amounts and
+  the line references that committed splits wrote, and never stored. Where
+  several exist, the proposal is the first, in a fixed order, that keeps the
+  committed references — or, where none does, the first of all; it is shown
+  and reviewed. Settling links automatically only on one that keeps them.
+  Where the proposal moves lines a committed split references, the draft
+  proposes that carrier's split along its lines, the entries it replaces shown
+  as consequences (§6). Where a document's carriers admit no line allocation —
+  a pick by hand, a changed document whose confirmed carriers keep their
+  links — every link stands, unsplit. A line folded into a remainder, or a
+  carrier committed without a split, needs no reference.
 - **A link gives its entries their lines.** An entry's line is the document
   line it references (`document_line_id`). For a document of one line, the
   original entry takes it with the link, in the same write, by settling or by
   a commit; for a document of several, the split along the lines gives each
-  entry it makes its line, the original the first. Every other entry has no
-  line — an unsplit transaction of a document of several lines, a split made by
-  hand, an entry added by hand — and a rule's condition on it fails: a line
-  matched there would be any one of the order's items, for all of them. The
-  write that changes the link sets or clears the original entry's reference
-  with it; a changed document's lines are replaced (§5.5), which clears the
-  references to them, and a reference to a line of another document than the
-  transaction's is ignored when read.
+  entry it makes one of the lines of the document's sign that the line
+  allocation gives its transaction, the original the first. Every other entry
+  has no line — an unsplit carrier of a document of several lines, until a
+  commit gives it one; a split made by hand; an entry added by hand — and a
+  rule's condition on it fails: a line matched there would be any one of the
+  order's items, for all of them. The write that changes the link sets or
+  clears the original entry's reference with it; a changed document's lines
+  are replaced (§5.5), which clears the references to them, and a reference to
+  a line of another document than the transaction's is ignored when read.
 - **A link proposes a split** along the document's lines, in review: the
-  preview of a linked transaction splits it, confirmed or not, one entry per line, the original entry
-  taking the first line and the remainder (§5.9), and the commit writes the
-  split. A document of one line proposes no split. Only a commit
-  splits (I7); a split is never stored as machine output. A multi-line
-  document's split is proposed only from a stored link or a pick: a link
-  settling has yet to make is shown in the preview but written by settling
-  after the commit, and only a stored `matcher_proposal` becomes `user` on a
-  commit.
+  preview of a linked transaction splits it, one entry per line of the
+  document's sign that the line allocation gives the transaction, the original
+  entry taking the first of them and the remainder (§5.9), and the commit
+  writes the split. A line of the opposite sign — a coupon, a discount — is
+  not split out but goes into the remainder, with shipping and rounding. A
+  document of one line proposes no split. Only a commit splits (I7); a split
+  is never stored as machine output. A multi-line document's split is proposed
+  only from a stored link or a pick: a link settling has yet to make is shown
+  in the preview but written by settling after the commit, and only a stored
+  `matcher_proposal` becomes `user` on a commit. The split along the lines is
+  proposed for every carrier of the document while any of its links is not
+  yet the user's — a matcher link, or a pick in the draft — over any split a
+  carrier has (§6); once every link is the user's, nothing is proposed, and
+  re-resolving (§6) shows what would change.
 - **A transaction may wait for its document.** Documents match a transaction
-  within the **document window** of its `booked_on`, a single ledger-wide
-  setting in days. Where its payee names a `document_provider` (§3.6) and it
-  carries no document key (§6), the transaction waits while any instance providing that provider's documents that is not
-  disabled, and whose start date (§5.5) is not after `booked_on`, has a
-  document coverage (§5.5) that has not yet reached `booked_on` plus the
-  document window — an instance that has never run has none, and holds the
-  transaction too: with several instances there is no knowing which one would
-  deliver it. That waiting holds automatic confirmation (§6); a
-  commit ends it (below).
-- **A document explains a flow.** A transaction typed as a transfer is not a
-  candidate, a pick on it is refused, and the schema refuses a link on a
-  transfer. Converting a linked transaction to a transfer drops its document,
-  as it drops the payee (I9). A linked or picked document decides `flow`
-  first, whatever the type was: the type takes the link's key (§5.9, field
-  order).
+  when dated within its **document window**: from `back` days before its
+  `booked_on` to `ahead` days after it, two ledger-wide settings (§3.8).
+  Where its payee names a `document_provider` (§3.6) and it carries no
+  document key (§6), the transaction waits while any instance providing that
+  provider's documents that is not disabled, and whose start date (§5.5) is
+  not after `booked_on`, has a document coverage (§5.5) that has not yet
+  reached `booked_on` plus `ahead` — an instance that has never run has none,
+  and holds the transaction too: with several instances there is no knowing
+  which one would deliver it. That waiting holds automatic confirmation (§6);
+  a commit ends it (below).
+- **A transaction may wait for the rest of its document's order.** A
+  transaction carrying a document with a matcher key also waits while the
+  amounts of the document's carriers, in its currency, fall short of its total
+  in magnitude, until the `synced_through` of every synced account (§5.4) has
+  reached the document's `occurred_on` plus `back`; a synced account never
+  fetched holds it too. That waiting holds no automatic confirmation, and
+  skipping it needs no confirmation: a commit makes the link the user's, which
+  ends it, keeping the link.
+- **A document explains a flow.** A transaction with a transfer entry is not
+  a candidate, a pick on it is refused, and the schema refuses a link on a
+  transfer entry. A transaction carrying a document has no transfer entry
+  (I35): a commit that would leave one is refused. Converting a linked
+  transaction to a transfer drops its document, as it drops the payee (I9). A
+  linked or picked document decides `flow` first, whatever the type was: the
+  type takes the link's key (§5.9, field order).
 - **Picking a document in review** is part of the review draft (§6): one of
   the suggestions, a document found by hand, or "none of these". The preview
-  shows the values resolved with the document and the split; the commit writes the pick, or
+  shows the document's other carriers, brought into the unit (§6), and the
+  values and splits resolved with the document; the commit writes the pick, or
   "none", as the entry's `document`, replacing an automatic link. A commit
   without a document picked decides "none", like every value a commit leaves
   as it is (§6); where documents are suggested or one is awaited, the preview
   says so and the server refuses the commit unless the draft decides: it picks
   a document or says "none" explicitly. With an importer and a waiting entry,
   the user must consciously decide not to wait.
-- **Documents can be browsed on their own**, each with the transaction that
-  carries it, if any, and filtered to those no transaction carries. For such
-  a document, the transactions it would match by the subsystem's amount and
-  date rules are offered, confirmed ones included; picking one opens the
+- **Documents can be browsed on their own**, each with the transactions that
+  carry it, if any, and filtered to those no transaction carries or to those
+  not fully charged. For a document not fully charged — carried by none, or by
+  transactions whose amounts fall short of its total — the transactions it
+  would match by the subsystem's amount and date rules are offered, confirmed
+  ones included; picking one opens the
   review panel on its unit with the document picked in the draft. Like
   suggestions, these are computed when read. This is how a document that
   arrived after its charge was committed is found and linked.
@@ -2112,12 +2173,14 @@ is given a priority before every payee rule without one.
 #### Pass 2 — history
 
 Reads past entries joined to their source transactions, so every source field
-of every past case is available. A transaction with a linked or picked
-document is asked on one key only, the document's merchant name, for the
-category only, and votes only for that key (`history.md`); on every other key
-it is neither asked nor counted, since its bank fields describe the provider
-— every PayPal charge alike — and not the purchase, and a majority over them
-would be systematically wrong and keep the model from being asked. History
+of every past case is available. An entry without a line, of a transaction
+with a linked or picked document (§5.8), is asked on one key only, the
+document's merchant name, for the category only, and votes only for that key
+(`history.md`); on every other key it is neither asked nor counted, since its
+bank fields describe the provider — every PayPal charge alike — and not the
+purchase, and a majority over them would be systematically wrong and keep the
+model from being asked. An entry with a line is neither asked nor counted on
+any key. History
 keys on source signals, raw on both sides, and on the document's merchant name. **It learns only from confirmed entries with
 a source transaction** (I19) — confirmed by a human, or standing — because no
 other entry carries the source signals it keys on. A user-authored row brings
@@ -2143,8 +2206,9 @@ outputs. Keys, most specific first:
    and counter-account are resolved before the payee; it pools evidence across
    a curated merchant's varying descriptors;
 4. normalised tokens of `counterparty_name` and `purpose`;
-5. the document's merchant name (canonicalised as in §5.2), for a transaction
-   with a document and for the category only.
+5. the document's merchant name (canonicalised as in §5.2), for an entry
+   without a line, of a transaction with a document, and for the category
+   only; only such entries vote for it.
 
 The booking text is never a key on its own: a bank's booking texts are
 categories of payment ("Lastschrift", "Dauerauftrag"), shared by unrelated
@@ -2205,21 +2269,39 @@ Constraints on pass 3:
   with a fingerprint of the payload it was given, and reused whenever the
   entry is resolved again with the same payload. It gives way to a pass of
   higher authority or a user's value, and the answer goes with the key it
-  replaces: the core keeps nothing else of it. It is asked anew when the
+  replaces: the core keeps nothing else of it, except a line's answer, kept on
+  the line (below). It is asked anew when the
   payload changes — a document linked to the entry, say — when the user asks
   for it in the review panel, or when the field falls to pass 3 again.
   Settling never waits for it: an answer is stored when it arrives, and that
   write settles like any other.
-- **Asked in the background.** An entry whose category falls to the model
-  waits on a list in memory for one worker, which asks the model one entry at
-  a time and stores each answer as it arrives. While an entry is on that list
+- **An entry with a line takes the line's answer.** The model's answer for a
+  line is stored on the line, `category_id` and `category_key` — a key of pass
+  `llm`, shaped as an entry's, with the rationale and the payload's
+  fingerprint, or `"none": true` where nothing fits — and asked for at ingest
+  (§5.5); an answer whose category was deleted is no answer. For an entry with
+  a line, passes 0 and 1 run as usual; pass 2 asks no key for it (above).
+  Where they produce no category, pass 3 takes the line's stored answer
+  instead of asking, and where the line has no answer for its payload yet, the
+  line is asked, not the entry. It is a guess shown with its rationale, never
+  confirming, which a commit accepts like any proposal shown. Storing a line's
+  answer reaches the unconfirmed entries with that line: they are resolved
+  again. "Ask again" in the panel asks the line anew.
+- **Asked in the background.** An entry without a line whose category falls
+  to the model, and a line with no answer for its payload — every line of a
+  new or changed document (§5.5), and the line of an entry whose category
+  falls to the model — wait on a list in memory for one worker, which asks the
+  model one at a time and stores each answer as it arrives. While an entry, or
+  the line it takes its answer from, is on that list
   the review queue and the panel say the model is still looking at it; this
   is not a review flag, and nothing of it is stored. When the model is
   unreachable the list empties and its entries are unclassified, as with no
   model; they are asked when it answers again.
-- **Limited payload.** The counterparty name, booking text and purpose, and
-  for an entry with a linked or picked document, the document's merchant
-  name, and the entry's line (§5.8) if it has one. Never the counterparty IBAN, BIC, end-to-end id
+- **Limited payload.** For an entry without a line, the counterparty name,
+  booking text and purpose, and for a transaction with a linked or picked
+  document, the document's merchant name; for an entry with a line (§5.8), and
+  for a line itself, only the document's merchant name and the line's
+  description. Never the counterparty IBAN, BIC, end-to-end id
   or other reference fields, and never amounts, dates, accounts or balances.
   Where the payload would be empty, the pass does not run. Limited is not
   anonymous: counterparty names and purpose lines include **private persons'
@@ -2583,9 +2665,11 @@ Review is **not** tied to an importer. Several importers may need to run before
 review makes sense, and a document may arrive days after the charge.
 
 **Review is per unit.** A **unit** is a set of entries reviewed together: the
-entries of a source transaction, and the two legs of a transfer pair, joined
-transitively — a split whose residual is a paired leg forms one unit with its
-partner. A unit is
+entries of a source transaction, the two legs of a transfer pair, and the
+entries of the transactions carrying one document, joined transitively — a
+split whose residual is a paired leg forms one unit with its partner. A
+transaction carrying a document has no transfer entry (I35), so a unit joins a
+transfer pair or one document's carriers, never both. A unit is
 **reviewed** when it meets every requirement of confirming (below) and its
 entries carry no derivation keys other than standing ones (§5.9); the whole
 unit is confirmed together. A leg whose partner still carries keys that are not
@@ -2597,7 +2681,7 @@ state belongs to the unit, and an entry has the state of its unit.
 **Review is one atomic action.** The review panel holds a **draft** — the
 user's choices for the unit, laid over its stored state:
 
-- a document, or "none of these" (§5.8);
+- which transactions of the unit belong to which document, or to none (§5.8);
 - a transfer's partner or destination (§5.7);
 - splits of any source transaction in the unit (§5.9), the partner's included;
 - field values;
@@ -2607,30 +2691,36 @@ user's choices for the unit, laid over its stored state:
   not touch an entry's tags carries nothing for it. Re-resolving never touches
   tags, and Reset drops tag changes with everything else.
 
-Every function the panel shows — resolution (§5.9), allocation (§5.8), transfer
-offers (§5.7) and document suggestions (§5.8) — takes the stored state with the
+Every function the panel shows — resolution (§5.9), the line allocation and the
+split along a document's lines (§5.8), transfer offers (§5.7) and document
+suggestions (§5.8) — takes the stored state with the
 draft over it, and nothing is written until the unit is committed. The preview
 shows the unit as it will stand after settling, so a partner that settling would
 pair with a leg of the draft joins it. The draft is
-resolved top-down: the document determines every entry's input and, for a
-transaction that is not split, proposes the split along its lines (§5.8) —
+resolved top-down: the document determines every entry's input and, while a
+link of the document is not yet the user's, proposes the split along the
+lines the line allocation gives each transaction (§5.8) —
 every entry is resolved with its line (§5.8), in the draft as after the
 commit: an entry made from a line, the original entry of a document of one
 line; every other entry has none; then
-the split; then each entry's fields, in field order (§5.9). An existing split
-stays when a document is picked: the draft offers **split along the lines** as
-an explicit choice, which replaces it — the original entry stays, taking the
-first line and the remainder (§5.8),
-the other entries of the old split are deleted, and the preview shows which,
-with their tags. A choice made on a row that disappears — an entry of a split
+the split; then each entry's fields, in field order (§5.9). While a link of
+the document is not yet the user's, the split along the lines is proposed
+over any existing split — the original entry stays, taking the first line the
+line allocation gives its transaction and the remainder (§5.8), the other
+entries of the old split are deleted, and the preview shows which, with their
+tags — and the user commits it or changes it like any split. Once every link
+is the user's, **split along the lines** stays available as an explicit
+choice. A choice made on a row that disappears — an entry of a split
 the draft regenerated for another document — is dropped, as is a value that
 contradicts a choice above it.
 
 **The panel is anchored on what it was opened from**: an entry's source
 transaction, imported or user-authored. The draft's unit
 is the anchor's closure under the draft — picking a partner adds its whole
-source transaction, breaking a pair removes the partner's — and an entry that
-leaves it is shown as a consequence ("returns to review", "is deleted", "is unpaired"), not
+source transaction, breaking a pair removes the partner's, picking a document
+adds its other carriers, deciding "none" for a carrier removes it — and an
+entry that leaves it is shown as a consequence ("returns to review", "is
+deleted", "is unpaired"), not
 as part of the unit. A split made on a partner's side leaves with it, and is
 committed with it.
 
@@ -2647,11 +2737,13 @@ state like any other (above): it is confirmed when it meets every requirement
 of confirming, and otherwise stays in review — waiting for its partner,
 or unclassified — with everything the user committed kept. A commit needs the result to be valid, not complete: the
 invariants must hold (a split sums to its amount, a counter-account obeys the
-currency rule), but a category, a counter-account or a partner may still be
+currency rule, a transaction carrying a document has no transfer entry), but
+a category, a counter-account or a partner may still be
 missing. It is refused only where the result would be invalid, where a document
-decision is missing (§5.8), or where the unit's structure changed since the preview: the chosen partner was paired
-elsewhere, or the chosen document was linked elsewhere or has a newer
-version (§5.5). Proposals
+decision is missing (§5.8), or where the unit's structure changed since the
+preview: the chosen partner was paired elsewhere, or lines of the chosen
+document that the preview's line allocation relied on were taken since, or it
+has a newer version (§5.5). Proposals
 that changed in the meantime do not matter: the user commits what they saw. A partner or
 counter-leg the preview proposed is accepted as chosen: where the commit cannot make it, the
 commit is refused with the problem a chosen one would raise.
@@ -2696,7 +2788,7 @@ entry is clean when it is empty:
 | `unconfirmed` | the entry's unit carries derivation keys other than standing ones: values awaiting a human (§5.9) |
 | `unclassified` | an entry not fully interpreted: `type` NULL, or a flow without a category (§3.4) |
 | `document_suggested` | the transaction has document suggestions awaiting a decision (§5.8) |
-| `waiting` | the entry waits for information that has not had its chance to arrive: a partner leg, or a document (below) |
+| `waiting` | the entry waits for information that has not had its chance to arrive: a partner leg, a document, or the rest of its document's order (below) |
 | `unmatched_transfer` | a transfer leg without a partner that is not waiting (§5.7) |
 
 Rules:
@@ -2753,14 +2845,18 @@ complete it has not had its chance to arrive — judged from coverage, never fro
 elapsed time, and derived, with no state and no cron. Waiting is a hint: the
 unit stays editable. A transfer leg waits for its partner as defined in §5.7,
 and cannot be confirmed until it is paired. A
-transaction may also wait for its document (§5.8). For a person that waiting is
-advisory — a commit decides "no document", once the user confirms skipping
-the wait, after which the unit is confirmed as usual, giving up automatic
-attachment, because a reviewed entry is never changed by a document arriving —
-but settling does not confirm the unit while it lasts (above). **The waiting
-flag wins:** a unit that waits for a document is in the queue's waiting
-section even while it has suggestions, because what it waits for may change the
-user's other decisions; it moves to pending review once nothing is awaited.
+transaction may also wait for its document, or for the rest of its document's
+order (§5.8). For a person the wait for a document is advisory — a commit
+decides "no document", once the user confirms skipping the wait, after which
+the unit is confirmed as usual, giving up automatic attachment, because a
+reviewed entry is never changed by a document arriving — but settling does
+not confirm the unit while it lasts (above). The wait for the rest of an order
+holds no automatic confirmation of its own, and skipping it needs no
+confirmation: a commit ends it, keeping the link. **The waiting flag wins:** a
+unit that waits for a document, or for the rest of an order, is in the queue's
+waiting section even while it has suggestions, because what it waits for may
+change the user's other decisions; it moves to pending review once nothing is
+awaited.
 
 **Review state never excludes an entry from balances or reports.** Unreviewed
 and unclassified entries count in balances and net worth, and appear in

@@ -15,9 +15,9 @@ is counted, and the parameters.
 A **vote** is a confirmed entry with a source transaction (`spec.md` I19),
 booked within the **lookback** of the entry being resolved, and not in the unit
 being re-resolved (`spec.md` §5.9), whose transaction carries no document, for
-keys 1 to 4. A vote for the document key (§2) is a confirmed entry, otherwise
-as above, whose transaction's linked document has the same merchant name. Each
-entry is one vote; the entries of a
+keys 1 to 4. A vote for the document key (§2) is a confirmed entry that has no
+line, otherwise as above, whose transaction's linked document has the same
+merchant name. Each entry is one vote; the entries of a
 split vote separately. The plugin asks core's history source for the votes
 matching a key value and never reads the database itself.
 
@@ -43,8 +43,10 @@ only) unless said otherwise.
    key.
 5. **`document_merchant`** — canonical equality of the document's merchant name
    (`spec.md` §5.2), for the category only. It is the only key asked for an
-   entry whose transaction has a linked or picked document, and such an entry
-   is not asked on keys 1 to 4. An entry without a document never sees it.
+   entry without a line, of a transaction with a linked or picked document,
+   and such an entry is not asked on keys 1 to 4. An entry with a line is
+   asked on no key: its category comes from the line (`spec.md` §5.9). An
+   entry without a document never sees it.
 
 A key whose input the entry lacks — no `counterparty_ref`, no name — is
 skipped. Keys 1 to 4 never see a document: a transaction with a document is
@@ -96,7 +98,7 @@ first refinement once real purpose lines are seen.
 
 An **exact-line key** for documented entries is the expected refinement once
 real documents show how often lines repeat: canonical equality of the line
-description, for the category only, asked before key 5, and asked and counted
+description, for the category only, asked and counted
 only for an entry with a line (`spec.md` §5.8). It captures reorders (the same
 capsules, the same filter) with certainty and misses a reworded title safely.
 Similarity over line text stays out: titles rarely repeat, and shared filler
