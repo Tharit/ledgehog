@@ -84,15 +84,17 @@ def _run_rounds(conn: Connection) -> tuple[set[int], bool]:
         run.confirmed = load_confirmed_ids(conn)
         # a unit confirmed before this settle (written complete and standing, such as an entry form's) has
         # no document key yet either: "none" is recorded for it too, so no later document source reopens it
-        touched.update(record_none_documents(conn, sorted(run.confirmed)))
-        forget_candidacy()  # the "none" it records closes the gate of those units
+        recorded = record_none_documents(conn, sorted(run.confirmed))
+        touched.update(recorded)
+        if recorded:
+            forget_candidacy()  # the "none" it records closes the gate of those units
         for _ in range(MAX_ROUNDS):
             confirmed = 0
             for _name, step in list(_STEPS):
                 outcome = step(conn)
                 moved = set(outcome.touched)
                 touched.update(moved)
-                if moved:
+                if moved and outcome.affects_documents:
                     forget_candidacy()  # a write may change what a document could be linked to
                 confirmed += outcome.newly_confirmed
             if confirmed == 0:

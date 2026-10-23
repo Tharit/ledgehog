@@ -128,10 +128,13 @@ def review_flags_step(conn: Connection) -> StepOutcome:
     touched = recompute_review_flags(conn)
     run = current_run()
     if run.confirmed is None:  # outside a settle there is no previous round to compare with
-        return StepOutcome(touched=touched)
+        return StepOutcome(touched=touched, affects_documents=False)
     now = load_confirmed_ids(conn)
     new = sorted(now - run.confirmed)
     run.confirmed = now
     run.to_teach.extend(new)
     recorded = record_none_documents(conn, new)
-    return StepOutcome(touched=sorted({*touched, *recorded}), newly_confirmed=len(new))
+    # the "none" goes to units that are confirmed, so without a candidate: it leaves the matching as it was
+    return StepOutcome(
+        touched=sorted({*touched, *recorded}), newly_confirmed=len(new), affects_documents=False
+    )

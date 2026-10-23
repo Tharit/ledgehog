@@ -34,8 +34,7 @@ from collections.abc import Sequence
 
 from sqlalchemy import Connection, text
 
-from app.core.matching.documents import automatic_links
-from app.core.resolution.doc_load import document_window, load_documents, load_gated
+from app.core.resolution.doc_load import current_matching
 from app.core.resolution.load import UnconfirmedEntry, load_accounts, load_rules, load_units_of
 from app.core.resolution.registry import classifiers_for
 from app.core.resolution.snapshot import load_snapshot
@@ -86,14 +85,7 @@ def match_documents_step(conn: Connection) -> StepOutcome:
     run.documents_dirty = False
     if not conn.execute(_ANY_DOCUMENT).scalar_one():
         return StepOutcome()  # no document: nothing to load, the cheap path
-    transactions = load_gated(conn)
-    if not transactions:
-        return StepOutcome()
-    window = document_window(conn)
-    documents = load_documents(conn, transactions, window)
-    if not documents:
-        return StepOutcome()
-    links = automatic_links(transactions, documents, window)
+    links = current_matching(conn).links  # the matching the unit CTE's candidacy reads, once per ledger state
     if not links:
         return StepOutcome()
     ids = sorted(links)

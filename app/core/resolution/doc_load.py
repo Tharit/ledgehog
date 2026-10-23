@@ -15,12 +15,12 @@ from collections import defaultdict
 from collections.abc import Collection, Iterator, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
-from datetime import timedelta
-from typing import Any
+from datetime import date, timedelta
+from typing import Any, NamedTuple, cast
 
 from sqlalchemy import Connection, Row, text
 
-from app.core.matching.documents import DocInput, DocTxn, DocWindow, match
+from app.core.matching.documents import DocInput, DocTxn, DocWindow, Matching, match
 from app.core.matching.lines import MAX_PARTIAL_LINES, Line
 from app.core.plugins.classifier import STANDING_PASSES
 from app.core.resolution.entry_state import COMPLETE, STANDING
@@ -162,9 +162,14 @@ def load_carriers(conn: Connection, document_ids: Sequence[int]) -> dict[int, tu
 def _inputs(conn: Connection, rows: Sequence[Row[Any]]) -> list[DocInput]:
     """The documents of these header rows, with their lines and carriers."""
     ids = [int(r.id) for r in rows]
-    lines: dict[int, list[Line]] = defaultdict(list)
-    for r in conn.execute(_LINES, {"ids": ids}):
-        lines[int(r.document_id)].append(Line(int(r.line_no), int(r.amount)))
+    memo = _MEMO.get()
+    lines: dict[int, list[Line]] = memo.setdefault("lines", {}) if memo is not None else {}
+    unread = [i for i in ids if i not in lines]  # a document's lines are the same all settle long
+    if unread:
+        read: dict[int, list[Line]] = {i: [] for i in unread}
+        for r in conn.execute(_LINES, {"ids": unread}):
+            read[int(r.document_id)].append(Line(int(r.line_no), int(r.amount)))
+        lines.update(read)
     carriers = load_carriers(conn, ids)
     return [
         DocInput(
@@ -173,18 +178,20 @@ def _inputs(conn: Connection, rows: Sequence[Row[Any]]) -> list[DocInput]:
             occurred_on=r.occurred_on,
             total=int(r.total),
             currency=str(r.currency).strip(),
-            lines=tuple(lines.get(int(r.id), ())),
+            lines=tuple(lines[int(r.id)]),
             carriers=carriers.get(int(r.id), ()),
         )
         for r in rows
     ]
 
 
-def _possible(gated: Sequence[DocTxn], rows: Sequence[Row[Any]], window: DocWindow) -> list[Row[Any]]:
-    """The documents some gated transaction could match, at most: of its payee's provider, within the window,
-    whose total is its amount in the document's currency (a whole match) or whose lines sum to the total, of
-    two or more and at most `MAX_PARTIAL_LINES` (a partial one; one line is the whole). The matcher decides;
-    this only keeps the lines and carriers of every other document from being read."""
+class _Index(NamedTuple):
+    whole: dict[tuple[str, str, int], list[Row[Any]]]
+    partial: dict[tuple[str, str], list[Row[Any]]]
+    dates: dict[tuple[str, str], list[date]]
+
+
+def _index(rows: Sequence[Row[Any]]) -> _Index:
     whole: dict[tuple[str, str, int], list[Row[Any]]] = defaultdict(list)
     partial: dict[tuple[str, str], list[Row[Any]]] = defaultdict(list)
     for r in rows:
@@ -195,6 +202,15 @@ def _possible(gated: Sequence[DocTxn], rows: Sequence[Row[Any]], window: DocWind
     for found in partial.values():
         found.sort(key=lambda r: r.occurred_on)
     dates = {key: [r.occurred_on for r in found] for key, found in partial.items()}
+    return _Index(whole, partial, dates)
+
+
+def _possible(gated: Sequence[DocTxn], index: _Index, window: DocWindow) -> list[Row[Any]]:
+    """The documents some gated transaction could match, at most: of its payee's provider, within the window,
+    whose total is its amount in the document's currency (a whole match) or whose lines sum to the total, of
+    two or more and at most `MAX_PARTIAL_LINES` (a partial one; one line is the whole). The matcher decides;
+    this only keeps the lines and carriers of every other document from being read."""
+    whole, partial, dates = index
     keep: dict[int, Row[Any]] = {}
     for t in gated:
         assert t.payee_provider is not None
@@ -215,13 +231,24 @@ def _possible(gated: Sequence[DocTxn], rows: Sequence[Row[Any]], window: DocWind
     return [keep[i] for i in sorted(keep)]
 
 
+def _headers(conn: Connection, providers: list[str]) -> _Index:
+    """The index of the headers of these providers' documents (kept for the settle, see `_MEMO`)."""
+    memo = _MEMO.get()
+    key = ("headers", tuple(providers))
+    if memo is not None and key in memo:
+        return cast(_Index, memo[key])
+    index = _index(conn.execute(_HEADERS, {"providers": providers}).all())
+    if memo is not None:
+        memo[key] = index
+    return index
+
+
 def load_documents(conn: Connection, gated: Sequence[DocTxn], window: DocWindow) -> list[DocInput]:
     """The documents the gated transactions could match (documents.md §2), with their lines and carriers."""
     wanted = sorted({t.payee_provider.lower() for t in gated if t.payee_provider})
     if not wanted:
         return []
-    rows = conn.execute(_HEADERS, {"providers": wanted}).all()
-    return _inputs(conn, _possible(gated, rows, window))
+    return _inputs(conn, _possible(gated, _headers(conn, wanted), window))
 
 
 def load_document(conn: Connection, document_id: int) -> DocInput | None:
@@ -230,10 +257,11 @@ def load_document(conn: Connection, document_id: int) -> DocInput | None:
     return found[0] if found else None
 
 
-# One settle reads the candidacy a few times a round (every flags, votes and units read binds it), while
-# only a step that wrote can change it: `settle` opens a memo for its rounds and forgets it after each step
-# that touched an entry. Outside a settle nothing is kept.
-_MEMO: ContextVar[dict[str, dict[int, bool]] | None] = ContextVar("candidacy_memo", default=None)
+# One settle reads the candidacy a few times a round (every flags, votes and units read binds it, and step 2
+# reads the links of the same matching), while only a step that wrote can change it: `settle` opens a memo for
+# its rounds and forgets the matching after each step that touched an entry. The document headers are kept
+# for the whole settle (settling creates no document). Outside a settle nothing is kept.
+_MEMO: ContextVar[dict[Any, Any] | None] = ContextVar("candidacy_memo", default=None)
 
 
 @contextmanager
@@ -249,28 +277,33 @@ def forget_candidacy() -> None:
     """The ledger changed: the next `candidacy` reads it afresh."""
     memo = _MEMO.get()
     if memo is not None:
-        memo.clear()
+        memo.pop("matching", None)
+
+
+def current_matching(conn: Connection) -> Matching:
+    """The candidates and automatic links of the ledger's gated transactions as it stands now."""
+    memo = _MEMO.get()
+    if memo is not None and "matching" in memo:
+        return cast(Matching, memo["matching"])
+    found = _matching(conn)
+    if memo is not None:
+        memo["matching"] = found
+    return found
 
 
 def candidacy(conn: Connection) -> dict[int, bool]:
     """{original entry id: suggested} for every gated transaction that has a candidate (documents.md §2, §4):
     suggested when it has no automatic link. What the unit CTE reads as `doc_candidate`, `doc_suggested`."""
-    memo = _MEMO.get()
-    if memo is not None and "found" in memo:
-        return memo["found"]
-    found = _candidacy(conn)
-    if memo is not None:
-        memo["found"] = found
-    return found
+    found = current_matching(conn)
+    return {i: i not in found.links for i in found.candidates}
 
 
-def _candidacy(conn: Connection) -> dict[int, bool]:
+def _matching(conn: Connection) -> Matching:
     gated = load_gated(conn)
     if not gated:
-        return {}
+        return Matching({}, {})
     window = document_window(conn)
     documents = load_documents(conn, gated, window)
     if not documents:
-        return {}
-    found = match(gated, documents, window)
-    return {i: i not in found.links for i in found.candidates}
+        return Matching({}, {})
+    return match(gated, documents, window)

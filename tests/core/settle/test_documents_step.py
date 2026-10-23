@@ -425,10 +425,10 @@ def test_with_no_document_source_nothing_waits_and_step_two_is_a_cheap_no_op(
 ) -> None:
     from app.core.settle import documents as step
 
-    def boom(_conn: Connection) -> list[Any]:
-        raise AssertionError("step 2 loaded transactions although no document exists")
+    def boom(_conn: Connection) -> Any:
+        raise AssertionError("step 2 matched transactions although no document exists")
 
-    monkeypatch.setattr(step, "load_gated", boom)
+    monkeypatch.setattr(step, "current_matching", boom)
     with isolated_engine.begin() as conn:
         acct = make_account(conn)
         provider = make_payee(conn, "PayPal", "paypal")

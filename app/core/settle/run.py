@@ -20,10 +20,15 @@ from app.core.resolution.snapshot import Grown, HistorySnapshot
 
 @dataclass(frozen=True)
 class StepOutcome:
-    """What one step did: the entry ids it changed and how many units it newly confirmed."""
+    """What one step did: the entry ids it changed and how many units it newly confirmed.
+
+    `affects_documents` is False for a step whose writes cannot change what documents match (the review
+    flags and the "none" it records for confirmed units, which have no candidate): `settle` keeps the
+    candidacy."""
 
     touched: Iterable[int] = ()
     newly_confirmed: int = 0
+    affects_documents: bool = True
 
 
 @dataclass(slots=True)
