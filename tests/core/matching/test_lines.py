@@ -120,3 +120,9 @@ def test_a_hard_instance_is_fast() -> None:
     assert found is not None
     assert len(found.assigned) == 19
     assert allocate(ls, -140, [*parties, party(9, -13, day=9)]) is None
+
+
+def test_a_party_of_amount_zero_has_no_allocation() -> None:
+    assert allocate(lines(-30, -20), -50, [party(1, 0), party(2, -50)]) is None
+    assert allocate(lines(-30, -20), -50, [party(1, 0)]) is None
+    assert allocate(lines(-50), -50, [party(1, 0)]) is None

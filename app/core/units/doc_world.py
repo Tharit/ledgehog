@@ -88,7 +88,7 @@ def _with_carriers(world: DocWorld, txns: Iterable[DocTxn]) -> list[DocInput]:
 
 
 def _gated(txns: Iterable[DocTxn]) -> list[DocTxn]:
-    return [t for t in txns if t.payee_provider is not None and not t.document_decided]
+    return [t for t in txns if t.payee_provider is not None and not t.document_decided and t.amount != 0]
 
 
 def _outside(txns: Sequence[DocTxn], world: DocWorld) -> list[DocTxn]:

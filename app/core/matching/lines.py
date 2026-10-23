@@ -65,6 +65,8 @@ def allocate(lines: Sequence[Line], total: int, parties: Sequence[Party]) -> All
     or None where there is none. No party: the empty allocation."""
     if not parties:
         return Allocation({}, True)
+    if any(p.amount == 0 for p in parties):  # a zero-amount booking explains nothing (documents.md §1)
+        return None
     order = sorted(parties, key=lambda p: (p.booked_on, p.key))
     if len(order) == 1 and order[0].amount == total:
         whole = {ln.number: order[0].key for ln in lines}

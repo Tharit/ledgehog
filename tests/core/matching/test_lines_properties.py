@@ -26,7 +26,7 @@ def worlds(draw: st.DrawFn) -> tuple[list[Line], int, list[Party]]:
             Party(
                 key,
                 D + timedelta(days=draw(st.integers(0, 3))),
-                draw(st.sampled_from([-60, -50, -40, -30, -20, -10, 0, 10, 20])),
+                draw(st.sampled_from([-60, -50, -40, -30, -20, -10, 10, 20])),
                 refs if lines else frozenset(),
             )
         )

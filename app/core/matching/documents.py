@@ -60,9 +60,11 @@ class DocTxn:
 
     @property
     def considered(self) -> bool:
-        """§1: not a duplicate, unconfirmed, a payee with a provider, no decided document, not a transfer."""
+        """§1: not a duplicate, unconfirmed, a payee with a provider, no decided document, not a transfer, and
+        an amount that is not zero (a zero-amount booking explains nothing)."""
         return (
-            not self.duplicate
+            self.amount != 0
+            and not self.duplicate
             and not self.is_transfer
             and not self.confirmed
             and self.payee_provider is not None
@@ -180,7 +182,7 @@ def _indexed(documents: Iterable[DocInput]) -> dict[str, _Index]:
                 keys |= _subset_sums(ln.amount for ln in d.lines)
             else:
                 big[d.provider.lower()].append(d)
-        for amount in keys:
+        for amount in keys - {0}:  # a transaction of amount zero is never considered (§1)
             found.by_amount.setdefault((d.currency, amount), []).append(d)
     for provider, docs in big.items():
         docs.sort(key=lambda d: (d.occurred_on, d.document_id))
@@ -284,7 +286,8 @@ def reverse_matches(document: DocInput, transactions: Iterable[DocTxn], window: 
     found = [
         t
         for t in transactions
-        if not t.duplicate
+        if t.amount != 0
+        and not t.duplicate
         and not t.is_transfer
         and t.entry_id not in carriers
         and _within(t, document, window)

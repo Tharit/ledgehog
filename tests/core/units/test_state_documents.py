@@ -498,3 +498,14 @@ def test_a_candidate_alone_keeps_a_unit_open_without_a_flag() -> None:
     assert not state.confirmed and state.reasons == ("document_suggested",)
     assert state.flags[1] == ()
     assert unit_state([entry], documents={1: DocumentFacts()}).confirmed
+
+
+def test_a_zero_amount_booking_is_open_for_no_document() -> None:
+    """The schema keeps a zero amount out of the ledger; the Python judgement refuses it all the same."""
+    zero = DocTxn(1, 1, D, 0, "EUR", payee_provider="paypal")
+    document = DocInput(7, "paypal", D, -100, "EUR", lines=(Line(1, -40), Line(2, -60)))
+    source = DocumentSource(delivers=frozenset({"paypal"}))
+    facts = document_facts_of(
+        [zero], others=[], documents=[document], sources=[source], window=DocWindow(7, 7)
+    )
+    assert facts == {}

@@ -147,7 +147,11 @@ def document_facts_of(
     original entries with a provider and no decided document (the transactions a document could be shared
     with: the matcher judges them together, once); `document_decided`, a missing provider and a transfer entry
     close the gate. A document's carriers are those it holds (`DocInput.carriers`)."""
-    gated = [t for t in txns if t.payee_provider is not None and not t.document_decided and not t.is_transfer]
+    gated = [
+        t
+        for t in txns
+        if t.payee_provider is not None and not t.document_decided and not t.is_transfer and t.amount != 0
+    ]
     own = {t.entry_id for t in gated}
     found = match([*gated, *(o for o in others if o.entry_id not in own)], documents, window)
     sources = list(sources)
