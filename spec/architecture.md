@@ -699,7 +699,9 @@ codes:
 `stale_reference` (`document_id`), `document_changed`, `document_taken`,
 `document_provider_mismatch` (only where the payee has a different provider; a
 payee with none takes any document), `document_decision_required`,
-`document_split_unavailable`. A commit is refused with 422
+`document_split_unavailable`, `document_not_for_transfer` (a document picked
+on a transfer), `document_with_transfer` (a transaction carrying a document
+keeps a transfer entry, spec I35). A commit is refused with 422
 `document_decision_required` where documents are suggested or one is awaited and
 the draft has no explicit decision (a pick, `none`, `split_along_lines`; the server
 enforces it, the panel offers "Commit without a document" as mode `none`), with 409

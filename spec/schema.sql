@@ -940,6 +940,10 @@ ALTER TABLE ledger_entry
 CREATE UNIQUE INDEX ux_le_document_per_transaction
     ON ledger_entry (source_transaction_id) WHERE document_id IS NOT NULL;
 
+-- The carriers of a document, found by the unit's closure (spec I21).
+CREATE INDEX ix_le_document
+    ON ledger_entry (document_id) WHERE document_id IS NOT NULL;
+
 -- An entry's line of the document (spec §5.8). SET NULL: a changed document's
 -- lines are replaced (spec §5.5), which clears the references to them.
 ALTER TABLE ledger_entry
