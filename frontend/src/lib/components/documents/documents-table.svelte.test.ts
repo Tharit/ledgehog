@@ -1,41 +1,29 @@
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import { documentRow } from '#lib/documents/fixtures.js';
-import { account } from '#lib/ledger/fixtures.js';
-import { buildLookups } from '#lib/ledger/lookups.js';
 import DocumentsTable from './documents-table.svelte';
 
-const lookups = buildLookups({ accounts: [account()] });
 const carried = documentRow({
 	id: 2,
 	provider: 'paypal',
 	merchant_name: 'Etsy',
 	title: null,
-	carrier: {
-		entry_id: 40,
-		source_transaction_id: 400,
-		account_id: 1,
-		booked_on: '2026-10-09',
-		amount: { amount: -4731, currency: 'EUR' }
-	}
+	carrier_count: 2
 });
 const free = documentRow({ id: 1 });
 
 function table(props = {}) {
 	const onopen = vi.fn();
-	const onopencarrier = vi.fn();
 	render(DocumentsTable, {
 		props: {
 			documents: [carried, free],
 			total: 2,
 			status: 'ready',
-			lookups,
 			onopen,
-			onopencarrier,
 			...props
 		}
 	});
-	return { onopen, onopencarrier };
+	return { onopen };
 }
 
 describe('DocumentsTable', () => {
@@ -48,10 +36,10 @@ describe('DocumentsTable', () => {
 		expect(first.getByText('Etsy')).toBeInTheDocument();
 		expect(first.getByText('Oct 8, 2026')).toBeInTheDocument();
 		expect(first.getByText('−47.31')).toBeInTheDocument();
-		expect(first.getByRole('button', { name: /Giro/ })).toBeInTheDocument();
+		expect(first.getByText('2 transactions')).toBeInTheDocument();
 		const second = within(rows[1]);
 		expect(second.getByText('Amazon · Order 304-1')).toBeInTheDocument();
-		expect(second.getByText('Not linked')).toBeInTheDocument();
+		expect(second.queryByText(/transaction/)).toBeNull(); // carried by none: empty
 		expect(screen.getByText('2 of 2')).toBeInTheDocument();
 	});
 
@@ -69,11 +57,9 @@ describe('DocumentsTable', () => {
 		expect(onopen).toHaveBeenCalledWith(2);
 	});
 
-	it('opens the carrying transaction, and only that', async () => {
-		const { onopen, onopencarrier } = table();
-		await fireEvent.click(screen.getByRole('button', { name: /Giro/ }));
-		expect(onopencarrier).toHaveBeenCalledWith(40, expect.any(HTMLElement));
-		expect(onopen).not.toHaveBeenCalled();
+	it('says "1 transaction" for a single carrier', () => {
+		table({ documents: [documentRow({ id: 5, carrier_count: 1 })], total: 1 });
+		expect(screen.getByText('1 transaction')).toBeInTheDocument();
 	});
 
 	it('writes the currency only where several are listed together', () => {

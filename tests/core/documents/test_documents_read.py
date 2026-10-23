@@ -65,7 +65,7 @@ def test_row_shape_and_order(db_conn: Connection):
     first = page.documents[0]
     assert (first.provider, first.occurred_on, first.total, first.currency) == ("amazon", D, -1000, "EUR")
     assert (first.merchant_name, first.title, first.line_count, first.version) == ("Shop", "Order", 2, 1)
-    assert first.carrier is None and page.documents[1].line_count == 0
+    assert first.carrier_count == 0 and page.documents[1].line_count == 0
     assert page.total == 2
 
 
@@ -127,9 +127,12 @@ def test_linked_filter_and_the_carrying_transaction(db_conn: Connection, acct: i
     row = next(
         d for d in list_documents(db_conn, DocumentFilter(), limit=10, offset=0).documents if d.id == linked
     )
-    assert row.carrier is not None
-    assert (row.carrier.entry_id, row.carrier.account_id, row.carrier.booked_on) == (entry, acct, D)
-    assert (row.carrier.amount, row.carrier.currency) == (-1000, "EUR")
+    assert row.carrier_count == 1
+    detail = get_document(db_conn, linked)
+    assert detail is not None and len(detail.carriers) == 1
+    carrier = detail.carriers[0]
+    assert (carrier.entry_id, carrier.account_id, carrier.booked_on) == (entry, acct, D)
+    assert (carrier.amount, carrier.currency) == (-1000, "EUR")
     assert list_documents(db_conn, DocumentFilter(linked=True), limit=10, offset=0).total == 1
 
 
@@ -168,7 +171,7 @@ def test_a_linked_document_lists_no_matches(db_conn: Connection, acct: int):
     txn(db_conn, acct, amount=-1000)  # would match, but the document is carried
     carry(db_conn, entry, d)
     detail = get_document(db_conn, d)
-    assert detail is not None and detail.matches == () and detail.document.carrier is not None
+    assert detail is not None and detail.matches == () and detail.document.carrier_count == 1
 
 
 def test_reverse_matches_include_confirmed_any_payee_any_account_and_state(db_conn: Connection, acct: int):
@@ -250,7 +253,7 @@ def test_a_splits_original_entry_is_the_match_with_the_transactions_amount(db_co
     assert [(m.entry_id, m.amount) for m in detail.matches] == [(first, -1000)]
 
 
-def test_a_document_with_several_carriers_is_one_row_with_its_first_carrier(db_conn: Connection, acct: int):
+def test_a_document_with_several_carriers_is_one_row_with_their_number(db_conn: Connection, acct: int):
     doc = make_document(db_conn, total=-500)
     lines(db_conn, doc, ("a", -300), ("b", -200))
     first, second = txn(db_conn, acct, amount=-300), txn(db_conn, acct, amount=-200)
@@ -258,10 +261,79 @@ def test_a_document_with_several_carriers_is_one_row_with_its_first_carrier(db_c
     carry(db_conn, second, doc)
     page = list_documents(db_conn, DocumentFilter(), limit=10, offset=0)
     assert page.total == 1 and [d.id for d in page.documents] == [doc]
-    assert page.documents[0].carrier is not None and page.documents[0].carrier.entry_id == first
+    assert page.documents[0].carrier_count == 2
     assert ids(db_conn, linked=True) == [doc] and ids(db_conn, linked=False) == []
     detail = get_document(db_conn, doc)
     assert detail is not None and detail.matches == ()  # fully charged: nothing left to match
+    assert [c.entry_id for c in detail.carriers] == [first, second]
+    assert [c.amount for c in detail.carriers] == [-300, -200]
+
+
+def test_fully_charged_filter_reads_the_carriers_amounts_by_magnitude(db_conn: Connection, acct: int):
+    free = make_document(db_conn, total=-500)
+    part = make_document(db_conn, total=-500)
+    whole = make_document(db_conn, total=-500)
+    refund = make_document(db_conn, total=500)  # positive total, carried by a positive transaction
+    abroad = make_document(db_conn, total=-2000, currency="USD")
+    carry(db_conn, txn(db_conn, acct, amount=-300), part)
+    carry(db_conn, txn(db_conn, acct, amount=-300), whole)
+    carry(db_conn, txn(db_conn, acct, amount=-200), whole)
+    carry(db_conn, txn(db_conn, acct, amount=500), refund)
+    carry(
+        db_conn,
+        txn(db_conn, acct, amount=-1800, columns={"instructed_amount": -2000, "instructed_currency": "USD"}),
+        abroad,
+    )
+    assert sorted(ids(db_conn, fully_charged=True)) == sorted([whole, refund, abroad])
+    assert sorted(ids(db_conn, fully_charged=False)) == sorted([free, part])  # carried by none included
+    assert ids(db_conn, fully_charged=False, linked=True) == [part]
+    assert list_documents(db_conn, DocumentFilter(fully_charged=False), limit=1, offset=0).total == 2
+    assert [d.carrier_count for d in list_documents(db_conn, DocumentFilter(), limit=9, offset=0).documents][
+        ::-1
+    ] == [0, 1, 2, 1, 1]
+
+
+def test_a_carrier_with_no_amount_in_the_currency_counts_nothing(db_conn: Connection, acct: int):
+    doc = make_document(db_conn, total=-2000, currency="USD")
+    carry(db_conn, txn(db_conn, acct, amount=-2000), doc)  # EUR, no instructed amount: not charged
+    assert ids(db_conn, fully_charged=False) == [doc]
+
+
+def test_the_provider_filter_ignores_case(db_conn: Connection):
+    a = make_document(db_conn, "PayPal", external_id="a")
+    b = make_document(db_conn, "paypal", external_id="b")
+    make_document(db_conn, "amazon", external_id="c")
+    assert sorted(ids(db_conn, providers=("PAYPAL",))) == sorted([a, b])
+
+
+def test_lines_read_the_stored_category_and_rationale(db_conn: Connection):
+    doc = make_document(db_conn, total=-1000)
+    lines(db_conn, doc, ("a", -100), ("b", -200), ("c", -300), ("d", -400))
+    groceries = seed.category(db_conn, "Groceries")
+    gone = seed.category(db_conn, "Gone")
+
+    def answer(n: int, category: int | None, key: str | None) -> None:
+        db_conn.execute(
+            text(
+                "UPDATE external_document_line SET category_id = :c, category_key = CAST(:k AS jsonb)"
+                " WHERE document_id = :d AND line_no = :n"
+            ),
+            {"c": category, "k": key, "d": doc, "n": n},
+        )
+
+    answer(1, groceries, '{"pass": "llm", "basis": {"model": "m", "rationale": "Food shop"}}')
+    answer(2, None, '{"pass": "llm", "basis": {"model": "m", "rationale": "Would fit gifts"}, "none": true}')
+    answer(3, gone, '{"pass": "llm", "basis": {"model": "m", "rationale": "x"}}')
+    db_conn.execute(text("DELETE FROM category WHERE id = :c"), {"c": gone})  # the key stays, no answer
+    detail = get_document(db_conn, doc)
+    assert detail is not None
+    got = [(x.category_id, x.category_name, x.rationale) for x in detail.lines]
+    assert got == [
+        (groceries, "Groceries", "Food shop"),
+        (None, None, "Would fit gifts"),
+        (None, None, None),
+        (None, None, None),
+    ]
 
 
 def test_a_partly_charged_order_lists_the_transactions_that_take_the_rest(db_conn: Connection, acct: int):

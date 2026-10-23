@@ -16,10 +16,11 @@
 	import { documentTitle } from './describe.js';
 	import DocumentLines from './document-lines.svelte';
 
-	// One document (view sketch: ux/views/documents.md): its merchant, total and lines. A linked
-	// document names the transaction carrying it; one carried by no entry lists the transactions it
-	// would match, confirmed ones included, each marked with its unit's state. Choosing one opens
-	// the review panel on it with this document picked; the link is written only by that commit.
+	// One document (view sketch: ux/views/documents.md): its merchant, total and lines, each with
+	// the model's category and rationale, read-only. It lists the transactions carrying it; while
+	// it is not fully charged it lists the transactions it would match, confirmed ones included,
+	// each marked with its unit's state. Choosing one opens the review panel on it with this
+	// document picked; the link is written only by that commit.
 	let {
 		document,
 		lookups,
@@ -63,8 +64,14 @@
 		<dd class="truncate">{document.external_id}</dd>
 		<dt class="text-muted-foreground">Carried by</dt>
 		<dd class="min-w-0">
-			{#if document.carrier}
-				<CarrierLink carrier={document.carrier} {lookups} {locale} onopen={onopencarrier} />
+			{#if document.carriers.length > 0}
+				<ul class="flex flex-col gap-1" aria-label="Carrying transactions">
+					{#each document.carriers as carrier (carrier.entry_id)}
+						<li class="min-w-0">
+							<CarrierLink {carrier} {lookups} {locale} onopen={onopencarrier} />
+						</li>
+					{/each}
+				</ul>
 			{:else}
 				<AbsentValue label="Not linked" explanation="No transaction carries this document yet" />
 			{/if}
@@ -76,11 +83,11 @@
 		{#if document.lines.length === 0}
 			<p class="text-sm text-muted-foreground">This document has no lines.</p>
 		{:else}
-			<DocumentLines lines={document.lines} {locale} />
+			<DocumentLines lines={document.lines} {locale} withCategory />
 		{/if}
 	</section>
 
-	{#if document.carrier === null}
+	{#if !document.fully_charged}
 		<section aria-labelledby="document-matches" class="flex flex-col gap-2">
 			<h2 id="document-matches" class="text-base font-semibold">Transactions it would match</h2>
 			{#if document.matches.length === 0}

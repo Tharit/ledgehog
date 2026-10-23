@@ -6,16 +6,14 @@
 	import MoneyDisplay from '#lib/components/common/money-display.svelte';
 	import Notice from '#lib/components/common/notice.svelte';
 	import { formatCount } from '#lib/format/index.js';
-	import type { Lookups } from '#lib/ledger/lookups.js';
 	import type { DocumentRow } from '#lib/types/domain.js';
 	import { cn } from '#lib/utils.js';
-	import CarrierLink from './carrier-link.svelte';
 	import { DOCUMENT_COLUMNS, DOCUMENT_GRID_TEMPLATE } from './columns.js';
 	import { describeDocumentError, documentTitle } from './describe.js';
 
 	// The list of documents in the shape of the ledger table (patterns §4, §7): a snapshot that
-	// shows what it was given. A row opens the document's page; its carrying transaction opens the
-	// review panel.
+	// shows what it was given. A row opens the document's page, which lists the transactions
+	// carrying it.
 	let {
 		documents,
 		total,
@@ -23,11 +21,9 @@
 		loadingMore = false,
 		error = null,
 		moreError = null,
-		lookups,
 		locale = 'en',
 		activeFilters = [],
 		onopen,
-		onopencarrier,
 		onclearfilters,
 		onretry,
 		onloadmore
@@ -38,14 +34,11 @@
 		loadingMore?: boolean;
 		error?: { code: string; message: string } | null;
 		moreError?: { code: string; message: string } | null;
-		lookups: Lookups;
 		locale?: string;
 		/** labels of the active filters, for the "nothing matches" state */
 		activeFilters?: readonly string[];
 		/** a row was chosen: show the document */
 		onopen: (id: number) => void;
-		/** the carrying transaction was chosen: open it in the review panel */
-		onopencarrier: (entryId: number, origin: HTMLElement) => void;
 		onclearfilters?: () => void;
 		onretry?: () => void;
 		onloadmore?: () => void | Promise<void>;
@@ -157,10 +150,9 @@
 							/>
 						</div>
 						<div role="gridcell" class="min-w-0">
-							{#if document.carrier}
-								<CarrierLink carrier={document.carrier} {lookups} {locale} onopen={onopencarrier} />
-							{:else}
-								<span class="text-muted-foreground">Not linked</span>
+							{#if document.carrier_count > 0}
+								{formatCount(document.carrier_count, locale)}
+								{document.carrier_count === 1 ? 'transaction' : 'transactions'}
 							{/if}
 						</div>
 					</div>

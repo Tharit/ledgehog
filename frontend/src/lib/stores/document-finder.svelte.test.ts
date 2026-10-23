@@ -35,7 +35,7 @@ describe('DocumentFinder', () => {
 		await settle();
 
 		expect(listDocuments).toHaveBeenCalledWith(
-			{ provider: ['amazon'], q: '', linked: false },
+			{ provider: ['amazon'], q: '', fully_charged: false },
 			expect.objectContaining({ limit: FINDER_LIMIT })
 		);
 		expect(finder.status).toBe('ready');

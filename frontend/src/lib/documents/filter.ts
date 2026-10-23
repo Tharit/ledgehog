@@ -45,7 +45,8 @@ export function normalizeDocumentFilter(filter: DocumentFilter): DocumentFilter 
 		amount_max,
 		currency,
 		q: text,
-		linked: typeof filter.linked === 'boolean' ? filter.linked : undefined
+		linked: typeof filter.linked === 'boolean' ? filter.linked : undefined,
+		fully_charged: typeof filter.fully_charged === 'boolean' ? filter.fully_charged : undefined
 	};
 }
 
@@ -74,6 +75,7 @@ export function documentFilterFromParams(input: URLSearchParams | string): Docum
 	const params = typeof input === 'string' ? new URLSearchParams(input) : input;
 	const first = (name: string) => params.get(name) ?? undefined;
 	const linked = first('linked');
+	const charged = first('fully_charged');
 	return normalizeDocumentFilter({
 		provider: params.getAll('provider'),
 		from: first('from'),
@@ -82,7 +84,8 @@ export function documentFilterFromParams(input: URLSearchParams | string): Docum
 		amount_max: integer(first('amount_max')),
 		currency: first('currency'),
 		q: first('q') ?? '',
-		linked: linked === 'true' ? true : linked === 'false' ? false : undefined
+		linked: linked === 'true' ? true : linked === 'false' ? false : undefined,
+		fully_charged: charged === 'true' ? true : charged === 'false' ? false : undefined
 	});
 }
 
@@ -91,7 +94,7 @@ export function isEmptyDocumentFilter(filter: DocumentFilter): boolean {
 	return documentFilterKey(filter) === '';
 }
 
-export type DocumentFilterKey = 'provider' | 'date' | 'amount' | 'linked' | 'text';
+export type DocumentFilterKey = 'provider' | 'date' | 'amount' | 'linked' | 'charged' | 'text';
 export type DocumentFilterPart = { key: DocumentFilterKey; label: string };
 
 /** The active parts of a filter in words, in a fixed order: the chip labels and the empty state. */
@@ -123,6 +126,8 @@ export function describeDocumentFilter(
 
 	if (filter.linked === false) add('linked', 'Not linked');
 	else if (filter.linked === true) add('linked', 'Linked');
+	if (filter.fully_charged === false) add('charged', 'Not fully charged');
+	else if (filter.fully_charged === true) add('charged', 'Fully charged');
 	if (filter.q) add('text', `“${filter.q}”`);
 	return parts;
 }

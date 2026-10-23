@@ -40,7 +40,13 @@ afterEach(() => {
 describe('DocumentsFilterBar', () => {
 	it('shows the dimension names while nothing is filtered', () => {
 		bar();
-		for (const name of ['All providers', 'Any date', 'Amount', 'Any link state']) {
+		for (const name of [
+			'All providers',
+			'Any date',
+			'Amount',
+			'Any link state',
+			'Any charge state'
+		]) {
 			expect(screen.getByRole('button', { name })).toBeInTheDocument();
 		}
 		expect(screen.queryByRole('button', { name: 'Clear' })).toBeNull();
@@ -52,12 +58,14 @@ describe('DocumentsFilterBar', () => {
 			from: '2026-10-01',
 			to: '2026-10-11',
 			linked: false,
+			fully_charged: false,
 			amount_min: 5000,
 			currency: 'EUR'
 		});
 		expect(screen.getByRole('button', { name: 'amazon' })).toBeInTheDocument();
 		expect(screen.getByRole('button', { name: 'Oct 1 – Oct 11' })).toBeInTheDocument();
 		expect(screen.getByRole('button', { name: 'Not linked' })).toBeInTheDocument();
+		expect(screen.getByRole('button', { name: 'Not fully charged' })).toBeInTheDocument();
 		expect(screen.getByRole('button', { name: '≥ 50.00 EUR' })).toBeInTheDocument();
 	});
 
@@ -76,6 +84,18 @@ describe('DocumentsFilterBar', () => {
 
 		await rerender({ filter: { ...emptyDocumentFilter(), linked: false } });
 		await fireEvent.click(screen.getByRole('button', { name: 'Not linked' }));
+		await fireEvent.click(await screen.findByRole('radio', { name: 'Any' }));
+		expect(onchange).toHaveBeenLastCalledWith(emptyDocumentFilter());
+	});
+
+	it('filters to documents that are not fully charged, and back to any', async () => {
+		const { onchange, rerender } = bar();
+		await fireEvent.click(screen.getByRole('button', { name: 'Any charge state' }));
+		await fireEvent.click(await screen.findByRole('radio', { name: 'Not fully charged' }));
+		expect(onchange).toHaveBeenLastCalledWith({ ...emptyDocumentFilter(), fully_charged: false });
+
+		await rerender({ filter: { ...emptyDocumentFilter(), fully_charged: false } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Not fully charged' }));
 		await fireEvent.click(await screen.findByRole('radio', { name: 'Any' }));
 		expect(onchange).toHaveBeenLastCalledWith(emptyDocumentFilter());
 	});

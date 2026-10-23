@@ -22,7 +22,8 @@ class DocumentFilter:
     amount_max: int | None = None
     currency: str | None = None
     text: str | None = None  # merchant name, title or a line's description
-    linked: bool | None = None  # True: carried by an entry; False: carried by none; None: either
+    linked: bool | None = None  # True: carried by a transaction; False: carried by none; None: either
+    fully_charged: bool | None = None  # its carriers' amounts reach its total (by magnitude); None: either
 
     def __post_init__(self) -> None:
         if any(not 1 <= len(p) <= MAX_TEXT for p in self.providers):

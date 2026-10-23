@@ -1,5 +1,5 @@
 // Finding a document by hand for the panel's document field (spec §5.8; documents view): the
-// documents of one provider that no entry carries, searched by text. A short list for a popover,
+// documents of one provider not yet fully charged, searched by text. A short list for a popover,
 // not a page: the newest first, `total` says when more exist. The latest search wins.
 import { ApiError, listDocuments } from '#lib/api/index.js';
 import type { DocumentRow } from '#lib/types/domain.js';
@@ -21,7 +21,7 @@ export class DocumentFinder {
 	#controller: AbortController | null = null;
 	#generation = 0;
 
-	/** Search `provider`'s unlinked documents for `text`; `immediate` skips the typing delay. */
+	/** Search `provider`'s documents not fully charged for `text`; `immediate` skips the typing delay. */
 	search(provider: string, text: string, immediate = false): void {
 		this.#cancel();
 		this.status = 'loading';
@@ -36,7 +36,7 @@ export class DocumentFinder {
 		this.#controller = controller;
 		try {
 			const page = await listDocuments(
-				{ provider: [provider], q: text.trim(), linked: false },
+				{ provider: [provider], q: text.trim(), fully_charged: false },
 				{ limit: FINDER_LIMIT, signal: controller.signal }
 			);
 			if (generation !== this.#generation) return;

@@ -86,11 +86,9 @@
 		loadingMore={documents.loadingMore}
 		error={documents.error}
 		moreError={documents.moreError}
-		lookups={documents.lookups}
 		locale={documents.locale}
 		activeFilters={documents.activeFilters}
 		onopen={(id) => goto(`/documents/${id}`)}
-		onopencarrier={(entryId, origin) => unitPanel.open(entryId, origin)}
 		onclearfilters={() => show(emptyDocumentFilter())}
 		onretry={() => documents.reload()}
 		onloadmore={() => documents.loadMore()}

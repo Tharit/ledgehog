@@ -24,18 +24,19 @@ describe('documents filter URL', () => {
 			amount_max: 900,
 			currency: 'EUR',
 			q: 'rewe',
-			linked: false
+			linked: false,
+			fully_charged: false
 		};
 		const query = documentSearchParams(filter).toString();
 		expect(query).toBe(
-			'provider=amazon&provider=paypal&from=2026-10-01&to=2026-10-31&amount_min=100&amount_max=900&currency=EUR&q=rewe&linked=false'
+			'provider=amazon&provider=paypal&from=2026-10-01&to=2026-10-31&amount_min=100&amount_max=900&currency=EUR&q=rewe&linked=false&fully_charged=false'
 		);
 		expect(documentFilterFromParams(query)).toEqual({ ...filter, provider: ['amazon', 'paypal'] });
 	});
 
 	it('ignores what it cannot understand', () => {
 		const filter = documentFilterFromParams(
-			'from=2026-02-30&to=nope&amount_min=-4&amount_max=x&currency=EUR&linked=maybe&provider=%20'
+			'from=2026-02-30&to=nope&amount_min=-4&amount_max=x&currency=EUR&linked=maybe&fully_charged=maybe&provider=%20'
 		);
 		expect(filter).toEqual({
 			provider: [],
@@ -45,7 +46,8 @@ describe('documents filter URL', () => {
 			amount_max: undefined,
 			currency: 'EUR',
 			q: '',
-			linked: undefined
+			linked: undefined,
+			fully_charged: undefined
 		});
 	});
 
@@ -80,6 +82,11 @@ describe('documents filter URL', () => {
 	it('reads linked=true as well as false', () => {
 		expect(documentFilterFromParams('linked=true').linked).toBe(true);
 	});
+
+	it('reads fully_charged both ways', () => {
+		expect(documentFilterFromParams('fully_charged=true').fully_charged).toBe(true);
+		expect(documentFilterFromParams('fully_charged=false').fully_charged).toBe(false);
+	});
 });
 
 describe('describeDocumentFilter', () => {
@@ -90,14 +97,23 @@ describe('describeDocumentFilter', () => {
 				from: '2026-10-01',
 				q: 'rewe',
 				linked: false,
+				fully_charged: false,
 				currency: 'EUR',
 				amount_min: 1000
 			},
 			'en'
 		);
-		expect(parts.map((p) => p.key)).toEqual(['provider', 'date', 'amount', 'linked', 'text']);
+		expect(parts.map((p) => p.key)).toEqual([
+			'provider',
+			'date',
+			'amount',
+			'linked',
+			'charged',
+			'text'
+		]);
 		expect(parts[0].label).toBe('amazon');
 		expect(parts[3].label).toBe('Not linked');
+		expect(parts[4].label).toBe('Not fully charged');
 	});
 
 	it('says nothing for an empty filter', () => {

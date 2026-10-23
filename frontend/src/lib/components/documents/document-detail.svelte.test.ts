@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
-import { documentDetail, documentMatch } from '#lib/documents/fixtures.js';
+import { documentCarrier, documentDetail, documentMatch } from '#lib/documents/fixtures.js';
 import { account, payee } from '#lib/ledger/fixtures.js';
 import { buildLookups } from '#lib/ledger/lookups.js';
 import type { DocumentDetail } from '#lib/types/domain.js';
@@ -39,24 +39,91 @@ describe('DocumentDetail', () => {
 		expect(screen.queryByRole('table')).toBeNull();
 	});
 
-	it('names the carrying transaction of a linked document, which opens the panel', async () => {
+	it('lists every carrying transaction with its own amount, each opening the panel', async () => {
 		const { onopencarrier } = view(
 			documentDetail({
-				carrier: {
-					entry_id: 40,
-					source_transaction_id: 400,
-					account_id: 2,
-					booked_on: '2026-10-09',
-					amount: { amount: -4731, currency: 'EUR' }
-				}
+				fully_charged: true,
+				carriers: [
+					documentCarrier({
+						entry_id: 40,
+						account_id: 2,
+						amount: { amount: -3000, currency: 'EUR' }
+					}),
+					documentCarrier({
+						entry_id: 41,
+						account_id: 1,
+						booked_on: '2026-10-12',
+						amount: { amount: -1731, currency: 'EUR' }
+					})
+				]
 			})
 		);
+		const list = screen.getByRole('list', { name: 'Carrying transactions' });
+		expect(within(list).getAllByRole('listitem')).toHaveLength(2);
+		expect(within(list).getByText(/−30\.00/)).toBeInTheDocument();
+		expect(within(list).getByText(/−17\.31/)).toBeInTheDocument();
 		await fireEvent.click(screen.getByRole('button', { name: /Cash/ }));
 		expect(onopencarrier).toHaveBeenCalledWith(40, expect.any(HTMLElement));
-		expect(screen.queryByText('Transactions it would match')).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: /Giro/ }));
+		expect(onopencarrier).toHaveBeenLastCalledWith(41, expect.any(HTMLElement));
 	});
 
-	it('lists the transactions an unlinked document would match, with their state', () => {
+	it('lists no matches once the document is fully charged', () => {
+		view(documentDetail({ fully_charged: true, carriers: [documentCarrier()] }));
+		expect(screen.queryByText('Transactions it would match')).toBeNull();
+		expect(screen.queryByText('No transaction would match this document')).toBeNull();
+	});
+
+	it('lists the matches of a partly charged document next to its carriers', () => {
+		view(
+			documentDetail({
+				carriers: [documentCarrier()],
+				matches: [documentMatch({ entry_id: 41 })]
+			})
+		);
+		expect(screen.getByRole('list', { name: 'Carrying transactions' })).toBeInTheDocument();
+		expect(screen.getByRole('list', { name: 'Matching transactions' })).toBeInTheDocument();
+	});
+
+	it('shows each line category and rationale, muted where there is none', () => {
+		view(
+			documentDetail({
+				lines: [
+					{
+						line_no: 1,
+						description: 'USB cable',
+						amount: { amount: -1500, currency: 'EUR' },
+						qty: 2,
+						category: { id: 3, name: 'Electronics' },
+						rationale: 'A cable'
+					},
+					{
+						line_no: 2,
+						description: 'Gift',
+						amount: { amount: -500, currency: 'EUR' },
+						qty: null,
+						category: null,
+						rationale: 'Would fit presents'
+					},
+					{
+						line_no: 3,
+						description: 'Book',
+						amount: { amount: -3231, currency: 'EUR' },
+						qty: null,
+						category: null,
+						rationale: null
+					}
+				]
+			})
+		);
+		const table = screen.getByRole('table');
+		expect(within(table).getByText('Electronics')).toBeInTheDocument();
+		expect(within(table).getByText('A cable')).toBeInTheDocument();
+		expect(within(table).getByText('Would fit presents')).toBeInTheDocument();
+		expect(within(table).getByText('No category yet')).toHaveClass('text-muted-foreground');
+	});
+
+	it('lists the transactions a document not fully charged would match, with their state', () => {
 		view(
 			documentDetail({
 				matches: [
@@ -83,7 +150,7 @@ describe('DocumentDetail', () => {
 		expect(onpickmatch).toHaveBeenCalledWith(41, 7, expect.any(HTMLElement));
 	});
 
-	it('explains an unlinked document nothing would match', () => {
+	it('explains a document nothing would match', () => {
 		view(documentDetail({ matches: [] }));
 		expect(screen.getByText('No transaction would match this document')).toBeInTheDocument();
 	});

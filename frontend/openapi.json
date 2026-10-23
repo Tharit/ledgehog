@@ -1529,19 +1529,24 @@
       },
       "DocumentDetailOut": {
         "properties": {
-          "carrier": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/CarrierOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
+          "carrier_count": {
+            "title": "Carrier Count",
+            "type": "integer"
+          },
+          "carriers": {
+            "items": {
+              "$ref": "#/components/schemas/CarrierOut"
+            },
+            "title": "Carriers",
+            "type": "array"
           },
           "external_id": {
             "title": "External Id",
             "type": "string"
+          },
+          "fully_charged": {
+            "title": "Fully Charged",
+            "type": "boolean"
           },
           "id": {
             "title": "Id",
@@ -1626,8 +1631,10 @@
           "merchant_name",
           "title",
           "line_count",
-          "carrier",
+          "carrier_count",
           "lines",
+          "carriers",
+          "fully_charged",
           "matches"
         ],
         "title": "DocumentDetailOut",
@@ -1637,6 +1644,16 @@
         "properties": {
           "amount": {
             "$ref": "#/components/schemas/Money"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LineCategoryOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "description": {
             "title": "Description",
@@ -1656,13 +1673,26 @@
               }
             ],
             "title": "Qty"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale"
           }
         },
         "required": [
           "line_no",
           "description",
           "amount",
-          "qty"
+          "qty",
+          "category",
+          "rationale"
         ],
         "title": "DocumentLineOut",
         "type": "object"
@@ -1755,15 +1785,9 @@
       },
       "DocumentOut": {
         "properties": {
-          "carrier": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/CarrierOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
+          "carrier_count": {
+            "title": "Carrier Count",
+            "type": "integer"
           },
           "external_id": {
             "title": "External Id",
@@ -1838,7 +1862,7 @@
           "merchant_name",
           "title",
           "line_count",
-          "carrier"
+          "carrier_count"
         ],
         "title": "DocumentOut",
         "type": "object"
@@ -2560,6 +2584,24 @@
           "net_worth"
         ],
         "title": "KindNetWorthOut",
+        "type": "object"
+      },
+      "LineCategoryOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "LineCategoryOut",
         "type": "object"
       },
       "LineOut": {
@@ -9346,6 +9388,22 @@
           },
           {
             "in": "query",
+            "name": "fully_charged",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Fully Charged"
+            }
+          },
+          {
+            "in": "query",
             "name": "limit",
             "required": false,
             "schema": {
@@ -9451,7 +9509,7 @@
     },
     "/api/documents/{document_id}": {
       "get": {
-        "description": "A document with its lines and, when no entry carries it, the transactions it would match.",
+        "description": "A document with its lines, its carriers and, while it is not fully charged, the transactions it would\nmatch.",
         "operationId": "get_document_view",
         "parameters": [
           {

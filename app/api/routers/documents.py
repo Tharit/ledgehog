@@ -2,7 +2,7 @@
 
 Reads: no lock, no write, no settle. A document is linked only through a unit's commit. Money travels as
 `{"amount": <integer minor units>, "currency": <code>}`; a refund document is positive. The review
-panel's pick by hand reuses the list with the `provider` and `linked=false` filters.
+panel's pick by hand reuses the list with the `provider` and `fully_charged=false` filters.
 """
 
 from __future__ import annotations
@@ -73,7 +73,7 @@ class DocumentOut(BaseModel):
     merchant_name: str | None
     title: str | None
     line_count: int
-    carrier: CarrierOut | None  # null: carried by no entry
+    carrier_count: int  # the transactions carrying it
 
     @staticmethod
     def of(r: DocumentRow) -> DocumentOut:
@@ -88,7 +88,7 @@ class DocumentOut(BaseModel):
             merchant_name=r.merchant_name,
             title=r.title,
             line_count=r.line_count,
-            carrier=None if r.carrier is None else CarrierOut.of(r.carrier),
+            carrier_count=r.carrier_count,
         )
 
 
@@ -99,11 +99,18 @@ class DocumentPageOut(BaseModel):
     offset: int
 
 
+class LineCategoryOut(BaseModel):
+    id: int
+    name: str
+
+
 class DocumentLineOut(BaseModel):
     line_no: int
     description: str
     amount: Money  # in the document's currency, signed like the total
     qty: int | None
+    category: LineCategoryOut | None  # the model's answer; null until it has answered (or said none fits)
+    rationale: str | None  # the answer's, also where no category fits; null where there is no answer
 
     @staticmethod
     def of(line: DocumentLine, currency: str) -> DocumentLineOut:
@@ -112,6 +119,10 @@ class DocumentLineOut(BaseModel):
             description=line.description,
             amount=Money(amount=line.amount, currency=currency),
             qty=line.qty,
+            category=None
+            if line.category_id is None or line.category_name is None
+            else LineCategoryOut(id=line.category_id, name=line.category_name),
+            rationale=line.rationale,
         )
 
 
@@ -152,7 +163,9 @@ class DocumentMatchOut(BaseModel):
 
 class DocumentDetailOut(DocumentOut):
     lines: list[DocumentLineOut]
-    matches: list[DocumentMatchOut]  # for a document carried by no entry; empty otherwise
+    carriers: list[CarrierOut]  # by entry id
+    fully_charged: bool  # the carriers' amounts reach the total: then there are no matches
+    matches: list[DocumentMatchOut]  # while the document is not fully charged; empty once it is
 
     @staticmethod
     def detail(d: DocumentDetail) -> DocumentDetailOut:
@@ -160,6 +173,8 @@ class DocumentDetailOut(DocumentOut):
         return DocumentDetailOut(
             **base.model_dump(),
             lines=[DocumentLineOut.of(line, d.document.currency) for line in d.lines],
+            carriers=[CarrierOut.of(c) for c in d.carriers],
+            fully_charged=d.fully_charged,
             matches=[DocumentMatchOut.of(m) for m in d.matches],
         )
 
@@ -187,6 +202,7 @@ def list_documents_view(
     currency: CurrencyCode | None = None,
     q: SearchText | None = None,
     linked: bool | None = None,
+    fully_charged: bool | None = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     offset: Annotated[int, Query(ge=0, le=MAX_ID)] = 0,
 ) -> DocumentPageOut:
@@ -199,6 +215,7 @@ def list_documents_view(
         currency=currency,
         text=q,
         linked=linked,
+        fully_charged=fully_charged,
     )
     with engine.connect() as conn:
         page = list_documents(conn, flt, limit=limit, offset=offset)
@@ -221,7 +238,8 @@ map_error(DocumentMissing, 404, "not_found")
 
 @router.get("/{document_id}")
 def get_document_view(document_id: PathId, user: CurrentUser, engine: EngineDep) -> DocumentDetailOut:
-    """A document with its lines and, when no entry carries it, the transactions it would match."""
+    """A document with its lines, its carriers and, while it is not fully charged, the transactions it would
+    match."""
     with engine.connect() as conn:
         found = get_document(conn, document_id)
     if found is None:

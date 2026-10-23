@@ -1,5 +1,10 @@
 // Test fixtures for documents: whole API objects with sensible defaults.
-import type { DocumentDetail, DocumentMatch, DocumentRow } from '#lib/types/domain.js';
+import type {
+	DocumentCarrier,
+	DocumentDetail,
+	DocumentMatch,
+	DocumentRow
+} from '#lib/types/domain.js';
 
 export function documentRow(over: Partial<DocumentRow> = {}): DocumentRow {
 	return {
@@ -13,7 +18,7 @@ export function documentRow(over: Partial<DocumentRow> = {}): DocumentRow {
 		merchant_name: 'Amazon',
 		title: 'Order 304-1',
 		line_count: 2,
-		carrier: null,
+		carrier_count: 0,
 		...over
 	};
 }
@@ -38,10 +43,37 @@ export function documentDetail(over: Partial<DocumentDetail> = {}): DocumentDeta
 	return {
 		...documentRow(),
 		lines: [
-			{ line_no: 1, description: 'USB cable', amount: { amount: -1500, currency: 'EUR' }, qty: 2 },
-			{ line_no: 2, description: 'Book', amount: { amount: -3231, currency: 'EUR' }, qty: null }
+			{
+				line_no: 1,
+				description: 'USB cable',
+				amount: { amount: -1500, currency: 'EUR' },
+				qty: 2,
+				category: null,
+				rationale: null
+			},
+			{
+				line_no: 2,
+				description: 'Book',
+				amount: { amount: -3231, currency: 'EUR' },
+				qty: null,
+				category: null,
+				rationale: null
+			}
 		],
+		carriers: [],
+		fully_charged: false,
 		matches: [],
+		...over
+	};
+}
+
+export function documentCarrier(over: Partial<DocumentCarrier> = {}): DocumentCarrier {
+	return {
+		entry_id: 40,
+		source_transaction_id: 400,
+		account_id: 1,
+		booked_on: '2026-10-09',
+		amount: { amount: -4731, currency: 'EUR' },
 		...over
 	};
 }

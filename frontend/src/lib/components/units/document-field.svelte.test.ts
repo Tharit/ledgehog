@@ -181,7 +181,7 @@ describe('the document field', () => {
 		const found = await within(list).findByRole('option', { name: /Order 21/ });
 
 		expect(listDocuments).toHaveBeenCalledWith(
-			{ provider: ['amazon'], q: '', linked: false },
+			{ provider: ['amazon'], q: '', fully_charged: false },
 			expect.anything()
 		);
 		await fireEvent.click(found);

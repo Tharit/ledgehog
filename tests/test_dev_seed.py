@@ -390,7 +390,7 @@ def test_the_confirmed_charges_document_is_a_reverse_match_and_the_list_shows_th
         page = list_documents(conn, DocumentFilter(), limit=100, offset=0)
         by_id = {d.external_id: d for d in page.documents}
         assert page.total == len(dev_seed_data.DOC_SCENARIOS) == len(by_id)
-        free = {d.external_id for d in page.documents if d.carrier is None}
+        free = {d.external_id for d in page.documents if d.carrier_count == 0}
         assert free == {"PP-1003", "PP-1004", "PP-1007", "PP-1008", "AZ-2001"}
         unlinked_paypal = list_documents(
             conn, DocumentFilter(providers=("paypal",), linked=False), limit=100, offset=0

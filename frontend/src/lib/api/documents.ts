@@ -18,7 +18,8 @@ export function documentQuery(filter: DocumentFilter): Query {
 		amount_max: filter.amount_max,
 		currency: filter.currency,
 		q: text === '' ? undefined : text,
-		linked: filter.linked
+		linked: filter.linked,
+		fully_charged: filter.fully_charged
 	};
 }
 
@@ -41,7 +42,7 @@ export async function listDocumentProviders(signal?: AbortSignal): Promise<strin
 	return out.providers;
 }
 
-/** One document with its lines and, when no entry carries it, the transactions it would match. */
+/** One document with its lines its carriers and, while it is not fully charged, the transactions it would match. */
 export function getDocument(id: number, signal?: AbortSignal): Promise<DocumentDetail> {
 	return request('GET', `/api/documents/${id}`, { signal });
 }

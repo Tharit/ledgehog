@@ -161,7 +161,8 @@ export type EntryFilter = {
 /**
  * The documents filter, in the API's own parameter names. Providers are OR, the rest AND. Amounts
  * are magnitudes in minor units of `currency` (which an amount bound requires); `linked: false`
- * is "not linked" (carried by no entry).
+ * is "not linked" (carried by no transaction); `fully_charged: false` is "not fully charged" (the
+ * carriers' amounts fall short of the total, carried by none included).
  */
 export type DocumentFilter = {
 	provider: string[];
@@ -174,4 +175,5 @@ export type DocumentFilter = {
 	currency?: string;
 	q: string;
 	linked?: boolean;
+	fully_charged?: boolean;
 };

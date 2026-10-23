@@ -92,7 +92,8 @@ export interface paths {
         };
         /**
          * Get Document View
-         * @description A document with its lines and, when no entry carries it, the transactions it would match.
+         * @description A document with its lines, its carriers and, while it is not fully charged, the transactions it would
+         *     match.
          */
         get: operations["get_document_view"];
         put?: never;
@@ -1716,9 +1717,14 @@ export interface components {
         };
         /** DocumentDetailOut */
         DocumentDetailOut: {
-            carrier: components["schemas"]["CarrierOut"] | null;
+            /** Carrier Count */
+            carrier_count: number;
+            /** Carriers */
+            carriers: components["schemas"]["CarrierOut"][];
             /** External Id */
             external_id: string;
+            /** Fully Charged */
+            fully_charged: boolean;
             /** Id */
             id: number;
             /** Importer Instance Id */
@@ -1747,12 +1753,15 @@ export interface components {
         /** DocumentLineOut */
         DocumentLineOut: {
             amount: components["schemas"]["Money"];
+            category: components["schemas"]["LineCategoryOut"] | null;
             /** Description */
             description: string;
             /** Line No */
             line_no: number;
             /** Qty */
             qty: number | null;
+            /** Rationale */
+            rationale: string | null;
         };
         /**
          * DocumentMatchOut
@@ -1783,7 +1792,8 @@ export interface components {
         };
         /** DocumentOut */
         DocumentOut: {
-            carrier: components["schemas"]["CarrierOut"] | null;
+            /** Carrier Count */
+            carrier_count: number;
             /** External Id */
             external_id: string;
             /** Id */
@@ -2029,6 +2039,13 @@ export interface components {
             kind: "checking" | "savings" | "card" | "cash" | "digital_wallet" | "depot" | "loan" | "asset";
             /** Net Worth */
             net_worth: components["schemas"]["PointNetWorthOut"][];
+        };
+        /** LineCategoryOut */
+        LineCategoryOut: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
         };
         /** LineOut */
         LineOut: {
@@ -4191,6 +4208,7 @@ export interface operations {
                 currency?: string | null;
                 q?: string | null;
                 linked?: boolean | null;
+                fully_charged?: boolean | null;
                 limit?: number;
                 offset?: number;
             };

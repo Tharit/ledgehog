@@ -154,7 +154,7 @@ export class DocumentsStore {
 	}
 }
 
-/** One document's page: the document with its lines and, when unlinked, the matches. */
+/** One document's page: the document with its lines its carriers and, while not fully charged, the matches. */
 export class DocumentDetailStore {
 	status = $state<DocumentsStatus>('loading');
 	document = $state.raw<DocumentDetail | null>(null);
