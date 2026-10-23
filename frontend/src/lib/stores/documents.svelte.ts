@@ -7,7 +7,8 @@ import {
 	describeDocumentFilter,
 	documentFilterKey,
 	emptyDocumentFilter,
-	normalizeDocumentFilter
+	normalizeDocumentFilter,
+	uniqueProviders
 } from '#lib/documents/filter.js';
 import type { Lookups } from '#lib/ledger/lookups.js';
 import type { DocumentDetail, DocumentFilter, DocumentRow } from '#lib/types/domain.js';
@@ -65,9 +66,7 @@ export class DocumentsStore {
 	);
 	/** the providers of the registered document importers, plus any chosen in the URL: what the provider chip offers */
 	get providers(): string[] {
-		return [...this.#providers.providers, ...this.filter.provider]
-			.filter((provider, i, all) => all.indexOf(provider) === i)
-			.sort();
+		return uniqueProviders([...this.#providers.providers, ...this.filter.provider]).sort();
 	}
 
 	#controller: AbortController | null = null;

@@ -79,6 +79,15 @@ describe('documents filter URL', () => {
 		);
 	});
 
+	it('keeps a provider once whatever its case, with the first spelling', () => {
+		expect(
+			normalizeDocumentFilter({
+				...emptyDocumentFilter(),
+				provider: ['Amazon', 'amazon', 'PayPal']
+			}).provider
+		).toEqual(['Amazon', 'PayPal']);
+	});
+
 	it('reads linked=true as well as false', () => {
 		expect(documentFilterFromParams('linked=true').linked).toBe(true);
 	});

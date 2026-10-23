@@ -266,6 +266,11 @@ _MEMO: ContextVar[dict[Any, Any] | None] = ContextVar("candidacy_memo", default=
 
 @contextmanager
 def candidacy_memo() -> Iterator[None]:
+    """Keep the matching for the block (a settle, or one read that binds the units several times). Entered
+    inside an open memo it joins it, so a read inside a settle keeps the settle's invalidation."""
+    if _MEMO.get() is not None:
+        yield
+        return
     token = _MEMO.set({})
     try:
         yield

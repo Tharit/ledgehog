@@ -233,6 +233,15 @@ def test_a_document_of_another_provider_than_the_payees_is_refused(scene: Scene,
     ]
 
 
+def test_a_document_of_the_payees_provider_in_another_case_is_accepted(scene: Scene, docs: Docs) -> None:
+    entry = docs.charge()
+    scene.settle()
+    doc = docs.document(provider="PayPal", total=-1000)  # the payee's provider is "paypal" (spec §3.6)
+    plan, _ = preview_then_commit(scene, scene.draft(entry, pick(entry, scene, doc)))
+    assert plan.problems == ()
+    assert scene.row(entry).document_id == doc
+
+
 def test_a_document_at_another_version_than_the_client_saw_is_changed(scene: Scene, docs: Docs) -> None:
     entry = docs.charge()
     doc = docs.document(total=-1000)

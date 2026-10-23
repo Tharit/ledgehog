@@ -323,7 +323,7 @@ def merge_payee(
             condition_rule_ids=tuple(sorted(condition)),
             source_document_provider=source.document_provider,
             document_provider_lost=source.document_provider is not None
-            and source.document_provider != target.document_provider,
+            and source.document_provider.lower() != (target.document_provider or "").lower(),
         )
 
     result = retry_on_deadlock(lambda: previewable(engine, dry_run, work))

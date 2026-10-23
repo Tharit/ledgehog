@@ -243,6 +243,8 @@ def test_provider_warning_only_when_something_is_lost(anna: TestClient, api_engi
     assert merge(anna, c, a, dry_run=True).json()["document_provider_lost"] is False  # source has none
     assert merge(anna, a, c, dry_run=True).json()["document_provider_lost"] is True  # target has none
     assert merge(anna, a, d, dry_run=True).json()["document_provider_lost"] is True  # a different one
+    e = make(anna, "E", document_provider="PayPal")["id"]
+    assert merge(anna, a, e, dry_run=True).json()["document_provider_lost"] is False  # same, in another case
 
 
 def test_merge_repoints_entries_and_rules_under_the_settling_flag(

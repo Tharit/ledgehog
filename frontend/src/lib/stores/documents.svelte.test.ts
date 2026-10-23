@@ -115,6 +115,16 @@ describe('DocumentsStore', () => {
 		store.applyFilter({ ...emptyDocumentFilter(), provider: ['zalando', 'amazon'] });
 		expect(store.providers).toEqual(['amazon', 'paypal', 'zalando']);
 	});
+
+	it('offers a provider once whatever its case, keeping the first spelling', async () => {
+		const { listDocumentProviders } = await import('#lib/api/index.js');
+		vi.mocked(listDocumentProviders).mockResolvedValue(['amazon', 'paypal']);
+		vi.mocked(listDocuments).mockResolvedValue(page([], 0));
+		const store = new DocumentsStore(new LookupsStore(), new DocumentProvidersStore());
+		await store.loadProviders();
+		store.applyFilter({ ...emptyDocumentFilter(), provider: ['Amazon'] });
+		expect(store.providers).toEqual(['amazon', 'paypal']);
+	});
 });
 
 describe('DocumentDetailStore', () => {

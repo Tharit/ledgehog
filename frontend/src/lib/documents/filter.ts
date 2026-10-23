@@ -15,6 +15,17 @@ function cleanBound(value: unknown): number | undefined {
 }
 
 /** The canonical form of a filter: invalid parts dropped, the rest ordered and deduplicated. */
+/** Provider names compare case-insensitively (spec §3.6): the first spelling of each is kept. */
+export function uniqueProviders(names: readonly string[]): string[] {
+	const seen = new Set<string>();
+	return names.filter((name) => {
+		const key = name.toLowerCase();
+		if (seen.has(key)) return false;
+		seen.add(key);
+		return true;
+	});
+}
+
 export function normalizeDocumentFilter(filter: DocumentFilter): DocumentFilter {
 	let from = isIsoDate(filter.from) ? filter.from : undefined;
 	let to = isIsoDate(filter.to) ? filter.to : undefined;
@@ -32,9 +43,9 @@ export function normalizeDocumentFilter(filter: DocumentFilter): DocumentFilter 
 		[amount_min, amount_max] = [amount_max, amount_min];
 	}
 
-	const providers = [
-		...new Set(filter.provider.map((p) => (typeof p === 'string' ? p.trim() : '')).filter(Boolean))
-	].sort();
+	const providers = uniqueProviders(
+		filter.provider.map((p) => (typeof p === 'string' ? p.trim() : '')).filter(Boolean)
+	).sort();
 	const text = typeof filter.q === 'string' ? filter.q.trim().slice(0, MAX_TEXT_LENGTH).trim() : '';
 
 	return {

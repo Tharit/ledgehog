@@ -26,6 +26,7 @@ from sqlalchemy import Connection, Row, text
 
 from app.core.ledger.entries import EntryRow, entries_by_ids
 from app.core.resolution.confirmed import charged_sql, units_binds, units_sql
+from app.core.resolution.doc_load import candidacy_memo
 from app.core.units.closure import UnitEntry
 from app.core.units.documents import OrderWait
 from app.core.units.lookup import unit_ids_of
@@ -360,13 +361,14 @@ def review_queue(
 ) -> ReviewQueue:
     """The first page of every section, or the page after `cursor` of one `section`."""
     wanted = SECTIONS if section is None else (section,)
-    built = tuple(
-        _section(conn, kind, limit=limit, cursor=cursor if section == kind else None) for kind in wanted
-    )
-    if section is None:
-        total = sum(s.total for s in built)
-    else:
-        total = int(conn.execute(_QUEUE_TOTAL, units_binds(conn)).scalar_one())
+    with candidacy_memo():  # one matching for every bind of this read
+        built = tuple(
+            _section(conn, kind, limit=limit, cursor=cursor if section == kind else None) for kind in wanted
+        )
+        if section is None:
+            total = sum(s.total for s in built)
+        else:
+            total = int(conn.execute(_QUEUE_TOTAL, units_binds(conn)).scalar_one())
     return ReviewQueue(sections=built, total=total)
 
 

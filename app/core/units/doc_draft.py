@@ -258,7 +258,7 @@ def _refused_picks(
         elif entry.document_id is None:
             payee = entry.payee_id
         provider = payee_providers.get(payee) if payee is not None else None
-        if provider is not None and provider != info.provider:
+        if provider is not None and provider.lower() != info.provider.lower():
             problems.append(
                 Problem(
                     "document_provider_mismatch",

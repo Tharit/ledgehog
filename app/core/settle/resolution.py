@@ -328,6 +328,11 @@ _LINES = text(
     """
     SELECT l.id, l.description, d.merchant_name, l.category_id, l.category_key
       FROM external_document_line AS l JOIN external_document AS d ON d.id = l.document_id
+     WHERE l.category_key IS NULL
+        OR l.category_key ->> 'pass' IS DISTINCT FROM 'llm'
+        OR jsonb_typeof(l.category_key -> 'basis') IS DISTINCT FROM 'object'
+        OR jsonb_typeof(l.category_key -> 'basis' -> 'fingerprint') IS DISTINCT FROM 'string'
+        OR (l.category_id IS NULL AND l.category_key -> 'basis' -> 'none' IS DISTINCT FROM 'true'::jsonb)
      ORDER BY l.id
     """
 )
@@ -336,7 +341,12 @@ _LINES = text(
 def _unanswered_lines(conn: Connection, queue: ModelQueue) -> list[Item]:
     """Every stored line with no answer for its payload: none stored, one whose category was deleted (a
     category and no `none`), or one made for another payload (spec §5.5, §5.9). The same set after a restart
-    as at ingest, so the list is refilled from the database alone."""
+    as at ingest, so the list is refilled from the database alone.
+
+    SQL keeps only the lines that may lack an answer (no key, not the model's, no stored fingerprint, or a
+    deleted category without `none`); a line holding a fingerprint is not hashed again: ingest drops an
+    answer whose payload changed (`ingest/documents.py: _drop_stale_answers`, and a replaced line takes an
+    answer only by the fingerprint of its new payload), so a stored fingerprint is the payload's."""
     out: list[Item] = []
     for r in conn.execute(_LINES):
         fingerprint = queue.line_fingerprint(r.merchant_name, r.description)
