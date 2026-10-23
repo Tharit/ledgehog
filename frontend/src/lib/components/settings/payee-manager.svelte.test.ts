@@ -275,16 +275,47 @@ describe('PayeeManager: add and edit', () => {
 		);
 	});
 
-	it('disables the provider choice with a hint when no document importer is set up', async () => {
+	it('accepts a provider no importer knows, typed and trimmed, without creating anything', async () => {
 		vi.mocked(listDocumentProviders).mockResolvedValue([]);
-		await setup();
+		vi.mocked(createPayee).mockResolvedValue(
+			written(rewe) as Awaited<ReturnType<typeof createPayee>>
+		);
+		await setup([]);
 
 		await fireEvent.click(headerAdd());
 		const dialog = await screen.findByRole('dialog', { name: 'Add payee' });
+		await fireEvent.input(within(dialog).getByLabelText('Name'), { target: { value: 'Shop' } });
 		const select = within(dialog).getByRole('button', { name: 'Document provider' });
 		await waitFor(() => expect(documentProvidersStore.loaded).toBe(true));
-		expect(select).toBeDisabled();
-		expect(within(dialog).getByText(/No document importer is set up/)).toBeInTheDocument();
+		expect(select).toBeEnabled();
+		await fireEvent.click(select);
+		await fireEvent.input(await screen.findByLabelText('Search document provider'), {
+			target: { value: '  ebay ' }
+		});
+		await fireEvent.click(await screen.findByRole('option', { name: 'Use “ebay”' }));
+		expect(select).toHaveTextContent('ebay');
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
+
+		await waitFor(() =>
+			expect(createPayee).toHaveBeenCalledWith({
+				name: 'Shop',
+				note: null,
+				document_provider: 'ebay'
+			})
+		);
+	});
+
+	it('suggests the known providers and offers no “use” for one that is known', async () => {
+		await setup([]);
+
+		await fireEvent.click(headerAdd());
+		const dialog = await screen.findByRole('dialog', { name: 'Add payee' });
+		await fireEvent.click(await providerSelect(dialog));
+		await fireEvent.input(await screen.findByLabelText('Search document provider'), {
+			target: { value: 'paypal' }
+		});
+		expect(await screen.findByRole('option', { name: 'paypal' })).toBeInTheDocument();
+		expect(screen.queryByRole('option', { name: /^Use/ })).toBeNull();
 	});
 
 	it('keeps listing a provider the payee holds when its importer is gone', async () => {
