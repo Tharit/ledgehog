@@ -98,7 +98,8 @@ class Config:
     locale: str
     max_rate_age_days: int
     matching_window_days: int
-    document_window_days: int
+    document_window_back_days: int
+    document_window_ahead_days: int
     users: tuple[UserConfig, ...]
     model: ModelConfig | None
     oidc: OidcConfig | None = None
@@ -294,7 +295,8 @@ class _Reader:
             locale=self.text("LOCALE", "en"),
             max_rate_age_days=self.integer("MAX_RATE_AGE_DAYS", 7, 0),
             matching_window_days=self.integer("MATCHING_WINDOW_DAYS", 7, 0),
-            document_window_days=self.integer("DOCUMENT_WINDOW_DAYS", 7, 0),
+            document_window_back_days=self.integer("DOCUMENT_WINDOW_BACK_DAYS", 60, 0),
+            document_window_ahead_days=self.integer("DOCUMENT_WINDOW_AHEAD_DAYS", 7, 0),
             users=self.users(password_optional=enforced),
             model=self.model(),
             oidc=self.oidc(enforced=enforced),

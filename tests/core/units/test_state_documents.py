@@ -17,8 +17,12 @@ from typing import Any
 import pytest
 from sqlalchemy import Connection, text
 
-from app.core.importers.providers import document_providers, reset_document_providers
-from app.core.matching.documents import DocInput, DocTxn
+from app.core.importers.providers import (
+    instance_deliveries,
+    register_document_importers,
+    reset_document_providers,
+)
+from app.core.matching.documents import DocInput, DocTxn, DocWindow, candidates
 from app.core.resolution.confirmed import units_binds, units_sql
 from app.core.settle.window import document_window
 from app.core.units.closure import UnitEntry, units_of
@@ -39,7 +43,7 @@ def _registry() -> Iterator[None]:
 
 
 def _sql(conn: Connection) -> dict[int, Any]:
-    rows = conn.execute(text(f"WITH units AS ({units_sql()}) SELECT * FROM units"), units_binds())
+    rows = conn.execute(text(f"WITH units AS ({units_sql()}) SELECT * FROM units"), units_binds(conn))
     return {r.id: r for r in rows}
 
 
@@ -66,6 +70,43 @@ def test_without_a_source_nothing_waits(db_conn: Connection, make_account: Any) 
     assert _sql(db_conn)[entry].unit_ok is True
 
 
+class _AnyProvider:
+    """A document importer that reads receipts of any provider: the instance's settings say which."""
+
+    emits = frozenset({"documents"})
+    providers: frozenset[str] = frozenset()
+
+    def delivers(self, settings: Any, provider: str) -> bool:
+        return provider.lower() in {p.lower() for p in settings.get("delivers", ())}
+
+    def validate_settings(self, settings: Any) -> None: ...
+
+    def default_fetch_start(self, settings: Any, *, today: date) -> date:
+        return today
+
+    def open(self, settings: Any, state: Any, prompter: Any, *, today: date) -> Any:
+        raise NotImplementedError
+
+
+def test_waiting_asks_each_instance_whether_it_delivers_the_provider(
+    db_conn: Connection, make_account: Any
+) -> None:
+    bench = Bench(db_conn, make_account)
+    register_document_importers({"mail": _AnyProvider()})
+    first = make_doc_source(db_conn, "mail", register=False)
+    second = make_doc_source(db_conn, "mail", register=False)
+    for instance, delivers in ((first, ["Amazon"]), (second, ["PAYPAL"])):
+        db_conn.execute(
+            text("UPDATE importer_instance SET settings = settings || CAST(:s AS jsonb) WHERE id = :i"),
+            {"s": json.dumps({"delivers": delivers}), "i": instance},
+        )
+    paypal = bench.flow(bench.source(), payee_id=make_payee(db_conn, "PayPal", "paypal"))
+    ebay = bench.flow(bench.source(), payee_id=make_payee(db_conn, "Ebay", "Ebay"))
+    sql = _sql(db_conn)
+    assert (sql[paypal].doc_awaited, sql[ebay].doc_awaited) == (True, False)  # the second instance only
+    assert instance_deliveries(db_conn) == {first: frozenset(), second: frozenset({"paypal"})}
+
+
 def test_a_document_key_closes_the_gate(db_conn: Connection, make_account: Any) -> None:
     bench = Bench(db_conn, make_account)
     make_doc_source(db_conn)
@@ -89,7 +130,7 @@ def test_only_the_original_entry_of_a_split_is_judged(db_conn: Connection, make_
 
 def test_covered_through_the_end_of_the_window_ends_the_wait(db_conn: Connection, make_account: Any) -> None:
     bench = Bench(db_conn, make_account)
-    window = document_window(db_conn)
+    window = document_window(db_conn).ahead
     make_doc_source(db_conn, covered_through=D + timedelta(days=window))
     entry = bench.flow(bench.source(), payee_id=make_payee(db_conn, "PayPal", "paypal"))
     assert _sql(db_conn)[entry].doc_awaited is False
@@ -97,7 +138,7 @@ def test_covered_through_the_end_of_the_window_ends_the_wait(db_conn: Connection
 
 def test_one_day_short_of_the_window_still_waits(db_conn: Connection, make_account: Any) -> None:
     bench = Bench(db_conn, make_account)
-    window = document_window(db_conn)
+    window = document_window(db_conn).ahead
     make_doc_source(db_conn, covered_through=D + timedelta(days=window - 1))
     entry = bench.flow(bench.source(), payee_id=make_payee(db_conn, "PayPal", "paypal"))
     assert _sql(db_conn)[entry].doc_awaited is True
@@ -105,7 +146,7 @@ def test_one_day_short_of_the_window_still_waits(db_conn: Connection, make_accou
 
 def test_every_instance_must_have_reached_it(db_conn: Connection, make_account: Any) -> None:
     bench = Bench(db_conn, make_account)
-    done = D + timedelta(days=document_window(db_conn))
+    done = D + timedelta(days=document_window(db_conn).ahead)
     make_doc_source(db_conn, "a", covered_through=done)
     make_doc_source(db_conn, "b", covered_through=done - timedelta(days=1))
     entry = bench.flow(bench.source(), payee_id=make_payee(db_conn, "PayPal", "paypal"))
@@ -163,7 +204,7 @@ def test_a_carried_document_is_no_candidate(db_conn: Connection, make_account: A
 
 def _build(conn: Connection, make_account: Any, rng: random.Random) -> None:
     bench = Bench(conn, make_account)
-    window = document_window(conn)
+    window = document_window(conn).ahead
     horizon = D + timedelta(days=window + 6)
     for i in range(rng.randint(0, 4)):
         make_doc_source(
@@ -224,7 +265,7 @@ def _build(conn: Connection, make_account: Any, rng: random.Random) -> None:
 
 def _python_facts(conn: Connection) -> tuple[dict[int, DocumentFacts], list[UnitEntry]]:
     window = document_window(conn)
-    providers = document_providers()
+    delivering = instance_deliveries(conn)
     entries = [
         UnitEntry(r.id, r.source_transaction_id, r.type, r.category_id, r.counterpart_entry_id, r.derivation)
         for r in conn.execute(
@@ -271,22 +312,20 @@ def _python_facts(conn: Connection) -> tuple[dict[int, DocumentFacts], list[Unit
     ]
     sources = [
         DocumentSource(
-            r.importer,
+            delivering.get(r.id, frozenset()),
             r.disabled,
             date.fromisoformat(r.settings["start_date"]) if "start_date" in r.settings else None,
             r.covered_through,
         )
         for r in conn.execute(
             text(
-                "SELECT i.importer, i.disabled, i.settings, c.covered_through FROM importer_instance AS i"
+                "SELECT i.id, i.disabled, i.settings, c.covered_through FROM importer_instance AS i"
                 "  LEFT JOIN v_document_coverage AS c ON c.importer_instance_id = i.id"
             )
         )
     ]
     facts = {
-        t.entry_id: document_facts(
-            t, others=others, documents=documents, sources=sources, providers=providers, window=window
-        )
+        t.entry_id: document_facts(t, others=others, documents=documents, sources=sources, window=window)
         for t in txns
     }
     return facts, entries
@@ -327,21 +366,54 @@ def test_the_matrix_covers_every_outcome(db_conn: Connection, make_account: Any)
 
 def test_awaited_is_pure_on_its_own() -> None:
     day = date(2026, 3, 10)
-    providers = {"a": frozenset({"paypal"})}
-    src = DocumentSource("a", covered_through=day)
-    assert awaited("paypal", day, 7, [src], providers) is True
+    window = DocWindow(60, 7)  # waiting runs to the ahead end only
+    paypal = frozenset({"paypal"})
+    src = DocumentSource(paypal, covered_through=day)
+    assert awaited("paypal", day, window, [src]) is True
+    assert awaited("PayPal", day, window, [src]) is True  # without regard to case
     assert (
-        awaited("paypal", day, 7, [DocumentSource("a", covered_through=day + timedelta(days=7))], providers)
+        awaited("paypal", day, window, [DocumentSource(paypal, covered_through=day + timedelta(days=7))])
         is False
     )
-    assert awaited("amazon", day, 7, [src], providers) is False
-    assert awaited("paypal", day, 7, [DocumentSource("a", disabled=True)], providers) is False
     assert (
-        awaited("paypal", day, 7, [DocumentSource("a", start_date=day + timedelta(days=1))], providers)
-        is False
+        awaited("paypal", day, window, [DocumentSource(paypal, covered_through=day + timedelta(days=6))])
+        is True
     )
-    assert awaited("paypal", day, 7, [DocumentSource("a")], providers) is True
-    assert awaited("paypal", day, 7, [], providers) is False
+    assert awaited("amazon", day, window, [src]) is False
+    assert awaited("paypal", day, window, [DocumentSource(paypal, disabled=True)]) is False
+    assert (
+        awaited("paypal", day, window, [DocumentSource(paypal, start_date=day + timedelta(days=1))]) is False
+    )
+    assert awaited("paypal", day, window, [DocumentSource(paypal)]) is True
+    assert awaited("paypal", day, window, [DocumentSource()]) is False  # delivers nothing
+    assert awaited("paypal", day, window, []) is False
+
+
+def test_the_window_is_asymmetric_in_sql_and_python(db_conn: Connection, make_account: Any) -> None:
+    """A document dated up to `back` days before the booking is a candidate, up to `ahead` days after it:
+    the pairs of the unit CTE and `candidates` agree at both ends and one day beyond each."""
+    bench = Bench(db_conn, make_account)
+    back, ahead = document_window(db_conn)
+    payee = make_payee(db_conn, "PayPal", "paypal")
+    for i, offset in enumerate([-back, -back - 1, ahead, ahead + 1]):
+        make_document(db_conn, total=-100 - i, on=D + timedelta(days=offset))
+    entries = [bench.flow(bench.source(amount=-100 - i), payee_id=payee) for i in range(4)]
+    docs = [
+        DocInput(i, "paypal", D + timedelta(days=o), -100 - i, "EUR")
+        for i, o in enumerate([-back, -back - 1, ahead, ahead + 1])
+    ]
+    sql = _sql(db_conn)
+    # a lone candidate is no suggestion but keeps an otherwise standing unit open
+    assert [sql[e].unit_ok for e in entries] == [False, True, False, True]
+    python = [
+        bool(
+            candidates(
+                DocTxn(0, 0, D, -100 - i, "EUR", payee_provider="paypal"), docs, DocWindow(back, ahead)
+            )
+        )
+        for i in range(4)
+    ]
+    assert python == [True, False, True, False]
 
 
 def test_a_candidate_alone_keeps_a_unit_open_without_a_flag() -> None:

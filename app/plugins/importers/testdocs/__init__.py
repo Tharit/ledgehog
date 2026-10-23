@@ -19,7 +19,7 @@ from datetime import date
 from typing import Any
 
 from app.core.plugins.errors import InvalidProfile
-from app.core.plugins.fetch import FetchSession, FetchSessionBase, Prompter
+from app.core.plugins.fetch import FetchSession, FetchSessionBase, Prompter, delivers_declared
 from app.core.plugins.importer import (
     DocumentDelivery,
     IncomingDocument,
@@ -81,6 +81,9 @@ class TestDocumentImporter:
 
     emits: frozenset[str] = frozenset({"documents"})
     providers: frozenset[str] = PROVIDERS
+
+    def delivers(self, settings: Mapping[str, Any], provider: str) -> bool:
+        return delivers_declared(self.providers, provider)
 
     def validate_settings(self, settings: Mapping[str, Any]) -> None:
         _date(settings, "start_date")

@@ -183,5 +183,6 @@ def config_view(request: Request) -> dict[str, Any]:
         "locale": cfg.locale,
         "max_rate_age_days": cfg.max_rate_age_days,
         "matching_window_days": cfg.matching_window_days,
-        "document_window_days": cfg.document_window_days,
+        "document_window_back_days": cfg.document_window_back_days,
+        "document_window_ahead_days": cfg.document_window_ahead_days,
     }

@@ -31,7 +31,10 @@ def test_running_runs_become_failed_with_finished_at(db_conn, clock):
     running, ok = _insert_run(db_conn, "running"), _insert_run(db_conn, "ok")
     assert fail_interrupted_runs(db_conn) == 1
     rows = {
-        r.id: r for r in db_conn.execute(text("SELECT id, status, finished_at, error_text, retryable FROM import_run"))
+        r.id: r
+        for r in db_conn.execute(
+            text("SELECT id, status, finished_at, error_text, retryable FROM import_run")
+        )
     }
     assert rows[running].status == "failed"
     assert rows[running].finished_at == clock.now()
@@ -154,5 +157,7 @@ def test_pool_matching_window_mismatch_is_refused(isolated_engine, make_config):
 def test_pool_document_window_mismatch_is_refused(isolated_engine, make_config):
     from dataclasses import replace
 
-    with pytest.raises(StartupError, match="document_window_days"):
-        assert_pool_settings(isolated_engine, replace(make_config(), document_window_days=9))
+    with pytest.raises(StartupError, match="document_window_back_days"):
+        assert_pool_settings(isolated_engine, replace(make_config(), document_window_back_days=9))
+    with pytest.raises(StartupError, match="document_window_ahead_days"):
+        assert_pool_settings(isolated_engine, replace(make_config(), document_window_ahead_days=9))

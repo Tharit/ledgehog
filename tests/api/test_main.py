@@ -72,7 +72,7 @@ def test_the_test_importer_registers_only_behind_the_flag_and_fills_the_provider
 
     from app.core.importers.providers import (
         document_providers,
-        registered_providers,
+        importer_names,
         reset_document_providers,
     )
     from app.main import register_importers
@@ -91,7 +91,7 @@ def test_the_test_importer_registers_only_behind_the_flag_and_fills_the_provider
     reset_document_providers()
     try:
         assert set(register_importers(base)) == {"csv", "fints"}
-        assert document_providers() == {} and registered_providers() == []
+        assert document_providers() == {} and importer_names() == []
         on = register_importers(replace(base, enable_test_importers=True))
         assert set(on) == {"csv", "fints", "testdocs", "testfetch"}
         assert isinstance(on["testdocs"], TestDocumentImporter)
@@ -99,9 +99,9 @@ def test_the_test_importer_registers_only_behind_the_flag_and_fills_the_provider
             "testdocs": TestDocumentImporter.providers,
             "testfetch": TestDocumentImporter.providers,  # it emits documents too
         }
-        assert registered_providers() == ["amazon", "paypal"]
+        assert importer_names() == ["amazon", "paypal"]
         register_importers(base)  # a later process configuration replaces it
-        assert registered_providers() == []
+        assert importer_names() == []
     finally:
         reset_document_providers()
 

@@ -4,6 +4,7 @@ from app.core.matching.candidates import candidates, is_candidate, real_end_to_e
 from app.core.matching.documents import (
     DocInput,
     DocTxn,
+    DocWindow,
     amount_matches,
     automatic_links,
     reverse_matches,
@@ -32,6 +33,7 @@ __all__ = [
     "PAIR_BASIS",
     "DocInput",
     "DocTxn",
+    "DocWindow",
     "Leg",
     "Offer",
     "OfferSet",

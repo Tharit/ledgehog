@@ -9409,7 +9409,7 @@
     },
     "/api/documents/providers": {
       "get": {
-        "description": "The providers a payee can name and the documents list can filter by (empty: no document importer).",
+        "description": "Suggestions for the providers a payee names and the documents list filters by (any may be named).",
         "operationId": "list_document_providers",
         "responses": {
           "200": {

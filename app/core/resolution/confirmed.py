@@ -23,7 +23,7 @@ A unit is confirmed when every entry of it is complete and carries only standing
   not confirmed in the same settle that would link its document (`doc_candidate`, used here only).
   `doc_awaited` and `doc_suggested` are exposed per entry (the flags
   `waiting` and `document_suggested` read them). Which importer provides which provider is the registry of
-  `core/importers/providers.py`, bound as `units_binds()`.
+  `core/importers/providers.py`, bound as `units_binds(conn)`.
 
 This is computed here rather than read from `review_flags` so that it is right in the middle of a
 settle, where the flags are not yet rewritten and a new entry's empty default would otherwise read as
@@ -35,14 +35,16 @@ from __future__ import annotations
 
 from sqlalchemy import Connection, text
 
-from app.core.importers.providers import provider_pairs
+from app.core.importers.providers import delivery_pairs
 from app.core.plugins.classifier import STANDING_PASSES
 
 STANDING = sorted(STANDING_PASSES)
 
 # The document window (spec §5.8), read from the connection like `ledger.matching_window_days`
-# (`core/settle/window.py: document_window`). Evaluated only inside the gated subqueries below.
-_DOC_WINDOW = "current_setting('ledger.document_window_days')::int"
+# (`core/settle/window.py: document_window`): a document is dated within [booked_on - back, booked_on +
+# ahead], and waiting runs to booked_on + ahead. Evaluated only inside the gated subqueries below.
+_DOC_BACK = "current_setting('ledger.document_window_back_days')::int"
+_DOC_AHEAD = "current_setting('ledger.document_window_ahead_days')::int"
 
 # The original entry of a source transaction (I31), whose payee has a provider, with no `document` key:
 # the only entry the document test looks at (documents.md §1).
@@ -53,30 +55,31 @@ _GATE = """pp.document_provider IS NOT NULL
                                                  WHERE lo.source_transaction_id = le.source_transaction_id
                                                    AND lo.id < le.id)"""
 
-# awaited (documents.md §7): some instance that is not disabled, provides the provider (registry), has a
-# start date not after the booking date (an instance without one has no lower bound) and whose document
-# coverage has not reached booked_on plus the window; never run = no coverage = awaiting.
+# awaited (documents.md §7): some instance that is not disabled, delivers the provider (the registry's
+# per-instance answer, compared lower-cased), has a start date not after the booking date (an instance
+# without one has no lower bound) and whose document coverage has not reached booked_on plus the window's
+# ahead; never run = no coverage = awaiting.
 _AWAITED = (
     """EXISTS (SELECT 1
-                                  FROM unnest(CAST(:doc_importers AS text[]),
-                                              CAST(:doc_providers AS text[])) AS r(importer, provider)
-                                  JOIN importer_instance AS ii ON ii.importer = r.importer
+                                  FROM unnest(CAST(:doc_instances AS bigint[]),
+                                              CAST(:doc_providers AS text[])) AS r(instance_id, provider)
+                                  JOIN importer_instance AS ii ON ii.id = r.instance_id
                                   LEFT JOIN v_document_coverage AS dc ON dc.importer_instance_id = ii.id
-                                 WHERE r.provider = pp.document_provider
+                                 WHERE r.provider = lower(pp.document_provider)
                                    AND NOT ii.disabled
                                    AND (ii.settings ->> 'start_date' IS NULL
                                         OR CAST(ii.settings ->> 'start_date' AS date) <= le.booked_on)
                                    AND (dc.covered_through IS NULL
                                         OR dc.covered_through < le.booked_on + """
-    + _DOC_WINDOW
+    + _DOC_AHEAD
     + """))"""
 )
 
 # The candidate pairs (documents.md §2, §3): (entry, document) for every original entry (I31) of a payee
 # with a provider and no `document` key, and every document of that provider that no entry carries, whose
 # total equals the transaction's amount in its currency, or its instructed amount in the instructed currency,
-# within the window of the booking date. Both ways are plain equality joins, so the pairs are found with one
-# hash join each and not by scanning the documents for every entry. From the pairs per entry:
+# dated within the window of the booking date. Both ways are plain equality joins, so the pairs are found
+# with one hash join each and not by scanning the documents for every entry. From the pairs per entry:
 # `doc_candidate` (there is one, so settling may link it in step 2: the unit is not confirmed yet, or a unit
 # of standing values would be, and get "none", before step 2 could link the document) and `doc_suggested`
 # (documents.md §4: several candidates, or one that is also a candidate of another transaction no decision
@@ -88,14 +91,16 @@ _PAIRS = (
       JOIN payee AS op ON op.id = o.payee_id AND op.document_provider IS NOT NULL
       JOIN source_transaction AS ost ON ost.id = o.source_transaction_id
       JOIN external_document AS d
-        ON d.provider = op.document_provider AND d.currency = ost.{cur} AND d.total = ost.{amt}
+        ON lower(d.provider) = lower(op.document_provider) AND d.currency = ost.{cur} AND d.total = ost.{amt}
      WHERE NOT jsonb_exists(o.derivation, 'document')
        AND o.type IS DISTINCT FROM 'transfer'
        AND NOT EXISTS (SELECT 1 FROM ledger_entry AS oo
                         WHERE oo.source_transaction_id = o.source_transaction_id AND oo.id < o.id)
        AND NOT EXISTS (SELECT 1 FROM ledger_entry AS cr WHERE cr.document_id = d.id)
-       AND abs(d.occurred_on - ost.booked_on) <= """
-    + _DOC_WINDOW
+       AND d.occurred_on - ost.booked_on BETWEEN -"""
+    + _DOC_BACK
+    + """ AND """
+    + _DOC_AHEAD
 )
 
 _CANDIDATES = (
@@ -164,7 +169,7 @@ _OF_ENTRIES = """
 
 
 def units_sql(*, of_entries: bool = False) -> str:
-    """The `units` CTE body (see above); bind `units_binds()` (and `ids` when `of_entries`)."""
+    """The `units` CTE body (see above); bind `units_binds(conn)` (and `ids` when `of_entries`)."""
     return _UNITS.format(
         scope=_OF_ENTRIES if of_entries else _ALL,
         gate=_GATE,
@@ -173,11 +178,11 @@ def units_sql(*, of_entries: bool = False) -> str:
     )
 
 
-def units_binds() -> dict[str, object]:
-    """The binds every execution of `units_sql` needs besides `ids`: the standing passes and the document
-    providers of the registry (`core/importers/providers.py`)."""
-    importers, providers = provider_pairs()
-    return {"standing": STANDING, "doc_importers": importers, "doc_providers": providers}
+def units_binds(conn: Connection) -> dict[str, object]:
+    """The binds every execution of `units_sql` needs besides `ids`: the standing passes and which instances
+    deliver which providers (`core/importers/providers.py`)."""
+    instances, providers = delivery_pairs(conn)
+    return {"standing": STANDING, "doc_instances": instances, "doc_providers": providers}
 
 
 _CONFIRMED_IDS = text(f"SELECT u.id FROM ({units_sql()}) AS u WHERE u.unit_ok")
@@ -185,4 +190,4 @@ _CONFIRMED_IDS = text(f"SELECT u.id FROM ({units_sql()}) AS u WHERE u.unit_ok")
 
 def load_confirmed_ids(conn: Connection) -> set[int]:
     """The ids of every confirmed movement entry."""
-    return {int(i) for i in conn.execute(_CONFIRMED_IDS, units_binds()).scalars()}
+    return {int(i) for i in conn.execute(_CONFIRMED_IDS, units_binds(conn)).scalars()}

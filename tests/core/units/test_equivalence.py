@@ -89,7 +89,9 @@ def test_pure_judgement_equals_sql(db_conn: Connection, make_account: Any, seed_
     states = {k: unit_state(v) for k, v in units_of(entries).items()}
     sql = {
         r.id: r
-        for r in db_conn.execute(text(f"WITH units AS ({units_sql()}) SELECT * FROM units"), units_binds())
+        for r in db_conn.execute(
+            text(f"WITH units AS ({units_sql()}) SELECT * FROM units"), units_binds(db_conn)
+        )
     }
     # the unit judgement: `waiting` and `unmatched_transfer` are the matcher's (test_flags_matching.py)
     matching = {"waiting", "unmatched_transfer"}

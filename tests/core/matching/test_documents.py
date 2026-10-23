@@ -7,6 +7,7 @@ from datetime import date, timedelta
 from app.core.matching import (
     DocInput,
     DocTxn,
+    DocWindow,
     automatic_links,
     document_candidates,
     reverse_matches,
@@ -14,7 +15,7 @@ from app.core.matching import (
 )
 
 D = date(2026, 3, 10)
-W = 7
+W = DocWindow(7, 7)  # the edges of a symmetric window; the asymmetric one has its own test
 
 
 def txn(i: int = 1, amount: int = -1000, on: date = D, **kw) -> DocTxn:  # noqa: ANN003
@@ -54,13 +55,38 @@ def test_currency_versus_instructed() -> None:
 
 
 def test_window_edges_and_zero() -> None:
-    assert ids(document_candidates(txn(), [doc(on=D + timedelta(W)), doc(102, on=D - timedelta(W))], W)) == [
+    assert ids(document_candidates(txn(), [doc(on=D + timedelta(7)), doc(102, on=D - timedelta(7))], W)) == [
         101,
         102,
     ]
-    assert document_candidates(txn(), [doc(on=D + timedelta(W + 1))], W) == []
-    assert document_candidates(txn(), [doc(on=D - timedelta(W + 1))], W) == []
-    assert ids(document_candidates(txn(), [doc(), doc(102, on=D + timedelta(1))], 0)) == [101]
+    assert document_candidates(txn(), [doc(on=D + timedelta(8))], W) == []
+    assert document_candidates(txn(), [doc(on=D - timedelta(8))], W) == []
+    assert ids(document_candidates(txn(), [doc(), doc(102, on=D + timedelta(1))], DocWindow(0, 0))) == [101]
+
+
+def test_the_window_is_asymmetric() -> None:
+    w = DocWindow(back=60, ahead=7)
+    on = lambda days: [doc(on=D + timedelta(days))]  # noqa: E731
+    assert ids(document_candidates(txn(), on(-60), w)) == [101]
+    assert document_candidates(txn(), on(-61), w) == []
+    assert ids(document_candidates(txn(), on(7), w)) == [101]
+    assert document_candidates(txn(), on(8), w) == []
+    # the reverse reach: a booking up to `ahead` days before the document, `back` days after it
+    ts = [
+        txn(1, on=D - timedelta(7)),
+        txn(2, on=D - timedelta(8)),
+        txn(3, on=D + timedelta(60)),
+        txn(4, on=D + timedelta(61)),
+    ]
+    assert [t.entry_id for t in reverse_matches(doc(), ts, w)] == [1, 3]
+    # zero on one side leaves the other
+    assert ids(document_candidates(txn(), on(-5), DocWindow(5, 0))) == [101]
+    assert document_candidates(txn(), on(1), DocWindow(5, 0)) == []
+
+
+def test_the_provider_is_matched_without_regard_to_case() -> None:
+    assert ids(document_candidates(txn(payee_provider="PayPal"), [doc(provider="paypal")], W)) == [101]
+    assert automatic_links([txn(payee_provider="PAYPAL")], [doc(provider="PayPal")], W) == {1: 101}
 
 
 def test_carried_documents_are_excluded() -> None:
@@ -124,9 +150,9 @@ def test_deterministic_regardless_of_input_order() -> None:
 def test_reverse_matches_include_confirmed_any_payee_and_any_account() -> None:
     ts = [
         txn(1, confirmed=True, payee_provider=None),
-        DocTxn(2, 9, D + timedelta(W), -1000, "EUR"),
+        DocTxn(2, 9, D + timedelta(7), -1000, "EUR"),
         txn(3, duplicate=True),
-        txn(4, on=D + timedelta(W + 1)),
+        txn(4, on=D + timedelta(8)),
         txn(5, amount=-999),
         txn(6, document_decided=True),
         txn(7, instructed_amount=-1000, instructed_currency="EUR", currency="USD", amount=-1100),

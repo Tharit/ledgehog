@@ -161,7 +161,8 @@ def test_config_needs_no_session_and_contains_no_secret(client, api_config):
         "locale": "en",
         "max_rate_age_days": 7,
         "matching_window_days": 7,
-        "document_window_days": 7,
+        "document_window_back_days": 60,
+        "document_window_ahead_days": 7,
     }
     secrets = [*PASSWORDS.values(), api_config.db.password.reveal(), api_config.db.user]
     for s in secrets:

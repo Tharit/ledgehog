@@ -18,7 +18,7 @@ from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date
 
-from app.core.matching.documents import DocInput, DocTxn, automatic_links, suggestions
+from app.core.matching.documents import DocInput, DocTxn, DocWindow, automatic_links, suggestions
 from app.core.resolution.enrich import LinkedDocument
 from app.core.units.documents import (
     DocumentFacts,
@@ -53,8 +53,7 @@ class DocumentInfo:
 
 @dataclass(frozen=True, slots=True)
 class DocWorld:
-    window: int
-    providers: Mapping[str, frozenset[str]] = field(default_factory=dict)
+    window: DocWindow
     sources: Sequence[DocumentSource] = ()
     payee_providers: Mapping[int, str] = field(default_factory=dict)
     # no entry outside the unit carries them (`carried` is False; the overlay marks what its rows carry)
@@ -92,7 +91,6 @@ def facts_of(txns: Sequence[DocTxn], world: DocWorld, carried: Collection[int]) 
             others=everyone,
             documents=documents,
             sources=world.sources,
-            providers=world.providers,
             window=world.window,
         )
         for t in gated
@@ -138,6 +136,6 @@ def waits_of(txns: Sequence[DocTxn], world: DocWorld) -> dict[int, DocumentWait]
     out: dict[int, DocumentWait] = {}
     for t in _gated(txns):
         assert t.payee_provider is not None
-        if wait := waiting_for(t.payee_provider, t.booked_on, world.window, world.sources, world.providers):
+        if wait := waiting_for(t.payee_provider, t.booked_on, world.window, world.sources):
             out[t.entry_id] = wait
     return out

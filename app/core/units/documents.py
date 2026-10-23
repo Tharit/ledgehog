@@ -10,11 +10,11 @@ and is not typed as a transfer (a document explains a flow).
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from app.core.matching.documents import DocInput, DocTxn, candidates, suggestions
+from app.core.matching.documents import DocInput, DocTxn, DocWindow, candidates, suggestions
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,10 +35,11 @@ class DocumentFacts:
 
 @dataclass(frozen=True, slots=True)
 class DocumentSource:
-    """An importer instance as waiting reads it: `start_date` None = no lower bound, `covered_through`
-    None = never run."""
+    """An importer instance as waiting reads it: `delivers` the lower-cased providers it delivers
+    (`core/importers/providers.py`), `start_date` None = no lower bound, `covered_through` None = never
+    run."""
 
-    importer: str
+    delivers: frozenset[str] = frozenset()
     disabled: bool = False
     start_date: date | None = None
     covered_through: date | None = None
@@ -47,16 +48,16 @@ class DocumentSource:
 def awaited(
     provider: str,
     booked_on: date,
-    window: int,
+    window: DocWindow,
     sources: Iterable[DocumentSource],
-    providers: Mapping[str, frozenset[str]],
 ) -> bool:
-    """§7: some source that is not disabled, provides `provider`, has a start date not after `booked_on`
-    and has not covered `booked_on` plus the window. With no such source nothing waits."""
-    horizon = booked_on + timedelta(days=window)
+    """§7: some source that is not disabled, delivers `provider`, has a start date not after `booked_on`
+    and has not covered `booked_on` plus the window's ahead. With no such source nothing waits."""
+    horizon = booked_on + timedelta(days=window.ahead)
+    key = provider.lower()
     return any(
         not s.disabled
-        and provider in providers.get(s.importer, frozenset())
+        and key in s.delivers
         and (s.start_date is None or s.start_date <= booked_on)
         and (s.covered_through is None or s.covered_through < horizon)
         for s in sources
@@ -75,18 +76,18 @@ class DocumentWait:
 def waiting_for(
     provider: str,
     booked_on: date,
-    window: int,
+    window: DocWindow,
     sources: Iterable[DocumentSource],
-    providers: Mapping[str, frozenset[str]],
 ) -> DocumentWait | None:
     """The sources `awaited` counts, as a line the queue shows ("from <provider>, covered through <date>");
     None where nothing is awaited."""
-    horizon = booked_on + timedelta(days=window)
+    horizon = booked_on + timedelta(days=window.ahead)
+    key = provider.lower()
     holding = [
         s
         for s in sources
         if not s.disabled
-        and provider in providers.get(s.importer, frozenset())
+        and key in s.delivers
         and (s.start_date is None or s.start_date <= booked_on)
         and (s.covered_through is None or s.covered_through < horizon)
     ]
@@ -103,8 +104,7 @@ def document_facts(
     others: Iterable[DocTxn],
     documents: Sequence[DocInput],
     sources: Iterable[DocumentSource],
-    providers: Mapping[str, frozenset[str]],
-    window: int,
+    window: DocWindow,
 ) -> DocumentFacts:
     """The facts of the original entry `txn`. `others` are the other original entries with a provider and
     no decided document (the transactions a document could be shared with); `txn.document_decided` and a
@@ -112,7 +112,7 @@ def document_facts(
     if txn.payee_provider is None or txn.document_decided or txn.is_transfer:
         return DocumentFacts()
     return DocumentFacts(
-        awaited=awaited(txn.payee_provider, txn.booked_on, window, sources, providers),
+        awaited=awaited(txn.payee_provider, txn.booked_on, window, sources),
         suggested=bool(suggestions(txn, documents, window, others=others)),
         candidate=bool(candidates(txn, documents, window)),
     )

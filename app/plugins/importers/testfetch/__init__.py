@@ -71,6 +71,7 @@ from app.core.plugins.fetch import (
     SecretPrompt,
     TanPrompt,
     TextPrompt,
+    delivers_declared,
 )
 from app.core.plugins.importer import DocumentDelivery, IncomingRow
 from app.plugins.importers.testdocs import PROVIDERS, TestDocumentImporter
@@ -338,6 +339,9 @@ class TestFetchImporter:
 
     emits: frozenset[str] = frozenset({"transactions", "documents"})
     providers: frozenset[str] = PROVIDERS
+
+    def delivers(self, settings: Mapping[str, Any], provider: str) -> bool:
+        return delivers_declared(self.providers, provider)
 
     def validate_settings(self, settings: Mapping[str, Any]) -> None:
         accounts = settings.get("accounts", [])

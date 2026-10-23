@@ -25,7 +25,8 @@ beforeEach(() => {
 		locale: 'en',
 		max_rate_age_days: 7,
 		matching_window_days: 7,
-		document_window_days: 7,
+		document_window_back_days: 60,
+		document_window_ahead_days: 7,
 		oidc_offered: false,
 		oidc_enforced: false
 	};

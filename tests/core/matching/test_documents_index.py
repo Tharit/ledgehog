@@ -6,12 +6,12 @@ import random
 from collections import defaultdict
 from datetime import date, timedelta
 
-from app.core.matching.documents import DocInput, DocTxn, automatic_links, candidates
+from app.core.matching.documents import DocInput, DocTxn, DocWindow, automatic_links, candidates
 
 D = date(2026, 3, 10)
 
 
-def naive(txns: list[DocTxn], docs: list[DocInput], window: int) -> dict[int, int]:
+def naive(txns: list[DocTxn], docs: list[DocInput], window: DocWindow) -> dict[int, int]:
     per = {t.entry_id: candidates(t, docs, window) for t in txns}
     claimed: dict[int, int] = defaultdict(int)
     for found in per.values():
@@ -44,7 +44,7 @@ def test_the_indexed_links_equal_the_scanning_rule_over_random_worlds() -> None:
         docs = [
             DocInput(
                 document_id=100 + j,
-                provider=rng.choice(["paypal", "amazon"]),
+                provider=rng.choice(["paypal", "PayPal", "amazon"]),
                 occurred_on=D + timedelta(days=rng.randrange(-3, 15)),
                 total=rng.choice([*amounts, -150, -250]),
                 currency=rng.choice(["EUR", "USD"]),
@@ -52,4 +52,5 @@ def test_the_indexed_links_equal_the_scanning_rule_over_random_worlds() -> None:
             )
             for j in range(rng.randrange(0, 14))
         ]
-        assert automatic_links(txns, docs, 7) == naive(txns, docs, 7)
+        window = DocWindow(rng.choice([0, 3, 7]), rng.choice([0, 3, 7]))
+        assert automatic_links(txns, docs, window) == naive(txns, docs, window)

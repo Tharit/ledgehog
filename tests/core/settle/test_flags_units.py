@@ -45,7 +45,7 @@ def _flags(conn: Connection, *ids: int) -> list[list[str]]:
 def _unit(conn: Connection, entry: int) -> Any:
     return conn.execute(
         text(f"WITH units AS ({units_sql()}) SELECT * FROM units WHERE id = :i"),
-        {**units_binds(), "i": entry},
+        {**units_binds(conn), "i": entry},
     ).one()
 
 
@@ -113,7 +113,7 @@ def test_derived_entries_are_in_no_unit(db_conn: Connection, make_account: Any) 
     assert (
         db_conn.execute(
             text(f"WITH units AS ({units_sql()}) SELECT count(*) FROM units WHERE id = :i"),
-            {**units_binds(), "i": d},
+            {**units_binds(db_conn), "i": d},
         ).scalar_one()
         == 0
     )

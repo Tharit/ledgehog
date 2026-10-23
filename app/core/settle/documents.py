@@ -121,6 +121,7 @@ def _considered(conn: Connection) -> list[DocTxn]:
 
 
 def _documents(conn: Connection, providers: set[str]) -> list[DocInput]:
+    wanted = {p.lower() for p in providers}
     return [
         DocInput(
             document_id=int(r.id),
@@ -130,7 +131,7 @@ def _documents(conn: Connection, providers: set[str]) -> list[DocInput]:
             currency=str(r.currency).strip(),
         )
         for r in conn.execute(_UNLINKED)
-        if r.provider in providers
+        if r.provider.lower() in wanted
     ]
 
 

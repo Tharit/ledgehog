@@ -95,7 +95,7 @@ def test_matching_window_is_an_error_when_unset(isolated_db: Config):
         plain.dispose()
 
 
-def test_every_pooled_connection_gets_document_window_days(isolated_db: Config):
+def test_every_pooled_connection_gets_the_document_window(isolated_db: Config):
     import dataclasses
 
     from app.core.settle.window import document_window
@@ -103,13 +103,15 @@ def test_every_pooled_connection_gets_document_window_days(isolated_db: Config):
     engine = make_engine(isolated_db, pool_size=2, max_overflow=0)
     try:
         with engine.connect() as a, engine.connect() as b:
-            assert document_window(a) == document_window(b) == 7
+            assert tuple(document_window(a)) == tuple(document_window(b)) == (60, 7)
     finally:
         engine.dispose()
-    engine = make_engine(dataclasses.replace(isolated_db, document_window_days=0))
+    engine = make_engine(
+        dataclasses.replace(isolated_db, document_window_back_days=0, document_window_ahead_days=3)
+    )
     try:
         with engine.connect() as conn:
-            assert document_window(conn) == 0
+            assert tuple(document_window(conn)) == (0, 3)
     finally:
         engine.dispose()
 

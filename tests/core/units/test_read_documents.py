@@ -48,7 +48,7 @@ def test_a_unit_waiting_for_a_document_is_in_waiting_with_the_provider(bench: Be
 
 def test_covered_through_is_the_earliest_of_the_instances_still_holding_it(bench: Bench) -> None:
     conn = bench.conn
-    window = document_window(conn)
+    window = document_window(conn).ahead
     behind = D + timedelta(days=1)
     make_doc_source(conn, "a", covered_through=behind)
     make_doc_source(conn, "b", covered_through=D + timedelta(days=window - 1))

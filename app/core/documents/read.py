@@ -26,6 +26,7 @@ from sqlalchemy import (
 )
 
 from app.core.documents.filters import DocumentFilter
+from app.core.importers.providers import importer_names
 from app.core.ledger.entries import display_text
 from app.core.ledger.sql import like_pattern
 from app.core.matching.documents import DocInput, DocTxn, reverse_matches
@@ -235,6 +236,16 @@ def _build(rows: Sequence[Any]) -> tuple[DocumentRow, ...]:
     )
 
 
+def provider_names(conn: Connection) -> list[str]:
+    """Suggestions for a provider (spec §5.8; a payee may name any): the names importers give and the
+    distinct providers of stored documents, one spelling per name regardless of case (an importer's wins),
+    sorted."""
+    names: dict[str, str] = {p.lower(): p for p in importer_names()}
+    for p in sorted(conn.execute(select(doc.c.provider).distinct()).scalars()):  # code points: stable
+        names.setdefault(str(p).lower(), str(p))
+    return sorted(names.values())
+
+
 def list_documents(conn: Connection, flt: DocumentFilter, *, limit: int, offset: int) -> DocumentPage:
     """One page of the documents matching `flt`, newest first (`occurred_on DESC, id DESC`)."""
     where = _where(flt)
@@ -289,8 +300,10 @@ def _matches(conn: Connection, row: DocumentRow) -> tuple[DocumentMatch, ...]:
     candidates = conn.execute(
         _CANDIDATE_TXNS,
         {
-            "lo": row.occurred_on - timedelta(days=window),
-            "hi": row.occurred_on + timedelta(days=window),
+            # a booking within [occurred_on - ahead, occurred_on + back]: the document is dated within
+            # [booked_on - back, booked_on + ahead]
+            "lo": row.occurred_on - timedelta(days=window.ahead),
+            "hi": row.occurred_on + timedelta(days=window.back),
             "currency": row.currency,
             "total": row.total,
         },
@@ -314,7 +327,7 @@ def _matches(conn: Connection, row: DocumentRow) -> tuple[DocumentMatch, ...]:
         return ()
     state = {
         int(r.id): bool(r.unit_ok)
-        for r in conn.execute(_UNIT_OK, {**units_binds(), "ids": [t.entry_id for t in ordered]})
+        for r in conn.execute(_UNIT_OK, {**units_binds(conn), "ids": [t.entry_id for t in ordered]})
     }
     out: list[DocumentMatch] = []
     for t in ordered:

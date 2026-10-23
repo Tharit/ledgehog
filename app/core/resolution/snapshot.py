@@ -264,14 +264,14 @@ def _votes(rows: Iterable[Row[Any]]) -> list[Vote]:
 
 def load_votes(conn: Connection) -> list[Vote]:
     """Every voter: the one query of a settle."""
-    return _votes(conn.execute(_ALL_VOTES, units_binds()))
+    return _votes(conn.execute(_ALL_VOTES, units_binds(conn)))
 
 
 def load_votes_of(conn: Connection, entry_ids: Sequence[int]) -> list[Vote]:
     """The votes among these entries (those that became confirmed in a round)."""
     if not entry_ids:
         return []
-    return _votes(conn.execute(_VOTES_OF, {**units_binds(), "ids": list(entry_ids)}))
+    return _votes(conn.execute(_VOTES_OF, {**units_binds(conn), "ids": list(entry_ids)}))
 
 
 def load_snapshot(conn: Connection) -> HistorySnapshot:

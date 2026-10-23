@@ -33,6 +33,7 @@ from app.core.plugins.fetch import (
     SecretText,
     TanPrompt,
     TextPrompt,
+    delivers_declared,
 )
 from app.plugins.importers.fints.bank import (
     BankConnect,
@@ -94,6 +95,9 @@ class FintsImporter:
 
     emits: frozenset[str] = frozenset({"transactions"})
     providers: frozenset[str] = frozenset()
+
+    def delivers(self, settings: Mapping[str, Any], provider: str) -> bool:
+        return delivers_declared(self.providers, provider)
 
     def __init__(
         self, product_id: str | None, product_version: str, *, connect: BankConnect = connect_bank

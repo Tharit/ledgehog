@@ -18,7 +18,6 @@ import psycopg.errors
 from sqlalchemy import Connection, Engine, text
 from sqlalchemy.exc import DBAPIError
 
-from app.core.importers.providers import registered_providers
 from app.core.ledger.dimensions import (
     DimensionError,
     DuplicateName,
@@ -50,20 +49,6 @@ class PayeeInUse(DimensionError):
         self.held = held
         what = ", ".join(f"{n} {name}" for name, n in held.items())
         super().__init__(f"payee {payee_id} is used by {what} and cannot be deleted: merge it instead")
-
-
-class UnknownDocumentProvider(DimensionError):
-    """`document_provider` names a provider no registered document importer delivers for."""
-
-    def __init__(self, provider: str) -> None:
-        self.provider = provider
-        super().__init__(f"{provider!r} is not a provider of any registered document importer")
-
-
-def _check_provider(provider: str | None, current: str | None = None) -> None:
-    """A provider being set must be one a registered importer serves; an unchanged value stays."""
-    if provider is not None and provider != current and provider not in registered_providers():
-        raise UnknownDocumentProvider(provider)
 
 
 @dataclass(frozen=True)
@@ -124,8 +109,7 @@ def create_payee(
     color: str | None = None,
     document_provider: str | None = None,
 ) -> PayeeWritten:
-    provider = clean_text(document_provider)
-    _check_provider(provider)
+    provider = clean_text(document_provider)  # free text (spec §3.6): trimmed, blank means none
     values = {
         "n": clean_name(name),
         "note": clean_text(note),
@@ -186,8 +170,6 @@ def update_payee(
             lock_settle_shared(conn)
             if not lock_rows(conn, "payee", [payee_id]):
                 raise PayeeMissing(payee_id)
-            if provider is not None:
-                _check_provider(provider, _view(conn, payee_id).document_provider)
             if sets:
                 assignments = ", ".join(f"{col} = :{col}" for col in sets)  # columns are fixed above
                 try:

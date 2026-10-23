@@ -15,7 +15,9 @@ export type AppConfig = {
 	locale: string;
 	max_rate_age_days: number;
 	matching_window_days: number;
-	document_window_days: number;
+	/** a document is dated within [booked_on - back, booked_on + ahead] of its transaction (spec §5.8) */
+	document_window_back_days: number;
+	document_window_ahead_days: number;
 	/** whether "Log in with SSO" is offered, and whether it is the only way in */
 	oidc_offered: boolean;
 	oidc_enforced: boolean;

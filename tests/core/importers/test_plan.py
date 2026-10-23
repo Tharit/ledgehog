@@ -57,6 +57,9 @@ class StubFetch:
     emits = frozenset({"transactions", "documents"})
     providers = frozenset({"paypal"})
 
+    def delivers(self, settings: Mapping[str, Any], provider: str) -> bool:
+        return provider.lower() == "paypal"
+
     def validate_settings(self, settings: Mapping[str, Any]) -> None:
         return None
 

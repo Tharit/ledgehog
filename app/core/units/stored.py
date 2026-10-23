@@ -8,10 +8,10 @@ from typing import Any, cast
 
 from sqlalchemy import Connection, text
 
-from app.core.importers.providers import document_providers
+from app.core.importers.providers import instance_deliveries
 from app.core.ingest.identity import canonical_text
 from app.core.matching import MAX_WINDOW, Leg, PoolEntry, Summary
-from app.core.matching.documents import DocInput, DocTxn
+from app.core.matching.documents import DocInput, DocTxn, DocWindow
 from app.core.resolution.enrich import LinkedDocument
 from app.core.resolution.load import load_accounts, load_rules
 from app.core.resolution.registry import classifiers_for
@@ -173,7 +173,7 @@ def load_world(conn: Connection, stored: StoredUnit, draft: UnitDraft, *, ledger
 _PAYEE_PROVIDERS = text("SELECT id, document_provider FROM payee WHERE document_provider IS NOT NULL")
 
 _SOURCES_OF_DOCUMENTS = text(
-    "SELECT i.importer, i.disabled, i.settings ->> 'start_date' AS start_date, c.covered_through"
+    "SELECT i.id, i.disabled, i.settings ->> 'start_date' AS start_date, c.covered_through"
     "  FROM importer_instance AS i LEFT JOIN v_document_coverage AS c ON c.importer_instance_id = i.id"
 )
 
@@ -254,7 +254,9 @@ def load_doc_world(conn: Connection, stored: StoredUnit, picks: Collection[int] 
     stored_carried = {e.document_id: e.id for e in stored.entries if e.document_id is not None}
     carried = sorted({*stored_carried, *picks})
     if not payee_providers and not carried:
-        return DocWorld(window=0)  # nothing can be matched, nothing is linked: judged without documents
+        return DocWorld(
+            window=DocWindow(0, 0)
+        )  # nothing can be matched, nothing is linked: judged without documents
     currencies: list[str] = []
     totals: list[int] = []
     for src in stored.sources.values():
@@ -291,9 +293,10 @@ def load_doc_world(conn: Connection, stored: StoredUnit, picks: Collection[int] 
         )
         for r in conn.execute(_OTHERS, {"closure": closure})
     ]
+    delivering = instance_deliveries(conn)
     sources = [
         DocumentSource(
-            str(r.importer),
+            delivering.get(int(r.id), frozenset()),
             bool(r.disabled),
             date.fromisoformat(r.start_date) if r.start_date else None,
             r.covered_through,
@@ -302,7 +305,6 @@ def load_doc_world(conn: Connection, stored: StoredUnit, picks: Collection[int] 
     ]
     return DocWorld(
         window=document_window(conn),
-        providers=document_providers(),
         sources=sources,
         payee_providers=payee_providers,
         documents=docs,

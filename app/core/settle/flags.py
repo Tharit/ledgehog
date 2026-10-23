@@ -90,7 +90,7 @@ _RECOMPUTE = text(
 
 def recompute_review_flags(conn: Connection) -> list[int]:
     """Rewrite every entry's flags; returns the ids whose stored value changed, ascending."""
-    result = conn.execute(_RECOMPUTE, units_binds())
+    result = conn.execute(_RECOMPUTE, units_binds(conn))
     return sorted(int(i) for i in result.scalars())
 
 

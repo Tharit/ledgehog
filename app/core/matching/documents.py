@@ -10,6 +10,15 @@ from collections import defaultdict
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date
+from typing import NamedTuple
+
+
+class DocWindow(NamedTuple):
+    """The document window (spec §5.8): a document matches a transaction when its date is within
+    [booked_on - back, booked_on + ahead]; the transaction waits for a document until booked_on + ahead."""
+
+    back: int
+    ahead: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,16 +81,21 @@ def amount_matches(txn: DocTxn, doc: DocInput) -> bool:
     )
 
 
-def _within(txn: DocTxn, doc: DocInput, window: int) -> bool:
-    return abs((doc.occurred_on - txn.booked_on).days) <= window
+def _same_provider(txn: DocTxn, doc: DocInput) -> bool:
+    return txn.payee_provider is not None and doc.provider.lower() == txn.payee_provider.lower()
+
+
+def _within(txn: DocTxn, doc: DocInput, window: DocWindow) -> bool:
+    return -window.back <= (doc.occurred_on - txn.booked_on).days <= window.ahead
 
 
 def _distance(txn: DocTxn, doc: DocInput) -> int:
     return abs((doc.occurred_on - txn.booked_on).days)
 
 
-def candidates(txn: DocTxn, documents: Iterable[DocInput], window: int) -> list[DocInput]:
-    """§2: documents of the payee's provider, carried by none, amount-matching, within the window.
+def candidates(txn: DocTxn, documents: Iterable[DocInput], window: DocWindow) -> list[DocInput]:
+    """§2: documents of the payee's provider (compared without regard to case), carried by none,
+    amount-matching, within the window.
 
     Empty for a transaction §1 does not consider. Ordered by distance in days, then id.
     """
@@ -90,32 +104,30 @@ def candidates(txn: DocTxn, documents: Iterable[DocInput], window: int) -> list[
     found = [
         d
         for d in documents
-        if not d.carried
-        and d.provider == txn.payee_provider
-        and amount_matches(txn, d)
-        and _within(txn, d, window)
+        if not d.carried and _same_provider(txn, d) and amount_matches(txn, d) and _within(txn, d, window)
     ]
     return sorted(found, key=lambda d: (_distance(txn, d), d.document_id))
 
 
 def _indexed(documents: Iterable[DocInput]) -> dict[tuple[str, str, int], list[DocInput]]:
-    """Uncarried documents by (provider, currency, total): where `amount_matches` can only hold."""
+    """Uncarried documents by (lower-cased provider, currency, total): where `amount_matches` can hold."""
     index: dict[tuple[str, str, int], list[DocInput]] = defaultdict(list)
     for d in documents:
         if not d.carried:
-            index[(d.provider, d.currency, d.total)].append(d)
+            index[(d.provider.lower(), d.currency, d.total)].append(d)
     return index
 
 
 def _candidates_indexed(
-    txn: DocTxn, index: dict[tuple[str, str, int], list[DocInput]], window: int
+    txn: DocTxn, index: dict[tuple[str, str, int], list[DocInput]], window: DocWindow
 ) -> list[DocInput]:
     """`candidates` over an index: the same rule, without scanning every document for every transaction."""
     if not txn.considered or txn.payee_provider is None:
         return []
-    keys = [(txn.payee_provider, txn.currency, txn.amount)]
+    provider = txn.payee_provider.lower()
+    keys = [(provider, txn.currency, txn.amount)]
     if txn.instructed_currency is not None and txn.instructed_amount is not None:
-        keys.append((txn.payee_provider, txn.instructed_currency, txn.instructed_amount))
+        keys.append((provider, txn.instructed_currency, txn.instructed_amount))
     seen: dict[int, DocInput] = {}
     for key in keys:
         for d in index.get(key, ()):
@@ -125,7 +137,7 @@ def _candidates_indexed(
 
 
 def automatic_links(
-    transactions: Iterable[DocTxn], documents: Sequence[DocInput], window: int
+    transactions: Iterable[DocTxn], documents: Sequence[DocInput], window: DocWindow
 ) -> dict[int, int]:
     """§4: {entry_id: document_id} where a transaction has exactly one candidate and that document is
     a candidate of no other transaction (uniqueness both ways).
@@ -148,7 +160,7 @@ def automatic_links(
 def suggestions(
     txn: DocTxn,
     documents: Sequence[DocInput],
-    window: int,
+    window: DocWindow,
     *,
     others: Iterable[DocTxn] = (),
 ) -> list[DocInput]:
@@ -160,11 +172,11 @@ def suggestions(
     return candidates(txn, documents, window)
 
 
-def reverse_matches(document: DocInput, transactions: Iterable[DocTxn], window: int) -> list[DocTxn]:
+def reverse_matches(document: DocInput, transactions: Iterable[DocTxn], window: DocWindow) -> list[DocTxn]:
     """§9: for a document carried by no entry, the non-duplicate transactions on any account whose
-    amount matches by §3 and whose booked_on is within the window of occurred_on; confirmed ones and
-    any payee included; a transaction typed as a transfer is not offered. Ordered by distance in days, then
-    entry id."""
+    amount matches by §3 and whose booked_on is within the window of occurred_on (as `_within`);
+    confirmed ones and any payee included; a transaction typed as a transfer is not offered. Ordered by
+    distance in days, then entry id."""
     if document.carried:
         return []
     found = [

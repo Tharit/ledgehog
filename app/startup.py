@@ -27,7 +27,8 @@ from app.utils.auth import hash_password, revoke_sessions, verify_password
 from app.utils.config import Config, UserConfig
 from app.utils.db import migrate
 from app.utils.db.engine import (
-    document_window_setting,
+    document_window_ahead_setting,
+    document_window_back_setting,
     make_engine,
     matching_window_setting,
     max_rate_age_setting,
@@ -171,11 +172,13 @@ def reconcile_users(conn: Connection, users: Sequence[UserConfig]) -> ReconcileR
 
 def assert_pool_settings(engine: Engine, config: Config) -> None:
     """Step 6: `make_engine` sets `ledger.max_rate_age`, `ledger.matching_window_days` and
-    `ledger.document_window_days` on every connection; check that it did."""
+    `ledger.document_window_back_days` and `ledger.document_window_ahead_days` on every connection;
+    check that it did."""
     expected = {
         "ledger.max_rate_age": max_rate_age_setting(config),
         "ledger.matching_window_days": matching_window_setting(config),
-        "ledger.document_window_days": document_window_setting(config),
+        "ledger.document_window_back_days": document_window_back_setting(config),
+        "ledger.document_window_ahead_days": document_window_ahead_setting(config),
     }
     with engine.connect() as conn:
         for name, want in expected.items():

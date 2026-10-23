@@ -39,15 +39,22 @@ def test_defaults_where_safe():
     assert (c.db.host, c.db.port) == ("localhost", 5432)
     assert c.max_rate_age_days == 7
     assert c.matching_window_days == 7
-    assert c.document_window_days == 7
+    assert (c.document_window_back_days, c.document_window_ahead_days) == (60, 7)
     assert c.locale == "en"
     assert c.users == ()
     assert c.model is None
 
 
 def test_overrides_windows_and_locale():
-    c = load(MAX_RATE_AGE_DAYS="3", MATCHING_WINDOW_DAYS="10", DOCUMENT_WINDOW_DAYS="0", LOCALE="de-DE")
-    assert (c.max_rate_age_days, c.matching_window_days, c.document_window_days) == (3, 10, 0)
+    c = load(
+        MAX_RATE_AGE_DAYS="3",
+        MATCHING_WINDOW_DAYS="10",
+        DOCUMENT_WINDOW_BACK_DAYS="0",
+        DOCUMENT_WINDOW_AHEAD_DAYS="14",
+        LOCALE="de-DE",
+    )
+    assert (c.max_rate_age_days, c.matching_window_days) == (3, 10)
+    assert (c.document_window_back_days, c.document_window_ahead_days) == (0, 14)
     assert c.locale == "de-DE"
 
 
@@ -70,7 +77,8 @@ def test_missing_required_variable_is_named(var):
         ("MAX_RATE_AGE_DAYS", "-1"),
         ("MATCHING_WINDOW_DAYS", "-1"),
         ("MATCHING_WINDOW_DAYS", "1.5"),
-        ("DOCUMENT_WINDOW_DAYS", ""),
+        ("DOCUMENT_WINDOW_BACK_DAYS", ""),
+        ("DOCUMENT_WINDOW_AHEAD_DAYS", "-1"),
     ],
 )
 def test_bad_value_is_named(var, value):

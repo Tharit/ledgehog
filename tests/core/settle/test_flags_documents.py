@@ -67,7 +67,7 @@ def test_no_source_no_waiting_no_flags(bench: Bench) -> None:
 
 def test_the_wait_ends_when_the_coverage_reaches_the_window(bench: Bench) -> None:
     conn = bench.conn
-    make_doc_source(conn, covered_through=D + timedelta(days=document_window(conn)))
+    make_doc_source(conn, covered_through=D + timedelta(days=document_window(conn).ahead))
     assert _flags(conn, bench.flow(bench.source(), payee_id=_provider(conn))) == []
 
 

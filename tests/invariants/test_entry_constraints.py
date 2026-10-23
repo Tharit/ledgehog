@@ -225,14 +225,33 @@ def _document(conn: Connection, external_id: str) -> int:
     )
 
 
-def test_a_document_is_carried_by_at_most_one_entry(db_conn: Connection, make_account: MakeAccount) -> None:
+def test_a_document_may_be_carried_by_several_transactions(
+    db_conn: Connection, make_account: MakeAccount
+) -> None:
     acct = make_account(db_conn)
     doc = _document(db_conn, "d1")
     _, e1 = make_movement(db_conn, acct)
     _, e2 = make_movement(db_conn, acct)
     _update(db_conn, e1, f"document_id = {doc}")
-    with rejects(db_conn, sqlstate=UNIQUE_VIOLATION, constraint="ux_le_document"):
-        _update(db_conn, e2, f"document_id = {doc}")
+    _update(
+        db_conn, e2, f"document_id = {doc}"
+    )  # I35: no index on the document alone, a line is carried once
+
+
+def test_a_line_is_carried_by_at_most_one_entry(db_conn: Connection, make_account: MakeAccount) -> None:
+    acct = make_account(db_conn)
+    doc = _document(db_conn, "d1")
+    line = scalar(
+        db_conn,
+        "INSERT INTO external_document_line (document_id, line_no, description, amount)"
+        " VALUES (:d, 1, 'x', -1000) RETURNING id",
+        d=doc,
+    )
+    _, e1 = make_movement(db_conn, acct)
+    _, e2 = make_movement(db_conn, acct)
+    _update(db_conn, e1, f"document_id = {doc}, document_line_id = {line}")
+    with rejects(db_conn, sqlstate=UNIQUE_VIOLATION, constraint="ux_le_document_line"):
+        _update(db_conn, e2, f"document_id = {doc}, document_line_id = {line}")
 
 
 def test_a_transaction_has_at_most_one_entry_carrying_a_document(

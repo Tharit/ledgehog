@@ -196,7 +196,7 @@ def _ok_of(conn: Connection, entry_ids: Sequence[int]) -> dict[int, bool]:
         return {}
     rows = conn.execute(
         text(f"SELECT u.id, u.unit_ok FROM ({units_sql(of_entries=True)}) AS u WHERE u.id = ANY(:ids)"),
-        {**units_binds(), "ids": list(entry_ids)},
+        {**units_binds(conn), "ids": list(entry_ids)},
     )
     return {int(r.id): bool(r.unit_ok) for r in rows}
 

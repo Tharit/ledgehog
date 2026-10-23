@@ -40,7 +40,9 @@ def test_failed_runs_are_backfilled_from_their_error_class(isolated_db: Config) 
         ids = {
             "auth": _insert(conn, "failed", "AuthRejected: wrong PIN"),
             "bank": _insert(conn, "failed", "SourceUnavailable: bank down"),
-            "stopped": _insert(conn, "failed", "interrupted: the application stopped before the run finished"),
+            "stopped": _insert(
+                conn, "failed", "interrupted: the application stopped before the run finished"
+            ),
             "parse": _insert(conn, "failed", "ParseFailed: no header row"),
             "other": _insert(conn, "failed", "IntegrityError: unexpected error"),
             "ok": _insert(conn, "ok", None),

@@ -82,6 +82,9 @@ def test_the_catalog_reads_a_fetch_importers_declared_kinds() -> None:
         emits = frozenset({"transactions", "documents"})
         providers = frozenset({"paypal"})
 
+        def delivers(self, settings: object, provider: str) -> bool:
+            return provider.lower() == "paypal"
+
         def validate_settings(self, settings: object) -> None: ...
 
         def default_fetch_start(self, settings: object, *, today: date) -> date:

@@ -10,6 +10,7 @@ from app.core.documents.read import (
     DocumentRow,
     get_document,
     list_documents,
+    provider_names,
 )
 
 __all__ = [
@@ -22,4 +23,5 @@ __all__ = [
     "DocumentRow",
     "get_document",
     "list_documents",
+    "provider_names",
 ]

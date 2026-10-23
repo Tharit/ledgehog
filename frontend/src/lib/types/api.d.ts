@@ -72,7 +72,7 @@ export interface paths {
         };
         /**
          * List Document Providers
-         * @description The providers a payee can name and the documents list can filter by (empty: no document importer).
+         * @description Suggestions for the providers a payee names and the documents list filters by (any may be named).
          */
         get: operations["list_document_providers"];
         put?: never;

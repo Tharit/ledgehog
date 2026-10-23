@@ -191,16 +191,16 @@ _QUEUE_PAGE = text(
                         ELSE min(dc.covered_through) END AS covered_through
               FROM ledger_entry AS de
               JOIN payee AS pp ON pp.id = de.payee_id
-              JOIN unnest(CAST(:doc_importers AS text[]), CAST(:doc_providers AS text[]))
-                       AS r(importer, provider) ON r.provider = pp.document_provider
-              JOIN importer_instance AS ii ON ii.importer = r.importer AND NOT ii.disabled
+              JOIN unnest(CAST(:doc_instances AS bigint[]), CAST(:doc_providers AS text[]))
+                       AS r(instance_id, provider) ON r.provider = lower(pp.document_provider)
+              JOIN importer_instance AS ii ON ii.id = r.instance_id AND NOT ii.disabled
                    AND (ii.settings ->> 'start_date' IS NULL
                         OR CAST(ii.settings ->> 'start_date' AS date) <= de.booked_on)
               LEFT JOIN v_document_coverage AS dc ON dc.importer_instance_id = ii.id
              WHERE de.id = p.doc_entry
                AND (dc.covered_through IS NULL
                     OR dc.covered_through
-                       < de.booked_on + current_setting('ledger.document_window_days')::int)
+                       < de.booked_on + current_setting('ledger.document_window_ahead_days')::int)
              GROUP BY pp.document_provider) AS dw ON p.doc_entry IS NOT NULL
      ORDER BY p.booked_on, p.anchor
     """
@@ -260,7 +260,7 @@ def _section(conn: Connection, kind: SectionKind, *, limit: int, cursor: str | N
     rows = conn.execute(
         _QUEUE_PAGE,
         {
-            **units_binds(),
+            **units_binds(conn),
             "section": kind,
             "after_on": after_on,
             "after_anchor": after_anchor,
@@ -278,7 +278,7 @@ def _section(conn: Connection, kind: SectionKind, *, limit: int, cursor: str | N
     units = _units_of_page(conn, [int(r.unit_key) for r in page], by_key)
     groups: tuple[CurrencyGroup, ...] = ()
     if kind == "needs_account":
-        found = conn.execute(_NEEDS_ACCOUNT_GROUPS, units_binds()).all()
+        found = conn.execute(_NEEDS_ACCOUNT_GROUPS, units_binds(conn)).all()
         groups = tuple(CurrencyGroup(currency=str(r.currency), count=int(r.n)) for r in found)
     return QueueSection(
         kind=kind,
@@ -290,7 +290,7 @@ def _section(conn: Connection, kind: SectionKind, *, limit: int, cursor: str | N
 
 
 def _section_total(conn: Connection, kind: SectionKind) -> int:
-    return int(conn.execute(_SECTION_TOTAL, {**units_binds(), "section": kind}).scalar_one())
+    return int(conn.execute(_SECTION_TOTAL, {**units_binds(conn), "section": kind}).scalar_one())
 
 
 def _units_of_page(conn: Connection, keys: list[int], facts: dict[int, Row[Any]]) -> tuple[UnitView, ...]:
@@ -333,7 +333,7 @@ def review_queue(
     if section is None:
         total = sum(s.total for s in built)
     else:
-        total = int(conn.execute(_QUEUE_TOTAL, units_binds()).scalar_one())
+        total = int(conn.execute(_QUEUE_TOTAL, units_binds(conn)).scalar_one())
     return ReviewQueue(sections=built, total=total)
 
 
@@ -350,7 +350,7 @@ class ActionableCounts:
 def actionable_counts(conn: Connection) -> ActionableCounts:
     """Units that can be acted on now, by section: pending review and needs an account, not waiting (a
     waiting unit completes itself). The queue's own sections, one cheap pass."""
-    n = {str(r.section): int(r.n) for r in conn.execute(_ACTIONABLE_COUNT, units_binds())}
+    n = {str(r.section): int(r.n) for r in conn.execute(_ACTIONABLE_COUNT, units_binds(conn))}
     return ActionableCounts(
         pending_review=n.get("pending_review", 0), needs_account=n.get("needs_account", 0)
     )

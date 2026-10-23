@@ -141,7 +141,7 @@ def _load(
     conn: Connection, query: TextClause, *, with_document: bool = True, extra: Mapping[str, Any] | None = None
 ) -> list[UnconfirmedEntry]:
     out: list[UnconfirmedEntry] = []
-    for r in conn.execute(query, {**units_binds(), **(extra or {})}):
+    for r in conn.execute(query, {**units_binds(conn), **(extra or {})}):
         documented = with_document and r.document_id is not None
         raw = EntryInput(
             entry_id=r.id,

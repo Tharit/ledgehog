@@ -188,7 +188,7 @@ def test_an_unknown_document_is_a_404_in_the_envelope(anna: TestClient):
     assert_envelope(anna.get(f"{URL}/0"), 422, "validation_error")
 
 
-def test_providers_lists_the_registered_providers_sorted(anna: TestClient):
+def test_providers_lists_importer_names_and_stored_providers_sorted(anna: TestClient, api_engine: Engine):
     from app.core.importers.providers import configure_document_providers, reset_document_providers
 
     reset_document_providers()
@@ -198,6 +198,10 @@ def test_providers_lists_the_registered_providers_sorted(anna: TestClient):
             {"b": frozenset({"paypal", "amazon"}), "a": frozenset({"amazon", "zalando"})}
         )
         assert anna.get(f"{URL}/providers").json() == {"providers": ["amazon", "paypal", "zalando"]}
+        with api_engine.begin() as conn:  # stored providers join in; a spelling already named is not repeated
+            for provider in ("Ebay", "PayPal", "ebay"):
+                make_document(conn, provider, external_id=f"p-{provider}")
+        assert anna.get(f"{URL}/providers").json() == {"providers": ["Ebay", "amazon", "paypal", "zalando"]}
     finally:
         reset_document_providers()
 

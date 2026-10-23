@@ -202,9 +202,11 @@ def test_a_transfer_is_not_a_reverse_match(db_conn: Connection, acct: int):
 
 
 def test_reverse_matches_respect_amount_sign_window_and_duplicates(db_conn: Connection, acct: int):
-    d = make_document(db_conn, total=-1000, on=D)  # the window is 7 days
+    d = make_document(db_conn, total=-1000, on=D)  # a booking up to 7 days before it and 60 days after it
     inside = txn(db_conn, acct, on=date(2026, 3, 17))
-    txn(db_conn, acct, on=date(2026, 3, 18))  # one day too far
+    late = txn(db_conn, acct, on=date(2026, 5, 9))  # 60 days after the document: the back end
+    txn(db_conn, acct, on=date(2026, 5, 10))  # one day too far
+    early = txn(db_conn, acct, on=date(2026, 3, 3))  # 7 days before it: the ahead end
     txn(db_conn, acct, on=date(2026, 3, 2))  # one day too far
     txn(db_conn, acct, amount=-1001)
     txn(db_conn, acct, amount=1000)  # a refund cannot match a charge document
@@ -215,7 +217,7 @@ def test_reverse_matches_respect_amount_sign_window_and_duplicates(db_conn: Conn
     make_source(db_conn, acct, amount=-1000, booked_on=D, duplicate_of=duplicated)  # a duplicate has no entry
     detail = get_document(db_conn, d)
     assert detail is not None
-    assert [m.entry_id for m in detail.matches] == [target, inside]
+    assert [m.entry_id for m in detail.matches] == [target, inside, early, late]
 
 
 def test_reverse_matches_in_the_instructed_currency_and_with_a_carried_document(

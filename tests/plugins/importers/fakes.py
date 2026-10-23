@@ -49,6 +49,9 @@ class FakeDocumentImporter:
         self.covered_from = covered_from
         self.calls: list[tuple[date, date]] = []
 
+    def delivers(self, settings: Mapping[str, Any], provider: str) -> bool:
+        return provider.lower() in {p.lower() for p in self.providers}
+
     def validate_settings(self, settings: Mapping[str, Any]) -> None:
         return None
 
