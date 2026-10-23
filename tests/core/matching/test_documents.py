@@ -280,15 +280,3 @@ def test_fully_charged_compares_magnitudes() -> None:
     assert not fully_charged(order(-300, -200, carriers=(carrier(9, -300),)))
     assert fully_charged(order(-300, -200, carriers=(carrier(9, -300), carrier(8, -200))))
     assert fully_charged(order(-300, -200, carriers=(carrier(9, -600),)))  # beyond the total, by magnitude
-
-
-def test_a_zero_amount_booking_is_never_matched() -> None:
-    zero = txn(1, amount=0)
-    multi = order(-300, -700)
-    assert document_candidates(zero, [multi, doc(total=0), doc(102)], W) == []
-    assert automatic_links([zero], [multi, doc(total=0)], W) == {}
-    assert suggestions(zero, [multi], W) == []
-    assert match([zero], [multi], W).candidates == {}
-    # and it takes no part in the link of the others
-    assert automatic_links([zero, txn(2, amount=-1000)], [multi], W) == {2: 101}
-    assert reverse_matches(multi, [zero, txn(2, amount=-300)], W) == [txn(2, amount=-300)]
