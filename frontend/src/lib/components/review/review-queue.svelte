@@ -14,7 +14,7 @@
 		waiting: {
 			title: 'Waiting',
 			empty:
-				'Nothing is waiting. A unit that expects its partner leg or a document appears here until it arrives.'
+				'Nothing is waiting. A unit that expects its partner leg, a document or the rest of an order appears here until it arrives.'
 		}
 	};
 </script>
