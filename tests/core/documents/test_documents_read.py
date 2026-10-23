@@ -248,3 +248,27 @@ def test_a_splits_original_entry_is_the_match_with_the_transactions_amount(db_co
     detail = get_document(db_conn, d)
     assert detail is not None
     assert [(m.entry_id, m.amount) for m in detail.matches] == [(first, -1000)]
+
+
+def test_a_document_with_several_carriers_is_one_row_with_its_first_carrier(db_conn: Connection, acct: int):
+    doc = make_document(db_conn, total=-500)
+    lines(db_conn, doc, ("a", -300), ("b", -200))
+    first, second = txn(db_conn, acct, amount=-300), txn(db_conn, acct, amount=-200)
+    carry(db_conn, first, doc)
+    carry(db_conn, second, doc)
+    page = list_documents(db_conn, DocumentFilter(), limit=10, offset=0)
+    assert page.total == 1 and [d.id for d in page.documents] == [doc]
+    assert page.documents[0].carrier is not None and page.documents[0].carrier.entry_id == first
+    assert ids(db_conn, linked=True) == [doc] and ids(db_conn, linked=False) == []
+    detail = get_document(db_conn, doc)
+    assert detail is not None and detail.matches == ()  # fully charged: nothing left to match
+
+
+def test_a_partly_charged_order_lists_the_transactions_that_take_the_rest(db_conn: Connection, acct: int):
+    doc = make_document(db_conn, total=-500)
+    lines(db_conn, doc, ("a", -300), ("b", -200))
+    carry(db_conn, txn(db_conn, acct, amount=-300), doc)
+    rest = txn(db_conn, acct, amount=-200, on=date(2026, 3, 12))
+    txn(db_conn, acct, amount=-300)  # the first line is taken
+    detail = get_document(db_conn, doc)
+    assert detail is not None and [m.entry_id for m in detail.matches] == [rest]

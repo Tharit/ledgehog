@@ -3,9 +3,9 @@
 The twin of the `doc_awaited`, `doc_suggested` and `doc_candidate` columns of the unit CTE
 (`core/resolution/confirmed.py`),
 pinned to that SQL by `tests/core/units/test_state_documents.py`. The candidate rule is the matcher's
-(`core/matching/documents.py`), not restated here; what is added is waiting (§7) and the gate: the test
-applies only to the original entry of a transaction whose payee has a provider, that has no `document` key
-and is not typed as a transfer (a document explains a flow).
+(`core/matching/documents.py`: carriers and lines), not restated here; what is added is waiting (§7) and the
+gate: the test applies only to the original entry of a transaction whose payee has a provider, that has no
+`document` key and no entry typed as a transfer (a document explains a flow).
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from app.core.matching.documents import DocInput, DocTxn, DocWindow, candidates, suggestions
+from app.core.matching.documents import DocInput, DocTxn, DocWindow, match
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,6 +98,34 @@ def waiting_for(
     return DocumentWait(provider, through)
 
 
+def document_facts_of(
+    txns: Sequence[DocTxn],
+    *,
+    others: Iterable[DocTxn],
+    documents: Sequence[DocInput],
+    sources: Iterable[DocumentSource],
+    window: DocWindow,
+) -> dict[int, DocumentFacts]:
+    """The facts of the original entries `txns` that pass the gate, by entry id. `others` are the other
+    original entries with a provider and no decided document (the transactions a document could be shared
+    with: the matcher judges them together, once); `document_decided`, a missing provider and a transfer entry
+    close the gate. A document's carriers are those it holds (`DocInput.carriers`)."""
+    gated = [t for t in txns if t.payee_provider is not None and not t.document_decided and not t.is_transfer]
+    own = {t.entry_id for t in gated}
+    found = match([*gated, *(o for o in others if o.entry_id not in own)], documents, window)
+    sources = list(sources)
+    out: dict[int, DocumentFacts] = {}
+    for t in gated:
+        assert t.payee_provider is not None
+        has = bool(found.candidates.get(t.entry_id))
+        out[t.entry_id] = DocumentFacts(
+            awaited=awaited(t.payee_provider, t.booked_on, window, sources),
+            suggested=has and t.entry_id not in found.links,
+            candidate=has,
+        )
+    return out
+
+
 def document_facts(
     txn: DocTxn,
     *,
@@ -106,13 +134,6 @@ def document_facts(
     sources: Iterable[DocumentSource],
     window: DocWindow,
 ) -> DocumentFacts:
-    """The facts of the original entry `txn`. `others` are the other original entries with a provider and
-    no decided document (the transactions a document could be shared with); `txn.document_decided` and a
-    missing provider close the gate."""
-    if txn.payee_provider is None or txn.document_decided or txn.is_transfer:
-        return DocumentFacts()
-    return DocumentFacts(
-        awaited=awaited(txn.payee_provider, txn.booked_on, window, sources),
-        suggested=bool(suggestions(txn, documents, window, others=others)),
-        candidate=bool(candidates(txn, documents, window)),
-    )
+    """The facts of the original entry `txn`; `document_facts_of` for one."""
+    found = document_facts_of([txn], others=others, documents=documents, sources=sources, window=window)
+    return found.get(txn.entry_id, DocumentFacts())

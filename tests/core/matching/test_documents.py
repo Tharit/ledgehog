@@ -8,8 +8,11 @@ from app.core.matching import (
     DocInput,
     DocTxn,
     DocWindow,
+    Line,
     automatic_links,
     document_candidates,
+    fully_charged,
+    match,
     reverse_matches,
     suggestions,
 )
@@ -28,6 +31,17 @@ def doc(i: int = 101, total: int = -1000, on: date = D, **kw) -> DocInput:  # no
     provider = kw.pop("provider", "amazon")
     currency = kw.pop("currency", "EUR")
     return DocInput(i, provider, on, total, currency, **kw)
+
+
+def order(*amounts: int, i: int = 101, carriers: tuple[DocTxn, ...] = (), **kw) -> DocInput:  # noqa: ANN003
+    """A document of these line amounts, its total their sum."""
+    lines = tuple(Line(n, a) for n, a in enumerate(amounts, start=1))
+    return doc(i, sum(amounts), lines=lines, carriers=carriers, **kw)
+
+
+def carrier(i: int, amount: int, on: date = D, **kw) -> DocTxn:  # noqa: ANN003
+    """A transaction whose original entry links a document (decided, so never considered)."""
+    return DocTxn(i, 1, on, amount, "EUR", document_decided=True, document_id=101, **kw)
 
 
 def ids(found: list[DocInput]) -> list[int]:
@@ -89,8 +103,8 @@ def test_the_provider_is_matched_without_regard_to_case() -> None:
     assert automatic_links([txn(payee_provider="PAYPAL")], [doc(provider="PayPal")], W) == {1: 101}
 
 
-def test_carried_documents_are_excluded() -> None:
-    assert document_candidates(txn(), [doc(carried=True)], W) == []
+def test_a_document_carried_in_full_is_no_candidate() -> None:
+    assert document_candidates(txn(), [doc(carriers=(carrier(9, -1000),))], W) == []
 
 
 def test_ineligible_transactions_have_no_candidates() -> None:
@@ -158,7 +172,7 @@ def test_reverse_matches_include_confirmed_any_payee_and_any_account() -> None:
         txn(7, instructed_amount=-1000, instructed_currency="EUR", currency="USD", amount=-1100),
     ]
     assert [t.entry_id for t in reverse_matches(doc(), ts, W)] == [1, 6, 7, 2]
-    assert reverse_matches(doc(carried=True), ts, W) == []
+    assert reverse_matches(doc(carriers=(carrier(9, -1000),)), ts, W) == []
 
 
 def test_a_transfer_is_not_a_reverse_match_nor_does_it_block_a_link() -> None:
@@ -175,3 +189,94 @@ def test_reverse_matches_sign_and_instructed() -> None:
         t.entry_id
         for t in reverse_matches(usd, [txn(1, instructed_amount=-1100, instructed_currency="USD")], W)
     ] == [1]
+
+
+# ---- one document, several charges ------------------------------------------------------------------
+
+
+def test_a_charge_that_takes_some_of_the_lines_is_a_candidate() -> None:
+    assert ids(document_candidates(txn(amount=-300), [order(-300, -200)], W)) == [101]
+    assert document_candidates(txn(amount=-250), [order(-300, -200)], W) == []
+    # a partial match needs lines that sum to the total
+    assert (
+        document_candidates(txn(amount=-300), [doc(total=-600, lines=(Line(1, -300), Line(2, -200)))], W)
+        == []
+    )
+    # the whole document matches whatever the lines sum to
+    assert ids(
+        document_candidates(txn(amount=-600), [doc(total=-600, lines=(Line(1, -300), Line(2, -200)))], W)
+    ) == [101]
+
+
+def test_the_charges_of_one_order_are_linked_together() -> None:
+    thirty, twenty = txn(1, amount=-300), txn(2, amount=-200, on=D + timedelta(1))
+    pool = [order(-300, -200)]
+    assert automatic_links([thirty, twenty], pool, W) == {1: 101, 2: 101}
+    assert suggestions(thirty, pool, W, others=[thirty, twenty]) == []
+    # each is a candidate alone, and the links do not depend on the order given
+    assert automatic_links([twenty, thirty], pool, W) == {1: 101, 2: 101}
+
+
+def test_the_later_charge_of_a_partly_charged_order_is_linked() -> None:
+    pool = [order(-300, -200, carriers=(carrier(9, -300),))]
+    assert automatic_links([txn(2, amount=-200)], pool, W) == {2: 101}
+    assert document_candidates(txn(2, amount=-300), pool, W) == []  # the first line is taken
+
+
+def test_a_document_with_a_confirmed_carrier_is_only_suggested() -> None:
+    pool = [order(-300, -200, carriers=(carrier(9, -300, confirmed=True),))]
+    t = txn(2, amount=-200)
+    assert automatic_links([t], pool, W) == {}
+    assert ids(suggestions(t, pool, W, others=[t])) == [101]
+
+
+def test_a_link_needs_an_allocation_that_keeps_the_committed_references() -> None:
+    # a carrier of -200 references line 1 (-300): an allocation exists only by moving that line, so the order
+    # is a suggestion and no automatic link
+    moved = order(-300, -200, carriers=(carrier(9, -200, line_numbers=frozenset({1})),))
+    t = txn(2, amount=-300)
+    assert ids(document_candidates(t, [moved], W)) == [101]  # a candidate: some allocation exists
+    assert automatic_links([t], [moved], W) == {}
+    assert ids(suggestions(t, [moved], W, others=[t])) == [101]
+    kept = order(-300, -200, carriers=(carrier(9, -200, line_numbers=frozenset({2})),))
+    assert automatic_links([t], [kept], W) == {2: 101}
+
+
+def test_the_only_candidate_of_each_charge() -> None:
+    # t1 has two candidate documents: nothing is linked, even though the order alone would divide
+    a, b = txn(1, amount=-300), txn(2, amount=-200)
+    pool = [order(-300, -200), doc(102, total=-300)]
+    assert automatic_links([a, b], pool, W) == {}
+    assert sorted(ids(suggestions(a, pool, W, others=[a, b]))) == [101, 102]
+
+
+def test_identical_charges_see_a_single_line_alone() -> None:
+    a, b = txn(1, amount=-300), txn(2, amount=-300)
+    assert automatic_links([a, b], [order(-300, -200)], W) == {}
+    assert automatic_links([a, b], [order(-300, -300)], W) == {1: 101, 2: 101}
+
+
+def test_match_has_candidates_and_links() -> None:
+    a = txn(1, amount=-300)
+    found = match([a, txn(2, amount=-777)], [order(-300, -200)], W)
+    assert ids(found.candidates[1]) == [101] and 2 not in found.candidates
+    assert found.links == {1: 101}
+    assert found.suggested.keys() == (found.candidates.keys() - found.links.keys())
+
+
+def test_reverse_matches_of_a_partly_charged_order() -> None:
+    pool = order(-300, -200, carriers=(carrier(9, -300),))
+    ts = [txn(1, amount=-200), txn(2, amount=-300), txn(3, amount=-500), carrier(9, -300)]
+    assert [t.entry_id for t in reverse_matches(pool, ts, W)] == [1]
+    # an order carried in full lists nothing
+    full = order(-300, -200, carriers=(carrier(9, -300), carrier(8, -200)))
+    assert fully_charged(full) and reverse_matches(full, ts, W) == []
+    # a document not carried at all lists the charges that take some of its lines or all of them
+    assert [t.entry_id for t in reverse_matches(order(-300, -200), ts[:3], W)] == [1, 2, 3]
+
+
+def test_fully_charged_compares_magnitudes() -> None:
+    assert not fully_charged(order(-300, -200))
+    assert not fully_charged(order(-300, -200, carriers=(carrier(9, -300),)))
+    assert fully_charged(order(-300, -200, carriers=(carrier(9, -300), carrier(8, -200))))
+    assert fully_charged(order(-300, -200, carriers=(carrier(9, -600),)))  # beyond the total, by magnitude

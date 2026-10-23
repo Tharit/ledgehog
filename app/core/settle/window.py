@@ -1,4 +1,5 @@
-"""The matching window (spec §5.7): a ledger-wide number of days, and the document window (§5.8): two.
+"""The matching window (spec §5.7): a ledger-wide number of days, and the document window (§5.8): two
+(`document_window`, read in `core/resolution/doc_load.py`, the unit CTE's home).
 
 Core never reads configuration (architecture §5.1): the engine sets `ledger.matching_window_days` on
 every pooled connection, the way it sets `ledger.max_rate_age`, and core reads it back here.
@@ -8,7 +9,7 @@ from __future__ import annotations
 
 from sqlalchemy import Connection, text
 
-from app.core.matching.documents import DocWindow
+from app.core.resolution.doc_load import document_window
 
 
 def matching_window_days(conn: Connection) -> int:
@@ -17,14 +18,4 @@ def matching_window_days(conn: Connection) -> int:
     return int(value)
 
 
-def document_window(conn: Connection) -> DocWindow:
-    """The configured document window (spec §5.8) as (back, ahead) days: a transaction matches a document
-    dated within [booked_on - back, booked_on + ahead], and waits for one until booked_on + ahead. Set
-    like the matching window; an unset setting is an error, never a default."""
-    back, ahead = conn.execute(
-        text(
-            "SELECT current_setting('ledger.document_window_back_days'),"
-            " current_setting('ledger.document_window_ahead_days')"
-        )
-    ).one()
-    return DocWindow(int(back), int(ahead))
+__all__ = ["document_window", "matching_window_days"]

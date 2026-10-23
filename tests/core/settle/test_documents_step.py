@@ -428,7 +428,7 @@ def test_with_no_document_source_nothing_waits_and_step_two_is_a_cheap_no_op(
     def boom(_conn: Connection) -> list[Any]:
         raise AssertionError("step 2 loaded transactions although no document exists")
 
-    monkeypatch.setattr(step, "_considered", boom)
+    monkeypatch.setattr(step, "load_gated", boom)
     with isolated_engine.begin() as conn:
         acct = make_account(conn)
         provider = make_payee(conn, "PayPal", "paypal")
@@ -452,3 +452,91 @@ def test_a_charge_outside_the_window_or_another_provider_is_not_linked(world: Wo
     world.document(total=-300, provider="amazon", external_id="am")
     settle(world.engine)
     assert world.row(far).document_id is None and world.row(other).document_id is None
+
+
+# ---- one order, several charges ----------------------------------------------------------------------
+
+
+def _order(world: World, *amounts: int, external_id: str = "order", **kw: Any) -> int:
+    doc = world.document(total=sum(amounts), external_id=external_id, **kw)
+    world.lines(doc, *((f"item {n}", a) for n, a in enumerate(amounts, start=1)))
+    return doc
+
+
+def test_two_charges_of_one_order_are_linked_together_as_proposals(world: World) -> None:
+    thirty, twenty = world.charge(amount=-300), world.charge(amount=-200, on=D + timedelta(days=1))
+    doc = _order(world, -300, -200)
+    first = settle(world.engine)
+    assert first.error is None
+    for e in (thirty, twenty):
+        row = world.row(e)
+        assert row.document_id == doc and row.derivation["document"] == {
+            "pass": "matcher_proposal",
+            "basis": {},
+        }
+        assert world.line_of(e) is None  # a document of several lines gives no line with the link
+    before = [world.row(e) for e in (thirty, twenty)]
+    second = settle(world.engine)
+    assert second.error is None and second.touched_entry_ids == ()
+    assert [world.row(e) for e in (thirty, twenty)] == before
+
+
+def test_the_later_charge_of_an_order_is_linked_beside_its_unconfirmed_carrier(world: World) -> None:
+    thirty = world.charge(amount=-300)
+    doc = _order(world, -300, -200)
+    settle(world.engine)
+    assert world.row(thirty).document_id == doc
+    twenty = world.charge(amount=-200, on=D + timedelta(days=2))
+    settle(world.engine)
+    assert world.row(twenty).document_id == doc
+    assert world.row(twenty).derivation["document"]["pass"] == "matcher_proposal"
+
+
+def test_a_document_with_a_confirmed_carrier_is_not_linked_into(world: World) -> None:
+    doc = _order(world, -300, -200)
+    with world.engine.begin() as conn:
+        cat = make_category(conn, "Shopping")
+        src = make_source(conn, world.account, amount=-300, booked_on=D)
+        carrier = make_entry(
+            conn,
+            src,
+            category_id=cat,
+            payee_id=world.provider,
+            document_id=doc,
+            derivation=json.dumps({**STANDING, "document": {"pass": "user"}}),
+        )
+    twenty = world.charge(amount=-200, on=D + timedelta(days=1))
+    before = world.row(carrier)
+    settle(world.engine)
+    assert world.row(carrier) == before
+    row = world.row(twenty)
+    assert row.document_id is None and "document" not in row.derivation
+    assert "document_suggested" in row.review_flags  # only suggested
+
+
+def test_a_charge_with_two_candidates_keeps_its_order_unlinked(world: World) -> None:
+    """Uniqueness both ways: the 200 charge sees the order and a document of its own, so neither charge of
+    the order is linked, though the order alone would divide."""
+    thirty, twenty = world.charge(amount=-300), world.charge(amount=-200, on=D + timedelta(days=1))
+    _order(world, -300, -200)
+    world.document(total=-200, external_id="own")
+    settle(world.engine)
+    for e in (thirty, twenty):
+        row = world.row(e)
+        assert row.document_id is None and "document_suggested" in row.review_flags
+
+
+def test_identical_charges_share_no_single_line(world: World) -> None:
+    a, b = world.charge(amount=-300), world.charge(amount=-300)
+    _order(world, -300, -200)
+    settle(world.engine)
+    assert world.row(a).document_id is None and world.row(b).document_id is None
+
+
+def test_a_document_of_one_line_takes_its_line_with_the_link_and_only_one_charge(world: World) -> None:
+    entry = world.charge(amount=-300)
+    doc = _order(world, -300)
+    settle(world.engine)
+    assert world.row(entry).document_id == doc
+    assert world.line_of(entry) == world.line_ids(doc)[0]
+    assert world.row(entry).derivation["document"]["pass"] == "matcher_decision"

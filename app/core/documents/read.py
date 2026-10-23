@@ -29,8 +29,9 @@ from app.core.documents.filters import DocumentFilter
 from app.core.importers.providers import importer_names
 from app.core.ledger.entries import display_text
 from app.core.ledger.sql import like_pattern
-from app.core.matching.documents import DocInput, DocTxn, reverse_matches
+from app.core.matching.documents import DocTxn, fully_charged, reverse_matches
 from app.core.resolution.confirmed import units_binds, units_sql
+from app.core.resolution.doc_load import load_document
 from app.core.settle.window import document_window
 
 doc = table(
@@ -54,7 +55,14 @@ line = table(
     column("amount"),
     column("qty"),
 )
-link = table("v_document_link", column("document_id"), column("ledger_entry_id"))
+# a document with its first carrier (the lowest entry id), None where none carries it; the list and detail
+# still show a single carrier (a document may have several, spec §5.8)
+_links = table("v_document_link", column("document_id"), column("ledger_entry_id"))
+link = (
+    select(_links.c.document_id, func.min(_links.c.ledger_entry_id).label("ledger_entry_id"))
+    .group_by(_links.c.document_id)
+    .subquery("link")
+)
 carrier = table("ledger_entry", column("id"), column("account_id"), column("source_transaction_id"))
 src = table(
     "source_transaction",
@@ -269,12 +277,13 @@ def get_document(conn: Connection, document_id: int) -> DocumentDetail | None:
             .order_by(line.c.line_no)
         )
     )
-    matches = () if row.carrier is not None else _matches(conn, row)
+    matches = _matches(conn, row)
     return DocumentDetail(row, lines, matches)
 
 
-# The original entry (I31: the lowest id of its source transaction) of each non-duplicate transaction whose
-# booking date is within the window and whose amount could match; `reverse_matches` then decides.
+# The original entry (I31: the lowest id of its source transaction) of each non-duplicate transaction without
+# a transfer entry whose booking date is within the window and which has an amount in the document's
+# currency; `reverse_matches` then decides.
 _CANDIDATE_TXNS = text(
     """
     SELECT e.id, e.account_id, e.source_transaction_id, e.payee_id, e.document_id, e.description,
@@ -283,12 +292,13 @@ _CANDIDATE_TXNS = text(
       FROM ledger_entry AS e
       JOIN source_transaction AS st ON st.id = e.source_transaction_id
      WHERE st.duplicate_of IS NULL
-       AND e.type IS DISTINCT FROM 'transfer'
        AND NOT EXISTS (SELECT 1 FROM ledger_entry AS lo
                         WHERE lo.source_transaction_id = e.source_transaction_id AND lo.id < e.id)
+       AND NOT EXISTS (SELECT 1 FROM ledger_entry AS t
+                        WHERE t.source_transaction_id = e.source_transaction_id AND t.type = 'transfer')
        AND st.booked_on BETWEEN :lo AND :hi
-       AND ((st.currency = :currency AND st.amount = :total)
-            OR (st.instructed_currency = :currency AND st.instructed_amount = :total))
+       AND (st.currency = :currency
+            OR (st.instructed_currency = :currency AND st.instructed_amount IS NOT NULL))
     """
 )
 
@@ -296,6 +306,9 @@ _UNIT_OK = text(f"SELECT u.id, u.unit_ok FROM ({units_sql(of_entries=True)}) AS 
 
 
 def _matches(conn: Connection, row: DocumentRow) -> tuple[DocumentMatch, ...]:
+    document = load_document(conn, row.id)
+    if document is None or fully_charged(document):
+        return ()
     window = document_window(conn)
     candidates = conn.execute(
         _CANDIDATE_TXNS,
@@ -305,7 +318,6 @@ def _matches(conn: Connection, row: DocumentRow) -> tuple[DocumentMatch, ...]:
             "lo": row.occurred_on - timedelta(days=window.ahead),
             "hi": row.occurred_on + timedelta(days=window.back),
             "currency": row.currency,
-            "total": row.total,
         },
     ).all()
     by_entry = {int(r.id): r for r in candidates}
@@ -321,8 +333,7 @@ def _matches(conn: Connection, row: DocumentRow) -> tuple[DocumentMatch, ...]:
         )
         for r in candidates
     ]
-    doc_input = DocInput(row.id, row.provider, row.occurred_on, row.total, row.currency)
-    ordered = reverse_matches(doc_input, txns, window)
+    ordered = reverse_matches(document, txns, window)
     if not ordered:
         return ()
     state = {

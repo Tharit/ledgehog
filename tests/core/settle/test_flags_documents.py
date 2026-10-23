@@ -107,3 +107,34 @@ def test_a_second_recompute_changes_nothing(bench: Bench) -> None:
     bench.flow(bench.source(), payee_id=_provider(conn))
     assert recompute_review_flags(conn) != []
     assert recompute_review_flags(conn) == []
+
+
+def _order(conn: Connection, *amounts: int) -> int:
+    doc = make_document(conn, total=sum(amounts))
+    for n, amount in enumerate(amounts, start=1):
+        conn.execute(
+            text(
+                "INSERT INTO external_document_line (document_id, line_no, description, amount)"
+                " VALUES (:d, :n, 'item', :a)"
+            ),
+            {"d": doc, "n": n, "a": amount},
+        )
+    return doc
+
+
+def test_the_charges_an_order_divides_among_are_no_suggestions(bench: Bench) -> None:
+    conn = bench.conn
+    _order(conn, -30, -20)
+    payee = _provider(conn)
+    thirty = bench.flow(bench.source(amount=-30), payee_id=payee)
+    twenty = bench.flow(bench.source(amount=-20, on=D + timedelta(days=1)), payee_id=payee)
+    assert _flags(conn, thirty) == [] and _flags(conn, twenty) == []  # settling is about to link both
+
+
+def test_a_charge_the_order_cannot_divide_with_the_others_is_suggested(bench: Bench) -> None:
+    conn = bench.conn
+    _order(conn, -30, -20)
+    payee = _provider(conn)
+    first = bench.flow(bench.source(amount=-30), payee_id=payee)
+    bench.flow(bench.source(amount=-30, on=D + timedelta(days=1)), payee_id=payee)
+    assert _flags(conn, first) == ["document_suggested"]

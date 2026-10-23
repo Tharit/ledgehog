@@ -11,7 +11,9 @@ from sqlalchemy import Connection, text
 from app.core.importers.providers import instance_deliveries
 from app.core.ingest.identity import canonical_text
 from app.core.matching import MAX_WINDOW, Leg, PoolEntry, Summary
-from app.core.matching.documents import DocInput, DocTxn, DocWindow
+from app.core.matching.documents import DocInput, DocWindow
+from app.core.matching.lines import Line
+from app.core.resolution.doc_load import load_carriers, load_gated
 from app.core.resolution.enrich import LinkedDocument
 from app.core.resolution.load import load_accounts, load_rules
 from app.core.resolution.registry import classifiers_for
@@ -177,9 +179,9 @@ _SOURCES_OF_DOCUMENTS = text(
     "  FROM importer_instance AS i LEFT JOIN v_document_coverage AS c ON c.importer_instance_id = i.id"
 )
 
-# the documents no entry OUTSIDE the unit carries and that can matter to it: those its entries carry, and
-# those whose total equals one of its sources' amounts (in the source's currency or its instructed one),
-# whatever payee a draft may give the entry (documents.md §3)
+# the documents that can matter to the unit: those its entries carry, and those dated within the window of one
+# of its sources' booking dates, in that source's currency or its instructed one, whatever payee a draft may
+# give the entry (documents.md §2, §3); the carriers outside the unit are read apart
 _DOCUMENTS = text(
     """
     SELECT d.id, d.provider, d.occurred_on, d.total, d.currency, d.merchant_name, d.version, d.title,
@@ -187,12 +189,12 @@ _DOCUMENTS = text(
            (SELECT jsonb_agg(jsonb_build_array(l.line_no, l.amount, l.description) ORDER BY l.line_no)
               FROM external_document_line AS l WHERE l.document_id = d.id) AS lines
       FROM external_document AS d
-     WHERE NOT EXISTS (SELECT 1 FROM ledger_entry AS c
-                        WHERE c.document_id = d.id AND c.id <> ALL(CAST(:closure AS bigint[])))
-       AND (d.id = ANY(CAST(:carried AS bigint[]))
-            OR EXISTS (SELECT 1 FROM unnest(CAST(:currencies AS text[]), CAST(:totals AS bigint[]))
-                                 AS k(currency, total)
-                        WHERE k.currency = d.currency AND k.total = d.total))
+     WHERE d.id = ANY(CAST(:carried AS bigint[]))
+        OR EXISTS (SELECT 1 FROM unnest(CAST(:currencies AS text[]), CAST(:booked AS date[]))
+                                AS k(currency, booked_on)
+                    WHERE k.currency = d.currency
+                      AND d.occurred_on BETWEEN k.booked_on - CAST(:back AS int)
+                                            AND k.booked_on + CAST(:ahead AS int))
     """
 )
 
@@ -205,25 +207,6 @@ _PICKED = text(
               FROM external_document_line AS l WHERE l.document_id = d.id) AS lines
       FROM external_document AS d
      WHERE d.id = ANY(CAST(:ids AS bigint[]))
-    """
-)
-
-# documents.md §1 outside the unit: the original entry (I31) of a non-duplicate transaction whose payee has a
-# provider and which has no decided document; the amounts are the transaction's, as the unit CTE reads them
-_OTHERS = text(
-    """
-    SELECT e.id, e.account_id, st.booked_on, st.amount, st.currency, st.instructed_amount,
-           st.instructed_currency, p.document_provider AS provider
-      FROM ledger_entry AS e
-      JOIN source_transaction AS st ON st.id = e.source_transaction_id
-      JOIN payee AS p ON p.id = e.payee_id
-     WHERE p.document_provider IS NOT NULL
-       AND e.type IS DISTINCT FROM 'transfer'
-       AND st.duplicate_of IS NULL
-       AND NOT jsonb_exists(e.derivation, 'document')
-       AND e.id <> ALL(CAST(:closure AS bigint[]))
-       AND NOT EXISTS (SELECT 1 FROM ledger_entry AS lo
-                        WHERE lo.source_transaction_id = e.source_transaction_id AND lo.id < e.id)
     """
 )
 
@@ -254,42 +237,52 @@ def load_doc_world(conn: Connection, stored: StoredUnit, picks: Collection[int] 
         return DocWorld(
             window=DocWindow(0, 0)
         )  # nothing can be matched, nothing is linked: judged without documents
+    window = document_window(conn)
     currencies: list[str] = []
-    totals: list[int] = []
+    booked: list[date] = []
     for src in stored.sources.values():
         currencies.append(src.currency.strip())
-        totals.append(src.amount)
+        booked.append(src.booked_on)
         if src.instructed_currency is not None and src.instructed_amount is not None:
             currencies.append(src.instructed_currency.strip())
-            totals.append(src.instructed_amount)
+            booked.append(src.booked_on)
+    rows = conn.execute(
+        _DOCUMENTS,
+        {
+            "carried": carried,
+            "currencies": currencies,
+            "booked": booked,
+            "back": window.back,
+            "ahead": window.ahead,
+        },
+    ).all()
+    inside = set(closure)
+    # the carriers outside the unit; the unit's own are its rows, which the overlay adds as they stand
+    outside = load_carriers(conn, [int(r.id) for r in rows])
     docs: list[DocInput] = []
     details: dict[int, LinkedDocument] = {}
     infos: dict[int, DocumentInfo] = {}
-    for r in conn.execute(
-        _DOCUMENTS, {"closure": closure, "carried": carried, "currencies": currencies, "totals": totals}
-    ):
-        docs.append(DocInput(int(r.id), r.provider, r.occurred_on, int(r.total), str(r.currency).strip()))
+    for r in rows:
         info = _info(r)
         infos[info.id] = info
         details[info.id] = LinkedDocument(merchant_name=info.merchant_name, lines=info.lines)
+        docs.append(
+            DocInput(
+                info.id,
+                info.provider,
+                info.occurred_on,
+                info.total,
+                info.currency,
+                lines=tuple(Line(n, a) for n, a, _d in info.lines),
+                carriers=tuple(c for c in outside.get(info.id, ()) if c.entry_id not in inside),
+            )
+        )
     if picks:  # whoever carries them, a document the draft names is known
         for r in conn.execute(_PICKED, {"ids": sorted(picks)}):
             info = _info(r)
             infos[info.id] = info
             details[info.id] = LinkedDocument(merchant_name=info.merchant_name, lines=info.lines)
-    others = [
-        DocTxn(
-            entry_id=int(r.id),
-            account_id=int(r.account_id),
-            booked_on=r.booked_on,
-            amount=int(r.amount),
-            currency=str(r.currency).strip(),
-            instructed_amount=r.instructed_amount,
-            instructed_currency=r.instructed_currency.strip() if r.instructed_currency else None,
-            payee_provider=r.provider,
-        )
-        for r in conn.execute(_OTHERS, {"closure": closure})
-    ]
+    others = load_gated(conn, closure)
     delivering = instance_deliveries(conn)
     sources = [
         DocumentSource(
@@ -301,7 +294,7 @@ def load_doc_world(conn: Connection, stored: StoredUnit, picks: Collection[int] 
         for r in conn.execute(_SOURCES_OF_DOCUMENTS)
     ]
     return DocWorld(
-        window=document_window(conn),
+        window=window,
         sources=sources,
         payee_providers=payee_providers,
         documents=docs,

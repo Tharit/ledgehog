@@ -54,6 +54,16 @@ linked in this settle. The first settle is the one that comes closest to the 1.0
 three runs out of four on the loaded machine, by 0.00-0.06 s): if it is missed on a quiet machine,
 narrow the first round (below).
 
+Line allocation (order documents): a line allocation cannot be done in SQL, so the candidacy of the unit CTE
+is found in Python (`core/resolution/doc_load.py: candidacy`) and bound into it: the gated charges (8 ms), the
+document headers (3 ms), the documents a charge could match (whole, or a partial of two or more lines: 8 ms of
+Python over the headers, then their lines and carriers), and the matcher over a bucket index by amount (1
+ms). One evaluation 22-25 ms on this ledger (the carriers' query had cost 12 ms until its confirmation test
+was read apart). A settle keeps it in a memo that each step touching an entry forgets (`candidacy_memo`): five
+evaluations in the first settle (two of them before any payee is resolved: 5 ms), not seven. First settle
+1.02-1.06 s, idle 0.53 s, step 2 on the settled ledger 37 ms, on the same loaded machine (load averages 5-6)
+as above.
+
 Caveat: if the budget is missed, narrow the first round to a dirty set (architecture §5.2); rounds after the
 first are already narrowed to the entries the newly confirmed votes can reach.
 """

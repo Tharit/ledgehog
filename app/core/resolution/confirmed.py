@@ -25,7 +25,8 @@ A unit is confirmed when every entry of it is complete and carries only standing
   not confirmed in the same settle that would link its document (`doc_candidate`, used here only).
   `doc_awaited` and `doc_suggested` are exposed per entry (the flags
   `waiting` and `document_suggested` read them). Which importer provides which provider is the registry of
-  `core/importers/providers.py`, bound as `units_binds(conn)`.
+  `core/importers/providers.py`; the candidates are found in Python, a line allocation not being SQL
+  (`core/resolution/doc_load.py`); both are bound as `units_binds(conn)`.
 
 This is computed here rather than read from `review_flags` so that it is right in the middle of a
 settle, where the flags are not yet rewritten and a new entry's empty default would otherwise read as
@@ -39,6 +40,9 @@ from sqlalchemy import Connection, text
 
 from app.core.importers.providers import delivery_pairs
 from app.core.plugins.classifier import STANDING_PASSES
+from app.core.resolution.doc_load import candidacy
+from app.core.resolution.entry_state import COMPLETE
+from app.core.resolution.entry_state import STANDING as STANDING_SQL
 
 STANDING = sorted(STANDING_PASSES)
 
@@ -51,7 +55,9 @@ _DOC_AHEAD = "current_setting('ledger.document_window_ahead_days')::int"
 # The original entry of a source transaction (I31), whose payee has a provider, with no `document` key:
 # the only entry the document test looks at (documents.md §1).
 _GATE = """pp.document_provider IS NOT NULL
-                                AND le.type IS DISTINCT FROM 'transfer'
+                                AND NOT EXISTS (SELECT 1 FROM ledger_entry AS tr
+                                                 WHERE tr.source_transaction_id = le.source_transaction_id
+                                                   AND tr.type = 'transfer')
                                 AND NOT jsonb_exists(le.derivation, 'document')
                                 AND NOT EXISTS (SELECT 1 FROM ledger_entry AS lo
                                                  WHERE lo.source_transaction_id = le.source_transaction_id
@@ -77,46 +83,14 @@ _AWAITED = (
     + """))"""
 )
 
-# The candidate pairs (documents.md §2, §3): (entry, document) for every original entry (I31) of a payee
-# with a provider and no `document` key, and every document of that provider that no entry carries, whose
-# total equals the transaction's amount in its currency, or its instructed amount in the instructed currency,
-# dated within the window of the booking date. Both ways are plain equality joins, so the pairs are found
-# with one hash join each and not by scanning the documents for every entry. From the pairs per entry:
-# `doc_candidate` (there is one, so settling may link it in step 2: the unit is not confirmed yet, or a unit
-# of standing values would be, and get "none", before step 2 could link the document) and `doc_suggested`
-# (documents.md §4: several candidates, or one that is also a candidate of another transaction no decision
-# has been made on, so no automatic link is possible).
-_PAIRS = (
-    """
-    SELECT o.id AS entry_id, d.id AS doc_id
-      FROM ledger_entry AS o
-      JOIN payee AS op ON op.id = o.payee_id AND op.document_provider IS NOT NULL
-      JOIN source_transaction AS ost ON ost.id = o.source_transaction_id
-      JOIN external_document AS d
-        ON lower(d.provider) = lower(op.document_provider) AND d.currency = ost.{cur} AND d.total = ost.{amt}
-     WHERE NOT jsonb_exists(o.derivation, 'document')
-       AND o.type IS DISTINCT FROM 'transfer'
-       AND NOT EXISTS (SELECT 1 FROM ledger_entry AS oo
-                        WHERE oo.source_transaction_id = o.source_transaction_id AND oo.id < o.id)
-       AND NOT EXISTS (SELECT 1 FROM ledger_entry AS cr WHERE cr.document_id = d.id)
-       AND d.occurred_on - ost.booked_on BETWEEN -"""
-    + _DOC_BACK
-    + """ AND """
-    + _DOC_AHEAD
-)
-
-_CANDIDATES = (
-    """
-    SELECT p.entry_id, count(*) AS n, bool_or(p.doc_entries > 1) AS shared
-      FROM (SELECT c.entry_id, c.doc_id, count(*) OVER (PARTITION BY c.doc_id) AS doc_entries
-              FROM ("""
-    + _PAIRS.format(cur="currency", amt="amount")
-    + """
-                    UNION"""
-    + _PAIRS.format(cur="instructed_currency", amt="instructed_amount")
-    + """) AS c) AS p
-     GROUP BY p.entry_id"""
-)
+# The candidates (documents.md §2, §3): found in Python, since a line allocation cannot be done in SQL
+# (`core/resolution/doc_load.py: candidacy`, bound as `units_binds(conn)`): one row per gated original entry
+# that has a candidate, with `suggested` (documents.md §4: no automatic link is possible: several
+# candidates, one shared with another transaction, a confirmed carrier, or no line allocation keeping the
+# committed references). From it `doc_candidate` (there is one, so settling may link it in step 2: the unit
+# is not confirmed yet, or a unit of standing values would be, and get "none", before step 2 could link the
+# document) and `doc_suggested`.
+_CANDIDATES = "unnest(CAST(:cand_entries AS bigint[]), CAST(:cand_suggested AS boolean[]))"
 
 # One row per movement entry: its id, source, `unit_key` (the unit), `unit_ok` (the unit is
 # confirmed), `unit_has_nonstanding` (some entry of the unit carries a key that awaits a human: what
@@ -142,19 +116,15 @@ _UNITS = """
                                                THEN min(le.source_transaction_id)
                                                     OVER (PARTITION BY le.document_id) END,
                                           le.source_transaction_id)) AS direct_key,
-                           (le.type IS NOT NULL
-                            AND (le.type <> 'flow' OR le.category_id IS NOT NULL)
-                            AND (le.type <> 'transfer' OR le.counterpart_entry_id IS NOT NULL)) AS complete,
-                           NOT EXISTS (
-                               SELECT 1 FROM jsonb_each(le.derivation) AS d
-                                WHERE COALESCE(d.value ->> 'pass', '') <> ALL (:standing)) AS standing,
+                           {complete} AS complete,
+                           {standing_sql} AS standing,
                            CASE WHEN {gate} THEN {awaited} ELSE false END AS doc_awaited,
-                           COALESCE({gate} AND cd.n IS NOT NULL, false) AS doc_candidate,
-                           COALESCE({gate} AND (cd.n > 1 OR cd.shared), false) AS doc_suggested
+                           COALESCE({gate} AND cd.entry_id IS NOT NULL, false) AS doc_candidate,
+                           COALESCE({gate} AND cd.suggested, false) AS doc_suggested
                       FROM ledger_entry AS le
                       LEFT JOIN ledger_entry AS p ON p.id = le.counterpart_entry_id
                       LEFT JOIN payee AS pp ON pp.id = le.payee_id
-                      LEFT JOIN ({candidates}) AS cd ON cd.entry_id = le.id
+                      LEFT JOIN {candidates} AS cd(entry_id, suggested) ON cd.entry_id = le.id
                      WHERE le.source_transaction_id IS NOT NULL{scope}
                    ) AS k
            ) AS m
@@ -188,14 +158,24 @@ def units_sql(*, of_entries: bool = False) -> str:
         gate=_GATE,
         awaited=_AWAITED,
         candidates=_CANDIDATES,
+        complete=COMPLETE,
+        standing_sql=STANDING_SQL,
     )
 
 
 def units_binds(conn: Connection) -> dict[str, object]:
-    """The binds every execution of `units_sql` needs besides `ids`: the standing passes and which instances
-    deliver which providers (`core/importers/providers.py`)."""
+    """The binds every execution of `units_sql` needs besides `ids`: the standing passes, which instances
+    deliver which providers (`core/importers/providers.py`) and the document candidacy of the ledger's
+    gated transactions (`core/resolution/doc_load.py`), read now."""
     instances, providers = delivery_pairs(conn)
-    return {"standing": STANDING, "doc_instances": instances, "doc_providers": providers}
+    found = candidacy(conn)
+    return {
+        "standing": STANDING,
+        "doc_instances": instances,
+        "doc_providers": providers,
+        "cand_entries": sorted(found),
+        "cand_suggested": [found[i] for i in sorted(found)],
+    }
 
 
 _CONFIRMED_IDS = text(f"SELECT u.id FROM ({units_sql()}) AS u WHERE u.unit_ok")

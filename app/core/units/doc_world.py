@@ -14,17 +14,18 @@ applied to those facts; nothing is restated.
 
 from __future__ import annotations
 
-from collections.abc import Collection, Iterable, Mapping, Sequence
+from collections import defaultdict
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date
 
-from app.core.matching.documents import DocInput, DocTxn, DocWindow, automatic_links, suggestions
+from app.core.matching.documents import DocInput, DocTxn, DocWindow, match
 from app.core.resolution.enrich import LinkedDocument
 from app.core.units.documents import (
     DocumentFacts,
     DocumentSource,
     DocumentWait,
-    document_facts,
+    document_facts_of,
     waiting_for,
 )
 
@@ -55,7 +56,8 @@ class DocWorld:
     window: DocWindow
     sources: Sequence[DocumentSource] = ()
     payee_providers: Mapping[int, str] = field(default_factory=dict)
-    # no entry outside the unit carries them (`carried` is False; the overlay marks what its rows carry)
+    # with their lines and the carriers outside the unit (`DocInput.carriers`); the overlay adds the carriers
+    # its own rows are (`_with_carriers`)
     documents: Sequence[DocInput] = ()
     details: Mapping[int, LinkedDocument] = field(default_factory=dict)
     others: Sequence[DocTxn] = ()  # gated original entries outside the unit
@@ -64,54 +66,55 @@ class DocWorld:
     infos: Mapping[int, DocumentInfo] = field(default_factory=dict)
 
 
-def _marked(world: DocWorld, carried: Collection[int]) -> list[DocInput]:
-    return [replace(d, carried=True) if d.document_id in carried else d for d in world.documents]
+def _with_carriers(world: DocWorld, txns: Iterable[DocTxn]) -> list[DocInput]:
+    """The documents with the unit's own carriers added: the transactions of `txns` that link a document."""
+    inside: dict[int, list[DocTxn]] = defaultdict(list)
+    for t in txns:
+        if t.document_id is not None:
+            inside[t.document_id].append(t)
+    return [
+        replace(d, carriers=(*d.carriers, *inside[d.document_id])) if d.document_id in inside else d
+        for d in world.documents
+    ]
 
 
 def _gated(txns: Iterable[DocTxn]) -> list[DocTxn]:
     return [t for t in txns if t.payee_provider is not None and not t.document_decided]
 
 
-def facts_of(txns: Sequence[DocTxn], world: DocWorld, carried: Collection[int]) -> dict[int, DocumentFacts]:
-    """The document facts of each of `txns` (the unit's original entries), by entry id: awaited, suggested
-    and candidate as the unit CTE reads them. `carried` are the documents the unit's rows carry now."""
+def _outside(txns: Sequence[DocTxn], world: DocWorld) -> list[DocTxn]:
+    own = {t.entry_id for t in txns}
+    return [o for o in world.others if o.entry_id not in own]
+
+
+def facts_of(txns: Sequence[DocTxn], world: DocWorld) -> dict[int, DocumentFacts]:
+    """The document facts of each of `txns` (the unit's original entries, carriers among them), by entry id:
+    awaited, suggested and candidate as the unit CTE reads them."""
     if not world.payee_providers:
         return {}
-    gated = _gated(txns)
-    if not gated:
-        return {}
-    own = {t.entry_id for t in txns}
-    everyone = [*gated, *(o for o in world.others if o.entry_id not in own)]
-    documents = _marked(world, carried)
-    return {
-        t.entry_id: document_facts(
-            t,
-            others=everyone,
-            documents=documents,
-            sources=world.sources,
-            window=world.window,
-        )
-        for t in gated
-    }
+    return document_facts_of(
+        txns,
+        others=_outside(txns, world),
+        documents=_with_carriers(world, txns),
+        sources=world.sources,
+        window=world.window,
+    )
 
 
-def links_of(txns: Sequence[DocTxn], world: DocWorld, carried: Collection[int]) -> dict[int, int]:
+def links_of(txns: Sequence[DocTxn], world: DocWorld) -> dict[int, int]:
     """Step 2: {entry id: document id} for the unit's originals that have an automatic link, judged among
-    every considered transaction of the ledger (uniqueness both ways)."""
+    every considered transaction of the ledger (all of a document's candidates are linked together)."""
     if not world.payee_providers:
         return {}
     gated = _gated(txns)
     if not gated:
         return {}
     own = {t.entry_id for t in txns}
-    everyone = [*gated, *(o for o in world.others if o.entry_id not in own)]
-    found = automatic_links(everyone, _marked(world, carried), world.window)
-    return {i: d for i, d in found.items() if i in own}
+    found = match([*gated, *_outside(txns, world)], _with_carriers(world, txns), world.window)
+    return {i: d for i, d in found.links.items() if i in own}
 
 
-def suggestions_of(
-    txns: Sequence[DocTxn], world: DocWorld, carried: Collection[int]
-) -> dict[int, list[DocInput]]:
+def suggestions_of(txns: Sequence[DocTxn], world: DocWorld) -> dict[int, list[DocInput]]:
     """The documents offered for each of `txns` (the unit's original entries), by entry id: the candidates of
     a transaction that has no automatic link (never stored), nearest first. Only for the gated ones."""
     if not world.payee_providers:
@@ -119,14 +122,9 @@ def suggestions_of(
     gated = _gated(txns)
     if not gated:
         return {}
-    own = {t.entry_id for t in txns}
-    everyone = [*gated, *(o for o in world.others if o.entry_id not in own)]
-    documents = _marked(world, carried)
-    return {
-        t.entry_id: found
-        for t in gated
-        if (found := suggestions(t, documents, world.window, others=everyone))
-    }
+    own = {t.entry_id for t in gated}
+    found = match([*gated, *_outside(txns, world)], _with_carriers(world, txns), world.window)
+    return {i: c for i, c in found.suggested.items() if i in own}
 
 
 def waits_of(txns: Sequence[DocTxn], world: DocWorld) -> dict[int, DocumentWait]:

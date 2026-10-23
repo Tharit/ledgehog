@@ -23,10 +23,12 @@ from app.core.importers.providers import (
     reset_document_providers,
 )
 from app.core.matching.documents import DocInput, DocTxn, DocWindow, candidates
+from app.core.matching.lines import Line
 from app.core.resolution.confirmed import units_binds, units_sql
+from app.core.resolution.doc_load import load_carriers
 from app.core.settle.window import document_window
 from app.core.units.closure import UnitEntry, units_of
-from app.core.units.documents import DocumentFacts, DocumentSource, awaited, document_facts
+from app.core.units.documents import DocumentFacts, DocumentSource, awaited, document_facts_of
 from app.core.units.state import unit_state
 from tests.core.units.doc_helpers import make_doc_source, make_document, make_payee
 from tests.core.units.helpers import Bench, D
@@ -199,6 +201,51 @@ def test_a_carried_document_is_no_candidate(db_conn: Connection, make_account: A
     assert sql[other].doc_suggested is False and sql[carrier].unit_ok is True
 
 
+def _lines(conn: Connection, doc: int, *amounts: int) -> None:
+    for n, amount in enumerate(amounts, start=1):
+        conn.execute(
+            text(
+                "INSERT INTO external_document_line (document_id, line_no, description, amount)"
+                " VALUES (:d, :n, 'item', :a)"
+            ),
+            {"d": doc, "n": n, "a": amount},
+        )
+
+
+def test_the_charges_of_an_order_are_candidates_not_suggestions(
+    db_conn: Connection, make_account: Any
+) -> None:
+    """An order of two lines (-30, -20) and a charge for each: the lines divide, so settling links both
+    (candidates, no suggestion); a third charge that no line allocation takes leaves it a suggestion only
+    where the order has other claimants."""
+    bench = Bench(db_conn, make_account)
+    doc = make_document(db_conn, total=-50)
+    _lines(db_conn, doc, -30, -20)
+    payee = make_payee(db_conn, "PayPal", "paypal")
+    thirty = bench.flow(bench.source(amount=-30), payee_id=payee)
+    twenty = bench.flow(bench.source(amount=-20, on=D + timedelta(days=1)), payee_id=payee)
+    sql = _sql(db_conn)
+    assert (sql[thirty].doc_suggested, sql[thirty].unit_ok) == (False, False)
+    assert (sql[twenty].doc_suggested, sql[twenty].unit_ok) == (False, False)
+    # a second charge of 30: nothing divides the order among three, so all three are suggested it
+    dup = bench.flow(bench.source(amount=-30, on=D + timedelta(days=2)), payee_id=payee)
+    sql = _sql(db_conn)
+    assert sql[thirty].doc_suggested is True and sql[dup].doc_suggested is True
+
+
+def test_a_charge_beside_a_confirmed_carrier_is_suggested(db_conn: Connection, make_account: Any) -> None:
+    bench = Bench(db_conn, make_account)
+    doc = make_document(db_conn, total=-50)
+    _lines(db_conn, doc, -30, -20)
+    payee = make_payee(db_conn, "PayPal", "paypal")
+    carrier = bench.flow(bench.source(amount=-30), payee_id=payee, derivation=DOC_KEY)
+    db_conn.execute(text("UPDATE ledger_entry SET document_id = :d WHERE id = :e"), {"d": doc, "e": carrier})
+    twenty = bench.flow(bench.source(amount=-20, on=D + timedelta(days=1)), payee_id=payee)
+    sql = _sql(db_conn)
+    assert sql[twenty].doc_suggested is True  # the carrier is confirmed: only suggested
+    assert sql[carrier].unit_ok is True
+
+
 # ---- the matrix ----------------------------------------------------------------------------------
 
 
@@ -222,7 +269,7 @@ def _build(conn: Connection, make_account: Any, rng: random.Random) -> None:
     ]
     amounts = [-100, -250, -100, 400]
     for i in range(rng.randint(0, 8)):
-        make_document(
+        doc = make_document(
             conn,
             rng.choice(["paypal", "amazon", "paypal"]),
             total=rng.choice(amounts) if rng.random() < 0.85 else -777,
@@ -230,6 +277,18 @@ def _build(conn: Connection, make_account: Any, rng: random.Random) -> None:
             currency=rng.choice(["EUR", "EUR", "EUR", "USD"]),
             external_id=f"m{i}",
         )
+        if (doc * 7) % 5 < 2:  # a document of two lines, which a partial charge may take
+            total = conn.execute(
+                text("SELECT total FROM external_document WHERE id = :d"), {"d": doc}
+            ).scalar_one()
+            for n, amount in enumerate((total // 2, total - total // 2), start=1):
+                conn.execute(
+                    text(
+                        "INSERT INTO external_document_line (document_id, line_no, description, amount)"
+                        " VALUES (:d, :n, 'item', :a)"
+                    ),
+                    {"d": doc, "n": n, "a": amount},
+                )
     carried: list[int] = []
     for _ in range(rng.randint(2, 10)):
         parts = rng.choice([1, 1, 1, 2])
@@ -278,7 +337,10 @@ def _python_facts(conn: Connection) -> tuple[dict[int, DocumentFacts], list[Unit
     originals = conn.execute(
         text(
             "SELECT e.id, e.booked_on, st.amount, st.currency, st.instructed_amount, st.instructed_currency,"
-            "       p.document_provider, jsonb_exists(e.derivation, 'document') AS decided"
+            "       p.document_provider, jsonb_exists(e.derivation, 'document') AS decided,"
+            "       EXISTS (SELECT 1 FROM ledger_entry AS t"
+            "                WHERE t.source_transaction_id = e.source_transaction_id"
+            "                  AND t.type = 'transfer') AS transfer"
             "  FROM ledger_entry AS e JOIN source_transaction AS st ON st.id = e.source_transaction_id"
             "  LEFT JOIN payee AS p ON p.id = e.payee_id"
             " WHERE e.id = (SELECT min(x.id) FROM ledger_entry AS x"
@@ -296,19 +358,35 @@ def _python_facts(conn: Connection) -> tuple[dict[int, DocumentFacts], list[Unit
             r.instructed_currency,
             r.document_provider,
             document_decided=r.decided,
+            is_transfer=r.transfer,
         )
         for r in originals
     ]
     others = [t for t in txns if t.payee_provider is not None and not t.document_decided]
+    every = conn.execute(
+        text("SELECT id, provider, occurred_on, total, currency FROM external_document ORDER BY id")
+    ).all()
+    carriers = load_carriers(conn, [r.id for r in every])  # the carriers' own state is read as settling does
     documents = [
-        DocInput(r.id, r.provider, r.occurred_on, r.total, r.currency, carried=r.carried)
-        for r in conn.execute(
-            text(
-                "SELECT d.id, d.provider, d.occurred_on, d.total, d.currency,"
-                "       EXISTS (SELECT 1 FROM ledger_entry AS c WHERE c.document_id = d.id) AS carried"
-                "  FROM external_document AS d"
-            )
+        DocInput(
+            r.id,
+            r.provider,
+            r.occurred_on,
+            r.total,
+            r.currency,
+            tuple(
+                Line(n, a)
+                for n, a in conn.execute(
+                    text(
+                        "SELECT line_no, amount FROM external_document_line"
+                        " WHERE document_id = :d ORDER BY line_no"
+                    ),
+                    {"d": r.id},
+                )
+            ),
+            carriers.get(r.id, ()),
         )
+        for r in every
     ]
     sources = [
         DocumentSource(
@@ -324,14 +402,11 @@ def _python_facts(conn: Connection) -> tuple[dict[int, DocumentFacts], list[Unit
             )
         )
     ]
-    facts = {
-        t.entry_id: document_facts(t, others=others, documents=documents, sources=sources, window=window)
-        for t in txns
-    }
-    return facts, entries
+    found = document_facts_of(txns, others=others, documents=documents, sources=sources, window=window)
+    return {t.entry_id: found.get(t.entry_id, DocumentFacts()) for t in txns}, entries
 
 
-@pytest.mark.parametrize("seed", range(12))
+@pytest.mark.parametrize("seed", range(24))
 def test_sql_equals_the_python_twin_over_a_matrix(db_conn: Connection, make_account: Any, seed: int) -> None:
     rng = random.Random(seed)
     _build(db_conn, make_account, rng)
@@ -355,7 +430,7 @@ def test_sql_equals_the_python_twin_over_a_matrix(db_conn: Connection, make_acco
 
 def test_the_matrix_covers_every_outcome(db_conn: Connection, make_account: Any) -> None:
     outcomes: set[tuple[bool, bool]] = set()
-    for seed in range(12):
+    for seed in range(60):
         savepoint = db_conn.begin_nested()
         reset_document_providers()
         _build(db_conn, make_account, random.Random(seed))

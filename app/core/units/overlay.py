@@ -672,12 +672,14 @@ def _leg_state(row: _Row, world: World) -> LegState | None:
     return None
 
 
-def _doc_txn(r: _Row, world: World) -> DocTxn | None:
+def _doc_txn(r: _Row, rows: Sequence[_Row], world: World) -> DocTxn | None:
     """The original entry of a stored source as document matching reads it (the source's amounts, the
-    entry's payee), None for any other row: only an original carries a link (I31)."""
+    entry's payee), None for any other row: only an original carries a link (I31). A transfer entry anywhere
+    in the transaction makes it `is_transfer`; the lines its entries reference are what a carrier holds."""
     if not r.original or r.stored is None or world.docs is None:
         return None
     s = r.src
+    siblings = [x for x in rows if x.src.id == s.id]
     return DocTxn(
         entry_id=r.id,
         account_id=s.account_id,
@@ -688,12 +690,14 @@ def _doc_txn(r: _Row, world: World) -> DocTxn | None:
         instructed_currency=s.instructed_currency.strip() if s.instructed_currency else None,
         payee_provider=world.docs.payee_providers.get(r.payee_id) if r.payee_id is not None else None,
         document_decided="document" in (r.derivation or {}),
-        is_transfer=r.type == "transfer",
+        is_transfer=any(x.type == "transfer" for x in siblings),
+        document_id=r.document_id,
+        line_numbers=frozenset(x.line_no for x in siblings if x.line_no is not None),
     )
 
 
 def _doc_txns(rows: Sequence[_Row], world: World) -> list[DocTxn]:
-    return [t for r in rows if (t := _doc_txn(r, world)) is not None]
+    return [t for r in rows if (t := _doc_txn(r, rows, world)) is not None]
 
 
 def _doc_facts(rows: Sequence[_Row], world: World) -> dict[int, DocumentFacts]:
@@ -701,7 +705,7 @@ def _doc_facts(rows: Sequence[_Row], world: World) -> dict[int, DocumentFacts]:
     over the state the rows are in, the ledger outside them as stored."""
     if world.docs is None:
         return {}
-    return facts_of(_doc_txns(rows, world), world.docs, {r.document_id for r in rows if r.document_id})
+    return facts_of(_doc_txns(rows, world), world.docs)
 
 
 def _states(rows: Sequence[_Row], world: World) -> dict[int, tuple[tuple[_Row, ...], UnitState]]:
@@ -796,7 +800,7 @@ def _link_documents(rows: Sequence[_Row], world: World) -> list[_Row]:
     and its key, `matcher_decision` for a document of one line, `matcher_proposal` for one of several."""
     if world.docs is None:
         return []
-    found = links_of(_doc_txns(rows, world), world.docs, {r.document_id for r in rows if r.document_id})
+    found = links_of(_doc_txns(rows, world), world.docs)
     by_id = {r.id: r for r in rows}
     linked: list[_Row] = []
     for entry_id, doc_id in sorted(found.items()):
@@ -1235,9 +1239,8 @@ def _document_views(
         return {}
     rows = [r for r in ordered if r.original and r.stored is not None]
     txns = _doc_txns(ordered, world)
-    carried = {r.document_id for r in ordered if r.document_id}
     facts = _doc_facts(ordered, world)
-    offered = suggestions_of(txns, world.docs, carried)
+    offered = suggestions_of(txns, world.docs)
     waits = waits_of(txns, world.docs)
     out: dict[int, DocumentView] = {}
     for r in rows:
@@ -1328,6 +1331,7 @@ def _stored_facts(stored: StoredUnit, world: World) -> dict[int, DocumentFacts]:
         src = stored.sources[e.source_transaction_id]
         if e.id != stored.original_of(src.id):
             continue
+        siblings = [x for x in stored.entries if x.source_transaction_id == src.id]
         txns.append(
             DocTxn(
                 entry_id=e.id,
@@ -1339,10 +1343,16 @@ def _stored_facts(stored: StoredUnit, world: World) -> dict[int, DocumentFacts]:
                 instructed_currency=src.instructed_currency.strip() if src.instructed_currency else None,
                 payee_provider=world.docs.payee_providers.get(e.payee_id) if e.payee_id is not None else None,
                 document_decided="document" in e.derivation,
-                is_transfer=e.type == "transfer",
+                is_transfer=any(x.type == "transfer" for x in siblings),
+                document_id=e.document_id,
+                line_numbers=frozenset(
+                    x.document_line[1]
+                    for x in siblings
+                    if x.document_line is not None and x.document_line[0] == e.document_id
+                ),
             )
         )
-    return facts_of(txns, world.docs, {e.document_id for e in stored.entries if e.document_id})
+    return facts_of(txns, world.docs)
 
 
 def _unit_entries_of(stored: StoredUnit) -> list[UnitEntry]:

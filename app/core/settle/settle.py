@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from sqlalchemy import Connection, Engine, text
 
 from app.core.resolution.confirmed import load_confirmed_ids
+from app.core.resolution.doc_load import candidacy_memo, forget_candidacy
 from app.core.settle.documents import match_documents_step, resolve_after_link_step
 from app.core.settle.flags import record_none_documents, review_flags_step
 from app.core.settle.pairing import pair_transfers_step
@@ -79,16 +80,20 @@ def register_step(name: str, fn: Step) -> None:
 def _run_rounds(conn: Connection) -> tuple[set[int], bool]:
     """The entries touched, and whether a document was linked."""
     touched: set[int] = set()
-    with settle_run() as run:
+    with settle_run() as run, candidacy_memo():
         run.confirmed = load_confirmed_ids(conn)
         # a unit confirmed before this settle (written complete and standing, such as an entry form's) has
         # no document key yet either: "none" is recorded for it too, so no later document source reopens it
         touched.update(record_none_documents(conn, sorted(run.confirmed)))
+        forget_candidacy()  # the "none" it records closes the gate of those units
         for _ in range(MAX_ROUNDS):
             confirmed = 0
             for _name, step in list(_STEPS):
                 outcome = step(conn)
-                touched.update(outcome.touched)
+                moved = set(outcome.touched)
+                touched.update(moved)
+                if moved:
+                    forget_candidacy()  # a write may change what a document could be linked to
                 confirmed += outcome.newly_confirmed
             if confirmed == 0:
                 return touched, run.document_linked

@@ -1,27 +1,31 @@
 """Settle steps 2 and 3, document matching and the resolution after a link (architecture §5.2, spec §5.8,
 §5.9, documents.md §1-§5, I20, I35, I37).
 
-Step 2, `match_documents`, loads ONLY what it needs: the unlinked documents (none: it returns at once) and
-the original entries of the transactions §1 considers (payee with a `document_provider`, no `document` key,
-not a duplicate; the unit is unconfirmed by construction, see `_considered`). Their payee is the one step 1
-resolved WITHOUT a document, which is what eligibility is judged on. The pure matcher
-(`core/matching/documents.py`) finds the automatic links (exactly one candidate, a candidate of no other
-transaction) and ONE statement writes them on the original entry: `document_id` and the key `document`,
-`matcher_decision` for a document of one line, `matcher_proposal` for one of several (the unit is reviewed
-once and a commit makes it `user`); for a document of exactly one line the same statement writes the entry's
-`document_line_id` (spec §5.8: the line is applied with the link; a document of several lines gives none, the
-split along the lines is a commit's business). The `trg_le_version` bumps the version on a `document_id` or
-`document_line_id` change, as the schema says: a link is structural. Writing nothing for a transaction that
-has no automatic link is what makes a second settle write nothing (I37). A linked entry leaves the
-considered set, so rounds terminate. A later round runs the step only if step 1 wrote something since
-(`SettleRun.documents_dirty`): a payee is all matching reads of an entry.
+Step 2, `match_documents`, loads ONLY what it needs: the transactions §1 considers (payee with a
+`document_provider`, no `document` key, not a duplicate, no transfer entry; the unit is unconfirmed by
+construction, see `load_gated`) and the documents of their providers with their lines and carriers
+(`core/resolution/doc_load.py`; none at all: it returns at once). Their payee is the one step 1 resolved
+WITHOUT a document, which is what eligibility is judged on. The pure matcher (`core/matching/documents.py`)
+finds the automatic links: for each document d that is a candidate of considered transactions, all of those
+at once, when d is the only candidate of every one of them, a line allocation keeping the committed line
+references exists over d's carriers and them together, and no carrier of d is confirmed. ONE statement
+writes them on the original entries: `document_id` and the key `document`, `matcher_decision` for a document
+of one line, `matcher_proposal` for one of several (the unit is reviewed once and a commit makes it `user`);
+for a document of exactly one line the same statement writes the entry's `document_line_id` (spec §5.8: the
+line is applied with the link; a document of several lines gives none, the split along the lines is a
+commit's business). Settling never creates an entry and links into no document with a confirmed carrier. The
+`trg_le_version` bumps the version on a `document_id` or `document_line_id` change, as the schema says: a link
+is structural. Writing nothing for a transaction that has no automatic link is what makes a second settle
+write nothing (I37). A linked entry leaves the considered set, so rounds terminate. A later round runs the
+step only if step 1 wrote something since (`SettleRun.documents_dirty`): a payee is all matching reads of an
+entry.
 
 Step 3, `resolve_after_link`, derives again every standing value after the link for the transactions step 2
-linked in this settle (spec §5.9: the link is a change of the first value in field order), a targeted
-resolution of just those entries (all entries of the transaction: a split's other entries read the same
-document). The link itself stays: it is not a field of `rederive`'s walk but its input, read through the
-fields `document_merchant` and `document_line` the loader fills (`core/resolution/load.py`); history asks a
-documented entry the merchant key only, for the category.
+linked in this settle and the other carriers of their documents (spec §5.9: the link is a change of the first
+value in field order), a targeted resolution of just those entries (all entries of the transaction: a split's
+other entries read the same document). The link itself stays: it is not a field of `rederive`'s walk but its
+input, read through the fields `document_merchant` and `document_line` the loader fills
+(`core/resolution/load.py`); history asks a documented entry the merchant key only, for the category.
 """
 
 from __future__ import annotations
@@ -30,45 +34,15 @@ from collections.abc import Sequence
 
 from sqlalchemy import Connection, text
 
-from app.core.matching.documents import DocInput, DocTxn, automatic_links
+from app.core.matching.documents import automatic_links
+from app.core.resolution.doc_load import document_window, load_documents, load_gated
 from app.core.resolution.load import UnconfirmedEntry, load_accounts, load_rules, load_units_of
 from app.core.resolution.registry import classifiers_for
 from app.core.resolution.snapshot import load_snapshot
 from app.core.settle.resolution import settle_rewrites, write_rewrites
 from app.core.settle.run import ResolutionContext, StepOutcome, current_run
-from app.core.settle.window import document_window
 
-_ANY_UNLINKED = text(
-    "SELECT EXISTS (SELECT 1 FROM external_document AS d"
-    " WHERE NOT EXISTS (SELECT 1 FROM ledger_entry AS c WHERE c.document_id = d.id))"
-)
-
-_UNLINKED = text(
-    """
-    SELECT d.id, d.provider, d.occurred_on, d.total, d.currency
-      FROM external_document AS d
-     WHERE NOT EXISTS (SELECT 1 FROM ledger_entry AS c WHERE c.document_id = d.id)
-    """
-)
-
-# documents.md §1 without the unit test: the original entry (I31) of a non-duplicate transaction, whose payee
-# has a provider and which has no decided document. Amounts and the booking date are the transaction's, as the
-# unit CTE's candidate test reads them.
-_GATED = text(
-    """
-    SELECT e.id, e.account_id, st.booked_on, st.amount, st.currency, st.instructed_amount,
-           st.instructed_currency, p.document_provider AS provider
-      FROM ledger_entry AS e
-      JOIN source_transaction AS st ON st.id = e.source_transaction_id
-      JOIN payee AS p ON p.id = e.payee_id
-     WHERE p.document_provider IS NOT NULL
-       AND e.type IS DISTINCT FROM 'transfer'
-       AND st.duplicate_of IS NULL
-       AND NOT jsonb_exists(e.derivation, 'document')
-       AND NOT EXISTS (SELECT 1 FROM ledger_entry AS lo
-                        WHERE lo.source_transaction_id = e.source_transaction_id AND lo.id < e.id)
-    """
-)
+_ANY_DOCUMENT = text("SELECT EXISTS (SELECT 1 FROM external_document)")
 
 # per document: how many lines it has and, for what matters of a document of one, that line's id
 _LINE_COUNTS = text(
@@ -94,62 +68,32 @@ _SOURCE_ENTRIES = text(
     """
     SELECT e.id FROM ledger_entry AS e
      WHERE e.source_transaction_id IN (SELECT x.source_transaction_id FROM ledger_entry AS x
+                                        WHERE x.id = ANY(:ids)
+                                       UNION
+                                       SELECT c.source_transaction_id
+                                         FROM ledger_entry AS x
+                                         JOIN ledger_entry AS c ON c.document_id = x.document_id
                                         WHERE x.id = ANY(:ids))
     """
 )
 
 
-def _considered(conn: Connection) -> list[DocTxn]:
-    """The transactions documents.md §1 considers, as the matcher reads them.
-
-    That the unit is unconfirmed (I20) is not asked of the unit CTE: a transaction with a candidate is never
-    in a confirmed unit, because `doc_candidate` keeps that unit open (`core/resolution/confirmed.py`), and
-    one without a candidate has nothing to link. So every gated transaction is `confirmed=False` here."""
-    return [
-        DocTxn(
-            entry_id=int(r.id),
-            account_id=int(r.account_id),
-            booked_on=r.booked_on,
-            amount=int(r.amount),
-            currency=str(r.currency).strip(),
-            instructed_amount=r.instructed_amount,
-            instructed_currency=r.instructed_currency.strip() if r.instructed_currency else None,
-            payee_provider=r.provider,
-        )
-        for r in conn.execute(_GATED)
-    ]
-
-
-def _documents(conn: Connection, providers: set[str]) -> list[DocInput]:
-    wanted = {p.lower() for p in providers}
-    return [
-        DocInput(
-            document_id=int(r.id),
-            provider=r.provider,
-            occurred_on=r.occurred_on,
-            total=int(r.total),
-            currency=str(r.currency).strip(),
-        )
-        for r in conn.execute(_UNLINKED)
-        if r.provider.lower() in wanted
-    ]
-
-
 def match_documents_step(conn: Connection) -> StepOutcome:
-    """Step 2: link each considered transaction that has exactly one candidate no other transaction has."""
+    """Step 2: link the considered transactions a document divides among, as the matcher finds them."""
     run = current_run()
     if not run.documents_dirty:
         return StepOutcome()  # step 1 changed no payee since the last look: nothing new to match
     run.documents_dirty = False
-    if not conn.execute(_ANY_UNLINKED).scalar_one():
-        return StepOutcome()  # no document waits for a transaction: nothing to load, the cheap path
-    transactions = _considered(conn)
+    if not conn.execute(_ANY_DOCUMENT).scalar_one():
+        return StepOutcome()  # no document: nothing to load, the cheap path
+    transactions = load_gated(conn)
     if not transactions:
         return StepOutcome()
-    documents = _documents(conn, {t.payee_provider for t in transactions if t.payee_provider})
+    window = document_window(conn)
+    documents = load_documents(conn, transactions, window)
     if not documents:
         return StepOutcome()
-    links = automatic_links(transactions, documents, document_window(conn))
+    links = automatic_links(transactions, documents, window)
     if not links:
         return StepOutcome()
     ids = sorted(links)
