@@ -711,6 +711,9 @@ newer version, and 409 `stale_reference` for one that is gone. The proposed
 split rows are ordinary new rows with server-issued ids. Once the client echoes
 any row carrying a `document_line`, the split is the client's: nothing is
 regenerated, and every kept row must be echoed, a row left out being removed.
+An original row echoed with `document_line` empty is the user's decision —
+empty is a value (`spec.md` §5.9) — and keeps its carrier unsplit, without a
+line.
 `split_along_lines` replaces an existing split, listing the deleted entries and
 their tags as consequences, and needs the draft anchored on the original entry.
 While a link of the document is not yet the user's, the proposal itself
