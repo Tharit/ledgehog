@@ -514,9 +514,10 @@ GET    /api/session                            who am I
 GET    /api/changes                            the change value of the ledger,
                                                of the documents and of each
                                                account, the current user's
-                                               active task, and how many
-                                               entries the model still has to
-                                               look at; a write's response
+                                               active task, how many entries
+                                               and how many document lines
+                                               the model still has to look
+                                               at; a write's response
                                                carries the values after it
 
   configuration — read-only (§5.7)

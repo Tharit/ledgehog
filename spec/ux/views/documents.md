@@ -19,6 +19,11 @@ allowed), date range, amount (with its currency), text, *not linked*
 carriers' amounts fall short of their total, those carried by none included).
 The list is newest first and paged.
 
+**What the model is looking at says so.** While the model is looking at
+document lines, the Documents item of the navigation shows the activity mark
+Review shows, its tooltip how many, and one quiet line above the list reads
+"The model is looking at N lines". Its answers arrive as new data.
+
 **A detail** opens from a row and shows the document's merchant, total and
 currency, and its lines, each with its category and rationale, read-only. For
 a linked document it lists the carrying transactions, each with its own date,
