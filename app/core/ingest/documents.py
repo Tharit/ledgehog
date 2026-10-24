@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from typing import Any
@@ -28,6 +28,7 @@ from sqlalchemy import Connection, Engine, text
 
 from app.core.domain.errors import ContractViolation, IngestError
 from app.core.ingest.run import (
+    _checked_stats,
     _fail_run_quietly,
     recheck_instance,
     run_error_text,
@@ -65,18 +66,21 @@ def ingest_documents(
     *,
     covered_through: date | None,
     covered_from: date | None = None,
+    importer_stats: Mapping[str, int] | None = None,
 ) -> DocumentRunResult:
     """Upsert one delivery of documents atomically, then settle.
 
     On any failure everything is rolled back, the run ends `failed` and the error is re-raised. A
     delivery that breaks the contract (a zero total, a repeated key, an unknown currency, no
-    coverage) raises `ContractViolation`.
+    coverage) raises `ContractViolation`. `importer_stats` are the importer's own counts, stored
+    under `stats["importer"]`.
     """
     try:
+        given = _checked_stats(importer_stats)
 
         def attempt() -> _Written:
             with engine.begin() as conn:
-                return _write(conn, run_id, documents, covered_through, covered_from)
+                return _write(conn, run_id, documents, covered_through, covered_from, given)
 
         written = retry_on_deadlock(attempt)
     except BaseException as exc:  # the run must not stay `running`
@@ -106,6 +110,7 @@ def _write(
     documents: Sequence[IncomingDocument],
     covered_through: date | None,
     covered_from: date | None,
+    importer_stats: dict[str, int],
 ) -> _Written:
     lock_settle_shared(conn)
     run = conn.execute(
@@ -144,7 +149,12 @@ def _write(
             if _update(conn, run, doc, before):
                 changed.append(before.id)
     reresolved = _reresolve_carriers(conn, changed)
-    stats = {"inserted": inserted, "updated": updated, "changed": len(changed)}
+    stats: dict[str, Any] = {
+        "inserted": inserted,
+        "updated": updated,
+        "changed": len(changed),
+        "importer": importer_stats,
+    }
     conn.execute(
         text(
             "UPDATE import_run SET status = 'ok', finished_at = clock_timestamp(),"

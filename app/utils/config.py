@@ -91,6 +91,16 @@ class ModelConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class VisionModelConfig:
+    """A model that reads images (architecture §5.7), used by a document importer for page images.
+    No reasoning effort is sent."""
+
+    endpoint: str
+    name: str
+    api_key: Secret | None
+
+
+@dataclass(frozen=True, slots=True)
 class Config:
     db: DatabaseConfig
     base_currency: str
@@ -103,6 +113,7 @@ class Config:
     users: tuple[UserConfig, ...]
     model: ModelConfig | None
     oidc: OidcConfig | None = None
+    vision_model: VisionModelConfig | None = None
     expose_openapi: bool = False  # development only: serve /api/openapi.json
     enable_test_importers: bool = False  # development only: register the deterministic test importers
     fints_product_id: str | None = None  # the DK product registration id (spec §7.1); not a secret
@@ -269,6 +280,16 @@ class _Reader:
             effort,
         )
 
+    def vision_model(self) -> VisionModelConfig | None:
+        endpoint, name = self.env.get("VISION_MODEL_ENDPOINT"), self.env.get("VISION_MODEL_NAME")
+        if endpoint is None and name is None:
+            return None
+        return VisionModelConfig(
+            self.text("VISION_MODEL_ENDPOINT"),
+            self.text("VISION_MODEL_NAME"),
+            self.secret("VISION_MODEL_API_KEY", required=False),
+        )
+
     def read(self) -> Config:
         password = self.secret("POSTGRES_PASSWORD")
         assert password is not None
@@ -299,6 +320,7 @@ class _Reader:
             document_window_ahead_days=self.integer("DOCUMENT_WINDOW_AHEAD_DAYS", 7, 0),
             users=self.users(password_optional=enforced),
             model=self.model(),
+            vision_model=self.vision_model(),
             oidc=self.oidc(enforced=enforced),
             expose_openapi=self.boolean("EXPOSE_OPENAPI", False),
             enable_test_importers=self.boolean("ENABLE_TEST_IMPORTERS", False),

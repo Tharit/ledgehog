@@ -118,7 +118,7 @@ def run_job(env: JobEnv, task: Task, job: JobPlan) -> JobOutcome:
             if task.aborting:
                 _end_instance(env, task, job, [item, *pending], ChallengeAbandoned(ABORTED), out)
                 return out
-            failure = _run_item(env, task, job, ctx, session, inst, item, out)
+            failure = _run_item(env, task, job, ctx, session, inst, item, state, out)
             if failure is not None and scope_of(failure) == "instance":
                 _end_instance(env, task, job, pending, failure, out)
                 return out
@@ -140,10 +140,12 @@ def _run_item(
     session: FetchSession,
     inst: _Instance,
     item: PlannedItem,
+    state: dict[str, Any],
     out: JobOutcome,
 ) -> Exception | None:
     """One item's run, from `start_run` to `run_finished` or `run_failed`. Returns the failure, if any;
-    the caller decides by its scope whether the instance goes on."""
+    the caller decides by its scope whether the instance goes on. A document delivery's `position` is
+    applied to `state` (the working copy, written back when the job ends) only after its ingest."""
     base = {"instance_id": job.instance_id, "account_id": item.account_id, "kind": item.kind}
     try:
         external_ref, currency, since = _item_facts(env, job.instance_id, inst, item)
@@ -178,7 +180,9 @@ def _run_item(
                 importer_stats=fetched.importer_stats,
             ).settle
         else:
-            delivery = session.fetch_documents(since=since, today=env.fetch_day)
+            delivery = session.fetch_documents(
+                since=since, today=env.fetch_day, minor_units_of=inst.minor_units.__getitem__
+            )
             if task.aborting:
                 raise ChallengeAbandoned(ABORTED)
             settled = ingest_documents(
@@ -187,7 +191,10 @@ def _run_item(
                 delivery.documents,
                 covered_through=delivery.covered_through,
                 covered_from=delivery.covered_from,
+                importer_stats=delivery.importer_stats,
             ).settle
+            if delivery.position:  # only now: the documents are written (architecture §5.5)
+                state.update(delivery.position)
         stats = _stored_stats(env.engine, run_id)
     except Exception as exc:
         _fail_quietly(env.engine, run_id, exc)

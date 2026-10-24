@@ -396,6 +396,20 @@ def test_the_catalog_lists_the_registered_importers_with_kind_emits_and_presets(
     assert (by_name["bank"]["kind"], by_name["bank"]["emits"]) == ("fetch", ["transactions"])
 
 
+def test_the_catalog_prefills_a_document_importers_start_date_with_the_oldest_unreviewed_entry(make_api):
+    api = make_api({"csv": SpyCsv(), "docs": _DocStub()})
+    by_name = {e["name"]: e for e in api.client.get("/api/importers").json()}
+    assert by_name["docs"]["start_date_default"] is None  # nothing to review
+    assert by_name["csv"]["start_date_default"] is None
+    acct = api.account()
+    with api.engine.begin() as conn:
+        make_entry(conn, make_source(conn, acct, importer=None, booked_on=date(2026, 8, 9)))
+        make_entry(conn, make_source(conn, acct, importer=None, booked_on=date(2026, 8, 3)))
+    by_name = {e["name"]: e for e in api.client.get("/api/importers").json()}
+    assert by_name["docs"]["start_date_default"] == "2026-08-03"
+    assert by_name["csv"]["start_date_default"] is None  # documents only
+
+
 def test_a_new_instance_takes_its_emits_from_the_catalog(make_api):
     api = make_api({"csv": SpyCsv(), "docs": _DocStub()})
     csv = api.client.post(BASE, json={"importer": "csv", "label": "Giro", "settings": PROFILE})

@@ -19,7 +19,7 @@ from app.core.tasks import orchestrate as orchestrate_module
 from app.utils.db.locks import lock_accounts, lock_settle_exclusive
 from tests import lockwatch
 from tests.core.tasks.helpers import FAST, open_prompt, until
-from tests.core.tasks.rig import Rig, acct
+from tests.core.tasks.rig import DOC, Rig, acct
 
 PIN = {"ask": "secret", "subject": "pin"}
 
@@ -348,3 +348,23 @@ def test_what_the_user_typed_is_nowhere_after_a_failed_instance(
         for sentinel in sentinels:
             assert sentinel not in haystack, f"{sentinel} leaked into {name}"
     assert caplog.records  # the log was captured at debug: the absence above is not an empty log
+
+
+def test_abort_during_a_document_fetch_discards_the_delivery_and_its_position(rig: Rig) -> None:
+    iid = rig.instance(
+        {
+            "start_date": "2026-06-01",
+            "documents": [DOC],
+            "documents_position": {"last_uid": 7},
+            "documents_fetch": [{"sleep_ms": 400}],
+        },
+        emits=("documents",),
+    )
+    handle = rig.start()
+    until(lambda: len(handle.of("run_started")) == 1, "the document fetch to begin")
+    handle.task.abort()
+    handle.wait()
+    assert [r.status for r in rig.runs()] == ["failed"]
+    assert rig.q("SELECT count(*) FROM external_document")[0][0] == 0
+    assert rig.state(iid) == {}  # the position is not applied: the source is read again
+    rig.assert_none_running()

@@ -14,7 +14,7 @@ Settings (`importer_instance.settings`):
 
 from __future__ import annotations
 
-from collections.abc import Mapping, MutableMapping
+from collections.abc import Callable, Mapping, MutableMapping
 from datetime import date
 from typing import Any
 
@@ -70,7 +70,9 @@ class _Session(FetchSessionBase):
         self._importer = importer
         self._settings = settings
 
-    def fetch_documents(self, *, since: date, today: date) -> DocumentDelivery:
+    def fetch_documents(
+        self, *, since: date, today: date, minor_units_of: Callable[[str], int]
+    ) -> DocumentDelivery:
         return self._importer.fetch(self._settings, since=since, today=today)
 
 

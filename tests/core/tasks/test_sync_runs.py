@@ -81,7 +81,7 @@ def test_a_clean_sync_of_two_accounts_and_documents(rig: Rig) -> None:
     for done, run in zip(finished, runs, strict=True):
         assert done["run_id"] == run.id and done["stats"] == run.stats  # the stored statistics
     assert (finished[0]["stats"]["inserted"], finished[1]["stats"]["inserted"]) == (28, 10)
-    assert finished[2]["stats"] == {"inserted": 1, "updated": 0, "changed": 0}
+    assert finished[2]["stats"] == {"inserted": 1, "updated": 0, "changed": 0, "importer": {}}
     assert (rig.rows(a1), rig.rows(a2)) == (28, 10)
     assert rig.q("SELECT count(*) FROM external_document")[0][0] == 1
     assert rig.q("SELECT count(*) FROM balance_record")[0][0] == 2
@@ -462,3 +462,53 @@ def test_a_failed_discovery_is_an_instance_failure_with_no_runs(rig: Rig) -> Non
     assert (failed["code"], failed["retryable"], failed["run_ids"]) == ("bank_setup_required", False, [])
     assert handle.task.status().result is None and rig.q("SELECT count(*) FROM import_run")[0][0] == 0
     assert one_ended(handle)["outcome"] == "completed"
+
+
+# ---- documents: position, the importer's counts, the currency lookup ----------------------------------
+
+
+def doc_settings(**kw: Any) -> dict[str, Any]:
+    return {"start_date": "2026-06-01", "documents": [DOC], **kw}
+
+
+def test_a_documents_position_is_applied_to_the_state_once_ingested(rig: Rig) -> None:
+    iid = rig.instance(doc_settings(documents_position={"last_uid": 7}), emits=("documents",))
+    rig.run()
+    assert [r.status for r in rig.runs()] == ["ok"]
+    assert rig.state(iid) == {"last_uid": 7}
+
+
+def test_a_failed_ingest_leaves_the_position_unapplied(rig: Rig) -> None:
+    broken = {**DOC, "currency": "QQQ"}  # a currency the ledger does not know: the ingest fails
+    iid = rig.instance(
+        doc_settings(documents=[broken], documents_position={"last_uid": 7}), emits=("documents",)
+    )
+    rig.run()
+    assert [r.status for r in rig.runs()] == ["failed"]
+    assert rig.state(iid) == {}
+
+
+def test_a_failed_fetch_leaves_the_position_unapplied(rig: Rig) -> None:
+    iid = rig.instance(
+        doc_settings(documents_position={"last_uid": 7}, documents_fetch=[{"raise": "source_unavailable"}]),
+        emits=("documents",),
+    )
+    rig.run()
+    assert [r.status for r in rig.runs()] == ["failed"]
+    assert rig.state(iid) == {}
+
+
+def test_a_documents_run_stores_the_importers_counts_and_gets_the_currency_exponents(rig: Rig) -> None:
+    rig.instance(
+        doc_settings(documents_stats={"skipped": 3}, documents_exponents=["EUR", "JPY"]),
+        emits=("documents",),
+    )
+    handle = rig.run()
+    stats = handle.of("run_finished")[0]["stats"]
+    assert stats["importer"] == {"skipped": 3, "exponent_EUR": 2, "exponent_JPY": 0}
+    assert rig.runs()[0].stats["importer"] == stats["importer"]
+
+
+def test_a_documents_run_without_counts_stores_an_empty_importer_entry(rig: Rig) -> None:
+    rig.instance(doc_settings(), emits=("documents",))
+    assert rig.run().of("run_finished")[0]["stats"]["importer"] == {}

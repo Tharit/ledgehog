@@ -615,7 +615,7 @@ def test_a_statement_that_does_not_add_up_fails_the_run_as_parse_failed() -> Non
 def test_the_importer_fetches_no_documents() -> None:
     session, *_ = open_session(FakeBank(Dialog(), procedures=SINGLE))
     with pytest.raises(AccountUnsupported):
-        session.fetch_documents(since=date(2026, 1, 1), today=TODAY)
+        session.fetch_documents(since=date(2026, 1, 1), today=TODAY, minor_units_of=lambda c: 2)
 
 
 # ---- state and logs ----------------------------------------------------------------------------

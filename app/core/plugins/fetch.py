@@ -221,8 +221,11 @@ class FetchSession(Protocol):
         file importer."""
         ...
 
-    def fetch_documents(self, *, since: date, today: date) -> DocumentDelivery:
-        """Documents dated `since` or later (the instance's `start_date`, spec §5.5)."""
+    def fetch_documents(
+        self, *, since: date, today: date, minor_units_of: Callable[[str], int]
+    ) -> DocumentDelivery:
+        """Documents dated `since` or later (the instance's `start_date`, spec §5.5). `minor_units_of` is
+        passed as to `fetch_account`: it raises `KeyError` for a currency it does not know."""
         ...
 
     def close(self) -> None:
@@ -248,7 +251,9 @@ class FetchSessionBase:
     ) -> FetchedTransactions:
         raise AccountUnsupported("the importer fetches no transactions")
 
-    def fetch_documents(self, *, since: date, today: date) -> DocumentDelivery:
+    def fetch_documents(
+        self, *, since: date, today: date, minor_units_of: Callable[[str], int]
+    ) -> DocumentDelivery:
         raise AccountUnsupported("the importer fetches no documents")
 
     def close(self) -> None:

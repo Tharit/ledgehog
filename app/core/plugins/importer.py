@@ -202,8 +202,16 @@ class IncomingDocument:
 @dataclass(frozen=True, slots=True)
 class DocumentDelivery:
     """A document importer's result. `covered_through` is the date up to which the provider's
-    documents are known complete, in its own dates (spec §5.5); `covered_from` where the data starts."""
+    documents are known complete, in its own dates (spec §5.5); `covered_from` where the data starts.
+
+    `position` is applied to `state` only after the documents were ingested; a failed or aborted run
+    leaves it unapplied."""
 
     documents: tuple[IncomingDocument, ...]
     covered_through: date
     covered_from: date | None = None
+    # the importer's own named counts for the run, stored under `stats["importer"]`
+    importer_stats: Mapping[str, int] = field(default_factory=dict)
+    # an update of the instance's `state` (how far into the source the importer has read); the
+    # caller applies it only once the run's documents are written (architecture §5.5)
+    position: Mapping[str, Any] | None = None

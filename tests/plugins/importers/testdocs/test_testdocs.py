@@ -38,7 +38,9 @@ def test_its_session_delivers_what_fetch_does_and_its_default_start_is_the_start
     assert imp.default_fetch_start(s, today=date(2026, 7, 1)) == date(2026, 1, 1)
     session = imp.open(s, {}, None, today=date(2026, 7, 1))  # type: ignore[arg-type]
     try:
-        out = session.fetch_documents(since=date(2026, 1, 1), today=date(2026, 7, 1))
+        out = session.fetch_documents(
+            since=date(2026, 1, 1), today=date(2026, 7, 1), minor_units_of=lambda c: 2
+        )
         assert [d.external_id for d in out.documents] == ["A"]
         assert session.accounts() == ()
     finally:

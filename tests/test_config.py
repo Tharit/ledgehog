@@ -186,6 +186,37 @@ def test_model_reasoning_effort_is_optional_and_strict():
             load(**base, MODEL_REASONING_EFFORT=bad)
 
 
+def test_vision_model_is_optional_and_needs_endpoint_and_name_together():
+    assert load().vision_model is None
+    c = load(VISION_MODEL_ENDPOINT="http://vlm", VISION_MODEL_NAME="v")
+    assert c.vision_model is not None
+    assert (c.vision_model.endpoint, c.vision_model.name, c.vision_model.api_key) == ("http://vlm", "v", None)
+    with pytest.raises(ConfigError, match="VISION_MODEL_NAME"):
+        load(VISION_MODEL_ENDPOINT="http://vlm")
+    with pytest.raises(ConfigError, match="VISION_MODEL_ENDPOINT"):
+        load(VISION_MODEL_NAME="v")
+
+
+def test_vision_model_is_independent_of_the_model():
+    c = load(VISION_MODEL_ENDPOINT="http://vlm", VISION_MODEL_NAME="v")
+    assert c.model is None and c.vision_model is not None
+
+
+def test_vision_model_key_from_file_and_never_shown(tmp_path):
+    f = tmp_path / "key"
+    f.write_text("vk-987654\n")
+    c = load(VISION_MODEL_ENDPOINT="http://vlm", VISION_MODEL_NAME="v", VISION_MODEL_API_KEY_FILE=str(f))
+    assert c.vision_model is not None and c.vision_model.api_key is not None
+    assert c.vision_model.api_key.reveal() == "vk-987654"
+    assert "vk-987654" not in repr(c) and "vk-987654" not in repr(c.vision_model)
+    with pytest.raises(ConfigError, match="VISION_MODEL_API_KEY_FILE"):
+        load(
+            VISION_MODEL_ENDPOINT="http://vlm",
+            VISION_MODEL_NAME="v",
+            VISION_MODEL_API_KEY_FILE=str(tmp_path / "nope"),
+        )
+
+
 def test_config_is_immutable():
     c = load()
     with pytest.raises(dataclasses.FrozenInstanceError):

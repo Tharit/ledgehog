@@ -490,13 +490,26 @@
             },
             "title": "Presets",
             "type": "object"
+          },
+          "start_date_default": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date Default"
           }
         },
         "required": [
           "name",
           "kind",
           "emits",
-          "presets"
+          "presets",
+          "start_date_default"
         ],
         "title": "CatalogEntryOut",
         "type": "object"

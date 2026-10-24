@@ -15,6 +15,10 @@ Settings (`importer_instance.settings`):
     discover        steps run in `accounts()`
     documents       list of documents, `start_date` and `covered_through`: as `testdocs`
     documents_fetch steps run before the documents are fetched
+    documents_position  object: the delivery's `position` (applied to `state` once ingested)
+    documents_stats object of integers: the delivery's `importer_stats`
+    documents_exponents list of currency codes: each adds `exponent_<code>` to the delivery's
+                    `importer_stats`, the exponent `minor_units_of` answered (what the caller passed)
     default_start   ISO date: `default_fetch_start` (else thirty days before today)
 
 A step is one of:
@@ -46,6 +50,7 @@ from __future__ import annotations
 import base64
 import hashlib
 from collections.abc import Callable, Mapping, MutableMapping, Sequence
+from dataclasses import replace
 from datetime import date, timedelta
 from typing import Any
 
@@ -258,14 +263,21 @@ class _Session(FetchSessionBase):
             balance_on=through if wants_balance else None,
         )
 
-    def fetch_documents(self, *, since: date, today: date) -> DocumentDelivery:
+    def fetch_documents(
+        self, *, since: date, today: date, minor_units_of: Callable[[str], int]
+    ) -> DocumentDelivery:
         self.run_steps(self._settings.get("documents_fetch", ()))
         settings = {
             "start_date": self._settings.get("start_date", since.isoformat()),
             "covered_through": self._settings.get("covered_through", (today - timedelta(days=1)).isoformat()),
             "documents": self._settings.get("documents", []),
         }
-        return TestDocumentImporter().fetch(settings, since=since, today=today)
+        delivery = TestDocumentImporter().fetch(settings, since=since, today=today)
+        stats = dict(self._settings.get("documents_stats", {}))
+        for code in self._settings.get("documents_exponents", ()):
+            stats[f"exponent_{code}"] = minor_units_of(code)
+        position = self._settings.get("documents_position")
+        return replace(delivery, importer_stats=stats, position=dict(position) if position else None)
 
     # ---- steps ----
 

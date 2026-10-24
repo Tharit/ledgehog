@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, MutableMapping, Sequence
+from collections.abc import Callable, Mapping, MutableMapping, Sequence
 from datetime import date
 from typing import Any
 
@@ -18,7 +18,9 @@ class _FakeSession(FetchSessionBase):
     def __init__(self, importer: FakeDocumentImporter) -> None:
         self._importer = importer
 
-    def fetch_documents(self, *, since: date, today: date) -> DocumentDelivery:
+    def fetch_documents(
+        self, *, since: date, today: date, minor_units_of: Callable[[str], int]
+    ) -> DocumentDelivery:
         return self._importer.fetch({}, since=since, today=today)
 
 

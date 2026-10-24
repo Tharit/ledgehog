@@ -15,6 +15,7 @@ export function catalogEntry(over: Partial<CatalogEntry> = {}): CatalogEntry {
 		kind: 'file',
 		emits: ['transactions'],
 		presets: { consorsbank_giro: { booked_on: 'Buchungstag' } },
+		start_date_default: null,
 		...over
 	};
 }

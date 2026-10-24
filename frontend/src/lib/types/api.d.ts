@@ -1397,6 +1397,8 @@ export interface components {
                     [key: string]: unknown;
                 };
             };
+            /** Start Date Default */
+            start_date_default: string | null;
         };
         /** CategoriesOut */
         CategoriesOut: {
