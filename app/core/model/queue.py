@@ -65,6 +65,11 @@ class ModelQueue:
         with self._lock:
             return len(self._items)
 
+    def count(self, kind: str) -> int:
+        """How many items of this kind (ENTRY or LINE) are waiting."""
+        with self._lock:
+            return sum(1 for k, _, _ in self._items if k == kind)
+
     def line_fingerprint(self, document_merchant: str | None, description: str) -> str | None:
         """The fingerprint of the payload of a line with this merchant and description."""
         return self.fingerprint(LineInput(0, document_merchant, description))

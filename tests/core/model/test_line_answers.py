@@ -356,6 +356,7 @@ def _answer_all(rig: Rig, category: int) -> None:
 def test_a_new_documents_every_line_is_listed(rig: Rig) -> None:
     _deliver(rig.engine, document(lines=(line("USB cable", -400), line("Case", 300), line("Refund", 100))))
     assert rig.queue.pending() == 3 and rig.queue.entry_ids() == frozenset()  # all signs
+    assert (rig.queue.count(LINE), rig.queue.count(ENTRY)) == (3, 0)
     assert rig.endpoint.requests == []
 
 

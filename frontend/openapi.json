@@ -1020,6 +1020,10 @@
           "model_pending": {
             "title": "Model Pending",
             "type": "integer"
+          },
+          "model_pending_lines": {
+            "title": "Model Pending Lines",
+            "type": "integer"
           }
         },
         "required": [
@@ -1027,7 +1031,8 @@
           "documents",
           "accounts",
           "active_task",
-          "model_pending"
+          "model_pending",
+          "model_pending_lines"
         ],
         "title": "ChangesOut",
         "type": "object"

@@ -6,6 +6,21 @@ function entries(count: number): string {
 	return count === 1 ? '1 entry' : `${count} entries`;
 }
 
+/** "1 line" / "N lines" */
+function lines(count: number): string {
+	return count === 1 ? '1 line' : `${count} lines`;
+}
+
+/** The Documents item's activity mark tooltip; undefined while no line is pending. */
+export function modelLinesActivity(pending: number): string | undefined {
+	return pending > 0 ? `The model is looking at ${lines(pending)}` : undefined;
+}
+
+/** The quiet line above the documents list; null while no line is pending. */
+export function modelLinesLine(pending: number): string | null {
+	return pending > 0 ? `The model is looking at ${lines(pending)}.` : null;
+}
+
 /** The Review item's activity mark: its tooltip and accessible name; undefined while nothing is pending. */
 export function modelActivity(pending: number): string | undefined {
 	return pending > 0 ? `The model is looking at ${entries(pending)}` : undefined;

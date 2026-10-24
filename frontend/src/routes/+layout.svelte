@@ -20,7 +20,7 @@
 	import UnitPanelView from '#lib/components/units/unit-panel.svelte';
 	import { entryForm } from '#lib/entry-form/controller.svelte.js';
 	import { changes } from '#lib/stores/changes.svelte.js';
-	import { modelActivity } from '#lib/units/model-pending.js';
+	import { modelActivity, modelLinesActivity } from '#lib/units/model-pending.js';
 	import { runLiveData } from '#lib/stores/live-data.svelte.js';
 	import { lookupsStore } from '#lib/stores/lookups.svelte.js';
 	import { reviewCount } from '#lib/stores/review-count.svelte.js';
@@ -53,7 +53,12 @@
 			count: reviewCount.count,
 			activity: modelActivity(changes.modelPending)
 		},
-		{ href: '/documents', label: 'Documents', icon: FileTextIcon },
+		{
+			href: '/documents',
+			label: 'Documents',
+			icon: FileTextIcon,
+			activity: modelLinesActivity(changes.modelPendingLines)
+		},
 		{ href: '/accounts', label: 'Accounts', icon: LandmarkIcon },
 		{ href: '/reports', label: 'Reports', icon: ChartColumnIcon, match: '/reports' },
 		{

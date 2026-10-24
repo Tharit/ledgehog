@@ -30,7 +30,8 @@ const values = (ledger: string) => ({
 	documents: 'b:1',
 	accounts: {},
 	active_task: null,
-	model_pending: 0
+	model_pending: 0,
+	model_pending_lines: 0
 });
 
 beforeEach(() => {

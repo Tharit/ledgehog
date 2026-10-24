@@ -24,7 +24,8 @@ const read = (ledger: string, active_task: string | null = null) => ({
 	documents: 'b:1',
 	accounts: {},
 	active_task,
-	model_pending: 0
+	model_pending: 0,
+	model_pending_lines: 0
 });
 
 let watcher: ChangeWatcher;

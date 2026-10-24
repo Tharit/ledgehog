@@ -20,6 +20,7 @@ const read = (over: Partial<ChangeRead> = {}): ChangeRead => ({
 	accounts: { '7': 'b:1' },
 	active_task: null,
 	model_pending: 0,
+	model_pending_lines: 0,
 	...over
 });
 
@@ -91,6 +92,16 @@ describe('ChangeWatcher: when it reads', () => {
 		expect(readChanges).toHaveBeenCalledTimes(3);
 		await vi.advanceTimersByTimeAsync(MODEL_POLL_MS);
 		expect(readChanges).toHaveBeenCalledTimes(4);
+	});
+
+	it('reads every 5 s while the model has lines pending, too', async () => {
+		vi.mocked(readChanges).mockResolvedValue(read({ model_pending_lines: 2 }));
+		watcher.start();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(watcher.modelPendingLines).toBe(2);
+		expect(watcher.modelPending).toBe(0);
+		await vi.advanceTimersByTimeAsync(MODEL_POLL_MS);
+		expect(readChanges).toHaveBeenCalledTimes(2);
 	});
 
 	it('reads when the tab becomes visible, not when it is hidden', async () => {

@@ -39,6 +39,7 @@ const values = (over: Partial<ChangeRead> = {}): ChangeRead => ({
 	accounts: { '7': 'b:1' },
 	active_task: null,
 	model_pending: 0,
+	model_pending_lines: 0,
 	...over
 });
 
