@@ -65,7 +65,7 @@ def test_a_carried_document_is_freed_and_tags_go(ledger: Ledger) -> None:
         affected = remove_entries(conn, [e])
         conn.execute(text("DELETE FROM source_transaction WHERE id = :s"), {"s": src})
     assert affected.freed_document_ids == (doc,)
-    assert ledger.q("SELECT * FROM v_document_link WHERE document_id = :d", d=doc)[0].ledger_entry_id is None
+    assert ledger.one("SELECT count(*) FROM ledger_entry WHERE document_id = :d", d=doc)[0] == 0
     assert ledger.q("SELECT * FROM ledger_entry_tag") == []
     ledger.assert_checks_clean()
 

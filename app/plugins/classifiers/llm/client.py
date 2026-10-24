@@ -34,10 +34,10 @@ RATIONALE_MIN = 3
 RATIONALE_MAX = 120
 
 INSTRUCTION = (
-    "You categorise one bank transaction of a household's personal finances. "
-    "Choose the single best category for the transaction below from the list, by its id. "
+    "You categorise one bank transaction, or one item of a purchase, of a household's personal finances. "
+    "Choose the single best category for it from the list, by its id. "
     "If no listed category fits, or the text says too little, answer null for category_id; "
-    "then the rationale says what the transaction is and what kind of category would fit it, "
+    "then the rationale says what it is and what kind of category would fit it, "
     'for example "a Catalan motorway toll; there is no category for tolls". '
     "Never invent an id. "
     "Answer with a JSON object: category_id (the id, or null) and rationale "

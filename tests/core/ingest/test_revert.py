@@ -279,7 +279,7 @@ def test_a_document_carried_by_a_removed_entry_is_freed(world: World) -> None:
     )
     result = revert_run(world.engine, run.id, user_id=None)
     assert result.freed_document_ids == (doc,)
-    assert world.q("SELECT * FROM v_document_link WHERE document_id = :d", d=doc)[0].ledger_entry_id is None
+    assert world.one("SELECT count(*) FROM ledger_entry WHERE document_id = :d", d=doc)[0] == 0
     world.assert_checks_clean()
 
 

@@ -101,7 +101,7 @@ def test_marking_a_row_with_split_tags_document_and_partner_runs_the_routine(led
     assert result.affected.partner_entry_ids == (b,)
     assert result.affected.freed_document_ids == (doc,)
     assert ledger.q("SELECT * FROM ledger_entry_tag") == []
-    assert ledger.one("SELECT ledger_entry_id FROM v_document_link WHERE document_id = :d", d=doc)[0] is None
+    assert ledger.one("SELECT count(*) FROM ledger_entry WHERE document_id = :d", d=doc)[0] == 0
     ledger.assert_checks_clean()
 
 
