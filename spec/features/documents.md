@@ -189,7 +189,6 @@ entry with a line, where passes 0 and 1 produce no category (history asks it
 no key), pass 3 takes the line's stored answer instead of asking; where the
 line has no answer for its payload yet, the line is asked, not the entry. It
 is a proposal shown with its rationale, never confirming (`spec.md` §5.9).
-"Ask again" in the panel asks the line anew.
 
 ## 6. Splitting along the lines
 

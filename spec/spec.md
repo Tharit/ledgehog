@@ -2271,8 +2271,8 @@ Constraints on pass 3:
   higher authority or a user's value, and the answer goes with the key it
   replaces: the core keeps nothing else of it, except a line's answer, kept on
   the line (below). It is asked anew when the
-  payload changes — a document linked to the entry, say — when the user asks
-  for it in the review panel, or when the field falls to pass 3 again.
+  payload changes — a document linked to the entry, say — or when the field
+  falls to pass 3 again.
   Settling never waits for it: an answer is stored when it arrives, and that
   write settles like any other.
 - **An entry with a line takes the line's answer.** The model's answer for a
@@ -2286,7 +2286,7 @@ Constraints on pass 3:
   line is asked, not the entry. It is a guess shown with its rationale, never
   confirming, which a commit accepts like any proposal shown. Storing a line's
   answer reaches the unconfirmed entries with that line: they are resolved
-  again. "Ask again" in the panel asks the line anew.
+  again.
 - **Asked in the background.** An entry without a line whose category falls
   to the model, and a line with no answer for its payload — every line of a
   new or changed document (§5.5), and the line of an entry whose category
@@ -3071,3 +3071,10 @@ filter bar replaces most reports.
   does not re-ask the model for every similar entry; and whether the counts
   are within the limited payload. Decided with pass 3: it is the reason
   history's threshold is left as it is in v1.
+- **Asking the model again.** An answer stands while its payload is
+  unchanged (§5.9, pass 3), so a category added after the model found none
+  fitting, or another model configured, does not reach it; the user sets the
+  category in the panel instead. Two sketches: an "Ask again" in the panel
+  that drops the entry's or the line's answer, so settling asks anew; or the
+  category tree in the fingerprint, so a changed tree re-asks every standing
+  answer. Deferred until stale answers show up in use.

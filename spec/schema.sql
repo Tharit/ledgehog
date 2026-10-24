@@ -962,15 +962,6 @@ SELECT e.id AS ledger_entry_id, c.document_id
     ON c.source_transaction_id = e.source_transaction_id
    AND c.document_id IS NOT NULL;
 
--- Every document with each entry carrying it — a row per carrier — and one row
--- with NULL where none does: the document list and its "not linked" filter
--- (spec §5.8).
-CREATE VIEW v_document_link AS
-SELECT d.id AS document_id, e.id AS ledger_entry_id,
-       e.source_transaction_id
-  FROM external_document d
-  LEFT JOIN ledger_entry e ON e.document_id = d.id;
-
 -- ---------------------------------------------------------------------
 -- 8. Invariants that DDL cannot express
 -- ---------------------------------------------------------------------

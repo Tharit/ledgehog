@@ -257,9 +257,20 @@ GET    /api/units/queue                        the units not confirmed, in
                                                by booked date, then anchor
                                                entry id; units decided entirely
                                                by pass 0 and rules appear only
-                                               while they wait for a partner or
-                                               a document; each unit says
-                                               whether the model is still
+                                               while they wait for a partner, a
+                                               document or the rest of an
+                                               order; a unit says what it
+                                               needs or waits for, at most one
+                                               of `needs_account {currency}`,
+                                               `waiting {account_id,
+                                               synced_through | null}`,
+                                               `waiting_document {provider,
+                                               covered_through | null}`,
+                                               `waiting_order {order,
+                                               provider, charged, total}`
+                                               (amounts, signed like the
+                                               document's total); each unit
+                                               says whether the model is still
                                                looking at it
 GET    /api/units/queue/count                  how many units can be acted on
                                                now: `count`, the sum of
@@ -312,7 +323,9 @@ GET    /api/documents/{id}                     a document with its lines, each
                                                each as the entry carrying it
                                                and the source transaction's
                                                own date, amount and
-                                               currency; for one not fully
+                                               currency; `fully_charged`
+                                               (its carriers' amounts reach
+                                               its total); for one not fully
                                                charged, the `matches`: the
                                                transactions it would match,
                                                confirmed ones included
@@ -694,7 +707,9 @@ fields are rejected: nothing a client sends can mark a suggestion as taken. The
 preview's row block `document` holds the stored document, the link after commit and
 settle, its key, the suggestions nearest first (only while undecided),
 `waiting {provider, covered_through | null}` — or, for the rest of an order,
-`waiting {order: external_id, provider, charged, total}` — `decision_required`
+`waiting {order: external_id, provider, charged, total}` (`charged` and
+`total` are amounts with their currency, signed like the document's total) —
+`decision_required`
 and `split {document_id, proposed, available, replaces_stored_split}`. Problem
 codes:
 `stale_reference` (`document_id`), `document_changed`, `document_taken`,
@@ -1669,8 +1684,9 @@ Three properties the implementation must have:
   (`category_key`), with a fingerprint of the payload; resolution reuses it
   while the payload is unchanged, and the plugin keeps no table of its own. A
   changed payload — a document linked to the entry — asks anew; a re-fetched
-  line with an unchanged payload keeps its answer. A preview with a changed
-  draft asks anew only when the user requests it. Settling never waits for the
+  line with an unchanged payload keeps its answer. A preview never asks the
+  model: a payload the commit changes is asked by the settling that follows.
+  Settling never waits for the
   model: the request runs outside it, and storing the answer is a write that
   settles like any other.
 
