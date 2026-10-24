@@ -174,8 +174,21 @@ def test_a_changed_uidvalidity_reads_by_arrival_since_the_day_before_the_last_ru
     assert delivery.position is not None
     assert (delivery.position["uidvalidity"], delivery.position["last_uid"]) == (
         2,
-        1,
-    )  # not max with the old 5
+        2,
+    )  # UIDNEXT - 1 of the renumbered mailbox, not max with the old 5
+
+
+def test_a_first_run_records_the_mailboxs_uidnext_minus_one_so_old_mail_is_not_read_again():
+    rig = Rig(FakeMailbox(uidnext=501))
+    for uid in (1, 2):
+        rig.mailbox.add(uid, accepted(uid), date(2025, 6, 1))  # before the start date: never a candidate
+    delivery = rig.run_and_apply()
+    assert rig.mailbox.fetched() == [] and delivery.position is not None
+    assert delivery.position["last_uid"] == 500
+    rig.mailbox.add(501, accepted(501), date(2026, 1, 20))
+    rig.mailbox.calls.clear()
+    rig.run_and_apply(today=date(2026, 1, 21))
+    assert ("uids_after", 500) in rig.mailbox.calls and rig.mailbox.fetched() == [501]
 
 
 def test_a_changed_host_port_username_mailbox_or_start_date_discards_the_position_and_seen():

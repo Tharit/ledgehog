@@ -28,6 +28,7 @@ class FakeImap:
     connect_error: Exception | None = None
     folder_ok = True
     uidvalidity: list[Any] = [b"77"]
+    uidnext: list[Any] = [b"501"]
     search_answer: list[Any] = [b"3 9 4"]
     fetch_answers: dict[str, list[Any]] = {}
 
@@ -51,7 +52,7 @@ class FakeImap:
 
     def response(self, code: str) -> tuple[str, list[Any]]:
         FakeImap.events.append(("response", code))
-        return code, FakeImap.uidvalidity
+        return code, FakeImap.uidnext if code == "UIDNEXT" else FakeImap.uidvalidity
 
     def uid(self, command: str, *args: str) -> tuple[str, list[Any]]:
         FakeImap.events.append(("UID " + command, *args))
@@ -77,6 +78,7 @@ def fake_imap(monkeypatch: pytest.MonkeyPatch):
         ("connect_error", None),
         ("folder_ok", True),
         ("uidvalidity", [b"77"]),
+        ("uidnext", [b"501"]),
         ("search_answer", [b"3 9 4"]),
         ("fetch_answers", {}),
     ):
@@ -153,6 +155,19 @@ def test_the_mailbox_is_examined_read_only_with_its_uidvalidity():
     box = connect_imap(conn(), SecretText("pw"))
     assert box.examine("Receipts") == 77
     assert ("EXAMINE", '"Receipts"') in FakeImap.events and "SELECT" not in kinds()
+
+
+def test_uidnext_is_what_examine_said_else_one_past_the_highest_uid_else_one():
+    box = connect_imap(conn(), SecretText("pw"))
+    box.examine("INBOX")
+    assert box.uidnext() == 501
+    FakeImap.uidnext = [None]
+    FakeImap.search_answer = [b"3 9 4"]
+    box = connect_imap(conn(), SecretText("pw"))
+    box.examine("INBOX")
+    assert box.uidnext() == 10 and ("UID SEARCH", "ALL") in FakeImap.events
+    FakeImap.search_answer = [b""]
+    assert box.uidnext() == 1
 
 
 def test_a_missing_mailbox_is_invalid_naming_mailbox():

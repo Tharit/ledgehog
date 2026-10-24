@@ -106,6 +106,45 @@ def test_the_test_importer_registers_only_behind_the_flag_and_fills_the_provider
         reset_document_providers()
 
 
+def test_the_email_importer_registers_only_where_the_model_is_configured():
+    from dataclasses import replace
+
+    from app.core.importers.providers import document_providers, reset_document_providers
+    from app.main import register_importers
+    from app.plugins.importers.email import EmailImporter
+    from app.utils.config import Config
+
+    base = Config.from_env(
+        {
+            "POSTGRES_DB": "x",
+            "POSTGRES_USER": "u",
+            "POSTGRES_PASSWORD": "p",
+            "BASE_CURRENCY": "EUR",
+            "TIMEZONE": "Europe/Berlin",
+        }
+    )
+    with_model = Config.from_env(
+        {
+            "POSTGRES_DB": "x",
+            "POSTGRES_USER": "u",
+            "POSTGRES_PASSWORD": "p",
+            "BASE_CURRENCY": "EUR",
+            "TIMEZONE": "Europe/Berlin",
+            "MODEL_ENDPOINT": "http://model.test/v1",
+            "MODEL_NAME": "m",
+        }
+    )
+    reset_document_providers()
+    try:
+        assert "email" not in register_importers(base)
+        assert "email" not in register_importers(replace(base, vision_model=with_model.vision_model))
+        registered = register_importers(with_model)
+        assert isinstance(registered["email"], EmailImporter)
+        assert document_providers()["email"] == frozenset()  # it answers from its settings, for any provider
+    finally:
+        reset_document_providers()
+
+
 def test_configure_logging_shows_info_once():
     import io
     import logging

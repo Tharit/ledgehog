@@ -54,6 +54,10 @@ class Mailbox(Protocol):
         """Open the folder read-only; its UIDVALIDITY. A missing one is `InvalidProfile` naming `mailbox`."""
         ...
 
+    def uidnext(self) -> int:
+        """The UID the next message to arrive gets (UIDNEXT), as of `examine`; 1 for an empty folder."""
+        ...
+
     def uids_after(self, uid: int) -> list[int]:
         """The UIDs above `uid`, ascending (`UID SEARCH UID uid+1:*` answers the highest UID even where it is
         lower, so the answer is filtered)."""
@@ -137,6 +141,7 @@ class ImapMailbox:
 
     def __init__(self, imap: imaplib.IMAP4) -> None:
         self._imap = imap
+        self._uidnext: int | None = None
 
     def examine(self, name: str) -> int:
         with _transport_errors():
@@ -146,7 +151,16 @@ class ImapMailbox:
             _, values = self._imap.response("UIDVALIDITY")
             if not values or values[0] is None:
                 raise SourceUnavailable("the mail server gave no UIDVALIDITY")
-            return int(values[0])
+            validity = int(values[0])
+            _, nexts = self._imap.response("UIDNEXT")
+            self._uidnext = int(nexts[0]) if nexts and nexts[0] is not None else None
+            return validity
+
+    def uidnext(self) -> int:
+        if self._uidnext is not None:
+            return self._uidnext
+        everything = self._search("ALL")  # a server that did not say
+        return everything[-1] + 1 if everything else 1
 
     def _search(self, *criteria: str) -> list[int]:
         with _transport_errors():

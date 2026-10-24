@@ -96,7 +96,9 @@ class FakeMailbox:
         uidvalidity: int = 1,
         sizes: Mapping[int, int] | None = None,
         missing_folder: bool = False,
+        uidnext: int | None = None,
     ) -> None:
+        self._uidnext = uidnext
         self.messages: dict[int, tuple[EmailMessage | bytes, date]] = dict(messages or {})
         self.uidvalidity = uidvalidity
         self.sizes = dict(sizes or {})
@@ -117,6 +119,10 @@ class FakeMailbox:
         if self.missing_folder:
             raise InvalidProfile("mailbox: the folder does not exist")
         return self.uidvalidity
+
+    def uidnext(self) -> int:
+        self.calls.append(("uidnext",))
+        return self._uidnext if self._uidnext is not None else max(self.messages, default=0) + 1
 
     def uids_after(self, uid: int) -> list[int]:
         self.calls.append(("uids_after", uid))
@@ -175,7 +181,13 @@ class StubExtractor:
     reply: Callable[[str | None, Sequence[PdfPart]], Extraction | Skipped] | None = None
     calls: list[tuple[str | None, tuple[PdfPart, ...]]] = field(default_factory=list)
 
-    def extract(self, text: str | None, pdfs: Sequence[PdfPart]) -> Extraction | Skipped:
+    def extract(
+        self,
+        text: str | None,
+        pdfs: Sequence[PdfPart],
+        *,
+        accept: Callable[[Extraction], bool] = lambda extraction: True,
+    ) -> Extraction | Skipped:
         self.calls.append((text, tuple(pdfs)))
         if self.reply is not None:
             return self.reply(text, pdfs)

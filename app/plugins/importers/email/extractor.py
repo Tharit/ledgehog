@@ -73,12 +73,20 @@ class AttemptFailed(SourceUnavailable):
 
 
 class Extractor(Protocol):
-    def extract(self, text: str | None, pdfs: Sequence[PdfPart]) -> Extraction | Skipped:
-        """Ask the model, text first: where the text yields nothing usable, each PDF in turn.
+    def extract(
+        self,
+        text: str | None,
+        pdfs: Sequence[PdfPart],
+        *,
+        accept: Callable[[Extraction], bool] = lambda extraction: True,
+    ) -> Extraction | Skipped:
+        """Ask the model, text first: where the text yields no document, each PDF in turn (§5).
 
         `text` is the converted body (None where it has none, or it was too long to send); `pdfs` its PDFs,
-        at most three. Returns `Skipped` for `no_content`, `pdf_not_read`, `unreadable`, `model_refused`.
-        Raises `AttemptFailed` or `SourceUnavailable` (§8)."""
+        at most three. `accept` says whether an extraction yields a document (the builder's verdict); the
+        first accepted one is returned. Where none is, the first extraction that was read is returned, for
+        the builder to name why it is no document, else `Skipped` for `no_content`, `pdf_not_read`,
+        `unreadable` or `model_refused`. Raises `AttemptFailed` or `SourceUnavailable` (§8)."""
         ...
 
 

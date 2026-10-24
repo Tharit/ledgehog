@@ -23,6 +23,7 @@ import httpx
 
 from app.core.plugins.classifier import EntryInput
 from app.core.plugins.model import CategoryPath, LineInput, ModelAnswer, ModelUnavailable, NoAnswer
+from app.plugins.chat_completions import auth_headers, chat_url, reasoning_field
 from app.plugins.classifiers.llm.payload import payload_fingerprint, payload_of, user_message
 
 log = logging.getLogger("ledgehog.model")
@@ -110,12 +111,10 @@ class OpenAIModelClient:
         transport: httpx.AsyncBaseTransport | None = None,
         timeout: float = TIMEOUT_SECONDS,
     ) -> None:
-        base = endpoint.rstrip("/")
-        self._url = base if base.endswith("/chat/completions") else f"{base}/chat/completions"
+        self._url = chat_url(endpoint)
         self.name = model
         self._effort = reasoning_effort
-        headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-        self._http = httpx.AsyncClient(timeout=timeout, headers=headers, transport=transport)
+        self._http = httpx.AsyncClient(timeout=timeout, headers=auth_headers(api_key), transport=transport)
 
     def fingerprint(self, subject: EntryInput | LineInput) -> str | None:
         return payload_fingerprint(subject)
@@ -131,8 +130,7 @@ class OpenAIModelClient:
                 {"role": "user", "content": user_message(payload)},
             ],
             "response_format": response_format(categories),
-            # llama.cpp documents `reasoning_effort` as a top-level field, passed on to the model's template
-            **({"reasoning_effort": self._effort} if self._effort is not None else {}),
+            **reasoning_field(self._effort),
         }
 
     async def ask(

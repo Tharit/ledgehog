@@ -28,6 +28,7 @@ from app.core.plugins.importer import FileImporter
 from app.core.resolution.registry import configure_classifiers, configure_rule_tools
 from app.plugins.classifiers import default_classifiers, default_rule_tools
 from app.plugins.importers.csv import CsvImporter
+from app.plugins.importers.email.factory import email_importer
 from app.plugins.importers.fints import FintsImporter
 from app.plugins.importers.testdocs import TestDocumentImporter
 from app.plugins.importers.testfetch import TestFetchImporter
@@ -75,6 +76,8 @@ def register_importers(config: Config) -> dict[str, FileImporter | FetchImporter
         # registration id `open` raises `NotRegistered` before it asks for anything (spec §7.1)
         "fints": FintsImporter(config.fints_product_id, app_version()),
     }
+    if config.model is not None:  # it reads documents with the model (spec/plugins/importers/email.md §1)
+        importers["email"] = email_importer(config.model, config.vision_model)
     if config.enable_test_importers:
         importers["testdocs"] = TestDocumentImporter()
         importers["testfetch"] = TestFetchImporter()

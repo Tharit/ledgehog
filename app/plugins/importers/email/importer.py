@@ -28,6 +28,7 @@ from app.plugins.importers.email.extractor import (
     TOO_LARGE,
     AttemptFailed,
     DocumentBuilder,
+    Extraction,
     Extractor,
     MessageContext,
     Skipped,
@@ -127,7 +128,12 @@ class _Run:
                 self.state.pop("stuck", None)
         else:
             self.seen_before = position.seen
-        last_uid = position.last_uid if position and position.uidvalidity == self.uidvalidity else 0
+        if position is not None and position.uidvalidity == self.uidvalidity:
+            last_uid = position.last_uid
+        else:
+            # a first read, or the mailbox was renumbered: mail before the start date is never read, so the
+            # next run begins at what is there now, not at the first message handled
+            last_uid = max(self.mailbox.uidnext() - 1, 0)
         for uid in self.candidates(position):
             self.handle(uid)
             last_uid = max(last_uid, uid)
@@ -223,13 +229,15 @@ class _Run:
             date=day,
             subject=subject_of(inner),
         )
+
+        def build(extraction: Extraction) -> IncomingDocument | Skipped:
+            return self.builder.build(extraction, context, minor_units_of=self.minor_units_of)
+
         try:
-            extraction = self.extractor.extract(text, pdfs)
-            result = (
-                extraction
-                if isinstance(extraction, Skipped)
-                else self.builder.build(extraction, context, minor_units_of=self.minor_units_of)
+            extraction = self.extractor.extract(
+                text, pdfs, accept=lambda e: not isinstance(build(e), Skipped)
             )
+            result = extraction if isinstance(extraction, Skipped) else build(extraction)
         except AttemptFailed:
             if not record_failure(self.state, uid, self.uidvalidity):
                 raise  # the run fails; `stuck` is written, the position stays

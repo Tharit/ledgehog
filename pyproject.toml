@@ -13,6 +13,7 @@ dependencies = [
     "joserfc>=1.7.7",
     "mt-940==5.1.1",
     "psycopg[binary]>=3.2",
+    "pypdfium2>=4.30",
     "python-calamine>=0.9.0",
     "python-multipart>=0.0.32",
     "sqlalchemy>=2.0",
@@ -62,6 +63,11 @@ explicit_package_bases = true
 # its own typed seam (app/plugins/importers/fints/bank.py).
 [[tool.mypy.overrides]]
 module = ["fints", "fints.*", "requests"]
+ignore_missing_imports = true
+
+# pypdfium2 ships no type information; the email importer's pdf.py is its only user.
+[[tool.mypy.overrides]]
+module = ["pypdfium2", "pypdfium2.*"]
 ignore_missing_imports = true
 
 # Authlib ships no type information; utils/auth/oidc.py is its only user.
