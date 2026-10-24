@@ -12,6 +12,7 @@ import {
 	type ImporterError,
 	type ImporterInstance
 } from '#lib/api/importers.js';
+import { todayIso } from '#lib/format/index.js';
 import { settingsFormOf, type AnyDraft } from '#lib/importers/forms.js';
 import { describeImporterError } from '#lib/importers/messages.js';
 import { session } from './session.svelte.js';
@@ -123,7 +124,11 @@ export class ImporterEditorStore {
 				return;
 			}
 			this.label = '';
-			this.draft = this.#form()?.emptyDraft() ?? {};
+			this.draft =
+				this.#form()?.emptyDraft({
+					startDate: this.entry?.start_date_default ?? null,
+					today: todayIso(session.config?.timezone ?? 'UTC')
+				}) ?? {};
 			this.#initial = this.#snapshot();
 		}
 		this.loadStatus = 'ready';

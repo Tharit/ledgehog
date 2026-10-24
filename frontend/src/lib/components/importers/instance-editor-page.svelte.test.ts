@@ -354,3 +354,80 @@ describe('the instance page, for the other user’s login', () => {
 		expect(screen.queryByText(/only Anna can change it/)).toBeNull();
 	});
 });
+
+describe('the instance page, adding an email importer', () => {
+	async function addingEmail() {
+		api.listImporters.mockResolvedValue([
+			catalogEntry({
+				name: 'email',
+				kind: 'fetch',
+				emits: ['documents'],
+				presets: {},
+				start_date_default: '2026-03-01'
+			})
+		]);
+		const onleave = vi.fn();
+		render(InstanceEditorPage, { props: { importer: 'email', onleave } });
+		await screen.findByRole('form', { name: 'Importer' });
+		return onleave;
+	}
+
+	async function fillIn() {
+		await fireEvent.input(screen.getByLabelText('Label'), { target: { value: 'Receipts' } });
+		await fireEvent.input(screen.getByLabelText('Mail server'), {
+			target: { value: 'imap.example.org' }
+		});
+		await fireEvent.input(screen.getByLabelText('Login name'), { target: { value: 'me' } });
+		await fireEvent.input(screen.getByLabelText('Senders'), {
+			target: { value: 'Shop@Example.com' }
+		});
+	}
+
+	it('prefills TLS, INBOX and the catalog’s start date, and saves the settings', async () => {
+		api.createInstance.mockResolvedValue(instance({ id: 12, importer: 'email' }));
+		const onleave = await addingEmail();
+		expect(screen.getByLabelText('Folder')).toHaveValue('INBOX');
+		await fillIn();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Save importer' }));
+
+		await waitFor(() => expect(onleave).toHaveBeenCalled());
+		expect(api.createInstance.mock.calls[0][0]).toBe('email');
+		expect(api.createInstance.mock.calls[0][1].settings).toEqual({
+			host: 'imap.example.org',
+			security: 'tls',
+			username: 'me',
+			senders: ['shop@example.com'],
+			start_date: '2026-03-01',
+			mailbox: 'INBOX'
+		});
+	});
+
+	it('stops a save without a sender, on the field, before any request', async () => {
+		await addingEmail();
+		await fillIn();
+		await fireEvent.input(screen.getByLabelText('Senders'), { target: { value: '' } });
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Save importer' }));
+
+		expect(await screen.findByText('Enter at least one sender address.')).toBeInTheDocument();
+		expect(api.createInstance).not.toHaveBeenCalled();
+	});
+
+	it('shows the server’s refusal of a setting under its field', async () => {
+		const { ApiError } =
+			await vi.importActual<typeof import('#lib/api/http.js')>('#lib/api/http.js');
+		api.createInstance.mockRejectedValue(
+			new ApiError(422, 'invalid_profile', 'port: must be a whole number from 1 to 65535', {
+				setting: 'port'
+			})
+		);
+		await addingEmail();
+		await fillIn();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Save importer' }));
+
+		expect(await screen.findByText('Must be a whole number from 1 to 65535')).toBeInTheDocument();
+		expect(screen.getByLabelText('Port')).toHaveAttribute('aria-invalid', 'true');
+	});
+});

@@ -13,6 +13,9 @@ function count(value: unknown): number {
 /** "12 inserted · 31 skipped", and "· 2 as duplicates" where there are some. */
 export function itemSummary(item: TaskItem): string {
 	const stats = item.stats ?? {};
+	if (item.kind === 'documents') {
+		return [`${count(stats.inserted)} inserted`, `${count(stats.updated)} updated`].join(' · ');
+	}
 	const duplicates = Array.isArray(stats.inserted_as_duplicates)
 		? stats.inserted_as_duplicates.length
 		: 0;
@@ -30,6 +33,7 @@ export function itemSummary(item: TaskItem): string {
 export function itemRun(instanceId: number, item: TaskItem): RunSummaryInput {
 	return {
 		account_id: item.accountId,
+		kind: item.kind,
 		instance_id: instanceId,
 		status: 'ok',
 		error_text: null,

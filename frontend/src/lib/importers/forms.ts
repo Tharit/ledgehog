@@ -3,16 +3,23 @@
 // component and the draft adapter the editor uses. A fetch importer's accounts come from discovery;
 // only its setup form is here.
 import type { Component } from 'svelte';
+import type { IsoDate } from '#lib/format/index.js';
 import CsvProfileForm from '#lib/components/importers/csv-profile-form.svelte';
+import EmailForm from '#lib/components/importers/email-form.svelte';
 import FintsForm from '#lib/components/importers/fints-form.svelte';
 import * as csv from './csv-profile.js';
+import * as email from './email-profile.js';
 import * as fints from './fints-profile.js';
 
 export type FormProps<D> = { draft: D; errors?: Record<string, string>; disabled?: boolean };
 
+/** What a new instance's draft may be prefilled with: the catalog's start date, today. */
+export type DraftContext = { startDate: IsoDate | null; today: IsoDate };
+
 export type SettingsForm<D> = {
 	component: Component<FormProps<D>>;
-	emptyDraft(): D;
+	/** the draft of a new instance; `context` carries what the catalog and the day prefill */
+	emptyDraft(context?: DraftContext): D;
 	draftFromSettings(settings: Record<string, unknown>): D;
 	settingsFromDraft(draft: D): Record<string, unknown>;
 	/** the field id a refused setting stands under, or null when the form has none for it */
@@ -45,9 +52,19 @@ const fintsForm: SettingsForm<fints.FintsDraft> = {
 	problems: fints.problemsOf
 };
 
+const emailForm: SettingsForm<email.EmailDraft> = {
+	component: EmailForm,
+	emptyDraft: email.emptyDraft,
+	draftFromSettings: email.draftFromSettings,
+	settingsFromDraft: email.settingsFromDraft,
+	fieldOfRefusal: email.fieldOfSetting,
+	problems: email.problemsOf
+};
+
 export const SETTINGS_FORMS: Readonly<Record<string, SettingsForm<AnyDraft>>> = {
 	csv: csvForm,
-	fints: fintsForm
+	fints: fintsForm,
+	email: emailForm
 };
 
 export function settingsFormOf(importer: string): SettingsForm<AnyDraft> | null {

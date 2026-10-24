@@ -119,8 +119,10 @@ export type RunStats = {
 	skipped_by_identity: number;
 	/** each row inserted as a duplicate, and the row it duplicates */
 	inserted_as_duplicates: { id: number; duplicate_of: number }[];
-	/** the importer's own counts: zero bookings it dropped, a statement payment it did not emit */
-	importer: { filtered?: number; synthetic_skipped?: number };
+	/** the importer's own counts: zero bookings it dropped, a statement payment it did not emit, the outcomes of an email run */
+	importer: Record<string, number>;
+	/** a documents run: documents already stored that the run read again (`inserted` counts the new) */
+	updated?: number;
 	unexplained_difference: { before: number | null; after: number | null; currency?: string };
 	/** the reported balance records since the difference began (empty without one) */
 	since_zero: number[];

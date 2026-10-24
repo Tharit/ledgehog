@@ -113,4 +113,29 @@ describe('RunSummary', () => {
 		render(RunSummary, { props: { run: asRun, currency: 'EUR', dryRun: true } });
 		expect(screen.getByText('3 rows')).toBeInTheDocument();
 	});
+
+	it('reports a documents run by its counts: non-zero ones, with their labels', () => {
+		render(RunSummary, {
+			props: {
+				run: run({
+					kind: 'documents',
+					account_id: null,
+					stats: {
+						inserted: 4,
+						updated: 1,
+						importer: { documents: 5, incomplete: 2, not_accepted: 3, pdf_not_read: 1, gave_up: 0 }
+					}
+				}),
+				currency: ''
+			}
+		});
+		expect(screen.getByText('4 documents')).toBeInTheDocument();
+		expect(screen.getByText('1 document')).toBeInTheDocument();
+		const counted = screen.getByText(/not from an allowed sender/);
+		expect(counted).toHaveTextContent(
+			"5 documents; 2 incomplete (items don't add up); 3 not from an allowed sender; 1 PDF not read (no vision model)"
+		);
+		expect(counted).not.toHaveTextContent('given up');
+		expect(screen.queryByText('Skipped by identity')).toBeNull();
+	});
 });

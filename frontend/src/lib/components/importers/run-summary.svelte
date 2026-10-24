@@ -1,7 +1,12 @@
 <script lang="ts">
 	import { formatCount, formatDate, formatDateRange, formatMoney } from '#lib/format/index.js';
 	import { accountUrl } from '#lib/importers/links.js';
-	import { isDifference, statsOf, type RunSummaryInput } from '#lib/importers/run.js';
+	import {
+		documentCounts,
+		isDifference,
+		statsOf,
+		type RunSummaryInput
+	} from '#lib/importers/run.js';
 
 	// The run summary (ux/views/importers.md "The run summary"; patterns §8): a report, not an alarm.
 	// It says per account what a run did and opens nothing: rows inserted, inserted as duplicates
@@ -39,6 +44,9 @@
 		}
 		return parts;
 	});
+	const isDocuments = $derived(run.kind === 'documents');
+	const docs = (n: number) => `${formatCount(n, locale)} ${n === 1 ? 'document' : 'documents'}`;
+	const counted = $derived(documentCounts(stats.importer));
 	const coverage = $derived(
 		run.covered_through
 			? run.covered_from
@@ -58,10 +66,27 @@
 		</p>
 	{:else if run.status === 'running'}
 		<p class="text-muted-foreground" aria-busy="true">This run has not finished.</p>
+	{:else if isDocuments}
+		{@render reverted()}
+		<dl class="grid grid-cols-[minmax(0,11rem)_minmax(0,1fr)] gap-x-4 gap-y-2">
+			<dt class="text-muted-foreground">Inserted</dt>
+			<dd data-slot="run-inserted">{docs(stats.inserted)}</dd>
+
+			<dt class="text-muted-foreground">Updated</dt>
+			<dd data-slot="run-updated">{docs(stats.updated ?? 0)}</dd>
+
+			{#if counted.length > 0}
+				<dt class="text-muted-foreground">Counted by the importer</dt>
+				<dd data-slot="run-counted">{counted.join('; ')}</dd>
+			{/if}
+
+			{#if coverage}
+				<dt class="text-muted-foreground">Coverage</dt>
+				<dd data-slot="run-coverage">{coverage}</dd>
+			{/if}
+		</dl>
 	{:else}
-		{#if run.status === 'reverted'}
-			<p class="text-muted-foreground">This run was reverted; what it inserted was removed.</p>
-		{/if}
+		{@render reverted()}
 		<dl class="grid grid-cols-[minmax(0,11rem)_minmax(0,1fr)] gap-x-4 gap-y-2">
 			<dt class="text-muted-foreground">{dryRun ? 'Would insert' : 'Inserted'}</dt>
 			<dd data-slot="run-inserted">{rows(stats.inserted)}</dd>
@@ -146,3 +171,9 @@
 		</dl>
 	{/if}
 </section>
+
+{#snippet reverted()}
+	{#if run.status === 'reverted'}
+		<p class="text-muted-foreground">This run was reverted; what it inserted was removed.</p>
+	{/if}
+{/snippet}
