@@ -151,3 +151,23 @@ def test_the_header_is_parsed_with_comments_quotes_and_several_results():
 def test_a_comment_cannot_smuggle_a_pass():
     msg = make_message(sender=SHOP, headers=FWD, auth="mx.x; dkim=fail (dkim=pass header.d=shop.example)")
     assert check_sender(msg, ALLOWED) is Verdict.NOT_AUTHENTICATED
+
+
+def test_an_escaped_quote_in_a_reason_cannot_forge_a_result():
+    value = 'mx.x; dkim=fail reason="a\\"; dmarc=pass header.from=shop.com; x=\\""'
+    results = parse_authentication_results(value)
+    assert [(r.method, r.result) for r in results] == [("dkim", "fail")]
+    assert not any(r.method == "dmarc" for r in results)
+
+
+def test_escaped_quotes_stay_inside_the_value_and_a_later_section_still_splits():
+    value = 'mx.x; dkim=fail reason="say \\"hi\\"" header.d=a.example; spf=pass smtp.mailfrom=a.example'
+    results = parse_authentication_results(value)
+    assert [(r.method, r.result) for r in results] == [("dkim", "fail"), ("spf", "pass")]
+    assert results[0].properties["header.d"] == "a.example"
+
+
+def test_nested_comments_and_escaped_parentheses_hide_semicolons_and_results():
+    value = "mx.x; dkim=fail (a (b; dmarc=pass) c; spf=pass) header.d=a.example; spf=pass (x \\) ; dmarc=pass)"
+    results = parse_authentication_results(value)
+    assert [(r.method, r.result) for r in results] == [("dkim", "fail"), ("spf", "pass")]

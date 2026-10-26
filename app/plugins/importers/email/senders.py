@@ -74,9 +74,12 @@ class AuthResult:
     properties: dict[str, str]  # "header.d" -> value, lower-cased names
 
 
-def _strip_comments(text: str) -> str:
-    """Without comments (nested parentheses, backslash escapes); quoted strings are kept whole."""
-    out: list[str] = []
+def _sections(text: str) -> list[str]:
+    """The `;`-separated sections of a header value, one scan: comments (nested parentheses) are dropped,
+    quoted strings are kept whole, a backslash escapes the next character in both. Only an unquoted,
+    uncommented `;` splits."""
+    parts: list[str] = []
+    current: list[str] = []
     depth = 0
     quoted = False
     escaped = False
@@ -84,38 +87,22 @@ def _strip_comments(text: str) -> str:
         if escaped:
             escaped = False
             if depth == 0:
-                out.append(ch)
-            continue
-        if ch == "\\":
+                current.append(ch)
+        elif ch == "\\":
             escaped = True
             if depth == 0:
-                out.append(ch)
-            continue
-        if quoted:
-            out.append(ch)
-            if ch == '"':
-                quoted = False
-            continue
-        if ch == '"' and depth == 0:
-            quoted = True
-            out.append(ch)
+                current.append(ch)
+        elif quoted:
+            current.append(ch)
+            quoted = ch != '"'
+        elif depth > 0:
+            depth += (ch == "(") - (ch == ")")
         elif ch == "(":
-            depth += 1
-        elif ch == ")":
-            depth = max(0, depth - 1)
-        elif depth == 0:
-            out.append(ch)
-    return "".join(out)
-
-
-def _split_unquoted(text: str, sep: str) -> list[str]:
-    parts: list[str] = []
-    current: list[str] = []
-    quoted = False
-    for ch in text:
-        if ch == '"':
-            quoted = not quoted
-        if ch == sep and not quoted:
+            depth = 1
+        elif ch == '"':
+            quoted = True
+            current.append(ch)
+        elif ch == ";":
             parts.append("".join(current))
             current = []
         else:
@@ -130,7 +117,7 @@ _PAIR = re.compile(r'([A-Za-z0-9][A-Za-z0-9._+/-]*)\s*=\s*("(?:[^"\\]|\\.)*"|[^\
 def parse_authentication_results(value: str) -> list[AuthResult]:
     """The method results of one header, `authserv-id; method=result ptype.property=value ...; ...`.
     The authserv-id and a `none` are no result."""
-    sections = _split_unquoted(_strip_comments(value), ";")
+    sections = _sections(value)
     results: list[AuthResult] = []
     for section in sections[1:]:  # the first is the authserv-id
         current: AuthResult | None = None
