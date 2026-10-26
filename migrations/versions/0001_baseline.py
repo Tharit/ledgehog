@@ -47,17 +47,24 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 -- ---------------------------------------------------------------------
 
 -- `user` is reserved in PostgreSQL, hence the prefix.
+-- A user is the configuration's or the OIDC provider's (`source`); the start
+-- reconciles only the configuration's. The first OIDC sign-in of a configured
+-- user hands them to the provider and drops their password. `pw_hash` is null
+-- for a user with no password: the provider's, or a configured one while OIDC
+-- is enforced.
 CREATE TABLE app_user (
     id            bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     login         text        NOT NULL UNIQUE,
-    pw_hash       text        NOT NULL,
+    pw_hash       text,
     display_name  text        NOT NULL,
-    disabled      boolean     NOT NULL DEFAULT false
+    disabled      boolean     NOT NULL DEFAULT false,
+    source        text        NOT NULL DEFAULT 'config' CHECK (source IN ('config','oidc')),
+    CONSTRAINT ck_app_user_oidc_no_password CHECK (source = 'config' OR pw_hash IS NULL)
 );
 
 -- A login session. The cookie holds the opaque id, not a token that carries
--- claims, so revoking a session is deleting its row. `method` is the seam for
--- adding OIDC later: a new method, not a rewrite. A session is an event
+-- claims, so revoking a session is deleting its row. `method` records how the
+-- user signed in. A session is an event
 -- record, so it may carry when (spec §3.2).
 CREATE TABLE session (
     id          text        PRIMARY KEY,
@@ -122,8 +129,8 @@ INSERT INTO currency (code, minor_units) VALUES
 -- entry stores a base value. It never changes, because fx_rate is stored
 -- against it (trigger 8.7), and the application refuses to start when its
 -- configured base currency differs from this row. Every other ledger-wide
--- setting — the maximum rate age (spec §3.8), the matching window (§5.7), the
--- document window (§5.8) — is deployment configuration, not data. The maximum
+-- setting — the maximum rate age (spec §3.8), the matching window (§5.7) — is
+-- deployment configuration, not data. The maximum
 -- rate age reaches SQL as the connection setting ledger.max_rate_age, set by
 -- the application on every connection (like ledger.settling, trigger 8.6).
 -- Spec §3.8.
@@ -144,15 +151,22 @@ CREATE TABLE ledger_setting (
 -- pointing at it may wait for an import (spec §5.7) and what its data age is
 -- read from (spec §3.11), and where rows may be made by hand: user-authored
 -- source transactions, counter-legs included, only on unsynced accounts
--- (I40, trg_user_source_unsynced). Depots and assets are INVESTMENT accounts: their later balance
--- records derive valuations, any other account's reconciliations; whether an
--- account is one is fixed at creation (trigger 8.5, I38). Spec §3.3, §3.8, I5.
+-- (I40, trg_authored_source_account). Depots and assets are INVESTMENT accounts: their later balance
+-- records derive valuations, any other account's reconciliations; an
+-- account's kind, and with it whether the account is one, is fixed at
+-- creation (trigger 8.5, I38). A CLEARANCE account is one that should settle
+-- at 0: the documents of the providers it lists (clearance_provider) and the
+-- counter-legs of the charges decided as transfers to it are booked on it,
+-- by settling (spec §3.3, §5.8). It is never linked to an importer, so it is
+-- always unsynced (trigger 8.5d), and the entry form may add the user's
+-- corrections. Its start is its anchor: the opening record "0 at the end of
+-- the start date" its creation writes (spec §3.10). Spec §3.3, §3.8, I5.
 CREATE TABLE account (
     id             bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     name           text NOT NULL,
     kind           text NOT NULL CHECK (kind IN (
                        'checking','savings','card','cash',
-                       'paypal','depot','loan','asset')),
+                       'digital_wallet','depot','loan','asset','clearance')),
     currency       char(3) NOT NULL REFERENCES currency(code),
     -- opaque identifier at the remote side: IBAN, PayPal account and pocket,
     -- whatever the importer uses. STORED CANONICALISED (spec §5.2), by the
@@ -173,7 +187,11 @@ CREATE TABLE account (
     -- so clearing the column reopens it. Spec §3.3.
     closed_on      date,
     sort_order     integer NOT NULL DEFAULT 0,
-    note           text
+    note           text,
+    -- presentation only, as category.icon/color; NULL shows a default the
+    -- UI derives from the kind. Spec §3.3, §3.5.
+    icon           text,
+    color          text
 );
 
 CREATE UNIQUE INDEX ux_account_external_ref
@@ -181,6 +199,31 @@ CREATE UNIQUE INDEX ux_account_external_ref
 -- supports the composite FKs from source_transaction and ledger_entry: a
 -- row's currency is its account's currency, enforced rather than intended.
 ALTER TABLE account ADD CONSTRAINT uq_account_id_currency UNIQUE (id, currency);
+
+-- The providers a clearance account takes (spec §3.3, §5.8): a document whose
+-- provider is listed here in the document's currency is booked on that
+-- account. A provider is taken by at most one account per currency, compared
+-- case-insensitively (ux_clearance_provider): "Amazon" may be on a EUR and on
+-- a USD account, never on two EUR ones; one account's list absorbs name
+-- variants ("Amazon", "Amazon EU"). `currency` is the account's, copied so
+-- the index can hold it and kept right by the composite FK. Free text, stored
+-- trimmed, never checked against a list. Only on clearance accounts
+-- (trigger 8.5d). Removing a provider leaves the bookings made for it where
+-- they are.
+CREATE TABLE clearance_provider (
+    account_id bigint  NOT NULL,
+    currency   char(3) NOT NULL,
+    provider   text    NOT NULL
+               CONSTRAINT ck_clearance_provider_name
+               CHECK (btrim(provider) <> '' AND provider = btrim(provider)),
+    PRIMARY KEY (account_id, provider),
+    CONSTRAINT fk_clearance_provider_account
+        FOREIGN KEY (account_id, currency) REFERENCES account (id, currency)
+        ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX ux_clearance_provider
+    ON clearance_provider (lower(provider), currency);
 
 -- Categories are orthogonal to payees. Each has a KIND — which side of the
 -- income statement its flows fall on — fixed at creation, and a child has its
@@ -205,6 +248,11 @@ CREATE TABLE category (
     kind       text NOT NULL CHECK (kind IN ('income','expense')),
     parent_id  bigint,
     sort_order integer NOT NULL DEFAULT 0,
+    -- PRESENTATION ONLY: names from fixed sets the UI defines, unchecked here
+    -- so the sets can change without a migration; NULL takes the parent's,
+    -- an unknown name renders as the UI's default. Spec §3.5.
+    icon       text,
+    color      text,
     CONSTRAINT uq_category_id_kind UNIQUE (id, kind),
     CHECK (parent_id IS NULL OR parent_id <> id)
 );
@@ -223,17 +271,18 @@ CREATE UNIQUE INDEX ux_category_name
 -- to report on that merchant, not because a counterparty appeared. Most
 -- counterparties never become payees. Spec §3.6.
 --
--- Merging two payees repoints entries and moves rules, then deletes the
--- loser outright. ON DELETE RESTRICT below makes the FK enforce that order.
--- A payee no entry references can be deleted directly, its rules with it.
+-- Merging two payees repoints entries and moves rules (and the payee
+-- conditions naming it), then deletes the loser outright. ON DELETE RESTRICT
+-- below makes the FK enforce that order. A payee no entry references can be
+-- deleted directly, the rules that set it with it.
 CREATE TABLE payee (
     id                bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     name              text NOT NULL,
-    -- the external_document.provider whose documents describe this payee's
-    -- charges ('paypal', 'amazon'). Drives document matching and waiting for
-    -- a document (spec §5.8).
-    document_provider text,
-    note              text
+    note              text,
+    -- presentation only, as category.icon/color; NULL shows a default the
+    -- UI derives from the name. Spec §3.5, §3.6.
+    icon              text,
+    color             text
 );
 
 CREATE UNIQUE INDEX ux_payee_name ON payee (lower(name));
@@ -252,11 +301,17 @@ CREATE UNIQUE INDEX ux_payee_name ON payee (lower(name));
 -- rule may read the payee a payee rule set); within each, lower priority
 -- first, the id breaking a tie, so resolution stays deterministic. The type
 -- follows the first rule in that order that matches. Rules are few and
--- resolution reads them whole, so there is no lookup index.
+-- resolution reads them whole, so there is no lookup index. `sets` is fixed
+-- at creation (like a category's kind); the rest can be edited. There is no
+-- enabled flag and no version: deleting a rule is the off switch, and the
+-- last write wins, since a rule write changes no entry.
 --
--- CONDITIONS, all of which must hold; NULL means no condition on that field,
--- and at least one is required. The payee condition is for category rules
--- only, since it reads the output of payee rules.
+-- CONDITIONS, all of which must hold, and at least one is required. The payee
+-- condition, {"field":"payee","op":"is","value":"<payee id>"}, is one more
+-- kind of condition in the list, for category rules only (the rules plugin
+-- validates that), since it reads the output of payee rules. It is not a
+-- foreign key: a payee's deletion leaves a rule whose condition names it, and
+-- the condition never matches (ids are never reused).
 --
 -- A counter-account rule obeys the currency rule (spec §5.7): a rule whose
 -- account is in the wrong currency for an entry does not match it, nor does a
@@ -265,8 +320,8 @@ CREATE UNIQUE INDEX ux_payee_name ON payee (lower(name));
 -- card's by its mandate, or a withdrawal to the cash account.
 --
 -- A category a rule references cannot be deleted (spec §3.5); a merge
--- repoints its rules. Deleting a payee deletes the rules that set it or name
--- it as a condition; a merge repoints both (spec §3.6).
+-- repoints its rules. Deleting a payee deletes the rules that set it; a merge
+-- repoints those and the conditions naming it (spec §3.6).
 CREATE TABLE rule (
     id                 bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     sets               text NOT NULL CHECK (sets IN ('counter_account','payee','category')),
@@ -275,31 +330,33 @@ CREATE TABLE rule (
     payee_id           bigint REFERENCES payee(id)    ON DELETE CASCADE,
     category_id        bigint REFERENCES category(id) ON DELETE RESTRICT,
     -- conditions
-    condition_payee_id bigint REFERENCES payee(id)    ON DELETE CASCADE,
-    counterparty_ref   text,
-    mandate_ref        text,
-    name_exact         text,
-    name_prefix        text,
-    purpose_regex      text,
-    booking_text       text,
+    -- conditions: a list of {"field","op","value"}, all of which must hold (an implicit
+    -- AND; the format leaves room for grouping and negation). Which fields and
+    -- operators are valid is the rules plugin's to say, not the database's
+    -- (spec §5.9).
+    conditions         jsonb NOT NULL DEFAULT '[]',
     priority           integer NOT NULL DEFAULT 100,
+    -- trimmed, non-blank, unique case-insensitively like a tag's or payee's
+    -- name: the name is how evidence explains a rule (spec §5.9)
+    name               text NOT NULL CONSTRAINT ck_rule_name CHECK (btrim(name) <> ''),
     CONSTRAINT ck_rule_sets CHECK (
             (sets = 'counter_account') = (counter_account_id IS NOT NULL)
         AND (sets = 'payee')           = (payee_id IS NOT NULL)
         AND (sets = 'category')        = (category_id IS NOT NULL)),
-    CONSTRAINT ck_rule_payee_condition
-        CHECK (condition_payee_id IS NULL OR sets = 'category'),
     CONSTRAINT ck_rule_condition
-        CHECK (num_nonnulls(condition_payee_id, counterparty_ref, mandate_ref,
-                            name_exact, name_prefix, purpose_regex,
-                            booking_text) > 0)
+        CHECK (jsonb_array_length(conditions) > 0),
+    CONSTRAINT ck_rule_cond_array
+        CHECK (jsonb_typeof(conditions) = 'array')
 );
+
+CREATE UNIQUE INDEX ux_rule_name ON rule (lower(name));
 
 -- Spans (a holiday, a project) are DERIVED from min/max booked_on over the
 -- tagged entries, not stored. Spec §3.7.
 CREATE TABLE tag (
     id         bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     name       text NOT NULL,
+    -- a colour name from the categories' set, presentation only. Spec §3.7.
     color      text
 );
 
@@ -317,7 +374,7 @@ CREATE TABLE importer_instance (
     id           bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     importer     text    NOT NULL,        -- 'fints' | 'paypal' | 'amazon' | ...
     label        text    NOT NULL,        -- 'Sparkasse — Anna'
-    -- the kinds this instance produces. After one authentication per sync it
+    -- the kinds this instance produces. Once signed in it
     -- is asked for each linked account, and for each accountless kind, each
     -- logged as its own run; ingest routes by the run's kind without loading
     -- importer code (spec §5.1).
@@ -337,13 +394,15 @@ CREATE TABLE importer_instance (
     -- same remote login and importing it twice. Leave NULL for a second
     -- instance against the same login (the index is partial).
     external_id  text,
-    -- what the user configured: FinTS URL, BLZ, login, TAN method/medium,
+    -- what the user typed: FinTS URL, BLZ, login,
     -- CSV profile and column mapping (including an optional running-balance
-    -- column and the sign-inversion settings for amounts and balance).
+    -- column and the sign-inversion settings for amounts and balance), and
+    -- a document importer's start date and what it reads (spec §5.5).
     -- Validated in app code against a per-importer schema. The ledger side has
     -- no opinion on its contents.
     settings     jsonb   NOT NULL DEFAULT '{}'::jsonb,
-    -- what the importer wrote back and owns: system_id, TAN medium, and a
+    -- what the importer wrote back and owns: system_id, TAN mechanism and
+    -- medium, what it learned about the bank, and a
     -- session token ONLY where that token is verifiably read-only and cannot
     -- authorise a payment (spec §7). Coverage is not here: it is recorded per
     -- run (import_run.covered_through). PINs, passwords and TANs are never
@@ -371,7 +430,7 @@ CREATE UNIQUE INDEX ux_importer_instance_ext
 CREATE TABLE account_source (
     account_id           bigint NOT NULL REFERENCES account(id) ON DELETE CASCADE,
     importer_instance_id bigint NOT NULL REFERENCES importer_instance(id) ON DELETE CASCADE,
-    external_ref         text   NOT NULL,   -- this account's id at that login
+    external_ref         text   NOT NULL,   -- this account's id at that login; for a file importer, which has no login, acct-<account id>, read by nothing
     -- No resume cursor: where a fetch starts is derived when the run starts —
     -- from synced_through minus the overlap, or, without coverage, after the
     -- account's latest entry (spec §5.4).
@@ -410,23 +469,29 @@ CREATE TABLE import_run (
     -- the date the run covered THROUGH, as the importer reported it, by the
     -- rules of spec §5.1: a fetch through the day before the fetch, whether or
     -- not it returned rows; a file through its period end or last booking,
-    -- never through its export day; a document run through the provider's
-    -- completeness date (spec §5.1). NULL for a run that did not succeed.
-    -- synced_through and document coverage are derived from it
-    -- (v_account_coverage, v_document_coverage). covered_from is where the
-    -- run's data starts, for the import log only: nothing in the domain
-    -- reads it.
+    -- never through its export day; a document run through the date up to
+    -- which its documents are complete (spec §5.1). NULL for a run that did
+    -- not succeed.
+    -- synced_through is derived from it (v_account_coverage). A document
+    -- run's coverage, like covered_from — where the run's data starts — is
+    -- for the import log only: nothing in the domain reads either.
     covered_from         date,
     covered_through      date,
-    -- ingest-reported facts about the run: counts (inserted, skipped by
-    -- identity, inserted as duplicates), refused currencies, and the
-    -- unexplained differences the run caused or changed, for the run summary.
-    -- Reported balances are NOT here: they are balance_record rows. Spec
-    -- §5.2, §5.3, §5.10.
+    -- ingest-reported facts about the run, for the run summary: counts (inserted,
+    -- skipped by identity, inserted as duplicates), the importer's own counts
+    -- (`importer`: zero bookings it dropped, a statement payment it did not emit),
+    -- the balance record the run wrote, and the unexplained difference before and
+    -- after it, with the reported records since the sum was last zero. A breach
+    -- of the importer's contract is not a statistic: the run fails (spec §5.1).
+    -- Reported balances themselves are balance_record rows. Spec §5.2, §5.3, §5.10.
     stats                jsonb NOT NULL DEFAULT '{}'::jsonb,
     started_by           bigint REFERENCES app_user(id) ON DELETE SET NULL,
     reverted_at          timestamptz,
     reverted_by          bigint REFERENCES app_user(id) ON DELETE SET NULL,
+    -- for a failed run, whether running it again can help, as its error
+    -- class in the importer taxonomy says (architecture §5.5). NULL unless
+    -- the run failed.
+    retryable            boolean,
     CONSTRAINT ck_reverted CHECK ((status = 'reverted') = (reverted_at IS NOT NULL)),
     CONSTRAINT ck_reverted_transactions
         CHECK (status <> 'reverted' OR emits = 'transactions'),
@@ -518,15 +583,26 @@ CREATE INDEX ix_balance_record_account_date
 
 CREATE TABLE source_transaction (
     id            bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    -- NULL for a USER-AUTHORED row, entered through the entry form on an
-    -- unsynced account (spec §3.9, §5.6, I1, I40). Otherwise denormalised:
-    -- decides which provenance widget renders, must survive the instance
-    -- being deleted.
+    -- WHO AUTHORED the row, one fact (spec §5.6, I1):
+    --   import  = delivered by an importer, in a run;
+    --   user    = USER-AUTHORED: entered through the entry form on an
+    --             unsynced account, or created as a counter-leg by a commit
+    --             (spec §3.9, §5.7, I40);
+    --   booking = made by settling on a clearance account from a source of
+    --             bookings — a document, or a charge decided as a transfer
+    --             to the account (spec §5.8); which source is the prefix of
+    --             its source_id.
+    -- Kept consistent with the columns below by ck_origin; fixed after insert
+    -- (trigger 8.1).
+    origin        text NOT NULL CHECK (origin IN ('import','user','booking')),
+    -- set exactly on an imported row (ck_origin). Denormalised: decides
+    -- which provenance widget renders, must survive the instance being
+    -- deleted.
     importer      text,
     importer_instance_id bigint REFERENCES importer_instance(id) ON DELETE SET NULL,
     -- RESTRICT: an imported row's run is its provenance and carries its
-    -- arrival time, so this table has no created_at. A user-authored row
-    -- belongs to no run (ck_user_row).
+    -- arrival time, so this table has no created_at. A row not imported
+    -- belongs to no run (ck_origin).
     import_run_id bigint REFERENCES import_run(id) ON DELETE RESTRICT,
     account_id    bigint NOT NULL REFERENCES account(id) ON DELETE RESTRICT,
 
@@ -536,6 +612,13 @@ CREATE TABLE source_transaction (
     --                  when it does not. A fact, never a decision. For a
     --                  user-authored row, a random id the entry form generates
     --                  before submitting, so a repeated submission is skipped.
+    --                  For a booking, always set (ck_origin), as `<source
+    --                  kind>:<id>`: `document:<external_document.id>`, or
+    --                  `transfer:<ledger_entry.id>` of the charge's transfer
+    --                  entry. The unique index below makes it one booking per
+    --                  source and account, which keeps the booking step
+    --                  idempotent. A key into its source, not a link this
+    --                  layer maintains.
     --   content_hash = computed by INGEST, only where there is no source_id,
     --                  from canonicalised amount, currency, booked_on,
     --                  counterparty_ref, purpose and the row's ordinal.
@@ -543,7 +626,7 @@ CREATE TABLE source_transaction (
     source_id     text,
     content_hash  text,
     -- the statement format this record came from ('mt940', 'camt053', a CSV
-    -- profile); NULL for a user-authored row. Provenance only; not a hash
+    -- profile); set exactly on an imported row. Provenance only; not a hash
     -- input.
     source_format text,
 
@@ -557,8 +640,9 @@ CREATE TABLE source_transaction (
 
     -- where the payment was made in another currency: the original amount as
     -- the source reported it, signed like `amount`. Used for cross-currency
-    -- counter-legs, exact cross-currency pairing and document matching; never
-    -- for valuation, never a hash input. Spec §3.8.
+    -- counter-legs, a clearance account's bookings included, and exact
+    -- cross-currency pairing; never for valuation, never a hash input. Spec
+    -- §3.8.
     instructed_amount   bigint,
     instructed_currency char(3) REFERENCES currency(code),
 
@@ -578,7 +662,9 @@ CREATE TABLE source_transaction (
     -- importer-typed payload, rendered by the UI widget. MUST include the
     -- original, unparsed source data so columns can be re-derived and rows
     -- rehashed should normalisation ever change (spec §5.1). For a
-    -- user-authored row, what the entry form submitted.
+    -- user-authored row, what the entry form submitted; for a booking, a
+    -- minimal marker only: its source is the record, and nothing would be
+    -- lost.
     raw           jsonb  NOT NULL,
 
     -- DUPLICATE: kept, interpreted as nothing — no ledger entries, exempt
@@ -596,12 +682,16 @@ CREATE TABLE source_transaction (
 
     CONSTRAINT ck_one_identity
         CHECK ((source_id IS NULL) = (content_hash IS NOT NULL)),
-    -- a user-authored row has no importer, run or format, and is never a
-    -- duplicate: deduplication compares imported rows only (spec §5.2)
-    CONSTRAINT ck_user_row
-        CHECK ((importer IS NULL) = (import_run_id IS NULL)
-               AND (importer IS NULL) = (source_format IS NULL)
-               AND (importer IS NOT NULL OR duplicate_of IS NULL)),
+    -- an imported row has its importer, run and format; a user-authored row
+    -- and a booking have none of them and are never duplicates:
+    -- deduplication compares imported rows only (spec §5.2). A booking always
+    -- has its source_id, the key of its source.
+    CONSTRAINT ck_origin
+        CHECK ((origin = 'import') = (importer IS NOT NULL)
+               AND (origin = 'import') = (import_run_id IS NOT NULL)
+               AND (origin = 'import') = (source_format IS NOT NULL)
+               AND (origin = 'import' OR duplicate_of IS NULL)
+               AND (origin <> 'booking' OR source_id IS NOT NULL)),
     CONSTRAINT uq_source_id_account UNIQUE (id, account_id),
     CONSTRAINT fk_duplicate_same_account
         FOREIGN KEY (duplicate_of, account_id)
@@ -654,11 +744,13 @@ CREATE TABLE ledger_entry (
     -- An entry is one of two kinds (spec §3.9), told apart by which of these
     -- two references it sets — exactly one (ck_entry_kind):
     --   source_transaction_id = a MOVEMENT: the interpretation of a source
-    --     transaction, imported or user-authored (entered through the form,
-    --     or created as a counter-leg, spec §5.7). Split invariant, resolution,
-    --     review. Whether it was imported is the source's importer, not a
-    --     property of the entry. The original entry stays as the residual
-    --     child of a split; split ordering is by id. Spec §5.9, I3.
+    --     transaction — imported, user-authored (entered through the form,
+    --     or created as a counter-leg, spec §5.7) or a booking (spec §5.8).
+    --     Split invariant, resolution, review. Who authored it is the
+    --     source's origin, not a property of the entry. The original entry
+    --     stays as the residual child of a split; split ordering is by id,
+    --     and a booking's entries follow its document's lines in that order.
+    --     Spec §5.9, I3.
     --   balance_record_id = a DERIVED entry: the opening, a valuation or a
     --     reconciliation of that record (spec §3.10). Recomputed, never
     --     edited, tagged or annotated, never resolved or reviewed (I13).
@@ -691,22 +783,28 @@ CREATE TABLE ledger_entry (
     -- rule (I11) is applied by the one core function that proposes and checks
     -- it, not here.
     counter_account_id   bigint REFERENCES account(id) ON DELETE RESTRICT,
-    -- the transaction's DOCUMENT (spec §5.8), on its original entry only, so a
-    -- split carries it once. Derived like a field, keyed 'document'. Its
-    -- foreign key and the I35 indexes follow external_document, below.
-    document_id          bigint,
 
+    -- the TEXT THE ENTRY'S SOURCE GIVES THIS ENTRY (spec §5.9): written by
+    -- whatever creates the entry from its source, never by the user — for a
+    -- booking entry made from a document's line, that line's description,
+    -- rewritten when the booking follows its document. NULL where the source
+    -- gives an entry no text of its own: an imported or user-authored entry,
+    -- the entries a commit's split makes, a counter-leg. An input to
+    -- resolution — a rule condition, a history key, the model's payload —
+    -- unlike `description`, which is the user's and read by no pass.
+    source_text text,
     description text,
     note        text,
 
     -- How each derived value was arrived at, keyed by what it explains: type,
-    -- payee, category, counter_account, counterpart, and on a transaction's
-    -- original entry its document link. Every derived value carries a key.
-    -- Keys of passes 'history', 'llm' and 'matcher_proposal' (settling's link
-    -- to a document of several lines) are PROPOSALS and stay until a user
-    -- confirms the value. Keys of passes 'own_account', 'rule',
-    -- 'matcher_decision' (made by settling: a pair, a one-line document link,
-    -- or the "none" it records when it confirms a unit without a document) and 'user' (decided in a commit) are STANDING: they do
+    -- payee, category, counter_account, counterpart. Every derived value
+    -- carries a key. Keys of passes 'history' and 'llm' are PROPOSALS and
+    -- stay until a user confirms the value. Keys of passes 'own_account',
+    -- 'rule', 'matcher_decision' (a pair settling made), 'booking' (what
+    -- settling's booking step fixes: the type of a booking entry; a
+    -- counter-leg's type and counter-account, and the pair on both legs)
+    -- and 'user'
+    -- (decided in a commit) are STANDING: they do
     -- not hold up review and are not rederived
     -- unless the entry's input changes or an earlier field in field order does.
     -- A commit keeps unchanged standing keys; an accepted proposal becomes
@@ -728,8 +826,8 @@ CREATE TABLE ledger_entry (
     -- unconfirmed entries, nor by flags or derivation bookkeeping: a commit
     -- writes the state the user saw and is refused only where the unit
     -- changed underneath it, never because a proposal was recomputed
-    -- (spec §6). Structural columns — account, amount, counterpart,
-    -- document — bump it whoever writes them, settling included.
+    -- (spec §6). Structural columns — account, amount, counterpart and the
+    -- source text — bump it whoever writes them, settling included.
     -- No created_by / created_at / updated_at: attribution and timestamps
     -- are audit questions (spec §3.2). An imported entry's arrival time is its
     -- source transaction's run.
@@ -738,9 +836,9 @@ CREATE TABLE ledger_entry (
     -- a movement or a derived entry, never both, never neither
     CONSTRAINT ck_entry_kind
         CHECK (num_nonnulls(source_transaction_id, balance_record_id) = 1),
-    -- only a movement explains a document
-    CONSTRAINT ck_document_on_movement
-        CHECK (document_id IS NULL OR source_transaction_id IS NOT NULL),
+    -- only a movement has a source to give it text
+    CONSTRAINT ck_source_text_on_movement
+        CHECK (source_text IS NULL OR source_transaction_id IS NOT NULL),
     -- derived entries are exactly the openings, valuations and
     -- reconciliations, each tied to the record it is derived from
     CONSTRAINT ck_balance_types
@@ -769,8 +867,7 @@ CREATE TABLE ledger_entry (
     CONSTRAINT ck_not_self_counterpart
         CHECK (counterpart_entry_id IS NULL OR counterpart_entry_id <> id),
     CONSTRAINT ck_review_flags_known
-        CHECK (review_flags <@ ARRAY['unconfirmed','unclassified',
-                                     'document_suggested','waiting',
+        CHECK (review_flags <@ ARRAY['unconfirmed','unclassified','waiting',
                                      'unmatched_transfer']::text[]),
     -- an entry is denominated in its account's currency
     CONSTRAINT fk_entry_account_currency
@@ -829,100 +926,81 @@ CREATE INDEX ix_ledger_entry_tag_tag ON ledger_entry_tag (tag_id);
 -- 7. Enrichment layer — documents that DESCRIBE money but don't move it
 -- ---------------------------------------------------------------------
 
--- Updated in place when re-fetched: a document moves no money, so it needs no
--- immutability, and keeping the first version would drop cancellations and
--- partial shipments. One document per charge where the provider exposes
--- charges. In v1, fed by a test importer until real document importers
--- exist. Spec §5.5, §5.8.
+-- One order or refund, complete as the provider shows it, dated on its own
+-- day — an order on the day it was placed (spec §5.5). A document moves no money, so it needs no immutability:
+-- a re-delivered one is updated in place or kept as stored, by its
+-- importer's declared re-delivery mode (`replace` or `keep`) — a property of
+-- the importer, not stored here (spec §5.5). A document is never deleted
+-- (document runs are never reverted), so its id is a stable key for the
+-- booking made from it (source_transaction.source_id `document:<id>`).
+-- Spec §5.5, §5.8.
 CREATE TABLE external_document (
     id                   bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    provider             text NOT NULL,     -- 'amazon' | 'paypal' | 'receipt' | ...
+    -- any name the importer delivers (spec §5.5); with the currency, it
+    -- finds the clearance account that books the document (clearance_provider)
+    provider             text NOT NULL,
     external_id          text NOT NULL,     -- order id, invoice no
     importer_instance_id bigint REFERENCES importer_instance(id) ON DELETE SET NULL,
     -- nullable, unlike source_transaction: a receipt may one day be added by
     -- hand rather than fetched.
     import_run_id        bigint REFERENCES import_run(id) ON DELETE RESTRICT,
-    occurred_on          date NOT NULL,     -- the charge date
+    occurred_on          date NOT NULL,     -- the order's or refund's date
     -- minor units of `currency`, signed in ledger convention: negative for a
-    -- charge, positive for a refund or credit note. Matched with its sign.
-    total                bigint NOT NULL CHECK (total <> 0),
+    -- purchase, positive for a refund or credit note. Zero for an order paid
+    -- entirely with vouchers, which is stored and shown but not booked
+    -- (spec §5.8).
+    total                bigint NOT NULL,
     currency             char(3) NOT NULL REFERENCES currency(code),
-    merchant_name        text,              -- input to resolution (§5.8)
+    merchant_name        text,              -- provenance, shown; read by no pass
     title                text,
     raw                  jsonb NOT NULL,
-    -- incremented by ingest whenever what resolution reads of the document
-    -- changes — total, currency, merchant, lines — so a commit made on an
-    -- older version is refused (spec §5.5, §6). Not bumped by a re-fetch
-    -- that changes nothing resolution reads.
+    -- incremented whenever its content changes — date, total, currency,
+    -- merchant, title, lines — so that an edit by hand made on an older
+    -- version is refused once documents can be edited (spec §5.5). Not bumped
+    -- by a re-delivery that changes none of it; `raw` alone is no content.
     version              integer NOT NULL DEFAULT 1,
     UNIQUE (provider, external_id)
 );
 
 CREATE INDEX ix_document_date ON external_document (occurred_on DESC);
 
+-- A document's lines, in their order (line_no), replaced as a whole when the
+-- document changes (spec §5.5). The booking made from the document has one
+-- entry per line in this order, its text the line's description, and follows
+-- the lines by position when they change (spec §5.8).
 CREATE TABLE external_document_line (
     id          bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     document_id bigint NOT NULL REFERENCES external_document(id) ON DELETE CASCADE,
     line_no     integer NOT NULL,
     description text NOT NULL,
-    -- signed like the document's total: a charge's lines are negative
+    -- signed like the document's total: a purchase's lines are negative
     -- (spec §5.5)
     amount      bigint NOT NULL,
     qty         integer,
     UNIQUE (document_id, line_no)
 );
 
--- The link from a transaction to its document is ledger_entry.document_id, a
--- derived field keyed like any other (spec §5.8, §5.9): 'matcher_decision'
--- where settling linked a document of one line, 'matcher_proposal' one of
--- several, 'user' where a commit picked it or decided "none" (key without a
--- value; a commit with no document picked decides "none"). Suggestions are computed when read and never stored.
--- RESTRICT: a document is never deleted while an entry carries it.
-ALTER TABLE ledger_entry
-    ADD CONSTRAINT fk_le_document
-    FOREIGN KEY (document_id) REFERENCES external_document(id) ON DELETE RESTRICT;
-
--- I35, enforced on the entries: a document is carried by at most one entry,
--- and a transaction has at most one entry carrying a document — the original
--- entry, which keeps its id through splits.
-CREATE UNIQUE INDEX ux_le_document
-    ON ledger_entry (document_id) WHERE document_id IS NOT NULL;
-CREATE UNIQUE INDEX ux_le_document_per_transaction
-    ON ledger_entry (source_transaction_id) WHERE document_id IS NOT NULL;
-
--- Every entry's document, read through its transaction's carrier: one join
--- instead of a copy on each entry of a split.
-CREATE VIEW v_entry_document AS
-SELECT e.id AS ledger_entry_id, c.document_id
-  FROM ledger_entry e
-  JOIN ledger_entry c
-    ON c.source_transaction_id = e.source_transaction_id
-   AND c.document_id IS NOT NULL;
-
--- Every document with the entry carrying it, NULL where none does: the
--- document list and its "not linked" filter (spec §5.8).
-CREATE VIEW v_document_link AS
-SELECT d.id AS document_id, e.id AS ledger_entry_id,
-       e.source_transaction_id
-  FROM external_document d
-  LEFT JOIN ledger_entry e ON e.document_id = d.id;
-
 -- ---------------------------------------------------------------------
 -- 8. Invariants that DDL cannot express
 -- ---------------------------------------------------------------------
 
--- 8.1 source transactions are immutable: after insert, the only permitted
--- change is whether the row is a duplicate (duplicate_of set or cleared).
+-- 8.1 imported source transactions are immutable: after insert, the only
+-- permitted change is whether the row is a duplicate (duplicate_of set or
+-- cleared). No row changes its origin.
 CREATE OR REPLACE FUNCTION assert_source_immutable() RETURNS trigger AS $$
 BEGIN
-    -- a user-authored row is the user's to edit — amount, date, purpose — but
-    -- stays user-authored, on its account and in its currency (spec §5.6)
-    IF OLD.importer IS NULL AND NEW.importer IS NULL
+    IF NEW.origin IS DISTINCT FROM OLD.origin THEN
+        RAISE EXCEPTION 'source_transaction % keeps its origin', OLD.id;
+    END IF;
+    -- a user-authored row is the user's to edit — amount, date, purpose — and
+    -- a booking follows its source (spec §5.6, §5.8); either stays on its account
+    -- and in its currency
+    IF OLD.origin <> 'import'
        AND NEW.account_id = OLD.account_id AND NEW.currency = OLD.currency THEN
         RETURN NEW;
     END IF;
-    IF OLD.importer IS NULL THEN
-        RAISE EXCEPTION 'user-authored source_transaction % keeps its account and currency', OLD.id;
+    IF OLD.origin <> 'import' THEN
+        RAISE EXCEPTION '% source_transaction % keeps its account and currency', OLD.origin, OLD.id;
     END IF;
     -- besides duplicate_of, only the instance link may go, to NULL: the FK's
     -- ON DELETE SET NULL runs as an UPDATE, and `importer` keeps the provenance
@@ -942,9 +1020,10 @@ CREATE TRIGGER trg_source_immutable BEFORE UPDATE ON source_transaction
 -- 8.2 split allocation (I3): the entries of a source transaction carry its
 -- account, currency and dates and sum to its amount; a duplicate has none.
 -- Checked when entries change, and when a source's copied columns change — a
--- user-authored row is editable (spec §5.6). DEFERRED so an import, a commit,
--- an edit through the entry form or clearing a duplicate can write the row
--- and its entries in one tx.
+-- user-authored row is editable and a booking follows its source (spec
+-- §5.6). DEFERRED so an import, a commit, an edit through the entry form,
+-- settling's booking step or clearing a duplicate can write the row and its
+-- entries in one tx.
 CREATE OR REPLACE FUNCTION check_source_entries(st_id bigint) RETURNS void AS $$
 DECLARE
     st        source_transaction%ROWTYPE;
@@ -1046,8 +1125,8 @@ BEGIN
         RAISE EXCEPTION 'duplicate source_transaction % still has % entries', cur.id, kid_count;
     END IF;
     IF EXISTS (SELECT 1 FROM source_transaction
-                WHERE id = cur.duplicate_of AND importer IS NULL) THEN
-        RAISE EXCEPTION 'source_transaction % cannot duplicate user-authored row %',
+                WHERE id = cur.duplicate_of AND origin <> 'import') THEN
+        RAISE EXCEPTION 'source_transaction % cannot duplicate row %, which was not imported',
             cur.id, cur.duplicate_of;
     END IF;
     IF EXISTS (SELECT 1 FROM source_transaction
@@ -1068,11 +1147,21 @@ CREATE CONSTRAINT TRIGGER trg_duplicate_state
     DEFERRABLE INITIALLY DEFERRED
     FOR EACH ROW EXECUTE FUNCTION assert_duplicate_state();
 
--- 8.2c user-authored source transactions are entered only on unsynced
--- accounts (I40). Their account never changes (trg_source_immutable), so
--- entry is the only moment to check.
-CREATE OR REPLACE FUNCTION assert_user_source_unsynced() RETURNS trigger AS $$
+-- 8.2c rows not imported: user-authored source transactions only on
+-- unsynced accounts (I40), bookings only on clearance accounts (I41).
+-- Their account never changes (trg_source_immutable), so entry is the only
+-- moment to check. A clearance account is never synced (8.5d), so the user's
+-- corrections are accepted there.
+CREATE OR REPLACE FUNCTION assert_authored_source_account() RETURNS trigger AS $$
 BEGIN
+    IF NEW.origin = 'booking' THEN
+        IF NOT EXISTS (SELECT 1 FROM account a
+                        WHERE a.id = NEW.account_id AND a.kind = 'clearance') THEN
+            RAISE EXCEPTION 'account % is not a clearance account: bookings are made only on clearance accounts',
+                NEW.account_id;
+        END IF;
+        RETURN NEW;
+    END IF;
     IF EXISTS (SELECT 1 FROM account a
                 WHERE a.id = NEW.account_id AND a.closed_on IS NULL
                   AND EXISTS (SELECT 1 FROM account_source s WHERE s.account_id = a.id)) THEN
@@ -1083,10 +1172,10 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trg_user_source_unsynced
+CREATE TRIGGER trg_authored_source_account
     BEFORE INSERT ON source_transaction
-    FOR EACH ROW WHEN (NEW.importer IS NULL)
-    EXECUTE FUNCTION assert_user_source_unsynced();
+    FOR EACH ROW WHEN (NEW.origin <> 'import')
+    EXECUTE FUNCTION assert_authored_source_account();
 
 -- 8.3 transfer pairing: mutual, two distinct accounts, opposing signs, and for
 -- a same-currency pair exactly equal and opposite amounts. Cross-currency legs
@@ -1196,20 +1285,20 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER trg_category_acyclic BEFORE UPDATE OF parent_id ON category
     FOR EACH ROW EXECUTE FUNCTION assert_category_acyclic();
 
--- 8.5 whether an account is an investment account (depot, asset) is fixed at
--- creation: it decides whether later balance records derive valuations or
--- reconciliations (spec §3.3, I38).
-CREATE OR REPLACE FUNCTION assert_account_investment_fixed() RETURNS trigger AS $$
+-- 8.5 an account's kind is fixed at creation, and with it whether it is an
+-- investment account (depot, asset), which decides whether later balance
+-- records derive valuations or reconciliations (spec §3.3, I38).
+CREATE OR REPLACE FUNCTION assert_account_kind_fixed() RETURNS trigger AS $$
 BEGIN
-    IF (OLD.kind IN ('depot','asset')) IS DISTINCT FROM (NEW.kind IN ('depot','asset')) THEN
-        RAISE EXCEPTION 'account %: whether it is an investment account is fixed at creation', OLD.id;
+    IF NEW.kind IS DISTINCT FROM OLD.kind THEN
+        RAISE EXCEPTION 'account %: kind is fixed at creation', OLD.id;
     END IF;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trg_account_investment_fixed BEFORE UPDATE OF kind ON account
-    FOR EACH ROW EXECUTE FUNCTION assert_account_investment_fixed();
+CREATE TRIGGER trg_account_kind_fixed BEFORE UPDATE OF kind ON account
+    FOR EACH ROW EXECUTE FUNCTION assert_account_kind_fixed();
 
 -- 8.5b an account's currency is fixed, permanently, even while it holds
 -- nothing (spec §3.3, I5); the composite FKs alone would allow it on an
@@ -1242,6 +1331,34 @@ CREATE TRIGGER trg_entry_source_fixed
     BEFORE UPDATE OF source_transaction_id ON ledger_entry
     FOR EACH ROW EXECUTE FUNCTION assert_entry_source_fixed();
 
+-- 8.5d a clearance account is never linked to an importer, and only a
+-- clearance account lists providers (spec §3.3). An account's kind never
+-- changes (8.5), so writing a link or a provider is the only moment to check.
+CREATE OR REPLACE FUNCTION assert_clearance_links() RETURNS trigger AS $$
+DECLARE
+    k text;
+BEGIN
+    SELECT kind INTO k FROM account WHERE id = NEW.account_id;
+    IF TG_TABLE_NAME = 'account_source' AND k = 'clearance' THEN
+        RAISE EXCEPTION 'account % is a clearance account: it is never linked to an importer',
+            NEW.account_id;
+    END IF;
+    IF TG_TABLE_NAME = 'clearance_provider' AND k IS DISTINCT FROM 'clearance' THEN
+        RAISE EXCEPTION 'account % is not a clearance account: it lists no providers',
+            NEW.account_id;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_account_source_not_clearance
+    BEFORE INSERT OR UPDATE ON account_source
+    FOR EACH ROW EXECUTE FUNCTION assert_clearance_links();
+
+CREATE TRIGGER trg_clearance_provider_account
+    BEFORE INSERT OR UPDATE ON clearance_provider
+    FOR EACH ROW EXECUTE FUNCTION assert_clearance_links();
+
 -- 8.6 version: user-meaningful changes only.
 --
 -- A timestamp is not usable as a concurrency token: timestamps can collide
@@ -1255,7 +1372,7 @@ CREATE TRIGGER trg_entry_source_fixed
 -- ledger.settling = 'on'): a commit writes the state the user saw, so a
 -- proposal recomputed underneath an open review panel must not refuse it.
 -- STRUCTURAL changes bump the version whoever makes them — account, amount,
--- counterpart and document (an entry's source never changes, 8.5c) —
+-- counterpart and the source text (an entry's source never changes, 8.5c) —
 -- because a commit must be refused when the unit's structure moved (spec §6). A recomputed derived amount is such a change.
 CREATE OR REPLACE FUNCTION bump_version() RETURNS trigger AS $$
 BEGIN
@@ -1269,7 +1386,7 @@ CREATE TRIGGER trg_le_version BEFORE UPDATE ON ledger_entry
             OLD.account_id            IS DISTINCT FROM NEW.account_id
          OR OLD.amount                IS DISTINCT FROM NEW.amount
          OR OLD.counterpart_entry_id  IS DISTINCT FROM NEW.counterpart_entry_id
-         OR OLD.document_id           IS DISTINCT FROM NEW.document_id
+         OR OLD.source_text           IS DISTINCT FROM NEW.source_text
          OR (current_setting('ledger.settling', true) IS DISTINCT FROM 'on'
              AND (   OLD.type         IS DISTINCT FROM NEW.type
                   OR OLD.counter_account_id IS DISTINCT FROM NEW.counter_account_id
@@ -1447,16 +1564,6 @@ SELECT a.id AS account_id,
          ON r.account_id = a.id AND r.status = 'ok'
         AND r.covered_through IS NOT NULL
  GROUP BY a.id;
-
--- an instance's document coverage, for waiting for a document (spec §5.5,
--- §5.8). An instance with no row here has never run, and holds the
--- transactions of its providers dated from its start date on.
-CREATE VIEW v_document_coverage AS
-SELECT importer_instance_id, max(covered_through) AS covered_through
-  FROM import_run
- WHERE emits = 'documents' AND status = 'ok'
-   AND covered_through IS NOT NULL AND importer_instance_id IS NOT NULL
- GROUP BY importer_instance_id;
 
 -- data age: synced_through for a synced account, the latest counting
 -- balance record for an unsynced one; NULL = "never". A manual record on a
