@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 from sqlalchemy import Engine, text
@@ -14,6 +14,7 @@ from app.core.settle import settle
 from tests.core.bookings.charges import (
     BOOKING_KEY,
     IBAN,
+    START,
     booking_entries,
     booking_of,
     charge,
@@ -429,3 +430,33 @@ def test_an_entry_form_edit_of_an_authored_charge_re_derives_its_booking_and_pai
     assert row.derivation["counterpart"] == BOOKING_KEY and after.derivation["counterpart"] == BOOKING_KEY
     assert confirmed(scene, e, leg.id)
     scene.assert_checks_clean()
+
+
+# ---- the start of the clearance account: a leg on or before it is the source of no booking --------------
+
+
+@pytest.mark.parametrize(
+    ("on", "booked"),
+    [(START - timedelta(days=1), False), (START, False), (START + timedelta(days=1), True)],
+)
+def test_a_charge_dated_on_or_before_the_start_books_no_counter_leg(
+    scene: Scene, on: date, booked: bool
+) -> None:
+    account = clearance(scene)
+    rule_to(scene, account)
+    e = charge(scene, on=on)
+    assert scene.settle().error is None
+    assert (booking_of(scene, e) is not None) is booked
+    assert (scene.row(e).counterpart_entry_id is not None) is booked
+    if not booked:
+        assert scene.row(e).review_flags != []  # an unpaired transfer leg, in review
+
+
+def test_a_charge_toward_a_clearance_account_without_a_start_books_nothing(scene: Scene) -> None:
+    account = clearance(scene)
+    rule_to(scene, account)
+    scene.tx(lambda c: c.execute(text("DELETE FROM balance_record WHERE account_id = :a"), {"a": account}))
+    e = charge(scene)
+    assert scene.settle().error is None
+    assert booking_of(scene, e) is None
+    assert scene.row(e).counterpart_entry_id is None

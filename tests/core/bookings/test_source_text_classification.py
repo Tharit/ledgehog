@@ -1,5 +1,5 @@
 """A booking entry's source text and account are inputs of resolution (spec §5.9, D230): rules read them,
-history learns by source text, the model's payload carries them, and booking entries never vote."""
+the model's payload carries them, and booking entries never vote."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ import json
 import pytest
 from sqlalchemy import Engine
 
-from app.core.resolution import snapshot
 from app.core.resolution.load import load_movements
 from app.core.resolution.snapshot import load_votes
 from app.plugins.classifiers.llm.payload import payload_of
@@ -87,26 +86,16 @@ def test_booking_entries_never_vote(scene: Scene) -> None:
         assert load_votes(conn) == []
 
 
-def test_history_learns_by_source_text_where_bookings_may_vote(
-    scene: Scene, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(snapshot, "BOOKING_ENTRIES_VOTE", True)
+def test_booking_entries_are_never_asked_by_history(scene: Scene) -> None:
     scene.clearance()
     cables = scene.category("Cables")
     _rule(scene, "category", cables, [{"field": "source_text", "op": "equals", "value": "USB-C cable"}], "u")
     scene.deliver(doc("A1", line("USB-C cable", -1000)))
-    with scene.engine.connect() as conn:
-        votes = load_votes(conn)
-    assert [v.source_text for v in votes] == ["USB-C cable"]
     scene.exec("DELETE FROM rule")
-    scene.deliver(doc("A2", line("usb-c  Cable", -900), line("Paperback", -500)))
-    entry = _by_text(scene, "A2")
-    cable = entry["usb-c  Cable"]
-    assert cable.category_id == cables  # type: ignore[attr-defined]
-    key = cable.derivation["category"]  # type: ignore[attr-defined]
-    assert key["pass"] == "history" and key["basis"]["matched_on"] == "source_text"
-    assert key["basis"]["agree"] == 1 and key["basis"]["of"] == 1
-    assert entry["Paperback"].category_id is None  # type: ignore[attr-defined]
+    scene.deliver(doc("A2", line("USB-C cable", -900)))
+    entry = _by_text(scene, "A2")["USB-C cable"]
+    assert entry.category_id is None  # type: ignore[attr-defined]
+    assert "category" not in entry.derivation or entry.derivation["category"]["pass"] != "history"  # type: ignore[attr-defined]
 
 
 def test_the_statement_marks_a_booking_with_its_origin_and_source(scene: Scene) -> None:

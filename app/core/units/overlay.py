@@ -717,7 +717,11 @@ def _book(rows: list[_Row], world: World) -> None:
         foreign = r.counterpart is not None and (partner is None or partner is not b)
         facts = None if foreign else _charge_facts(r)
         account = None if facts is None else clearance.get(facts.counter_account_id)
-        plan = None if facts is None or account is None else transfer_booking_plan(facts, account.currency)
+        plan = (
+            None
+            if facts is None or account is None
+            else transfer_booking_plan(facts, account.currency, account.start)
+        )
         if b is not None and (plan is None or account is None or b.account_id != account.id):
             rows[:] = [
                 x for x in rows if x is not b

@@ -30,18 +30,14 @@ EMPTY = "none"
 STANDING_PASSES = frozenset({"own_account", "rule", "matcher_decision", "booking", "user"})
 
 # the history keys of spec §5.9 / classifiers/history.md, in order. The booking text is never a key on its
-# own; it only refines key 2. Key 5 is the entry's own source text (an entry with one is asked on keys 3 and 5
-# only, tried 5 before 3).
-HistoryKey = Literal["counterparty_ref", "counterparty_name", "payee", "tokens", "source_text"]
+# own; it only refines key 2.
+HistoryKey = Literal["counterparty_ref", "counterparty_name", "payee", "tokens"]
 HISTORY_KEYS: tuple[HistoryKey, ...] = (
     "counterparty_ref",
     "counterparty_name",
     "payee",
     "tokens",
 )
-# an entry with a source text is asked these keys only, in this order (key 5 before key 3), and only for the
-# payee and the category (its type is fixed); it is neither asked nor counted on keys 1, 2 and 4
-SOURCE_TEXT_KEYS: tuple[HistoryKey, ...] = ("source_text", "payee")
 
 
 def has_source_text(source_text: str | None) -> bool:
@@ -93,6 +89,8 @@ class AccountFact:
     # a clearance account (spec §3.3): its movements are bookings, so none is ever a transfer leg's partner
     # or a candidate, and no pass proposes `transfer` for an entry on it (spec §5.7)
     clearance: bool = False
+    # a clearance account's start: the date of its earliest balance record (spec §3.3), None while it has none
+    start: date | None = None
 
 
 ConditionField = Literal[
@@ -195,8 +193,6 @@ class Vote:
     purpose: str | None = None
     booking_text: str | None = None
     mandate_ref: str | None = None
-    # the voter's own source text (spec §5.9): only such a vote counts for key 5
-    source_text: str | None = None
 
 
 class HistorySource(Protocol):

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import dataclasses
 from collections.abc import Callable
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 import pytest
@@ -22,6 +22,7 @@ from app.core.units.preview import preview_unit
 from app.core.units.read import get_unit, review_queue
 from tests.core.bookings.charges import (
     BOOKING_KEY,
+    START,
     booking_entries,
     booking_of,
     charge,
@@ -521,3 +522,13 @@ def test_a_preview_reads_the_source_text_and_reresolves_by_it(scene: Scene, docu
     assert (plan.row(first).source_text, plan.row(second).source_text) == ("Cable", "Book")
     assert plan.row(second).fields["category"].value == books
     assert plan.row(second).fields["category"].evidence.pass_name == "rule"  # type: ignore[union-attr]
+
+
+@pytest.mark.parametrize(("days", "shown"), [(-1, False), (0, False), (1, True)])
+def test_a_preview_shows_no_booking_for_a_leg_on_or_before_the_start(
+    scene: Scene, days: int, shown: bool
+) -> None:
+    account = clearance(scene)
+    e = charge(scene, on=START + timedelta(days=days))
+    plan = scene.preview(e, DraftEntry(e, counter_account=fixed(account)))
+    assert any(r.booking_for == e for r in plan.rows) is shown

@@ -26,10 +26,12 @@ def load_accounts(conn: Connection) -> list[AccountFact]:
             external_ref=r.external_ref,
             closed_on=r.closed_on,
             clearance=r.clearance,
+            start=r.start,
         )
         for r in conn.execute(
             text(
-                "SELECT id, currency, external_ref, closed_on, (kind = 'clearance') AS clearance"
+                "SELECT id, currency, external_ref, closed_on, (kind = 'clearance') AS clearance,"
+                " (SELECT min(r.balance_on) FROM balance_record r WHERE r.account_id = account.id) AS start"
                 " FROM account ORDER BY id"
             )
         )
