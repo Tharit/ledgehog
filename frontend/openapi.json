@@ -6753,6 +6753,24 @@
         "title": "ThisMonthSpendOut",
         "type": "object"
       },
+      "UnitBookingOut": {
+        "description": "The unit holds a booking (spec \u00a75.8): the kind of its source. A document's booking is reviewed like\nany other; a transfer booking is the counter-leg of a charge on a clearance account, in the unit of its\ncharge.",
+        "properties": {
+          "kind": {
+            "enum": [
+              "document",
+              "transfer"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "UnitBookingOut",
+        "type": "object"
+      },
       "UnitCommitConsequenceOut": {
         "properties": {
           "entry_id": {
@@ -7419,6 +7437,16 @@
             "title": "Anchor Entry Id",
             "type": "integer"
           },
+          "booking": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UnitBookingOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "entries": {
             "items": {
               "$ref": "#/components/schemas/EntryOut"
@@ -7655,6 +7683,27 @@
             "format": "date",
             "title": "Booked On",
             "type": "string"
+          },
+          "booking": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UnitRowBookingOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "booking_for": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booking For"
           },
           "counter_leg_for": {
             "anyOf": [
@@ -7952,6 +8001,29 @@
           "state"
         ],
         "title": "UnitRefOut",
+        "type": "object"
+      },
+      "UnitRowBookingOut": {
+        "description": "A row that is a booking's entry (spec \u00a75.8): its source, for navigation and to hide the partner,\nconvert and split controls. `id` is the document's id (`document`) or the charge's entry id\n(`transfer`).",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "document",
+              "transfer"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ],
+        "title": "UnitRowBookingOut",
         "type": "object"
       },
       "UnitShownBasisIn": {

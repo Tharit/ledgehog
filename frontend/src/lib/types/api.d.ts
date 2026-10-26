@@ -3318,6 +3318,19 @@ export interface components {
             to: string;
             unclassified_out: components["schemas"]["LineOut"];
         };
+        /**
+         * UnitBookingOut
+         * @description The unit holds a booking (spec §5.8): the kind of its source. A document's booking is reviewed like
+         *     any other; a transfer booking is the counter-leg of a charge on a clearance account, in the unit of its
+         *     charge.
+         */
+        UnitBookingOut: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "document" | "transfer";
+        };
         /** UnitCommitConsequenceOut */
         UnitCommitConsequenceOut: {
             /** Entry Id */
@@ -3548,6 +3561,7 @@ export interface components {
         UnitOut: {
             /** Anchor Entry Id */
             anchor_entry_id: number;
+            booking?: components["schemas"]["UnitBookingOut"] | null;
             /** Entries */
             entries: components["schemas"]["EntryOut"][];
             /**
@@ -3642,6 +3656,9 @@ export interface components {
              * Format: date
              */
             booked_on: string;
+            booking?: components["schemas"]["UnitRowBookingOut"] | null;
+            /** Booking For */
+            booking_for?: number | null;
             /** Counter Leg For */
             counter_leg_for?: number | null;
             /** Counterpart Entry Id */
@@ -3718,6 +3735,21 @@ export interface components {
             /** Entry Ids */
             entry_ids: number[];
             state: components["schemas"]["UnitStateOut"];
+        };
+        /**
+         * UnitRowBookingOut
+         * @description A row that is a booking's entry (spec §5.8): its source, for navigation and to hide the partner,
+         *     convert and split controls. `id` is the document's id (`document`) or the charge's entry id
+         *     (`transfer`).
+         */
+        UnitRowBookingOut: {
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "document" | "transfer";
         };
         /**
          * UnitShownBasisIn
