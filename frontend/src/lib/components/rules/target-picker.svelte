@@ -20,6 +20,7 @@
 		id,
 		clearable = false,
 		invalid = false,
+		noun,
 		onchange
 	}: {
 		kind: RuleSets;
@@ -30,12 +31,17 @@
 		id?: string;
 		clearable?: boolean;
 		invalid?: boolean;
+		/** what the list holds, in words, where it is not the kind's own ("account" for a condition) */
+		noun?: string;
 		onchange: (id: number | null) => void;
 	} = $props();
 
 	let open = $state(false);
 
 	const options = $derived(targetOptions(kind, lookups, value));
+	const word = $derived(noun ?? kindWord(kind));
+	const article = $derived(/^[aeiou]/i.test(word) ? 'an' : 'a');
+	const chooseLabel = $derived(`Choose ${article} ${word}`);
 	const manage = $derived(
 		kind === 'category'
 			? { href: '/settings/categories', text: 'Manage categories' }
@@ -62,20 +68,20 @@
 			)}
 		>
 			{#if value === null}
-				<span>Choose a {kindWord(kind)}…</span>
+				<span>Choose {article} {word}…</span>
 			{:else}
 				<RuleTarget sets={kind} id={value} {lookups} full />
 			{/if}
 			<ChevronsUpDownIcon size={14} strokeWidth={1.75} class="shrink-0 text-muted-foreground" />
 		</Popover.Trigger>
-		<Popover.Content align="start" class="w-80 gap-0 p-1" aria-label={`Choose a ${kindWord(kind)}`}>
+		<Popover.Content align="start" class="w-80 gap-0 p-1" aria-label={chooseLabel}>
 			<Picker
 				items={options}
 				selectedId={value}
 				label="Choices"
-				findLabel={`Search ${kindWord(kind)}`}
-				placeholder={`Find a ${kindWord(kind)}…`}
-				emptyText={`No ${kindWord(kind)} yet.`}
+				findLabel={`Search ${word}`}
+				placeholder={`Find ${article} ${word}…`}
+				emptyText={`No ${word} yet.`}
 				onselect={choose}
 			>
 				{#snippet row(option)}
@@ -95,7 +101,7 @@
 		</Popover.Content>
 	</Popover.Root>
 	{#if clearable && value !== null}
-		<IconButton verb="Clear" label={`Clear the ${kindWord(kind)}`} onclick={() => onchange(null)}>
+		<IconButton verb="Clear" label={`Clear the ${word}`} onclick={() => onchange(null)}>
 			<XIcon aria-hidden="true" />
 		</IconButton>
 	{/if}

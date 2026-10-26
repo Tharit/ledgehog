@@ -44,3 +44,13 @@ describe('sourceColumns and the payee condition', () => {
 		).toEqual(['counterparty_name', 'purpose']);
 	});
 });
+
+describe('the source text column', () => {
+	it('is shown when a condition reads it, and read from the entry’s own text', () => {
+		const conditions = [{ field: 'source_text', op: 'contains', value: 'cable' }];
+
+		expect(sourceColumns(conditions)).toEqual(['counterparty_name', 'source_text']);
+		expect(sourceText({ source: null, source_text: 'USB cable' }, 'source_text')).toBe('USB cable');
+		expect(sourceText({ source: null, source_text: null }, 'source_text')).toBeNull();
+	});
+});

@@ -19,6 +19,7 @@ import {
 	type ShownBasis
 } from './draft.js';
 import {
+	BOOKING_FIXED,
 	describeProblem,
 	differenceOf,
 	problemSentence,
@@ -55,6 +56,8 @@ export type FlowHost = {
 	previewed?: (preview: UnitPreview) => void;
 	/** an account's currency (the problem texts name the counter-leg's) */
 	accountCurrency?: (accountId: number) => string | undefined;
+	/** the kind of an account, for the words of a problem about a clearance account */
+	accountKind?: (accountId: number) => string | undefined;
 	/** the commit worked: move on (advance to the next unit, or close) */
 	committed: (out: UnitCommit, anchorId: number) => void;
 };
@@ -190,7 +193,8 @@ export class UnitDraftFlow {
 				locale: this.#host.locale(),
 				windowDays: this.previewWindow,
 				currency: (entryId) => this.#currency(entryId),
-				counterCurrency: (entryId) => this.#counterCurrency(entryId)
+				counterCurrency: (entryId) => this.#counterCurrency(entryId),
+				counterKind: (entryId) => this.#counterKind(entryId)
 			})
 		}));
 	}
@@ -707,7 +711,9 @@ export class UnitDraftFlow {
 							? 'Only a transfer leg has a partner. Take the partner pick back, or make the entry a transfer.'
 							: code === 'invalid_pairing'
 								? 'The partner you picked cannot be used. Pick another partner.'
-								: 'This change cannot be committed as it stands. Review the amounts and values.'
+								: code === 'booking_fixed'
+									? BOOKING_FIXED
+									: 'This change cannot be committed as it stands. Review the amounts and values.'
 				};
 				return;
 			}
@@ -794,6 +800,12 @@ export class UnitDraftFlow {
 			offer.amount?.currency ??
 			null
 		);
+	}
+
+	#counterKind(entryId: number | null): string | null {
+		const row = this.preview?.rows.find((r) => r.id === entryId);
+		const account = row?.fields.counter_account?.value;
+		return typeof account === 'number' ? (this.#host.accountKind?.(account) ?? null) : null;
 	}
 
 	#currency(entryId: number | null): string {

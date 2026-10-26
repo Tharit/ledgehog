@@ -25,6 +25,31 @@ describe('describeProblem', () => {
 		expect(text.remedy).toBe('Choose an account in USD.');
 	});
 
+	it('says a clearance account takes a charge only in its own currency', () => {
+		const text = describeProblem(
+			problem('currency_rule', { detail: { required: 'EUR', actual: 'USD' } }),
+			{ ...context, counterKind: () => 'clearance' }
+		);
+		expect(text.text).toBe(
+			'A clearance account takes only charges in its own currency (USD); this charge is in EUR.'
+		);
+		expect(text.remedy).toBe('Choose an account in EUR.');
+	});
+
+	it('says an entry on a clearance account is a transfer only as a booking', () => {
+		const text = words('clearance_transfer', { field: 'type' });
+		expect(text.text).toBe('An entry on a clearance account is a transfer only as a booking.');
+		expect(text.remedy).toBe('Make it a flow.');
+	});
+
+	it('says a booking’s type, amount and split are fixed', () => {
+		expect(words('booking_fixed').text).toContain('source’s');
+	});
+
+	it('says a clearance counter-account offers no other side to create', () => {
+		expect(words('counter_leg_not_offered').text).toContain('clearance account');
+	});
+
 	it('writes the difference of an unequal pair as an amount, with the remedy of spec §5.7', () => {
 		const text = words('pair_unequal', { detail: { partner: 2, difference: -1250 } });
 		expect(text.text).toBe('The two legs of this transfer differ by 12.50.');
@@ -147,7 +172,7 @@ describe('the counter-leg problems', () => {
 		['received_amount_not_needed', 'No amount is needed: both sides are in the same currency.'],
 		[
 			'counter_leg_not_offered',
-			'The other side cannot be created here: this leg already has a partner, or the counter-account is unknown.'
+			'The other side cannot be created here: this leg already has a partner, the counter-account is unknown, or it is a clearance account, whose other side is booked from the charge.'
 		],
 		[
 			'counter_leg_account_synced',

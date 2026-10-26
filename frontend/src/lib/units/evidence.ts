@@ -75,6 +75,10 @@ export type KeyContext = {
 	field?: string;
 	/** the name of the partner's account, when it is known */
 	partnerAccount?: string;
+	/** the entry holding the key is a booking (spec §5.8): of a document, or a counter-leg of a charge */
+	booking?: 'document' | 'transfer' | null;
+	/** the name of the account the charge of a counter-leg booking is on */
+	chargeAccount?: string;
 };
 
 /** The pass a pair decision was made with is its key's; the basis marks a value that follows the pair. */
@@ -140,6 +144,24 @@ export function describeKey(
 				text: rationale ? `${lead}${basis?.none === true ? ' — ' : ': '}${rationale}` : lead,
 				proposal: true
 			};
+		}
+		case 'booking': {
+			// the pair key, from either leg: the booking says whose charge it is, the charge where it went
+			if (context.field === 'counterpart' && !context.booking)
+				return {
+					text: context.partnerAccount
+						? `counter-leg booked on ${context.partnerAccount}`
+						: 'counter-leg booked',
+					proposal: false
+				};
+			if (context.booking === 'transfer' || context.field === 'counterpart')
+				return {
+					text: context.chargeAccount
+						? `booked from ${context.chargeAccount}’s charge`
+						: 'booked from its charge',
+					proposal: false
+				};
+			return { text: 'from its document', proposal: false };
 		}
 		case 'matcher_decision':
 			return { text: 'matched automatically', proposal: false };

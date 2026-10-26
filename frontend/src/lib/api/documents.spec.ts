@@ -58,6 +58,12 @@ describe('listDocuments', () => {
 		expect(url.searchParams.get('q')).toBe('rewe');
 	});
 
+	it('sends booked=false for the not-booked filter, and nothing otherwise', async () => {
+		await listDocuments({ ...empty, booked: false });
+		expect(new URL(lastUrl(), 'http://x').searchParams.get('booked')).toBe('false');
+		expect(documentQuery(empty).booked).toBeUndefined();
+	});
+
 	it('leaves out a blank text', () => {
 		expect(documentQuery({ ...empty, q: '  ' }).q).toBeUndefined();
 	});

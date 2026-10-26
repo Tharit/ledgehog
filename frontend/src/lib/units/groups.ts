@@ -30,7 +30,12 @@ export type PanelGroup = {
 	 * The group is the counter-leg a commit creates (patterns §4.5): one read-only block, no
 	 * editing, no split. `forAccountId` is the account of the leg it is created for.
 	 */
-	ghost: { forAccountId: number | null; purpose: string | null } | null;
+	ghost: {
+		forAccountId: number | null;
+		purpose: string | null;
+		/** the ghost is a booking on a clearance account, made by settling from the charge (§5.8) */
+		booking: boolean;
+	} | null;
 };
 
 /** The source group (strip data) holding any of these entries. */
@@ -75,7 +80,8 @@ export function groupsOf(views: readonly EntryView[], entries: readonly Entry[])
 			},
 			strip,
 			views: ordered,
-			splitEntryId: original?.id ?? null,
+			// a booking's split is its document's: there is nothing to split
+			splitEntryId: original && original.booking === null ? original.id : null,
 			ghost: null
 		};
 		return { group, date: date(dated), id: Math.min(...storedIds, lead.fromEntryId) };
@@ -96,7 +102,7 @@ function ghostGroups(views: readonly EntryView[]): PanelGroup[] {
 	return views
 		.filter((v) => v.counterLeg)
 		.map((view) => {
-			const leg = views.find((v) => v.id === view.row?.counter_leg_for);
+			const leg = views.find((v) => v.id === (view.row?.counter_leg_for ?? view.row?.booking_for));
 			return {
 				key: `counter-leg-${view.id}`,
 				sourceId: null,
@@ -108,7 +114,11 @@ function ghostGroups(views: readonly EntryView[]): PanelGroup[] {
 				strip: null,
 				views: [view],
 				splitEntryId: null,
-				ghost: { forAccountId: leg?.accountId ?? null, purpose: view.description }
+				ghost: {
+					forAccountId: leg?.accountId ?? null,
+					purpose: view.description,
+					booking: view.bookingFor !== null
+				}
 			};
 		});
 }

@@ -48,6 +48,41 @@ describe('payee rows', () => {
 	});
 });
 
+describe('source text and account rows', () => {
+	it('loads and sends a source text condition as a text field, and an account one with its id', () => {
+		const rows = rowsFromConditions([
+			{ field: 'source_text', op: 'contains', value: 'cable' },
+			{ field: 'account', op: 'is', value: '4' }
+		]);
+
+		expect(rows.map((r) => [r.field, r.op, r.value])).toEqual([
+			['source_text', 'contains', 'cable'],
+			['account', 'is', '4']
+		]);
+		expect(toConditions(rows)).toEqual([
+			{ field: 'source_text', op: 'contains', value: 'cable' },
+			{ field: 'account', op: 'is', value: '4' }
+		]);
+		expect(fieldsRead(toConditions(rows))).toEqual(['source_text']);
+	});
+
+	it('keeps account rows for every rule, unlike payee rows', () => {
+		const rows = [newConditionRow({ field: 'account', op: 'is', value: '4' })];
+
+		expect(keepRowsFor(rows, false)).toEqual(rows);
+	});
+
+	it('says the account by name, or deleted', () => {
+		const c = { field: 'account', op: 'is', value: '4' };
+
+		expect(conditionText(c, undefined, () => 'Amazon clearing')).toBe('Account is Amazon clearing');
+		expect(conditionText(c)).toBe('Account is deleted');
+		expect(conditionText({ field: 'source_text', op: 'contains', value: 'cable' })).toBe(
+			'Source text contains "cable"'
+		);
+	});
+});
+
 describe('rows', () => {
 	it('starts with counterparty name, contains and nothing typed', () => {
 		expect(newConditionRow()).toMatchObject({

@@ -17,6 +17,7 @@ export function documentQuery(filter: DocumentFilter): Query {
 		amount_min: filter.amount_min,
 		amount_max: filter.amount_max,
 		currency: filter.currency,
+		booked: filter.booked === false ? 'false' : undefined,
 		q: text === '' ? undefined : text
 	};
 }

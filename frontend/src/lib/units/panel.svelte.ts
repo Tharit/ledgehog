@@ -103,6 +103,7 @@ export class UnitPanel {
 			patch: (affected) => this.#patch(affected),
 			reloadLookups: () => lookupsStore.reload(),
 			accountCurrency: (id) => lookupsStore.lookups.accounts.get(id)?.currency,
+			accountKind: (id) => lookupsStore.lookups.accounts.get(id)?.kind,
 			addTag: (tag) => lookupsStore.addTag(tag),
 			previewed: (preview) => {
 				if (previewReadsRules(preview)) void ruleNames.ensure();

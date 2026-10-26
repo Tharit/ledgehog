@@ -58,17 +58,21 @@ describe('sourceRows', () => {
 });
 
 describe('entryRows', () => {
-	it('lists the payee', () => {
-		const rows = entryRows(entry());
+	it('lists the entry’s own source text, then the payee', () => {
+		const rows = entryRows(entry({ source_text: 'USB cable' }));
 
-		expect(rows.map((r) => [r.field, r.label])).toEqual([['payee', 'Payee']]);
+		expect(rows.map((r) => [r.field, r.label, r.value])).toEqual([
+			['source_text', 'Source text', 'USB cable'],
+			['payee', 'Payee', null]
+		]);
+		expect(entryRows(entry({ source_text: null }))[0].value).toBeNull();
 	});
 
 	it('shows the payee by name through the lookup, no value without one', () => {
 		const named = entryRows(entry({ payee_id: 4 }), () => 'REWE');
 		const none = entryRows(entry());
 
-		expect(named[0].value).toBe('REWE');
-		expect(none[0].value).toBeNull();
+		expect(named[1].value).toBe('REWE');
+		expect(none[1].value).toBeNull();
 	});
 });

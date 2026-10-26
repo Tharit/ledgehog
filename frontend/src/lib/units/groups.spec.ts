@@ -188,7 +188,7 @@ describe('the ghost group of a counter-leg', () => {
 		const groups = groupsOf(views(), single.entries);
 		expect(groups.map((g) => g.key)).toEqual(['source-5', 'counter-leg--7']);
 		const ghost = groups[1];
-		expect(ghost.ghost).toEqual({ forAccountId: 1, purpose: 'Savings top-up' });
+		expect(ghost.ghost).toEqual({ forAccountId: 1, purpose: 'Savings top-up', booking: false });
 		expect(ghost.header).toEqual({
 			accountId: 2,
 			bookedOn: '2026-10-11',
@@ -212,5 +212,88 @@ describe('the ghost group of a counter-leg', () => {
 			single.entries
 		);
 		expect(groups.map((g) => g.ghost)).toEqual([null]);
+	});
+});
+
+describe('bookings (spec §5.8)', () => {
+	const documentBooking = (id: number, text: string) =>
+		entry({
+			id,
+			unit_key: 1,
+			type: 'flow',
+			account_id: 3,
+			amount: { amount: -1500, currency: 'EUR' },
+			source_transaction_id: 40,
+			source: source({
+				amount: { amount: -3000, currency: 'EUR' },
+				booking: {
+					kind: 'document',
+					id: 31,
+					provider: 'amazon',
+					external_id: '304-1',
+					account_id: null
+				}
+			}),
+			origin: 'booking',
+			source_text: text,
+			derivation: { type: { pass: 'booking' } }
+		});
+	const booked = unit({
+		anchor_entry_id: 1,
+		entries: [documentBooking(1, 'USB cable'), documentBooking(2, 'Book')]
+	});
+
+	it('marks the views of a booking, fixes their amounts and offers no split', () => {
+		const views = viewsOf(booked);
+		expect(views.map((v) => v.booking)).toEqual([
+			{ kind: 'document', id: 31 },
+			{ kind: 'document', id: 31 }
+		]);
+		expect(views.every((v) => !v.amountEditable && !v.removable)).toBe(true);
+		const groups = groupsOf(views, booked.entries);
+		expect(groups).toHaveLength(1);
+		expect(groups[0].splitEntryId).toBeNull();
+	});
+
+	it('takes a preview row’s booking, and marks the ghost booking settling would make', () => {
+		const charge = leg(1, 1, 5, '2026-10-10');
+		const single = unit({ anchor_entry_id: 1, entries: [charge] });
+		const out = preview(single);
+		out.rows.push(
+			previewRowOf(
+				entry({
+					id: -9,
+					unit_key: 1,
+					type: 'transfer',
+					account_id: 3,
+					amount: { amount: 5000, currency: 'EUR' },
+					source_transaction_id: -9,
+					derivation: {}
+				}),
+				{
+					original: true,
+					in_unit: true,
+					booking_for: 1,
+					booking: { kind: 'transfer', id: 1 },
+					transfer: transferOut({ state: 'paired' })
+				}
+			)
+		);
+		const views = entryViews({
+			unit: single,
+			draft: Draft.of(single),
+			preview: out,
+			rules,
+			locale: 'en'
+		});
+		const ghost = views.find((v) => v.id === -9)!;
+		expect(ghost).toMatchObject({
+			counterLeg: true,
+			bookingFor: 1,
+			booking: { kind: 'transfer', id: 1 }
+		});
+		const groups = groupsOf(views, single.entries);
+		expect(groups[1].ghost).toEqual({ forAccountId: 1, purpose: null, booking: true });
+		expect(groups[1].splitEntryId).toBeNull();
 	});
 });

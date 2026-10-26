@@ -87,6 +87,7 @@
 		error={documents.error}
 		moreError={documents.moreError}
 		locale={documents.locale}
+		accounts={documents.lookups.accounts}
 		activeFilters={documents.activeFilters}
 		onopen={(id) => goto(`/documents/${id}`)}
 		onclearfilters={() => show(emptyDocumentFilter())}

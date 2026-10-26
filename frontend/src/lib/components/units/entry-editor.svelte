@@ -58,7 +58,13 @@
 			: (view.stored?.counterpart_entry_id ?? null)
 	});
 	// converting is for the entry that keeps the source: a split row is a flow (spec §5.9)
-	const canConvert = $derived(!view.isNew && view.original);
+	const canConvert = $derived(!view.isNew && view.original && view.booking === null);
+	// a booking's type is its source's (spec §5.8): said, not chosen
+	const typeName = $derived(view.type === 'transfer' ? 'Transfer' : 'Flow');
+	const counterAccount = $derived.by(() => {
+		const id = view.fields.counter_account.value;
+		return typeof id === 'number' ? lookups.accounts.get(id) : undefined;
+	});
 	const invalid = (field: FieldName) =>
 		problems.some((p) => p.problem.field === field || p.problem.field === `${field}_id`);
 	const amountText = $derived(
@@ -248,14 +254,18 @@
 		{#if !view.isNew}
 			<dt class="pt-1.5 text-muted-foreground">Type</dt>
 			<dd class="min-w-0">
-				<Segmented
-					label="Type"
-					options={TYPES}
-					value={view.type}
-					onchange={(next) => {
-						if (next === 'flow' || next === 'transfer') setType(next);
-					}}
-				/>
+				{#if view.booking}
+					<span class="inline-block pt-1.5" data-slot="booking-type">{typeName}</span>
+				{:else}
+					<Segmented
+						label="Type"
+						options={TYPES}
+						value={view.type}
+						onchange={(next) => {
+							if (next === 'flow' || next === 'transfer') setType(next);
+						}}
+					/>
+				{/if}
 				<div class="flex flex-wrap items-baseline gap-x-3">
 					<EvidenceLine evidence={view.fields.type.evidence} />
 					{@render ruleOffer(view.fields.type)}
@@ -263,7 +273,28 @@
 			</dd>
 		{/if}
 
-		{#if isTransfer}
+		{#if isTransfer && view.booking}
+			<!-- a counter-leg booking: its counter-account and its partner, the charge, are fixed -->
+			<dt class="text-muted-foreground">Counter account</dt>
+			<dd class="min-w-0" data-slot="booking-counter-account">
+				{#if counterAccount}
+					<AccountDot name={counterAccount.name} color={resolveAccount(counterAccount).color} />
+				{/if}
+				<EvidenceLine evidence={view.fields.counter_account.evidence} />
+			</dd>
+			<dt class="text-muted-foreground">Partner</dt>
+			<dd class="min-w-0" data-slot="partner">
+				<span class="flex flex-wrap items-baseline gap-x-2" data-slot="partner-leg">
+					{#if partnerDirection}
+						<span aria-hidden="true">{partnerDirection === 'below' ? '↓' : '↑'}</span>
+						<span>Its charge is the entry {partnerDirection}</span>
+					{:else}
+						<span>Its charge</span>
+					{/if}
+				</span>
+				<EvidenceLine evidence={view.pairEvidence} />
+			</dd>
+		{:else if isTransfer}
 			<dt class="pt-1.5 text-muted-foreground">Counter account</dt>
 			<dd class="min-w-0">
 				<FieldPicker

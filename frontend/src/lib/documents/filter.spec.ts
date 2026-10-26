@@ -32,6 +32,15 @@ describe('documents filter URL', () => {
 		expect(documentFilterFromParams(query)).toEqual({ ...filter, provider: ['amazon', 'paypal'] });
 	});
 
+	it('carries the not-booked filter as booked=false, and ignores any other value', () => {
+		const filter = { ...emptyDocumentFilter(), booked: false as const };
+		expect(documentSearchParams(filter).toString()).toBe('booked=false');
+		expect(documentFilterFromParams('booked=false')).toEqual(filter);
+		expect(documentFilterFromParams('booked=true').booked).toBeUndefined();
+		expect(isEmptyDocumentFilter(filter)).toBe(false);
+		expect(describeDocumentFilter(filter, 'en')).toEqual([{ key: 'booked', label: 'Not booked' }]);
+	});
+
 	it('ignores what it cannot understand', () => {
 		const filter = documentFilterFromParams(
 			'from=2026-02-30&to=nope&amount_min=-4&amount_max=x&currency=EUR&provider=%20'

@@ -2,18 +2,41 @@
 	import MoneyDisplay from '#lib/components/common/money-display.svelte';
 	import PageHeader from '#lib/components/common/page-header.svelte';
 	import { formatDate } from '#lib/format/index.js';
-	import type { DocumentDetail } from '#lib/types/domain.js';
-	import { documentTitle } from './describe.js';
+	import type { Account, DocumentDetail } from '#lib/types/domain.js';
+	import { documentTitle, notBookedReason } from './describe.js';
 	import DocumentLines from './document-lines.svelte';
 
 	// One document (view sketch: ux/views/documents.md): its merchant, total and lines, read-only.
 	let {
 		document,
-		locale = 'en'
+		locale = 'en',
+		accounts = new Map(),
+		onopenentry
 	}: {
 		document: DocumentDetail;
 		locale?: string;
+		/** the accounts by id: the booking's account is named */
+		accounts?: ReadonlyMap<number, Account>;
+		/** an entry of the booking was chosen: its unit opens in the review panel */
+		onopenentry?: (entryId: number) => void;
 	} = $props();
+
+	const booking = $derived(document.booking);
+	const bookedOn = $derived(
+		booking ? (accounts.get(booking.account_id)?.name ?? `Account ${booking.account_id}`) : null
+	);
+	const reason = $derived(
+		document.not_booked
+			? notBookedReason(document.not_booked, {
+					provider: document.provider,
+					accountName:
+						document.not_booked.account_id === null
+							? null
+							: (accounts.get(document.not_booked.account_id)?.name ?? null),
+					locale
+				})
+			: null
+	);
 </script>
 
 <div class="flex flex-col gap-6">
@@ -36,7 +59,45 @@
 		</dd>
 		<dt class="text-muted-foreground">Reference</dt>
 		<dd class="truncate">{document.external_id}</dd>
+		{#if booking}
+			<dt class="text-muted-foreground">Booked</dt>
+			<dd data-slot="booked-on">
+				Booked on
+				<a href={`/accounts/${booking.account_id}`} class="underline underline-offset-2"
+					>{bookedOn}</a
+				>
+			</dd>
+		{:else if reason}
+			<dt class="text-muted-foreground">Booked</dt>
+			<dd class="text-muted-foreground" data-slot="not-booked">Not booked: {reason}</dd>
+		{/if}
 	</dl>
+
+	{#if booking && booking.entries.length > 0}
+		<section aria-labelledby="document-booking" class="flex max-w-2xl flex-col gap-2">
+			<h2 id="document-booking" class="text-base font-semibold">Booked entries</h2>
+			<ul class="flex flex-col" data-slot="booking-entries">
+				{#each booking.entries as entry (entry.id)}
+					<li class="flex items-center gap-3 border-b border-border py-1.5 text-sm">
+						<button
+							type="button"
+							class="min-w-0 flex-1 truncate rounded-sm text-left outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+							title="Open in review"
+							onclick={() => onopenentry?.(entry.id)}
+						>
+							{entry.source_text ?? `Entry ${entry.id}`}
+						</button>
+						<MoneyDisplay
+							minor={entry.amount.amount}
+							currency={entry.amount.currency}
+							{locale}
+							class="shrink-0"
+						/>
+					</li>
+				{/each}
+			</ul>
+		</section>
+	{/if}
 
 	<section aria-labelledby="document-lines" class="flex flex-col gap-2">
 		<h2 id="document-lines" class="text-base font-semibold">Lines</h2>

@@ -35,6 +35,7 @@
 
 	const groups = $derived(groupRules(rules));
 	const payeeName = (id: number) => lookups.payees.get(id)?.name;
+	const accountName = (id: number) => lookups.accounts.get(id)?.name;
 </script>
 
 {#if status === 'error'}
@@ -81,9 +82,9 @@
 								</span>
 								<span
 									class="truncate text-xs text-muted-foreground"
-									title={summarizeConditions(rule, payeeName)}
+									title={summarizeConditions(rule, payeeName, accountName)}
 								>
-									{summarizeConditions(rule, payeeName)}
+									{summarizeConditions(rule, payeeName, accountName)}
 								</span>
 							</div>
 							<div class="flex min-w-0 items-center text-sm">

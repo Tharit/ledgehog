@@ -2,7 +2,7 @@
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { formatCount } from '#lib/format/index.js';
 	import type { Lookups } from '#lib/ledger/lookups.js';
-	import type { SourceField } from '#lib/rules/conditions.js';
+	import type { ConditionField } from '#lib/rules/conditions.js';
 	import type { RulePreview, RulePreviewList, RulePreviewRow, RuleSets } from '#lib/rules/types.js';
 	import RulePreviewTable from './rule-preview-table.svelte';
 
@@ -38,7 +38,7 @@
 		/** the rows held per list: the first page and what "show more" added */
 		rows: Record<ListName, readonly RulePreviewRow[]>;
 		/** the source fields the previewed conditions read: the table's source columns */
-		columns: readonly SourceField[];
+		columns: readonly ConditionField[];
 		moreBusy?: ListName | null;
 		sets: RuleSets;
 		lookups: Lookups;

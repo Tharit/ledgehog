@@ -150,6 +150,67 @@ describe('RuleForm: fields', () => {
 		expect(oncondition).toHaveBeenCalledWith(0, { value: '20' });
 	});
 
+	it('offers the source text and the account on every rule, in the entry group', async () => {
+		render(RuleFormView, {
+			props: {
+				form: form({ sets: 'payee' }),
+				lookups,
+				onedit: vi.fn(),
+				oncondition: vi.fn(),
+				onaddcondition: vi.fn(),
+				onremovecondition: vi.fn(),
+				onsave: vi.fn()
+			}
+		});
+
+		const labels = await fieldOptions();
+		expect(labels).toContain('Source text');
+		expect(labels).toContain('Account');
+	});
+
+	it('shows a source text row like any text condition', () => {
+		setup({
+			form: form({
+				conditions: [newConditionRow({ field: 'source_text', op: 'contains', value: 'cable' })]
+			})
+		});
+
+		expect(screen.getByRole('button', { name: 'Condition 1: field' })).toHaveTextContent(
+			'Source text'
+		);
+		expect(screen.getByLabelText('Condition 1: value')).toHaveValue('cable');
+		expect(screen.getByRole('button', { name: 'Condition 1: operator' })).not.toBeDisabled();
+	});
+
+	it('shows an account row with a fixed operator and an account picker, and says a deleted account', async () => {
+		const { oncondition } = setup({
+			form: form({ conditions: [newConditionRow({ field: 'account', op: 'is', value: '2' })] })
+		});
+
+		const op = screen.getByRole('button', { name: 'Condition 1: operator' });
+		expect(op).toBeDisabled();
+		expect(op).toHaveTextContent('is');
+		const picker = screen.getByRole('button', { name: 'Condition 1: account' });
+		expect(picker).toHaveTextContent('Cash');
+		expect(screen.queryByLabelText('Condition 1: value')).toBeNull();
+		expect(screen.queryByText('Account deleted')).toBeNull();
+
+		await fireEvent.click(picker);
+		await fireEvent.click(await screen.findByRole('option', { name: /Giro/ }));
+		expect(oncondition).toHaveBeenCalledWith(0, { value: '1' });
+	});
+
+	it('says "Account deleted" for an account that is not in the list', () => {
+		setup({
+			form: form({ conditions: [newConditionRow({ field: 'account', op: 'is', value: '99' })] })
+		});
+
+		expect(screen.getByText('Account deleted')).toBeInTheDocument();
+		expect(screen.getByRole('button', { name: 'Condition 1: account' })).toHaveTextContent(
+			'Choose an account'
+		);
+	});
+
 	it('says "Payee deleted" for a payee that is not in the list, and lets another be picked', () => {
 		setup({ form: form({ conditions: [payeeRow('99')] }) });
 
@@ -258,6 +319,8 @@ describe('RuleForm: the condition rows', () => {
 			'Purpose',
 			'Booking text',
 			'Mandate reference',
+			'Source text',
+			'Account',
 			'Payee'
 		]);
 		expect(await optionsOf('Condition 1: operator')).toEqual([
@@ -268,7 +331,7 @@ describe('RuleForm: the condition rows', () => {
 		]);
 	});
 
-	it('groups the fields: the source transaction’s, then the entry’s with the payee', async () => {
+	it('groups the fields: the source transaction’s, then the entry’s with its text, account and payee', async () => {
 		setup();
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Condition 1: field' }));
@@ -280,7 +343,7 @@ describe('RuleForm: the condition rows', () => {
 			within(entryGroup)
 				.getAllByRole('option')
 				.map((o) => o.textContent?.trim())
-		).toEqual(['Payee']);
+		).toEqual(['Source text', 'Account', 'Payee']);
 	});
 
 	it('offers the payee on category rules only', async () => {
@@ -291,7 +354,9 @@ describe('RuleForm: the condition rows', () => {
 			'Counterparty IBAN or reference',
 			'Purpose',
 			'Booking text',
-			'Mandate reference'
+			'Mandate reference',
+			'Source text',
+			'Account'
 		]);
 	});
 

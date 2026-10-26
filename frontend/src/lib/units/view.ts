@@ -20,6 +20,7 @@ import {
 	keyOf,
 	type DerivationKey,
 	type Evidence,
+	type KeyContext,
 	type RuleNames
 } from './evidence.js';
 import type {
@@ -95,6 +96,17 @@ export type EntryView = {
 	 * splits do not own): shown read-only as a ghost group.
 	 */
 	counterLeg: boolean;
+	/**
+	 * The row is a booking (spec §5.8): the entry a document booked, or the counter-leg booked from a
+	 * charge on a clearance account. Its type, amount and split are its source's: no convert, no
+	 * split, no partner pick; payee, category, description, note and tags stay open.
+	 */
+	booking: { kind: 'document' | 'transfer'; id: number } | null;
+	/**
+	 * The row is the booking settling would make for the charge it names (a ghost: read-only, shown on
+	 * the clearance account, written by settling, not by the commit).
+	 */
+	bookingFor: number | null;
 	/** its amount is an allocation the user sets: a split row or a stored entry of a split */
 	amountEditable: boolean;
 	removable: boolean;
@@ -161,7 +173,8 @@ function fieldView(
 	locale: string,
 	row: PreviewRow | null,
 	stored: Entry | null,
-	accountName: (id: number) => string | undefined
+	accountName: (id: number) => string | undefined,
+	booking: KeyContext = {}
 ): FieldView {
 	const edit = draft.fieldEdit(id, name);
 	let value: FieldValue = null;
@@ -207,10 +220,11 @@ function fieldView(
 			locale,
 			viaPair
 				? {
+						...booking,
 						field: 'counterpart',
 						partnerAccount: stored?.partner ? accountName(stored.partner.account_id) : undefined
 					}
-				: {}
+				: { ...booking, field: name }
 		),
 		proposal,
 		edit,
@@ -226,6 +240,20 @@ function fieldView(
 				edit?.mode === 'fixed'),
 		changedFromRule
 	};
+}
+
+/** The account of the charge a counter-leg booking is booked from, as far as the unit tells. */
+function chargeAccountOf(
+	booking: { id: number; account_id?: number | null },
+	preview: UnitPreview | null,
+	stored: ReadonlyMap<number, Entry>
+): number | null {
+	return (
+		booking.account_id ??
+		preview?.rows.find((r) => r.id === booking.id)?.account_id ??
+		stored.get(booking.id)?.account_id ??
+		null
+	);
 }
 
 /** The entries to show: what the preview says is in the unit, else the unit as stored. */
@@ -305,12 +333,23 @@ export function entryViews(args: {
 		if (b.row) amount = b.row.amount;
 		else if (isNew) amount = edit.amount == null ? null : { amount: edit.amount, currency };
 		else amount = entry?.amount ?? null;
+		const bookingSource = b.row?.booking ?? entry?.source?.booking ?? null;
+		// a counter-leg booking names its charge: the account of it, where the charge is in the unit
+		const chargeAccountId: number | null =
+			bookingSource?.kind === 'transfer' ? chargeAccountOf(bookingSource, preview, stored) : null;
+		const pairKeyPass = keyOf(b.row?.derivation ?? entry?.derivation, 'counterpart')?.pass;
+		const partnerAccountId = b.row?.transfer?.partner?.account_id ?? entry?.partner?.account_id;
+		const bookingContext: KeyContext = {
+			booking: bookingSource?.kind ?? null,
+			chargeAccount: chargeAccountId === null ? undefined : accountName(chargeAccountId)
+		};
 		const fields = Object.fromEntries(
 			FIELD_NAMES.map((name) => [
 				name,
-				fieldView(name, draft, b.id, rules, locale, b.row, entry, accountName)
+				fieldView(name, draft, b.id, rules, locale, b.row, entry, accountName, bookingContext)
 			])
 		) as Record<FieldName, FieldView>;
+		const booking = bookingSource ? { kind: bookingSource.kind, id: bookingSource.id } : null;
 		const view: EntryView = {
 			id: b.id,
 			isNew,
@@ -337,13 +376,23 @@ export function entryViews(args: {
 				keyOf(b.row?.derivation ?? entry?.derivation, 'counterpart'),
 				rules,
 				locale,
-				{ field: 'counterpart' }
+				{
+					...bookingContext,
+					field: 'counterpart',
+					// the partner's account words only a booking's pair key (the charge's: "counter-leg booked on")
+					partnerAccount:
+						partnerAccountId === undefined || pairKeyPass !== 'booking'
+							? undefined
+							: accountName(partnerAccountId)
+				}
 			),
 			picked: edit.pairing?.mode === 'pick' || edit.pairing?.mode === 'counter_leg',
 			pairing: edit.pairing ?? null,
 			counterLeg,
-			amountEditable: !original && !counterLeg,
-			removable: !original && !counterLeg
+			booking,
+			bookingFor: b.row?.booking_for ?? null,
+			amountEditable: !original && !counterLeg && booking === null,
+			removable: !original && !counterLeg && booking === null
 		};
 		return view;
 	});
@@ -426,7 +475,7 @@ export function previewRowEntry(row: PreviewRow, base: Entry | null = null): Ent
 		derivation: row.derivation,
 		unit_key: row.unit_key,
 		partner: base?.partner ?? null,
-		origin: base?.origin ?? null,
+		origin: base?.origin ?? (row.booking ? 'booking' : null),
 		review_flags: row.review_flags as Entry['review_flags'],
 		source_text: row.source_text ?? null,
 		tag_ids: row.tag_ids

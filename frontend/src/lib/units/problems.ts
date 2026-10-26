@@ -18,7 +18,13 @@ export type ProblemContext = {
 	windowDays?: number | null;
 	/** the currency of the account a leg's counter-leg would be created in, when known */
 	counterCurrency?: (entryId: number | null) => string | null;
+	/** the kind of the account an entry's counter-account is, when known */
+	counterKind?: (entryId: number | null) => string | null;
 };
+
+/** What a draft that changes a booking's type, amount or split, or removes its entry, is told (spec §5.8). */
+export const BOOKING_FIXED =
+	'A booking’s type, amount and split are its source’s: they cannot be changed here.';
 
 const NUMBER_DETAIL = (detail: UnitProblem['detail'], key: string): number | null => {
 	const value = detail[key];
@@ -70,6 +76,12 @@ export function describeProblem(problem: UnitProblem, context: ProblemContext): 
 		case 'currency_rule': {
 			const required = typeof detail.required === 'string' ? detail.required : '';
 			const actual = typeof detail.actual === 'string' ? detail.actual : '';
+			// a clearance account takes a charge only in its own currency (spec §5.7)
+			if (context.counterKind?.(problem.entry_id) === 'clearance')
+				return {
+					text: `A clearance account takes only charges in its own currency (${actual}); this charge is in ${required}.`,
+					remedy: `Choose an account in ${required}.`
+				};
 			return {
 				text: `This transfer needs an account in ${required}, not ${actual}.`,
 				remedy: `Choose an account in ${required}.`
@@ -107,8 +119,15 @@ export function describeProblem(problem: UnitProblem, context: ProblemContext): 
 			return { text: 'No amount is needed: both sides are in the same currency.' };
 		case 'counter_leg_not_offered':
 			return {
-				text: 'The other side cannot be created here: this leg already has a partner, or the counter-account is unknown.'
+				text: 'The other side cannot be created here: this leg already has a partner, the counter-account is unknown, or it is a clearance account, whose other side is booked from the charge.'
 			};
+		case 'clearance_transfer':
+			return {
+				text: 'An entry on a clearance account is a transfer only as a booking.',
+				remedy: 'Make it a flow.'
+			};
+		case 'booking_fixed':
+			return { text: BOOKING_FIXED };
 		case 'counter_leg_account_synced':
 			return {
 				text: 'The other side cannot be created by hand on a synced account: it arrives with its import.'

@@ -51,6 +51,11 @@
 		providers.map((provider) => ({ value: provider, label: provider }))
 	);
 
+	// "Not booked" is the one booking filter: a one-option chip, off by default
+	const bookedOptions: ChipOption<'not_booked'>[] = [
+		{ value: 'not_booked', label: 'Not booked', hint: 'Documents no clearance account has booked' }
+	];
+
 	function updateAmount(patch: AmountPatch) {
 		update({
 			amount_min: patch.amount_min,
@@ -124,6 +129,13 @@
 		{locale}
 		withDirection={false}
 		onchange={updateAmount}
+	/>
+	<OptionsChip
+		label={label('booked', 'Booked')}
+		heading="Booking"
+		options={bookedOptions}
+		selected={filter.booked === false ? ['not_booked'] : []}
+		onchange={(next) => update({ booked: next.length > 0 ? false : undefined })}
 	/>
 	<Input
 		bind:value={text}

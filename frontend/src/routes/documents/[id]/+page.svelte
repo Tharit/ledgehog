@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
-	import { onDestroy } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import ErrorState from '#lib/components/common/error-state.svelte';
 	import DocumentDetailView from '#lib/components/documents/document-detail.svelte';
 	import { describeDocumentError } from '#lib/components/documents/describe.js';
 	import { DocumentDetailStore } from '#lib/stores/documents.svelte.js';
+	import { lookupsStore } from '#lib/stores/lookups.svelte.js';
+	import { unitPanel } from '#lib/units/panel-instance.js';
 
 	const detail = new DocumentDetailStore();
 
@@ -18,6 +20,7 @@
 		if (documentId !== null) void detail.load(documentId);
 	});
 
+	onMount(() => void lookupsStore.ensure());
 	onDestroy(() => detail.dispose());
 
 	const failure = $derived(
@@ -47,7 +50,12 @@
 			onretry={failure.retryable ? () => detail.load(documentId) : undefined}
 		/>
 	{:else if detail.status === 'ready' && detail.document}
-		<DocumentDetailView document={detail.document} locale={detail.locale} />
+		<DocumentDetailView
+			document={detail.document}
+			locale={detail.locale}
+			accounts={lookupsStore.lookups.accounts}
+			onopenentry={(entryId) => unitPanel.open(entryId)}
+		/>
 	{:else}
 		<p class="text-sm text-muted-foreground" aria-busy="true">Loading…</p>
 	{/if}

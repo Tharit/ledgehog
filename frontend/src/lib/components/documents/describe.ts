@@ -1,4 +1,5 @@
 // How a document is named in the views: merchant and title, whichever it has.
+import { formatDate } from '#lib/format/index.js';
 import type { DocumentRow } from '#lib/types/domain.js';
 
 export function documentTitle(
@@ -49,5 +50,35 @@ export function describeDocumentError(
 				message: 'The server could not answer this request. Try again in a moment.',
 				retryable: true
 			};
+	}
+}
+
+type NotBooked = NonNullable<DocumentRow['not_booked']>;
+
+/**
+ * Why a document is not booked (features/documents.md §1), in words: "total 0", "no EUR account for
+ * amazon", "Amazon clearing has no start", "before Amazon clearing's start Sep 30, 2026".
+ */
+export function notBookedReason(
+	reason: NotBooked,
+	{
+		provider,
+		accountName,
+		locale
+	}: { provider: string; accountName: string | null; locale: string }
+): string {
+	const account =
+		accountName ?? (reason.account_id === null ? 'the account' : `Account ${reason.account_id}`);
+	switch (reason.reason) {
+		case 'zero_total':
+			return 'total 0';
+		case 'no_account':
+			return reason.currency
+				? `no ${reason.currency} account for ${provider}`
+				: `no account for ${provider}`;
+		case 'no_start':
+			return `${account} has no start`;
+		case 'before_start':
+			return `before ${account}’s start${reason.start ? ` ${formatDate(reason.start, locale)}` : ''}`;
 	}
 }

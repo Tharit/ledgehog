@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import { documentRow } from '#lib/documents/fixtures.js';
+import { account } from '#lib/ledger/fixtures.js';
 import DocumentsTable from './documents-table.svelte';
 
 const etsy = documentRow({
@@ -42,7 +43,7 @@ describe('DocumentsTable', () => {
 
 	it('names the columns', () => {
 		table();
-		for (const name of ['Provider', 'Date', 'Merchant or title', 'Amount']) {
+		for (const name of ['Provider', 'Date', 'Merchant or title', 'Amount', 'Booked']) {
 			expect(screen.getByRole('columnheader', { name })).toBeInTheDocument();
 		}
 	});
@@ -105,5 +106,51 @@ describe('DocumentsTable', () => {
 		await fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
 		expect(onloadmore).toHaveBeenCalledOnce();
 		expect(screen.getByRole('alert')).toHaveTextContent('The documents could not be loaded');
+	});
+
+	it('links the account a document is booked on, and says why another is not booked', () => {
+		table({
+			documents: [
+				documentRow({
+					id: 1,
+					booking: { account_id: 4, source_transaction_id: 90 },
+					not_booked: null
+				}),
+				documentRow({
+					id: 2,
+					not_booked: { reason: 'no_account', currency: 'EUR', account_id: null, start: null }
+				}),
+				documentRow({
+					id: 3,
+					not_booked: { reason: 'zero_total', currency: null, account_id: null, start: null }
+				}),
+				documentRow({
+					id: 4,
+					not_booked: { reason: 'no_start', currency: 'EUR', account_id: 4, start: null }
+				}),
+				documentRow({
+					id: 5,
+					not_booked: {
+						reason: 'before_start',
+						currency: 'EUR',
+						account_id: 4,
+						start: '2026-09-30'
+					}
+				})
+			],
+			total: 5,
+			accounts: new Map([[4, account({ id: 4, name: 'Amazon clearing', kind: 'clearance' })]])
+		});
+
+		const cell = (id: number) =>
+			document.querySelector(`[data-document-id="${id}"] [data-slot="booked"]`) as HTMLElement;
+		expect(within(cell(1)).getByRole('link', { name: 'Amazon clearing' })).toHaveAttribute(
+			'href',
+			'/accounts/4'
+		);
+		expect(cell(2)).toHaveTextContent('Not booked: no EUR account for amazon');
+		expect(cell(3)).toHaveTextContent('Not booked: total 0');
+		expect(cell(4)).toHaveTextContent('Not booked: Amazon clearing has no start');
+		expect(cell(5)).toHaveTextContent('Not booked: before Amazon clearing’s start Sep 30, 2026');
 	});
 });

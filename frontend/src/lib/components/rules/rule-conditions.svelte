@@ -8,12 +8,16 @@
 	import {
 		CONDITION_OPS,
 		ENTRY_GROUP,
+		ACCOUNT_FIELD,
 		FIELD_LABELS,
 		OP_LABELS,
 		OP_LABELS_PAYEE,
 		PAYEE_FIELD,
 		SOURCE_FIELDS,
 		SOURCE_GROUP,
+		SOURCE_TEXT_FIELD,
+		isAccountRow,
+		isIdRow,
 		isPayeeRow,
 		payeeOfRow,
 		type ConditionRow,
@@ -23,8 +27,8 @@
 	import TargetPicker from './target-picker.svelte';
 
 	// The conditions of a rule: a list of rows `[field] [operator] [value]`, all of which must hold,
-	// where a category rule can also test the payee (a row whose operator is fixed and whose value is
-	// picked from the payees). Conditions are text the server judges;
+	// where any rule can test the entry's account and a category rule its payee (rows whose operator is
+	// fixed and whose value is picked from a list). Conditions are text the server judges;
 	// nothing is matched here. It holds nothing: every change goes up and the form comes back.
 	let {
 		rows,
@@ -49,23 +53,30 @@
 		onremove: (index: number) => void;
 	} = $props();
 
-	/** the payee a row names that the lists do not know: deleted (or merged) since */
-	function payeeGone(row: ConditionRow): boolean {
+	/** the payee or account a row names that the lists do not know: deleted (or merged) since */
+	function targetGone(row: ConditionRow): boolean {
 		const id = payeeOfRow(row);
-		return id !== null && !lookups.payees.has(id);
+		if (id === null) return false;
+		return isAccountRow(row) ? !lookups.accounts.has(id) : !lookups.payees.has(id);
 	}
 
 	const opOptions = CONDITION_OPS.map((op) => ({ value: op, label: OP_LABELS[op] }));
 
 	/**
-	 * the field list in two groups: the source transaction's fields, then the entry's (the payee on
-	 * category rules, kept on a row that has it)
+	 * the field list in two groups: the source transaction's fields, then the entry's (its source
+	 * text and account, and the payee on category rules, kept on a row that has it)
 	 */
 	function fieldOptions(row: ConditionRow) {
 		const options: { value: string; label: string; group: string }[] = [];
 		for (const field of SOURCE_FIELDS) {
 			options.push({ value: field, label: FIELD_LABELS[field], group: SOURCE_GROUP });
 		}
+		options.push({
+			value: SOURCE_TEXT_FIELD,
+			label: FIELD_LABELS[SOURCE_TEXT_FIELD],
+			group: ENTRY_GROUP
+		});
+		options.push({ value: ACCOUNT_FIELD, label: 'Account', group: ENTRY_GROUP });
 		if (takesPayee || isPayeeRow(row)) {
 			options.push({ value: PAYEE_FIELD, label: 'Payee', group: ENTRY_GROUP });
 		}
@@ -92,7 +103,8 @@
 						options={fieldOptions(row)}
 						onchange={(next) => onchange(index, { field: next as RowField })}
 					/>
-					{#if isPayeeRow(row)}
+					{#if isIdRow(row)}
+						{@const account = isAccountRow(row)}
 						<ChoiceSelect
 							class="w-48 max-w-full"
 							label={`Condition ${n}: operator`}
@@ -101,21 +113,28 @@
 							disabled
 							onchange={() => {}}
 						/>
-						<div class="flex min-w-48 flex-1 items-center gap-2" data-payee-value>
-							{#if payeeGone(row)}
+						<div
+							class="flex min-w-48 flex-1 items-center gap-2"
+							data-payee-value={account ? undefined : ''}
+							data-account-value={account ? '' : undefined}
+						>
+							{#if targetGone(row)}
 								<span
 									class="shrink-0 text-sm text-muted-foreground"
-									title="This payee no longer exists; the rule cannot match until you pick another."
-									>Payee deleted</span
+									title={account
+										? 'This account no longer exists; the rule cannot match until you pick another.'
+										: 'This payee no longer exists; the rule cannot match until you pick another.'}
+									>{account ? 'Account deleted' : 'Payee deleted'}</span
 								>
 							{/if}
 							<div class="min-w-0 flex-1">
 								<TargetPicker
-									id={`rule-condition-${row.key}-payee`}
-									kind="payee"
-									value={payeeGone(row) ? null : payeeOfRow(row)}
+									id={`rule-condition-${row.key}-${account ? 'account' : 'payee'}`}
+									kind={account ? 'counter_account' : 'payee'}
+									noun={account ? 'account' : undefined}
+									value={targetGone(row) ? null : payeeOfRow(row)}
 									{lookups}
-									label={`Condition ${n}: payee`}
+									label={`Condition ${n}: ${account ? 'account' : 'payee'}`}
 									invalid={error !== undefined}
 									onchange={(id) => onchange(index, { value: id === null ? '' : String(id) })}
 								/>
@@ -150,6 +169,11 @@
 				{#if isPayeeRow(row)}
 					<p class="text-xs text-muted-foreground">
 						Uses the payee found for the entry, even a suggested one you have not confirmed.
+					</p>
+				{:else if row.field === SOURCE_TEXT_FIELD}
+					<p class="text-xs text-muted-foreground">
+						The entry’s own text, as a booked order item has one; an entry without one never
+						matches.
 					</p>
 				{:else if row.op === 'regex'}
 					<p class="text-xs text-muted-foreground">

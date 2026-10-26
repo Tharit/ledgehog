@@ -7,7 +7,8 @@
 	import type { PanelGroup } from '#lib/units/groups.js';
 	import type { EntryView } from '#lib/units/view.js';
 
-	// The counter-leg a commit creates (spec §5.7, patterns §4.5), read-only: what the entry will
+	// A booking settling makes from a charge on a clearance account (spec §5.7) is drawn the same way,
+	// marked "booked from this charge" instead of "created for". The counter-leg a commit creates (spec §5.7, patterns §4.5), read-only: what the entry will
 	// be (a transfer of this amount on this date), its purpose and where it comes from ("created
 	// for" the leg). Nothing here edits: the amount received, the date and the purpose are the
 	// leg's to decide; it becomes an ordinary entry when the commit has made it.
@@ -29,7 +30,9 @@
 </script>
 
 <section
-	aria-label="Counter-leg created when you commit"
+	aria-label={ghost.booking
+		? 'Booking made when the charge settles'
+		: 'Counter-leg created when you commit'}
 	class="flex flex-col gap-2 rounded-lg border border-dashed bg-muted/30 p-4 text-[13px] text-muted-foreground"
 	data-slot="counter-leg-block"
 	data-entry-id={view.id}
@@ -61,11 +64,19 @@
 		</dd>
 		<dt>Provenance</dt>
 		<dd data-slot="counter-leg-provenance" class="flex flex-wrap items-center gap-x-1">
-			<span>created for</span>
-			{#if forAccount}
-				<AccountDot name={forAccount.name} color={resolveAccount(forAccount).color} />
+			{#if ghost.booking}
+				<span>booked from this charge</span>
+				{#if forAccount}
+					<span>on</span>
+					<AccountDot name={forAccount.name} color={resolveAccount(forAccount).color} />
+				{/if}
 			{:else}
-				<span>its partner</span>
+				<span>created for</span>
+				{#if forAccount}
+					<AccountDot name={forAccount.name} color={resolveAccount(forAccount).color} />
+				{:else}
+					<span>its partner</span>
+				{/if}
 			{/if}
 		</dd>
 	</dl>

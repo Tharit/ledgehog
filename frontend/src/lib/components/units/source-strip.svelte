@@ -1,5 +1,6 @@
 <script lang="ts">
 	import FunnelPlusIcon from '@lucide/svelte/icons/funnel-plus';
+	import { bookedFromText, bookingDocumentHref } from '#lib/accounts/booking.js';
 	import IconButton from '#lib/components/common/icon-button.svelte';
 	import MoneyDisplay from '#lib/components/common/money-display.svelte';
 	import type { SourceGroup } from '#lib/units/describe.js';
@@ -10,7 +11,18 @@
 	// own and shows it the same way, with a small "Entered by hand"; one with none says only that.
 	// The "Create rule from this transaction" icon sits in the top-right corner, revealed by hover or
 	// focus on the strip (opacity only, patterns §11.3) and always visible where there is no hover.
-	let { groups, locale = 'en' }: { groups: readonly SourceGroup[]; locale?: string } = $props();
+	// A booking (spec §5.8) says where it came from instead: "Booked from amazon order 304-1",
+	// opening the document, or "Booked from Amazon clearing’s charge".
+	let {
+		groups,
+		locale = 'en',
+		accountName = () => undefined
+	}: {
+		groups: readonly SourceGroup[];
+		locale?: string;
+		/** an account's name, for "Booked from <account>’s charge" */
+		accountName?: (id: number) => string | undefined;
+	} = $props();
 
 	function fields(source: SourceTransaction): [string, string][] {
 		const rows: [string, string | null][] = [
@@ -33,7 +45,29 @@
 			<p class="text-muted-foreground">Entered by hand</p>
 		{:else}
 			<div class="mb-1 flex flex-wrap items-baseline gap-x-3">
-				<h3 class="text-xs font-medium text-muted-foreground">Source transaction</h3>
+				{#if group.source.booking}
+					{@const booking = group.source.booking}
+					{@const href = bookingDocumentHref(booking)}
+					{@const text = bookedFromText(
+						booking,
+						booking.account_id === null ? null : (accountName(booking.account_id) ?? null)
+					)}
+					<h3 class="text-xs font-medium text-muted-foreground" data-slot="booked-from">
+						{#if href}
+							<!-- a new tab, because the panel may hold a draft -->
+							<a
+								{href}
+								target="_blank"
+								rel="noopener"
+								class="underline underline-offset-2 hover:text-foreground">{text}</a
+							>
+						{:else}
+							{text}
+						{/if}
+					</h3>
+				{:else}
+					<h3 class="text-xs font-medium text-muted-foreground">Source transaction</h3>
+				{/if}
 				{#if group.authored}
 					<span class="text-xs text-muted-foreground" data-slot="authored-hint"
 						>Entered by hand</span

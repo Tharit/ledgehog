@@ -6,10 +6,10 @@
 	import MoneyDisplay from '#lib/components/common/money-display.svelte';
 	import Notice from '#lib/components/common/notice.svelte';
 	import { formatCount } from '#lib/format/index.js';
-	import type { DocumentRow } from '#lib/types/domain.js';
+	import type { Account, DocumentRow } from '#lib/types/domain.js';
 	import { cn } from '#lib/utils.js';
 	import { DOCUMENT_COLUMNS, DOCUMENT_GRID_TEMPLATE } from './columns.js';
-	import { describeDocumentError, documentTitle } from './describe.js';
+	import { describeDocumentError, documentTitle, notBookedReason } from './describe.js';
 
 	// The list of documents in the shape of the ledger table (patterns §4, §7): a snapshot that
 	// shows what it was given. A row opens the document's page.
@@ -21,6 +21,7 @@
 		error = null,
 		moreError = null,
 		locale = 'en',
+		accounts = new Map(),
 		activeFilters = [],
 		onopen,
 		onclearfilters,
@@ -34,6 +35,8 @@
 		error?: { code: string; message: string } | null;
 		moreError?: { code: string; message: string } | null;
 		locale?: string;
+		/** the accounts by id: a booking's account is named by its link */
+		accounts?: ReadonlyMap<number, Account>;
 		/** labels of the active filters, for the "nothing matches" state */
 		activeFilters?: readonly string[];
 		/** a row was chosen: show the document */
@@ -146,6 +149,29 @@
 								{locale}
 								{showCurrency}
 							/>
+						</div>
+						<div role="gridcell" class="min-w-0 truncate" data-slot="booked">
+							{#if document.booking}
+								{@const booked = document.booking}
+								<a
+									href={`/accounts/${booked.account_id}`}
+									class="rounded-sm outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+								>
+									{accounts.get(booked.account_id)?.name ?? `Account ${booked.account_id}`}
+								</a>
+							{:else if document.not_booked}
+								{@const reason = notBookedReason(document.not_booked, {
+									provider: document.provider,
+									accountName:
+										document.not_booked.account_id === null
+											? null
+											: (accounts.get(document.not_booked.account_id)?.name ?? null),
+									locale
+								})}
+								<span class="text-muted-foreground" title={`Not booked: ${reason}`}>
+									Not booked: {reason}
+								</span>
+							{/if}
 						</div>
 					</div>
 				{/each}

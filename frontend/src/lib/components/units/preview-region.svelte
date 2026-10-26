@@ -2,7 +2,7 @@
 	import ActionButton from '#lib/components/common/action-button.svelte';
 	import EntryRow from '#lib/components/ledger/entry-row.svelte';
 	import type { Lookups } from '#lib/ledger/lookups.js';
-	import { differenceOf } from '#lib/units/problems.js';
+	import { BOOKING_FIXED, differenceOf } from '#lib/units/problems.js';
 	import type { UnitDraftFlow } from '#lib/units/unit-draft-flow.svelte.js';
 	import { consequenceGroups, previewRowEntry, resultText } from '#lib/units/view.js';
 	import { cn } from '#lib/utils.js';
@@ -31,7 +31,9 @@
 	const checking = $derived(flow.previewStatus === 'loading' || flow.stale);
 	const statusText = $derived(
 		flow.previewStatus === 'error'
-			? 'The preview could not be loaded.'
+			? (flow.previewError?.details as { code?: string } | null)?.code === 'booking_fixed'
+				? BOOKING_FIXED
+				: 'The preview could not be loaded.'
 			: checking
 				? 'Checking what would change…'
 				: ''

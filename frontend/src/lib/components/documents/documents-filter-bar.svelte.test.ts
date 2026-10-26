@@ -40,7 +40,7 @@ afterEach(() => {
 describe('DocumentsFilterBar', () => {
 	it('shows the dimension names while nothing is filtered', () => {
 		bar();
-		for (const name of ['All providers', 'Any date', 'Amount']) {
+		for (const name of ['All providers', 'Any date', 'Amount', 'Booked']) {
 			expect(screen.getByRole('button', { name })).toBeInTheDocument();
 		}
 		expect(screen.queryByRole('button', { name: 'Clear' })).toBeNull();
@@ -64,6 +64,18 @@ describe('DocumentsFilterBar', () => {
 		await fireEvent.click(screen.getByRole('button', { name: 'All providers' }));
 		await fireEvent.click(await screen.findByRole('checkbox', { name: 'paypal' }));
 		expect(onchange).toHaveBeenCalledWith({ ...emptyDocumentFilter(), provider: ['paypal'] });
+	});
+
+	it('filters to the documents not booked, and back', async () => {
+		const { onchange } = bar();
+		await fireEvent.click(screen.getByRole('button', { name: 'Booked' }));
+		await fireEvent.click(await screen.findByRole('checkbox', { name: 'Not booked' }));
+		expect(onchange).toHaveBeenCalledWith({ ...emptyDocumentFilter(), booked: false });
+	});
+
+	it('shows the active not-booked filter on its chip', () => {
+		bar({ booked: false });
+		expect(screen.getByRole('button', { name: 'Not booked' })).toBeInTheDocument();
 	});
 
 	it('offers an amount range without a direction', async () => {

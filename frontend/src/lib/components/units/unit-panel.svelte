@@ -125,6 +125,9 @@
 				})
 			: []
 	);
+	const ghostHint = (ghost: { booking: boolean }) =>
+		ghost.booking ? 'booked from this charge' : 'created when you commit';
+	const accountName = (id: number) => lookups.accounts.get(id)?.name;
 	const problemTexts = $derived(flow.problemTexts);
 	// one group per source transaction: its blocks, with "Split entry" at its foot. A unit of one
 	// source keeps the plain layout (the strip on top, no header)
@@ -160,7 +163,7 @@
 
 	function split(editor: HTMLElement | null) {
 		const view = viewOf(editor);
-		if (!view || !flow.draft) return;
+		if (!view || !flow.draft || view.booking) return;
 		const source = view.isNew
 			? flow.draft.splits.find((s) => s.id === view.id)?.sourceEntryId
 			: view.id;
@@ -169,7 +172,7 @@
 
 	async function convert(editor: HTMLElement | null) {
 		const view = viewOf(editor);
-		if (!view || view.isNew || !view.original) return;
+		if (!view || view.isNew || !view.original || view.booking) return;
 		const toTransfer = view.type !== 'transfer';
 		flow.convert(view.id, view.type);
 		// its destination is what is chosen next
@@ -393,7 +396,7 @@
 			{:else if unit}
 				<div class={cn('flex flex-col gap-3', panel.status === 'loading' && 'opacity-60')}>
 					{#if !multi}
-						<SourceStrip {groups} {locale} />
+						<SourceStrip {groups} {locale} {accountName} />
 					{/if}
 					{#if unit.model_pending}
 						<p class="text-sm text-muted-foreground" data-slot="model-pending">
@@ -431,7 +434,7 @@
 										{#if group.ghost}
 											<span aria-hidden="true" class="font-normal text-muted-foreground">·</span>
 											<span class="font-normal text-muted-foreground" data-slot="ghost-hint"
-												>created when you commit</span
+												>{ghostHint(group.ghost)}</span
 											>
 										{/if}
 									</span>
@@ -442,7 +445,7 @@
 								data-slot="group-content"
 							>
 								{#if multi && group.strip}
-									<SourceStrip groups={[group.strip]} {locale} />
+									<SourceStrip groups={[group.strip]} {locale} {accountName} />
 								{/if}
 								{#each group.views as view (view.id)}
 									{#if group.ghost}

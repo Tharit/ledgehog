@@ -21,9 +21,11 @@ import {
 import { emptyLookups, type Lookups } from '#lib/ledger/lookups.js';
 import { ruleNames } from './rule-names.svelte.js';
 import {
+	isAccountRow,
 	isPayeeRow,
 	keepRowsFor,
 	newConditionRow,
+	ACCOUNT_OP,
 	PAYEE_OP,
 	requestRows,
 	type Condition,
@@ -73,17 +75,25 @@ const NO_EXTRA: Record<PreviewListName, RulePreviewRow[]> = {
 	lost_key: []
 };
 
+/** What a row's field takes: text with the four operators, a payee, or an account (both `is`). */
+function kindOf(row: ConditionRow): 'payee' | 'account' | 'text' {
+	if (isPayeeRow(row)) return 'payee';
+	return isAccountRow(row) ? 'account' : 'text';
+}
+
 /**
- * A row with a patch applied. Moving to or from the payee field starts the row over: the payee's
- * value is an id and its operator is fixed, the text fields' are neither.
+ * A row with a patch applied. Moving to or from the payee or account field starts the row over:
+ * their value is an id and their operator is fixed, the text fields' are neither.
  */
 function changedRow(row: ConditionRow, patch: Partial<Omit<ConditionRow, 'key'>>): ConditionRow {
 	const next = { ...row, ...patch };
-	if (patch.field !== undefined && isPayeeRow(next) !== isPayeeRow(row)) {
-		return isPayeeRow(next)
-			? { ...next, op: PAYEE_OP, value: '' }
-			: { ...next, op: 'contains', value: '' };
+	if (patch.field !== undefined && kindOf(next) !== kindOf(row)) {
+		return kindOf(next) === 'text'
+			? { ...next, op: 'contains', value: '' }
+			: { ...next, op: kindOf(next) === 'payee' ? PAYEE_OP : ACCOUNT_OP, value: '' };
 	}
+	// from one id field to the other keeps the operator and drops the id
+	if (patch.field !== undefined && next.field !== row.field) return { ...next, value: '' };
 	return next;
 }
 

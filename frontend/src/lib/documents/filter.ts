@@ -55,6 +55,7 @@ export function normalizeDocumentFilter(filter: DocumentFilter): DocumentFilter 
 		amount_min,
 		amount_max,
 		currency,
+		...(filter.booked === false ? { booked: false as const } : {}),
 		q: text
 	};
 }
@@ -90,6 +91,7 @@ export function documentFilterFromParams(input: URLSearchParams | string): Docum
 		amount_min: integer(first('amount_min')),
 		amount_max: integer(first('amount_max')),
 		currency: first('currency'),
+		...(first('booked') === 'false' ? { booked: false as const } : {}),
 		q: first('q') ?? ''
 	});
 }
@@ -99,7 +101,7 @@ export function isEmptyDocumentFilter(filter: DocumentFilter): boolean {
 	return documentFilterKey(filter) === '';
 }
 
-export type DocumentFilterKey = 'provider' | 'date' | 'amount' | 'text';
+export type DocumentFilterKey = 'provider' | 'date' | 'amount' | 'booked' | 'text';
 export type DocumentFilterPart = { key: DocumentFilterKey; label: string };
 
 /** The active parts of a filter in words, in a fixed order: the chip labels and the empty state. */
@@ -128,6 +130,8 @@ export function describeDocumentFilter(
 					: `≤ ${money(max!)}`;
 		add('amount', `${range} ${currency}`);
 	}
+
+	if (filter.booked === false) add('booked', 'Not booked');
 
 	if (filter.q) add('text', `“${filter.q}”`);
 	return parts;

@@ -188,3 +188,33 @@ describe('keys of a derivation', () => {
 		expect(['rule', 'own_account', 'user', 'matcher_decision'].some(isProposalPass)).toBe(false);
 	});
 });
+
+describe('describeKey: the booking pass (patterns §4.3)', () => {
+	const key = { pass: 'booking', basis: {} };
+	const say = (context: Parameters<typeof describeKey>[3]) =>
+		describeKey(key, rules, 'en', context)?.text;
+
+	it('says "from its document" on the type of a document booking', () => {
+		expect(say({ field: 'type', booking: 'document' })).toBe('from its document');
+		expect(say({})).toBe('from its document');
+	});
+
+	it('says "booked from <account>’s charge" on a counter-leg booking’s type, counter-account and pair', () => {
+		for (const field of ['type', 'counter_account', 'counterpart'])
+			expect(say({ field, booking: 'transfer', chargeAccount: 'Giro' })).toBe(
+				'booked from Giro’s charge'
+			);
+		expect(say({ field: 'type', booking: 'transfer' })).toBe('booked from its charge');
+	});
+
+	it('says "counter-leg booked on <account>" on the pair of the charge', () => {
+		expect(say({ field: 'counterpart', partnerAccount: 'Amazon clearing' })).toBe(
+			'counter-leg booked on Amazon clearing'
+		);
+		expect(say({ field: 'counterpart' })).toBe('counter-leg booked');
+	});
+
+	it('is never a proposal', () => {
+		expect(describeKey(key, rules, 'en', {})?.proposal).toBe(false);
+	});
+});
