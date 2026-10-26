@@ -740,7 +740,8 @@ The unit's state distinguishes `waiting` from `unmatched` and carries the accoun
 waited for; the queue's `needs_account` entries carry the currency needed. A pick
 or an offer the server does not recognise is refused with a problem code:
 `partner_not_offered`, `partner_in_unit`, `second_transfer`,
-`counter_leg_not_offered`, `counter_leg_account_synced`,
+`counter_leg_not_offered`, `counter_leg_account_synced`, `clearance_transfer`
+(an entry on a clearance account made a transfer, `spec.md` §5.7),
 `received_amount_required`, `received_amount_not_needed`. An amount received that
 is not positive (`received_amount_sign`) is a core error; over the API it is a 422
 validation error.

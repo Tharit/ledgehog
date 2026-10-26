@@ -12,8 +12,9 @@ is counted, and the parameters.
 
 ## 1. Votes
 
-A **vote** is a confirmed entry with a source transaction (`spec.md` I19),
-booked within the **lookback** of the entry being resolved, and not in the unit
+A **vote** is a confirmed entry with a source transaction that is not a booking
+(`spec.md` I19; a booking follows its source, whose own decision is the vote,
+§5.8), booked within the **lookback** of the entry being resolved, and not in the unit
 being re-resolved (`spec.md` §5.9). An entry with a source text votes only
 for keys 3 and 5 (§2), and only an entry with one votes for key 5. Each
 entry is one vote; the entries of a split vote separately. The plugin asks core's history source for the votes

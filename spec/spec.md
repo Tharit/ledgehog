@@ -1840,6 +1840,8 @@ across currencies, the leg's instructed amount, negated. A clearance account
 takes a leg only in the currency the money arrived in by the leg's own report
 — its instructed currency, or its own where it has none: the user's choice of
 another currency, with the amount received typed, does not apply.
+A leg dated on or before the clearance account's start (§3.3) is the source of
+no booking: it stays an unpaired transfer leg in review, to be typed otherwise.
 
 The booking follows its leg (§5.8): converting the leg to a flow, changing its
 counter-account, or removing it — marked as a duplicate, reverted, deleted —
