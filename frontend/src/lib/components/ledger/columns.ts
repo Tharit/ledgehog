@@ -4,7 +4,15 @@
 // other column has a fixed width so the rows align.
 
 export type ColumnId =
-	'date' | 'account' | 'category' | 'payee' | 'tags' | 'description' | 'review' | 'amount';
+	| 'date'
+	| 'account'
+	| 'category'
+	| 'payee'
+	| 'tags'
+	| 'description'
+	| 'origin'
+	| 'review'
+	| 'amount';
 
 export type Column = {
 	id: ColumnId;
@@ -23,6 +31,7 @@ export const COLUMNS: readonly Column[] = [
 	{ id: 'payee', header: 'Payee', width: '9rem' },
 	{ id: 'tags', header: 'Tags', width: '12rem' },
 	{ id: 'description', header: 'Description', width: 'minmax(0, 1fr)' },
+	{ id: 'origin', header: 'Origin', hiddenHeader: true, width: '4.5rem' },
 	{ id: 'review', header: 'Review', hiddenHeader: true, width: '4.5rem' },
 	{ id: 'amount', header: 'Amount', width: '7rem', align: 'right' }
 ];

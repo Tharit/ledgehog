@@ -313,7 +313,7 @@
 									></div>
 								{:else if column.id === 'amount'}
 									<div class="ml-auto h-3 w-14 animate-pulse rounded bg-muted"></div>
-								{:else if column.id !== 'tags' && column.id !== 'review'}
+								{:else if column.id !== 'tags' && column.id !== 'origin' && column.id !== 'review'}
 									<div class="h-3 w-2/3 animate-pulse rounded bg-muted"></div>
 								{/if}
 							</div>

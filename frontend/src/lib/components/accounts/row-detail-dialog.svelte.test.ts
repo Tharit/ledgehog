@@ -7,6 +7,7 @@ function open(props = {}) {
 	const handlers = {
 		onclose: vi.fn(),
 		onopenreview: vi.fn(),
+		onopencharge: vi.fn(),
 		onmark: vi.fn(),
 		onnotduplicate: vi.fn(),
 		onedit: vi.fn(),
@@ -77,5 +78,49 @@ describe('RowDetailDialog', () => {
 		await screen.findByRole('dialog');
 		expect(screen.getByText('This row no longer exists.')).toBeInTheDocument();
 		expect(names()).not.toContain('Open in review');
+	});
+});
+
+describe('RowDetailDialog: a booking', () => {
+	it('says where a document booking came from and offers Open document, nothing that changes it', async () => {
+		open({
+			provenance: provenance({ run: null, raw: null }),
+			booking: {
+				kind: 'document',
+				id: 31,
+				provider: 'amazon',
+				external_id: '304-1',
+				account_id: null
+			}
+		});
+		const dialog = await screen.findByRole('dialog');
+
+		expect(within(dialog).getByText('Booked from amazon order 304-1')).toBeInTheDocument();
+		expect(within(dialog).getByRole('link', { name: 'Open document' })).toHaveAttribute(
+			'href',
+			'/documents/31'
+		);
+		for (const name of ['Edit', 'Delete…', 'Mark as duplicate of…', 'Not a duplicate'])
+			expect(screen.queryByRole('button', { name })).toBeNull();
+		expect(screen.getByRole('button', { name: 'Open in review' })).toBeInTheDocument();
+	});
+
+	it('offers the charge of a counter-leg booking, named by its account', async () => {
+		const h = open({
+			booking: {
+				kind: 'transfer',
+				id: 55,
+				provider: null,
+				external_id: null,
+				account_id: 4
+			},
+			bookingAccountName: 'Amazon clearing'
+		});
+		const dialog = await screen.findByRole('dialog');
+
+		expect(within(dialog).getByText('Booked from Amazon clearing’s charge')).toBeInTheDocument();
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Open charge' }));
+		expect(h.onopencharge).toHaveBeenCalledWith(55);
+		expect(screen.queryByRole('link', { name: 'Open document' })).toBeNull();
 	});
 });

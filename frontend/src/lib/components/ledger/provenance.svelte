@@ -1,23 +1,30 @@
 <script lang="ts">
+	import { bookedFromText, bookingDocumentHref } from '#lib/accounts/booking.js';
 	import { duplicateLabel } from '#lib/accounts/statement.js';
 	import ActionButton from '#lib/components/common/action-button.svelte';
 	import MoneyDisplay from '#lib/components/common/money-display.svelte';
 	import { formatDate, formatInstant } from '#lib/format/index.js';
-	import type { Provenance } from '#lib/types/domain.js';
+	import type { Booking, Provenance } from '#lib/types/domain.js';
 
 	// The provenance widget (patterns §4.5, read-only): the normalised columns of a source
-	// transaction, what the source said (`raw`), and the run it arrived in, or "entered by hand". A
+	// transaction, what the source said (`raw`), and the run it arrived in, or "entered by hand"; a booking says where it was booked from instead. A
 	// duplicate names the row it duplicates, which opens. The raw source is shown as the importer
 	// stored it; an importer-specific widget (spec §3.1) is a later refinement.
 	let {
 		provenance,
 		locale = 'en',
 		timeZone = 'UTC',
+		booking = null,
+		bookingAccountName = null,
 		onopenoriginal
 	}: {
 		provenance: Provenance;
 		locale?: string;
 		timeZone?: string;
+		/** the row is a booking: where it came from, in place of a run (spec §5.8) */
+		booking?: Booking | null;
+		/** the name of the account a transfer booking's charge is on */
+		bookingAccountName?: string | null;
 		onopenoriginal?: (sourceId: number) => void;
 	} = $props();
 
@@ -83,7 +90,17 @@
 	</dl>
 
 	<p data-slot="provenance-origin">
-		{#if provenance.authored || !run}
+		{#if booking}
+			{@const href = bookingDocumentHref(booking)}
+			{@const text = bookedFromText(booking, bookingAccountName)}
+			<span data-slot="booked-from">
+				{#if href}
+					<a {href} class="underline underline-offset-2">{text}</a>
+				{:else}
+					{text}
+				{/if}
+			</span>
+		{:else if provenance.authored || !run}
 			<span class="text-muted-foreground">Entered by hand</span>
 		{:else}
 			<span class="text-muted-foreground">Arrived in a run of</span>
@@ -105,7 +122,7 @@
 		</p>
 	{/if}
 
-	{#if raw !== null && !provenance.authored}
+	{#if raw !== null && !provenance.authored && !booking}
 		<details class="rounded-lg border border-border px-3 py-2" data-slot="provenance-raw">
 			<summary class="cursor-default text-muted-foreground">What the source said</summary>
 			<pre class="mt-2 max-h-64 overflow-auto text-xs break-words whitespace-pre-wrap">{raw}</pre>

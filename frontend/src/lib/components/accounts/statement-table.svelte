@@ -200,6 +200,7 @@
 								style:width={`${45 + ((i * 17) % 40)}%`}
 							></div>
 						</div>
+						<div role="gridcell"></div>
 						<div role="gridcell">
 							<div class="ml-auto h-3 w-14 animate-pulse rounded bg-muted"></div>
 						</div>

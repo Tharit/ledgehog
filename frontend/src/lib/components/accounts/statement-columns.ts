@@ -3,6 +3,7 @@
 export const STATEMENT_COLUMNS = [
 	{ id: 'date', header: 'Date', width: '6.5rem' },
 	{ id: 'what', header: 'Counterparty and purpose', width: 'minmax(0, 1fr)' },
+	{ id: 'origin', header: 'Origin', width: '4.5rem' },
 	{ id: 'amount', header: 'Amount', width: '7.5rem', align: 'right' },
 	{ id: 'balance', header: 'Balance', width: '8.5rem', align: 'right' }
 ] as const;

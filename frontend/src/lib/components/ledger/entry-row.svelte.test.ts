@@ -59,6 +59,7 @@ describe('EntryRow: a flow entry', () => {
 			'payee',
 			'tags',
 			'description',
+			'origin',
 			'review',
 			'amount'
 		]);
@@ -81,8 +82,36 @@ describe('EntryRow: a flow entry', () => {
 		row({ description: null });
 
 		const cells = within(screen.getByRole('row')).getAllByRole('gridcell');
-		expect(cells[cell('description')]).toBeEmptyDOMElement();
+		expect(cells[cell('description')].textContent?.trim()).toBe('');
 		expect(screen.queryByText('No text')).toBeNull();
+	});
+
+	it.each([
+		['import', 'Imported'],
+		['user', 'Entered'],
+		['booking', 'Booked']
+	] as const)('tags a row of origin %s as %s, muted', (origin, word) => {
+		row({ origin });
+
+		const cells = within(screen.getByRole('row')).getAllByRole('gridcell');
+		expect(cells[cell('origin')]).toHaveTextContent(word);
+		expect(screen.getByText(word)).toHaveClass('text-muted-foreground');
+	});
+
+	it('has no origin tag on a derived entry', () => {
+		row({ type: 'opening', origin: null });
+
+		const cells = within(screen.getByRole('row')).getAllByRole('gridcell');
+		expect(cells[cell('origin')].textContent?.trim()).toBe('');
+	});
+
+	it('shows the source text muted, then the description the user gave', () => {
+		row({ source_text: 'USB cable', description: 'for the office' });
+
+		const text = within(screen.getByRole('row')).getAllByRole('gridcell')[cell('description')];
+		expect(text.textContent?.replace(/\s+/g, ' ').trim()).toBe('USB cable for the office');
+		expect(screen.getByText('USB cable')).toHaveClass('text-muted-foreground');
+		expect(screen.getByText('for the office')).not.toHaveClass('text-muted-foreground');
 	});
 
 	it('shows Unclassified as an absent value, with the badge the server sent', () => {

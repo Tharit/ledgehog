@@ -83,6 +83,7 @@
 		<span class="ml-auto shrink-0"><RowActions {name} {primary} /></span>
 	</div>
 	<div role="gridcell"></div>
+	<div role="gridcell"></div>
 	<div role="gridcell">
 		<MoneyDisplay
 			minor={record.balance.amount}

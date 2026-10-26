@@ -22,7 +22,13 @@ const items = [
 		duplicate_of: { id: 2, booked_on: '2026-10-09', amount: eur(-4000) },
 		balance: null
 	}),
-	sourceRow({ id: 2, booked_on: '2026-10-09', authored: true, counterparty_name: null }),
+	sourceRow({
+		id: 2,
+		booked_on: '2026-10-09',
+		authored: true,
+		origin: 'user',
+		counterparty_name: null
+	}),
 	recordRow({ id: 1, anchor: true, record_kind: 'manual', rows_sum: null, difference: null })
 ];
 
@@ -49,9 +55,24 @@ describe('StatementTable rows', () => {
 		expect(r.getByText('960.00')).toBeInTheDocument();
 	});
 
-	it('says "entered by hand" where the counterparty would be', () => {
+	it('tags each row with its origin and shows nothing where an entered row has no counterparty', () => {
 		table();
-		expect(within(row('source:2')).getByText('entered by hand')).toBeInTheDocument();
+		expect(within(row('source:4')).getByText('Imported')).toBeInTheDocument();
+		const entered = within(row('source:2'));
+		expect(entered.queryByText('entered by hand')).toBeNull();
+		expect(entered.queryByText('Imported')).toBeNull();
+	});
+
+	it('tags a booking and an entry by hand, whatever the account', () => {
+		table({
+			items: [
+				sourceRow({ id: 8, origin: 'booking', counterparty_name: 'amazon', purpose: 'order 1' }),
+				sourceRow({ id: 9, origin: 'user', counterparty_name: null, purpose: null })
+			]
+		});
+		expect(within(row('source:8')).getByText('Booked')).toBeInTheDocument();
+		expect(within(row('source:8')).getByText('amazon')).toBeInTheDocument();
+		expect(within(row('source:9')).getByText('Entered')).toBeInTheDocument();
 	});
 
 	it('dims a duplicate, gives it no balance and names the row it duplicates', () => {

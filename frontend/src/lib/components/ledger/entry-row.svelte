@@ -13,6 +13,7 @@
 	import MoneyDisplay from '#lib/components/common/money-display.svelte';
 	import ModelActivityMark from '#lib/components/common/model-activity-mark.svelte';
 	import { MODEL_STILL_LOOKING } from '#lib/units/model-pending.js';
+	import OriginTag from '#lib/components/common/origin-tag.svelte';
 	import ReviewBadge from '#lib/components/common/review-badge.svelte';
 	import TagChip from '#lib/components/common/tag-chip.svelte';
 	import type { Lookups } from '#lib/ledger/lookups.js';
@@ -208,8 +209,8 @@
 				</button>
 			</div>
 		{:else if column.id === 'description'}
-			{#if totalTitle}
-				<div role="gridcell" class="flex min-w-0 items-center gap-1.5">
+			<div role="gridcell" class="flex min-w-0 items-center gap-1.5">
+				{#if totalTitle}
 					<span
 						data-unit-marker
 						class="shrink-0 text-muted-foreground"
@@ -217,17 +218,21 @@
 						aria-label={totalTitle}
 						role="img"><SplitIcon size={14} strokeWidth={1.75} /></span
 					>
-					{#if entry.description}
-						<span class="truncate" title={entry.description}>{entry.description}</span>
-					{/if}
-				</div>
-			{:else}
-				<div role="gridcell" class="min-w-0 truncate">
-					{#if entry.description}
-						<span title={entry.description}>{entry.description}</span>
-					{/if}
-				</div>
-			{/if}
+				{/if}
+				<!-- the source text is what the entry is, muted; the description stays the user's -->
+				{#if entry.source_text}
+					<span
+						class="min-w-0 truncate text-muted-foreground"
+						title={entry.source_text}
+						data-slot="source-text">{entry.source_text}</span
+					>
+				{/if}
+				{#if entry.description}
+					<span class="min-w-0 truncate" title={entry.description}>{entry.description}</span>
+				{/if}
+			</div>
+		{:else if column.id === 'origin'}
+			<div role="gridcell" class="min-w-0"><OriginTag origin={entry.origin} /></div>
 		{:else if column.id === 'review'}
 			<div role="gridcell" class="flex items-center gap-1 overflow-hidden">
 				{#if confirmed}

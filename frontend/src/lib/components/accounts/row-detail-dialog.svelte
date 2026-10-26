@@ -3,13 +3,15 @@
 	import Notice from '#lib/components/common/notice.svelte';
 	import Provenance from '#lib/components/ledger/provenance.svelte';
 	import * as Dialog from '#lib/components/ui/dialog/index.js';
-	import type { Provenance as ProvenanceRow } from '#lib/types/domain.js';
+	import { bookingDocumentHref } from '#lib/accounts/booking.js';
+	import type { Booking, Provenance as ProvenanceRow } from '#lib/types/domain.js';
 
 	// A statement row's detail (ux/views/account.md), addressed by `?source=`: the provenance widget
 	// (patterns §4.5) followed by the row's actions. Open in review is navigation to its unit, not
 	// offered on a duplicate (which has no entry). An imported row can be marked as a duplicate, a
 	// duplicate cleared; a row entered by hand is edited and deleted with the entry form's own
-	// dialogs and never marked (spec §5.6).
+	// dialogs and never marked (spec §5.6). A booking is none of these: it follows its source, so it
+	// offers "Open document" (or "Open charge" for a counter-leg) and nothing that changes it (§5.8).
 	let {
 		open,
 		status,
@@ -17,10 +19,13 @@
 		locale = 'en',
 		timeZone = 'UTC',
 		busy = false,
+		booking = null,
+		bookingAccountName = null,
 		onclose,
 		onclosefocus,
 		onretry,
 		onopenreview,
+		onopencharge,
 		onopenoriginal,
 		onmark,
 		onnotduplicate,
@@ -34,6 +39,10 @@
 		timeZone?: string;
 		/** "Not a duplicate" is being written */
 		busy?: boolean;
+		/** the row is a booking (the statement row says so): where it came from */
+		booking?: Booking | null;
+		/** the account a transfer booking's charge is on, by name */
+		bookingAccountName?: string | null;
 		onclose: () => void;
 		/**
 		 * Focus is about to return to what had it (a click focused the statement's list): the page
@@ -42,6 +51,8 @@
 		onclosefocus?: (event: Event) => void;
 		onretry?: () => void;
 		onopenreview?: (entryId: number) => void;
+		/** "Open charge": the charge a counter-leg booking was made from, in review */
+		onopencharge?: (entryId: number) => void;
 		onopenoriginal?: (sourceId: number) => void;
 		onmark?: () => void;
 		onnotduplicate?: () => void;
@@ -81,14 +92,30 @@
 					{/snippet}
 				</Notice>
 			{:else if provenance}
-				<Provenance {provenance} {locale} {timeZone} {onopenoriginal} />
+				<Provenance
+					{provenance}
+					{locale}
+					{timeZone}
+					{booking}
+					{bookingAccountName}
+					{onopenoriginal}
+				/>
 			{/if}
 		</div>
 
 		<Dialog.Footer class="sm:flex-wrap">
 			<ActionButton variant="outline" disabled={busy} onclick={onclose}>Close</ActionButton>
 			{#if status === 'ready' && provenance}
-				{#if provenance.authored}
+				{#if booking}
+					{@const href = bookingDocumentHref(booking)}
+					{#if href}
+						<ActionButton variant="outline" {href}>Open document</ActionButton>
+					{:else}
+						<ActionButton variant="outline" onclick={() => onopencharge?.(booking.id)}>
+							Open charge
+						</ActionButton>
+					{/if}
+				{:else if provenance.authored}
 					<ActionButton variant="outline" onclick={onedit}>Edit</ActionButton>
 					<ActionButton variant="outline" onclick={ondelete}>Delete…</ActionButton>
 				{:else if isDuplicate}
