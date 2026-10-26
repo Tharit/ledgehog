@@ -128,3 +128,32 @@ def test_the_provider_filter_ignores_case(db_conn: Connection):
     b = make_document(db_conn, "paypal", external_id="b")
     make_document(db_conn, "amazon", external_id="c")
     assert sorted(ids(db_conn, providers=("PAYPAL",))) == sorted([a, b])
+
+
+def test_booked_filter_and_booking_state(db_conn: Connection):
+    booked = make_document(db_conn, "Amazon", on=date(2026, 2, 1))
+    open_ = make_document(db_conn, "Elsewhere", on=date(2026, 2, 1))
+    zero = make_document(db_conn, "Amazon", total=0, on=date(2026, 2, 1))
+    account = db_conn.execute(
+        text(
+            "INSERT INTO account (name, kind, currency) VALUES ('Amazon.de', 'clearance', 'EUR') RETURNING id"
+        )
+    ).scalar_one()
+    st = db_conn.execute(
+        text(
+            "INSERT INTO source_transaction (account_id, origin, source_id, booked_on, amount, currency, raw)"
+            " VALUES (:a, 'booking', :s, DATE '2026-02-01', -1000, 'EUR', '{}') RETURNING id"
+        ),
+        {"a": account, "s": f"document:{booked}"},
+    ).scalar_one()
+    assert ids(db_conn, booked=True) == [booked]
+    assert sorted(ids(db_conn, booked=False)) == [open_, zero]
+    found = get_document(db_conn, booked)
+    assert found is not None and found.document.booking is not None
+    assert (found.document.booking.account_id, found.document.booking.source_transaction_id) == (account, st)
+    assert found.document.not_booked is None
+    states = {
+        d.id: d.not_booked for d in list_documents(db_conn, DocumentFilter(), limit=9, offset=0).documents
+    }
+    assert states[zero] is not None and states[zero].reason == "zero_total"
+    assert states[open_] is not None and states[open_].reason == "no_account"

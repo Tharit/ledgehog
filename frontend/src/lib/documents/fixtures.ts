@@ -13,6 +13,8 @@ export function documentRow(over: Partial<DocumentRow> = {}): DocumentRow {
 		merchant_name: 'Amazon',
 		title: 'Order 304-1',
 		line_count: 2,
+		booking: null,
+		not_booked: { reason: 'no_account', currency: 'EUR', account_id: null, start: null },
 		...over
 	};
 }
@@ -20,6 +22,7 @@ export function documentRow(over: Partial<DocumentRow> = {}): DocumentRow {
 export function documentDetail(over: Partial<DocumentDetail> = {}): DocumentDetail {
 	return {
 		...documentRow(),
+		booking: null,
 		lines: [
 			{
 				line_no: 1,

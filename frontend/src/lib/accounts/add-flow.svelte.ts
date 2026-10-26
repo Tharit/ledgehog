@@ -66,6 +66,7 @@ export class AddAccountFlow {
 				name,
 				kind: this.kind,
 				currency: this.currency,
+				providers: [],
 				...(externalRef !== '' ? { external_ref: externalRef } : {}),
 				// after the accounts held, so a new one does not jump to the top of the list
 				sort_order: known.reduce((top, a) => Math.max(top, a.sort_order), -1) + 1

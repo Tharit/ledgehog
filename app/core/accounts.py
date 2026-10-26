@@ -244,12 +244,15 @@ def update_account(
     external_ref: str | None | EllipsisType = ...,
     icon: str | None | EllipsisType = ...,
     color: str | None | EllipsisType = ...,
+    providers: Sequence[str] | None = None,
 ) -> SettleResult:
     """Change what is given (`...` leaves `note`, `external_ref`, `icon` or `color` alone, `None` clears it).
 
-    Never the currency or the kind (I38). Setting or
-    clearing the external reference settles; any other change returns an empty result.
+    Never the currency or the kind (I38). Setting or clearing the external reference settles; so does
+    `providers`, which replaces a clearance account's list whole, in the same write as the other fields (see
+    `set_clearance_providers`; `NotClearance` for another kind). Any other change returns an empty result.
     """
+    names = None if providers is None else _provider_names(providers)
     sets: dict[str, object] = {}
     if name is not None:
         sets["name"] = name
@@ -269,20 +272,26 @@ def update_account(
     def run() -> None:
         with engine.begin() as conn:
             _begin(conn, account_id)
-            if not sets:
-                return
-            assignments = ", ".join(f"{col} = :{col}" for col in sets)
-            try:
-                conn.execute(
-                    text(f"UPDATE account SET {assignments} WHERE id = :id"), {**sets, "id": account_id}
-                )  # noqa: S608
-            except DBAPIError as exc:
-                if constraint_name(exc) == "ux_account_external_ref":
-                    raise DuplicateExternalRef(str(sets["external_ref"])) from exc
-                raise
+            if sets:
+                assignments = ", ".join(f"{col} = :{col}" for col in sets)
+                try:
+                    conn.execute(
+                        text(f"UPDATE account SET {assignments} WHERE id = :id"), {**sets, "id": account_id}
+                    )  # noqa: S608
+                except DBAPIError as exc:
+                    if constraint_name(exc) == "ux_account_external_ref":
+                        raise DuplicateExternalRef(str(sets["external_ref"])) from exc
+                    raise
+            if names is not None:
+                row = conn.execute(
+                    text("SELECT kind, currency FROM account WHERE id = :i"), {"i": account_id}
+                ).one()
+                if row.kind != "clearance":
+                    raise NotClearance("providers")
+                _write_providers(conn, account_id, row.currency, names)
 
     retry_on_deadlock(run)
-    return settle(engine) if ref_given else SettleResult()
+    return settle(engine) if ref_given or names is not None else SettleResult()
 
 
 def delete_account(engine: Engine, account_id: int) -> SettleResult:

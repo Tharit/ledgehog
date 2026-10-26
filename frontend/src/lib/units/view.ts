@@ -428,6 +428,7 @@ export function previewRowEntry(row: PreviewRow, base: Entry | null = null): Ent
 		partner: base?.partner ?? null,
 		origin: base?.origin ?? null,
 		review_flags: row.review_flags as Entry['review_flags'],
+		source_text: row.source_text ?? null,
 		tag_ids: row.tag_ids
 	};
 }

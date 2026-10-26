@@ -7,7 +7,7 @@ Reads: no lock, no write, no settle. Money travels as `{"amount": <integer minor
 from __future__ import annotations
 
 from datetime import date
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, StringConstraints
@@ -16,7 +16,10 @@ from app.api.errors import map_error
 from app.api.ids import MAX_ID, PathId
 from app.api.routers.accounts import CurrencyCode, Money
 from app.api.session import CurrentUser, EngineDep
+from app.core.bookings.documents import NotBooked
 from app.core.documents import (
+    BookingEntry,
+    DocumentBooking,
     DocumentDetail,
     DocumentFilter,
     DocumentLine,
@@ -39,6 +42,55 @@ map_error(
 SearchText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
 
 
+class DocumentBookingOut(BaseModel):
+    """Where a document is booked: the clearance account and the booking's source transaction."""
+
+    account_id: int
+    source_transaction_id: int
+
+    @staticmethod
+    def of(b: DocumentBooking) -> DocumentBookingOut:
+        return DocumentBookingOut(account_id=b.account_id, source_transaction_id=b.source_transaction_id)
+
+
+class DocumentBookingEntryOut(BaseModel):
+    id: int
+    amount: Money
+    source_text: str | None
+
+
+class DocumentBookingDetailOut(DocumentBookingOut):
+    entries: list[DocumentBookingEntryOut]  # in line order
+
+    @staticmethod
+    def detail(b: DocumentBooking, currency: str) -> DocumentBookingDetailOut:
+        def entry(e: BookingEntry) -> DocumentBookingEntryOut:
+            return DocumentBookingEntryOut(
+                id=e.id, amount=Money(amount=e.amount, currency=currency), source_text=e.source_text
+            )
+
+        return DocumentBookingDetailOut(
+            account_id=b.account_id,
+            source_transaction_id=b.source_transaction_id,
+            entries=[entry(e) for e in b.entries],
+        )
+
+
+class NotBookedOut(BaseModel):
+    """Why a document is not booked; the fields the reason needs are set, the others are null."""
+
+    reason: Literal["zero_total", "no_account", "no_start", "before_start"]
+    currency: str | None  # no_account
+    account_id: int | None  # no_start, before_start
+    start: date | None  # before_start
+
+    @staticmethod
+    def of(n: NotBooked) -> NotBookedOut:
+        return NotBookedOut.model_validate(
+            {"reason": n.reason, "currency": n.currency, "account_id": n.account_id, "start": n.start}
+        )
+
+
 class DocumentOut(BaseModel):
     id: int
     version: int  # detects a conflicting edit (spec §5.5)
@@ -50,6 +102,10 @@ class DocumentOut(BaseModel):
     merchant_name: str | None
     title: str | None
     line_count: int
+    booking: DocumentBookingOut | None  # the booking made from it, if any
+    not_booked: (
+        NotBookedOut | None
+    )  # else the first reason that applies; null while settling has yet to book it
 
     @staticmethod
     def of(r: DocumentRow) -> DocumentOut:
@@ -64,6 +120,8 @@ class DocumentOut(BaseModel):
             merchant_name=r.merchant_name,
             title=r.title,
             line_count=r.line_count,
+            booking=None if r.booking is None else DocumentBookingOut.of(r.booking),
+            not_booked=None if r.not_booked is None else NotBookedOut.of(r.not_booked),
         )
 
 
@@ -92,12 +150,17 @@ class DocumentLineOut(BaseModel):
 
 class DocumentDetailOut(DocumentOut):
     lines: list[DocumentLineOut]
+    booking: DocumentBookingDetailOut | None  # with the booking's entries, in line order
 
     @staticmethod
     def detail(d: DocumentDetail) -> DocumentDetailOut:
-        base = DocumentOut.of(d.document)
+        base = DocumentOut.of(d.document).model_dump(exclude={"booking"})
+        booking = d.document.booking
         return DocumentDetailOut(
-            **base.model_dump(),
+            **base,
+            booking=None
+            if booking is None
+            else DocumentBookingDetailOut.detail(booking, d.document.currency),
             lines=[DocumentLineOut.of(line, d.document.currency) for line in d.lines],
         )
 
@@ -124,6 +187,7 @@ def list_documents_view(
     amount_max: Annotated[int | None, Query(ge=0, le=2**63 - 1)] = None,
     currency: CurrencyCode | None = None,
     q: SearchText | None = None,
+    booked: bool | None = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     offset: Annotated[int, Query(ge=0, le=MAX_ID)] = 0,
 ) -> DocumentPageOut:
@@ -135,6 +199,7 @@ def list_documents_view(
         amount_max=amount_max,
         currency=currency,
         text=q,
+        booked=booked,
     )
     with engine.connect() as conn:
         page = list_documents(conn, flt, limit=limit, offset=offset)

@@ -29,6 +29,7 @@ export function source(over: Partial<SourceTransaction> = {}): SourceTransaction
 		mandate_ref: null,
 		instructed_amount: null,
 		source_format: null,
+		booking: null,
 		...over
 	};
 }
@@ -41,6 +42,7 @@ export function previewRow(over: Partial<RulePreviewRow> = {}): RulePreviewRow {
 		amount: { amount: -95000, currency: 'EUR' },
 		description: 'Rent October',
 		source: source(),
+		source_text: null,
 		confirmed: false,
 		current_value: null,
 		current_key: null,

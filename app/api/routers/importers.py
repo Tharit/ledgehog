@@ -136,6 +136,12 @@ map_error(inst.NotAnAccountSource, 409, "not_an_account_source")
 map_error(inst.AccountClosed, 409, "account_closed")
 map_error(inst.ExternalRefTaken, 409, "external_ref_taken")
 map_error(inst.AlreadyLinked, 409, "already_linked")
+map_error(
+    inst.ClearanceAccount,
+    409,
+    "conflict",
+    details=lambda e: {"reason": "clearance_account", "account_id": e.account_id},
+)
 map_error(up.NotAFileSource, 409, "not_a_file_source")
 map_error(up.AccountClosed, 409, "account_closed")
 map_error(up.AccountNotLinked, 409, "account_not_linked")

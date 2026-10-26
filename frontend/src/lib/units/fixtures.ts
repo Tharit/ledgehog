@@ -106,6 +106,7 @@ export function previewRowOf(e: Entry, over: Partial<PreviewRow> = {}): PreviewR
 		amount: e.amount,
 		description: e.description,
 		note: e.note,
+		source_text: e.source_text,
 		tag_ids: e.tag_ids,
 		counterpart_entry_id: e.counterpart_entry_id,
 		fields: {

@@ -27,6 +27,10 @@ from app.core.accounts import (
     AccountNotEmpty,
     AccountView,
     DuplicateExternalRef,
+    InvalidProvider,
+    NotClearance,
+    ProviderTaken,
+    StartRequired,
     UnknownCurrency,
     close_account,
     create_account_result,
@@ -51,9 +55,34 @@ map_error(
     details=lambda e: {"reason": "account_not_empty", "held": e.held},
 )
 map_error(UnknownCurrency, 422, "validation_error", details=lambda e: {"reason": "unknown_currency"})
+map_error(
+    ProviderTaken,
+    409,
+    "conflict",
+    details=lambda e: {
+        "reason": "provider_taken",
+        "provider": e.provider,
+        "account": {"id": e.account_id, "name": e.account_name},
+    },
+)
+map_error(
+    InvalidProvider,
+    422,
+    "validation_error",
+    details=lambda e: {"reason": "invalid_provider", "field": "providers"},
+)
+map_error(
+    StartRequired,
+    422,
+    "validation_error",
+    details=lambda e: {"reason": "start_required", "field": "start_date"},
+)
+map_error(
+    NotClearance, 422, "validation_error", details=lambda e: {"reason": "not_clearance", "field": e.field}
+)
 map_error(AccountError, 409, "conflict", details=lambda e: {"reason": "account_refused"})
 
-Kind = Literal["checking", "savings", "card", "cash", "digital_wallet", "depot", "loan", "asset"]
+Kind = Literal["checking", "savings", "card", "cash", "digital_wallet", "depot", "loan", "asset", "clearance"]
 CurrencyCode = Annotated[str, Field(pattern=r"^[A-Z]{3}$")]
 
 
@@ -79,6 +108,7 @@ class AccountOut(BaseModel):
     kind: str
     currency: str
     external_ref: str | None
+    providers: list[str]  # a clearance account's providers, sorted; empty for any other kind
     closed_on: date | None
     sort_order: int
     note: str | None
@@ -110,6 +140,7 @@ def facts(conn: Connection, view: AccountView) -> AccountOut:
         kind=view.kind,
         currency=view.currency,
         external_ref=view.external_ref,
+        providers=list(view.providers),
         closed_on=view.closed_on,
         sort_order=view.sort_order,
         note=view.note,
@@ -153,6 +184,10 @@ class CreateBody(BaseModel):
     note: str | None = None
     icon: str | None = None
     color: str | None = None
+    start_date: date | None = (
+        None  # a clearance account requires it (its opening record), any other refuses it
+    )
+    providers: list[str] = []  # a clearance account only
 
 
 class UpdateBody(BaseModel):
@@ -169,6 +204,7 @@ class UpdateBody(BaseModel):
     external_ref: str | None = None
     icon: str | None = None
     color: str | None = None
+    providers: list[str] | None = None  # a clearance account: the whole list; absent leaves it
 
 
 class CloseBody(BaseModel):
@@ -195,6 +231,8 @@ def create_ledger_account(body: CreateBody, user: CurrentUser, engine: EngineDep
         note=body.note,
         icon=body.icon,
         color=body.color,
+        start_date=body.start_date,
+        providers=body.providers,
     )
     return written(engine, created.account_id, created.settle)
 
@@ -212,6 +250,7 @@ def update_ledger_account(
         external_ref=body.external_ref if "external_ref" in body.model_fields_set else ...,
         icon=body.icon if "icon" in body.model_fields_set else ...,
         color=body.color if "color" in body.model_fields_set else ...,
+        providers=body.providers,
     )
     return written(engine, account_id, result)
 

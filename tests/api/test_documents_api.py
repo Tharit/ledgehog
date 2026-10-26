@@ -63,6 +63,8 @@ def test_row_shape_and_money(anna: TestClient, api_engine: Engine):
         "merchant_name": "Shop",
         "title": "T",
         "line_count": 2,
+        "booking": None,
+        "not_booked": {"reason": "no_account", "currency": "EUR", "account_id": None, "start": None},
     }
     assert rows[free]["total"] == {"amount": 1500, "currency": "EUR"}
 
@@ -113,7 +115,7 @@ def test_out_of_range_parameters_are_rejected(anna: TestClient, params: dict[str
     assert_envelope(anna.get(URL, params=params), 422, "validation_error")
 
 
-def test_detail_has_the_lines_in_order_and_no_booking_fields(anna: TestClient, api_engine: Engine):
+def test_detail_has_the_lines_in_order_and_its_booking_state(anna: TestClient, api_engine: Engine):
     with api_engine.begin() as conn:
         d = make_document(conn, "paypal", total=-1000, on=D)
         lines(conn, d, ("cable", -400), ("shipping", -600))
@@ -126,6 +128,7 @@ def test_detail_has_the_lines_in_order_and_no_booking_fields(anna: TestClient, a
         (2, "shipping", {"amount": -600, "currency": "EUR"}),
     ]
     assert {"carriers", "carrier_count", "matches", "fully_charged"} & set(body) == set()
+    assert body["booking"] is None and body["not_booked"]["reason"] == "no_account"
 
 
 def test_an_unknown_document_is_a_404_in_the_envelope(anna: TestClient):
@@ -153,3 +156,84 @@ def test_providers_lists_importer_names_and_stored_providers_sorted(anna: TestCl
 
 def test_providers_requires_a_session(client: TestClient):
     assert_envelope(client.get(f"{URL}/providers"), 401, "unauthenticated")
+
+
+# ---- booking state (spec §5.8, documents.md §1) -----------------------------------------------
+
+
+def clearance(
+    api_engine: Engine, start: date = date(2026, 1, 31), providers: tuple[str, ...] = ("Amazon",)
+) -> int:
+    from app.core.accounts import create_account
+
+    return create_account(
+        api_engine, name="Amazon.de", kind="clearance", currency="EUR", start_date=start, providers=providers
+    )
+
+
+def test_a_booked_document_has_its_booking_and_the_detail_its_entries_in_line_order(
+    anna: TestClient, api_engine: Engine
+) -> None:
+    with api_engine.begin() as conn:
+        d = make_document(conn, "Amazon", total=-1000, on=date(2026, 2, 1))
+        lines(conn, d, ("cable", -400), ("shipping", -600))
+    account = clearance(api_engine)
+    (st,) = [
+        r.id
+        for r in api_engine.connect().execute(
+            text("SELECT id FROM source_transaction WHERE source_id = :s AND origin = 'booking'"),
+            {"s": f"document:{d}"},
+        )
+    ]
+    row = listed(anna)["documents"][0]
+    assert row["booking"] == {"account_id": account, "source_transaction_id": st}
+    assert row["not_booked"] is None
+    body = anna.get(f"{URL}/{d}").json()
+    booking = body["booking"]
+    assert (booking["account_id"], booking["source_transaction_id"]) == (account, st)
+    assert [(e["amount"], e["source_text"]) for e in booking["entries"]] == [
+        ({"amount": -400, "currency": "EUR"}, "cable"),
+        ({"amount": -600, "currency": "EUR"}, "shipping"),
+    ]
+    assert body["not_booked"] is None
+
+
+def test_each_reason_a_document_is_not_booked(anna: TestClient, api_engine: Engine) -> None:
+    with api_engine.begin() as conn:
+        zero = make_document(conn, "Amazon", total=0, on=date(2026, 2, 1))
+        none = make_document(conn, "Elsewhere", total=-100, on=date(2026, 2, 1))
+        early = make_document(conn, "Amazon", total=-100, on=date(2026, 1, 31))
+        usd = make_document(conn, "Amazon", total=-100, on=date(2026, 2, 1), currency="USD")
+    account = clearance(api_engine)
+    got = {d["id"]: d["not_booked"] for d in listed(anna)["documents"]}
+    blank = {"currency": None, "account_id": None, "start": None}
+    assert got[zero] == blank | {"reason": "zero_total"}
+    assert got[none] == blank | {"reason": "no_account", "currency": "EUR"}
+    assert got[early] == blank | {"reason": "before_start", "account_id": account, "start": "2026-01-31"}
+    assert got[usd] == blank | {"reason": "no_account", "currency": "USD"}
+    assert anna.get(f"{URL}/{early}").json()["not_booked"]["reason"] == "before_start"
+
+
+def test_no_start_when_the_account_has_no_balance_record(anna: TestClient, api_engine: Engine) -> None:
+    with api_engine.begin() as conn:
+        d = make_document(conn, "Amazon", total=-100, on=date(2026, 2, 1))
+    account = clearance(api_engine, providers=())
+    with api_engine.begin() as conn:
+        conn.execute(text("DELETE FROM balance_record WHERE account_id = :a"), {"a": account})
+    from app.core.accounts import set_clearance_providers
+
+    set_clearance_providers(api_engine, account, ["Amazon"])
+    got = anna.get(f"{URL}/{d}").json()["not_booked"]
+    assert (got["reason"], got["account_id"]) == ("no_start", account)
+
+
+def test_the_booked_filter(anna: TestClient, api_engine: Engine) -> None:
+    with api_engine.begin() as conn:
+        yes = make_document(conn, "Amazon", total=-100, on=date(2026, 2, 1))
+        no = make_document(conn, "Other", total=-100, on=date(2026, 2, 2))
+    clearance(api_engine)
+    assert doc_ids(anna, booked="true") == [yes]
+    assert doc_ids(anna, booked="false") == [no]
+    assert sorted(doc_ids(anna)) == sorted([yes, no])
+    assert listed(anna, booked="false")["total"] == 1
+    assert_envelope(anna.get(URL, params={"booked": "maybe"}), 422, "validation_error")

@@ -22,6 +22,7 @@ class DocumentFilter:
     amount_max: int | None = None
     currency: str | None = None
     text: str | None = None  # merchant name, title or a line's description
+    booked: bool | None = None  # True: booked on a clearance account; False: not booked
 
     def __post_init__(self) -> None:
         if any(not 1 <= len(p) <= MAX_TEXT for p in self.providers):

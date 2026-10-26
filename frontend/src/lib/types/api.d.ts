@@ -1296,6 +1296,8 @@ export interface components {
             name: string;
             /** Note */
             note: string | null;
+            /** Providers */
+            providers: string[];
             /** Records Since Zero */
             records_since_zero: number[] | null;
             /** Sort Order */
@@ -1628,16 +1630,23 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "checking" | "savings" | "card" | "cash" | "digital_wallet" | "depot" | "loan" | "asset";
+            kind: "checking" | "savings" | "card" | "cash" | "digital_wallet" | "depot" | "loan" | "asset" | "clearance";
             /** Name */
             name: string;
             /** Note */
             note?: string | null;
             /**
+             * Providers
+             * @default []
+             */
+            providers: string[];
+            /**
              * Sort Order
              * @default 0
              */
             sort_order: number;
+            /** Start Date */
+            start_date?: string | null;
         };
         /** CreateInstance */
         CreateInstance: {
@@ -1714,8 +1723,36 @@ export interface components {
             /** Instance Id */
             instance_id: number;
         };
+        /** DocumentBookingDetailOut */
+        DocumentBookingDetailOut: {
+            /** Account Id */
+            account_id: number;
+            /** Entries */
+            entries: components["schemas"]["DocumentBookingEntryOut"][];
+            /** Source Transaction Id */
+            source_transaction_id: number;
+        };
+        /** DocumentBookingEntryOut */
+        DocumentBookingEntryOut: {
+            amount: components["schemas"]["Money"];
+            /** Id */
+            id: number;
+            /** Source Text */
+            source_text: string | null;
+        };
+        /**
+         * DocumentBookingOut
+         * @description Where a document is booked: the clearance account and the booking's source transaction.
+         */
+        DocumentBookingOut: {
+            /** Account Id */
+            account_id: number;
+            /** Source Transaction Id */
+            source_transaction_id: number;
+        };
         /** DocumentDetailOut */
         DocumentDetailOut: {
+            booking: components["schemas"]["DocumentBookingDetailOut"] | null;
             /** External Id */
             external_id: string;
             /** Id */
@@ -1728,6 +1765,7 @@ export interface components {
             lines: components["schemas"]["DocumentLineOut"][];
             /** Merchant Name */
             merchant_name: string | null;
+            not_booked: components["schemas"]["NotBookedOut"] | null;
             /**
              * Occurred On
              * Format: date
@@ -1753,6 +1791,7 @@ export interface components {
         };
         /** DocumentOut */
         DocumentOut: {
+            booking: components["schemas"]["DocumentBookingOut"] | null;
             /** External Id */
             external_id: string;
             /** Id */
@@ -1763,6 +1802,7 @@ export interface components {
             line_count: number;
             /** Merchant Name */
             merchant_name: string | null;
+            not_booked: components["schemas"]["NotBookedOut"] | null;
             /**
              * Occurred On
              * Format: date
@@ -1971,7 +2011,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "checking" | "savings" | "card" | "cash" | "digital_wallet" | "depot" | "loan" | "asset";
+            kind: "checking" | "savings" | "card" | "cash" | "digital_wallet" | "depot" | "loan" | "asset" | "clearance";
             /** Net Worth */
             net_worth: components["schemas"]["PointNetWorthOut"][];
         };
@@ -2102,6 +2142,23 @@ export interface components {
             amount: components["schemas"]["Money"];
         };
         /**
+         * NotBookedOut
+         * @description Why a document is not booked; the fields the reason needs are set, the others are null.
+         */
+        NotBookedOut: {
+            /** Account Id */
+            account_id: number | null;
+            /** Currency */
+            currency: string | null;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "zero_total" | "no_account" | "no_start" | "before_start";
+            /** Start */
+            start: string | null;
+        };
+        /**
          * OverTimeOut
          * @description Only the fields of the chosen mode are present.
          */
@@ -2160,6 +2217,8 @@ export interface components {
             name: string;
             /** Note */
             note: string | null;
+            /** Providers */
+            providers: string[];
             /** Records Since Zero */
             records_since_zero: number[] | null;
             /** Sort Order */
@@ -3908,6 +3967,8 @@ export interface components {
             name?: string | null;
             /** Note */
             note?: string | null;
+            /** Providers */
+            providers?: string[] | null;
             /** Sort Order */
             sort_order?: number | null;
         };
@@ -4017,6 +4078,7 @@ export interface operations {
                 amount_max?: number | null;
                 currency?: string | null;
                 q?: string | null;
+                booked?: boolean | null;
                 limit?: number;
                 offset?: number;
             };

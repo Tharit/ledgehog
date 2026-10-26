@@ -2,6 +2,8 @@
 
 from app.core.documents.filters import DocumentFilter
 from app.core.documents.read import (
+    BookingEntry,
+    DocumentBooking,
     DocumentDetail,
     DocumentLine,
     DocumentPage,
@@ -12,6 +14,8 @@ from app.core.documents.read import (
 )
 
 __all__ = [
+    "BookingEntry",
+    "DocumentBooking",
     "DocumentDetail",
     "DocumentFilter",
     "DocumentLine",

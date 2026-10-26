@@ -107,6 +107,7 @@ export function authored(over: Partial<Entry> = {}): Entry {
 		display_text: 'groceries',
 		source: {
 			amount: { amount: -1250, currency: 'EUR' },
+			booking: null,
 			booking_text: null,
 			counterparty_bic: null,
 			counterparty_name: null,

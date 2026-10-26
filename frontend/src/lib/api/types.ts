@@ -26,6 +26,8 @@ export type Account = {
 	kind: string;
 	currency: string;
 	external_ref: string | null;
+	/** a clearance account's providers, sorted; empty for any other kind */
+	providers: string[];
 	closed_on: IsoDate | null;
 	sort_order: number;
 	note: string | null;

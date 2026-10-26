@@ -189,6 +189,13 @@
             ],
             "title": "Note"
           },
+          "providers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Providers",
+            "type": "array"
+          },
           "records_since_zero": {
             "anyOf": [
               {
@@ -240,6 +247,7 @@
           "kind",
           "currency",
           "external_ref",
+          "providers",
           "closed_on",
           "sort_order",
           "note",
@@ -1264,7 +1272,8 @@
               "digital_wallet",
               "depot",
               "loan",
-              "asset"
+              "asset",
+              "clearance"
             ],
             "title": "Kind",
             "type": "string"
@@ -1285,10 +1294,30 @@
             ],
             "title": "Note"
           },
+          "providers": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Providers",
+            "type": "array"
+          },
           "sort_order": {
             "default": 0,
             "title": "Sort Order",
             "type": "integer"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date"
           }
         },
         "required": [
@@ -1547,8 +1576,92 @@
         "title": "DiscoveryResultOut",
         "type": "object"
       },
+      "DocumentBookingDetailOut": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "integer"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentBookingEntryOut"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "source_transaction_id": {
+            "title": "Source Transaction Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "account_id",
+          "source_transaction_id",
+          "entries"
+        ],
+        "title": "DocumentBookingDetailOut",
+        "type": "object"
+      },
+      "DocumentBookingEntryOut": {
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "source_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Text"
+          }
+        },
+        "required": [
+          "id",
+          "amount",
+          "source_text"
+        ],
+        "title": "DocumentBookingEntryOut",
+        "type": "object"
+      },
+      "DocumentBookingOut": {
+        "description": "Where a document is booked: the clearance account and the booking's source transaction.",
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "integer"
+          },
+          "source_transaction_id": {
+            "title": "Source Transaction Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "account_id",
+          "source_transaction_id"
+        ],
+        "title": "DocumentBookingOut",
+        "type": "object"
+      },
       "DocumentDetailOut": {
         "properties": {
+          "booking": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DocumentBookingDetailOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "external_id": {
             "title": "External Id",
             "type": "string"
@@ -1590,6 +1703,16 @@
             ],
             "title": "Merchant Name"
           },
+          "not_booked": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NotBookedOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "occurred_on": {
             "format": "date",
             "title": "Occurred On",
@@ -1629,6 +1752,8 @@
           "merchant_name",
           "title",
           "line_count",
+          "booking",
+          "not_booked",
           "lines"
         ],
         "title": "DocumentDetailOut",
@@ -1670,6 +1795,16 @@
       },
       "DocumentOut": {
         "properties": {
+          "booking": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DocumentBookingOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "external_id": {
             "title": "External Id",
             "type": "string"
@@ -1703,6 +1838,16 @@
               }
             ],
             "title": "Merchant Name"
+          },
+          "not_booked": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NotBookedOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "occurred_on": {
             "format": "date",
@@ -1742,7 +1887,9 @@
           "total",
           "merchant_name",
           "title",
-          "line_count"
+          "line_count",
+          "booking",
+          "not_booked"
         ],
         "title": "DocumentOut",
         "type": "object"
@@ -2385,7 +2532,8 @@
               "digital_wallet",
               "depot",
               "loan",
-              "asset"
+              "asset",
+              "clearance"
             ],
             "title": "Kind",
             "type": "string"
@@ -2778,6 +2926,63 @@
         "title": "NetWorthUnvaluedOut",
         "type": "object"
       },
+      "NotBookedOut": {
+        "description": "Why a document is not booked; the fields the reason needs are set, the others are null.",
+        "properties": {
+          "account_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "reason": {
+            "enum": [
+              "zero_total",
+              "no_account",
+              "no_start",
+              "before_start"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start"
+          }
+        },
+        "required": [
+          "reason",
+          "currency",
+          "account_id",
+          "start"
+        ],
+        "title": "NotBookedOut",
+        "type": "object"
+      },
       "OverTimeOut": {
         "description": "Only the fields of the chosen mode are present.",
         "properties": {
@@ -3013,6 +3218,13 @@
             ],
             "title": "Note"
           },
+          "providers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Providers",
+            "type": "array"
+          },
           "records_since_zero": {
             "anyOf": [
               {
@@ -3064,6 +3276,7 @@
           "kind",
           "currency",
           "external_ref",
+          "providers",
           "closed_on",
           "sort_order",
           "note",
@@ -8549,6 +8762,20 @@
             ],
             "title": "Note"
           },
+          "providers": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Providers"
+          },
           "sort_order": {
             "anyOf": [
               {
@@ -8850,6 +9077,22 @@
                 }
               ],
               "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "booked",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Booked"
             }
           },
           {

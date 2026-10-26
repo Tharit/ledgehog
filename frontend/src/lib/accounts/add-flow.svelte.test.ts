@@ -95,6 +95,7 @@ describe('AddAccountFlow.submit', () => {
 			name: 'Cash USD',
 			kind: 'cash',
 			currency: 'USD',
+			providers: [],
 			sort_order: 5
 		});
 		expect(added?.id).toBe(8);

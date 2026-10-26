@@ -6,7 +6,7 @@ from datetime import date
 
 import pytest
 
-from app.core.accounts import close_account
+from app.core.accounts import close_account, create_account
 from app.core.importers import instances as instances_module
 from app.core.importers.instances import create_instance
 from app.core.settle.settle import SettleResult
@@ -416,3 +416,15 @@ def test_a_new_instance_takes_its_emits_from_the_catalog(make_api):
         BASE, json={"importer": "docs", "label": "Shared", "settings": {}, "access": "shared"}
     )
     assert (shared.json()["access"], shared.json()["owner_id"]) == ("shared", None)
+
+
+def test_linking_a_clearance_account_is_a_409_conflict_with_its_reason(api: Api):
+    inst = api.instance()
+    clearance = create_account(
+        api.engine, name="Amazon.de", kind="clearance", currency="EUR", start_date=date(2026, 1, 31)
+    )
+    r = api.client.post(f"{BASE}/{inst}/links", json={"account_id": clearance})
+    assert r.status_code == 409, r.text
+    error = r.json()["error"]
+    assert error["code"] == "conflict"
+    assert error["details"] == {"reason": "clearance_account", "account_id": clearance}

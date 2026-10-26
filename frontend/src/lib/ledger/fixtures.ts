@@ -25,6 +25,7 @@ export function entry(over: Partial<Entry> = {}): Entry {
 		partner: null,
 		origin: null,
 		review_flags: [],
+		source_text: null,
 		tag_ids: [],
 		...over
 	};
@@ -37,6 +38,7 @@ export function account(over: Partial<Account> = {}): Account {
 		kind: 'checking',
 		currency: 'EUR',
 		external_ref: null,
+		providers: [],
 		closed_on: null,
 		sort_order: 0,
 		note: null,

@@ -15,6 +15,7 @@ from app.core.accounts import (
     create_account_result,
     list_accounts,
     set_clearance_providers,
+    update_account,
 )
 from app.core.importers.instances import ClearanceAccount, link_account
 from tests.core.accounts.conftest import Db
@@ -134,3 +135,24 @@ def test_a_clearance_account_is_never_linked_to_an_importer(db: Db) -> None:
     with pytest.raises(ClearanceAccount):
         link_account(db.engine, instance, aid, "ref")
     assert db.q("SELECT 1 FROM account_source") == []
+
+
+def test_update_account_writes_providers_with_the_other_fields_or_not_at_all(db: Db) -> None:
+    first = clearance(db, "Amazon.de", providers=["Amazon"])
+    second = clearance(db, "Amazon 2")
+    update_account(db.engine, second, name="Renamed", providers=["Audible"])
+    assert providers(db, second) == ["Audible"]
+    with pytest.raises(ProviderTaken):
+        update_account(db.engine, second, name="Again", providers=["Amazon"])
+    (view,) = list_accounts_of(db, second)
+    assert (view.name, view.providers) == ("Renamed", ("Audible",))  # the whole write was refused
+    assert providers(db, first) == ["Amazon"]
+    update_account(db.engine, second, name="Kept")  # absent: the list stays
+    assert providers(db, second) == ["Audible"]
+
+
+def test_update_account_providers_refused_on_another_kind(db: Db) -> None:
+    giro = create_account(db.engine, name="Giro", kind="checking", currency="EUR")
+    with pytest.raises(NotClearance) as e:
+        update_account(db.engine, giro, providers=["Amazon"])
+    assert e.value.field == "providers"

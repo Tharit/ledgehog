@@ -44,6 +44,7 @@ def test_list_is_empty_then_carries_the_facts_of_each_account(anna: TestClient, 
             "kind": "checking",
             "currency": "EUR",
             "external_ref": "de001",
+            "providers": [],
             "closed_on": None,
             "sort_order": 2,
             "note": "main",
@@ -379,3 +380,137 @@ def test_the_ledger_stays_clean_through_these_operations(anna: TestClient, api_e
     anna.post(f"/api/ledger/accounts/{aid}/close", json={"closed_on": "2026-04-01"})
     anna.post(f"/api/ledger/accounts/{aid}/reopen")
     assert_checks_ok(anna)
+
+
+# ---- clearance accounts (spec §3.3, D230) ---------------------------------------------------
+
+ACCOUNTS = "/api/ledger/accounts"
+CLEARANCE = {
+    "name": "Amazon.de",
+    "kind": "clearance",
+    "currency": "EUR",
+    "start_date": "2026-01-31",
+    "providers": ["Amazon", " Audible "],
+}
+
+
+def test_clearance_is_created_with_its_start_and_providers_and_every_row_carries_providers(
+    anna: TestClient, api_engine: Engine
+) -> None:
+    giro = seed_account(api_engine)
+    r = anna.post(ACCOUNTS, json=CLEARANCE)
+    assert r.status_code == 201, r.text
+    account = r.json()["account"]
+    assert (account["kind"], account["providers"]) == ("clearance", ["Amazon", "Audible"])
+    assert account["anchored"] is True  # the opening record: zero at the end of the start date
+    assert q(
+        api_engine,
+        "SELECT kind, balance, balance_on FROM balance_record WHERE account_id = :a",
+        a=account["id"],
+    ) == [("manual", 0, date(2026, 1, 31))]
+    rows = {a["id"]: a for a in anna.get(ACCOUNTS).json()["accounts"]}
+    assert rows[giro]["providers"] == []
+    assert rows[account["id"]]["providers"] == ["Amazon", "Audible"]
+
+
+def test_clearance_without_providers_and_with_an_external_ref(anna: TestClient) -> None:
+    body = {k: v for k, v in CLEARANCE.items() if k != "providers"} | {"external_ref": "DE00 PAYPAL"}
+    account = anna.post(ACCOUNTS, json=body).json()["account"]
+    assert (account["providers"], account["external_ref"]) == ([], "de00paypal")
+
+
+def test_clearance_requires_a_start_date(anna: TestClient, api_engine: Engine) -> None:
+    body = {k: v for k, v in CLEARANCE.items() if k != "start_date"}
+    error = assert_envelope(anna.post(ACCOUNTS, json=body), 422, "validation_error")
+    assert error["details"] == {"reason": "start_required", "field": "start_date"}
+    assert q(api_engine, "SELECT 1 FROM account") == []
+
+
+@pytest.mark.parametrize(
+    "extra, field", [({"start_date": "2026-01-31"}, "start_date"), ({"providers": ["A"]}, "providers")]
+)
+def test_start_and_providers_belong_to_a_clearance_account_only(
+    anna: TestClient, extra: dict, field: str
+) -> None:
+    error = assert_envelope(anna.post(ACCOUNTS, json=NEW | extra), 422, "validation_error")
+    assert error["details"] == {"reason": "not_clearance", "field": field}
+
+
+def test_a_blank_provider_is_a_422(anna: TestClient) -> None:
+    error = assert_envelope(
+        anna.post(ACCOUNTS, json=CLEARANCE | {"providers": ["Amazon", "  "]}), 422, "validation_error"
+    )
+    assert error["details"]["reason"] == "invalid_provider"
+
+
+def test_a_provider_another_account_takes_in_the_currency_is_a_409_naming_it(
+    anna: TestClient, api_engine: Engine
+) -> None:
+    first = anna.post(ACCOUNTS, json=CLEARANCE).json()["account"]
+    error = assert_envelope(
+        anna.post(ACCOUNTS, json=CLEARANCE | {"name": "Second", "providers": ["AMAZON"]}), 409, "conflict"
+    )
+    assert error["details"] == {
+        "reason": "provider_taken",
+        "provider": "AMAZON",
+        "account": {"id": first["id"], "name": "Amazon.de"},
+    }
+    assert len(q(api_engine, "SELECT 1 FROM account")) == 1  # the whole write is refused
+    # another currency is another pocket
+    assert anna.post(ACCOUNTS, json=CLEARANCE | {"name": "USD", "currency": "USD"}).status_code == 201
+
+
+def test_providers_are_written_as_the_whole_list_and_the_start_is_no_field(
+    anna: TestClient, api_engine: Engine
+) -> None:
+    aid = anna.post(ACCOUNTS, json=CLEARANCE).json()["account"]["id"]
+    r = anna.put(f"{ACCOUNTS}/{aid}", json={"providers": ["Audible", "Zalando"], "name": "Shops"})
+    assert r.status_code == 200, r.text
+    assert (r.json()["account"]["name"], r.json()["account"]["providers"]) == (
+        "Shops",
+        ["Audible", "Zalando"],
+    )
+    assert anna.put(f"{ACCOUNTS}/{aid}", json={"note": "n"}).json()["account"]["providers"] == [
+        "Audible",
+        "Zalando",
+    ]
+    assert anna.put(f"{ACCOUNTS}/{aid}", json={"providers": []}).json()["account"]["providers"] == []
+    assert_envelope(anna.put(f"{ACCOUNTS}/{aid}", json={"start_date": "2026-02-01"}), 422, "validation_error")
+
+
+def test_a_refused_providers_write_changes_nothing(anna: TestClient) -> None:
+    other = anna.post(ACCOUNTS, json=CLEARANCE).json()["account"]
+    mine = anna.post(ACCOUNTS, json=CLEARANCE | {"name": "Mine", "providers": []}).json()["account"]
+    error = assert_envelope(
+        anna.put(f"{ACCOUNTS}/{mine['id']}", json={"name": "Renamed", "providers": ["Amazon"]}),
+        409,
+        "conflict",
+    )
+    assert error["details"]["account"]["id"] == other["id"]
+    row = next(a for a in anna.get(ACCOUNTS).json()["accounts"] if a["id"] == mine["id"])
+    assert (row["name"], row["providers"]) == ("Mine", [])
+
+
+def test_providers_on_another_kind_of_account_are_a_422(anna: TestClient, api_engine: Engine) -> None:
+    giro = seed_account(api_engine)
+    error = assert_envelope(
+        anna.put(f"{ACCOUNTS}/{giro}", json={"providers": ["Amazon"]}), 422, "validation_error"
+    )
+    assert error["details"] == {"reason": "not_clearance", "field": "providers"}
+
+
+def test_a_clearance_account_books_the_documents_its_providers_take(
+    anna: TestClient, api_engine: Engine
+) -> None:
+    from app.core.settle.settle import settle
+    from tests.fixtures.documents import make_document
+
+    aid = anna.post(ACCOUNTS, json=CLEARANCE | {"providers": []}).json()["account"]["id"]
+    with api_engine.begin() as conn:
+        make_document(conn, "Amazon", total=-1000, on=date(2026, 2, 1))
+    settle(api_engine)
+    assert q(api_engine, "SELECT 1 FROM source_transaction WHERE origin = 'booking'") == []
+    r = anna.put(f"{ACCOUNTS}/{aid}", json={"providers": ["Amazon"]})
+    assert r.status_code == 200
+    assert r.json()["account"]["balance"] == {"amount": -1000, "currency": "EUR"}
+    assert len(q(api_engine, "SELECT 1 FROM source_transaction WHERE origin = 'booking'")) == 1

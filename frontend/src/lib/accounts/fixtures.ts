@@ -17,6 +17,8 @@ export function sourceRow(over: Partial<StatementSource> = {}): StatementSource 
 		entry_id: 10,
 		run_id: 5,
 		balance: eur(96000),
+		booking: null,
+		origin: 'import',
 		...over
 	};
 }

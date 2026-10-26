@@ -46,6 +46,7 @@ describe('createAccount', () => {
 			name: 'Cash USD',
 			kind: 'cash',
 			currency: 'USD',
+			providers: [],
 			sort_order: 0
 		});
 
@@ -56,6 +57,7 @@ describe('createAccount', () => {
 			name: 'Cash USD',
 			kind: 'cash',
 			currency: 'USD',
+			providers: [],
 			sort_order: 0
 		});
 		expect(out).toEqual(answer);
@@ -69,6 +71,7 @@ describe('createAccount', () => {
 			kind: 'card',
 			currency: 'EUR',
 			sort_order: 3,
+			providers: [],
 			external_ref: 'DE00',
 			note: 'n',
 			icon: 'credit-card',
@@ -93,6 +96,7 @@ describe('createAccount', () => {
 				kind: 'checking',
 				currency: 'EUR',
 				sort_order: 0,
+				providers: [],
 				external_ref: 'X'
 			})
 		).rejects.toMatchObject({
@@ -109,6 +113,7 @@ describe('createAccount', () => {
 			name: 'A',
 			kind: 'cash',
 			currency: 'ZZZ',
+			providers: [],
 			sort_order: 0
 		}).catch((e: unknown) => e);
 
