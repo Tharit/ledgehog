@@ -82,6 +82,7 @@ def test_create_answers_201_with_the_unit_then_200_for_a_repeat(anna: TestClient
         "mandate_ref": None,
         "instructed_amount": None,
         "source_format": None,
+        "booking": None,
     }
     assert out["units"] == [
         {
