@@ -13,6 +13,7 @@ from typing import Any
 from sqlalchemy import Connection, text
 
 from app.core.balance.statement import DuplicateRef
+from app.core.domain.source import BookingRef
 
 
 @dataclass(frozen=True)
@@ -50,20 +51,30 @@ class Provenance:
     run: RunRef | None
     duplicate_of: DuplicateRef | None
     entry_id: int | None  # the lowest id among its entries; None for a duplicate
+    origin: str = "import"  # `import`, `user` or `booking`
+    booking: BookingRef | None = None  # a booking's source, for navigation
 
 
 def get_provenance(conn: Connection, source_id: int) -> Provenance | None:
     r = conn.execute(
         text(
-            "SELECT s.id, s.account_id, s.currency, s.origin = 'user' AS authored, s.source_format,"
+            "SELECT s.id, s.account_id, s.currency, s.origin = 'user' AS authored, s.origin, s.source_id,"
+            " s.source_format,"
             " s.booked_on, s.value_on, s.amount, s.instructed_amount, s.instructed_currency,"
             " s.counterparty_name, s.counterparty_ref, s.counterparty_bic, s.purpose, s.booking_text,"
             " s.end_to_end_id, s.mandate_ref, s.raw,"
             " r.id AS run_id, r.importer AS run_importer, r.importer_instance_id AS instance_id,"
             " i.label AS instance_label, r.started_at, r.finished_at,"
             " o.id AS of_id, o.booked_on AS of_on, o.amount AS of_amount,"
+            " d.provider, d.external_id, c.account_id AS charge_account_id,"
             " (SELECT min(e.id) FROM ledger_entry e WHERE e.source_transaction_id = s.id) AS entry_id"
             " FROM source_transaction s"
+            " LEFT JOIN external_document d ON d.id = CASE WHEN s.origin = 'booking'"
+            "   AND split_part(s.source_id, ':', 1) = 'document'"
+            "   THEN CAST(split_part(s.source_id, ':', 2) AS bigint) END"
+            " LEFT JOIN ledger_entry c ON c.id = CASE WHEN s.origin = 'booking'"
+            "   AND split_part(s.source_id, ':', 1) = 'transfer'"
+            "   THEN CAST(split_part(s.source_id, ':', 2) AS bigint) END"
             " LEFT JOIN import_run r ON r.id = s.import_run_id"
             " LEFT JOIN importer_instance i ON i.id = r.importer_instance_id"
             " LEFT JOIN source_transaction o ON o.id = s.duplicate_of"
@@ -101,4 +112,14 @@ def get_provenance(conn: Connection, source_id: int) -> Provenance | None:
         ),
         duplicate_of=None if r.of_id is None else DuplicateRef(r.of_id, r.of_on, int(r.of_amount)),
         entry_id=r.entry_id,
+        origin=r.origin,
+        booking=None
+        if r.origin != "booking"
+        else BookingRef(
+            r.source_id.partition(":")[0],
+            int(r.source_id.partition(":")[2]),
+            provider=r.provider,
+            external_id=r.external_id,
+            account_id=r.charge_account_id,
+        ),
     )

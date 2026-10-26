@@ -2513,6 +2513,7 @@ export interface components {
              * Format: date
              */
             booked_on: string;
+            booking: components["schemas"]["BookingOut"] | null;
             /** Booking Text */
             booking_text: string | null;
             /** Counterparty Bic */
@@ -2531,6 +2532,11 @@ export interface components {
             instructed_amount: components["schemas"]["Money"] | null;
             /** Mandate Ref */
             mandate_ref: string | null;
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "import" | "user" | "booking";
             /** Purpose */
             purpose: string | null;
             /** Raw */

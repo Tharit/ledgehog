@@ -65,6 +65,8 @@ export function provenance(over: Partial<Provenance> = {}): Provenance {
 		},
 		duplicate_of: null,
 		entry_id: 10,
+		origin: 'import',
+		booking: null,
 		...over
 	};
 }

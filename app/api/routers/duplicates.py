@@ -11,7 +11,7 @@ the confirming request sends back as `expected_versions`. Both answer with every
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Literal, cast
 
 from fastapi import APIRouter
 from pydantic import BaseModel, ConfigDict
@@ -20,7 +20,7 @@ from sqlalchemy import Engine, text
 from app.api.errors import map_error
 from app.api.ids import EntityId, EntityVersion, PathId
 from app.api.routers.accounts import Money
-from app.api.routers.entries import EntryOut
+from app.api.routers.entries import BookingOut, EntryOut
 from app.api.routers.maintenance import SettleOut
 from app.api.routers.sources import EntryVersionOut, SourceWriteOut, UnitRefOut
 from app.api.routers.statement import DuplicateOfOut
@@ -92,6 +92,8 @@ class ProvenanceOut(BaseModel):
     run: RunRefOut | None
     duplicate_of: DuplicateOfOut | None
     entry_id: int | None  # opens the row's unit in review; null for a duplicate
+    origin: Literal["import", "user", "booking"]
+    booking: BookingOut | None  # a booking's source, for navigation; null for any other source
 
     @staticmethod
     def of(p: Provenance) -> ProvenanceOut:
@@ -127,6 +129,16 @@ class ProvenanceOut(BaseModel):
                 else DuplicateOfOut(id=dup.id, booked_on=dup.booked_on, amount=money(dup.amount, p.currency))
             ),
             entry_id=p.entry_id,
+            origin=cast(Literal["import", "user", "booking"], p.origin),
+            booking=None
+            if p.booking is None
+            else BookingOut(
+                kind=cast(Literal["document", "transfer"], p.booking.kind),
+                id=p.booking.id,
+                provider=p.booking.provider,
+                external_id=p.booking.external_id,
+                account_id=p.booking.account_id,
+            ),
         )
 
 

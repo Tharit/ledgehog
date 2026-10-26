@@ -4175,6 +4175,16 @@
             "title": "Booked On",
             "type": "string"
           },
+          "booking": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BookingOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "booking_text": {
             "anyOf": [
               {
@@ -4276,6 +4286,15 @@
             ],
             "title": "Mandate Ref"
           },
+          "origin": {
+            "enum": [
+              "import",
+              "user",
+              "booking"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
           "purpose": {
             "anyOf": [
               {
@@ -4343,7 +4362,9 @@
           "raw",
           "run",
           "duplicate_of",
-          "entry_id"
+          "entry_id",
+          "origin",
+          "booking"
         ],
         "title": "ProvenanceOut",
         "type": "object"

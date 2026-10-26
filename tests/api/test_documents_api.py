@@ -237,3 +237,27 @@ def test_the_booked_filter(anna: TestClient, api_engine: Engine) -> None:
     assert sorted(doc_ids(anna)) == sorted([yes, no])
     assert listed(anna, booked="false")["total"] == 1
     assert_envelope(anna.get(URL, params={"booked": "maybe"}), 422, "validation_error")
+
+
+def test_the_provenance_of_a_booking_carries_its_origin_and_where_it_was_booked_from(
+    anna: TestClient, api_engine: Engine
+) -> None:
+    with api_engine.begin() as conn:
+        d = make_document(conn, "Amazon", total=-1000, on=date(2026, 2, 1))
+        lines(conn, d, ("cable", -1000))
+    clearance(api_engine)
+    with api_engine.connect() as conn:
+        st = conn.execute(
+            text("SELECT id FROM source_transaction WHERE source_id = :s AND origin = 'booking'"),
+            {"s": f"document:{d}"},
+        ).scalar_one()
+    body = anna.get(f"/api/ledger/sources/{st}").json()
+    assert body["origin"] == "booking"
+    assert body["booking"] == {
+        "kind": "document",
+        "id": d,
+        "provider": "Amazon",
+        "external_id": body["booking"]["external_id"],
+        "account_id": None,
+    }
+    assert body["booking"]["external_id"]

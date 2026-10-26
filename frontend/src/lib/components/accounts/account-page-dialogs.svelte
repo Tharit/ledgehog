@@ -5,7 +5,6 @@
 	import type { AccountPageStore } from '#lib/stores/account-page.svelte.js';
 	import type { AccountRunsStore } from '#lib/stores/account-runs.svelte.js';
 	import { lookupsStore } from '#lib/stores/lookups.svelte.js';
-	import type { StatementSource } from '#lib/types/domain.js';
 	import { unitPanel } from '#lib/units/panel-instance.js';
 	import AccountEditDialog from './account-edit-dialog.svelte';
 	import BalanceDialog from './balance-dialog.svelte';
@@ -55,13 +54,8 @@
 
 	const account = $derived(view.account);
 
-	// a booking says so on its statement row; the provenance read does not carry it
-	const booking = $derived.by(() => {
-		const row = view.statement.items.find(
-			(item): item is StatementSource => item.kind === 'source' && item.id === detail.id
-		);
-		return row?.booking ?? null;
-	});
+	// a booking says so in its provenance read (the same shape as the statement row's)
+	const booking = $derived(detail.provenance?.booking ?? null);
 	const chargeAccount = $derived(
 		booking?.account_id != null
 			? (lookupsStore.lookups.accounts.get(booking.account_id)?.name ?? null)
@@ -95,9 +89,6 @@
 		);
 	}
 </script>
-
-const chargeAccount = $derived( booking?.account_id != null ?
-(lookupsStore.lookups.accounts.get(booking.account_id)?.name ?? null) : null );
 
 <RowDetailDialog
 	open={detailOpen && !dialogs.is('mark')}
