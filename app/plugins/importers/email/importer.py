@@ -103,7 +103,7 @@ class _Run:
         self.extractor: Extractor = session._importer.extractor
         self.builder: DocumentBuilder = session._importer.builder
         self.since = since
-        self.today = today
+        self.run_day = today
         self.minor_units_of = minor_units_of
         self.stats: dict[str, int] = dict.fromkeys(STAT_KEYS, 0)
         self.documents: dict[tuple[str, str], IncomingDocument] = {}
@@ -140,7 +140,7 @@ class _Run:
         self.state.pop("stuck", None)  # the run got past every message
         self.stats[DOCUMENTS] = len(self.documents)
         log.info("run: %s", ", ".join(f"{k}={v}" for k, v in self.stats.items() if v))
-        covered_through = self.today - timedelta(days=COVERAGE_LAG_DAYS)
+        covered_through = self.run_day - timedelta(days=COVERAGE_LAG_DAYS)
         return DocumentDelivery(
             documents=tuple(self.documents.values()),
             covered_through=covered_through,
@@ -150,7 +150,7 @@ class _Run:
                 self.settings,
                 uidvalidity=self.uidvalidity,
                 last_uid=last_uid,
-                today=self.today,
+                today=self.run_day,
                 seen={**self.seen_before, **self.seen_now},
             ),
         )
@@ -166,7 +166,7 @@ class _Run:
         return fp in self.seen_before or fp in self.seen_now
 
     def remember(self, identity: str) -> None:
-        self.seen_now.setdefault(fingerprint(identity), self.today)
+        self.seen_now.setdefault(fingerprint(identity), self.run_day)
 
     def handle(self, uid: int) -> None:
         header_id = normalise_message_id(self.mailbox.header_message_id(uid))

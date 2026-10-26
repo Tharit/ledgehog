@@ -2,8 +2,8 @@
 
 A delivery is upserted in ONE transaction under the settle lock (shared), keyed on `(provider,
 external_id)`; documents belong to no account. A document's lines are replaced with each delivery.
-`version` moves when the content changes: date, total, currency or lines (merchant name, `title` and
-`raw` alone do not move it). Document ingest writes documents only: it resolves no entry and links
+`version` moves when the content changes: date, total, currency, merchant, title or lines (`raw` alone
+does not move it). Document ingest writes documents only: it resolves no entry and links
 nothing. What a document means for the ledger, its booking on a clearance account, is settling's
 (`core/settle/settle.py`, the booking step: wave C2), which reads the stored documents. The run is set `ok`
 with its coverage in the same transaction, then settling runs on its own. A document run is never reverted
@@ -178,6 +178,8 @@ class _Stored:
     occurred_on: date
     total: int
     currency: str
+    merchant_name: str | None
+    title: str | None
     lines: tuple[tuple[str, int, int | None], ...]
 
 
@@ -187,7 +189,8 @@ def _existing(conn: Connection, documents: Sequence[IncomingDocument]) -> dict[t
     note_change(conn, DOCUMENTS)  # its own FOR UPDATE below, not `lock_rows`
     rows = conn.execute(
         text(
-            "SELECT d.id, d.provider, d.external_id, d.occurred_on, d.total, d.currency"
+            "SELECT d.id, d.provider, d.external_id, d.occurred_on, d.total, d.currency,"
+            " d.merchant_name, d.title"
             " FROM external_document d"
             " JOIN unnest(CAST(:p AS text[]), CAST(:e AS text[])) AS k(provider, external_id)"
             " ON k.provider = d.provider AND k.external_id = d.external_id ORDER BY d.id FOR UPDATE OF d"
@@ -205,7 +208,7 @@ def _existing(conn: Connection, documents: Sequence[IncomingDocument]) -> dict[t
         lines[ln.document_id].append((ln.description, ln.amount, ln.qty))
     return {
         (r.provider, r.external_id): _Stored(
-            r.id, r.occurred_on, r.total, r.currency.strip(), tuple(lines[r.id])
+            r.id, r.occurred_on, r.total, r.currency.strip(), r.merchant_name, r.title, tuple(lines[r.id])
         )
         for r in rows
     }
@@ -246,6 +249,8 @@ def _update(conn: Connection, run: Any, doc: IncomingDocument, before: _Stored) 
         before.occurred_on != doc.occurred_on
         or before.total != doc.total_minor
         or before.currency != doc.currency
+        or before.merchant_name != doc.merchant_name
+        or before.title != doc.title
         or before.lines != after_lines
     )
     conn.execute(

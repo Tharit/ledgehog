@@ -96,6 +96,8 @@ def test_upsert_is_idempotent(isolated_engine):
         {"occurred_on": date(2026, 6, 2)},
         {"lines": (line("Renamed"),)},
         {"lines": (line(), line("More", -5))},
+        {"merchant_name": "Somebody"},
+        {"title": "Other"},
     ],
 )
 def test_version_moves_on_a_content_change(isolated_engine, change):
@@ -105,15 +107,15 @@ def test_version_moves_on_a_content_change(isolated_engine, change):
     assert d.version == 2 and result.changed == (d.id,)
 
 
-def test_version_stays_on_merchant_title_and_raw_only_changes(isolated_engine):
+def test_version_stays_on_a_raw_only_change(isolated_engine):
     deliver(isolated_engine, [document()])
     result = deliver(
         isolated_engine,
-        [document(title="Other", raw={"n": 2}, merchant_name="Somebody")],
+        [document(raw={"n": 2})],
     )
     d = doc_row(isolated_engine)
     assert d.version == 1 and result.changed == ()
-    assert (d.title, d.raw, d.merchant_name) == ("Other", {"n": 2}, "Somebody")
+    assert d.raw == {"n": 2}
 
 
 def test_lines_are_replaced(isolated_engine):
