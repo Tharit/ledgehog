@@ -133,7 +133,7 @@ describe('RunSummary', () => {
 		expect(screen.getByText('1 document')).toBeInTheDocument();
 		const counted = screen.getByText(/not from an allowed sender/);
 		expect(counted).toHaveTextContent(
-			"5 documents; 2 incomplete (items don't add up); 3 not from an allowed sender; 1 PDF not read (no vision model)"
+			'5 documents; 2 incomplete (no total, or too few items); 3 not from an allowed sender; 1 PDF not read (no vision model)'
 		);
 		expect(counted).not.toHaveTextContent('given up');
 		expect(screen.queryByText('Skipped by identity')).toBeNull();

@@ -69,7 +69,7 @@
 		/>
 		<ProfileField
 			label="Senders"
-			hint="One address per line. Mail is read only when it comes from one of these addresses or was forwarded by one. This keeps other mail out; it is not a security check."
+			hint="One address per line. Mail is read only when it was sent or forwarded by one of these addresses and the mailbox's provider could confirm where it came from."
 			error={errors.senders ?? null}
 			bind:value={draft.senders}
 			multiline

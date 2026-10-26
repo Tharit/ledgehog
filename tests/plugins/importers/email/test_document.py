@@ -177,16 +177,46 @@ def test_lines_that_sum_to_the_total_as_amount_times_quantity_carry_the_products
     assert [ln.qty for ln in d.lines] == [3, None]
 
 
-def test_the_sum_must_be_exact_with_no_tolerance():
-    for total in (30.01, 29.99):
-        assert build(answer(total=total)) == Skipped("incomplete")
+def test_the_lines_need_not_sum_to_the_total_and_nothing_is_added_for_the_rest():
+    for total in (30.01, 29.99, 25.0, 40.0):  # a discount or shipping the mail does not itemise
+        d = doc(answer(total=total))
+        assert amounts(d) == [-2000, -1000] and d.total_minor == -round(total * 100)
+
+
+def test_the_unitemised_amount_may_be_as_large_as_the_lines_and_no_larger():
+    items = [{"name": "a", "quantity": 1, "amount": 12.0}]
+    assert doc(answer(total=24.0, items=items)).total_minor == -2400  # U = 12 = the lines' magnitude
+    assert build(answer(total=24.01, items=items)) == Skipped("incomplete")  # a notice of a big order
+    assert doc(answer(total=0, items=items)).total_minor == 0  # U = -12; a voucher paid it
+
+
+def test_a_total_of_zero_is_delivered_and_a_negative_total_is_a_misread_refund():
+    d = doc(answer(total=0, items=[{"name": "a", "quantity": 1, "amount": 30.0}]))
+    assert d.total_minor == 0 and amounts(d) == [-3000]
+    assert build(answer(total=-0.01)) == Skipped("incomplete")
+
+
+def test_a_discount_line_counts_by_its_magnitude():
+    items = [
+        {"name": "a", "quantity": 1, "amount": 50.0},
+        {"name": "voucher", "quantity": 1, "amount": -10.0},
+    ]
+    d = doc(answer(total=40.0, items=items))
+    assert amounts(d) == [-5000, 1000]
+    assert doc(answer(total=100.0, items=items)).total_minor == -10000  # U = 60 <= 60
+    assert build(answer(total=100.01, items=items)) == Skipped("incomplete")
+
+
+def test_lines_that_are_all_zero_are_not_a_document():
+    items = [{"name": "a", "quantity": 1, "amount": 0.0}]
+    assert build(answer(total=0, items=items)) == Skipped("incomplete")
+    assert build(answer(total=5.0, items=items)) == Skipped("incomplete")
 
 
 @pytest.mark.parametrize(
     "a",
     [
         answer(total=None),
-        answer(total=0),
         answer(total=-30.0),
         answer(items=None),
         answer(items=[]),
@@ -229,9 +259,10 @@ def test_amounts_are_whole_minor_units_taken_as_written_never_as_a_float():
     ) == Skipped("incomplete")
 
 
-def test_a_product_that_is_not_whole_minor_units_fails_the_second_reading():
-    items = [{"name": "a", "quantity": 0.5, "amount": 0.25}, {"name": "b", "quantity": None, "amount": 29.88}]
-    assert build(answer(total=30.0, items=items)) == Skipped("incomplete")
+def test_a_product_that_is_not_whole_minor_units_leaves_the_amounts_as_given():
+    items = [{"name": "a", "quantity": 0.5, "amount": 0.25}, {"name": "b", "quantity": None, "amount": 29.75}]
+    d = doc(answer(total=30.0, items=items))  # 0.5 x 25 is not whole: the second reading is not used
+    assert amounts(d) == [-25, -2975]
 
 
 def test_the_exponent_of_the_currency_decides_what_is_whole():

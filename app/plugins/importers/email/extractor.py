@@ -19,8 +19,9 @@ from app.plugins.importers.email.message import PdfPart
 
 # The fixed keys of a run's `importer_stats` (spec §8): each message and inner message is counted once.
 DOCUMENTS = "documents"
-SUPERSEDED = "superseded"
+SAME_ORDER = "same_order"
 NOT_ACCEPTED = "not_accepted"
+NOT_AUTHENTICATED = "not_authenticated"
 ALREADY_SEEN = "already_seen"
 BEFORE_START = "before_start"
 TOO_LARGE = "too_large"
@@ -35,11 +36,11 @@ INCOMPLETE = "incomplete"
 NO_MERCHANT = "no_merchant"
 
 STAT_KEYS: tuple[str, ...] = (
-    DOCUMENTS, SUPERSEDED, NOT_ACCEPTED, ALREADY_SEEN, BEFORE_START, TOO_LARGE, NO_CONTENT, PDF_NOT_READ,
-    UNREADABLE, MODEL_REFUSED, GAVE_UP, REFUND, UNKNOWN_CURRENCY, INCOMPLETE, NO_MERCHANT,
+    DOCUMENTS, SAME_ORDER, NOT_ACCEPTED, NOT_AUTHENTICATED, ALREADY_SEEN, BEFORE_START, TOO_LARGE, NO_CONTENT,
+    PDF_NOT_READ, UNREADABLE, MODEL_REFUSED, GAVE_UP, REFUND, UNKNOWN_CURRENCY, INCOMPLETE, NO_MERCHANT,
 )  # fmt: skip
-# what an extractor or a builder may give as a reason: everything but the delivered and the superseded
-SKIP_REASONS: frozenset[str] = frozenset(STAT_KEYS) - {DOCUMENTS, SUPERSEDED}
+# what an extractor or a builder may give as a reason: everything but the delivered and the same-order
+SKIP_REASONS: frozenset[str] = frozenset(STAT_KEYS) - {DOCUMENTS, SAME_ORDER}
 
 
 @dataclass(frozen=True, slots=True)

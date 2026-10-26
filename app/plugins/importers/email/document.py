@@ -1,7 +1,9 @@
 """From an extraction to a document (spec/plugins/importers/email.md §6): completeness, signs, the provider.
 
 Deterministic and free of the model: the same extraction gives the same document. A complete document only:
-the lines add up exactly to the total, in whole minor units of its currency, with no tolerance.
+a total of at least 0, a line of non-zero amount, whole minor units, and what the lines leave of the total no
+larger than the lines themselves. The check guards against misreads; what the lines leave is the core's to
+spread (spec §5.8), so no line is added for it.
 """
 
 from __future__ import annotations
@@ -115,11 +117,11 @@ def _minor(value: Decimal, exponent: int) -> int | None:
 def _amounts(
     answer: Mapping[str, Any], exponent: int
 ) -> tuple[int, list[tuple[str, int, Decimal | None]]] | None:
-    """(total, [(name, amount, quantity)]) in minor units, or None where it is incomplete: a positive total,
-    at least one line, every line named and amounted, everything in whole minor units."""
+    """(total, [(name, amount, quantity)]) in minor units, or None where it is incomplete: a total of at least
+    0, at least one line, every line named and amounted, everything in whole minor units."""
     total_value = _decimal(answer.get("total"))
     items = answer.get("items")
-    if total_value is None or total_value <= 0 or not isinstance(items, list) or not items:
+    if total_value is None or total_value < 0 or not isinstance(items, list) or not items:
         return None
     total = _minor(total_value, exponent)
     if total is None:
@@ -144,21 +146,26 @@ def _as_quantity(quantity: Decimal | None) -> int | None:
     return int(quantity)
 
 
-def _line_amounts(
-    total: int, lines: list[tuple[str, int, Decimal | None]], exponent: int
-) -> list[int] | None:
-    """The amounts that add up to the total: as given, else each times its quantity (none taken as 1); None
-    where neither does."""
-    as_given = [amount for _, amount, _ in lines]
-    if sum(as_given) == total:
-        return as_given
-    products: list[int] = []
-    for _, amount, quantity in lines:
-        product = _minor(Decimal(amount) * (quantity if quantity is not None else 1), 0)
-        if product is None:
-            return None  # not a whole number of minor units
-        products.append(product)
-    return products if sum(products) == total else None
+def _line_amounts(total: int, lines: list[tuple[str, int, Decimal | None]]) -> list[int] | None:
+    """The amounts the lines carry: as given, unless those do not sum to the total and each times its quantity
+    (none taken as 1), each still a whole number of minor units, does. None where the lines are not complete:
+    no line of non-zero amount, or what they leave of the total (|total - sum|) larger than the sum of their
+    magnitudes."""
+    amounts = [amount for _, amount, _ in lines]
+    if sum(amounts) != total:
+        products: list[int] = []
+        for _, amount, quantity in lines:
+            product = _minor(Decimal(amount) * (quantity if quantity is not None else 1), 0)
+            if product is None:
+                break  # not a whole number of minor units
+            products.append(product)
+        else:
+            if sum(products) == total:
+                amounts = products
+    magnitude = sum(abs(a) for a in amounts)
+    if magnitude == 0 or abs(total - sum(amounts)) > magnitude:
+        return None
+    return amounts
 
 
 # ---- the document ------------------------------------------------------------------------------------
@@ -187,7 +194,7 @@ class EmailDocumentBuilder:
         if parsed is None:
             return Skipped(INCOMPLETE)
         total, lines = parsed
-        amounts = _line_amounts(total, lines, exponent)
+        amounts = _line_amounts(total, lines)
         if amounts is None:
             return Skipped(INCOMPLETE)
         merchant = answer.get("merchant")

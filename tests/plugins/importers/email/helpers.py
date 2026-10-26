@@ -6,6 +6,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from email.message import EmailMessage
+from email.utils import parseaddr
 from typing import Any
 
 from app.core.plugins.errors import InvalidProfile
@@ -24,6 +25,7 @@ TODAY = date(2026, 1, 20)
 SINCE = date(2026, 1, 1)
 FAMILY = "family@example.com"
 SHOP = "orders@shop.example"
+AUTO = "<auto>"  # make_message: write a passing Authentication-Results
 
 
 def base_settings(**over: Any) -> dict[str, Any]:
@@ -49,8 +51,21 @@ def make_message(
     headers: Mapping[str, str] | None = None,
     pdfs: Sequence[tuple[str, str, str]] = (),
     attached: Sequence[EmailMessage] = (),
+    auth: str | None = AUTO,
 ) -> EmailMessage:
+    """`auth` is the Authentication-Results header: by default a passing one (DMARC for a listed `From`, else
+    DKIM for the sender's domain); None writes none."""
     m = EmailMessage()
+    if auth == AUTO:
+        address = parseaddr(sender)[1].lower()
+        domain = address.rpartition("@")[2]
+        auth = (
+            f"mx.example.com; dmarc=pass header.from={domain}"
+            if address == FAMILY
+            else f"mx.example.com; dkim=pass header.d={domain}"
+        )
+    if auth is not None:
+        m["Authentication-Results"] = auth
     m["From"] = sender
     m["To"] = "household@example.com"
     m["Subject"] = subject

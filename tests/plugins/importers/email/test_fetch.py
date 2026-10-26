@@ -316,6 +316,33 @@ def test_a_message_that_is_not_accepted_is_counted_and_never_read_by_the_model()
     assert delivery.importer_stats["not_accepted"] == 2 and rig.extractor.calls == []
 
 
+def test_a_listed_message_without_a_verdict_is_not_authenticated_and_never_read_by_the_model():
+    box = FakeMailbox(
+        {
+            1: (accepted(1, auth=None), ARRIVED),
+            2: (accepted(2, auth="mx.x; dkim=fail header.d=shop.example"), ARRIVED),
+            3: (
+                make_message(
+                    sender=FAMILY,
+                    message_id="<h@f>",
+                    auth="mx.x; dmarc=fail header.from=example.com",
+                ),
+                ARRIVED,
+            ),
+        }
+    )
+    rig = Rig(box)
+    delivery = rig.run()
+    stats = delivery.importer_stats
+    assert (stats["not_authenticated"], stats["not_accepted"], stats["documents"]) == (3, 0, 0)
+    assert rig.extractor.calls == [] and delivery.documents == ()
+
+
+def test_all_counts_are_always_emitted_including_the_new_ones():
+    stats = Rig(FakeMailbox({})).run().importer_stats
+    assert stats["not_authenticated"] == 0 and stats["same_order"] == 0 and "superseded" not in stats
+
+
 def test_an_automatic_forward_keeps_the_shops_from_and_is_accepted_by_a_forwarding_header():
     box = FakeMailbox(
         {1: (order(1, headers={"X-Forwarded-For": f"{FAMILY} dedicated@inbox.example"}), ARRIVED)}
@@ -488,7 +515,7 @@ def test_only_the_outcomes_of_the_taxonomy_can_be_a_skip_reason():
         Skipped("whatever")
 
 
-def test_the_later_document_of_one_key_wins_and_the_earlier_is_superseded():
+def test_the_earlier_document_of_one_key_wins_and_the_later_counts_as_same_order():
     box = FakeMailbox({1: (accepted(1), ARRIVED), 2: (accepted(2), ARRIVED), 3: (accepted(3), ARRIVED)})
     answers = iter([("A", "100"), ("B", "100"), ("A", "100")])
     rig = Rig(box)
@@ -496,8 +523,8 @@ def test_the_later_document_of_one_key_wins_and_the_earlier_is_superseded():
         dict(zip(("merchant", "order_id"), next(answers), strict=True)), "text"
     )
     delivery = rig.run()
-    assert [(d.provider, d.raw["uid"]) for d in delivery.documents] == [("B", 2), ("A", 3)]
-    assert delivery.importer_stats["superseded"] == 1 and delivery.importer_stats["documents"] == 2
+    assert [(d.provider, d.raw["uid"]) for d in delivery.documents] == [("A", 1), ("B", 2)]
+    assert delivery.importer_stats["same_order"] == 1 and delivery.importer_stats["documents"] == 2
 
 
 def test_the_builder_gets_the_context_and_the_currency_lookup_passed_in():

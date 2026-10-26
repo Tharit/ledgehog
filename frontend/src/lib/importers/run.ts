@@ -57,12 +57,13 @@ export function isDifference(minor: number | null | undefined): minor is number 
  */
 export const DOCUMENT_COUNTS: readonly (readonly [key: string, label: string])[] = [
 	['documents', 'documents'],
-	['superseded', 'superseded by a later message'],
-	['incomplete', "incomplete (items don't add up)"],
+	['same_order', 'of an order already delivered'],
+	['incomplete', 'incomplete (no total, or too few items)'],
 	['no_merchant', 'without a merchant'],
 	['unknown_currency', 'in an unknown currency'],
 	['refund', 'refunds skipped'],
 	['not_accepted', 'not from an allowed sender'],
+	['not_authenticated', 'not authenticated'],
 	['already_seen', 'already seen'],
 	['before_start', 'before the start date'],
 	['too_large', 'too large'],

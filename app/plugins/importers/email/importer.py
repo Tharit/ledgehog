@@ -23,8 +23,9 @@ from app.plugins.importers.email.extractor import (
     GAVE_UP,
     NO_CONTENT,
     NOT_ACCEPTED,
+    NOT_AUTHENTICATED,
+    SAME_ORDER,
     STAT_KEYS,
-    SUPERSEDED,
     TOO_LARGE,
     AttemptFailed,
     DocumentBuilder,
@@ -51,7 +52,7 @@ from app.plugins.importers.email.position import (
     read_position,
     record_failure,
 )
-from app.plugins.importers.email.senders import is_accepted
+from app.plugins.importers.email.senders import Verdict, check_sender
 from app.plugins.importers.email.settings import EmailSettings, parse_settings
 
 log = logging.getLogger("ledgehog.email")
@@ -192,8 +193,9 @@ class _Run:
             self.count(uid, ALREADY_SEEN)
             return
         self.remember(outer_id)
-        if not is_accepted(outer, self.settings.senders):
-            self.count(uid, NOT_ACCEPTED)
+        verdict = check_sender(outer, self.settings.senders)
+        if verdict is not Verdict.ACCEPTED:
+            self.count(uid, NOT_ACCEPTED if verdict is Verdict.NOT_ACCEPTED else NOT_AUTHENTICATED)
             return
         for inner in inner_messages(outer):
             inner_id = outer_id if inner is outer else identity_of(inner)
@@ -247,8 +249,9 @@ class _Run:
             self.count(uid, result.reason)
             return
         key = (result.provider, result.external_id)
-        if self.documents.pop(key, None) is not None:  # the later one by UID, then by order, wins
-            self.stats[SUPERSEDED] += 1
+        if key in self.documents:  # under `keep` the earlier one by UID, then by order, wins
+            self.count(uid, SAME_ORDER)
+            return
         self.documents[key] = result
         log.info("uid %s: document", uid)
 

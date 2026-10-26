@@ -133,7 +133,7 @@ def test_each_outcome_is_counted_once():
     stats = rig.run().importer_stats
     assert {k: v for k, v in stats.items() if v} == {
         "documents": 1,
-        "superseded": 1,
+        "same_order": 1,
         "refund": 1,
         "unknown_currency": 1,
         "incomplete": 1,
