@@ -34,7 +34,6 @@ class ChangeValues(BaseModel):
 class ChangesOut(ChangeValues):
     active_task: str | None  # the current user's running sync or discovery task
     model_pending: int  # entries the model still has to look at (0 without a model); the client polls faster
-    model_pending_lines: int  # always 0: the model looks at entries only (kept until the client drops it)
 
 
 def model_queue_of(request: Request) -> ModelQueue | None:
@@ -68,5 +67,4 @@ def get_changes(request: Request, user: CurrentUser, engine: EngineDep) -> Chang
         **values.model_dump(),
         active_task=active.task_id if active is not None else None,
         model_pending=queue.pending() if queue is not None else 0,
-        model_pending_lines=0,
     )

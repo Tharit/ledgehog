@@ -18,7 +18,6 @@ const counts = (over: Partial<SourceDeleteCounts> = {}): SourceDeleteCounts => (
 	tagged_entries: 0,
 	tag_memberships: 0,
 	partners_returning_to_review: 0,
-	freed_documents: 0,
 	...over
 });
 
@@ -85,12 +84,10 @@ describe('summarizeDelete', () => {
 		);
 	});
 
-	it('counts confirmed entries of a split and frees documents', () => {
-		expect(
-			summarizeDelete(
-				counts({ entries: 3, confirmed_entries: 2, tag_memberships: 1, freed_documents: 1 })
-			)
-		).toBe('Removes 3 entries (2 confirmed), 1 tag, and frees 1 document.');
+	it('counts confirmed entries of a split', () => {
+		expect(summarizeDelete(counts({ entries: 3, confirmed_entries: 2, tag_memberships: 1 }))).toBe(
+			'Removes 3 entries (2 confirmed) and 1 tag.'
+		);
 	});
 
 	it('says all confirmed when all are', () => {

@@ -94,7 +94,7 @@ def test_the_change_poll_carries_how_many_entries_are_left(anna: TestClient) -> 
     anna.app.state.model = queue  # type: ignore[attr-defined]
     queue.sync([(1, "a"), (2, "b"), (2, "b")])
     body = anna.get("/api/changes").json()
-    assert (body["model_pending"], body["model_pending_lines"]) == (2, 0)  # lines are no longer asked
+    assert body["model_pending"] == 2
     queue.mark_unavailable()
     body = anna.get("/api/changes").json()
-    assert (body["model_pending"], body["model_pending_lines"]) == (0, 0)
+    assert body["model_pending"] == 0

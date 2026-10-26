@@ -4,8 +4,7 @@ import { REVIEW_FLAGS } from './filter.js';
 export const REVIEW_FLAG_INFO: Readonly<Record<string, { name: string; sentence: string }>> = {
 	unconfirmed: { name: 'Unconfirmed', sentence: 'Values are proposals' },
 	unclassified: { name: 'Unclassified', sentence: 'Type or category missing' },
-	document_suggested: { name: 'Document suggested', sentence: 'A document may explain this' },
-	waiting: { name: 'Waiting', sentence: 'Partner or document still expected' },
+	waiting: { name: 'Waiting', sentence: 'Partner still expected' },
 	unmatched_transfer: { name: 'Unmatched transfer', sentence: 'Transfer leg without a partner' }
 };
 
@@ -16,18 +15,13 @@ export const REVIEW_FLAG_ORDER: readonly string[] = REVIEW_FLAGS;
 export type BadgeSubject = {
 	type: string | null;
 	counterpart_entry_id: number | null;
-	/** the document the entry's transaction carries, when the caller knows it */
-	document?: object | null;
 };
 
 /**
- * The sentence a badge carries: `waiting` on a transfer leg without a partner names the partner, and on a
- * flow that carries a document it is the rest of that document's order that is still expected.
+ * The sentence a badge carries: `waiting` on a transfer leg without a partner names the partner.
  */
 export function reviewSentence(flag: string, subject?: BadgeSubject | null): string | undefined {
 	if (flag === 'waiting' && subject?.type === 'transfer' && subject.counterpart_entry_id === null)
 		return 'Its partner has probably not been imported yet';
-	if (flag === 'waiting' && subject?.type !== 'transfer' && subject?.document)
-		return "The rest of its document's order has probably not been charged yet";
 	return REVIEW_FLAG_INFO[flag]?.sentence;
 }

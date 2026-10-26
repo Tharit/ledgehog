@@ -15,9 +15,6 @@ export type AppConfig = {
 	locale: string;
 	max_rate_age_days: number;
 	matching_window_days: number;
-	/** a document is dated within [booked_on - back, booked_on + ahead] of its transaction (spec §5.8) */
-	document_window_back_days: number;
-	document_window_ahead_days: number;
 	/** whether "Log in with SSO" is offered, and whether it is the only way in */
 	oidc_offered: boolean;
 	oidc_enforced: boolean;
@@ -53,8 +50,6 @@ export type DocumentProviders = Schemas['DocumentProvidersOut'];
 export type DocumentPage = Schemas['DocumentPageOut'];
 export type DocumentDetail = Schemas['DocumentDetailOut'];
 export type DocumentLine = Schemas['DocumentLineOut'];
-export type DocumentMatch = Schemas['DocumentMatchOut'];
-export type DocumentCarrier = Schemas['CarrierOut'];
 export type SourceTransaction = Schemas['SourceTransactionOut'];
 export type EntryPage = Schemas['EntryPageOut'];
 export type EntryType = NonNullable<Entry['type']>;
@@ -119,8 +114,6 @@ export type Payee = {
 	icon: string | null;
 	color: string | null;
 	note: string | null;
-	/** the provider of the documents that describe this payee's charges (spec §3.6) */
-	document_provider?: string | null;
 };
 
 export type Tag = {
@@ -160,9 +153,7 @@ export type EntryFilter = {
 
 /**
  * The documents filter, in the API's own parameter names. Providers are OR, the rest AND. Amounts
- * are magnitudes in minor units of `currency` (which an amount bound requires); `linked: false`
- * is "not linked" (carried by no transaction); `fully_charged: false` is "not fully charged" (the
- * carriers' amounts fall short of the total, carried by none included).
+ * are magnitudes in minor units of `currency` (which an amount bound requires).
  */
 export type DocumentFilter = {
 	provider: string[];
@@ -174,6 +165,4 @@ export type DocumentFilter = {
 	amount_max?: number;
 	currency?: string;
 	q: string;
-	linked?: boolean;
-	fully_charged?: boolean;
 };

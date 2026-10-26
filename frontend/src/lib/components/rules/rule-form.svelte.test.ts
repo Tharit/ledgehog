@@ -258,9 +258,7 @@ describe('RuleForm: the condition rows', () => {
 			'Purpose',
 			'Booking text',
 			'Mandate reference',
-			'Payee',
-			'Document merchant name',
-			'Document line'
+			'Payee'
 		]);
 		expect(await optionsOf('Condition 1: operator')).toEqual([
 			'is',
@@ -270,7 +268,7 @@ describe('RuleForm: the condition rows', () => {
 		]);
 	});
 
-	it('groups the fields: the source transaction’s, then the entry’s with the payee and the document', async () => {
+	it('groups the fields: the source transaction’s, then the entry’s with the payee', async () => {
 		setup();
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Condition 1: field' }));
@@ -282,10 +280,10 @@ describe('RuleForm: the condition rows', () => {
 			within(entryGroup)
 				.getAllByRole('option')
 				.map((o) => o.textContent?.trim())
-		).toEqual(['Payee', 'Document merchant name', 'Document line']);
+		).toEqual(['Payee']);
 	});
 
-	it('offers the document fields on every rule, the payee on category rules only', async () => {
+	it('offers the payee on category rules only', async () => {
 		setup({ form: form({ sets: 'payee' }) });
 
 		expect(await optionsOf('Condition 1: field')).toEqual([
@@ -293,18 +291,8 @@ describe('RuleForm: the condition rows', () => {
 			'Counterparty IBAN or reference',
 			'Purpose',
 			'Booking text',
-			'Mandate reference',
-			'Document merchant name',
-			'Document line'
+			'Mandate reference'
 		]);
-	});
-
-	it('says where a payee rule with a document condition is placed, in the priority’s help', () => {
-		setup();
-
-		expect(
-			screen.getByText(/new payee rule with a document condition is placed before/)
-		).toBeInTheDocument();
 	});
 
 	it('reports a change of field, operator and value of one row', async () => {

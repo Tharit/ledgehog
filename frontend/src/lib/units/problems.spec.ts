@@ -64,20 +64,6 @@ describe('describeProblem', () => {
 		);
 	});
 
-	it('says a document on a transfer, with its remedy', () => {
-		expect(words('document_not_for_transfer')).toEqual({
-			text: 'A transfer cannot carry a document.',
-			remedy: 'Pick a flow, or remove the document.'
-		});
-	});
-
-	it('says a transfer beside a document, with its remedy', () => {
-		expect(words('document_with_transfer')).toEqual({
-			text: 'A transaction with a document cannot also have a transfer.',
-			remedy: 'Keep every entry a flow, or remove the document.'
-		});
-	});
-
 	it('names which pick vanished', () => {
 		expect(words('stale_reference', { field: 'category_id' }).text).toMatch(/category/);
 		expect(words('stale_reference', { field: 'payee_id' }).text).toMatch(/payee/);
@@ -169,43 +155,5 @@ describe('the counter-leg problems', () => {
 		]
 	])('words %s', (code, text) => {
 		expect(words(code).text).toBe(text);
-	});
-});
-
-describe('the problems of a document', () => {
-	it('asks for a decision, and says how to take it', () => {
-		const text = words('document_decision_required', { entry_id: 1, field: 'document' });
-		expect(text.text).toBe('A document is suggested or expected for this transaction.');
-		expect(text.remedy).toBe('Pick one, or commit without a document.');
-	});
-
-	it('says a picked document changed, or was taken, with the remedy', () => {
-		expect(words('document_changed')).toEqual({
-			text: 'The document you picked has changed since you saw it.',
-			remedy: 'Pick it again.'
-		});
-		expect(words('document_taken')).toEqual({
-			text: 'The document you picked is carried by another transaction.',
-			remedy: 'Pick another document.'
-		});
-	});
-
-	it('says a document of another provider than the payee’s cannot be used', () => {
-		const text = words('document_provider_mismatch');
-		expect(text.text).toMatch(/another provider/);
-		expect(text.remedy).toMatch(/payee provider/);
-	});
-
-	it('says a split that cannot be made, with the remedy', () => {
-		const text = words('document_split_unavailable');
-		expect(text.text).toMatch(/cannot split the transaction/);
-		expect(text.remedy).toBe('Keep one entry, or pick another document.');
-	});
-
-	it('says a document that is gone like the other stale choices', () => {
-		expect(words('stale_reference', { field: 'document_id' })).toEqual({
-			text: 'The document you chose no longer exists.',
-			remedy: 'Choose again.'
-		});
 	});
 });

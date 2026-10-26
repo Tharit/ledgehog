@@ -14,7 +14,7 @@
 		waiting: {
 			title: 'Waiting',
 			empty:
-				'Nothing is waiting. A unit that expects its partner leg, a document or the rest of an order appears here until it arrives.'
+				'Nothing is waiting. A unit that expects its partner leg appears here until it arrives.'
 		}
 	};
 </script>
@@ -44,8 +44,6 @@
 		completableNotice,
 		groupHeading,
 		unitsOfGroup,
-		waitingDocumentReason,
-		waitingOrderReason,
 		waitingReason
 	} from '#lib/units/queue.js';
 	import type { QueueGroup, Unit } from '#lib/units/types.js';
@@ -305,28 +303,6 @@
 												data-slot="waiting-reason"
 											>
 												{waitingReason(unit.waiting, lookups, locale)}
-											</div>
-										</div>
-									{/if}
-									{#if unit.waiting_document}
-										<div role="row" class="border-b border-border px-3 py-1">
-											<div
-												role="gridcell"
-												class="text-xs text-muted-foreground"
-												data-slot="waiting-document-reason"
-											>
-												{waitingDocumentReason(unit.waiting_document, locale)}
-											</div>
-										</div>
-									{/if}
-									{#if unit.waiting_order}
-										<div role="row" class="border-b border-border px-3 py-1">
-											<div
-												role="gridcell"
-												class="text-xs text-muted-foreground"
-												data-slot="waiting-order-reason"
-											>
-												{waitingOrderReason(unit.waiting_order, locale)}
 											</div>
 										</div>
 									{/if}

@@ -1,4 +1,4 @@
-// Documents (spec §5.8): browsed here, never written; a link is made by a unit's commit.
+// Documents (spec §5.8): stored and listed here, never written.
 import { request, type Query } from './http.js';
 import type { DocumentDetail, DocumentFilter, DocumentPage, DocumentProviders } from './types.js';
 
@@ -17,9 +17,7 @@ export function documentQuery(filter: DocumentFilter): Query {
 		amount_min: filter.amount_min,
 		amount_max: filter.amount_max,
 		currency: filter.currency,
-		q: text === '' ? undefined : text,
-		linked: filter.linked,
-		fully_charged: filter.fully_charged
+		q: text === '' ? undefined : text
 	};
 }
 
@@ -36,13 +34,13 @@ export function listDocuments(
 	});
 }
 
-/** The providers of the registered document importers, sorted: what a payee can name. */
+/** The providers of the registered document importers, sorted: what the provider filter offers. */
 export async function listDocumentProviders(signal?: AbortSignal): Promise<string[]> {
 	const out = await request<DocumentProviders>('GET', '/api/documents/providers', { signal });
 	return out.providers;
 }
 
-/** One document with its lines its carriers and, while it is not fully charged, the transactions it would match. */
+/** One document with its lines. */
 export function getDocument(id: number, signal?: AbortSignal): Promise<DocumentDetail> {
 	return request('GET', `/api/documents/${id}`, { signal });
 }

@@ -132,20 +132,6 @@ describe('toFields', () => {
 		expect(toFields(form({ priority: '' }), { editing: true }).priority).toBe(DEFAULT_PRIORITY);
 		expect(toFields(form({ priority: '20' }), { editing: true }).priority).toBe(20);
 	});
-
-	it('carries a condition on a document field as it is', () => {
-		const fields = toFields(
-			form({
-				sets: 'payee',
-				conditions: [row('Cloud', 'document_merchant', 'contains'), row('x', 'document_line')]
-			})
-		);
-
-		expect(fields.conditions).toEqual([
-			{ field: 'document_merchant', op: 'contains', value: 'Cloud' },
-			{ field: 'document_line', op: 'starts_with', value: 'x' }
-		]);
-	});
 });
 
 describe('formFromRule', () => {

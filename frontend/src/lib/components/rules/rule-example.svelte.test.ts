@@ -278,10 +278,8 @@ describe('RuleExample: with an example', () => {
 		const at = (el: Element) => rows.indexOf(el);
 		expect(at(table.querySelector('tr[data-field="purpose"]')!)).toBeGreaterThan(at(groups[0]));
 		expect(at(table.querySelector('tr[data-field="purpose"]')!)).toBeLessThan(at(groups[1]));
-		for (const field of ['payee', 'document_merchant', 'document_line']) {
-			const row = table.querySelector(`tr[data-field="${field}"]`)!;
-			expect(at(row)).toBeGreaterThan(at(groups[1]));
-		}
+		const payeeRow = table.querySelector('tr[data-field="payee"]')!;
+		expect(at(payeeRow)).toBeGreaterThan(at(groups[1]));
 	});
 
 	it('shows the payee of the entry by name, and a dash when it has none', async () => {
@@ -300,44 +298,11 @@ describe('RuleExample: with an example', () => {
 		expect(row).toHaveTextContent('REWE');
 	});
 
-	it('says there is no document linked, on the merchant and the line rows', async () => {
+	it('shows a dash for the payee of an entry that has none', async () => {
 		await opened();
 
-		const table = screen.getByRole('table');
-		const rowFor = (label: string) =>
-			within(table).getByRole('rowheader', { name: label }).closest('tr')!;
-		expect(rowFor('Payee')).toHaveTextContent('—');
-		expect(rowFor('Document merchant name')).toHaveTextContent('no document linked');
-		expect(rowFor('Document line')).toHaveTextContent('no document linked');
-	});
-
-	it('shows the document’s merchant name and the entry’s own line', async () => {
-		await opened(
-			entry({
-				...rewe,
-				document: { id: 7, provider: 'amazon', merchant_name: 'CloudNotes', line_count: 1 },
-				document_line: { line_no: 1, description: 'Coffee capsules' }
-			})
-		);
-
-		const table = screen.getByRole('table');
-		const rowFor = (label: string) =>
-			within(table).getByRole('rowheader', { name: label }).closest('tr')!;
-		expect(rowFor('Document merchant name')).toHaveTextContent('CloudNotes');
-		expect(rowFor('Document line')).toHaveTextContent('Coffee capsules');
-	});
-
-	it('says why an entry of a document of several lines has no line', async () => {
-		await opened(
-			entry({
-				...rewe,
-				document: { id: 7, provider: 'amazon', merchant_name: 'CloudNotes', line_count: 3 },
-				document_line: null
-			})
-		);
-
-		const row = screen.getByRole('rowheader', { name: 'Document line' }).closest('tr')!;
-		expect(row).toHaveTextContent('the document has 3 lines, not split');
+		const row = screen.getByRole('rowheader', { name: 'Payee' }).closest('tr')!;
+		expect(row).toHaveTextContent('—');
 	});
 
 	it('lets a long purpose wrap rather than cut it', async () => {

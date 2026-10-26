@@ -1,16 +1,12 @@
 <script lang="ts">
 	import ActionDialog, { type DialogFeedback } from '#lib/components/common/action-dialog.svelte';
 	import Field from '#lib/components/common/field.svelte';
-	import ProviderField from '#lib/components/settings/provider-field.svelte';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import { describeFailure, isFieldFailure } from '#lib/dimensions/errors.js';
 	import type { PayeesStore } from '#lib/payees/store.svelte.js';
-	import { documentProvidersStore } from '#lib/stores/document-providers.svelte.js';
 	import type { Payee } from '#lib/types/domain.js';
 
-	// "Add payee" and "Edit REWE": one form dialog for both (patterns §11.2), name, note and the
-	// document provider (spec §3.6; typed or picked like a tag: the registered importers' providers are
-	// suggested, any value is accepted, empty means none), each
+	// "Add payee" and "Edit REWE": one form dialog for both (patterns §11.2), name and note, each
 	// with its label. A taken name is said under the name; any other refusal in the dialog. After
 	// an add the caller reveals the new row, so focus is not given back to the opener.
 	let {
@@ -33,7 +29,6 @@
 
 	let name = $state('');
 	let note = $state('');
-	let provider = $state('');
 	let nameError = $state<string | null>(null);
 	let failure = $state<string | null>(null);
 	let busy = $state(false);
@@ -43,25 +38,16 @@
 		if (!open) return;
 		name = payee?.name ?? '';
 		note = payee?.note ?? '';
-		provider = payee?.document_provider ?? '';
 		nameError = null;
 		failure = null;
 		added = false;
-		void documentProvidersStore.load();
 	});
 
 	async function save() {
 		const trimmed = name.trim();
 		if (trimmed === '') return;
 		const trimmedNote = note.trim() === '' ? null : note.trim();
-		const trimmedProvider = provider.trim() === '' ? null : provider.trim();
-		const providerChanged = trimmedProvider !== (payee?.document_provider ?? null);
-		if (
-			payee &&
-			trimmed === payee.name &&
-			trimmedNote === (payee.note ?? null) &&
-			!providerChanged
-		) {
+		if (payee && trimmed === payee.name && trimmedNote === (payee.note ?? null)) {
 			onclose();
 			return;
 		}
@@ -69,12 +55,8 @@
 		nameError = null;
 		failure = null;
 		const result = payee
-			? await store.update(payee.id, {
-					name: trimmed,
-					note: trimmedNote,
-					...(providerChanged ? { document_provider: trimmedProvider } : {})
-				})
-			: await store.create(trimmed, trimmedNote, trimmedProvider);
+			? await store.update(payee.id, { name: trimmed, note: trimmedNote })
+			: await store.create(trimmed, trimmedNote);
 		busy = false;
 		if (result.ok) {
 			added = payee === null;
@@ -116,21 +98,6 @@
 	<Field label="Note" hint="Optional: what this merchant is for.">
 		{#snippet children(field)}
 			<Input bind:value={note} {...field} readonly={busy} autocomplete="off" />
-		{/snippet}
-	</Field>
-	<Field
-		label="Document provider"
-		hint="Optional: the provider of the documents that describe this merchant's charges. Pick a known one or type another. Its transactions are then matched to them."
-	>
-		{#snippet children(field)}
-			<ProviderField
-				{...field}
-				label="Document provider"
-				value={provider}
-				known={documentProvidersStore.providers}
-				disabled={busy}
-				onchange={(next) => (provider = next)}
-			/>
 		{/snippet}
 	</Field>
 </ActionDialog>

@@ -6,8 +6,7 @@
 
 	// What marking one row as a duplicate would do, as the consequence list of patterns §6: the
 	// entries it deletes, the partners it unpairs and returns to review, the derived entries that
-	// change, the documents it frees. The server's dry run is what is shown; the page itself still
-	// shows no entry.
+	// change. The server's dry run is what is shown; the page itself still shows no entry.
 	let { preview, locale = 'en' }: { preview: Preview; locale?: string } = $props();
 
 	const confirmed = (entry: Entry) => !entry.review_flags.includes('unconfirmed');
@@ -67,9 +66,6 @@
 				Derived entries change: {derivedLine(change.before)} → {derivedLine(change.after)}.
 			</p>
 		{/each}
-		{#if out.freed_document_ids.length > 0}
-			<p>Frees {plural(out.freed_document_ids.length, 'document', 'documents')}.</p>
-		{/if}
 		{#if out.repointed_source_ids.length > 0}
 			<p>
 				{plural(out.repointed_source_ids.length, 'row', 'rows')} that duplicated it will duplicate the

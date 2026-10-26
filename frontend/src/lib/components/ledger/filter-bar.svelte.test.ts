@@ -167,10 +167,10 @@ describe('FilterBar: the review state chip', () => {
 		await fireEvent.click(screen.getByRole('button', { name: 'Review' }));
 		const list = await screen.findByRole('list', { name: 'Review state' });
 
-		expect(list.querySelectorAll('[data-flag]')).toHaveLength(5);
+		expect(list.querySelectorAll('[data-flag]')).toHaveLength(4);
 		expect(list.querySelector('[data-flag="waiting"]')).toHaveAttribute(
 			'title',
-			'Partner or document still expected'
+			'Partner still expected'
 		);
 		expect(within(list).getByRole('checkbox', { name: 'Waiting' })).toBeInTheDocument();
 	});

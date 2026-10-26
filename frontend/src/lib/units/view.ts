@@ -22,11 +22,9 @@ import {
 	type Evidence,
 	type RuleNames
 } from './evidence.js';
-import { documentField, type DocumentCarrier, type DocumentFieldView } from './unit-document.js';
 import type {
 	ConsequenceKind,
 	PreviewRow,
-	RowDocumentLine,
 	Unit,
 	UnitConsequence,
 	UnitPreview,
@@ -97,10 +95,6 @@ export type EntryView = {
 	 * splits do not own): shown read-only as a ghost group.
 	 */
 	counterLeg: boolean;
-	/** the transaction's document under the draft (the original entry only; null: nothing to show) */
-	document: DocumentFieldView | null;
-	/** the line of the document the entry has (its own: a row of the split, or a one-line document's) */
-	documentLine: RowDocumentLine | null;
 	/** its amount is an allocation the user sets: a split row or a stored entry of a split */
 	amountEditable: boolean;
 	removable: boolean;
@@ -169,9 +163,6 @@ function fieldView(
 	stored: Entry | null,
 	accountName: (id: number) => string | undefined
 ): FieldView {
-	// the type of an entry whose transaction has a linked document: the document decided it
-	const documented =
-		name === 'type' && (row ? (row.document?.document ?? null) !== null : !!stored?.document);
 	const edit = draft.fieldEdit(id, name);
 	let value: FieldValue = null;
 	let key: DerivationKey | null = null;
@@ -219,9 +210,7 @@ function fieldView(
 						field: 'counterpart',
 						partnerAccount: stored?.partner ? accountName(stored.partner.account_id) : undefined
 					}
-				: documented
-					? { documented }
-					: {}
+				: {}
 		),
 		proposal,
 		edit,
@@ -250,8 +239,6 @@ export function entryViews(args: {
 	stale?: boolean;
 	/** an account's name, for the evidence of a pair ("paired with Cash") */
 	accountName?: (id: number) => string | undefined;
-	/** the document provider of a payee, for finding a document by hand */
-	payeeProvider?: (id: number) => string | null | undefined;
 }): EntryView[] {
 	const {
 		unit,
@@ -260,8 +247,7 @@ export function entryViews(args: {
 		rules,
 		locale,
 		stale = false,
-		accountName = () => undefined,
-		payeeProvider = () => null
+		accountName = () => undefined
 	} = args;
 	const stored = new Map(unit.entries.map((e) => [e.id, e]));
 	const sourceOf = (entryId: number) => stored.get(entryId)?.source_transaction_id ?? null;
@@ -291,28 +277,16 @@ export function entryViews(args: {
 	const sourceIds = base.map((b) => {
 		const split = draft.splits.find((s) => s.id === b.id);
 		// the counter-leg a commit creates belongs to no source of the unit
-		if (b.id < 0 && !split && b.row && !b.row.document_line) return null;
+		if (b.id < 0 && !split && b.row) return null;
 		return b.row?.source_transaction_id ?? (split ? sourceOf(split.sourceEntryId) : sourceOf(b.id));
 	});
 	const counts = new Map<number, number>();
 	for (const s of sourceIds) if (s !== null) counts.set(s, (counts.get(s) ?? 0) + 1);
 
-	// the carriers of each document in the unit: the original entries whose row carries it
-	const carriersOf = new Map<number, DocumentCarrier[]>();
-	for (const b of base) {
-		const doc = b.row?.original ? b.row.document?.document : null;
-		if (!b.row || !doc) continue;
-		const source = preview?.splits.find((s) => s.residual_entry_id === b.id)?.source_amount ?? null;
-		const list = carriersOf.get(doc.id) ?? [];
-		list.push({ entryId: b.id, amount: source ?? b.row.amount, bookedOn: b.row.booked_on });
-		carriersOf.set(doc.id, list);
-	}
-
 	return base.map((b, i) => {
 		const entry = stored.get(b.id) ?? null;
 		const split = draft.splits.find((s) => s.id === b.id) ?? null;
-		// a row made from a line of a document is a new split row the draft has not taken over yet
-		const counterLeg = b.id < 0 && split === null && b.row !== null && !b.row.document_line;
+		const counterLeg = b.id < 0 && split === null && b.row !== null;
 		const isNew = b.id < 0 && !counterLeg;
 		const sourceId = counterLeg ? null : sourceIds[i];
 		const original = counterLeg
@@ -368,23 +342,6 @@ export function entryViews(args: {
 			picked: edit.pairing?.mode === 'pick' || edit.pairing?.mode === 'counter_leg',
 			pairing: edit.pairing ?? null,
 			counterLeg,
-			document:
-				original && !isNew && !counterLeg
-					? documentField(
-							b.row,
-							draft,
-							b.id,
-							typeof fields.payee.value === 'number'
-								? (payeeProvider(fields.payee.value) ?? null)
-								: null,
-							b.row?.document?.document
-								? (carriersOf.get(b.row.document.document.id) ?? []).filter(
-										(c) => c.entryId !== b.id
-									)
-								: []
-						)
-					: null,
-			documentLine: b.row ? (b.row.document_line ?? null) : storedLine(entry),
 			amountEditable: !original && !counterLeg,
 			removable: !original && !counterLeg
 		};
@@ -397,8 +354,6 @@ export const RESULT_TEXT: Readonly<Record<UnitState['reasons'][number], string>>
 	incomplete: 'Stays unclassified',
 	unpaired_transfer: 'Waits for its partner',
 	waiting_for_partner: 'Waits for its partner',
-	waiting_for_document: 'Waits for its document',
-	document_suggested: 'Documents to check',
 	unmatched_transfer: 'Stays without a partner',
 	non_standing_keys: 'Proposals to check'
 };
@@ -407,16 +362,6 @@ export function resultText(state: UnitState): string {
 	if (state.confirmed) return 'Confirmed';
 	const words = state.reasons.map((r) => RESULT_TEXT[r] ?? r);
 	return words.length > 0 ? words.join(' · ') : 'Stays in review';
-}
-
-/**
- * The change takes the document off the transaction: the row stored a document and ends with
- * none (converting to a transfer, deciding on none): the panel says so in the row.
- */
-export function dropsDocument(item: UnitConsequence): boolean {
-	const document = item.row.document;
-	if (item.kind !== 'changed' || !document) return false;
-	return document.stored_document_id !== null && document.document === null;
 }
 
 export const CONSEQUENCE_ORDER: readonly ConsequenceKind[] = [
@@ -452,22 +397,6 @@ export function consequenceGroups(preview: UnitPreview | null): ConsequenceGroup
 	});
 }
 
-/** The line of a stored entry as a preview row says it; null without one. */
-function storedLine(entry: Entry | null): RowDocumentLine | null {
-	if (!entry?.document_line || !entry.document) return null;
-	return {
-		document_id: entry.document.id,
-		line_no: entry.document_line.line_no,
-		description: entry.document_line.description
-	};
-}
-
-/** The line a preview row stands for, as an entry carries it; null without a description. */
-function rowLine(row: PreviewRow): Entry['document_line'] {
-	const line = row.document_line;
-	return line?.description ? { line_no: line.line_no, description: line.description } : null;
-}
-
 /**
  * A preview row as an entry, so the compact row of the ledger can draw it. The text of an entry
  * the unit holds is its own; one outside the unit has none beyond its description.
@@ -497,9 +426,7 @@ export function previewRowEntry(row: PreviewRow, base: Entry | null = null): Ent
 		derivation: row.derivation,
 		unit_key: row.unit_key,
 		partner: base?.partner ?? null,
-		document_id: base?.document_id ?? null,
-		document: base?.document ?? null,
-		document_line: rowLine(row) ?? base?.document_line ?? null,
+		origin: base?.origin ?? null,
 		review_flags: row.review_flags as Entry['review_flags'],
 		tag_ids: row.tag_ids
 	};

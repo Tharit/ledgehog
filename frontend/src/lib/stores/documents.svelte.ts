@@ -153,28 +153,16 @@ export class DocumentsStore {
 	}
 }
 
-/** One document's page: the document with its lines its carriers and, while not fully charged, the matches. */
+/** One document's page: the document with its lines. */
 export class DocumentDetailStore {
 	status = $state<DocumentsStatus>('loading');
 	document = $state.raw<DocumentDetail | null>(null);
 	error = $state.raw<ApiError | null>(null);
 
-	readonly #lookups: LookupsStore;
-	get lookups(): Lookups {
-		return this.#lookups.lookups;
-	}
 	readonly locale = $derived(session.config?.locale ?? 'en');
-
-	constructor(lookups: LookupsStore = lookupsStore) {
-		this.#lookups = lookups;
-	}
 
 	#controller: AbortController | null = null;
 	#generation = 0;
-
-	loadLookups(): Promise<void> {
-		return this.#lookups.ensure();
-	}
 
 	async load(id: number): Promise<void> {
 		this.#controller?.abort();

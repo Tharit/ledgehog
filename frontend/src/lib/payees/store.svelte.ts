@@ -27,7 +27,6 @@ export type PayeePatch = {
 	note?: string | null;
 	icon?: string | null;
 	color?: string | null;
-	document_provider?: string | null;
 };
 
 export class PayeesStore {
@@ -88,16 +87,8 @@ export class PayeesStore {
 		return outcome;
 	}
 
-	async create(
-		name: string,
-		note: string | null = null,
-		documentProvider: string | null = null
-	): Promise<Outcome<Payee>> {
-		const body =
-			documentProvider === null
-				? { name, note }
-				: { name, note, document_provider: documentProvider };
-		const outcome = await this.#after(await attempt(() => createPayee(body)));
+	async create(name: string, note: string | null = null): Promise<Outcome<Payee>> {
+		const outcome = await this.#after(await attempt(() => createPayee({ name, note })));
 		return outcome.ok ? { ok: true, value: outcome.value.payee } : outcome;
 	}
 

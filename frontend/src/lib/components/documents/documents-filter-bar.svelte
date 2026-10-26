@@ -1,11 +1,9 @@
 <script lang="ts">
 	import { onDestroy, untrack } from 'svelte';
 	import { Button } from '#lib/components/ui/button/index.js';
-	import Segmented from '#lib/components/common/segmented.svelte';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import AmountChip, { type AmountPatch } from '#lib/components/ledger/amount-chip.svelte';
 	import DateChip from '#lib/components/ledger/date-chip.svelte';
-	import FilterChip from '#lib/components/ledger/filter-chip.svelte';
 	import OptionsChip, { type ChipOption } from '#lib/components/ledger/options-chip.svelte';
 	import {
 		describeDocumentFilter,
@@ -15,7 +13,7 @@
 	} from '#lib/documents/filter.js';
 	import type { DocumentFilter } from '#lib/types/domain.js';
 
-	// The documents filter bar: chips for provider, date, amount, link and charge state, plus a text box
+	// The documents filter bar: chips for provider, date and amount, plus a text box
 	// bound to `q`, in the manner of the ledger's. It owns no filter state: it shows `filter` and
 	// reports every change through `onchange`; the page keeps the filter in the URL.
 	let {
@@ -60,20 +58,6 @@
 			currency: patch.currency
 		});
 	}
-
-	const LINKS: { value: boolean | undefined; label: string }[] = [
-		{ value: undefined, label: 'Any' },
-		{ value: true, label: 'Linked' },
-		{ value: false, label: 'Not linked' }
-	];
-	let linkOpen = $state(false);
-
-	const CHARGES: { value: boolean | undefined; label: string }[] = [
-		{ value: undefined, label: 'Any' },
-		{ value: true, label: 'Fully charged' },
-		{ value: false, label: 'Not fully charged' }
-	];
-	let chargedOpen = $state(false);
 
 	// the text box: changes are sent after a short pause, Enter sends at once
 	let text = $state(untrack(() => filter.q));
@@ -141,44 +125,6 @@
 		withDirection={false}
 		onchange={updateAmount}
 	/>
-	<FilterChip
-		label={label('linked', 'Any link state')}
-		active={filter.linked !== undefined}
-		bind:open={linkOpen}
-		width="w-64"
-	>
-		<span class="text-xs font-medium text-muted-foreground">Carried by a transaction</span>
-		<Segmented
-			label="Link state"
-			role="radio"
-			options={LINKS}
-			value={filter.linked}
-			onchange={(linked) => {
-				update({ linked });
-				linkOpen = false;
-			}}
-		/>
-	</FilterChip>
-	<FilterChip
-		label={label('charged', 'Any charge state')}
-		active={filter.fully_charged !== undefined}
-		bind:open={chargedOpen}
-		width="w-64"
-	>
-		<span class="text-xs font-medium text-muted-foreground">
-			Carriers’ amounts reach the total
-		</span>
-		<Segmented
-			label="Charge state"
-			role="radio"
-			options={CHARGES}
-			value={filter.fully_charged}
-			onchange={(fully_charged) => {
-				update({ fully_charged });
-				chargedOpen = false;
-			}}
-		/>
-	</FilterChip>
 	<Input
 		bind:value={text}
 		type="text"

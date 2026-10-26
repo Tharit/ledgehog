@@ -3,12 +3,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { documentRow } from '#lib/documents/fixtures.js';
 import DocumentsTable from './documents-table.svelte';
 
-const carried = documentRow({
+const etsy = documentRow({
 	id: 2,
 	provider: 'paypal',
 	merchant_name: 'Etsy',
-	title: null,
-	carrier_count: 2
+	title: null
 });
 const free = documentRow({ id: 1 });
 
@@ -16,7 +15,7 @@ function table(props = {}) {
 	const onopen = vi.fn();
 	render(DocumentsTable, {
 		props: {
-			documents: [carried, free],
+			documents: [etsy, free],
 			total: 2,
 			status: 'ready',
 			onopen,
@@ -27,7 +26,7 @@ function table(props = {}) {
 }
 
 describe('DocumentsTable', () => {
-	it('lists the documents with provider, date, merchant or title, amount and carrier', () => {
+	it('lists the documents with provider, date, merchant or title, and amount', () => {
 		table();
 		const rows = screen.getAllByRole('row').filter((r) => r.hasAttribute('data-document-id'));
 		expect(rows).toHaveLength(2);
@@ -36,16 +35,14 @@ describe('DocumentsTable', () => {
 		expect(first.getByText('Etsy')).toBeInTheDocument();
 		expect(first.getByText('Oct 8, 2026')).toBeInTheDocument();
 		expect(first.getByText('−47.31')).toBeInTheDocument();
-		expect(first.getByText('2 transactions')).toBeInTheDocument();
 		const second = within(rows[1]);
 		expect(second.getByText('Amazon · Order 304-1')).toBeInTheDocument();
-		expect(second.queryByText(/transaction/)).toBeNull(); // carried by none: empty
 		expect(screen.getByText('2 of 2')).toBeInTheDocument();
 	});
 
 	it('names the columns', () => {
 		table();
-		for (const name of ['Provider', 'Date', 'Merchant or title', 'Amount', 'Carried by']) {
+		for (const name of ['Provider', 'Date', 'Merchant or title', 'Amount']) {
 			expect(screen.getByRole('columnheader', { name })).toBeInTheDocument();
 		}
 	});
@@ -55,11 +52,6 @@ describe('DocumentsTable', () => {
 		expect(screen.getByRole('link', { name: 'Etsy' })).toHaveAttribute('href', '/documents/2');
 		await fireEvent.click(screen.getByText('paypal'));
 		expect(onopen).toHaveBeenCalledWith(2);
-	});
-
-	it('says "1 transaction" for a single carrier', () => {
-		table({ documents: [documentRow({ id: 5, carrier_count: 1 })], total: 1 });
-		expect(screen.getByText('1 transaction')).toBeInTheDocument();
 	});
 
 	it('writes the currency only where several are listed together', () => {
@@ -81,9 +73,9 @@ describe('DocumentsTable', () => {
 
 	it('names the filters when nothing matches and clears them', async () => {
 		const onclearfilters = vi.fn();
-		table({ documents: [], total: 0, activeFilters: ['amazon', 'Not linked'], onclearfilters });
+		table({ documents: [], total: 0, activeFilters: ['amazon', 'Oct 2026'], onclearfilters });
 		expect(screen.getByText('No documents match these filters')).toBeInTheDocument();
-		expect(screen.getByText('amazon · Not linked')).toBeInTheDocument();
+		expect(screen.getByText('amazon · Oct 2026')).toBeInTheDocument();
 		await fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
 		expect(onclearfilters).toHaveBeenCalledOnce();
 	});

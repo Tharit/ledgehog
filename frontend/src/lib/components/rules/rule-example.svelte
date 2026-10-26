@@ -145,8 +145,6 @@
 							<td class="break-words whitespace-pre-wrap">
 								{#if row.value !== null}
 									{row.value}
-								{:else if row.absent}
-									<span class="text-muted-foreground">{row.absent}</span>
 								{:else}
 									<span class="text-muted-foreground">&mdash;</span>
 								{/if}

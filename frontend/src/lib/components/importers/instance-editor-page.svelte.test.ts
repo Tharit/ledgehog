@@ -362,8 +362,7 @@ describe('the instance page, adding an email importer', () => {
 				name: 'email',
 				kind: 'fetch',
 				emits: ['documents'],
-				presets: {},
-				start_date_default: '2026-03-01'
+				presets: {}
 			})
 		]);
 		const onleave = vi.fn();
@@ -383,7 +382,7 @@ describe('the instance page, adding an email importer', () => {
 		});
 	}
 
-	it('prefills TLS, INBOX and the catalog’s start date, and saves the settings', async () => {
+	it('prefills TLS, INBOX and today as the start date, and saves the settings', async () => {
 		api.createInstance.mockResolvedValue(instance({ id: 12, importer: 'email' }));
 		const onleave = await addingEmail();
 		expect(screen.getByLabelText('Folder')).toHaveValue('INBOX');
@@ -398,7 +397,7 @@ describe('the instance page, adding an email importer', () => {
 			security: 'tls',
 			username: 'me',
 			senders: ['shop@example.com'],
-			start_date: '2026-03-01',
+			start_date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
 			mailbox: 'INBOX'
 		});
 	});

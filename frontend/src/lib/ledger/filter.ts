@@ -13,7 +13,6 @@ export const ENTRY_TYPES = ['flow', 'transfer', 'opening', 'valuation', 'reconci
 export const REVIEW_FLAGS = [
 	'unconfirmed',
 	'unclassified',
-	'document_suggested',
 	'waiting',
 	'unmatched_transfer'
 ] as const;

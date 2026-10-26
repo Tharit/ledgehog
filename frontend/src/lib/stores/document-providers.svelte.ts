@@ -1,6 +1,5 @@
-// The providers of the registered document importers: ONE list for the payee form (which provider a
-// payee names) and the documents list's provider chip. Fetched when a screen needs it; a failed
-// fetch keeps what is held (an empty list at first).
+// The providers of the registered document importers: the options of the documents list's provider
+// chip. Fetched when a screen needs it; a failed fetch keeps what is held (an empty list at first).
 import { listDocumentProviders } from '#lib/api/index.js';
 
 export class DocumentProvidersStore {

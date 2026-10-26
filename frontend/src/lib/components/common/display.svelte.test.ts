@@ -69,8 +69,7 @@ describe('ReviewBadge', () => {
 	it.each([
 		['unconfirmed', 'Values are proposals'],
 		['unclassified', 'Type or category missing'],
-		['document_suggested', 'A document may explain this'],
-		['waiting', 'Partner or document still expected'],
+		['waiting', 'Partner still expected'],
 		['unmatched_transfer', 'Transfer leg without a partner']
 	])('%s carries its sentence as a tooltip', (flag, sentence) => {
 		render(ReviewBadge, { props: { flag } });
@@ -92,7 +91,7 @@ describe('ReviewBadge', () => {
 	])('keeps the general words of the clock for %o', (entry) => {
 		render(ReviewBadge, { props: { flag: 'waiting', entry } });
 
-		expect(screen.getByTitle('Partner or document still expected')).toBeInTheDocument();
+		expect(screen.getByTitle('Partner still expected')).toBeInTheDocument();
 	});
 
 	it('renders nothing for a token it does not know', () => {

@@ -12,21 +12,11 @@ export const SOURCE_FIELDS = [
 ] as const;
 export type SourceField = (typeof SOURCE_FIELDS)[number];
 
-/** The text fields of the entry itself (not of its source) a condition can read: its document's. */
-export const ENTRY_FIELDS = ['document_merchant', 'document_line'] as const;
-export type EntryField = (typeof ENTRY_FIELDS)[number];
-
-/** The fields a condition can read, in the order the editor shows them: source, then entry. */
-export const CONDITION_FIELDS = [...SOURCE_FIELDS, ...ENTRY_FIELDS] as const;
-export type ConditionField = (typeof CONDITION_FIELDS)[number];
+export type ConditionField = SourceField;
 
 /** The two groups of the field picker and of the example's table. */
 export const SOURCE_GROUP = 'From the source transaction';
 export const ENTRY_GROUP = 'From the entry';
-
-export function isSourceField(field: ConditionField): field is SourceField {
-	return (SOURCE_FIELDS as readonly string[]).includes(field);
-}
 
 export const CONDITION_OPS = ['equals', 'starts_with', 'contains', 'regex'] as const;
 export type ConditionOp = (typeof CONDITION_OPS)[number];
@@ -37,9 +27,7 @@ export const FIELD_LABELS: Record<ConditionField, string> = {
 	counterparty_ref: 'Counterparty IBAN or reference',
 	purpose: 'Purpose',
 	booking_text: 'Booking text',
-	mandate_ref: 'Mandate reference',
-	document_merchant: 'Document merchant name',
-	document_line: 'Document line'
+	mandate_ref: 'Mandate reference'
 };
 
 /** The payee condition's field and its one operator: the value is a payee id as a digit string. */
@@ -98,7 +86,7 @@ export function newConditionRow(over: Partial<Omit<ConditionRow, 'key'>> = {}): 
 }
 
 export function isConditionField(field: string): field is ConditionField {
-	return (CONDITION_FIELDS as readonly string[]).includes(field);
+	return (SOURCE_FIELDS as readonly string[]).includes(field);
 }
 
 export function isConditionOp(op: string): op is ConditionOp {
@@ -134,7 +122,7 @@ export function toConditions(rows: readonly ConditionRow[]): Condition[] {
 
 /** The fields the conditions read, once each, in the editor's order. */
 export function fieldsRead(conditions: readonly Condition[]): ConditionField[] {
-	return CONDITION_FIELDS.filter((field) => conditions.some((c) => c.field === field));
+	return SOURCE_FIELDS.filter((field) => conditions.some((c) => c.field === field));
 }
 
 export function fieldLabel(field: string): string {

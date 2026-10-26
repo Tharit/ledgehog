@@ -11,8 +11,6 @@ import {
 	orderByGroups,
 	patchUnitEntries,
 	unitsOfGroup,
-	waitingDocumentReason,
-	waitingOrderReason,
 	waitingReason
 } from './queue.js';
 
@@ -96,40 +94,5 @@ describe('waitingReason', () => {
 		expect(waitingReason({ account_id: 2, synced_through: '2026-10-12' }, lookups)).toMatch(
 			/^Waiting for Savings, synced through .*2026$/
 		);
-	});
-});
-
-describe('waitingDocumentReason', () => {
-	it('names the provider and how far its documents are covered', () => {
-		expect(waitingDocumentReason({ provider: 'amazon', covered_through: null })).toBe(
-			'Waiting for a document from amazon, not synced yet'
-		);
-		expect(waitingDocumentReason({ provider: 'amazon', covered_through: '2026-10-12' })).toMatch(
-			/^Waiting for a document from amazon, covered through .*2026$/
-		);
-	});
-});
-
-describe('waitingOrderReason', () => {
-	it('names the order and what is not yet charged of its total, by magnitude', () => {
-		expect(
-			waitingOrderReason({
-				order: '302-1',
-				provider: 'amazon',
-				charged: { amount: -3000, currency: 'EUR' },
-				total: { amount: -5000, currency: 'EUR' }
-			})
-		).toBe('Waiting for the rest of order 302-1 from amazon: 20.00 of 50.00 not yet charged');
-	});
-
-	it('reads a refund order the same way', () => {
-		expect(
-			waitingOrderReason({
-				order: 'R-9',
-				provider: 'amazon',
-				charged: { amount: 1000, currency: 'EUR' },
-				total: { amount: 2500, currency: 'EUR' }
-			})
-		).toBe('Waiting for the rest of order R-9 from amazon: 15.00 of 25.00 not yet charged');
 	});
 });

@@ -34,11 +34,11 @@ describe('sourceText', () => {
 	});
 });
 
-describe('sourceColumns and the document fields', () => {
-	it('leaves a document condition out: the preview rows carry only the source fields', () => {
+describe('sourceColumns and the payee condition', () => {
+	it('leaves a payee condition out: the preview rows carry only the source fields', () => {
 		expect(
 			sourceColumns([
-				{ field: 'document_merchant', op: 'equals', value: 'CloudNotes' },
+				{ field: 'payee', op: 'is', value: '3' },
 				{ field: 'purpose', op: 'contains', value: 'x' }
 			])
 		).toEqual(['counterparty_name', 'purpose']);

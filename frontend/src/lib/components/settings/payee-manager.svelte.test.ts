@@ -5,7 +5,6 @@ import {
 	ApiError,
 	createPayee,
 	deletePayee,
-	listDocumentProviders,
 	listPayees,
 	mergePayee,
 	updatePayee
@@ -14,13 +13,11 @@ import {
 import { payee } from '#lib/ledger/fixtures.js';
 import { PayeesStore } from '#lib/payees/store.svelte.js';
 import type { Payee, PayeeDeleteOut, PayeeMergeOut } from '#lib/types/domain.js';
-import { documentProvidersStore } from '#lib/stores/document-providers.svelte.js';
 import PayeeManager from './payee-manager.svelte';
 
 vi.mock('#lib/api/index.js', async (importOriginal) => ({
 	...(await importOriginal<typeof import('#lib/api/index.js')>()),
 	listPayees: vi.fn(),
-	listDocumentProviders: vi.fn(),
 	createPayee: vi.fn(),
 	updatePayee: vi.fn(),
 	deletePayee: vi.fn(),
@@ -43,15 +40,7 @@ const written = (p: Payee) => ({ payee: p, settle: { error: null, touched_entry_
 
 beforeEach(() => {
 	vi.resetAllMocks();
-	vi.mocked(listDocumentProviders).mockResolvedValue(['amazon', 'paypal']);
-	documentProvidersStore.providers = [];
 });
-
-/** the provider select of an open dialog, once the providers have arrived */
-async function providerSelect(dialog: HTMLElement) {
-	await waitFor(() => expect(documentProvidersStore.providers).toEqual(['amazon', 'paypal']));
-	return within(dialog).getByRole('button', { name: 'Document provider' });
-}
 
 describe('PayeeManager: loading', () => {
 	it('shows skeleton rows while loading, not a text line', () => {
@@ -80,16 +69,14 @@ async function chooseFromMenu(name: string, item: string) {
 }
 
 describe('PayeeManager: the list', () => {
-	it('shows name and note, "default" for a payee without its own look, and its document provider', async () => {
-		await setup([{ ...rewe, document_provider: 'amazon' }, edeka]);
+	it('shows name and note, and "default" for a payee without its own look', async () => {
+		await setup([rewe, edeka]);
 
 		const row = document.querySelector('[data-payee-id="1"]') as HTMLElement;
 		expect(within(row).getByText('REWE')).toBeInTheDocument();
 		expect(within(row).getByText('weekly shop')).toBeInTheDocument();
 		expect(within(row).getByText('default')).toBeInTheDocument();
-		expect(within(row).getByText('Documents: amazon')).toBeInTheDocument();
 		const own = document.querySelector('[data-payee-id="2"]') as HTMLElement;
-		expect(own.querySelector('[data-slot="document-provider"]')).toBeNull();
 		expect(own.querySelector('[data-slot="look-hint"]')).toBeNull();
 	});
 
@@ -209,126 +196,6 @@ describe('PayeeManager: add and edit', () => {
 		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 	});
 
-	it('edits the document provider, sending it only when it changed', async () => {
-		vi.mocked(updatePayee).mockResolvedValue(
-			written(rewe) as Awaited<ReturnType<typeof updatePayee>>
-		);
-		await setup([{ ...rewe, document_provider: 'amazon' }, edeka]);
-
-		await fireEvent.click(screen.getByRole('button', { name: 'Edit REWE' }));
-		const dialog = await screen.findByRole('dialog', { name: 'Edit REWE' });
-		const select = await providerSelect(dialog);
-		expect(select).toHaveTextContent('amazon');
-		await fireEvent.click(select);
-		await fireEvent.click(await screen.findByRole('option', { name: 'paypal' }));
-		await fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
-
-		await waitFor(() =>
-			expect(updatePayee).toHaveBeenCalledWith(1, {
-				name: 'REWE',
-				note: 'weekly shop',
-				document_provider: 'paypal'
-			})
-		);
-	});
-
-	it('clears the document provider by choosing no provider', async () => {
-		vi.mocked(updatePayee).mockResolvedValue(
-			written(rewe) as Awaited<ReturnType<typeof updatePayee>>
-		);
-		await setup([{ ...rewe, document_provider: 'amazon' }, edeka]);
-
-		await fireEvent.click(screen.getByRole('button', { name: 'Edit REWE' }));
-		const dialog = await screen.findByRole('dialog', { name: 'Edit REWE' });
-		await fireEvent.click(await providerSelect(dialog));
-		await fireEvent.click(await screen.findByRole('option', { name: 'No provider' }));
-		await fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
-
-		await waitFor(() =>
-			expect(updatePayee).toHaveBeenCalledWith(1, {
-				name: 'REWE',
-				note: 'weekly shop',
-				document_provider: null
-			})
-		);
-	});
-
-	it('adds a payee with a document provider', async () => {
-		vi.mocked(createPayee).mockResolvedValue(
-			written(rewe) as Awaited<ReturnType<typeof createPayee>>
-		);
-		await setup([]);
-
-		await fireEvent.click(headerAdd());
-		const dialog = await screen.findByRole('dialog', { name: 'Add payee' });
-		await fireEvent.input(within(dialog).getByLabelText('Name'), { target: { value: 'Amazon' } });
-		await fireEvent.click(await providerSelect(dialog));
-		await fireEvent.click(await screen.findByRole('option', { name: 'amazon' }));
-		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
-
-		await waitFor(() =>
-			expect(createPayee).toHaveBeenCalledWith({
-				name: 'Amazon',
-				note: null,
-				document_provider: 'amazon'
-			})
-		);
-	});
-
-	it('accepts a provider no importer knows, typed and trimmed, without creating anything', async () => {
-		vi.mocked(listDocumentProviders).mockResolvedValue([]);
-		vi.mocked(createPayee).mockResolvedValue(
-			written(rewe) as Awaited<ReturnType<typeof createPayee>>
-		);
-		await setup([]);
-
-		await fireEvent.click(headerAdd());
-		const dialog = await screen.findByRole('dialog', { name: 'Add payee' });
-		await fireEvent.input(within(dialog).getByLabelText('Name'), { target: { value: 'Shop' } });
-		const select = within(dialog).getByRole('button', { name: 'Document provider' });
-		await waitFor(() => expect(documentProvidersStore.loaded).toBe(true));
-		expect(select).toBeEnabled();
-		await fireEvent.click(select);
-		await fireEvent.input(await screen.findByLabelText('Search document provider'), {
-			target: { value: '  ebay ' }
-		});
-		await fireEvent.click(await screen.findByRole('option', { name: 'Use “ebay”' }));
-		expect(select).toHaveTextContent('ebay');
-		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
-
-		await waitFor(() =>
-			expect(createPayee).toHaveBeenCalledWith({
-				name: 'Shop',
-				note: null,
-				document_provider: 'ebay'
-			})
-		);
-	});
-
-	it('suggests the known providers and offers no “use” for one that is known', async () => {
-		await setup([]);
-
-		await fireEvent.click(headerAdd());
-		const dialog = await screen.findByRole('dialog', { name: 'Add payee' });
-		await fireEvent.click(await providerSelect(dialog));
-		await fireEvent.input(await screen.findByLabelText('Search document provider'), {
-			target: { value: 'paypal' }
-		});
-		expect(await screen.findByRole('option', { name: 'paypal' })).toBeInTheDocument();
-		expect(screen.queryByRole('option', { name: /^Use/ })).toBeNull();
-	});
-
-	it('keeps listing a provider the payee holds when its importer is gone', async () => {
-		vi.mocked(listDocumentProviders).mockResolvedValue([]);
-		await setup([{ ...rewe, document_provider: 'ebay' }, edeka]);
-
-		await fireEvent.click(screen.getByRole('button', { name: 'Edit REWE' }));
-		const dialog = await screen.findByRole('dialog', { name: 'Edit REWE' });
-		const select = within(dialog).getByRole('button', { name: 'Document provider' });
-		expect(select).toHaveTextContent('ebay');
-		expect(select).toBeEnabled();
-	});
-
 	it('closes an unchanged edit without writing', async () => {
 		await setup();
 
@@ -428,8 +295,6 @@ const mergeOut = (over: Partial<PayeeMergeOut> = {}): PayeeMergeOut => ({
 	entry_ids: [],
 	setting_rule_ids: [4],
 	condition_rule_ids: [5, 6],
-	document_provider_lost: false,
-	source_document_provider: null,
 	settle: null,
 	...over
 });
@@ -458,17 +323,6 @@ describe('PayeeManager: merge', () => {
 		).toBeInTheDocument();
 		expect(mergePayee).toHaveBeenCalledWith(1, 2, { dryRun: true });
 		expect(within(dialog).queryByRole('option', { name: /REWE/ })).toBeNull();
-	});
-
-	it('warns when the source document provider would be lost', async () => {
-		vi.mocked(mergePayee).mockResolvedValue(
-			mergeOut({ document_provider_lost: true, source_document_provider: 'amazon' })
-		);
-		await setup();
-
-		const dialog = await openMergeInto(/EDEKA/);
-
-		expect(await within(dialog).findByText(/"amazon"/)).toBeInTheDocument();
 	});
 
 	it('merges with the previewed count and says what happened', async () => {

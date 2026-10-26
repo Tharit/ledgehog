@@ -12,8 +12,7 @@
 	import { describeDocumentError, documentTitle } from './describe.js';
 
 	// The list of documents in the shape of the ledger table (patterns §4, §7): a snapshot that
-	// shows what it was given. A row opens the document's page, which lists the transactions
-	// carrying it.
+	// shows what it was given. A row opens the document's page.
 	let {
 		documents,
 		total,
@@ -78,8 +77,7 @@
 		{:else}
 			<EmptyState title="No documents yet">
 				Documents arrive with an importer that delivers them, such as an order history or a payment
-				provider's export. A payee names its provider under Settings, then its transactions are
-				matched to the documents.
+				provider's export.
 			</EmptyState>
 		{/if}
 	{:else}
@@ -148,12 +146,6 @@
 								{locale}
 								{showCurrency}
 							/>
-						</div>
-						<div role="gridcell" class="min-w-0">
-							{#if document.carrier_count > 0}
-								{formatCount(document.carrier_count, locale)}
-								{document.carrier_count === 1 ? 'transaction' : 'transactions'}
-							{/if}
 						</div>
 					</div>
 				{/each}

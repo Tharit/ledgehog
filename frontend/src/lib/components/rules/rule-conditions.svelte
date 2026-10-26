@@ -7,7 +7,6 @@
 	import type { Lookups } from '#lib/ledger/lookups.js';
 	import {
 		CONDITION_OPS,
-		ENTRY_FIELDS,
 		ENTRY_GROUP,
 		FIELD_LABELS,
 		OP_LABELS,
@@ -60,7 +59,7 @@
 
 	/**
 	 * the field list in two groups: the source transaction's fields, then the entry's (the payee on
-	 * category rules, kept on a row that has it, and the document's)
+	 * category rules, kept on a row that has it)
 	 */
 	function fieldOptions(row: ConditionRow) {
 		const options: { value: string; label: string; group: string }[] = [];
@@ -69,9 +68,6 @@
 		}
 		if (takesPayee || isPayeeRow(row)) {
 			options.push({ value: PAYEE_FIELD, label: 'Payee', group: ENTRY_GROUP });
-		}
-		for (const field of ENTRY_FIELDS) {
-			options.push({ value: field, label: FIELD_LABELS[field], group: ENTRY_GROUP });
 		}
 		return options;
 	}

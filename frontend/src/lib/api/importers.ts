@@ -172,7 +172,6 @@ export type RevertResult = {
 	partner_entry_ids: number[];
 	/** how many of the unpaired entries are confirmed */
 	partner_confirmed: number;
-	freed_document_ids: number[];
 	/** (row id, its new original) */
 	repointed_source_ids: [number, number][];
 	/** rows that stopped being duplicates and now have an entry */

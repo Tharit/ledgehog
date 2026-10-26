@@ -1,5 +1,5 @@
 // The change watcher (architecture §4.2): ONE store, started at the root layout once the session is
-// known. It reads `GET /api/changes` when the app starts, every 30 s (every 5 s while the model has entries or lines pending) and when the tab becomes
+// known. It reads `GET /api/changes` when the app starts, every 30 s (every 5 s while the model has entries pending) and when the tab becomes
 // visible again, and holds the current change values of the ledger, the documents and each account.
 // A value is opaque: a view compares it with the one it saw and never reads it. The same read
 // carries the user's active task, which goes to whoever asked (the sync store).
@@ -32,8 +32,6 @@ export class ChangeWatcher {
 	accounts = $state.raw<Record<string, string>>({});
 	/** how many entries the model still has to look at; 0 until read, and without a model */
 	modelPending = $state(0);
-	/** how many document lines the model still has to look at; likewise */
-	modelPendingLines = $state(0);
 
 	// watches are held weakly: a page's store that is dropped needs no unregistering
 	#watches: WeakRef<Watching>[] = [];
@@ -86,7 +84,6 @@ export class ChangeWatcher {
 		this.documents = null;
 		this.accounts = {};
 		this.modelPending = 0;
-		this.modelPendingLines = 0;
 		this.#seq = this.#lastWrite = this.#applied = 0;
 	}
 
@@ -104,15 +101,14 @@ export class ChangeWatcher {
 		this.#applied = n;
 		this.#set(out);
 		this.modelPending = out.model_pending;
-		this.modelPendingLines = out.model_pending_lines;
 		this.#pace();
 		for (const watch of this.#live()) watch.fill();
 		this.#onActiveTask?.(out.active_task);
 	}
 
-	/** The one cadence rule: every 5 s while the model has entries or lines pending, otherwise every 30 s. */
+	/** The one cadence rule: every 5 s while the model has entries pending, otherwise every 30 s. */
 	#pace(): void {
-		const every = this.modelPending > 0 || this.modelPendingLines > 0 ? MODEL_POLL_MS : POLL_MS;
+		const every = this.modelPending > 0 ? MODEL_POLL_MS : POLL_MS;
 		if (every === this.#every && this.#timer !== null) return;
 		if (this.#timer !== null) clearInterval(this.#timer);
 		this.#every = every;

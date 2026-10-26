@@ -10,22 +10,21 @@ import {
 import { settingsFormOf } from './forms.js';
 
 const filled = () => ({
-	...emptyDraft({ startDate: null, today: '2026-10-24' }),
+	...emptyDraft({ today: '2026-10-24' }),
 	host: 'imap.example.org',
 	username: 'me',
 	senders: 'Shop@Example.com\n\n  other@example.org  \nshop@example.com'
 });
 
 describe('the email form adapter', () => {
-	it('is registered, and prefills TLS, INBOX and the catalog start date, else today', () => {
+	it('is registered, and prefills TLS, INBOX and today as the start date', () => {
 		expect(settingsFormOf('email')).not.toBeNull();
-		expect(emptyDraft({ startDate: '2026-03-01', today: '2026-10-24' })).toMatchObject({
+		expect(emptyDraft({ today: '2026-10-24' })).toMatchObject({
 			security: 'tls',
 			mailbox: 'INBOX',
 			port: '',
-			startDate: '2026-03-01'
+			startDate: '2026-10-24'
 		});
-		expect(emptyDraft({ startDate: null, today: '2026-10-24' }).startDate).toBe('2026-10-24');
 	});
 
 	it('reads senders as lines: trimmed, lower-cased, empty lines and repeats dropped', () => {

@@ -58,74 +58,17 @@ describe('sourceRows', () => {
 });
 
 describe('entryRows', () => {
-	const doc = (over = {}) => ({
-		id: 7,
-		provider: 'amazon',
-		merchant_name: 'CloudNotes',
-		line_count: 1,
-		...over
-	});
-	const byField = (rows: ReturnType<typeof entryRows>, field: string) =>
-		rows.find((r) => r.field === field)!;
-
-	it('lists the payee, the document merchant name and the document line, in that order', () => {
+	it('lists the payee', () => {
 		const rows = entryRows(entry());
 
-		expect(rows.map((r) => [r.field, r.label])).toEqual([
-			['payee', 'Payee'],
-			['document_merchant', 'Document merchant name'],
-			['document_line', 'Document line']
-		]);
+		expect(rows.map((r) => [r.field, r.label])).toEqual([['payee', 'Payee']]);
 	});
 
-	it('shows the payee by name through the lookup, a dash (no value) without one', () => {
+	it('shows the payee by name through the lookup, no value without one', () => {
 		const named = entryRows(entry({ payee_id: 4 }), () => 'REWE');
 		const none = entryRows(entry());
 
-		expect(byField(named, 'payee').value).toBe('REWE');
-		expect(byField(none, 'payee')).toMatchObject({ value: null, absent: null });
-	});
-
-	it('says there is no document linked on both document rows', () => {
-		const rows = entryRows(entry({ document: null, document_line: null }));
-
-		expect(byField(rows, 'document_merchant')).toMatchObject({
-			value: null,
-			absent: 'no document linked'
-		});
-		expect(byField(rows, 'document_line')).toMatchObject({
-			value: null,
-			absent: 'no document linked'
-		});
-	});
-
-	it('reads the merchant name and the entry’s own line from the document', () => {
-		const rows = entryRows(
-			entry({
-				document: doc(),
-				document_line: { line_no: 1, description: 'Coffee capsules' }
-			})
-		);
-
-		expect(byField(rows, 'document_merchant').value).toBe('CloudNotes');
-		expect(byField(rows, 'document_line').value).toBe('Coffee capsules');
-	});
-
-	it('has no merchant value, and no reason, for a document without a merchant name', () => {
-		const rows = entryRows(entry({ document: doc({ merchant_name: null }) }));
-
-		expect(byField(rows, 'document_merchant')).toMatchObject({ value: null, absent: null });
-	});
-
-	it('says why a document of several lines gives this entry no line', () => {
-		const rows = entryRows(entry({ document: doc({ line_count: 3 }), document_line: null }));
-
-		expect(byField(rows, 'document_line').absent).toBe('the document has 3 lines, not split');
-	});
-
-	it('says only "no line" for a document of one line without one', () => {
-		const rows = entryRows(entry({ document: doc({ line_count: 1 }), document_line: null }));
-
-		expect(byField(rows, 'document_line').absent).toBe('no line');
+		expect(named[0].value).toBe('REWE');
+		expect(none[0].value).toBeNull();
 	});
 });

@@ -26,8 +26,8 @@ export const EMAIL_FIELDS: readonly string[] = [
 
 export const DEFAULT_MAILBOX = 'INBOX';
 
-/** On add: TLS, the INBOX, and the start date the catalog offers, else today. */
-export function emptyDraft(context?: { startDate: IsoDate | null; today: IsoDate }): EmailDraft {
+/** On add: TLS, the INBOX, and today as the start date. */
+export function emptyDraft(context?: { today: IsoDate }): EmailDraft {
 	return {
 		host: '',
 		security: 'tls',
@@ -35,7 +35,7 @@ export function emptyDraft(context?: { startDate: IsoDate | null; today: IsoDate
 		username: '',
 		mailbox: DEFAULT_MAILBOX,
 		senders: '',
-		startDate: context ? (context.startDate ?? context.today) : ''
+		startDate: context ? context.today : ''
 	};
 }
 

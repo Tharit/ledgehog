@@ -38,7 +38,7 @@ describe('listDocuments', () => {
 		expect(lastUrl()).toBe('/api/documents?limit=50&offset=100');
 	});
 
-	it('repeats provider, keeps the API names and sends linked=false', async () => {
+	it('repeats provider, keeps the API names', async () => {
 		await listDocuments({
 			provider: ['amazon', 'paypal'],
 			from: '2026-10-01',
@@ -46,8 +46,7 @@ describe('listDocuments', () => {
 			amount_min: 100,
 			amount_max: 5000,
 			currency: 'EUR',
-			q: ' rewe ',
-			linked: false
+			q: ' rewe '
 		});
 		const url = new URL(lastUrl(), 'http://x');
 		expect(url.searchParams.getAll('provider')).toEqual(['amazon', 'paypal']);
@@ -57,7 +56,6 @@ describe('listDocuments', () => {
 		expect(url.searchParams.get('amount_max')).toBe('5000');
 		expect(url.searchParams.get('currency')).toBe('EUR');
 		expect(url.searchParams.get('q')).toBe('rewe');
-		expect(url.searchParams.get('linked')).toBe('false');
 	});
 
 	it('leaves out a blank text', () => {

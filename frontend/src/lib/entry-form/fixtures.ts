@@ -30,8 +30,6 @@ export function signedIn(accounts = [giro, cash, loan]): void {
 		locale: 'en',
 		max_rate_age_days: 7,
 		matching_window_days: 7,
-		document_window_back_days: 60,
-		document_window_ahead_days: 7,
 		oidc_offered: false,
 		oidc_enforced: false
 	};
@@ -85,10 +83,8 @@ export function deleted(over: Partial<SourceDeleteOut> = {}): SourceDeleteOut {
 			confirmed_entries: 1,
 			tagged_entries: 1,
 			tag_memberships: 2,
-			partners_returning_to_review: 1,
-			freed_documents: 0
+			partners_returning_to_review: 1
 		},
-		freed_document_ids: [],
 		partners: [entry({ id: 8, version: 4 })],
 		removed: [entry({ id: 5, version: 2 })],
 		removed_entry_ids: [5],

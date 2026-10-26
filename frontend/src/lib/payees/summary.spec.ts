@@ -6,45 +6,35 @@ import { payeeDeleteSummary, payeeMergeSummary } from './summary.js';
 const mergeOut = (over: Partial<PayeeMergeOut> = {}): PayeeMergeOut => ({
 	dry_run: true,
 	source_id: 1,
-	target: { ...payee({ id: 2, name: 'REWE Markt' }), document_provider: null },
+	target: payee({ id: 2, name: 'REWE Markt' }),
 	entry_count: 7,
 	entry_ids: [],
 	setting_rule_ids: [4],
 	condition_rule_ids: [5, 6],
-	document_provider_lost: false,
-	source_document_provider: null,
 	settle: null,
 	...over
 });
 
 describe('payeeMergeSummary', () => {
 	it('counts the entries and the two kinds of rules', () => {
-		const summary = payeeMergeSummary(mergeOut(), payee({ name: 'REWE' }));
+		const summary = payeeMergeSummary(mergeOut());
 
 		expect(summary.totals).toBe('Repoints 7 entries');
 		expect(summary.rules).toEqual([
 			'1 rule setting it repointed',
 			'2 rules naming it as a condition repointed'
 		]);
-		expect(summary.warnings).toEqual([]);
 	});
 
 	it('leaves out the rule lines that are zero', () => {
-		const summary = payeeMergeSummary(
-			mergeOut({ setting_rule_ids: [], condition_rule_ids: [] }),
-			undefined
-		);
+		const summary = payeeMergeSummary(mergeOut({ setting_rule_ids: [], condition_rule_ids: [] }));
 
 		expect(summary.rules).toEqual([]);
 	});
 
-	it('warns when the source document provider would be lost, and says the target keeps its own', () => {
-		const summary = payeeMergeSummary(
-			mergeOut({ document_provider_lost: true, source_document_provider: 'paypal' }),
-			payee({ name: 'PayPal' })
-		);
+	it('says the target keeps its own attributes', () => {
+		const summary = payeeMergeSummary(mergeOut());
 
-		expect(summary.warnings[0]).toContain('"paypal"');
 		expect(summary.notes).toContain('REWE Markt keeps its own name, note, icon and colour.');
 	});
 });
@@ -55,7 +45,7 @@ const deleteOut = (over: Partial<PayeeDeleteOut> = {}): PayeeDeleteOut => ({
 	deleted: false,
 	deleted_rule_ids: [],
 	held: { entries: 0 },
-	payee: { ...payee({ name: 'REWE' }), document_provider: null },
+	payee: payee({ name: 'REWE' }),
 	rules: [],
 	dangling_rules: [],
 	settle: null,

@@ -56,9 +56,6 @@ export function summarizeDelete(counts: SourceDeleteCounts): string {
 				: ` (${counts.confirmed_entries} confirmed)`;
 	const items = [`removes ${entries}${confirmed}`];
 	if (counts.tag_memberships > 0) items.push(plural(counts.tag_memberships, 'tag', 'tags'));
-	if (counts.freed_documents > 0) {
-		items.push(`frees ${plural(counts.freed_documents, 'document', 'documents')}`);
-	}
 	if (counts.partners_returning_to_review > 0) {
 		items.push(
 			`sends ${plural(counts.partners_returning_to_review, 'partner', 'partners')} back to review`

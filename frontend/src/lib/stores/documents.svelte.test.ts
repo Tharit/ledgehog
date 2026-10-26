@@ -130,7 +130,7 @@ describe('DocumentsStore', () => {
 describe('DocumentDetailStore', () => {
 	it('loads one document', async () => {
 		vi.mocked(getDocument).mockResolvedValue(documentDetail({ id: 5 }));
-		const store = new DocumentDetailStore(new LookupsStore());
+		const store = new DocumentDetailStore();
 		const loading = store.load(5);
 		expect(store.status).toBe('loading');
 		await loading;
@@ -140,7 +140,7 @@ describe('DocumentDetailStore', () => {
 
 	it('reports a missing document', async () => {
 		vi.mocked(getDocument).mockRejectedValue(new ApiError(404, 'not_found', 'gone'));
-		const store = new DocumentDetailStore(new LookupsStore());
+		const store = new DocumentDetailStore();
 		await store.load(5);
 		expect(store.status).toBe('error');
 		expect(store.error?.code).toBe('not_found');

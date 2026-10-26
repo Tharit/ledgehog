@@ -121,8 +121,7 @@
 					rules: panel.rules,
 					locale,
 					stale: flow.stale,
-					accountName: (id) => lookups.accounts.get(id)?.name,
-					payeeProvider: (id) => lookups.payees.get(id)?.document_provider
+					accountName: (id) => lookups.accounts.get(id)?.name
 				})
 			: []
 	);

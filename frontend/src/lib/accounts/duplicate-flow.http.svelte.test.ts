@@ -56,7 +56,6 @@ function server(url: string, init: RequestInit): Response {
 			removed_entry_ids: removed,
 			partner_entry_ids: [],
 			partners: [],
-			freed_document_ids: [],
 			repointed_source_ids: [],
 			derived_changes: [],
 			units: [],

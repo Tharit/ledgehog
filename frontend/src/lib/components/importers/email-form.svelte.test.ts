@@ -4,7 +4,7 @@ import { emptyDraft } from '#lib/importers/email-profile.js';
 import EmailForm from './email-form.svelte';
 
 function form(errors: Record<string, string> = {}) {
-	const draft = $state(emptyDraft({ startDate: '2026-03-01', today: '2026-10-24' }));
+	const draft = $state(emptyDraft({ today: '2026-10-24' }));
 	render(EmailForm, { props: { draft, errors } });
 	return draft;
 }

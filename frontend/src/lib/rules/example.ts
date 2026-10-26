@@ -41,55 +41,22 @@ export function sourceRows(entry: Pick<Entry, 'source'>): SourceRow[] | null {
 }
 
 export type EntryRow = {
-	field: typeof PAYEE_FIELD | 'document_merchant' | 'document_line';
+	field: typeof PAYEE_FIELD;
 	label: string;
 	value: string | null;
-	/** why there is no value, when there is something to say; a bare dash when absent */
-	absent: string | null;
 };
 
-export const NO_DOCUMENT_NOTE = 'no document linked';
-
-/**
- * The fields of the entry itself a rule can read, one row each: the payee (category rules read
- * it), the document's merchant name and the entry's own line of the document (spec §5.8). A row
- * without a value says why where it can: no document, or a document of several lines that is not
- * split, so that this entry has no line.
- */
+/** The fields of the entry itself a rule can read, one row each: the payee (category rules read it). */
 export function entryRows(
-	entry: Pick<Entry, 'payee_id' | 'document' | 'document_line'>,
+	entry: Pick<Entry, 'payee_id'>,
 	payeeName: (id: number) => string | undefined = () => undefined
 ): EntryRow[] {
-	const { document, document_line: line } = entry;
 	const payee = entry.payee_id === null ? null : (payeeName(entry.payee_id) ?? null);
-	return [
-		{ field: PAYEE_FIELD, label: 'Payee', value: payee, absent: null },
-		{
-			field: 'document_merchant',
-			label: FIELD_LABELS.document_merchant,
-			value: textOrNull(document?.merchant_name),
-			absent: document ? null : NO_DOCUMENT_NOTE
-		},
-		{
-			field: 'document_line',
-			label: FIELD_LABELS.document_line,
-			value: textOrNull(line?.description),
-			absent: lineAbsence(document, line)
-		}
-	];
+	return [{ field: PAYEE_FIELD, label: 'Payee', value: payee }];
 }
 
 function textOrNull(text: string | null | undefined): string | null {
 	return text === undefined || text === null || text === '' ? null : text;
-}
-
-/** Why an entry has no line: it has no document, or the document is not split, or has one. */
-function lineAbsence(document: Entry['document'], line: Entry['document_line']): string | null {
-	if (!document) return NO_DOCUMENT_NOTE;
-	if (line) return null;
-	return document.line_count > 1
-		? `the document has ${document.line_count} lines, not split`
-		: 'no line';
 }
 
 /** Shown in place of the table for an entry without a source transaction. */

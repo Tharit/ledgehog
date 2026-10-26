@@ -125,10 +125,7 @@ export class ImporterEditorStore {
 			}
 			this.label = '';
 			this.draft =
-				this.#form()?.emptyDraft({
-					startDate: this.entry?.start_date_default ?? null,
-					today: todayIso(session.config?.timezone ?? 'UTC')
-				}) ?? {};
+				this.#form()?.emptyDraft({ today: todayIso(session.config?.timezone ?? 'UTC') }) ?? {};
 			this.#initial = this.#snapshot();
 		}
 		this.loadStatus = 'ready';

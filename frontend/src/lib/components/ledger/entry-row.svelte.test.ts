@@ -216,19 +216,7 @@ describe('EntryRow: the partner summary', () => {
 	it('keeps the general words of the clock on a flow', () => {
 		row({ type: 'flow', review_flags: ['waiting'] });
 
-		expect(screen.getByTitle('Partner or document still expected')).toBeInTheDocument();
-	});
-
-	it('words the clock on a flow that carries a document as the rest of its order', () => {
-		row({
-			type: 'flow',
-			review_flags: ['waiting'],
-			document: { id: 1, provider: 'amazon', merchant_name: null, line_count: 2 }
-		});
-
-		expect(
-			screen.getByTitle("The rest of its document's order has probably not been charged yet")
-		).toHaveAttribute('data-flag', 'waiting');
+		expect(screen.getByTitle('Partner still expected')).toBeInTheDocument();
 	});
 });
 

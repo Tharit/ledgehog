@@ -19,7 +19,6 @@
 	import type { UnitProblem } from '#lib/units/types.js';
 	import { shownFor, type EntryView, type FieldView } from '#lib/units/view.js';
 	import { cn } from '#lib/utils.js';
-	import DocumentField from './document-field.svelte';
 	import EvidenceLine from './evidence-line.svelte';
 	import FieldPicker from './field-picker.svelte';
 	import PartnerField from './partner-field.svelte';
@@ -202,22 +201,6 @@
 		{:else if splitLabel}
 			<span class="text-xs text-muted-foreground" data-slot="split-label">{splitLabel}</span>
 		{/if}
-		{#if view.documentLine}
-			<span class="flex min-w-0 items-baseline gap-1 text-xs text-muted-foreground">
-				<span class="shrink-0" data-slot="document-line-no">
-					Line {view.documentLine.line_no} of the document
-				</span>
-				{#if view.documentLine.description}
-					<span
-						class="max-w-64 truncate"
-						title={view.documentLine.description}
-						data-slot="document-line-description"
-					>
-						{view.documentLine.description}
-					</span>
-				{/if}
-			</span>
-		{/if}
 		{#if !view.isNew}
 			<DateDisplay date={view.row?.booked_on ?? view.stored?.booked_on ?? ''} {locale} />
 		{/if}
@@ -379,10 +362,6 @@
 				oninput={(event) => flow.setText(view.id, 'note', event.currentTarget.value)}
 			/>
 		</dd>
-
-		{#if view.document}
-			<DocumentField {view} {flow} {locale} />
-		{/if}
 
 		<dt class="pt-0.5 text-muted-foreground">Tags</dt>
 		<dd class="min-w-0">

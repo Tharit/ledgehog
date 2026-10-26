@@ -1,10 +1,5 @@
 // Test fixtures for documents: whole API objects with sensible defaults.
-import type {
-	DocumentCarrier,
-	DocumentDetail,
-	DocumentMatch,
-	DocumentRow
-} from '#lib/types/domain.js';
+import type { DocumentDetail, DocumentRow } from '#lib/types/domain.js';
 
 export function documentRow(over: Partial<DocumentRow> = {}): DocumentRow {
 	return {
@@ -18,23 +13,6 @@ export function documentRow(over: Partial<DocumentRow> = {}): DocumentRow {
 		merchant_name: 'Amazon',
 		title: 'Order 304-1',
 		line_count: 2,
-		carrier_count: 0,
-		...over
-	};
-}
-
-export function documentMatch(over: Partial<DocumentMatch> = {}): DocumentMatch {
-	return {
-		entry_id: 40,
-		source_transaction_id: 400,
-		account_id: 1,
-		booked_on: '2026-10-09',
-		amount: { amount: -4731, currency: 'EUR' },
-		instructed_amount: null,
-		display_text: 'AMZN Mktp',
-		payee_id: null,
-		document_id: null,
-		confirmed: false,
 		...over
 	};
 }
@@ -47,33 +25,15 @@ export function documentDetail(over: Partial<DocumentDetail> = {}): DocumentDeta
 				line_no: 1,
 				description: 'USB cable',
 				amount: { amount: -1500, currency: 'EUR' },
-				qty: 2,
-				category: null,
-				rationale: null
+				qty: 2
 			},
 			{
 				line_no: 2,
 				description: 'Book',
 				amount: { amount: -3231, currency: 'EUR' },
-				qty: null,
-				category: null,
-				rationale: null
+				qty: null
 			}
 		],
-		carriers: [],
-		fully_charged: false,
-		matches: [],
-		...over
-	};
-}
-
-export function documentCarrier(over: Partial<DocumentCarrier> = {}): DocumentCarrier {
-	return {
-		entry_id: 40,
-		source_transaction_id: 400,
-		account_id: 1,
-		booked_on: '2026-10-09',
-		amount: { amount: -4731, currency: 'EUR' },
 		...over
 	};
 }

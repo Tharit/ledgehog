@@ -2,18 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { entry } from '#lib/ledger/fixtures.js';
 import { Draft } from './draft.js';
 import { knownRules } from './evidence.js';
-import {
-	consequence,
-	documentSummary,
-	fieldOut,
-	preview,
-	previewRowOf,
-	rowDocument,
-	unit
-} from './fixtures.js';
+import { consequence, fieldOut, preview, previewRowOf, unit } from './fixtures.js';
 import {
 	consequenceGroups,
-	dropsDocument,
 	effectiveChanged,
 	entryViews,
 	previewRowEntry,
@@ -503,43 +494,7 @@ describe('entryViews: a value a rule set that the draft changes', () => {
 	});
 });
 
-describe('entryViews: the type decided by a linked document', () => {
-	const doc = { id: 7, provider: 'amazon', merchant_name: 'Amazon', line_count: 1 };
-	const typeText = (over: NonNullable<Parameters<typeof entry>[0]>, withRow: boolean) => {
-		const base = unit({
-			anchor_entry_id: 1,
-			entries: [
-				entry({
-					id: 1,
-					unit_key: 1,
-					derivation: { type: { pass: 'matcher_decision', basis: {} } },
-					...over
-				})
-			]
-		});
-		const shown = withRow
-			? preview(base, {
-					rows: [
-						previewRowOf(base.entries[0], {
-							document: rowDocument({ document: over.document ? documentSummary() : null })
-						})
-					]
-				})
-			: null;
-		return views(Draft.of(base), shown, base)[0].fields.type.evidence?.text;
-	};
-
-	it('reads "decided by the linked document" for a one-line document, in the preview and as stored', () => {
-		const linked = { document_id: 7, document: doc };
-		expect(typeText(linked, true)).toBe('decided by the linked document');
-		expect(typeText(linked, false)).toBe('decided by the linked document');
-	});
-
-	it('keeps "matched automatically" for an entry without a document', () => {
-		expect(typeText({}, true)).toBe('matched automatically');
-		expect(typeText({}, false)).toBe('matched automatically');
-	});
-
+describe('entryViews: the pair key', () => {
 	it('keeps a transfer pair\'s counter-account "matched automatically"', () => {
 		const base = unit({
 			anchor_entry_id: 1,
@@ -555,75 +510,6 @@ describe('entryViews: the type decided by a linked document', () => {
 		});
 		const [view] = views(Draft.of(base), null, base);
 		expect(view.pairEvidence?.text).toBe('matched automatically');
-	});
-});
-
-describe('entryViews: the line of a document', () => {
-	const line = { line_no: 2, description: 'Filter' };
-	const carried = unit({
-		anchor_entry_id: 1,
-		entries: [
-			entry({
-				id: 1,
-				unit_key: 1,
-				document_id: 7,
-				document: { id: 7, provider: 'amazon', merchant_name: 'Amazon', line_count: 3 },
-				document_line: line
-			})
-		]
-	});
-
-	it('is the preview row’s, with its description', () => {
-		const out = preview(carried);
-
-		expect(views(Draft.of(carried), out, carried)[0].documentLine).toEqual({
-			document_id: 7,
-			line_no: 2,
-			description: 'Filter'
-		});
-	});
-
-	it('is the stored entry’s own line before a preview, and none for an entry without one', () => {
-		expect(views(Draft.of(carried), null, carried)[0].documentLine).toEqual({
-			document_id: 7,
-			line_no: 2,
-			description: 'Filter'
-		});
-		expect(views(Draft.of(split))[0].documentLine).toBeNull();
-	});
-
-	it('is what the row of an entry made for the ledger’s row carries', () => {
-		const row = previewRowOf(carried.entries[0]);
-
-		expect(previewRowEntry(row, carried.entries[0]).document_line).toEqual(line);
-		expect(previewRowEntry(row, carried.entries[0]).document).toEqual(carried.entries[0].document);
-	});
-});
-
-describe('dropsDocument', () => {
-	const row = previewRowOf(entry({ id: 1 }));
-	const withDocument = (stored: number | null, shown: unknown) => ({
-		...row,
-		document: {
-			stored_document_id: stored,
-			document: shown as never,
-			key: null,
-			suggestions: [],
-			waiting: null,
-			decision_required: false,
-			split: null
-		}
-	});
-
-	it('is true for a change whose row stored a document and ends with none', () => {
-		expect(dropsDocument(consequence('changed', withDocument(7, null)))).toBe(true);
-	});
-
-	it('is false where the document stays, was never there, or the kind is another', () => {
-		expect(dropsDocument(consequence('changed', withDocument(7, documentSummary())))).toBe(false);
-		expect(dropsDocument(consequence('changed', withDocument(null, null)))).toBe(false);
-		expect(dropsDocument(consequence('changed', row))).toBe(false);
-		expect(dropsDocument(consequence('deleted', withDocument(7, null)))).toBe(false);
 	});
 });
 

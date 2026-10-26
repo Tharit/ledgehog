@@ -11,8 +11,6 @@
 		documentSearchParams,
 		emptyDocumentFilter
 	} from '#lib/documents/filter.js';
-	import { changes } from '#lib/stores/changes.svelte.js';
-	import { modelLinesLine } from '#lib/units/model-pending.js';
 	import { UNIT_PARAM } from '#lib/units/address.js';
 	import { unitPanel } from '#lib/units/panel-instance.js';
 	import { DocumentsStore } from '#lib/stores/documents.svelte.js';
@@ -41,8 +39,6 @@
 		await goto(`${page.url.pathname}${query ? `?${query}` : ''}`, { replaceState: true });
 	}
 
-	const modelLine = $derived(modelLinesLine(changes.modelPendingLines));
-
 	const currencies = $derived([
 		...new Set([...documents.lookups.accounts.values()].map((a) => a.currency))
 	]);
@@ -67,7 +63,7 @@
 	<PageHeader
 		level={1}
 		title="Documents"
-		description="Orders and payment details that explain transactions. They arrive with imports and are linked when a transaction is reviewed."
+		description="Orders and payment details that arrive with imports."
 	/>
 
 	<DocumentsFilterBar
@@ -82,10 +78,6 @@
 
 	<!-- one reserved line, so a notice appearing never moves the rows (patterns §7) -->
 	<NewDataNotice stale={documents.news.stale} onrefresh={() => documents.reload()} {notice} />
-
-	{#if modelLine}
-		<p class="text-sm text-muted-foreground" data-slot="model-pending-line">{modelLine}</p>
-	{/if}
 
 	<DocumentsTable
 		documents={documents.documents}

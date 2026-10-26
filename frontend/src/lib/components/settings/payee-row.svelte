@@ -12,7 +12,7 @@
 	// One payee (comfortable density, design §5): its look (the initial stands in for a missing
 	// icon, "default" says so when the look is not its own), name and note, with edit inline and
 	// merge and delete in the `⋯` menu (patterns §11.3). Edit opens the manager's form dialog,
-	// where the note and the document provider are edited; the provider is shown under the name.
+	// where the name and the note are edited.
 	let {
 		payee,
 		store,
@@ -77,13 +77,7 @@
 			<span class="truncate text-sm font-medium">{payee.name}</span>
 			<span class="truncate text-xs text-muted-foreground">
 				{#if isDefault}<span data-slot="look-hint">default</span>{/if}
-				{#if isDefault && payee.document_provider}·{/if}
-				{#if payee.document_provider}
-					<span data-slot="document-provider" title="The provider of this payee's documents"
-						>Documents: {payee.document_provider}</span
-					>
-				{/if}
-				{#if (isDefault || payee.document_provider) && payee.note}·{/if}
+				{#if isDefault && payee.note}·{/if}
 				{#if payee.note}<span data-slot="note">{payee.note}</span>{/if}
 			</span>
 		</div>

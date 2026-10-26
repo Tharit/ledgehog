@@ -28,12 +28,6 @@ describe('summarizeConditions', () => {
 		]);
 		expect(one('mandate_ref', 'equals', 'M1')).toEqual(['Mandate reference is "M1"']);
 		expect(one('booking_text', 'contains', 'DIRECT')).toEqual(['Booking text contains "DIRECT"']);
-		expect(one('document_merchant', 'equals', 'CloudNotes')).toEqual([
-			'Document merchant name is "CloudNotes"'
-		]);
-		expect(one('document_line', 'contains', 'capsules')).toEqual([
-			'Document line contains "capsules"'
-		]);
 	});
 
 	it('shows a field or operator it does not know as it came', () => {

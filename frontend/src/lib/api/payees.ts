@@ -13,7 +13,7 @@ export function createPayee(body: PayeeCreateBody): Promise<PayeeWriteOut> {
 	return request('POST', '/api/ledger/payees', { body });
 }
 
-/** Absent fields stay; `null` clears the note, icon, colour or document provider. */
+/** Absent fields stay; `null` clears the note, icon or colour. */
 export function updatePayee(id: number, body: PayeeUpdateBody): Promise<PayeeWriteOut> {
 	return request('PUT', `/api/ledger/payees/${id}`, { body });
 }

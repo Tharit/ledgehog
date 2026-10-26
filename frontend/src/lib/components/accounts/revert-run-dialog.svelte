@@ -102,9 +102,6 @@
 					{n(out.repointed_source_ids.length, 'duplicate', 'duplicates')} point to another original.
 				</li>
 			{/if}
-			{#if out.freed_document_ids.length > 0}
-				<li>{n(out.freed_document_ids.length, 'document', 'documents')} are freed.</li>
-			{/if}
 		</ul>
 	{/if}
 </ActionDialog>

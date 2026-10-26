@@ -7,23 +7,12 @@ export type PayeeMergeSummary = {
 	totals: string;
 	/** rules that set the payee, rules that name it as a condition: 0 entries are left out */
 	rules: string[];
-	/** warnings: the source's document provider would be lost */
-	warnings: string[];
 	notes: string[];
 };
 
-export function payeeMergeSummary(
-	out: PayeeMergeOut,
-	source: Payee | undefined
-): PayeeMergeSummary {
+export function payeeMergeSummary(out: PayeeMergeOut): PayeeMergeSummary {
 	const setting = out.setting_rule_ids.length;
 	const naming = out.condition_rule_ids.length;
-	const warnings: string[] = [];
-	if (out.document_provider_lost) {
-		warnings.push(
-			`${source?.name ?? 'The merged payee'} names the document provider "${out.source_document_provider ?? ''}"; ${out.target.name} does not, so it would be lost.`
-		);
-	}
 	return {
 		totals: `Repoints ${plural(out.entry_count, 'entry', 'entries')}`,
 		rules: [
@@ -32,7 +21,6 @@ export function payeeMergeSummary(
 				? [`${plural(naming, 'rule', 'rules')} naming it as a condition repointed`]
 				: [])
 		],
-		warnings,
 		notes: [
 			'Nothing returns to review.',
 			`${out.target.name} keeps its own name, note, icon and colour.`

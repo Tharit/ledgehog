@@ -27,7 +27,6 @@ describe('dialogs with long content', () => {
 			removed_confirmed: 0,
 			partner_entry_ids: [],
 			partner_confirmed: 0,
-			freed_document_ids: [],
 			repointed_source_ids: [],
 			cleared_duplicate_ids: [],
 			derived_changes: [],

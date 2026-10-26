@@ -5,13 +5,7 @@
 // value) or `reresolve` (the passes decide again); a split row has a temporary (negative) id.
 import { formatMoney, parseMoneyInput, type MoneyParseError } from '#lib/format/index.js';
 import { keyOf } from './evidence.js';
-import type {
-	DocumentDraftRequest,
-	DraftEntryRequest,
-	FieldDraftRequest,
-	Unit,
-	UnitDraftRequest
-} from './types.js';
+import type { DraftEntryRequest, FieldDraftRequest, Unit, UnitDraftRequest } from './types.js';
 
 export const FIELD_NAMES = ['type', 'payee', 'category', 'counter_account'] as const;
 export type FieldName = (typeof FIELD_NAMES)[number];
@@ -31,19 +25,6 @@ export type PairingEdit =
 	 */
 	| { mode: 'counter_leg'; tempId: number; receivedAmount: number | null };
 
-/**
- * What the draft says of the transaction's document, on its original entry (spec §5.8, §6). Absent:
- * `keep`, the link as it stands. A pick and a split name the version the user saw.
- */
-export type DocumentEdit =
-	| { mode: 'pick'; documentId: number; version: number }
-	| { mode: 'none' }
-	| { mode: 'reresolve' }
-	| { mode: 'split_along_lines'; documentId: number; version: number };
-
-/** The line of a document a new row was made from. */
-export type DocumentLineRef = { documentId: number; lineNo: number };
-
 export type FieldEdit =
 	{ mode: 'fixed'; value: FieldValue; shown: ShownBasis | null } | { mode: 'reresolve' };
 
@@ -59,8 +40,6 @@ export type EntryEdit = {
 	tags?: TagEdit;
 	/** the partner of a transfer leg (a stored entry only) */
 	pairing?: PairingEdit;
-	/** the document decision (the original entry of a transaction only) */
-	document?: DocumentEdit;
 };
 
 /** Tags the user added (the entry did not have them) and removed (it had). Never both, never empty. */
@@ -75,10 +54,6 @@ export type NewSplit = {
 	id: number;
 	sourceEntryId: number;
 	tags: readonly number[];
-	/** the row is a line of the transaction's document (the split along the lines) */
-	documentLine?: DocumentLineRef;
-	/** the amount the row was taken over with from the preview's proposal; absent: the user's own row */
-	adopted?: number;
 };
 
 type Base = {
@@ -91,7 +66,6 @@ type Base = {
 	noPayee: boolean;
 	/** the tags the entry stores */
 	tags: readonly number[];
-	sourceId: number | null;
 };
 
 type State = {
@@ -102,10 +76,6 @@ type State = {
 	splits: readonly NewSplit[];
 	removed: readonly number[];
 	reresolveAll: boolean;
-	/** how many rows of the split along the lines were taken over from the proposal */
-	adoptedCount: number;
-	/** originals whose carrier the user left unsplit, without a line: echoed with an empty `document_line` */
-	unsplit: readonly number[];
 };
 
 const EMPTY: EntryEdit = { fields: {} };
@@ -125,8 +95,7 @@ function baseOf(unit: Pick<Unit, 'entries'>): Map<number, Base> {
 					counter_account: e.counter_account_id
 				},
 				noPayee: e.payee_id === null && keyOf(e.derivation, 'payee')?.pass === 'user',
-				tags: [...e.tag_ids],
-				sourceId: e.source_transaction_id
+				tags: [...e.tag_ids]
 			}
 		])
 	);
@@ -155,8 +124,7 @@ function isEmpty(edit: EntryEdit): boolean {
 		edit.note === undefined &&
 		edit.amount === undefined &&
 		edit.tags === undefined &&
-		edit.pairing === undefined &&
-		edit.document === undefined
+		edit.pairing === undefined
 	);
 }
 
@@ -213,9 +181,7 @@ export class Draft {
 			edits: new Map(),
 			splits: [],
 			removed: [],
-			reresolveAll: false,
-			adoptedCount: 0,
-			unsplit: []
+			reresolveAll: false
 		});
 	}
 
@@ -239,39 +205,9 @@ export class Draft {
 		return this.#s.reresolveAll;
 	}
 
-	/**
-	 * A row taken over from the proposed split along the lines that the user has not touched: it is
-	 * the proposal, not an edit.
-	 */
-	#pristine(id: number): boolean {
-		const split = this.#s.splits.find((s) => s.id === id);
-		if (split?.adopted === undefined) return false;
-		const edit = this.edit(id);
-		return (
-			edit.amount === split.adopted &&
-			Object.keys(edit.fields).length === 0 &&
-			edit.description === undefined &&
-			edit.note === undefined &&
-			edit.tags === undefined
-		);
-	}
-
-	/** Rows of the split along the lines were removed or added since the proposal was taken over. */
-	get #lineRowsChanged(): boolean {
-		const adopted = this.#s.splits.filter((s) => s.adopted !== undefined).length;
-		const lines = this.#s.splits.filter((s) => s.documentLine !== undefined).length;
-		return adopted !== this.#s.adoptedCount || lines !== adopted;
-	}
-
-	/** The user left the carrier of this original entry unsplit: it is echoed without a line. */
-	isUnsplit(id: number): boolean {
-		return this.#s.unsplit.includes(id);
-	}
-
 	/** Has the user edited anything? A draft that has not is still committable (it accepts). */
 	get isDirty(): boolean {
-		if (this.hasOtherChanges) return true;
-		return [...this.#s.edits.keys()].some((id) => !this.#pristine(id));
+		return this.hasOtherChanges || this.#s.edits.size > 0;
 	}
 
 	/**
@@ -279,18 +215,16 @@ export class Draft {
 	 * is for the preview to say (`effectiveChanged`, view.ts): an edit can end in the stored value.
 	 */
 	get hasOtherChanges(): boolean {
-		if (this.#s.reresolveAll || this.#s.removed.length > 0 || this.#s.unsplit.length > 0)
+		if (this.#s.reresolveAll || this.#s.removed.length > 0 || this.#s.splits.length > 0) {
 			return true;
-		if (this.#s.splits.some((s) => !this.#pristine(s.id)) || this.#lineRowsChanged) return true;
-		for (const [id, edit] of this.#s.edits) {
-			if (this.#pristine(id)) continue;
+		}
+		for (const edit of this.#s.edits.values()) {
 			if (
 				edit.description !== undefined ||
 				edit.note !== undefined ||
 				edit.amount !== undefined ||
 				edit.tags !== undefined ||
-				edit.pairing !== undefined ||
-				edit.document !== undefined
+				edit.pairing !== undefined
 			) {
 				return true;
 			}
@@ -566,19 +500,7 @@ export class Draft {
 		const edits = new Map(this.#s.edits);
 		edits.delete(id);
 		if (id < 0) {
-			const splits = this.#s.splits.filter((s) => s.id !== id);
-			// a row of the proposed split is an edit of the split like any other (spec §6): the rest is
-			// echoed and stays the user's. Removing the last one is a decision as well: the carrier stays
-			// unsplit, echoed with an empty `document_line` (the server proposes nothing for it)
-			const gone = this.#s.splits.find((s) => s.id === id);
-			const source = gone?.documentLine ? gone.sourceEntryId : null;
-			const lastOne =
-				source !== null && !splits.some((s) => s.documentLine && s.sourceEntryId === source);
-			const unsplit =
-				lastOne && !this.#s.unsplit.includes(source)
-					? [...this.#s.unsplit, source]
-					: this.#s.unsplit;
-			return this.#with({ splits, edits, unsplit });
+			return this.#with({ splits: this.#s.splits.filter((s) => s.id !== id), edits });
 		}
 		if (id === this.#s.anchorId || this.#s.removed.includes(id)) return this;
 		return this.#with({ removed: [...this.#s.removed, id], edits });
@@ -614,153 +536,6 @@ export class Draft {
 			...unpaired(e, 'type'),
 			fields: withField(without(e.fields, 'counter_account'), stored, 'type', 'flow', null)
 		}));
-	}
-
-	// ---- the document of the transaction (spec §5.8, §6) --------------------------------------
-
-	documentEdit(id: number): DocumentEdit | undefined {
-		return this.edit(id).document;
-	}
-
-	/** The rows made from a line of a document (the split along the lines). */
-	get lineRows(): readonly NewSplit[] {
-		return this.#s.splits.filter((s) => s.documentLine !== undefined);
-	}
-
-	/** Has the user changed the rows of the split along the lines, or removed one? */
-	get lineRowsEdited(): boolean {
-		return (
-			this.lineRows.some((s) => !this.#pristine(s.id)) ||
-			(this.lineRows.length > 0 && this.#lineRowsChanged)
-		);
-	}
-
-	/** The draft without the rows of the split along the lines (they belong to a document no longer in play). */
-	#withoutLineRows(): { splits: NewSplit[]; edits: Map<number, EntryEdit> } {
-		const gone = new Set(this.lineRows.map((s) => s.id));
-		const edits = new Map(this.#s.edits);
-		for (const id of gone) edits.delete(id);
-		return { splits: this.#s.splits.filter((s) => !gone.has(s.id)), edits };
-	}
-
-	/** Set (or with `undefined` take away) the document decision of an original entry; the line rows go. */
-	#decide(id: number, change: Partial<Pick<EntryEdit, 'document'>>): Draft {
-		if (!this.#s.base.has(id)) return this;
-		const lines = this.#withoutLineRows();
-		const base = this.#with({
-			splits: lines.splits,
-			edits: lines.edits,
-			adoptedCount: 0,
-			unsplit: this.#s.unsplit.filter((o) => o !== id)
-		});
-		return base.#edited(id, (e) => {
-			const next = { ...e, ...change };
-			if (next.document === undefined) delete next.document;
-			return next;
-		});
-	}
-
-	/** The user picked this document for the transaction (the version is the one they saw). */
-	pickDocument(id: number, documentId: number, version: number): Draft {
-		return this.#decide(id, { document: { mode: 'pick', documentId, version } });
-	}
-
-	/** "None of these", "Commit without a document": the user's decision that there is no document. */
-	noDocument(id: number): Draft {
-		return this.#decide(id, { document: { mode: 'none' } });
-	}
-
-	/** Drop the decision and the link: matching decides afresh. */
-	reresolveDocument(id: number): Draft {
-		return this.#decide(id, { document: { mode: 'reresolve' } });
-	}
-
-	/** Back to what the server proposes: no decision, the proposed split proposed again. */
-	resetDocument(id: number): Draft {
-		return this.#decide(id, { document: undefined });
-	}
-
-	/** The rows of the split along the lines go back to what the server proposes (the decision stays). */
-	resetSplit(id: number): Draft {
-		return this.#decide(id, { document: this.edit(id).document });
-	}
-
-	/**
-	 * Split the transaction along the lines of this document, replacing an existing split: the
-	 * client's own rows for the transaction go, and so do removals of its entries (the server
-	 * deletes the others).
-	 */
-	splitAlongLines(id: number, documentId: number, version: number): Draft {
-		const stored = this.#s.base.get(id);
-		if (!stored) return this;
-		const sameSource = (entryId: number) => {
-			const source = this.#s.base.get(entryId)?.sourceId ?? null;
-			return source !== null && source === stored.sourceId;
-		};
-		const dropped = this.#s.splits.filter((s) => sameSource(s.sourceEntryId));
-		const edits = new Map(this.#s.edits);
-		for (const s of dropped) edits.delete(s.id);
-		const cleared = this.#with({
-			splits: this.#s.splits.filter((s) => !dropped.includes(s)),
-			edits,
-			removed: this.#s.removed.filter((r) => !sameSource(r))
-		});
-		return cleared.#decide(id, { document: { mode: 'split_along_lines', documentId, version } });
-	}
-
-	/** Forget a pick of a document that no longer exists, changed or was taken (any pick: no id). */
-	dropDocument(documentId?: number): Draft {
-		return [...this.#s.edits].reduce<Draft>((draft, [id, edit]) => {
-			const held = edit.document;
-			const names =
-				(held?.mode === 'pick' || held?.mode === 'split_along_lines') &&
-				(documentId === undefined || held.documentId === documentId);
-			return names ? draft.#decide(id, { document: undefined }) : draft;
-		}, this);
-	}
-
-	/**
-	 * Take the rows of the preview that are made from a line of the document into the draft, and
-	 * drop the draft's rows the server no longer has (their document is no longer the
-	 * transaction's). Once the draft holds a row of the split it echoes all of them: the split is
-	 * the client's. `rows` are the preview's new rows with a `document_line`.
-	 */
-	syncLineRows(
-		rows: readonly {
-			id: number;
-			sourceEntryId: number;
-			amount: number;
-			documentLine: DocumentLineRef;
-		}[]
-	): Draft {
-		const present = new Set(rows.map((r) => r.id));
-		const held = new Set(this.#s.splits.map((s) => s.id));
-		// only what the server dropped: a row the client left out of the request (no amount) is its own
-		const missing = this.lineRows.filter(
-			(s) => !present.has(s.id) && this.#s.edits.get(s.id)?.amount != null
-		);
-		const fresh = rows.filter((r) => !held.has(r.id));
-		if (missing.length === 0 && fresh.length === 0) return this;
-		const gone = new Set(missing.map((s) => s.id));
-		const edits = new Map(this.#s.edits);
-		for (const id of gone) edits.delete(id);
-		const splits = this.#s.splits.filter((s) => !gone.has(s.id));
-		for (const row of fresh) {
-			splits.push({
-				id: row.id,
-				sourceEntryId: row.sourceEntryId,
-				tags: this.#s.base.get(row.sourceEntryId)?.tags ?? [],
-				documentLine: row.documentLine,
-				adopted: row.amount
-			});
-			edits.set(row.id, { fields: {}, amount: row.amount });
-		}
-		const lines = splits.filter((s) => s.adopted !== undefined).length;
-		return this.#with({
-			splits,
-			edits,
-			adoptedCount: fresh.length > 0 ? lines : Math.max(0, Math.min(this.#s.adoptedCount, lines))
-		});
 	}
 
 	/**
@@ -842,9 +617,7 @@ export class Draft {
 			edits,
 			splits,
 			removed: this.#s.removed.filter((id) => ids.has(id) && id !== unit.anchor_entry_id),
-			reresolveAll: this.#s.reresolveAll,
-			adoptedCount: this.#s.adoptedCount,
-			unsplit: this.#s.unsplit.filter((id) => ids.has(id))
+			reresolveAll: this.#s.reresolveAll
 		});
 	}
 
@@ -855,19 +628,14 @@ export class Draft {
 	toRequest(versions: Readonly<Record<number, number>> = this.#s.versions): UnitDraftRequest {
 		const entries: DraftEntryRequest[] = [];
 		const splitOf = new Map(this.#s.splits.map((s) => [s.id, s]));
-		const ids = [...new Set([...this.#s.edits.keys(), ...this.#s.unsplit])]
-			.filter((id) => id > 0)
-			.sort((a, b) => a - b);
+		const ids = [...this.#s.edits.keys()].filter((id) => id > 0).sort((a, b) => a - b);
 		for (const id of ids) entries.push(this.#entryRequest(id, null));
 		for (const split of this.#s.splits) {
 			if (this.#s.edits.get(split.id)?.amount == null) continue;
 			entries.push(this.#entryRequest(split.id, splitOf.get(split.id)!.sourceEntryId));
 		}
-		// a split along the lines deletes the other entries of a split: the anchor is never deleted,
-		// so the draft is anchored on the original entry it splits
-		const splitting = ids.find((id) => this.edit(id).document?.mode === 'split_along_lines');
 		return {
-			anchor_entry_id: splitting ?? this.#s.anchorId,
+			anchor_entry_id: this.#s.anchorId,
 			entries,
 			removed_entry_ids: [...this.#s.removed],
 			reresolve_all: this.#s.reresolveAll,
@@ -879,11 +647,6 @@ export class Draft {
 		const edit = this.edit(id);
 		const body: DraftEntryRequest = { id };
 		if (sourceEntryId !== null) body.source_entry_id = sourceEntryId;
-		const line = this.#s.splits.find((s) => s.id === id)?.documentLine;
-		if (line) body.document_line = { document_id: line.documentId, line_no: line.lineNo };
-		else if (this.#s.unsplit.includes(id)) body.document_line = null;
-		const document = documentRequest(edit);
-		if (document) body.document = document;
 		if (edit.amount != null) body.amount = edit.amount;
 		if (edit.description !== undefined) body.description = normaliseText(edit.description);
 		if (edit.note !== undefined) body.note = normaliseText(edit.note);
@@ -906,17 +669,6 @@ export class Draft {
 		}
 		return body;
 	}
-}
-
-function documentRequest(edit: EntryEdit): DocumentDraftRequest | undefined {
-	const held = edit.document;
-	if (!held) return undefined;
-	const body: DocumentDraftRequest = { mode: held.mode };
-	if (held?.mode === 'pick' || held?.mode === 'split_along_lines') {
-		body.document_id = held.documentId;
-		body.document_version = held.version;
-	}
-	return body;
 }
 
 function fieldRequest(edit: FieldEdit): FieldDraftRequest {

@@ -19,7 +19,6 @@ function out(over: Record<string, unknown> = {}) {
 		removed_entry_ids: [10],
 		partner_entry_ids: [],
 		partners: [],
-		freed_document_ids: [],
 		repointed_source_ids: [],
 		derived_changes: [],
 		units: [],

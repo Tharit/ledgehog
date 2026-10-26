@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-	CONDITION_FIELDS,
-	ENTRY_FIELDS,
-	FIELD_LABELS,
-	SOURCE_FIELDS,
 	conditionText,
 	fieldsRead,
 	keepRowsFor,
@@ -121,35 +117,5 @@ describe('conditionText', () => {
 		expect(conditionText({ field: 'counterparty_name', op: 'equals', value: 'REWE' })).toBe(
 			'Counterparty name is "REWE"'
 		);
-	});
-});
-
-describe('the document fields', () => {
-	it('are fields of the entry, listed after the five of the source transaction', () => {
-		expect(SOURCE_FIELDS).toEqual([
-			'counterparty_name',
-			'counterparty_ref',
-			'purpose',
-			'booking_text',
-			'mandate_ref'
-		]);
-		expect(ENTRY_FIELDS).toEqual(['document_merchant', 'document_line']);
-		expect(CONDITION_FIELDS).toEqual([...SOURCE_FIELDS, ...ENTRY_FIELDS]);
-		expect(FIELD_LABELS.document_merchant).toBe('Document merchant name');
-		expect(FIELD_LABELS.document_line).toBe('Document line');
-	});
-
-	it('load as text rows with the four text operators, and are read back by fieldsRead', () => {
-		const conditions = [
-			{ field: 'document_merchant', op: 'equals', value: 'CloudNotes' },
-			{ field: 'document_line', op: 'regex', value: 'capsule|filter' }
-		];
-
-		expect(rowsFromConditions(conditions)).toMatchObject([
-			{ field: 'document_merchant', op: 'equals', value: 'CloudNotes' },
-			{ field: 'document_line', op: 'regex', value: 'capsule|filter' }
-		]);
-		expect(fieldsRead(conditions)).toEqual(['document_merchant', 'document_line']);
-		expect(conditionText(conditions[0])).toBe('Document merchant name is "CloudNotes"');
 	});
 });

@@ -36,17 +36,14 @@ beforeEach(() => {
 		timezone: 'UTC',
 		locale: 'en',
 		max_rate_age_days: 7,
-		matching_window_days: 7,
-		document_window_back_days: 60,
-		document_window_ahead_days: 7
+		matching_window_days: 7
 	});
 	api.readChanges.mockResolvedValue({
 		ledger: 'b:1',
 		documents: 'b:1',
 		accounts: {},
 		active_task: null,
-		model_pending: 0,
-		model_pending_lines: 0
+		model_pending: 0
 	});
 	api.getQueueCounts.mockResolvedValue({ count: 0, pending_review: 0, needs_account: 0 });
 });
@@ -58,33 +55,14 @@ async function mainNav(path: string) {
 }
 
 describe('the main navigation: the model is looking', () => {
-	const pending = (n: number, lines = 0) =>
+	const pending = (n: number) =>
 		api.readChanges.mockResolvedValue({
 			ledger: 'b:1',
 			documents: 'b:1',
 			accounts: {},
 			active_task: null,
-			model_pending: n,
-			model_pending_lines: lines
+			model_pending: n
 		});
-
-	it('shows the same mark on Documents for lines, and Review keeps counting entries only', async () => {
-		pending(2, 5);
-		const nav = await mainNav('/');
-
-		const mark = await nav.findByRole('img', { name: 'The model is looking at 5 lines' });
-		expect(nav.getByRole('link', { name: /Documents/ })).toContainElement(mark);
-		const review = await nav.findByRole('img', { name: 'The model is looking at 2 entries' });
-		expect(nav.getByRole('link', { name: /Review/ })).toContainElement(review);
-	});
-
-	it('says "1 line" for one', async () => {
-		pending(0, 1);
-		const nav = await mainNav('/');
-		expect(
-			await nav.findByRole('img', { name: 'The model is looking at 1 line' })
-		).toBeInTheDocument();
-	});
 
 	it('shows an activity mark on Review with the count in its tooltip, even at a count of zero', async () => {
 		pending(3);

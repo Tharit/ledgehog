@@ -36,7 +36,7 @@
 	label="payees"
 >
 	{#snippet summary(out)}
-		{@const text = payeeMergeSummary(out, source)}
+		{@const text = payeeMergeSummary(out)}
 		<p class="font-medium">{text.totals}</p>
 		{#if text.rules.length > 0}
 			<ul class="flex list-disc flex-col gap-0.5 pl-5" aria-label="Rules">
@@ -45,9 +45,6 @@
 				{/each}
 			</ul>
 		{/if}
-		{#each text.warnings as warning (warning)}
-			<p>{warning}</p>
-		{/each}
 		{#each text.notes as note (note)}
 			<p class="text-muted-foreground">{note}</p>
 		{/each}

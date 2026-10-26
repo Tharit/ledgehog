@@ -5,7 +5,6 @@ import { insertCreated } from './patch.js';
 import { formatCount, formatDate } from '#lib/format/index.js';
 import type { Lookups } from '#lib/ledger/lookups.js';
 import type { Affected, QueueGroup, Unit } from './types.js';
-import { waitingText } from './unit-document.js';
 
 /** The units held followed by a further page, leaving out units that are already held. */
 export function appendUnits(held: readonly Unit[], more: readonly Unit[]): Unit[] {
@@ -75,20 +74,4 @@ export function waitingReason(
 	return waiting.synced_through === null
 		? `Waiting for ${name}, not synced yet`
 		: `Waiting for ${name}, synced through ${formatDate(waiting.synced_through, locale)}`;
-}
-
-/** "Waiting for the rest of order 302-1 from amazon: 20.00 of 50.00 not yet charged". */
-export function waitingOrderReason(
-	waiting: NonNullable<Unit['waiting_order']>,
-	locale = 'en'
-): string {
-	return waitingText(waiting, locale);
-}
-
-/** "Waiting for a document from amazon, covered through 12 Oct 2026" / "…, not synced yet". */
-export function waitingDocumentReason(
-	waiting: NonNullable<Unit['waiting_document']>,
-	locale = 'en'
-): string {
-	return waitingText(waiting, locale);
 }

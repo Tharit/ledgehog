@@ -13,12 +13,12 @@ import * as fints from './fints-profile.js';
 
 export type FormProps<D> = { draft: D; errors?: Record<string, string>; disabled?: boolean };
 
-/** What a new instance's draft may be prefilled with: the catalog's start date, today. */
-export type DraftContext = { startDate: IsoDate | null; today: IsoDate };
+/** What a new instance's draft may be prefilled with: today. */
+export type DraftContext = { today: IsoDate };
 
 export type SettingsForm<D> = {
 	component: Component<FormProps<D>>;
-	/** the draft of a new instance; `context` carries what the catalog and the day prefill */
+	/** the draft of a new instance; `context` carries what the day prefills */
 	emptyDraft(context?: DraftContext): D;
 	draftFromSettings(settings: Record<string, unknown>): D;
 	settingsFromDraft(draft: D): Record<string, unknown>;

@@ -1526,8 +1526,6 @@ export interface components {
             ledger: string;
             /** Model Pending */
             model_pending: number;
-            /** Model Pending Lines */
-            model_pending_lines: number;
         };
         /** CheckOut */
         CheckOut: {

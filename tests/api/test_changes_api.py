@@ -31,9 +31,8 @@ def test_the_read_has_every_account_and_a_start_value_for_one_no_write_touched(s
         "accounts",
         "active_task",
         "model_pending",
-        "model_pending_lines",
     }
-    assert body["model_pending"] == 0 and body["model_pending_lines"] == 0
+    assert body["model_pending"] == 0
     assert set(body["accounts"]) == {str(i) for i in ids} and body["active_task"] is None
     start = sync.app.state.changes.start_value
     assert body["ledger"] == body["documents"] == start and set(body["accounts"].values()) == {start}

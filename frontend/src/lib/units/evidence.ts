@@ -1,6 +1,6 @@
 // A derivation key (spec §5.9) as text, in the one vocabulary of patterns §4.3. The rules preview
-// and the review panel share this: nothing else turns a key into words. Proposals (history, model,
-// matcher proposal: the non-standing keys) are marked so a view can set them apart (design §7).
+// and the review panel share this: nothing else turns a key into words. Proposals (history, model:
+// the non-standing keys) are marked so a view can set them apart (design §7).
 import { formatMonth } from '#lib/format/index.js';
 import { ruleUrl } from '#lib/rules/links.js';
 
@@ -8,7 +8,7 @@ import { ruleUrl } from '#lib/rules/links.js';
 export type DerivationKey = { pass: string; basis?: unknown };
 
 /** The passes whose value is a proposal until a user confirms it (spec §5.9). */
-const PROPOSAL_PASSES: ReadonlySet<string> = new Set(['history', 'llm', 'matcher_proposal']);
+const PROPOSAL_PASSES: ReadonlySet<string> = new Set(['history', 'llm']);
 
 export function isProposalPass(pass: string): boolean {
 	return PROPOSAL_PASSES.has(pass);
@@ -75,8 +75,6 @@ export type KeyContext = {
 	field?: string;
 	/** the name of the partner's account, when it is known */
 	partnerAccount?: string;
-	/** the entry's transaction has a linked document: it decided the type, so its key reads so */
-	documented?: boolean;
 };
 
 /** The pass a pair decision was made with is its key's; the basis marks a value that follows the pair. */
@@ -144,14 +142,7 @@ export function describeKey(
 			};
 		}
 		case 'matcher_decision':
-			return context.documented
-				? { text: 'decided by the linked document', proposal: false }
-				: { text: 'matched automatically', proposal: false };
-		case 'matcher_proposal':
-			return {
-				text: 'document matched — check the split',
-				proposal: true
-			};
+			return { text: 'matched automatically', proposal: false };
 		case 'user': {
 			const nested = asKey(key.basis);
 			if (!nested) return { text: 'set by you', proposal: false };
@@ -160,35 +151,12 @@ export function describeKey(
 				? nested.pass
 				: nested.pass === 'llm'
 					? 'the model'
-					: nested.pass === 'matcher_proposal'
-						? 'a document match'
-						: was.text.replace(/^history: (.*)$/, 'history ($1)');
+					: was.text.replace(/^history: (.*)$/, 'history ($1)');
 			return {
 				text: `confirmed by you, proposed by ${proposedBy}`,
 				proposal: false
 			};
 		}
-		default:
-			return { text: key.pass, proposal: false };
-	}
-}
-
-/**
- * The words for the `document` key of a transaction's original entry (spec §5.8, §5.9). `linked`:
- * the transaction carries a document; a `user` key without one is the decision that there is none.
- */
-export function describeDocumentKey(
-	key: DerivationKey | null | undefined,
-	linked: boolean
-): Evidence | null {
-	if (!key) return null;
-	switch (key.pass) {
-		case 'matcher_decision':
-			return { text: 'document matched', proposal: false };
-		case 'matcher_proposal':
-			return { text: 'document matched — check the split', proposal: true };
-		case 'user':
-			return { text: linked ? 'picked by you' : 'no document', proposal: false };
 		default:
 			return { text: key.pass, proposal: false };
 	}

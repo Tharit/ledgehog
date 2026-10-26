@@ -6,7 +6,7 @@ import { buildLookups } from '#lib/ledger/lookups.js';
 import { rule } from '#lib/rules/fixtures.js';
 import { ruleNames } from '#lib/stores/rule-names.svelte.js';
 import type { PreviewRow, UnitDraftRequest } from '#lib/units/types.js';
-import { documentSummary, preview, previewRowOf, rowDocument, unit } from '#lib/units/fixtures.js';
+import { preview, previewRowOf, unit } from '#lib/units/fixtures.js';
 import { UnitPanel, type PanelNav } from '#lib/units/panel.svelte.js';
 import UnitPanelView from './unit-panel.svelte';
 
@@ -60,45 +60,31 @@ const rowFor = (id: number, amount: number, over: Partial<PreviewRow> = {}) =>
 	});
 
 /** What a server answers: the new rows the request echoes in its order, the original as residual. */
-function answer(base: ReturnType<typeof unit>, request: UnitDraftRequest, withLines = false) {
+function answer(base: ReturnType<typeof unit>, request: UnitDraftRequest) {
 	const out = preview(base);
 	const echoed = (request.entries ?? []).filter((e) => e.id < 0 && e.amount != null);
-	const lines = echoed.some((e) => e.document_line)
-		? echoed
-		: withLines
-			? [
-					{ id: -900, amount: -2000, document_line: { document_id: 7, line_no: 1 } },
-					{ id: -901, amount: -3000, document_line: { document_id: 7, line_no: 2 } },
-					{ id: -902, amount: -1000, document_line: { document_id: 7, line_no: 3 } }
-				]
-			: echoed;
 	const first = out.rows[0];
 	const extra = out.rows.slice(1).map((r) => {
 		const sent = (request.entries ?? []).find((e) => e.id === r.id);
 		return sent?.amount != null ? { ...r, amount: { ...r.amount, amount: sent.amount } } : r;
 	});
-	const taken = lines.reduce((s, e) => s + (e.amount ?? 0), 0);
+	const taken = echoed.reduce((s, e) => s + (e.amount ?? 0), 0);
 	const rows = [
 		{
 			...first,
-			amount: { ...first.amount, amount: first.amount.amount - taken },
-			document: withLines ? rowDocument({ document: documentSummary() }) : first.document
+			amount: { ...first.amount, amount: first.amount.amount - taken }
 		},
 		...extra,
-		...lines.map((e) =>
-			rowFor(e.id, e.amount ?? 0, {
-				document_line: 'document_line' in e ? (e.document_line as never) : undefined
-			})
-		)
+		...echoed.map((e) => rowFor(e.id, e.amount ?? 0))
 	];
 	out.rows = rows as PreviewRow[];
 	return out;
 }
 
-async function openPanel(shown: ReturnType<typeof unit>, withLines = false) {
+async function openPanel(shown: ReturnType<typeof unit>) {
 	vi.mocked(getUnit).mockResolvedValue(shown);
 	vi.mocked(previewUnit).mockImplementation(async (request: UnitDraftRequest) =>
-		answer(shown, request, withLines)
+		answer(shown, request)
 	);
 	const panel = new UnitPanel(nav());
 	render(UnitPanelView, { props: { panel, lookups, locale: 'en' } });
@@ -264,29 +250,6 @@ describe('an amount that is no amount, over a row that has one', () => {
 		);
 		expect(panel.flow.commitReason).not.toBe('An amount is not valid.');
 		expect(within(dialog).queryByRole('alert')).toBeNull();
-	});
-
-	it('a split along a document’s lines keeps every row, in order', async () => {
-		const { dialog, panel } = await openPanel(
-			unit({ anchor_entry_id: 1, entries: [original] }),
-			true
-		);
-		await waitFor(() => expect(amounts(dialog)).toEqual(['20.00', '30.00', '10.00']));
-		await rest();
-		const before = calls();
-
-		await type(field(dialog, 1), '');
-		await fireEvent.blur(field(dialog, 1));
-		await new Promise((r) => setTimeout(r, 450));
-
-		expect(calls()).toBe(before);
-		expect(panel.flow.draft?.lineRows.map((s) => s.id)).toEqual([-900, -901, -902]);
-		expect(panel.flow.preview?.rows.filter((r) => r.id < 0).map((r) => r.id)).toEqual([
-			-900, -901, -902
-		]);
-		expect(field(dialog, 1).value).toBe('');
-		expect(field(dialog, 2).value).toBe('10.00');
-		expect(panel.flow.commitReason).toBe('An amount is not valid.');
 	});
 
 	it('a stored extra entry of a split changes nothing either', async () => {

@@ -17,8 +17,6 @@ export const REASON_TEXT: Readonly<Record<UnitReason, string>> = {
 	incomplete: 'Incomplete',
 	unpaired_transfer: 'Waiting for its partner',
 	waiting_for_partner: 'Waiting for its partner',
-	waiting_for_document: 'Waiting for its document',
-	document_suggested: 'Documents suggested',
 	unmatched_transfer: 'No partner yet',
 	non_standing_keys: 'Proposals to check'
 };

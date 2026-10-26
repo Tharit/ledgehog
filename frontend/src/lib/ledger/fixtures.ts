@@ -23,9 +23,7 @@ export function entry(over: Partial<Entry> = {}): Entry {
 		derivation: {},
 		unit_key: null,
 		partner: null,
-		document_id: null,
-		document: null,
-		document_line: null,
+		origin: null,
 		review_flags: [],
 		tag_ids: [],
 		...over

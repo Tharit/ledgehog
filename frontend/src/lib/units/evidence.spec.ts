@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
 	asKey,
-	describeDocumentKey,
 	describeKey,
 	isPartnerBasis,
 	isProposalPass,
@@ -98,14 +97,10 @@ describe('describeKey', () => {
 		);
 	});
 
-	it('matcher keys: a decision is decided, a proposal is not', () => {
+	it('a matcher decision is decided', () => {
 		expect(describeIt({ pass: 'matcher_decision' })).toMatchObject({
 			text: 'matched automatically',
 			proposal: false
-		});
-		expect(describeIt({ pass: 'matcher_proposal' })).toMatchObject({
-			text: 'document matched — check the split',
-			proposal: true
 		});
 	});
 
@@ -125,30 +120,6 @@ describe('describeKey', () => {
 	it('user over a model proposal names the model', () => {
 		const e = describeIt({ pass: 'user', basis: { pass: 'llm', basis: { rationale: 'because' } } });
 		expect(e?.text).toBe('confirmed by you, proposed by the model');
-	});
-
-	it("words a matcher decision on the type of a documented entry as the linked document's", () => {
-		expect(describeKey({ pass: 'matcher_decision' }, rules, 'en', { documented: true })).toEqual({
-			text: 'decided by the linked document',
-			proposal: false
-		});
-		expect(
-			describeKey({ pass: 'matcher_decision' }, rules, 'en', { documented: false })?.text
-		).toBe('matched automatically');
-		// the other texts do not change with the document
-		const documented = { documented: true };
-		expect(describeKey({ pass: 'user' }, rules, 'en', documented)).toEqual({
-			text: 'set by you',
-			proposal: false
-		});
-		expect(describeKey({ pass: 'matcher_proposal' }, rules, 'en', documented)).toEqual({
-			text: 'document matched — check the split',
-			proposal: true
-		});
-		const confirmed = { pass: 'user', basis: { pass: 'matcher_proposal', basis: {} } };
-		expect(describeKey(confirmed, rules, 'en', documented)?.text).toBe(
-			'confirmed by you, proposed by a document match'
-		);
 	});
 
 	it('words the pair key: the partner account when known, else "matched automatically"', () => {
@@ -213,33 +184,7 @@ describe('keys of a derivation', () => {
 	});
 
 	it('knows the proposal passes', () => {
-		expect(['history', 'llm', 'matcher_proposal'].every(isProposalPass)).toBe(true);
+		expect(['history', 'llm'].every(isProposalPass)).toBe(true);
 		expect(['rule', 'own_account', 'user', 'matcher_decision'].some(isProposalPass)).toBe(false);
-	});
-});
-
-describe('describeDocumentKey', () => {
-	it('has nothing to say without a key', () => {
-		expect(describeDocumentKey(null, false)).toBeNull();
-	});
-
-	it('words the matcher’s decision and its proposal', () => {
-		expect(describeDocumentKey({ pass: 'matcher_decision' }, true)).toEqual({
-			text: 'document matched',
-			proposal: false
-		});
-		expect(describeDocumentKey({ pass: 'matcher_proposal' }, true)).toEqual({
-			text: 'document matched — check the split',
-			proposal: true
-		});
-	});
-
-	it('words the user’s word: a pick, or none', () => {
-		expect(describeDocumentKey({ pass: 'user' }, true)?.text).toBe('picked by you');
-		expect(describeDocumentKey({ pass: 'user' }, false)?.text).toBe('no document');
-	});
-
-	it('shows an unknown pass as itself', () => {
-		expect(describeDocumentKey({ pass: 'future' }, true)?.text).toBe('future');
 	});
 });
