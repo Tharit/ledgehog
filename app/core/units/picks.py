@@ -59,6 +59,10 @@ def check_pick(
         return not_offered
     if partner_id in own_unit:
         return Problem("partner_in_unit", leg.id, "pairing", detail)
+    # a clearance account pairs only with its bookings (spec §5.7): no pick on, or toward, one
+    own, theirs = accounts.get(leg.account_id), accounts.get(partner.account_id)
+    if (own is not None and own.clearance) or (theirs is not None and theirs.clearance):
+        return not_offered
     if partner.account_id == leg.account_id or _sign(partner.amount) == _sign(leg.amount):
         return not_offered
     if partner.type not in (None, "transfer"):

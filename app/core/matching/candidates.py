@@ -36,6 +36,17 @@ def amounts_match(a: Leg, b: Leg) -> bool:
     return False
 
 
+def touches_clearance(leg: Leg, accounts: Mapping[int, AccountFact]) -> bool:
+    """Whether a leg is on a clearance account or points at one (spec §5.7 'Transfers to a clearance
+    account'): only a booking pairs there, and settling's booking step makes that pair; the matcher never
+    does."""
+    own = accounts.get(leg.account_id)
+    if own is not None and own.clearance:
+        return True
+    counter = accounts.get(leg.counter_account_id) if leg.counter_account_id is not None else None
+    return counter is not None and counter.clearance
+
+
 def is_candidate(leg: Leg, other: Leg, window: int, accounts: Mapping[int, AccountFact]) -> bool:
     """Whether `other` is a candidate partner of `leg` (symmetric; both are unpaired transfer legs).
 
@@ -43,6 +54,8 @@ def is_candidate(leg: Leg, other: Leg, window: int, accounts: Mapping[int, Accou
     chosen: the other leg's account is in the currency the money arrived in.
     """
     if leg.type != "transfer" or other.type != "transfer":
+        return False
+    if touches_clearance(leg, accounts) or touches_clearance(other, accounts):
         return False
     if leg.account_id == other.account_id or leg.entry_id == other.entry_id:
         return False

@@ -51,7 +51,7 @@ def test_preview_shape(anna: TestClient, scene: Scene) -> None:
     assert set(row) == set(
         "id version source_transaction_id unit_key in_unit original account_id booked_on value_on amount"
         " description note tag_ids counterpart_entry_id fields review_flags derivation stored".split()
-        + ["transfer", "counter_leg_for"]
+        + ["transfer", "counter_leg_for", "booking", "booking_for"]
     )
     assert row["amount"] == {"amount": -700, "currency": "EUR"} and row["in_unit"] and row["original"]
     cat = row["fields"]["category"]
@@ -638,3 +638,96 @@ def test_a_malformed_counter_leg_is_a_422(anna: TestClient, scene: Scene) -> Non
         ],
     }
     assert_envelope(anna.post(PREVIEW, json=clash), 422, "invalid_draft")
+
+
+# ---- bookings (spec §5.7, §5.8, §6) -------------------------------------------------------------------
+
+
+def _booked_charge(scene: Scene) -> tuple[int, int, int]:
+    from tests.core.bookings.charges import booking_entries, charge, clearance, rule_to
+
+    account = clearance(scene)
+    rule_to(scene, account)
+    e = charge(scene)
+    scene.settle()
+    (leg,) = booking_entries(scene, e)
+    return e, leg.id, account
+
+
+def test_a_charge_decided_to_a_clearance_account_previews_the_booking_row_and_a_commit_leaves_it_to_settling(
+    anna: TestClient, scene: Scene
+) -> None:
+    from tests.core.bookings.charges import booking_entries, charge, clearance
+
+    account = clearance(scene)
+    e = charge(scene, -4997)
+    draft = {
+        "anchor_entry_id": e,
+        "entries": [{"id": e, "counter_account": {"mode": "fixed", "value": account}}],
+    }
+    body = anna.post(PREVIEW, json=draft).json()
+    assert body["problems"] == [] and body["state"]["confirmed"] is True
+    ghost = next(r for r in body["rows"] if r["booking_for"] == e)
+    assert ghost["id"] < 0 and ghost["version"] is None and ghost["account_id"] == account
+    assert ghost["amount"] == {"amount": 4997, "currency": "EUR"} and ghost["counterpart_entry_id"] == e
+    assert ghost["booking"] == {"kind": "transfer", "id": e} and ghost["counter_leg_for"] is None
+    assert ghost["transfer"]["offers"] == [] and ghost["fields"]["type"]["key"]["pass"] == "booking"
+    charge_row = next(r for r in body["rows"] if r["id"] == e)
+    assert charge_row["counterpart_entry_id"] == ghost["id"] and charge_row["booking_for"] is None
+    assert charge_row["transfer"]["state"] == "paired"
+    r = anna.post(COMMIT, json={**draft, "versions": body["versions"]})
+    assert r.status_code == 200, r.text
+    assert r.json()["created"] == {}
+    (leg,) = booking_entries(scene, e)
+    assert leg.amount == 4997 and r.json()["settle"]["error"] is None
+
+
+def test_a_draft_that_changes_a_bookings_structure_is_invalid_draft_booking_fixed(
+    anna: TestClient, scene: Scene
+) -> None:
+    e, leg, _account = _booked_charge(scene)
+    drafts = [
+        {"anchor_entry_id": e, "entries": [{"id": leg, "type": {"mode": "fixed", "value": "flow"}}]},
+        {"anchor_entry_id": e, "entries": [{"id": leg, "amount": 5}]},
+        {"anchor_entry_id": e, "entries": [{"id": -3, "amount": -5, "source_entry_id": leg}]},
+        {"anchor_entry_id": e, "entries": [{"id": leg, "pairing": {"mode": "reresolve"}}]},
+        {"anchor_entry_id": e, "removed_entry_ids": [leg]},
+    ]
+    for draft in drafts:
+        for url in (PREVIEW, COMMIT):
+            r = anna.post(url, json=draft)
+            assert_envelope(r, 422, "invalid_draft")
+            assert r.json()["error"]["details"]["code"] == "booking_fixed"
+
+
+def test_the_unit_of_a_booking_is_marked_with_its_source_kind(anna: TestClient, scene: Scene) -> None:
+    e, leg, _account = _booked_charge(scene)
+    unit = anna.get(f"/api/units/{leg}").json()
+    assert unit["booking"] == {"kind": "transfer"} and unit["state"]["confirmed"] is True
+    body = anna.post(PREVIEW, json={"anchor_entry_id": leg}).json()
+    row = next(r for r in body["rows"] if r["id"] == leg)
+    assert row["booking"] == {"kind": "transfer", "id": e} and row["booking_for"] is None
+
+
+def test_removing_a_booking_by_re_typing_its_charge_shows_it_as_a_deleted_consequence(
+    anna: TestClient, scene: Scene
+) -> None:
+    e, leg, _account = _booked_charge(scene)
+    cat = scene.category("Books")
+    draft = {
+        "anchor_entry_id": e,
+        "entries": [
+            {
+                "id": e,
+                "type": {"mode": "fixed", "value": "flow"},
+                "category": {"mode": "fixed", "value": cat},
+            }
+        ],
+    }
+    body = anna.post(PREVIEW, json=draft).json()
+    assert body["problems"] == [] and all(r["id"] != leg for r in body["rows"])
+    deleted = next(c for c in body["consequences"] if c["kind"] == "deleted")
+    assert deleted["entry_id"] == leg and deleted["row"]["booking"] == {"kind": "transfer", "id": e}
+    r = anna.post(COMMIT, json={**draft, "versions": body["versions"]})
+    assert r.status_code == 200, r.text
+    assert scene.q("SELECT id FROM ledger_entry WHERE id = :i", i=leg) == []

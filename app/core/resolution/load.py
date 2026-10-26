@@ -20,8 +20,19 @@ from app.core.resolution.confirmed import units_binds, units_sql
 def load_accounts(conn: Connection) -> list[AccountFact]:
     """Every account; `external_ref` is stored canonicalised (core/accounts.py)."""
     return [
-        AccountFact(id=r.id, currency=r.currency, external_ref=r.external_ref, closed_on=r.closed_on)
-        for r in conn.execute(text("SELECT id, currency, external_ref, closed_on FROM account ORDER BY id"))
+        AccountFact(
+            id=r.id,
+            currency=r.currency,
+            external_ref=r.external_ref,
+            closed_on=r.closed_on,
+            clearance=r.clearance,
+        )
+        for r in conn.execute(
+            text(
+                "SELECT id, currency, external_ref, closed_on, (kind = 'clearance') AS clearance"
+                " FROM account ORDER BY id"
+            )
+        )
     ]
 
 

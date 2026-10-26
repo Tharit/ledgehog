@@ -7,7 +7,7 @@ source transaction), reviewed and committed together. Reads only: no lock, no wr
 from __future__ import annotations
 
 from datetime import date
-from typing import Annotated, Literal
+from typing import Annotated, Literal, cast
 
 from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel
@@ -71,6 +71,14 @@ class CurrencyGroupOut(BaseModel):
     count: int  # units (not legs) that need an account in the currency, over the whole section
 
 
+class UnitBookingOut(BaseModel):
+    """The unit holds a booking (spec §5.8): the kind of its source. A document's booking is reviewed like
+    any other; a transfer booking is the counter-leg of a charge on a clearance account, in the unit of its
+    charge."""
+
+    kind: Literal["document", "transfer"]
+
+
 class UnitOut(BaseModel):
     anchor_entry_id: int  # the lowest entry id of the unit: what opens it (`?unit=`)
     unit_key: int
@@ -82,6 +90,9 @@ class UnitOut(BaseModel):
     waiting: WaitingOut | None = None
     # the model is still looking at one of its entries (read from its list when the response is built)
     model_pending: bool = False
+    # the unit holds a booking: a booking's structure is its source's, so the panel offers no partner,
+    # convert or split control on its entries
+    booking: UnitBookingOut | None = None
 
     @staticmethod
     def of(view: UnitView, model_pending: frozenset[int] = frozenset()) -> UnitOut:
@@ -91,6 +102,9 @@ class UnitOut(BaseModel):
             unit_key=view.unit_key,
             state=UnitStateOut.of(view.state),
             entries=[EntryOut.of(e) for e in view.entries],
+            booking=None
+            if view.booking is None
+            else UnitBookingOut(kind=cast(Literal["document", "transfer"], view.booking)),
             needs_account=NeedsAccountOut(currency=view.needs_account) if view.needs_account else None,
             waiting=(
                 WaitingOut(account_id=view.waiting.account_id, synced_through=view.waiting.synced_through)

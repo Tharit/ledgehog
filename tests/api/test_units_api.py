@@ -64,8 +64,10 @@ def test_get_unit_shape_for_a_pair_with_a_split(anna: TestClient, api_engine: En
         "needs_account",
         "waiting",
         "model_pending",
+        "booking",
     }
     assert body["needs_account"] is None and body["waiting"] is None and body["model_pending"] is False
+    assert body["booking"] is None
     assert (body["anchor_entry_id"], body["unit_key"]) == (x, s1)
     assert body["state"] == {"confirmed": False, "reasons": ["incomplete", "non_standing_keys"]}
     assert [e["id"] for e in body["entries"]] == [x, y, sib]
@@ -130,6 +132,7 @@ def test_the_queue_shape_sections_and_order(anna: TestClient, api_engine: Engine
         "needs_account",
         "waiting",
         "model_pending",
+        "booking",
     }
     assert pending["groups"] == [] and pending["units"][0]["needs_account"] is None
     assert body["sections"][1]["units"] == [] and body["sections"][2]["next_cursor"] is None

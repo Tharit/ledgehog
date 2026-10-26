@@ -58,6 +58,8 @@ class UnitView:
     entries: tuple[EntryRow, ...]  # ascending by id
     needs_account: str | None = None  # queue only: the instructed currency a unit in `needs_account` needs
     waiting: WaitingFor | None = None  # queue only: what a unit in `waiting` waits for (a partner)
+    # the unit holds a booking (spec §5.8): the kind of its source, `document` or `transfer`
+    booking: str | None = None
 
 
 @dataclass(frozen=True)
@@ -109,6 +111,7 @@ def _view(
         entries=ordered,
         needs_account=needs_account,
         waiting=waiting,
+        booking=next((r.booking[0] for r in ordered if r.booking is not None), None),
     )
 
 

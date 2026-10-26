@@ -1,7 +1,9 @@
-"""What the booking step reads (architecture §5.2 step 2): clearance accounts, documents, document bookings.
+"""What the booking step reads (architecture §5.2 step 2): clearance accounts, the two sources (documents,
+and the charges decided as transfers to a clearance account) and the bookings made.
 
-Set-based, one query each, nothing written. The step reads documents under the exclusive settle lock and
-locks none (architecture §5.2 'Lock order').
+Set-based, one query each, nothing written. The step reads its sources under the exclusive settle lock and
+locks none (architecture §5.2 'Lock order'): the charges are entries of accounts that are not clearance
+accounts, which only the writes lock.
 """
 
 from __future__ import annotations
@@ -12,7 +14,9 @@ from typing import Any
 
 from sqlalchemy import Connection, text
 
-from app.core.bookings.documents import DOCUMENT_SOURCE, ClearanceAccount, DocumentFacts
+from app.core.bookings.documents import ClearanceAccount, DocumentFacts
+from app.core.bookings.transfers import TRANSFER_SOURCE, ChargeFacts
+from app.core.plugins.classifier import STANDING_PASSES
 
 
 def load_clearance_accounts(conn: Connection) -> list[ClearanceAccount]:
@@ -67,10 +71,13 @@ class StoredEntry:
 
 @dataclass(frozen=True, slots=True)
 class StoredBooking:
-    """A booking made from a document, as stored: its row and its entries in id order (their position)."""
+    """A booking, as stored: its row and its entries in id order (their position). `kind` and `key` name its
+    source (`document` and the document's id, `transfer` and the charge's entry id). `paired` (a transfer
+    booking): its entry and the charge point at each other."""
 
     id: int
-    document_id: int
+    kind: str
+    key: int
     account_id: int
     currency: str
     booked_on: date
@@ -78,19 +85,27 @@ class StoredBooking:
     purpose: str | None
     counterparty_name: str | None
     entries: tuple[StoredEntry, ...]
+    paired: bool = True
 
 
-def load_document_bookings(conn: Connection) -> dict[int, StoredBooking]:
-    """The bookings made from documents, by document id."""
+BookingKey = tuple[str, int]  # (kind, the source's id)
+
+
+def load_bookings(conn: Connection) -> dict[BookingKey, StoredBooking]:
+    """Every booking, by its source (`(kind, id)`)."""
     rows = conn.execute(
         text(
             "SELECT s.id, s.source_id, s.account_id, s.currency, s.booked_on, s.amount, s.purpose,"
             " s.counterparty_name, e.id AS entry_id, e.amount AS entry_amount, e.booked_on AS entry_on,"
-            " e.source_text"
+            " e.source_text,"
+            " (s.source_id NOT LIKE :transfer_prefix OR EXISTS ("
+            "    SELECT 1 FROM ledger_entry b JOIN ledger_entry c ON c.id = b.counterpart_entry_id"
+            "     WHERE b.source_transaction_id = s.id AND c.counterpart_entry_id = b.id"
+            "       AND c.id = CAST(split_part(s.source_id, ':', 2) AS bigint))) AS paired"
             " FROM source_transaction s LEFT JOIN ledger_entry e ON e.source_transaction_id = s.id"
-            " WHERE s.origin = 'booking' AND s.source_id LIKE :prefix ORDER BY s.id, e.id"
+            " WHERE s.origin = 'booking' ORDER BY s.id, e.id"
         ),
-        {"prefix": f"{DOCUMENT_SOURCE}:%"},
+        {"transfer_prefix": f"{TRANSFER_SOURCE}:%"},
     )
     heads: dict[int, Any] = {}
     entries: dict[int, list[StoredEntry]] = {}
@@ -100,12 +115,13 @@ def load_document_bookings(conn: Connection) -> dict[int, StoredBooking]:
             entries[r.id] = []
         if r.entry_id is not None:
             entries[r.id].append(StoredEntry(r.entry_id, r.entry_amount, r.entry_on, r.source_text))
-    out: dict[int, StoredBooking] = {}
+    out: dict[BookingKey, StoredBooking] = {}
     for st_id, r in heads.items():
-        doc_id = int(r.source_id.split(":", 1)[1])
-        out[doc_id] = StoredBooking(
+        kind, _, key = r.source_id.partition(":")
+        out[(kind, int(key))] = StoredBooking(
             id=st_id,
-            document_id=doc_id,
+            kind=kind,
+            key=int(key),
             account_id=r.account_id,
             currency=r.currency,
             booked_on=r.booked_on,
@@ -113,5 +129,44 @@ def load_document_bookings(conn: Connection) -> dict[int, StoredBooking]:
             purpose=r.purpose,
             counterparty_name=r.counterparty_name,
             entries=tuple(entries[st_id]),
+            paired=bool(r.paired),
         )
     return out
+
+
+def load_charges(conn: Connection) -> list[ChargeFacts]:
+    """The charges that call for a counter-leg (spec §5.7): a transfer entry, not a duplicate's, on an
+    account that is not a clearance account, whose counter-account is a clearance account, its type and
+    counter-account decided under standing keys, and not paired with anything but its own booking."""
+    return [
+        ChargeFacts(
+            entry_id=r.id,
+            account_id=r.account_id,
+            currency=r.currency,
+            amount=r.amount,
+            booked_on=r.booked_on,
+            purpose=r.purpose,
+            counter_account_id=r.counter_account_id,
+            instructed_currency=r.instructed_currency,
+            instructed_amount=r.instructed_amount,
+        )
+        for r in conn.execute(
+            text(
+                "SELECT e.id, e.account_id, e.currency, e.amount, e.booked_on, s.purpose,"
+                " e.counter_account_id, s.instructed_currency, s.instructed_amount"
+                " FROM ledger_entry e"
+                " JOIN source_transaction s ON s.id = e.source_transaction_id"
+                " JOIN account c ON c.id = e.counter_account_id AND c.kind = 'clearance'"
+                " JOIN account o ON o.id = e.account_id AND o.kind <> 'clearance'"
+                " LEFT JOIN ledger_entry p ON p.id = e.counterpart_entry_id"
+                " LEFT JOIN source_transaction ps ON ps.id = p.source_transaction_id"
+                " WHERE e.type = 'transfer' AND s.duplicate_of IS NULL"
+                "   AND e.derivation #>> '{type,pass}' = ANY(:standing)"
+                "   AND e.derivation #>> '{counter_account,pass}' = ANY(:standing)"
+                "   AND (e.counterpart_entry_id IS NULL"
+                "        OR (ps.origin = 'booking' AND ps.source_id = :prefix || CAST(e.id AS text)))"
+                " ORDER BY e.id"
+            ),
+            {"standing": sorted(STANDING_PASSES), "prefix": f"{TRANSFER_SOURCE}:"},
+        )
+    ]

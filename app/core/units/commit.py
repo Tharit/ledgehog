@@ -13,12 +13,14 @@ laid over the stored state AGAIN, under the locks, by the same `overlay.plan_uni
 result that would break an invariant is refused by code (`CommitRefused`, the preview's machine codes); the
 deferred triggers are a net, not the check.
 
-A counter-leg (spec §5.7) is created here and nowhere else: after the locks and the checks a user-authored
-source transaction on the counter-account (origin `user`, a random `source_id`, the leg's date and purpose, a
-`raw` naming the entry it was created for), its one entry typed `transfer` and paired with the leg, every key
-`user`. The counter-account is part of the lock set (the plan under the locks decides which accounts it is: a
-changed set takes the transaction again with more locks, as `ledger/sources.py` does), and its derived
-entries are recomputed. A source that follows its partner's amount is written with it.
+A counter-leg (spec §5.7) is created here and nowhere else, a clearance account's excepted: there it is a
+booking of the charge, which settling makes after the commit (the plan carries it as a row with
+`booking_for`, which is not written). Where it is created here, it is, after the locks and the checks, a
+user-authored source transaction on the counter-account (origin `user`, a random `source_id`, the leg's date
+and purpose, a `raw` naming the entry it was created for), its one entry typed `transfer` and paired with
+the leg, every key `user`. The counter-account is part of the lock set (the plan under the locks decides
+which accounts it is: a changed set takes the transaction again with more locks, as `ledger/sources.py`
+does), and its derived entries are recomputed. A source that follows its partner's amount is written with it.
 
 What is written: a pair the draft breaks is undone (`removal.unpair`, so a partner is left behind as
 the removal routine leaves it), removed entries go through `removal.remove_entries`, created entries are
@@ -244,8 +246,8 @@ def _write(conn: Connection, plan: Plan) -> dict[int, int]:
     changing = [r for r in plan.rows if r.stored is not None and r.written.accepted and _differs(r)]
     created: dict[int, int] = {}
     for row in plan.rows:
-        if row.stored is not None:
-            continue
+        if row.stored is not None or row.booking_for is not None:
+            continue  # a booking settling will make is not written here (spec §5.7)
         if row.counter_leg_for is not None:
             created[row.id] = _insert_counter_leg(conn, row)
             continue
@@ -420,7 +422,7 @@ def commit_unit(engine: Engine, draft: UnitDraft) -> CommitResult:
 
 
 def _result(engine: Engine, plan: Plan, created: Mapping[int, int], settled: SettleResult) -> CommitResult:
-    real = {r.id if r.id > 0 else created[r.id] for r in plan.rows}
+    real = {r.id if r.id > 0 else created[r.id] for r in plan.rows if r.booking_for is None}
     touched = [i for i in settled.touched_entry_ids if i not in real]
     with engine.connect() as conn:
         rows = entries_by_ids(conn, [*sorted(real), *touched[:OTHER_ROWS_CAP]])

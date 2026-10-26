@@ -36,7 +36,10 @@ _SOURCES = text(
     SELECT s.id, s.amount, s.account_id, s.currency, s.booked_on, s.value_on,
            (s.origin = 'user') AS authored,
            s.counterparty_ref, s.counterparty_name, s.purpose, s.booking_text, s.mandate_ref,
-           s.instructed_currency, s.end_to_end_id, s.instructed_amount
+           s.instructed_currency, s.end_to_end_id, s.instructed_amount,
+           CASE WHEN s.origin = 'booking' THEN split_part(s.source_id, ':', 1) END AS booking,
+           CASE WHEN s.origin = 'booking'
+                THEN CAST(split_part(s.source_id, ':', 2) AS bigint) END AS booking_key
       FROM source_transaction AS s
      WHERE s.id = ANY(:ids)
     """
@@ -92,6 +95,8 @@ def load_stored_entries(conn: Connection, anchor_entry_id: int, entry_ids: Itera
             instructed_currency=r.instructed_currency,
             end_to_end_id=r.end_to_end_id,
             instructed_amount=r.instructed_amount,
+            booking=r.booking,
+            booking_key=r.booking_key,
         )
         for r in conn.execute(_SOURCES, {"ids": sorted({e.source_transaction_id for e in entries})})
     }
@@ -177,8 +182,9 @@ def missing_tag(conn: Connection, draft: UnitDraft) -> tuple[int, int] | None:
 
 # The movements offers are made of: for each leg (date, sign, account, counter-account or none) the entries of
 # the OPPOSITE sign within `cap` days, on the counter-account where there is one, else on any other account;
-# unpaired or paired transfer legs and untyped entries. One statement for all the legs, served by
-# `ix_le_account_date` (a known counter-account) or `ix_le_date`; a duplicate has no entries (I3).
+# unpaired or paired transfer legs and untyped entries, none on a clearance account (spec §5.7). One statement
+# for all the legs, served by `ix_le_account_date` (a known counter-account) or `ix_le_date`; a duplicate has
+# no entries (I3).
 _POOL = text(
     """
     WITH legs AS (
@@ -191,6 +197,7 @@ _POOL = text(
             ON e.booked_on BETWEEN v.d - CAST(:cap AS int) AND v.d + CAST(:cap AS int)
            AND (v.counter IS NULL OR e.account_id = v.counter)
            AND e.account_id <> v.acc
+           AND NOT EXISTS (SELECT 1 FROM account AS ca WHERE ca.id = e.account_id AND ca.kind = 'clearance')
            AND ((v.s > 0 AND e.amount < 0) OR (v.s < 0 AND e.amount > 0))
            AND (e.type = 'transfer' OR e.type IS NULL)
            AND e.source_transaction_id IS NOT NULL

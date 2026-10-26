@@ -10,7 +10,7 @@ field by field, the problems that would refuse the commit, the consequences), th
 from __future__ import annotations
 
 from datetime import date
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -420,6 +420,15 @@ class UnitTransferOut(BaseModel):
         )
 
 
+class UnitRowBookingOut(BaseModel):
+    """A row that is a booking's entry (spec §5.8): its source, for navigation and to hide the partner,
+    convert and split controls. `id` is the document's id (`document`) or the charge's entry id
+    (`transfer`)."""
+
+    kind: Literal["document", "transfer"]
+    id: int
+
+
 class UnitPreviewRowOut(BaseModel):
     id: int  # stored, or the client's temporary (negative) id
     version: int | None  # null for a row the draft creates
@@ -443,6 +452,13 @@ class UnitPreviewRowOut(BaseModel):
     # the row is a counter-leg the draft creates (a new source transaction on `account_id`, its one entry):
     # the entry it is the other side of. `id` is the client's (or the server's, for a proposal) temporary id
     counter_leg_for: int | None = None
+    # the row is a booking's entry: its source. A booking's type, amount, split and pair are fixed (a draft
+    # that changes them is 422 `invalid_draft`, code `booking_fixed`)
+    booking: UnitRowBookingOut | None = None
+    # the row is the counter-leg booking settling will make for this charge (a clearance account, spec
+    # §5.7): a row of its own with a server-issued negative `id`, paired with the charge, which a commit
+    # does not write
+    booking_for: int | None = None
 
     @staticmethod
     def of(r: PlannedRow, transfer: TransferView | None = None) -> UnitPreviewRowOut:
@@ -463,6 +479,8 @@ class UnitPreviewRowOut(BaseModel):
             tag_ids=list(r.tag_ids),
             counterpart_entry_id=r.counterpart_entry_id,
             counter_leg_for=r.counter_leg_for,
+            booking=_row_booking(r.booking, r.booking_key),
+            booking_for=r.booking_for,
             fields={n: UnitFieldOut.of(f, stored=s is not None) for n, f in r.fields.items()},
             review_flags=list(r.flags),
             derivation=dict(r.derivation),
@@ -475,8 +493,8 @@ class UnitPreviewRowOut(BaseModel):
         )
 
     @staticmethod
-    def of_stored(s: Stored, unit_key: int) -> UnitPreviewRowOut:
-        """A stored entry the draft removes: the row as it was."""
+    def of_stored(s: Stored, unit_key: int, booking: UnitRowBookingOut | None = None) -> UnitPreviewRowOut:
+        """A stored entry the draft removes (or a booking settling will): the row as it was."""
         fields = {
             "type": s.type,
             "payee": s.payee_id,
@@ -498,6 +516,7 @@ class UnitPreviewRowOut(BaseModel):
             note=s.note,
             tag_ids=list(s.tag_ids),
             counterpart_entry_id=s.counterpart_entry_id,
+            booking=booking,
             fields={
                 n: UnitFieldOut(  # type: ignore[misc]
                     value=v,
@@ -514,6 +533,12 @@ class UnitPreviewRowOut(BaseModel):
                 amount=Money(amount=s.amount, currency=s.currency), description=s.description, note=s.note
             ),
         )
+
+
+def _row_booking(kind: str | None, key: int | None) -> UnitRowBookingOut | None:
+    if kind is None or key is None:
+        return None
+    return UnitRowBookingOut(kind=cast(Literal["document", "transfer"], kind), id=key)
 
 
 class UnitStateOut(BaseModel):
@@ -602,7 +627,15 @@ class UnitConsequenceOut(BaseModel):
 
     @staticmethod
     def of(c: Consequence, plan: Plan, stored: StoredUnit | None = None) -> UnitConsequenceOut:
-        if c.kind == "deleted":
+        if c.kind == "deleted":  # removed by the draft, or a booking settling will remove
+            booking = next((d for d in plan.booking_dropped if d.entry.id == c.entry_id), None)
+            if booking is not None:
+                row = UnitPreviewRowOut.of_stored(
+                    booking.entry, plan.anchor_unit.unit_key, _row_booking(booking.kind, booking.key)
+                )
+                return UnitConsequenceOut(
+                    entry_id=c.entry_id, kind=c.kind, version=booking.entry.version, row=row
+                )
             entry = next(e for e in plan.removed if e.id == c.entry_id)
             row = UnitPreviewRowOut.of_stored(entry, plan.anchor_unit.unit_key)
             return UnitConsequenceOut(entry_id=c.entry_id, kind=c.kind, version=entry.version, row=row)

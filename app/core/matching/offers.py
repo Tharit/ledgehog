@@ -32,7 +32,7 @@ from dataclasses import dataclass, replace
 from datetime import date
 from typing import Literal
 
-from app.core.matching.candidates import amounts_match
+from app.core.matching.candidates import amounts_match, touches_clearance
 from app.core.matching.leg import Leg
 from app.core.plugins.classifier import AccountFact
 from app.core.resolution.accounts import arrival_currency_ok
@@ -138,6 +138,8 @@ def _reachable(leg: Leg, p: PoolEntry, partner_id: int | None, world: OfferWorld
     other = p.leg
     if other.entry_id in (leg.entry_id, partner_id) or other.account_id == leg.account_id:
         return False
+    if touches_clearance(other, world.accounts):  # an entry on a clearance account is never an offer
+        return False
     if leg.amount == 0 or other.amount == 0 or _sign(leg.amount) == _sign(other.amount):
         return False
     if leg.counter_account_id is not None:
@@ -241,6 +243,8 @@ def offers(
         "untyped_entry": [],
         "paired_elsewhere": [],
     }
+    if touches_clearance(leg, world.accounts):  # a leg toward a clearance account has no offers (spec §5.7)
+        return OfferSet((), None, False)
     has_more = False
     for p in pool:
         if not _reachable(leg, p, partner_id, world):

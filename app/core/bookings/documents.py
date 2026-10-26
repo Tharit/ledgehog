@@ -100,15 +100,26 @@ class EntryPlan:
 
 
 @dataclass(frozen=True, slots=True)
+class PairPlan:
+    """The charge a transfer booking is the counter-leg of: its entry and its account (the booking entry's
+    counter-account)."""
+
+    entry_id: int
+    account_id: int
+
+
+@dataclass(frozen=True, slots=True)
 class BookingPlan:
-    """The booking a document calls for on its account: the row's fields and its entries, in order."""
+    """The booking a source calls for on its account: the row's fields and its entries, in order. A
+    transfer booking (`pair` set) has the one entry the charge's, typed `transfer` and paired with it."""
 
     source_id: str
     booked_on: date
     amount: int
-    purpose: str
-    counterparty_name: str
+    purpose: str | None
+    counterparty_name: str | None
     entries: tuple[EntryPlan, ...]
+    pair: PairPlan | None = None
 
 
 def entries_of(doc: DocumentFacts) -> tuple[EntryPlan, ...]:

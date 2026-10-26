@@ -41,6 +41,10 @@ class StoredSource:
     instructed_currency: str | None = None
     end_to_end_id: str | None = None
     instructed_amount: int | None = None
+    # a booking's source (spec §5.8): its kind (`document`, `transfer`) and the source's id (the document's,
+    # or the charge's entry id); None for any other source
+    booking: str | None = None
+    booking_key: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,6 +135,7 @@ PROBLEM_CODES = (
     "counter_leg_account_synced",
     "received_amount_required",
     "received_amount_not_needed",
+    "clearance_transfer",
 )
 
 
@@ -257,6 +262,12 @@ class PlannedRow:
     # a counter-leg the draft creates (spec §5.7): the entry it was created for. The row is a new source
     # transaction on the leg's counter-account with this one entry
     counter_leg_for: int | None = None
+    # a booking: its source's kind (`document`, `transfer`) and id (spec §5.8)
+    booking: str | None = None
+    booking_key: int | None = None
+    # the counter-leg booking settling will make for this charge (spec §5.7): a row of its own, with a
+    # server-issued temporary id, which a commit does not write
+    booking_for: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -265,6 +276,16 @@ class PlannedUnit:
     unit_key: int
     entry_ids: tuple[int, ...]  # ascending by stored id, then the new rows in draft order
     state: UnitState
+
+
+@dataclass(frozen=True, slots=True)
+class DroppedBooking:
+    """A stored booking the plan's choices make settling remove (spec §6): the entry as it was, and its
+    source."""
+
+    entry: Stored
+    kind: str
+    key: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -296,6 +317,9 @@ class Plan:
     # user-authored single-entry sources whose amount follows their partner's (spec §5.7): source -> amount
     followed_sources: Mapping[int, int] = dataclasses.field(default_factory=dict)
     transfers: Mapping[int, TransferView] = dataclasses.field(default_factory=dict)  # by row id
+    # counter-leg bookings the plan's choices make settling remove (spec §6): stored, not in `rows`, and not
+    # removed by the commit: settling removes them
+    booking_dropped: tuple[DroppedBooking, ...] = ()
 
     def row(self, entry_id: int) -> PlannedRow:
         for r in self.rows:

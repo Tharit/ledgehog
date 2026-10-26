@@ -106,8 +106,12 @@ class _Run:
         return pass0(self.entry, own_account_index(self.accounts.values()))
 
     def type_(self) -> Decided | None:
-        if self.entry.booking == "document":  # a document booking's entries are flows, whatever else is said
+        # a booking decides the type first (spec §5.9): a document's entries are flows, a transfer booking's
+        # the transfer, whatever else is said
+        if self.entry.booking == "document":
             return Decided("flow", "booking", {})
+        if self.entry.booking == "transfer":
+            return Decided("transfer", "booking", {})
         if (d := self.fixed.get("type")) is not None:
             return d if d.value in _TYPES else None
         for field in ("payee", "category", "counter_account"):
@@ -118,14 +122,16 @@ class _Run:
             ):
                 kind = "transfer" if field == "counter_account" else "flow"
                 return Decided(kind, f.pass_name, f.basis)
-        if (p0 := self.own_account()) is not None:
+        # no pass proposes `transfer` for an entry on a clearance account that is not a booking (spec §5.7)
+        no_transfer = self.on_clearance_account()
+        if not no_transfer and (p0 := self.own_account()) is not None:
             return p0[0]
         for c in self.classifiers:
             p = self.ask(c, "type")
-            if p is not None:
+            if p is not None and not (no_transfer and p.value == "transfer"):
                 return Decided(str(p.value), c.pass_name, p.basis)
             # a pass that proposes a counter-account proposes a transfer, a payee or category a flow
-            if (p := self.counter_proposal(c)) is not None:
+            if not no_transfer and (p := self.counter_proposal(c)) is not None:
                 return Decided("transfer", c.pass_name, p.basis)
             for field in _FLOW_FIELDS:
                 p = self.ask(c, field)
@@ -137,10 +143,18 @@ class _Run:
                 return Decided("flow", c.pass_name, p.basis)
         return None
 
+    def on_clearance_account(self) -> bool:
+        account = self.accounts.get(self.entry.account_id)
+        return account is not None and account.clearance
+
     def counter_account(self) -> Decided | None:
         if (d := self.fixed.get("counter_account")) is not None:
             if d.value != self.entry.account_id:
                 return d
+        if (
+            self.entry.booking == "transfer"
+        ):  # the charge's account, fixed by the booking step: no pass knows it
+            return None
         if (p0 := self.own_account()) is not None:
             return p0[1]
         for c in self.classifiers:

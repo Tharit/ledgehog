@@ -56,6 +56,9 @@ class EntryRow:
     partner: PartnerSummary | None  # the other leg of a paired transfer
     importer: str | None = None  # the source's importer; None for an authored, booked or derived entry
     origin: str | None = None  # the source's origin (`import`, `user`, `booking`); None for a derived entry
+    # a booking's source (spec §5.8): its kind (`document`, `transfer`) and the source's id (the document's,
+    # or the charge's entry id); None for an entry that is not a booking's
+    booking: tuple[str, int] | None = None
 
 
 @dataclass(frozen=True)
@@ -168,6 +171,7 @@ _COLUMNS = (
     partner.c.currency.label("partner_currency"),
     st.c.importer,
     st.c.origin,
+    st.c.source_id,
     st.c.amount.label("source_amount"),
     st.c.currency.label("source_currency"),
     st.c.counterparty_name,
@@ -221,9 +225,17 @@ def _build(conn: Connection, rows: Sequence[Any]) -> tuple[EntryRow, ...]:
             ),
             importer=r.importer,
             origin=r.origin,
+            booking=_booking_of(r),
         )
         for r in rows
     )
+
+
+def _booking_of(r: Any) -> tuple[str, int] | None:
+    if r.origin != "booking" or not r.source_id:
+        return None
+    kind, _, key = r.source_id.partition(":")
+    return kind, int(key)
 
 
 def _source(r: Any) -> SourceFields | None:

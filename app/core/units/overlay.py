@@ -36,6 +36,15 @@ A leg paired in one currency with a user-authored single-entry source on an unsy
 draft changes (a split moves the residual) makes that source FOLLOW: its amount, and its entry's, become the
 negated new amount (spec §5.7, I2, I3). The follower keeps its values and keys: following is not an input.
 
+A charge decided as a transfer to a clearance account has its counter-leg made by settling (spec §5.7), not
+by the commit: settling's booking step is simulated in the rounds of 4 (`_book`, with the pure functions of
+`core.bookings.transfers` that step uses). A booking it makes is a SYNTHETIC ROW with `booking_for` naming the
+charge, which a commit does not write; a stored booking whose charge no longer calls for it is dropped from
+the rows and shown as a deleted consequence (`Plan.booking_dropped`), and the booking follows an amount the
+draft changes (a split) like a counter-leg does, so the pair stays equal at the commit. A booking's entries
+are fixed (`_refuse_booking_edits`): the draft may not change their type, amount or split, pair or unpair
+them, or remove them (`booking_fixed`).
+
 Only the anchor's unit (after the draft) and the entries the draft lists are written; the rest of the
 closure is a consequence (a partner left behind, the other side of a pair that no longer exists).
 """
@@ -45,8 +54,10 @@ from __future__ import annotations
 import dataclasses
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import date
 from typing import Any
 
+from app.core.bookings.transfers import ChargeFacts, transfer_booking_plan
 from app.core.matching import Leg, counter_leg_amount, leg_of, pair_all, unmatched, waiting
 from app.core.plugins.classifier import (
     FIELD_ORDER,
@@ -76,6 +87,7 @@ from app.core.units.draft import (
 from app.core.units.picks import PickLeg, check_pick, window_of
 from app.core.units.plan import (
     Consequence,
+    DroppedBooking,
     FieldResult,
     Plan,
     PlannedRow,
@@ -96,6 +108,8 @@ RERESOLVE = FieldDraft(mode="reresolve")
 _USER: Mapping[str, Any] = {"pass": "user"}
 PAIR_COUNTER_BASIS: Mapping[str, str] = {"from": "counterpart"}
 SYNTHETIC_SOURCE_BASE = 2**52  # the source ids of the counter-legs a draft creates: above every real id
+BOOKING_SOURCE_BASE = SYNTHETIC_SOURCE_BASE + 2**20  # the source ids of the bookings settling would make
+_BOOKING_KEY: Mapping[str, Any] = {"pass": "booking", "basis": {}}
 
 
 @dataclass(slots=True)
@@ -129,6 +143,8 @@ class _Row:
     s1_derivation: dict[str, Any] | None = None
     # a counter-leg the draft creates: the entry it is the other side of
     counter_leg_for: int | None = None
+    # a counter-leg booking settling would make: the charge it is the other side of
+    booking_for: int | None = None
 
     @property
     def is_new(self) -> bool:
@@ -168,6 +184,7 @@ def _entry_input(row: _Row) -> EntryInput:
         instructed_currency=s.instructed_currency,
         end_to_end_id=s.end_to_end_id,
         instructed_amount=s.instructed_amount,
+        booking=s.booking,
     )
 
 
@@ -257,6 +274,44 @@ def _stored_entry_row(
 
 
 # ---- 1. assembling the rows ---------------------------------------------------------------------
+
+
+def _refuse_booking_edits(stored: StoredUnit, draft: UnitDraft) -> None:
+    """A booking's structure is its source's (spec §5.8, §6): a draft that changes a booking entry's type,
+    amount or split, pairs or unpairs it, or removes one of its entries is refused (`booking_fixed`). Its
+    payee, category, description, note and tags stay open to the draft."""
+    booked = {e.id for e in stored.entries if stored.sources[e.source_transaction_id].booking is not None}
+    if not booked:
+        return
+
+    def refuse(entry_id: int, field: str | None, what: str) -> None:
+        raise DraftError(
+            "booking_fixed", f"a booking's {what} is its source's", entry_id=entry_id, field=field
+        )
+
+    for rid in draft.removed_entry_ids:
+        if rid in booked:
+            refuse(rid, None, "entries")
+    for d in draft.entries:
+        if d.is_new:
+            if d.source_entry_id in booked:
+                refuse(d.id, "amount", "split")
+            continue
+        e = stored.entry(d.id)
+        if e is None or d.id not in booked:
+            continue
+        if d.type.mode == "fixed" and d.type.value != e.type:
+            refuse(d.id, "type", "type")
+        if (
+            d.counter_account.mode == "fixed"
+            and d.counter_account.value is not None
+            and d.counter_account.value != e.counter_account_id
+        ):
+            refuse(d.id, "counter_account", "counter-account")
+        if d.amount is not None and d.amount != e.amount:
+            refuse(d.id, "amount", "amount")
+        if d.pairing.mode != "keep":
+            refuse(d.id, "pairing", "pair")
 
 
 def _assemble(stored: StoredUnit, draft: UnitDraft) -> tuple[dict[int, _Row], list[Problem]]:
@@ -391,7 +446,9 @@ class _Walk:
             d = _normalised(row.draft.field(f), f)
             c = cur.get(f)
             new: Decided | None
-            if d.mode == "fixed":
+            if row.src.booking is not None and f in ("type", "counter_account") and c is not None:
+                new = c  # a booking's type and counter-account are fixed by its source (spec §5.8)
+            elif d.mode == "fixed":
                 if d.value is None:  # only a field that may be empty (`_normalised`): decided empty
                     new = c if is_decided_empty(c) else Decided(None, "user", {})
                 elif c is not None and c.value == d.value:
@@ -603,19 +660,148 @@ def _apply(rewrites: Mapping[int, Rewrite], by_id: Mapping[int, _Row]) -> None:
             r.counterpart = None
 
 
-def _settle(rows: Sequence[_Row], world: World) -> set[int]:
-    """Settling's rounds over the plan's units (step 1, the pairing of step 4 and the teaching of step 5),
-    in place on `rows`; returns the legs outside the plan that pairing took a row to (`_pair`).
+def booking_temp_id(charge_id: int) -> int:
+    """The temporary id of the booking the preview shows for `charge_id` (stable per charge, far from the
+    small negative ids a client issues and from the counter-legs a server proposes)."""
+    return -(BOOKING_TEMP_BASE + charge_id)
+
+
+BOOKING_TEMP_BASE = 2**53
+
+
+def _standing(derivation: Mapping[str, Any] | None, field: Field) -> bool:
+    key = (derivation or {}).get(field)
+    return isinstance(key, Mapping) and key.get("pass") in STANDING_PASSES
+
+
+def _charge_facts(r: _Row) -> ChargeFacts | None:
+    """The charge a row is, as settling's booking step reads it: a transfer entry on an account that is not
+    a clearance account, its type and counter-account under standing keys (the caller checks the account)."""
+    if r.type != "transfer" or r.counter_account_id is None or r.src.booking is not None:
+        return None
+    if not (_standing(r.derivation, "type") and _standing(r.derivation, "counter_account")):
+        return None
+    s = r.src
+    return ChargeFacts(
+        entry_id=r.id,
+        account_id=r.account_id,
+        currency=s.currency,
+        amount=r.amount,
+        booked_on=s.booked_on,
+        purpose=s.purpose,
+        counter_account_id=r.counter_account_id,
+        instructed_currency=s.instructed_currency,
+        instructed_amount=s.instructed_amount,
+    )
+
+
+def _book(rows: list[_Row], world: World) -> None:
+    """Settling's step 2 for charges (`core.bookings`), in place on `rows`: the counter-leg of every charge
+    decided, under standing keys, as a transfer to a clearance account is made (a synthetic row), follows its
+    charge, or is dropped where the charge no longer calls for it. The pair is made on both legs with the
+    key `booking`. A booking whose charge is not among the rows is left as it is."""
+    accounts = {a.id: a for a in world.accounts}
+    clearance = {a.id: a for a in world.accounts if a.clearance}
+    booked = {
+        r.src.booking_key: r for r in rows if r.src.booking == "transfer" and r.src.booking_key is not None
+    }
+    by_id = {r.id: r for r in rows}
+    for r in list(rows):
+        if r.src.booking is not None or (own := accounts.get(r.account_id)) is None or own.clearance:
+            continue
+        b = booked.get(r.id)
+        # a charge paired with anything but its booking is not a source (settling pairs it elsewhere first)
+        partner = by_id.get(r.counterpart) if r.counterpart is not None else None
+        foreign = r.counterpart is not None and (partner is None or partner is not b)
+        facts = None if foreign else _charge_facts(r)
+        account = None if facts is None else clearance.get(facts.counter_account_id)
+        plan = None if facts is None or account is None else transfer_booking_plan(facts, account.currency)
+        if b is not None and (plan is None or account is None or b.account_id != account.id):
+            rows[:] = [
+                x for x in rows if x is not b
+            ]  # settling removes it: the charge points elsewhere, or no longer calls for it
+            by_id.pop(b.id, None)
+            del booked[r.id]
+            if r.counterpart == b.id:
+                r.counterpart = None
+                r.derivation = {k: v for k, v in (r.derivation or {}).items() if k != "counterpart"}
+            b = None
+        if plan is None or account is None:
+            continue
+        if b is None:
+            b = _booking_row(r, plan.amount, account.id, account.currency, plan.booked_on, plan.purpose)
+            rows.append(b)
+            by_id[b.id] = b
+            booked[r.id] = b
+        else:  # it follows its charge: amount, date, purpose
+            b.amount = plan.amount
+            b.src = dataclasses.replace(
+                b.src, amount=plan.amount, booked_on=plan.booked_on, purpose=plan.purpose
+            )
+        r.counterpart, b.counterpart = b.id, r.id
+        r.derivation = {**(r.derivation or {}), "counterpart": dict(_BOOKING_KEY)}
+        b.derivation = {
+            **(b.derivation or {}),
+            "type": dict(_BOOKING_KEY),
+            "counter_account": dict(_BOOKING_KEY),
+            "counterpart": dict(_BOOKING_KEY),
+        }
+        b.type, b.counter_account_id = "transfer", r.account_id
+
+
+def _booking_row(
+    charge: _Row, amount: int, account_id: int, currency: str, booked_on: date, purpose: str | None
+) -> _Row:
+    """The row of a booking settling would make for `charge`: a new source on the clearance account with its
+    one entry, typed `transfer`, paired with the charge; not walked, and not written by a commit."""
+    temp = booking_temp_id(charge.id)
+    src = StoredSource(
+        id=BOOKING_SOURCE_BASE + charge.id,
+        amount=amount,
+        account_id=account_id,
+        currency=currency,
+        booked_on=booked_on,
+        value_on=None,
+        user_authored=False,
+        purpose=purpose,
+        booking="transfer",
+        booking_key=charge.id,
+    )
+    return _Row(
+        id=temp,
+        stored=None,
+        src=src,
+        original=True,
+        # a placeholder: the row is not walked, and nothing reads a draft of it
+        draft=DraftEntry(temp, amount=amount, source_entry_id=charge.id),
+        explicit=False,
+        amount=amount,
+        description=None,
+        note=None,
+        tag_ids=(),
+        account_id=account_id,
+        type="transfer",
+        counter_account_id=charge.account_id,
+        counterpart=charge.id,
+        derivation={},
+        booking_for=charge.id,
+    )
+
+
+def _settle(rows: list[_Row], world: World) -> set[int]:
+    """Settling's rounds over the plan's units (step 1, the booking of step 2, the pairing of step 4 and the
+    teaching of step 5), in place on `rows` (a booking settling makes joins them, one it removes leaves them);
+    returns the legs outside the plan that pairing took a row to (`_pair`).
 
     A unit that is confirmed teaches history before the first round (the snapshot a settle loads holds the
     committed state) and after each round that confirms it. Step 1 is `settle_rewrites`, the function
     settling calls: a paired leg of an unconfirmed unit is rederived too, and its pair falls on both legs
     when its type or its own counter-account changes (I18).
     """
-    by_id = {r.id: r for r in rows}
     taught: set[int] = set()
     pulled: set[int] = set()
     for _ in range(MAX_ROUNDS):
+        by_id = {r.id: r for r in rows}
         states = _states(rows, world)
         for k, (members, st) in states.items():
             if st.confirmed and k not in taught:
@@ -630,6 +816,7 @@ def _settle(rows: Sequence[_Row], world: World) -> set[int]:
             history=world.history,
         )
         _apply(rewrites, by_id)
+        _book(rows, world)
         pulled |= _pair(rows, world)
         if all(k in taught or not st.confirmed for k, (_m, st) in _states(rows, world).items()):
             return pulled
@@ -773,12 +960,15 @@ def _counter_leg_row(
     c = _own_counter(first[leg.id]["counter_account"])
     acc = accounts.get(c) if c is not None else None
     not_offered = Problem("counter_leg_not_offered", leg.id, "pairing", {"account": c})
+    own = accounts.get(leg.account_id)
     if (
         links.get(leg.id) is not None
         or leg.id in used
         or c is None
         or c == leg.account_id
         or acc is None
+        or acc.clearance  # a clearance account's counter-leg is a booking, made by settling (spec §5.7)
+        or (own is not None and own.clearance)
         or (acc.closed_on is not None and leg.src.booked_on > acc.closed_on)
         or (leg.src.instructed_currency is not None and acc.currency != leg.src.instructed_currency)
     ):
@@ -874,6 +1064,14 @@ def _problems(rows: Sequence[_Row], world: World) -> list[Problem]:
             transfers.setdefault(r.src.id, []).append(r)
             if r.is_new and r.counter_leg_for is None:
                 out.append(Problem("new_entry_not_flow", r.id, "type"))
+            own = accounts.get(r.account_id)
+            if (
+                own is not None
+                and own.clearance
+                and r.src.booking is None
+                and (r.stored is None or r.stored.type != "transfer")
+            ):  # an entry on a clearance account is a transfer only as a booking (spec §5.7)
+                out.append(Problem("clearance_transfer", r.id, "type"))
         if (r.category_id is not None or r.payee_id is not None) and r.type != "flow":
             out.append(Problem("type_conflict", r.id, "category" if r.category_id is not None else "payee"))
         if (r.counter_account_id is not None or r.counterpart is not None) and r.type != "transfer":
@@ -887,15 +1085,19 @@ def _problems(rows: Sequence[_Row], world: World) -> list[Problem]:
                 out.append(
                     Problem("stale_reference", r.id, "counter_account_id", {"id": r.counter_account_id})
                 )
-            elif r.src.instructed_currency is not None and acc.currency != r.src.instructed_currency:
-                out.append(
-                    Problem(
-                        "currency_rule",
-                        r.id,
-                        "counter_account",
-                        {"required": r.src.instructed_currency, "actual": acc.currency},
+            else:
+                # the currency the money arrived in; a clearance account takes a charge only in it, so a
+                # charge with no instructed currency can only go to one in its own (spec §5.7)
+                required = r.src.instructed_currency or (r.src.currency if acc.clearance else None)
+                if required is not None and acc.currency != required:
+                    out.append(
+                        Problem(
+                            "currency_rule",
+                            r.id,
+                            "counter_account",
+                            {"required": required, "actual": acc.currency},
+                        )
                     )
-                )
         if (
             r.category_id is not None
             and r.draft.category.mode == "fixed"
@@ -967,7 +1169,7 @@ def _follow(rows: Mapping[int, _Row], links: Mapping[int, int | None], world: Wo
         if (
             p is None
             or p.stored is None
-            or not p.src.user_authored
+            or not (p.src.user_authored or p.src.booking == "transfer")  # a booking follows its charge
             or p.src.currency != r.src.currency
             or sum(1 for x in rows.values() if x.src.id == p.src.id) != 1
             or world.account_sync.get(p.account_id, (True, None))[0]
@@ -1119,6 +1321,7 @@ def plan_unit(stored: StoredUnit, draft: UnitDraft, world: World) -> Plan:
     """Lay `draft` over `stored` (module docstring). Raises `DraftError` for a draft that is nonsense."""
     # the plan teaches history what its units confirm: into a layer of its own, so the world is left as it was
     world = dataclasses.replace(world, history=LayeredHistory(world.history))
+    _refuse_booking_edits(stored, draft)
     rows, problems = _assemble(stored, draft)
     ordered = [*(rows[e.id] for e in stored.entries if e.id in rows), *(r for r in rows.values() if r.is_new)]
     walk = _Walk(world, draft.reresolve_all)
@@ -1198,7 +1401,17 @@ def plan_unit(stored: StoredUnit, draft: UnitDraft, world: World) -> Plan:
     pulled = _settle(ordered, world)
     final_states = _states(ordered, world)
     unit_of = {ur.id: key for key, (unit_rows, _st) in final_states.items() for ur in unit_rows}
-    anchor_key = unit_of[draft.anchor_entry_id]
+    kept_ids = {r.id for r in ordered}
+    gone = set(draft.removed_entry_ids)
+    dropped = tuple(  # bookings settling removes
+        DroppedBooking(e, src.booking, src.booking_key)
+        for e in stored.entries
+        if e.id not in kept_ids
+        and e.id not in gone
+        and (src := stored.sources[e.source_transaction_id]).booking is not None
+        and src.booking_key is not None
+    )
+    anchor_key = _anchor_key(stored, draft.anchor_entry_id, unit_of)
 
     planned = tuple(
         PlannedRow(
@@ -1220,11 +1433,14 @@ def plan_unit(stored: StoredUnit, draft: UnitDraft, world: World) -> Plan:
             fields=_field_results(r),
             derivation=dict(r.derivation or {}),
             flags=_with_matching_flags(final_states[unit_of[r.id]][1].flags[r.id], r, world),
-            written=written[r.id],
+            written=written[r.id] if r.id in written else _written_of(r),
             original=r.original,
             leg=leg_of(_entry_input(r), type=r.type, counter_account_id=r.counter_account_id),
             purpose=r.src.purpose,
             counter_leg_for=r.counter_leg_for,
+            booking=r.src.booking,
+            booking_key=r.src.booking_key,
+            booking_for=r.booking_for,
         )
         for r in ordered
     )
@@ -1251,6 +1467,7 @@ def plan_unit(stored: StoredUnit, draft: UnitDraft, world: World) -> Plan:
             entry_ids=tuple(r.id for r in ordered if r.src.id == src.id),
         )
         for src in stored.sources.values()
+        if any(r.src.id == src.id for r in ordered)  # a booking settling removes has left the plan
     )
     return Plan(
         rows=planned,
@@ -1272,9 +1489,38 @@ def plan_unit(stored: StoredUnit, draft: UnitDraft, world: World) -> Plan:
             )
         ),
         versions={e.id: e.version for e in stored.entries},
-        created_ids=tuple(r.id for r in ordered if r.is_new),
+        created_ids=tuple(r.id for r in ordered if r.is_new and r.booking_for is None),
         pulled_entry_ids=tuple(sorted(pulled)),
         followed_sources=followed,
+        booking_dropped=dropped,
+    )
+
+
+def _anchor_key(stored: StoredUnit, anchor: int, unit_of: Mapping[int, int]) -> int:
+    """The unit the draft is anchored on once it is applied. An anchor that is a booking settling removes
+    has no unit of its own: the unit of its charge stands for it."""
+    if anchor in unit_of:
+        return unit_of[anchor]
+    entry = stored.entry(anchor)
+    assert entry is not None
+    charge = stored.sources[entry.source_transaction_id].booking_key
+    assert charge is not None
+    return unit_of[charge]
+
+
+def _written_of(r: _Row) -> Written:
+    """What a row nobody commits stands for: a booking settling makes (not written by a commit)."""
+    return Written(
+        type=r.type,
+        payee_id=r.payee_id,
+        category_id=r.category_id,
+        counter_account_id=r.counter_account_id,
+        counterpart_entry_id=r.counterpart,
+        amount=r.amount,
+        description=r.description,
+        note=r.note,
+        derivation=dict(r.derivation or {}),
+        accepted=False,
     )
 
 
@@ -1294,7 +1540,8 @@ def _consequences(
     for r in ordered:
         s = r.stored
         if s is None:
-            out.append(Consequence(r.id, "created"))
+            if r.booking_for is None:  # a booking settling makes is marked on its row, not a consequence
+                out.append(Consequence(r.id, "created"))
             continue
         if r.id in unpaired:
             out.append(Consequence(r.id, "unpaired" if unit_of[r.id] == anchor_key else "left_behind"))
