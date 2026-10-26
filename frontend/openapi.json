@@ -423,40 +423,6 @@
         "title": "ByCategoryOut",
         "type": "object"
       },
-      "CarrierOut": {
-        "description": "The transaction carrying a document: its original entry, which opens the review panel.",
-        "properties": {
-          "account_id": {
-            "title": "Account Id",
-            "type": "integer"
-          },
-          "amount": {
-            "$ref": "#/components/schemas/Money"
-          },
-          "booked_on": {
-            "format": "date",
-            "title": "Booked On",
-            "type": "string"
-          },
-          "entry_id": {
-            "title": "Entry Id",
-            "type": "integer"
-          },
-          "source_transaction_id": {
-            "title": "Source Transaction Id",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "entry_id",
-          "source_transaction_id",
-          "account_id",
-          "booked_on",
-          "amount"
-        ],
-        "title": "CarrierOut",
-        "type": "object"
-      },
       "CatalogEntryOut": {
         "properties": {
           "emits": {
@@ -490,26 +456,13 @@
             },
             "title": "Presets",
             "type": "object"
-          },
-          "start_date_default": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Start Date Default"
           }
         },
         "required": [
           "name",
           "kind",
           "emits",
-          "presets",
-          "start_date_default"
+          "presets"
         ],
         "title": "CatalogEntryOut",
         "type": "object"
@@ -1151,8 +1104,6 @@
               "purpose",
               "booking_text",
               "mandate_ref",
-              "document_merchant",
-              "document_line",
               "payee"
             ],
             "title": "Field",
@@ -1361,10 +1312,6 @@
             "title": "Entries",
             "type": "integer"
           },
-          "freed_documents": {
-            "title": "Freed Documents",
-            "type": "integer"
-          },
           "partners_returning_to_review": {
             "title": "Partners Returning To Review",
             "type": "integer"
@@ -1383,8 +1330,7 @@
           "confirmed_entries",
           "tagged_entries",
           "tag_memberships",
-          "partners_returning_to_review",
-          "freed_documents"
+          "partners_returning_to_review"
         ],
         "title": "DeleteCountsOut",
         "type": "object"
@@ -1547,24 +1493,9 @@
       },
       "DocumentDetailOut": {
         "properties": {
-          "carrier_count": {
-            "title": "Carrier Count",
-            "type": "integer"
-          },
-          "carriers": {
-            "items": {
-              "$ref": "#/components/schemas/CarrierOut"
-            },
-            "title": "Carriers",
-            "type": "array"
-          },
           "external_id": {
             "title": "External Id",
             "type": "string"
-          },
-          "fully_charged": {
-            "title": "Fully Charged",
-            "type": "boolean"
           },
           "id": {
             "title": "Id",
@@ -1592,13 +1523,6 @@
             "title": "Lines",
             "type": "array"
           },
-          "matches": {
-            "items": {
-              "$ref": "#/components/schemas/DocumentMatchOut"
-            },
-            "title": "Matches",
-            "type": "array"
-          },
           "merchant_name": {
             "anyOf": [
               {
@@ -1649,11 +1573,7 @@
           "merchant_name",
           "title",
           "line_count",
-          "carrier_count",
-          "lines",
-          "carriers",
-          "fully_charged",
-          "matches"
+          "lines"
         ],
         "title": "DocumentDetailOut",
         "type": "object"
@@ -1662,16 +1582,6 @@
         "properties": {
           "amount": {
             "$ref": "#/components/schemas/Money"
-          },
-          "category": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/LineCategoryOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
           },
           "description": {
             "title": "Description",
@@ -1691,122 +1601,19 @@
               }
             ],
             "title": "Qty"
-          },
-          "rationale": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Rationale"
           }
         },
         "required": [
           "line_no",
           "description",
           "amount",
-          "qty",
-          "category",
-          "rationale"
+          "qty"
         ],
         "title": "DocumentLineOut",
         "type": "object"
       },
-      "DocumentMatchOut": {
-        "description": "A transaction the document would match (documents.md \u00a79), with its unit's state.",
-        "properties": {
-          "account_id": {
-            "title": "Account Id",
-            "type": "integer"
-          },
-          "amount": {
-            "$ref": "#/components/schemas/Money"
-          },
-          "booked_on": {
-            "format": "date",
-            "title": "Booked On",
-            "type": "string"
-          },
-          "confirmed": {
-            "title": "Confirmed",
-            "type": "boolean"
-          },
-          "display_text": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Display Text"
-          },
-          "document_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Document Id"
-          },
-          "entry_id": {
-            "title": "Entry Id",
-            "type": "integer"
-          },
-          "instructed_amount": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Money"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "payee_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Payee Id"
-          },
-          "source_transaction_id": {
-            "title": "Source Transaction Id",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "entry_id",
-          "source_transaction_id",
-          "account_id",
-          "booked_on",
-          "amount",
-          "instructed_amount",
-          "display_text",
-          "payee_id",
-          "document_id",
-          "confirmed"
-        ],
-        "title": "DocumentMatchOut",
-        "type": "object"
-      },
       "DocumentOut": {
         "properties": {
-          "carrier_count": {
-            "title": "Carrier Count",
-            "type": "integer"
-          },
           "external_id": {
             "title": "External Id",
             "type": "string"
@@ -1879,8 +1686,7 @@
           "total",
           "merchant_name",
           "title",
-          "line_count",
-          "carrier_count"
+          "line_count"
         ],
         "title": "DocumentOut",
         "type": "object"
@@ -2056,61 +1862,6 @@
         "title": "EditEffectsOut",
         "type": "object"
       },
-      "EntryDocumentLineOut": {
-        "description": "The entry's own line of that document: what a rule's `document_line` reads (spec \u00a75.8).",
-        "properties": {
-          "description": {
-            "title": "Description",
-            "type": "string"
-          },
-          "line_no": {
-            "title": "Line No",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "line_no",
-          "description"
-        ],
-        "title": "EntryDocumentLineOut",
-        "type": "object"
-      },
-      "EntryDocumentOut": {
-        "description": "The document of the entry's transaction (every entry of a split reads the one its original carries).",
-        "properties": {
-          "id": {
-            "title": "Id",
-            "type": "integer"
-          },
-          "line_count": {
-            "title": "Line Count",
-            "type": "integer"
-          },
-          "merchant_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Merchant Name"
-          },
-          "provider": {
-            "title": "Provider",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "provider",
-          "merchant_name",
-          "line_count"
-        ],
-        "title": "EntryDocumentOut",
-        "type": "object"
-      },
       "EntryOut": {
         "properties": {
           "account_id": {
@@ -2189,37 +1940,6 @@
             ],
             "title": "Display Text"
           },
-          "document": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/EntryDocumentOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "document_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Document Id"
-          },
-          "document_line": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/EntryDocumentLineOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "id": {
             "title": "Id",
             "type": "integer"
@@ -2234,6 +1954,22 @@
               }
             ],
             "title": "Note"
+          },
+          "origin": {
+            "anyOf": [
+              {
+                "enum": [
+                  "import",
+                  "user",
+                  "booking"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origin"
           },
           "partner": {
             "anyOf": [
@@ -2261,7 +1997,6 @@
               "enum": [
                 "unconfirmed",
                 "unclassified",
-                "document_suggested",
                 "waiting",
                 "unmatched_transfer"
               ],
@@ -2360,16 +2095,14 @@
           "counter_account_id",
           "counterpart_entry_id",
           "source_transaction_id",
-          "document_id",
           "review_flags",
           "tag_ids",
           "source",
           "derivation",
           "unit_key",
           "authored",
-          "partner",
-          "document",
-          "document_line"
+          "origin",
+          "partner"
         ],
         "title": "EntryOut",
         "type": "object"
@@ -2604,24 +2337,6 @@
         "title": "KindNetWorthOut",
         "type": "object"
       },
-      "LineCategoryOut": {
-        "properties": {
-          "id": {
-            "title": "Id",
-            "type": "integer"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "name"
-        ],
-        "title": "LineCategoryOut",
-        "type": "object"
-      },
       "LineOut": {
         "properties": {
           "count": {
@@ -2718,13 +2433,6 @@
             "title": "Dry Run",
             "type": "boolean"
           },
-          "freed_document_ids": {
-            "items": {
-              "type": "integer"
-            },
-            "title": "Freed Document Ids",
-            "type": "array"
-          },
           "of": {
             "title": "Of",
             "type": "integer"
@@ -2792,7 +2500,6 @@
           "of",
           "removed_entry_ids",
           "partner_entry_ids",
-          "freed_document_ids",
           "repointed_source_ids",
           "derived_changes",
           "versions",
@@ -3430,17 +3137,6 @@
             ],
             "title": "Color"
           },
-          "document_provider": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Document Provider"
-          },
           "icon": {
             "anyOf": [
               {
@@ -3600,10 +3296,6 @@
             "title": "Condition Rule Ids",
             "type": "array"
           },
-          "document_provider_lost": {
-            "title": "Document Provider Lost",
-            "type": "boolean"
-          },
           "dry_run": {
             "title": "Dry Run",
             "type": "boolean"
@@ -3636,17 +3328,6 @@
               }
             ]
           },
-          "source_document_provider": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Source Document Provider"
-          },
           "source_id": {
             "title": "Source Id",
             "type": "integer"
@@ -3663,8 +3344,6 @@
           "entry_ids",
           "setting_rule_ids",
           "condition_rule_ids",
-          "source_document_provider",
-          "document_provider_lost",
           "settle"
         ],
         "title": "PayeeMergeOut",
@@ -3682,17 +3361,6 @@
               }
             ],
             "title": "Color"
-          },
-          "document_provider": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Document Provider"
           },
           "icon": {
             "anyOf": [
@@ -3730,15 +3398,14 @@
           "name",
           "icon",
           "color",
-          "note",
-          "document_provider"
+          "note"
         ],
         "title": "PayeeOut",
         "type": "object"
       },
       "PayeeUpdateBody": {
         "additionalProperties": false,
-        "description": "Absent fields stay; `null` clears `note`, `icon`, `color` and `document_provider`.",
+        "description": "Absent fields stay; `null` clears `note`, `icon` and `color`.",
         "properties": {
           "color": {
             "anyOf": [
@@ -3752,17 +3419,6 @@
               }
             ],
             "title": "Color"
-          },
-          "document_provider": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Document Provider"
           },
           "icon": {
             "anyOf": [
@@ -5549,13 +5205,6 @@
             "title": "Dry Run",
             "type": "boolean"
           },
-          "freed_document_ids": {
-            "items": {
-              "type": "integer"
-            },
-            "title": "Freed Document Ids",
-            "type": "array"
-          },
           "partners": {
             "items": {
               "$ref": "#/components/schemas/EntryOut"
@@ -5605,7 +5254,6 @@
           "counts",
           "removed",
           "removed_entry_ids",
-          "freed_document_ids",
           "partners",
           "units",
           "settle"
@@ -6449,7 +6097,6 @@
               "enum": [
                 "unconfirmed",
                 "unclassified",
-                "document_suggested",
                 "waiting",
                 "unmatched_transfer"
               ],
@@ -7343,203 +6990,9 @@
         "title": "UnitCounterLegOut",
         "type": "object"
       },
-      "UnitDocumentDraftIn": {
-        "additionalProperties": false,
-        "description": "What the draft says of the transaction's document (spec \u00a75.8, \u00a76), on its ORIGINAL entry (any other\nentry: 422 `invalid_draft`, `document_not_original`). `keep` (also: absent) leaves the link as it stands;\na commit that carries no document key for a transaction that is offered documents or awaits one is\nrefused, `document_decision_required`, unless the draft picks or says `none`. `pick` names a stored\n`document_id` and the `document_version` the client saw (both required; a document another entry carries,\none that is gone or one at another version is a problem of the preview, and a conflict of a commit).\n`none` decides that there is no document. `reresolve` drops the decision and the link: matching decides\nafresh. `split_along_lines` picks `document_id` too and splits the transaction along its lines,\nreplacing an existing split (the entries it deletes are consequences of the preview). A document mode on\na new entry, or `document_id` or `document_version` on another mode, is 422 `invalid_draft`\n(`invalid_document`).\n\nThe split along the lines is draft state made of ordinary new entries. While a link of a document of\nseveral lines is not yet the user's (a matcher link, or a pick in this draft), the preview proposes the\nsplit for EVERY carrier of the document that the line allocation divides, replacing whatever split a\ncarrier has (the stored entries it deletes are consequences of kind `deleted`, with their tags): one row\nper further line of the document's sign the allocation gives the carrier, with a server-issued negative\nid and `document_line`; the original entry takes the first line and the remainder. Once the client\nechoes any row that carries a `document_line` (its id, `source_entry_id`, `amount`, `document_line` and\nits edits), the split is the client's: nothing is regenerated and a row left out is removed. There is no\ndecline: the proposal is committed or edited like any split. Anchor the draft on the original entry: the\nanchor is never deleted.",
-        "properties": {
-          "document_id": {
-            "anyOf": [
-              {
-                "exclusiveMinimum": 0.0,
-                "maximum": 9007199254740992.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Document Id"
-          },
-          "document_version": {
-            "anyOf": [
-              {
-                "exclusiveMinimum": 0.0,
-                "maximum": 2147483647.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Document Version"
-          },
-          "mode": {
-            "default": "keep",
-            "enum": [
-              "keep",
-              "pick",
-              "none",
-              "reresolve",
-              "split_along_lines"
-            ],
-            "title": "Mode",
-            "type": "string"
-          }
-        },
-        "title": "UnitDocumentDraftIn",
-        "type": "object"
-      },
-      "UnitDocumentLineIn": {
-        "additionalProperties": false,
-        "description": "The line of a document a new entry was made from, as the preview showed it on the row\n(`document_line`): echoed so an edit of a proposed row sticks to its line. A row whose document is no\nlonger the transaction's is dropped from the draft.",
-        "properties": {
-          "document_id": {
-            "exclusiveMinimum": 0.0,
-            "maximum": 9007199254740992.0,
-            "title": "Document Id",
-            "type": "integer"
-          },
-          "line_no": {
-            "exclusiveMinimum": 0.0,
-            "maximum": 2147483647.0,
-            "title": "Line No",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "document_id",
-          "line_no"
-        ],
-        "title": "UnitDocumentLineIn",
-        "type": "object"
-      },
-      "UnitDocumentSplitOut": {
-        "description": "The split along the lines of the document the transaction carries (a document of several lines).",
-        "properties": {
-          "available": {
-            "title": "Available",
-            "type": "boolean"
-          },
-          "document_id": {
-            "title": "Document Id",
-            "type": "integer"
-          },
-          "proposed": {
-            "title": "Proposed",
-            "type": "boolean"
-          },
-          "replaces_stored_split": {
-            "title": "Replaces Stored Split",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "document_id",
-          "proposed",
-          "available",
-          "replaces_stored_split"
-        ],
-        "title": "UnitDocumentSplitOut",
-        "type": "object"
-      },
-      "UnitDocumentSummaryOut": {
-        "description": "A document in a few words: a suggestion, the one a transaction carries.",
-        "properties": {
-          "external_id": {
-            "title": "External Id",
-            "type": "string"
-          },
-          "id": {
-            "title": "Id",
-            "type": "integer"
-          },
-          "line_count": {
-            "title": "Line Count",
-            "type": "integer"
-          },
-          "merchant_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Merchant Name"
-          },
-          "occurred_on": {
-            "format": "date",
-            "title": "Occurred On",
-            "type": "string"
-          },
-          "provider": {
-            "title": "Provider",
-            "type": "string"
-          },
-          "title": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Title"
-          },
-          "total": {
-            "$ref": "#/components/schemas/Money"
-          },
-          "version": {
-            "title": "Version",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "id",
-          "version",
-          "provider",
-          "external_id",
-          "occurred_on",
-          "total",
-          "merchant_name",
-          "title",
-          "line_count"
-        ],
-        "title": "UnitDocumentSummaryOut",
-        "type": "object"
-      },
-      "UnitDocumentWaitingOut": {
-        "description": "The line of a transaction that waits for its document: \"from <provider>, covered through <date>\",\nor \"not synced yet\" where `covered_through` is null.",
-        "properties": {
-          "covered_through": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Covered Through"
-          },
-          "provider": {
-            "title": "Provider",
-            "type": "string"
-          }
-        },
-        "required": [
-          "provider",
-          "covered_through"
-        ],
-        "title": "UnitDocumentWaitingOut",
-        "type": "object"
-      },
       "UnitDraftEntryIn": {
         "additionalProperties": false,
-        "description": "One entry the draft changes. `description` and `note` are left as stored when absent and emptied when\nnull. A new entry (negative `id`) names `source_entry_id`, a stored entry of the source it splits, and\ncarries its `amount`; the source's original entry is the residual and takes no amount of its own. `tags`\nis a tag change on top of the stored (or inherited) tags; absent leaves them untouched. `document_line`\nnull on a stored (original) entry, as against absent, is the user's decision that its transaction stays\nunsplit, without a line: nothing is proposed for it.",
+        "description": "One entry the draft changes. `description` and `note` are left as stored when absent and emptied when\nnull. A new entry (negative `id`) names `source_entry_id`, a stored entry of the source it splits, and\ncarries its `amount`; the source's original entry is the residual and takes no amount of its own. `tags`\nis a tag change on top of the stored (or inherited) tags; absent leaves them untouched.",
         "properties": {
           "amount": {
             "anyOf": [
@@ -7570,19 +7023,6 @@
               }
             ],
             "title": "Description"
-          },
-          "document": {
-            "$ref": "#/components/schemas/UnitDocumentDraftIn"
-          },
-          "document_line": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/UnitDocumentLineIn"
-              },
-              {
-                "type": "null"
-              }
-            ]
           },
           "id": {
             "maximum": 9007199254740992.0,
@@ -7978,33 +7418,6 @@
         "title": "UnitOfferOut",
         "type": "object"
       },
-      "UnitOrderWaitingOut": {
-        "description": "The line of a transaction that waits for the rest of its document's order (documents.md \u00a77): \"order\n<order> from <provider>, <not yet charged> of <total>\"; `charged` and `total` are signed like the\ndocument's total and compared by magnitude.",
-        "properties": {
-          "charged": {
-            "$ref": "#/components/schemas/Money"
-          },
-          "order": {
-            "title": "Order",
-            "type": "string"
-          },
-          "provider": {
-            "title": "Provider",
-            "type": "string"
-          },
-          "total": {
-            "$ref": "#/components/schemas/Money"
-          }
-        },
-        "required": [
-          "order",
-          "provider",
-          "charged",
-          "total"
-        ],
-        "title": "UnitOrderWaitingOut",
-        "type": "object"
-      },
       "UnitOut": {
         "properties": {
           "anchor_entry_id": {
@@ -8044,26 +7457,6 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/WaitingOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "waiting_document": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/WaitingDocumentOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "waiting_order": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/WaitingOrderOut"
               },
               {
                 "type": "null"
@@ -8305,26 +7698,6 @@
               }
             ],
             "title": "Description"
-          },
-          "document": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/UnitRowDocumentOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "document_line": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/UnitRowDocumentLineOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
           },
           "fields": {
             "additionalProperties": {
@@ -8586,122 +7959,9 @@
         "title": "UnitRefOut",
         "type": "object"
       },
-      "UnitRowDocumentLineOut": {
-        "description": "The line a row has (spec \u00a75.8), with its description; a row made from a line echoes it back.",
-        "properties": {
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "document_id": {
-            "title": "Document Id",
-            "type": "integer"
-          },
-          "line_no": {
-            "title": "Line No",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "document_id",
-          "line_no",
-          "description"
-        ],
-        "title": "UnitRowDocumentLineOut",
-        "type": "object"
-      },
-      "UnitRowDocumentOut": {
-        "description": "The document part of a transaction's original entry (spec \u00a75.8, \u00a76). Null where there is nothing to\nsay: no link, no key, no suggestion, no wait. A suggestion is no decision: where `decision_required`, a\ncommit is refused (`document_decision_required`) unless it picks one or says `none`.",
-        "properties": {
-          "decision_required": {
-            "title": "Decision Required",
-            "type": "boolean"
-          },
-          "document": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/UnitDocumentSummaryOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "key": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/UnitKeyOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "split": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/UnitDocumentSplitOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "stored_document_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Stored Document Id"
-          },
-          "suggestions": {
-            "items": {
-              "$ref": "#/components/schemas/UnitDocumentSummaryOut"
-            },
-            "title": "Suggestions",
-            "type": "array"
-          },
-          "waiting": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/UnitDocumentWaitingOut"
-              },
-              {
-                "$ref": "#/components/schemas/UnitOrderWaitingOut"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Waiting"
-          }
-        },
-        "required": [
-          "stored_document_id",
-          "document",
-          "key",
-          "suggestions",
-          "waiting",
-          "decision_required",
-          "split"
-        ],
-        "title": "UnitRowDocumentOut",
-        "type": "object"
-      },
       "UnitShownBasisIn": {
         "additionalProperties": false,
-        "description": "The key of the proposal the client showed for a value (`pass` is history, llm or matcher_proposal).",
+        "description": "The key of the proposal the client showed for a value (`pass` is history or llm).",
         "properties": {
           "basis": {
             "additionalProperties": true,
@@ -8767,8 +8027,6 @@
                 "unpaired_transfer",
                 "waiting_for_partner",
                 "unmatched_transfer",
-                "waiting_for_document",
-                "document_suggested",
                 "non_standing_keys"
               ],
               "type": "string"
@@ -9173,59 +8431,6 @@
         "title": "ViewCheckOut",
         "type": "object"
       },
-      "WaitingDocumentOut": {
-        "properties": {
-          "covered_through": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Covered Through"
-          },
-          "provider": {
-            "title": "Provider",
-            "type": "string"
-          }
-        },
-        "required": [
-          "provider",
-          "covered_through"
-        ],
-        "title": "WaitingDocumentOut",
-        "type": "object"
-      },
-      "WaitingOrderOut": {
-        "description": "A unit waiting for the rest of a document's order (documents.md \u00a77): `charged` of the order's `total`\n(signed like a charge, compared by magnitude) is carried; the queue says what remains.",
-        "properties": {
-          "charged": {
-            "$ref": "#/components/schemas/Money"
-          },
-          "order": {
-            "title": "Order",
-            "type": "string"
-          },
-          "provider": {
-            "title": "Provider",
-            "type": "string"
-          },
-          "total": {
-            "$ref": "#/components/schemas/Money"
-          }
-        },
-        "required": [
-          "order",
-          "provider",
-          "charged",
-          "total"
-        ],
-        "title": "WaitingOrderOut",
-        "type": "object"
-      },
       "WaitingOut": {
         "properties": {
           "account_id": {
@@ -9453,38 +8658,6 @@
           },
           {
             "in": "query",
-            "name": "linked",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "boolean"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Linked"
-            }
-          },
-          {
-            "in": "query",
-            "name": "fully_charged",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "boolean"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Fully Charged"
-            }
-          },
-          {
-            "in": "query",
             "name": "limit",
             "required": false,
             "schema": {
@@ -9548,7 +8721,7 @@
     },
     "/api/documents/providers": {
       "get": {
-        "description": "Suggestions for the providers a payee names and the documents list filters by (any may be named).",
+        "description": "Suggestions for a clearance account's provider list and the documents filter (any may be named).",
         "operationId": "list_document_providers",
         "responses": {
           "200": {
@@ -9590,7 +8763,7 @@
     },
     "/api/documents/{document_id}": {
       "get": {
-        "description": "A document with its lines, its carriers and, while it is not fully charged, the transactions it would\nmatch.",
+        "description": "A document with its lines.",
         "operationId": "get_document_view",
         "parameters": [
           {
@@ -12626,7 +11799,7 @@
     },
     "/api/ledger/payees": {
       "get": {
-        "description": "Every payee by name: identity, presentation and `document_provider`.",
+        "description": "Every payee by name: identity and presentation.",
         "operationId": "list_payees",
         "responses": {
           "200": {
@@ -12894,7 +12067,7 @@
     },
     "/api/ledger/payees/{payee_id}/merge": {
       "post": {
-        "description": "Merge into another payee, whose attributes win; `dry_run` previews and warns about the provider.",
+        "description": "Merge into another payee, whose attributes win; `dry_run` previews.",
         "operationId": "merge_ledger_payee",
         "parameters": [
           {
@@ -15257,7 +14430,7 @@
     },
     "/api/units/commit": {
       "post": {
-        "description": "Write the draft in one transaction, then settle. A commit does not confirm: settling does.\n\n409 `conflict` names the entries whose version moved (or that `versions` omitted); 409 `unit_moved` is a\nclosure that changed under the locks, or a picked document that another entry carries (`details.reason`\n`taken`) or that is at another version (`version`), named in `details.document_id`; 409\n`stale_reference` a category, payee, account or picked document that no longer exists; 409 `try_again`\na deadlock lost twice. 422 carries the code of the first problem the preview would\nlist (all of them in `details.problems`), or `invalid_draft`. A pick is checked against the widest window\n(90 days), so one the widened preview accepted commits. `window_days` (1 to 90, default the matching\nwindow) is the window the proposals were shown for: send the one the preview used, so the proposals a\ncommit accepts (as the user's decisions) are the ones shown.",
+        "description": "Write the draft in one transaction, then settle. A commit does not confirm: settling does.\n\n409 `conflict` names the entries whose version moved (or that `versions` omitted); 409 `unit_moved` is a\nclosure that changed under the locks; 409 `stale_reference` a category, payee or account that no\nlonger exists; 409 `try_again`\na deadlock lost twice. 422 carries the code of the first problem the preview would\nlist (all of them in `details.problems`), or `invalid_draft`. A pick is checked against the widest window\n(90 days), so one the widened preview accepted commits. `window_days` (1 to 90, default the matching\nwindow) is the window the proposals were shown for: send the one the preview used, so the proposals a\ncommit accepts (as the user's decisions) are the ones shown.",
         "operationId": "commit_unit",
         "parameters": [
           {

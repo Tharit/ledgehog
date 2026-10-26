@@ -72,7 +72,7 @@ export interface paths {
         };
         /**
          * List Document Providers
-         * @description Suggestions for the providers a payee names and the documents list filters by (any may be named).
+         * @description Suggestions for a clearance account's provider list and the documents filter (any may be named).
          */
         get: operations["list_document_providers"];
         put?: never;
@@ -92,8 +92,7 @@ export interface paths {
         };
         /**
          * Get Document View
-         * @description A document with its lines, its carriers and, while it is not fully charged, the transactions it would
-         *     match.
+         * @description A document with its lines.
          */
         get: operations["get_document_view"];
         put?: never;
@@ -581,7 +580,7 @@ export interface paths {
         };
         /**
          * List Payees
-         * @description Every payee by name: identity, presentation and `document_provider`.
+         * @description Every payee by name: identity and presentation.
          */
         get: operations["list_payees"];
         put?: never;
@@ -627,7 +626,7 @@ export interface paths {
         put?: never;
         /**
          * Merge Ledger Payee
-         * @description Merge into another payee, whose attributes win; `dry_run` previews and warns about the provider.
+         * @description Merge into another payee, whose attributes win; `dry_run` previews.
          */
         post: operations["merge_ledger_payee"];
         delete?: never;
@@ -1133,9 +1132,8 @@ export interface paths {
          * @description Write the draft in one transaction, then settle. A commit does not confirm: settling does.
          *
          *     409 `conflict` names the entries whose version moved (or that `versions` omitted); 409 `unit_moved` is a
-         *     closure that changed under the locks, or a picked document that another entry carries (`details.reason`
-         *     `taken`) or that is at another version (`version`), named in `details.document_id`; 409
-         *     `stale_reference` a category, payee, account or picked document that no longer exists; 409 `try_again`
+         *     closure that changed under the locks; 409 `stale_reference` a category, payee or account that no
+         *     longer exists; 409 `try_again`
          *     a deadlock lost twice. 422 carries the code of the first problem the preview would
          *     list (all of them in `details.problems`), or `invalid_draft`. A pick is checked against the widest window
          *     (90 days), so one the widened preview accepted commits. `window_days` (1 to 90, default the matching
@@ -1362,24 +1360,6 @@ export interface components {
             /** Unconfirmed Count */
             unconfirmed_count: number;
         };
-        /**
-         * CarrierOut
-         * @description The transaction carrying a document: its original entry, which opens the review panel.
-         */
-        CarrierOut: {
-            /** Account Id */
-            account_id: number;
-            amount: components["schemas"]["Money"];
-            /**
-             * Booked On
-             * Format: date
-             */
-            booked_on: string;
-            /** Entry Id */
-            entry_id: number;
-            /** Source Transaction Id */
-            source_transaction_id: number;
-        };
         /** CatalogEntryOut */
         CatalogEntryOut: {
             /** Emits */
@@ -1397,8 +1377,6 @@ export interface components {
                     [key: string]: unknown;
                 };
             };
-            /** Start Date Default */
-            start_date_default: string | null;
         };
         /** CategoriesOut */
         CategoriesOut: {
@@ -1602,7 +1580,7 @@ export interface components {
              * Field
              * @enum {string}
              */
-            field: "counterparty_name" | "counterparty_ref" | "purpose" | "booking_text" | "mandate_ref" | "document_merchant" | "document_line" | "payee";
+            field: "counterparty_name" | "counterparty_ref" | "purpose" | "booking_text" | "mandate_ref" | "payee";
             /**
              * Op
              * @enum {string}
@@ -1668,8 +1646,6 @@ export interface components {
             confirmed_entries: number;
             /** Entries */
             entries: number;
-            /** Freed Documents */
-            freed_documents: number;
             /** Partners Returning To Review */
             partners_returning_to_review: number;
             /** Tag Memberships */
@@ -1721,14 +1697,8 @@ export interface components {
         };
         /** DocumentDetailOut */
         DocumentDetailOut: {
-            /** Carrier Count */
-            carrier_count: number;
-            /** Carriers */
-            carriers: components["schemas"]["CarrierOut"][];
             /** External Id */
             external_id: string;
-            /** Fully Charged */
-            fully_charged: boolean;
             /** Id */
             id: number;
             /** Importer Instance Id */
@@ -1737,8 +1707,6 @@ export interface components {
             line_count: number;
             /** Lines */
             lines: components["schemas"]["DocumentLineOut"][];
-            /** Matches */
-            matches: components["schemas"]["DocumentMatchOut"][];
             /** Merchant Name */
             merchant_name: string | null;
             /**
@@ -1757,47 +1725,15 @@ export interface components {
         /** DocumentLineOut */
         DocumentLineOut: {
             amount: components["schemas"]["Money"];
-            category: components["schemas"]["LineCategoryOut"] | null;
             /** Description */
             description: string;
             /** Line No */
             line_no: number;
             /** Qty */
             qty: number | null;
-            /** Rationale */
-            rationale: string | null;
-        };
-        /**
-         * DocumentMatchOut
-         * @description A transaction the document would match (documents.md §9), with its unit's state.
-         */
-        DocumentMatchOut: {
-            /** Account Id */
-            account_id: number;
-            amount: components["schemas"]["Money"];
-            /**
-             * Booked On
-             * Format: date
-             */
-            booked_on: string;
-            /** Confirmed */
-            confirmed: boolean;
-            /** Display Text */
-            display_text: string | null;
-            /** Document Id */
-            document_id: number | null;
-            /** Entry Id */
-            entry_id: number;
-            instructed_amount: components["schemas"]["Money"] | null;
-            /** Payee Id */
-            payee_id: number | null;
-            /** Source Transaction Id */
-            source_transaction_id: number;
         };
         /** DocumentOut */
         DocumentOut: {
-            /** Carrier Count */
-            carrier_count: number;
             /** External Id */
             external_id: string;
             /** Id */
@@ -1879,30 +1815,6 @@ export interface components {
             /** Versions */
             versions: components["schemas"]["EntryVersionOut"][];
         };
-        /**
-         * EntryDocumentLineOut
-         * @description The entry's own line of that document: what a rule's `document_line` reads (spec §5.8).
-         */
-        EntryDocumentLineOut: {
-            /** Description */
-            description: string;
-            /** Line No */
-            line_no: number;
-        };
-        /**
-         * EntryDocumentOut
-         * @description The document of the entry's transaction (every entry of a split reads the one its original carries).
-         */
-        EntryDocumentOut: {
-            /** Id */
-            id: number;
-            /** Line Count */
-            line_count: number;
-            /** Merchant Name */
-            merchant_name: string | null;
-            /** Provider */
-            provider: string;
-        };
         /** EntryOut */
         EntryOut: {
             /** Account Id */
@@ -1929,19 +1841,17 @@ export interface components {
             description: string | null;
             /** Display Text */
             display_text: string | null;
-            document: components["schemas"]["EntryDocumentOut"] | null;
-            /** Document Id */
-            document_id: number | null;
-            document_line: components["schemas"]["EntryDocumentLineOut"] | null;
             /** Id */
             id: number;
             /** Note */
             note: string | null;
+            /** Origin */
+            origin: ("import" | "user" | "booking") | null;
             partner: components["schemas"]["PartnerOut"] | null;
             /** Payee Id */
             payee_id: number | null;
             /** Review Flags */
-            review_flags: ("unconfirmed" | "unclassified" | "document_suggested" | "waiting" | "unmatched_transfer")[];
+            review_flags: ("unconfirmed" | "unclassified" | "waiting" | "unmatched_transfer")[];
             source: components["schemas"]["SourceTransactionOut"] | null;
             /** Source Transaction Id */
             source_transaction_id: number | null;
@@ -2044,13 +1954,6 @@ export interface components {
             /** Net Worth */
             net_worth: components["schemas"]["PointNetWorthOut"][];
         };
-        /** LineCategoryOut */
-        LineCategoryOut: {
-            /** Id */
-            id: number;
-            /** Name */
-            name: string;
-        };
         /** LineOut */
         LineOut: {
             /** Count */
@@ -2084,8 +1987,6 @@ export interface components {
             derived_changes: components["schemas"]["DerivedChangeOut"][];
             /** Dry Run */
             dry_run: boolean;
-            /** Freed Document Ids */
-            freed_document_ids: number[];
             /** Of */
             of: number;
             /** Partner Entry Ids */
@@ -2295,8 +2196,6 @@ export interface components {
         PayeeCreateBody: {
             /** Color */
             color?: string | null;
-            /** Document Provider */
-            document_provider?: string | null;
             /** Icon */
             icon?: string | null;
             /** Name */
@@ -2343,8 +2242,6 @@ export interface components {
         PayeeMergeOut: {
             /** Condition Rule Ids */
             condition_rule_ids: number[];
-            /** Document Provider Lost */
-            document_provider_lost: boolean;
             /** Dry Run */
             dry_run: boolean;
             /** Entry Count */
@@ -2354,8 +2251,6 @@ export interface components {
             /** Setting Rule Ids */
             setting_rule_ids: number[];
             settle: components["schemas"]["SettleOut"] | null;
-            /** Source Document Provider */
-            source_document_provider: string | null;
             /** Source Id */
             source_id: number;
             target: components["schemas"]["PayeeOut"];
@@ -2364,8 +2259,6 @@ export interface components {
         PayeeOut: {
             /** Color */
             color: string | null;
-            /** Document Provider */
-            document_provider: string | null;
             /** Icon */
             icon: string | null;
             /** Id */
@@ -2377,13 +2270,11 @@ export interface components {
         };
         /**
          * PayeeUpdateBody
-         * @description Absent fields stay; `null` clears `note`, `icon`, `color` and `document_provider`.
+         * @description Absent fields stay; `null` clears `note`, `icon` and `color`.
          */
         PayeeUpdateBody: {
             /** Color */
             color?: string | null;
-            /** Document Provider */
-            document_provider?: string | null;
             /** Icon */
             icon?: string | null;
             /** Name */
@@ -2944,8 +2835,6 @@ export interface components {
             counts: components["schemas"]["DeleteCountsOut"];
             /** Dry Run */
             dry_run: boolean;
-            /** Freed Document Ids */
-            freed_document_ids: number[];
             /** Partners */
             partners: components["schemas"]["EntryOut"][];
             /** Removed */
@@ -3204,7 +3093,7 @@ export interface components {
              * Flag
              * @default []
              */
-            flag: ("unconfirmed" | "unclassified" | "document_suggested" | "waiting" | "unmatched_transfer")[];
+            flag: ("unconfirmed" | "unclassified" | "waiting" | "unmatched_transfer")[];
             /** From */
             from?: string | null;
             /**
@@ -3516,113 +3405,11 @@ export interface components {
             purpose: string | null;
         };
         /**
-         * UnitDocumentDraftIn
-         * @description What the draft says of the transaction's document (spec §5.8, §6), on its ORIGINAL entry (any other
-         *     entry: 422 `invalid_draft`, `document_not_original`). `keep` (also: absent) leaves the link as it stands;
-         *     a commit that carries no document key for a transaction that is offered documents or awaits one is
-         *     refused, `document_decision_required`, unless the draft picks or says `none`. `pick` names a stored
-         *     `document_id` and the `document_version` the client saw (both required; a document another entry carries,
-         *     one that is gone or one at another version is a problem of the preview, and a conflict of a commit).
-         *     `none` decides that there is no document. `reresolve` drops the decision and the link: matching decides
-         *     afresh. `split_along_lines` picks `document_id` too and splits the transaction along its lines,
-         *     replacing an existing split (the entries it deletes are consequences of the preview). A document mode on
-         *     a new entry, or `document_id` or `document_version` on another mode, is 422 `invalid_draft`
-         *     (`invalid_document`).
-         *
-         *     The split along the lines is draft state made of ordinary new entries. While a link of a document of
-         *     several lines is not yet the user's (a matcher link, or a pick in this draft), the preview proposes the
-         *     split for EVERY carrier of the document that the line allocation divides, replacing whatever split a
-         *     carrier has (the stored entries it deletes are consequences of kind `deleted`, with their tags): one row
-         *     per further line of the document's sign the allocation gives the carrier, with a server-issued negative
-         *     id and `document_line`; the original entry takes the first line and the remainder. Once the client
-         *     echoes any row that carries a `document_line` (its id, `source_entry_id`, `amount`, `document_line` and
-         *     its edits), the split is the client's: nothing is regenerated and a row left out is removed. There is no
-         *     decline: the proposal is committed or edited like any split. Anchor the draft on the original entry: the
-         *     anchor is never deleted.
-         */
-        UnitDocumentDraftIn: {
-            /** Document Id */
-            document_id?: number | null;
-            /** Document Version */
-            document_version?: number | null;
-            /**
-             * Mode
-             * @default keep
-             * @enum {string}
-             */
-            mode: "keep" | "pick" | "none" | "reresolve" | "split_along_lines";
-        };
-        /**
-         * UnitDocumentLineIn
-         * @description The line of a document a new entry was made from, as the preview showed it on the row
-         *     (`document_line`): echoed so an edit of a proposed row sticks to its line. A row whose document is no
-         *     longer the transaction's is dropped from the draft.
-         */
-        UnitDocumentLineIn: {
-            /** Document Id */
-            document_id: number;
-            /** Line No */
-            line_no: number;
-        };
-        /**
-         * UnitDocumentSplitOut
-         * @description The split along the lines of the document the transaction carries (a document of several lines).
-         */
-        UnitDocumentSplitOut: {
-            /** Available */
-            available: boolean;
-            /** Document Id */
-            document_id: number;
-            /** Proposed */
-            proposed: boolean;
-            /** Replaces Stored Split */
-            replaces_stored_split: boolean;
-        };
-        /**
-         * UnitDocumentSummaryOut
-         * @description A document in a few words: a suggestion, the one a transaction carries.
-         */
-        UnitDocumentSummaryOut: {
-            /** External Id */
-            external_id: string;
-            /** Id */
-            id: number;
-            /** Line Count */
-            line_count: number;
-            /** Merchant Name */
-            merchant_name: string | null;
-            /**
-             * Occurred On
-             * Format: date
-             */
-            occurred_on: string;
-            /** Provider */
-            provider: string;
-            /** Title */
-            title: string | null;
-            total: components["schemas"]["Money"];
-            /** Version */
-            version: number;
-        };
-        /**
-         * UnitDocumentWaitingOut
-         * @description The line of a transaction that waits for its document: "from <provider>, covered through <date>",
-         *     or "not synced yet" where `covered_through` is null.
-         */
-        UnitDocumentWaitingOut: {
-            /** Covered Through */
-            covered_through: string | null;
-            /** Provider */
-            provider: string;
-        };
-        /**
          * UnitDraftEntryIn
          * @description One entry the draft changes. `description` and `note` are left as stored when absent and emptied when
          *     null. A new entry (negative `id`) names `source_entry_id`, a stored entry of the source it splits, and
          *     carries its `amount`; the source's original entry is the residual and takes no amount of its own. `tags`
-         *     is a tag change on top of the stored (or inherited) tags; absent leaves them untouched. `document_line`
-         *     null on a stored (original) entry, as against absent, is the user's decision that its transaction stays
-         *     unsplit, without a line: nothing is proposed for it.
+         *     is a tag change on top of the stored (or inherited) tags; absent leaves them untouched.
          */
         UnitDraftEntryIn: {
             /** Amount */
@@ -3631,8 +3418,6 @@ export interface components {
             counter_account?: components["schemas"]["UnitFieldDraftIn"];
             /** Description */
             description?: string | null;
-            document?: components["schemas"]["UnitDocumentDraftIn"];
-            document_line?: components["schemas"]["UnitDocumentLineIn"] | null;
             /** Id */
             id: number;
             /** Note */
@@ -3761,20 +3546,6 @@ export interface components {
             /** Proposed */
             proposed: boolean;
         };
-        /**
-         * UnitOrderWaitingOut
-         * @description The line of a transaction that waits for the rest of its document's order (documents.md §7): "order
-         *     <order> from <provider>, <not yet charged> of <total>"; `charged` and `total` are signed like the
-         *     document's total and compared by magnitude.
-         */
-        UnitOrderWaitingOut: {
-            charged: components["schemas"]["Money"];
-            /** Order */
-            order: string;
-            /** Provider */
-            provider: string;
-            total: components["schemas"]["Money"];
-        };
         /** UnitOut */
         UnitOut: {
             /** Anchor Entry Id */
@@ -3791,8 +3562,6 @@ export interface components {
             /** Unit Key */
             unit_key: number;
             waiting?: components["schemas"]["WaitingOut"] | null;
-            waiting_document?: components["schemas"]["WaitingDocumentOut"] | null;
-            waiting_order?: components["schemas"]["WaitingOrderOut"] | null;
         };
         /**
          * UnitPairingIn
@@ -3885,8 +3654,6 @@ export interface components {
             };
             /** Description */
             description: string | null;
-            document?: components["schemas"]["UnitRowDocumentOut"] | null;
-            document_line?: components["schemas"]["UnitRowDocumentLineOut"] | null;
             /** Fields */
             fields: {
                 [key: string]: components["schemas"]["UnitFieldOut"];
@@ -3955,39 +3722,8 @@ export interface components {
             state: components["schemas"]["UnitStateOut"];
         };
         /**
-         * UnitRowDocumentLineOut
-         * @description The line a row has (spec §5.8), with its description; a row made from a line echoes it back.
-         */
-        UnitRowDocumentLineOut: {
-            /** Description */
-            description: string | null;
-            /** Document Id */
-            document_id: number;
-            /** Line No */
-            line_no: number;
-        };
-        /**
-         * UnitRowDocumentOut
-         * @description The document part of a transaction's original entry (spec §5.8, §6). Null where there is nothing to
-         *     say: no link, no key, no suggestion, no wait. A suggestion is no decision: where `decision_required`, a
-         *     commit is refused (`document_decision_required`) unless it picks one or says `none`.
-         */
-        UnitRowDocumentOut: {
-            /** Decision Required */
-            decision_required: boolean;
-            document: components["schemas"]["UnitDocumentSummaryOut"] | null;
-            key: components["schemas"]["UnitKeyOut"] | null;
-            split: components["schemas"]["UnitDocumentSplitOut"] | null;
-            /** Stored Document Id */
-            stored_document_id: number | null;
-            /** Suggestions */
-            suggestions: components["schemas"]["UnitDocumentSummaryOut"][];
-            /** Waiting */
-            waiting: components["schemas"]["UnitDocumentWaitingOut"] | components["schemas"]["UnitOrderWaitingOut"] | null;
-        };
-        /**
          * UnitShownBasisIn
-         * @description The key of the proposal the client showed for a value (`pass` is history, llm or matcher_proposal).
+         * @description The key of the proposal the client showed for a value (`pass` is history or llm).
          */
         UnitShownBasisIn: {
             /** Basis */
@@ -4016,7 +3752,7 @@ export interface components {
             /** Confirmed */
             confirmed: boolean;
             /** Reasons */
-            reasons: ("incomplete" | "unpaired_transfer" | "waiting_for_partner" | "unmatched_transfer" | "waiting_for_document" | "document_suggested" | "non_standing_keys")[];
+            reasons: ("incomplete" | "unpaired_transfer" | "waiting_for_partner" | "unmatched_transfer" | "non_standing_keys")[];
         };
         /** UnitStoredFieldOut */
         UnitStoredFieldOut: {
@@ -4131,26 +3867,6 @@ export interface components {
             /** Truncated */
             truncated: boolean;
         };
-        /** WaitingDocumentOut */
-        WaitingDocumentOut: {
-            /** Covered Through */
-            covered_through: string | null;
-            /** Provider */
-            provider: string;
-        };
-        /**
-         * WaitingOrderOut
-         * @description A unit waiting for the rest of a document's order (documents.md §7): `charged` of the order's `total`
-         *     (signed like a charge, compared by magnitude) is carried; the queue says what remains.
-         */
-        WaitingOrderOut: {
-            charged: components["schemas"]["Money"];
-            /** Order */
-            order: string;
-            /** Provider */
-            provider: string;
-            total: components["schemas"]["Money"];
-        };
         /** WaitingOut */
         WaitingOut: {
             /** Account Id */
@@ -4237,8 +3953,6 @@ export interface operations {
                 amount_max?: number | null;
                 currency?: string | null;
                 q?: string | null;
-                linked?: boolean | null;
-                fully_charged?: boolean | null;
                 limit?: number;
                 offset?: number;
             };
