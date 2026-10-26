@@ -171,22 +171,18 @@ class CatalogEntryOut(BaseModel):
     kind: Literal["file", "fetch"]
     emits: list[Literal["transactions", "documents", "rates"]]
     presets: dict[str, dict[str, Any]]  # preset name -> the settings it fills; empty for most importers
-    # documents only: the booking date of the oldest unreviewed entry (prefills the start date), else null
-    start_date_default: date | None
 
 
 @router.get("")
-def list_catalog(request: Request, user: CurrentUser, engine: EngineDep) -> list[CatalogEntryOut]:
+def list_catalog(request: Request, user: CurrentUser) -> list[CatalogEntryOut]:
     """The importers this deployment registers: what a new instance can be made from."""
     entries = cat.catalog(request.app.state.importers)
-    oldest = cat.oldest_unreviewed_date(engine) if any("documents" in e.emits for e in entries) else None
     return [
         CatalogEntryOut(
             name=e.name,
             kind=e.kind,
             emits=list(e.emits),  # type: ignore[arg-type]
             presets={k: dict(v) for k, v in e.presets.items()},
-            start_date_default=oldest if "documents" in e.emits else None,
         )
         for e in entries
     ]

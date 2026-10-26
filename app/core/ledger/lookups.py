@@ -26,11 +26,10 @@ class PayeeRow:
     icon: str | None
     color: str | None
     note: str | None
-    document_provider: str | None
 
 
 _CATEGORY = "SELECT id, parent_id, name, kind, sort_order, icon, color FROM category"
-_PAYEE = "SELECT id, name, icon, color, note, document_provider FROM payee"
+_PAYEE = "SELECT id, name, icon, color, note FROM payee"
 
 
 def _category(r: Any) -> CategoryRow:
@@ -38,7 +37,7 @@ def _category(r: Any) -> CategoryRow:
 
 
 def _payee(r: Any) -> PayeeRow:
-    return PayeeRow(r.id, r.name, r.icon, r.color, r.note, r.document_provider)
+    return PayeeRow(r.id, r.name, r.icon, r.color, r.note)
 
 
 def list_categories(conn: Connection) -> list[CategoryRow]:

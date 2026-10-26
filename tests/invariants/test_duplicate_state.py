@@ -156,7 +156,7 @@ def test_duplicate_of_a_user_authored_row_is_refused(db_conn: Connection, make_a
     user_row = make_source(db_conn, acct, importer=None)
     make_entry(db_conn, user_row)
     make_source(db_conn, acct, duplicate_of=user_row)
-    with rejects(db_conn, sqlstate=RAISE_EXCEPTION, message="cannot duplicate user-authored row"):
+    with rejects(db_conn, sqlstate=RAISE_EXCEPTION, message="cannot duplicate row"):
         fire_deferred(db_conn)
 
 
@@ -164,7 +164,7 @@ def test_a_user_authored_row_cannot_be_marked(db_conn: Connection, make_account:
     acct = make_account(db_conn)
     original, _ = make_movement(db_conn, acct)
     user_row = make_source(db_conn, acct, importer=None)
-    with rejects(db_conn, sqlstate=CHECK_VIOLATION, constraint="ck_user_row"):
+    with rejects(db_conn, sqlstate=CHECK_VIOLATION, constraint="ck_origin"):
         _mark(db_conn, user_row, original)
 
 

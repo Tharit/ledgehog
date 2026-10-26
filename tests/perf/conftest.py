@@ -73,10 +73,3 @@ def backfill_settled(admin_cfg: Config, template_db: str) -> Iterator[Backfill]:
 def backfill_transfers(admin_cfg: Config, template_db: str) -> Iterator[Backfill]:
     """The ~70% confirmed ledger plus 800 transfer legs: pairs to make, pairs made, waiting, unmatched."""
     yield from _backfill(admin_cfg, template_db, confirmed_share=0.7, transfers=800)
-
-
-@pytest.fixture(scope="session")
-def backfill_documents(admin_cfg: Config, template_db: str) -> Iterator[Backfill]:
-    """~90% confirmed (7,200 voters, ~800 plain unconfirmed entries) plus 3,000 documents and 1,500
-    unconfirmed provider-payee charges (`_add_documents`): ~2,300 unconfirmed entries, like the 70% ledger."""
-    yield from _backfill(admin_cfg, template_db, confirmed_share=0.9, documents=3000)

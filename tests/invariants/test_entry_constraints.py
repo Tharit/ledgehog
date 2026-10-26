@@ -140,27 +140,18 @@ def test_a_derived_entry_is_complete(db_conn: Connection, make_account: MakeAcco
         )
 
 
-def test_only_a_movement_carries_a_document(db_conn: Connection, make_account: MakeAccount) -> None:
+def test_only_a_movement_carries_a_source_text(db_conn: Connection, make_account: MakeAccount) -> None:
     acct = make_account(db_conn)
     rec = make_balance_record(db_conn, acct, balance_on=date(2026, 1, 1))
-    doc = scalar(
-        db_conn,
-        "INSERT INTO external_document (provider, external_id, occurred_on, total, currency, raw) "
-        "VALUES ('p', 'x', DATE '2026-01-01', -1, 'EUR', '{}') RETURNING id",
-    )
-    with rejects(db_conn, sqlstate=CHECK_VIOLATION, constraint="ck_document_on_movement"):
-        make_derived_entry_with_document(db_conn, acct, rec, doc)
-
-
-def make_derived_entry_with_document(conn: Connection, acct: int, rec: int, doc: int) -> None:
-    conn.execute(
-        text(
-            "INSERT INTO ledger_entry (account_id, balance_record_id, type, amount, currency, "
-            "booked_on, document_id) "
-            "VALUES (:a, :r, 'opening', 5, 'EUR', DATE '2026-01-01', :d)"
-        ),
-        {"a": acct, "r": rec, "d": doc},
-    )
+    with rejects(db_conn, sqlstate=CHECK_VIOLATION, constraint="ck_source_text_on_movement"):
+        db_conn.execute(
+            text(
+                "INSERT INTO ledger_entry (account_id, balance_record_id, type, amount, currency, "
+                "booked_on, source_text) "
+                "VALUES (:a, :r, 'opening', 5, 'EUR', DATE '2026-01-01', 'text')"
+            ),
+            {"a": acct, "r": rec},
+        )
 
 
 def test_an_entry_is_denominated_in_its_accounts_currency(
@@ -212,65 +203,3 @@ def test_at_most_one_transfer_entry_per_source(db_conn: Connection, make_account
     with rejects(db_conn, sqlstate=UNIQUE_VIOLATION, constraint="ux_le_one_transfer_per_source"):
         make_entry(db_conn, src, amount=-2000, type="transfer", counter_account_id=other)
     make_entry(db_conn, src, amount=-2000, type="flow")
-
-
-def _document(conn: Connection, external_id: str) -> int:
-    return int(
-        scalar(
-            conn,
-            "INSERT INTO external_document (provider, external_id, occurred_on, total, currency, raw) "
-            "VALUES ('p', :x, DATE '2026-02-10', -1000, 'EUR', '{}') RETURNING id",
-            x=external_id,
-        )
-    )
-
-
-def test_a_document_may_be_carried_by_several_transactions(
-    db_conn: Connection, make_account: MakeAccount
-) -> None:
-    acct = make_account(db_conn)
-    doc = _document(db_conn, "d1")
-    _, e1 = make_movement(db_conn, acct)
-    _, e2 = make_movement(db_conn, acct)
-    _update(db_conn, e1, f"document_id = {doc}")
-    _update(
-        db_conn, e2, f"document_id = {doc}"
-    )  # I35: no index on the document alone, a line is carried once
-
-
-def test_a_line_is_carried_by_at_most_one_entry(db_conn: Connection, make_account: MakeAccount) -> None:
-    acct = make_account(db_conn)
-    doc = _document(db_conn, "d1")
-    line = scalar(
-        db_conn,
-        "INSERT INTO external_document_line (document_id, line_no, description, amount)"
-        " VALUES (:d, 1, 'x', -1000) RETURNING id",
-        d=doc,
-    )
-    _, e1 = make_movement(db_conn, acct)
-    _, e2 = make_movement(db_conn, acct)
-    _update(db_conn, e1, f"document_id = {doc}, document_line_id = {line}")
-    with rejects(db_conn, sqlstate=UNIQUE_VIOLATION, constraint="ux_le_document_line"):
-        _update(db_conn, e2, f"document_id = {doc}, document_line_id = {line}")
-
-
-def test_a_transaction_has_at_most_one_entry_carrying_a_document(
-    db_conn: Connection, make_account: MakeAccount
-) -> None:
-    acct = make_account(db_conn)
-    src = make_source(db_conn, acct, amount=-3000)
-    e1 = make_entry(db_conn, src, amount=-1000)
-    e2 = make_entry(db_conn, src, amount=-2000)
-    _update(db_conn, e1, f"document_id = {_document(db_conn, 'd1')}")
-    with rejects(db_conn, sqlstate=UNIQUE_VIOLATION, constraint="ux_le_document_per_transaction"):
-        _update(db_conn, e2, f"document_id = {_document(db_conn, 'd2')}")
-
-
-def test_a_carried_document_cannot_be_deleted(db_conn: Connection, make_account: MakeAccount) -> None:
-    from tests.invariants.helpers import RESTRICT_VIOLATION
-
-    _, e1 = make_movement(db_conn, make_account(db_conn))
-    doc = _document(db_conn, "d1")
-    _update(db_conn, e1, f"document_id = {doc}")
-    with rejects(db_conn, sqlstate=RESTRICT_VIOLATION, constraint="fk_le_document"):
-        db_conn.execute(text("DELETE FROM external_document WHERE id = :i"), {"i": doc})

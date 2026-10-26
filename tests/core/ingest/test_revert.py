@@ -224,7 +224,7 @@ def test_coverage_rolls_back_to_the_earlier_runs(world: World) -> None:
     assert world.one(cov, a=world.checking).synced_through == day(14)
 
 
-# ---- transfer partners, documents ----------------------------------------------------------
+# ---- transfer partners ----------------------------------------------------------
 
 
 def _savings_with_stale_opening(world: World) -> None:
@@ -258,28 +258,6 @@ def test_a_partner_on_another_account_is_unpaired_and_its_account_recomputed(wor
     # savings: opening = 1000 - (+500 dated day 10) = 500, recomputed from what remains
     assert world.derived(world.savings) == [("opening", day(9), 500)]
     assert [c.account_id for c in result.derived_changes] == [world.savings]
-    world.assert_checks_clean()
-
-
-def test_a_document_carried_by_a_removed_entry_is_freed(world: World) -> None:
-    run = world.run([(-900, day(10))])
-    doc = world.tx(
-        lambda c: c.execute(
-            text(
-                "INSERT INTO external_document (provider, external_id, occurred_on, total, currency, raw)"
-                " VALUES ('shop', 'o1', :d, -900, 'EUR', '{}') RETURNING id"
-            ),
-            {"d": day(10)},
-        ).scalar_one()
-    )
-    world.tx(
-        lambda c: c.execute(
-            text("UPDATE ledger_entry SET document_id = :d WHERE id = :e"), {"d": doc, "e": run.entries[0]}
-        )
-    )
-    result = revert_run(world.engine, run.id, user_id=None)
-    assert result.freed_document_ids == (doc,)
-    assert world.one("SELECT count(*) FROM ledger_entry WHERE document_id = :d", d=doc)[0] == 0
     world.assert_checks_clean()
 
 

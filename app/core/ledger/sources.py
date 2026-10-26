@@ -150,7 +150,6 @@ class DeleteCounts:
     tagged_entries: int
     tag_memberships: int
     partners_returning_to_review: int
-    freed_documents: int
 
 
 @dataclass(frozen=True)
@@ -159,7 +158,6 @@ class Deleted:
     dry_run: bool
     removed: tuple[EntryRow, ...]  # as they stood: versions, tags
     counts: DeleteCounts
-    freed_document_ids: tuple[int, ...]
     partners: tuple[EntryRow, ...]  # dry run: as they stand; real run: after settling
     units: Units  # real run: the units of the partners left behind
     settle: SettleResult | None
@@ -229,7 +227,7 @@ class _AccountsMissing(Exception):
 
 @dataclass(frozen=True)
 class _Locked:
-    source: Any  # the source_transaction row (id, account_id, importer, amount, currency, booked_on, purpose)
+    source: Any  # the source_transaction row (id, account_id, importer, origin, amount, currency, ...)
     entry_ids: tuple[int, ...]  # the source's entries, ascending: the first is the original
     partner_ids: tuple[int, ...]  # their partners outside the source, ascending
 
@@ -271,14 +269,14 @@ def _lock_source(conn: Connection, source_id: int, extra: set[int]) -> _Locked:
     lock_rows(conn, "source_transaction", [source_id])
     row = conn.execute(
         text(
-            "SELECT id, account_id, importer, amount, currency, booked_on, purpose"
+            "SELECT id, account_id, importer, origin, amount, currency, booked_on, purpose"
             " FROM source_transaction WHERE id = :i"
         ),
         {"i": source_id},
     ).one_or_none()
     if row is None:
         raise SourceMissing(source_id)
-    if row.importer is not None:
+    if row.origin != "user":
         raise NotUserAuthored(source_id)
     entry_ids = _entry_ids(conn, source_id)
     _, partners = entry_scope(conn, entry_ids)
@@ -344,11 +342,11 @@ def create_source(
         if account is None:
             raise StaleReference("account_id", "account", account_id)
         known = conn.execute(
-            text("SELECT id, importer FROM source_transaction WHERE account_id = :a AND source_id = :s"),
+            text("SELECT id, origin FROM source_transaction WHERE account_id = :a AND source_id = :s"),
             {"a": account_id, "s": client_id},
         ).one_or_none()
         if known is not None:
-            if known.importer is not None:
+            if known.origin != "user":
                 raise SourceIdTaken(client_id)
             first = conn.execute(
                 text("SELECT min(id) FROM ledger_entry WHERE source_transaction_id = :s"), {"s": known.id}
@@ -360,8 +358,8 @@ def create_source(
             conn.execute(
                 text(
                     "INSERT INTO source_transaction (account_id, source_id, amount, currency, booked_on,"
-                    " purpose, raw) VALUES (:a, :s, :amount, :currency, :on, :purpose, CAST(:raw AS jsonb))"
-                    " RETURNING id"
+                    " purpose, raw, origin) VALUES (:a, :s, :amount, :currency, :on, :purpose,"
+                    " CAST(:raw AS jsonb), 'user') RETURNING id"
                 ),
                 {
                     "a": account_id,
@@ -513,7 +511,7 @@ _ENTRY_ROWS = text(
     "SELECT e.id, e.account_id, e.currency, e.amount, e.type, e.payee_id, e.category_id,"
     " e.counter_account_id, e.derivation, e.version, e.counterpart_entry_id, p.currency AS partner_currency,"
     " p.account_id AS partner_account, p.source_transaction_id AS partner_source,"
-    " (ps.importer IS NULL) AS partner_authored,"
+    " (ps.origin = 'user') AS partner_authored,"
     " (SELECT count(*) FROM ledger_entry x WHERE x.source_transaction_id = p.source_transaction_id)"
     " AS partner_entries,"
     " (pa.closed_on IS NULL AND EXISTS (SELECT 1 FROM account_source s WHERE s.account_id = pa.id))"
@@ -690,8 +688,8 @@ def delete_source(
 ) -> Deleted:
     """Delete a user-authored row and its entries through the removal routine (spec §5.6).
 
-    Partners return to review keeping their values (minus a counter-account the pair set), freed documents
-    come back, the account's derived entries are recomputed. A real run carries `expected_versions` for the
+    Partners return to review keeping their values (minus a counter-account the pair set), the account's
+    derived entries are recomputed. A real run carries `expected_versions` for the
     row's entries and their partners (the dry run's rows show them); it settles after it commits. A dry run
     reports what would go (entries with their tags, the partners) and writes nothing.
     """
@@ -711,19 +709,12 @@ def delete_source(
             _check_versions(conn, expected_versions, written)
         removed = entries_by_ids(conn, ids)
         ok = _ok_of(conn, ids)
-        freed = _ints(
-            conn.execute(
-                text("SELECT document_id FROM ledger_entry WHERE id = ANY(:ids) AND document_id IS NOT NULL"),
-                {"ids": ids},
-            ).scalars()
-        )
         counts = DeleteCounts(
             entries=len(ids),
             confirmed_entries=sum(1 for i in ids if ok.get(i, False)),
             tagged_entries=sum(1 for e in removed if e.tag_ids),
             tag_memberships=sum(len(e.tag_ids) for e in removed),
             partners_returning_to_review=len(partners),
-            freed_documents=len(freed),
         )
         affected = remove_entries(conn, ids, scope=(ids, partners))
         conn.execute(text("DELETE FROM source_transaction WHERE id = :i"), {"i": source_id})
@@ -739,7 +730,6 @@ def delete_source(
                 True,
                 removed,
                 counts,
-                affected.freed_document_ids,
                 entries_by_ids(conn, partners),
                 Units(),
                 None,
@@ -752,7 +742,6 @@ def delete_source(
         False,
         removed,
         counts,
-        affected.freed_document_ids,
         left,
         _read_units(engine, partners),
         result,

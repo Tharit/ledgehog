@@ -1,9 +1,8 @@
-"""The document run (spec §5.5): upsert, version, carriers re-resolved, coverage, refusals."""
+"""The document run (spec §5.5): upsert, version, coverage, refusals. Documents only: no entry is touched."""
 
 from __future__ import annotations
 
-import json
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from datetime import date
 from typing import Any
 
@@ -11,11 +10,10 @@ import pytest
 from sqlalchemy import Engine, text
 
 from app.core.domain.errors import ContractViolation, IngestError, RunRefused
-from app.core.ingest.documents import DocumentRunResult, ingest_documents, reresolve_unconfirmed_carrier
+from app.core.ingest.documents import DocumentRunResult, ingest_documents
 from app.core.ingest.run import start_run
 from app.core.plugins.fetch import FetchImporter
 from app.core.plugins.importer import IncomingDocument
-from tests.invariants.helpers import make_category, make_movement
 from tests.plugins.importers.fakes import FakeDocumentImporter, document, line
 
 THROUGH = date(2026, 6, 30)
@@ -53,36 +51,6 @@ def make_instance(engine: Engine, emits: str = "{documents}", disabled: bool = F
                 {"e": emits, "d": disabled},
             ).scalar_one()
         )
-
-
-def carrier(
-    engine: Engine, make_account: Callable[..., int], doc_id: int, *, confirmed: bool
-) -> tuple[int, int]:
-    """An entry carrying the document; returns (entry id, payee id)."""
-    with engine.begin() as conn:
-        account = make_account(conn)
-        _, entry = make_movement(conn, account, amount=-1000)
-        payee = int(conn.execute(text("INSERT INTO payee (name) VALUES ('Shop') RETURNING id")).scalar_one())
-        category = make_category(conn, "Gadgets")
-        derivation: dict[str, Any] = {"document": {"pass": "matcher_decision"}}
-        values: dict[str, Any] = {"p": payee, "c": None}
-        if confirmed:
-            derivation |= {"type": {"pass": "user"}, "payee": {"pass": "user"}, "category": {"pass": "user"}}
-            values["c"] = category
-        else:
-            derivation |= {"payee": {"pass": "history", "basis": {}}}
-        conn.execute(
-            text(
-                "UPDATE ledger_entry SET document_id = :d, payee_id = :p, category_id = :c,"
-                " derivation = CAST(:dv AS jsonb) WHERE id = :e"
-            ),
-            {**values, "d": doc_id, "dv": json.dumps(derivation), "e": entry},
-        )
-    return entry, payee
-
-
-def entry_row(engine: Engine, entry_id: int) -> Any:
-    return q(engine, "SELECT * FROM ledger_entry WHERE id = :i", i=entry_id)[0]
 
 
 def test_fake_satisfies_the_protocol():
@@ -125,28 +93,27 @@ def test_upsert_is_idempotent(isolated_engine):
     [
         {"total_minor": -1100, "lines": (line(amount=-1100),)},
         {"currency": "USD"},
-        {"merchant_name": "Other"},
-        {"merchant_name": None},
+        {"occurred_on": date(2026, 6, 2)},
         {"lines": (line("Renamed"),)},
         {"lines": (line(), line("More", -5))},
     ],
 )
-def test_version_moves_on_a_resolution_read_change(isolated_engine, change):
+def test_version_moves_on_a_content_change(isolated_engine, change):
     deliver(isolated_engine, [document()])
     result = deliver(isolated_engine, [document(**change)])
     d = doc_row(isolated_engine)
     assert d.version == 2 and result.changed == (d.id,)
 
 
-def test_version_stays_on_title_raw_and_date_only_changes(isolated_engine):
+def test_version_stays_on_merchant_title_and_raw_only_changes(isolated_engine):
     deliver(isolated_engine, [document()])
     result = deliver(
         isolated_engine,
-        [document(title="Other", raw={"n": 2}, occurred_on=date(2026, 6, 2))],
+        [document(title="Other", raw={"n": 2}, merchant_name="Somebody")],
     )
     d = doc_row(isolated_engine)
     assert d.version == 1 and result.changed == ()
-    assert (d.title, d.raw, d.occurred_on) == ("Other", {"n": 2}, date(2026, 6, 2))
+    assert (d.title, d.raw, d.merchant_name) == ("Other", {"n": 2}, "Somebody")
 
 
 def test_lines_are_replaced(isolated_engine):
@@ -156,55 +123,9 @@ def test_lines_are_replaced(isolated_engine):
     assert [tuple(r) for r in rows] == [(1, "C")]
 
 
-def test_changed_document_drops_link_of_unconfirmed_carrier(isolated_engine, make_account):
-    deliver(isolated_engine, [document()])
-    doc_id = doc_row(isolated_engine).id
-    entry, _ = carrier(isolated_engine, make_account, doc_id, confirmed=False)
-    result = deliver(isolated_engine, [document(total_minor=-1100)])
-    assert result.reresolved_entry_ids == (entry,)
-    row = entry_row(isolated_engine, entry)
-    assert row.document_id is None and "document" not in row.derivation
-
-
-def test_unchanged_document_keeps_the_link(isolated_engine, make_account):
-    deliver(isolated_engine, [document()])
-    doc_id = doc_row(isolated_engine).id
-    entry, _ = carrier(isolated_engine, make_account, doc_id, confirmed=False)
-    deliver(isolated_engine, [document(title="Other")])
-    assert entry_row(isolated_engine, entry).document_id == doc_id
-
-
-def test_confirmed_carrier_is_left_alone(isolated_engine, make_account):
-    deliver(isolated_engine, [document()])
-    doc_id = doc_row(isolated_engine).id
-    entry, _ = carrier(isolated_engine, make_account, doc_id, confirmed=True)
-    before = entry_row(isolated_engine, entry)
-    result = deliver(isolated_engine, [document(total_minor=-1100)])
-    assert result.reresolved_entry_ids == ()
-    after = entry_row(isolated_engine, entry)
-    assert after.document_id == doc_id and after.derivation == before.derivation
-    assert (after.payee_id, after.category_id) == (before.payee_id, before.category_id)
-
-
-def test_reresolve_seam_drops_link_and_key_and_user_values(isolated_engine, make_account):
-    deliver(isolated_engine, [document()])
-    doc_id = doc_row(isolated_engine).id
-    entry, _ = carrier(isolated_engine, make_account, doc_id, confirmed=False)
-    with isolated_engine.begin() as conn:
-        assert reresolve_unconfirmed_carrier(conn, [entry]) == [entry]
-        assert reresolve_unconfirmed_carrier(conn, []) == []
-    row = entry_row(isolated_engine, entry)
-    assert row.document_id is None and "document" not in row.derivation
-    assert row.payee_id is None  # the history guess had no history to stand on
-
-
-def test_seam_ignores_confirmed_entries(isolated_engine, make_account):
-    deliver(isolated_engine, [document()])
-    doc_id = doc_row(isolated_engine).id
-    entry, _ = carrier(isolated_engine, make_account, doc_id, confirmed=True)
-    with isolated_engine.begin() as conn:
-        assert reresolve_unconfirmed_carrier(conn, [entry]) == []
-    assert entry_row(isolated_engine, entry).document_id == doc_id
+def test_a_zero_total_is_a_document_like_any_other(isolated_engine):
+    result = deliver(isolated_engine, [document(total_minor=0, lines=())])
+    assert result.inserted == 1 and doc_row(isolated_engine).total == 0
 
 
 def test_coverage_is_required(isolated_engine):
@@ -220,7 +141,6 @@ def test_coverage_is_required(isolated_engine):
 @pytest.mark.parametrize(
     ("docs", "rule"),
     [
-        ([document(total_minor=0)], "zero_total"),
         ([document("X"), document("X")], "repeated_document"),
         ([document(currency="XXQ")], "unknown_currency"),
     ],

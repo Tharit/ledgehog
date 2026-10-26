@@ -188,7 +188,7 @@ def test_picking_the_current_partner_again_is_a_no_op(scene: Scene) -> None:
     (_sa, (a,)), (_sb, (b,)) = scene.transfer_pair(-1000)
     plan = scene.preview(a, DraftEntry(a, pairing=pick(b)))
     assert not plan.problems and not plan.consequences and plan.row(a).counterpart_entry_id == b
-    scene.settle()  # the seeded pair is confirmed: settled, it holds its "none" documents
+    scene.settle()  # the seeded pair is confirmed
     before = scene.fingerprint()
     scene.commit_draft(
         dataclasses.replace(scene.draft(a, DraftEntry(a, pairing=pick(b))), versions=plan.versions)

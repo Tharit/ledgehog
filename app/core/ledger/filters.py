@@ -13,7 +13,7 @@ from datetime import date
 
 # schema.sql: ledger_entry.type and ck_review_flags_known
 ENTRY_TYPES = ("flow", "transfer", "opening", "valuation", "reconciliation")
-REVIEW_FLAGS = ("unconfirmed", "unclassified", "document_suggested", "waiting", "unmatched_transfer")
+REVIEW_FLAGS = ("unconfirmed", "unclassified", "waiting", "unmatched_transfer")
 DIRECTIONS = ("in", "out")
 
 MAX_ID = 2**53  # as app.api.ids: JSON-safe and inside bigint

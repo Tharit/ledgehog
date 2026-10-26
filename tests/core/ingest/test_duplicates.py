@@ -55,10 +55,10 @@ def test_rows_that_pointed_at_the_marked_row_now_point_at_the_new_original(ledge
     ledger.assert_checks_clean()
 
 
-def test_marking_a_row_with_split_tags_document_and_partner_runs_the_routine(ledger: Ledger) -> None:
+def test_marking_a_row_with_split_tags_and_partner_runs_the_routine(ledger: Ledger) -> None:
     other_src, _ = ledger.movement(amount=-50)
 
-    def build(c: Any) -> tuple[int, int, int, int, int, int]:
+    def build(c: Any) -> tuple[int, int, int, int, int]:
         src = make_source(c, ledger.checking, run_id=ledger.run, amount=-3000, booked_on=DAY)
         e1 = make_entry(
             c,
@@ -80,18 +80,11 @@ def test_marking_a_row_with_split_tags_document_and_partner_runs_the_routine(led
             note="keep b",
         )
         pair(c, e1, b)
-        doc = c.execute(
-            text(
-                "INSERT INTO external_document (provider, external_id, occurred_on, total, currency, raw)"
-                " VALUES ('shop', 'o1', DATE '2026-03-10', -2000, 'EUR', '{}') RETURNING id"
-            )
-        ).scalar_one()
         tag = c.execute(text("INSERT INTO tag (name) VALUES ('t') RETURNING id")).scalar_one()
-        c.execute(text("UPDATE ledger_entry SET document_id = :d WHERE id = :e"), {"d": doc, "e": e2})
         c.execute(text("INSERT INTO ledger_entry_tag VALUES (:e, :t)"), {"e": e2, "t": tag})
-        return src, e1, e2, b_src, b, doc
+        return src, e1, e2, b_src, b
 
-    src, e1, e2, _, b, doc = ledger.tx(build)
+    src, e1, e2, _, b = ledger.tx(build)
     result = mark_duplicate(ledger.engine, src, other_src)
     assert ledger.entries_of(src) == []
     partner = ledger.one("SELECT * FROM ledger_entry WHERE id = :i", i=b)
@@ -99,9 +92,7 @@ def test_marking_a_row_with_split_tags_document_and_partner_runs_the_routine(led
     assert (partner.type, partner.description, partner.note) == ("transfer", "in", "keep b")
     assert result.affected.removed_entry_ids == (e1, e2)
     assert result.affected.partner_entry_ids == (b,)
-    assert result.affected.freed_document_ids == (doc,)
     assert ledger.q("SELECT * FROM ledger_entry_tag") == []
-    assert ledger.one("SELECT count(*) FROM ledger_entry WHERE document_id = :d", d=doc)[0] == 0
     ledger.assert_checks_clean()
 
 
@@ -274,7 +265,7 @@ def test_clearing_restores_exactly_the_entry_ingest_creates(env: Env) -> None:
     result = clear_duplicate(env.engine, second)
     cols = (
         "account_id, amount, currency, booked_on, value_on, type, category_id,"
-        " counterpart_entry_id, derivation, document_id"
+        " counterpart_entry_id, derivation"
     )
     entries = env.q(
         f"SELECT source_transaction_id, {cols} FROM ledger_entry ORDER BY source_transaction_id"  # noqa: S608

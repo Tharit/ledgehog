@@ -73,7 +73,6 @@ class RevertResult:
     removed_confirmed: int = 0  # how many of `removed_entry_ids` carry no `unconfirmed` flag (spec §6)
     partner_entry_ids: tuple[int, ...] = ()  # unpaired and returned to review
     partner_confirmed: int = 0  # how many of `partner_entry_ids` carry no `unconfirmed` flag
-    freed_document_ids: tuple[int, ...] = ()
     repointed_source_ids: tuple[tuple[int, int], ...] = ()  # (row id, its new original)
     cleared_duplicate_ids: tuple[int, ...] = ()  # rows that stopped being duplicates, now with an entry
     derived_changes: tuple[DerivedChange, ...] = ()
@@ -300,7 +299,6 @@ def _revert_once(
             removed_confirmed=removed_confirmed,
             partner_entry_ids=affected.partner_entry_ids,
             partner_confirmed=partner_confirmed,
-            freed_document_ids=affected.freed_document_ids,
             repointed_source_ids=repointed,
             cleared_duplicate_ids=cleared,
             versions=versions,

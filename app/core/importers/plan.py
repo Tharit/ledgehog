@@ -164,7 +164,7 @@ def fetch_start(
         text(
             "SELECT (SELECT synced_through FROM v_account_coverage WHERE account_id = :a) AS through,"
             " (SELECT max(booked_on) FROM source_transaction"
-            "   WHERE account_id = :a AND importer IS NULL) AS latest_user,"
+            "   WHERE account_id = :a AND origin = 'user') AS latest_user,"
             " (SELECT max(booked_on) FROM ledger_entry WHERE account_id = :a) AS latest_entry"
         ),
         {"a": account_id},

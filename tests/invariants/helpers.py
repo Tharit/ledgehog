@@ -111,6 +111,8 @@ def rows(conn: Connection, sql: str, **params: Any) -> list[Any]:
 
 
 def _insert(conn: Connection, table: str, cols: dict[str, Any]) -> int:
+    if table == "source_transaction" and "origin" not in cols:
+        cols = {"origin": "import" if cols.get("importer") is not None else "user", **cols}
     names = ", ".join(cols)
     marks = ", ".join(f":{c}" for c in cols)
     return int(
@@ -183,8 +185,10 @@ def make_source(
     duplicate_of: int | None = None,
     purpose: str | None = None,
     columns: dict[str, Any] | None = None,
+    origin: str | None = None,
 ) -> int:
-    """A source_transaction. `importer=None` makes a user-authored row; `columns` sets more of its columns."""
+    """A source_transaction. `importer=None` makes a user-authored row (origin `user`, unless `origin` says
+    `booking`); `columns` sets more of its columns."""
     if importer is not None and run_id is None:
         run_id = make_run(conn, account_id, instance_id=instance_id)
     if content_hash is None and source_id is None:
@@ -193,6 +197,7 @@ def make_source(
         conn,
         "source_transaction",
         {
+            "origin": origin or ("import" if importer is not None else "user"),
             "importer": importer,
             "importer_instance_id": instance_id,
             "import_run_id": run_id if importer is not None else None,

@@ -124,7 +124,7 @@ class World:
             "sources": self.q("SELECT id, import_run_id, duplicate_of FROM source_transaction ORDER BY id"),
             "entries": self.q(
                 "SELECT id, version, source_transaction_id, balance_record_id, amount, type, booked_on,"
-                " counterpart_entry_id, counter_account_id, document_id FROM ledger_entry ORDER BY id"
+                " counterpart_entry_id, counter_account_id FROM ledger_entry ORDER BY id"
             ),
             "records": self.q("SELECT id, balance_on, balance FROM balance_record ORDER BY id"),
         }

@@ -16,7 +16,7 @@ from tests.invariants.helpers import (
 )
 
 MakeAccount = Callable[..., int]
-KNOWN = ["unconfirmed", "unclassified", "document_suggested", "waiting", "unmatched_transfer"]
+KNOWN = ["unconfirmed", "unclassified", "waiting", "unmatched_transfer"]
 
 
 @pytest.fixture

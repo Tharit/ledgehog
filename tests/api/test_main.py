@@ -140,7 +140,7 @@ def test_the_email_importer_registers_only_where_the_model_is_configured():
         assert "email" not in register_importers(replace(base, vision_model=with_model.vision_model))
         registered = register_importers(with_model)
         assert isinstance(registered["email"], EmailImporter)
-        assert document_providers()["email"] == frozenset()  # it answers from its settings, for any provider
+        assert document_providers()["email"] == frozenset()  # it names no provider
     finally:
         reset_document_providers()
 

@@ -16,9 +16,7 @@ from app.core.ledger.categories import create_category, delete_category, merge_c
 from app.core.ledger.dimensions import MergeCountChanged
 from app.core.ledger.payees import (
     PayeeInUse,
-    create_payee,
     delete_payee,
-    update_payee,
 )
 from app.core.settle.settle import SettleResult
 from app.core.stale import StaleReference, stale_from_integrity
@@ -133,17 +131,3 @@ def test_deleting_through_the_core_backstops_a_restricted_row(isolated_engine: E
     assert delete_category(isolated_engine, c, dry_run=False).deleted
     with pytest.raises(PayeeInUse):
         delete_payee(isolated_engine, p)
-
-
-def test_payee_provider_is_free_text_trimmed_and_blank_is_none(isolated_engine: Engine):
-    # no registry check: no importer is registered, and any name may be set, changed and cleared
-    made = create_payee(isolated_engine, name="B", document_provider=" Ebay ").payee
-    assert made.document_provider == "Ebay"  # the spelling is kept; matching ignores case
-    assert (
-        update_payee(isolated_engine, made.id, document_provider="zalando").payee.document_provider
-        == "zalando"
-    )
-    assert update_payee(isolated_engine, made.id, document_provider="  ").payee.document_provider is None
-    assert update_payee(isolated_engine, made.id, document_provider="x").payee.document_provider == "x"
-    assert update_payee(isolated_engine, made.id, document_provider=None).payee.document_provider is None
-    assert create_payee(isolated_engine, name="C", document_provider="").payee.document_provider is None

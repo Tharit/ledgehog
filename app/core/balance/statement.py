@@ -121,7 +121,7 @@ def get_statement(
     thin = conn.execute(
         text(
             "SELECT id, booked_on, amount, duplicate_of IS NOT NULL AS duplicate,"
-            " importer IS NOT NULL AS imported"
+            " origin = 'import' AS imported"
             " FROM source_transaction WHERE account_id = :a"
         ),
         {"a": account_id},
@@ -183,7 +183,7 @@ def _sources(conn: Connection, ids: list[int], balances: dict[int, int]) -> dict
     rows = conn.execute(
         text(
             "SELECT s.id, s.booked_on, s.value_on, s.amount, s.counterparty_name, s.purpose,"
-            " s.importer IS NULL AS authored, s.import_run_id AS run_id,"
+            " s.origin = 'user' AS authored, s.import_run_id AS run_id,"
             " o.id AS of_id, o.booked_on AS of_on, o.amount AS of_amount,"
             " (SELECT min(e.id) FROM ledger_entry e WHERE e.source_transaction_id = s.id) AS entry_id"
             " FROM source_transaction s LEFT JOIN source_transaction o ON o.id = s.duplicate_of"

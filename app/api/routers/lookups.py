@@ -32,7 +32,6 @@ class PayeeOut(BaseModel):
     icon: str | None
     color: str | None
     note: str | None
-    document_provider: str | None  # free text; the UI hides it until documents arrive
 
 
 class PayeesOut(BaseModel):
@@ -49,7 +48,7 @@ def list_categories(user: CurrentUser, engine: EngineDep) -> CategoriesOut:
 
 @router.get("/payees")
 def list_payees(user: CurrentUser, engine: EngineDep) -> PayeesOut:
-    """Every payee by name: identity, presentation and `document_provider`."""
+    """Every payee by name: identity and presentation."""
     with engine.connect() as conn:
         rows = core_list_payees(conn)
     return PayeesOut(payees=[PayeeOut(**vars(r)) for r in rows])

@@ -20,12 +20,9 @@ from app.api.routers.entries import EntryOut
 from app.api.routers.maintenance import SettleOut
 from app.core.matching import Offer
 from app.core.units.commit import CommitResult
-from app.core.units.documents import OrderWait
 from app.core.units.draft import (
     UNSET,
     CounterLegDraft,
-    DocumentDraft,
-    DocumentLineRef,
     DraftEntry,
     FieldDraft,
     PairingDraft,
@@ -34,10 +31,6 @@ from app.core.units.draft import (
 )
 from app.core.units.plan import (
     Consequence,
-    DocumentSplit,
-    DocumentSummary,
-    DocumentView,
-    DocumentWaiting,
     FieldResult,
     Plan,
     PlannedRow,
@@ -55,8 +48,6 @@ UnitReason = Literal[
     "unpaired_transfer",
     "waiting_for_partner",
     "unmatched_transfer",
-    "waiting_for_document",
-    "document_suggested",
     "non_standing_keys",
 ]
 FieldName = Literal["type", "payee", "category", "counter_account"]
@@ -68,7 +59,7 @@ TempOrStoredId = Annotated[int, Field(ge=-MAX_ID, le=MAX_ID)]
 
 
 class UnitShownBasisIn(BaseModel):
-    """The key of the proposal the client showed for a value (`pass` is history, llm or matcher_proposal)."""
+    """The key of the proposal the client showed for a value (`pass` is history or llm)."""
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -133,54 +124,6 @@ class UnitPairingIn(BaseModel):
         )
 
 
-class UnitDocumentDraftIn(BaseModel):
-    """What the draft says of the transaction's document (spec §5.8, §6), on its ORIGINAL entry (any other
-    entry: 422 `invalid_draft`, `document_not_original`). `keep` (also: absent) leaves the link as it stands;
-    a commit that carries no document key for a transaction that is offered documents or awaits one is
-    refused, `document_decision_required`, unless the draft picks or says `none`. `pick` names a stored
-    `document_id` and the `document_version` the client saw (both required; a document another entry carries,
-    one that is gone or one at another version is a problem of the preview, and a conflict of a commit).
-    `none` decides that there is no document. `reresolve` drops the decision and the link: matching decides
-    afresh. `split_along_lines` picks `document_id` too and splits the transaction along its lines,
-    replacing an existing split (the entries it deletes are consequences of the preview). A document mode on
-    a new entry, or `document_id` or `document_version` on another mode, is 422 `invalid_draft`
-    (`invalid_document`).
-
-    The split along the lines is draft state made of ordinary new entries. While a link of a document of
-    several lines is not yet the user's (a matcher link, or a pick in this draft), the preview proposes the
-    split for EVERY carrier of the document that the line allocation divides, replacing whatever split a
-    carrier has (the stored entries it deletes are consequences of kind `deleted`, with their tags): one row
-    per further line of the document's sign the allocation gives the carrier, with a server-issued negative
-    id and `document_line`; the original entry takes the first line and the remainder. Once the client
-    echoes any row that carries a `document_line` (its id, `source_entry_id`, `amount`, `document_line` and
-    its edits), the split is the client's: nothing is regenerated and a row left out is removed. There is no
-    decline: the proposal is committed or edited like any split. Anchor the draft on the original entry: the
-    anchor is never deleted."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    mode: Literal["keep", "pick", "none", "reresolve", "split_along_lines"] = "keep"
-    document_id: EntityId | None = None
-    document_version: EntityVersion | None = None
-
-    def to_core(self) -> DocumentDraft:
-        return DocumentDraft(self.mode, self.document_id, self.document_version)
-
-
-class UnitDocumentLineIn(BaseModel):
-    """The line of a document a new entry was made from, as the preview showed it on the row
-    (`document_line`): echoed so an edit of a proposed row sticks to its line. A row whose document is no
-    longer the transaction's is dropped from the draft."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    document_id: EntityId
-    line_no: int = Field(gt=0, le=2**31 - 1)
-
-    def to_core(self) -> DocumentLineRef:
-        return DocumentLineRef(self.document_id, self.line_no)
-
-
 class UnitTagChangeIn(BaseModel):
     """A change of an entry's tags relative to its stored tags (a new entry's: the original's). A tag in both
     lists is 422 `invalid_draft` (`tag_conflict`); duplicates are tolerated."""
@@ -195,9 +138,7 @@ class UnitDraftEntryIn(BaseModel):
     """One entry the draft changes. `description` and `note` are left as stored when absent and emptied when
     null. A new entry (negative `id`) names `source_entry_id`, a stored entry of the source it splits, and
     carries its `amount`; the source's original entry is the residual and takes no amount of its own. `tags`
-    is a tag change on top of the stored (or inherited) tags; absent leaves them untouched. `document_line`
-    null on a stored (original) entry, as against absent, is the user's decision that its transaction stays
-    unsplit, without a line: nothing is proposed for it."""
+    is a tag change on top of the stored (or inherited) tags; absent leaves them untouched."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -210,8 +151,6 @@ class UnitDraftEntryIn(BaseModel):
     category: UnitFieldDraftIn = Field(default_factory=UnitFieldDraftIn)
     counter_account: UnitFieldDraftIn = Field(default_factory=UnitFieldDraftIn)
     pairing: UnitPairingIn = Field(default_factory=UnitPairingIn)
-    document: UnitDocumentDraftIn = Field(default_factory=UnitDocumentDraftIn)
-    document_line: UnitDocumentLineIn | None = None
     source_entry_id: EntityId | None = None
     tags: UnitTagChangeIn | None = None
 
@@ -227,9 +166,6 @@ class UnitDraftEntryIn(BaseModel):
             category=self.category.to_core(),
             counter_account=self.counter_account.to_core(),
             pairing=self.pairing.to_core(),
-            document=self.document.to_core(),
-            document_line=None if self.document_line is None else self.document_line.to_core(),
-            unsplit=self.id > 0 and "document_line" in given and self.document_line is None,
             source_entry_id=self.source_entry_id,
             tags_add=tuple(sorted(set(self.tags.add))) if self.tags else (),
             tags_remove=tuple(sorted(set(self.tags.remove))) if self.tags else (),
@@ -290,7 +226,7 @@ class UnitFieldOut(BaseModel):
 
     value: int | str | None
     key: UnitKeyOut | None  # how resolution arrived at it: a proposal while no human has accepted it
-    is_proposal: bool  # `key` is a proposal (history, llm, matcher_proposal)
+    is_proposal: bool  # `key` is a proposal (history, llm)
     commit_key: UnitKeyOut | None  # the key stored once the draft is committed and settled
     stored: UnitStoredFieldOut | None  # the stored value beside the draft's; null for a row the draft creates
 
@@ -484,125 +420,6 @@ class UnitTransferOut(BaseModel):
         )
 
 
-class UnitDocumentSummaryOut(BaseModel):
-    """A document in a few words: a suggestion, the one a transaction carries."""
-
-    id: int
-    version: int  # what a `pick` of it carries
-    provider: str
-    external_id: str
-    occurred_on: date
-    total: Money  # signed like a charge: a refund document is positive
-    merchant_name: str | None
-    title: str | None
-    line_count: int
-
-    @staticmethod
-    def of(d: DocumentSummary) -> UnitDocumentSummaryOut:
-        return UnitDocumentSummaryOut(
-            id=d.id,
-            version=d.version,
-            provider=d.provider,
-            external_id=d.external_id,
-            occurred_on=d.occurred_on,
-            total=Money(amount=d.total, currency=d.currency),
-            merchant_name=d.merchant_name,
-            title=d.title,
-            line_count=d.line_count,
-        )
-
-
-class UnitDocumentWaitingOut(BaseModel):
-    """The line of a transaction that waits for its document: "from <provider>, covered through <date>",
-    or "not synced yet" where `covered_through` is null."""
-
-    provider: str
-    covered_through: date | None
-
-    @staticmethod
-    def of(w: DocumentWaiting) -> UnitDocumentWaitingOut:
-        return UnitDocumentWaitingOut(provider=w.provider, covered_through=w.covered_through)
-
-
-class UnitOrderWaitingOut(BaseModel):
-    """The line of a transaction that waits for the rest of its document's order (documents.md §7): "order
-    <order> from <provider>, <not yet charged> of <total>"; `charged` and `total` are signed like the
-    document's total and compared by magnitude."""
-
-    order: str  # the order's external id
-    provider: str
-    charged: Money
-    total: Money
-
-    @staticmethod
-    def of(w: OrderWait) -> UnitOrderWaitingOut:
-        return UnitOrderWaitingOut(
-            order=w.order,
-            provider=w.provider,
-            charged=Money(amount=w.charged, currency=w.currency),
-            total=Money(amount=w.total, currency=w.currency),
-        )
-
-
-class UnitDocumentSplitOut(BaseModel):
-    """The split along the lines of the document the transaction carries (a document of several lines)."""
-
-    document_id: int
-    proposed: bool  # the rows of the transaction are that split (made by the preview, or echoed back)
-    available: bool  # `split_along_lines` would work: an exact total, an original that keeps a share
-    replaces_stored_split: bool  # the transaction is split: the explicit choice deletes the other entries
-
-    @staticmethod
-    def of(s: DocumentSplit) -> UnitDocumentSplitOut:
-        return UnitDocumentSplitOut(
-            document_id=s.document_id,
-            proposed=s.proposed,
-            available=s.available,
-            replaces_stored_split=s.replaces_stored_split,
-        )
-
-
-class UnitRowDocumentOut(BaseModel):
-    """The document part of a transaction's original entry (spec §5.8, §6). Null where there is nothing to
-    say: no link, no key, no suggestion, no wait. A suggestion is no decision: where `decision_required`, a
-    commit is refused (`document_decision_required`) unless it picks one or says `none`."""
-
-    stored_document_id: int | None  # the link now
-    document: UnitDocumentSummaryOut | None  # the link once committed and settled
-    key: UnitKeyOut | None  # the `document` key then: matcher_decision, matcher_proposal or user
-    suggestions: list[UnitDocumentSummaryOut]  # while no document is decided; nearest first
-    # the document is awaited, or the rest of the order of the one the transaction carries
-    waiting: UnitDocumentWaitingOut | UnitOrderWaitingOut | None
-    decision_required: bool
-    split: UnitDocumentSplitOut | None
-
-    @staticmethod
-    def of(v: DocumentView) -> UnitRowDocumentOut:
-        return UnitRowDocumentOut(
-            stored_document_id=v.stored_document_id,
-            document=None if v.document is None else UnitDocumentSummaryOut.of(v.document),
-            key=UnitKeyOut.of(v.key),
-            suggestions=[UnitDocumentSummaryOut.of(d) for d in v.suggestions],
-            waiting=(
-                None
-                if v.waiting is None
-                else UnitOrderWaitingOut.of(v.waiting)
-                if isinstance(v.waiting, OrderWait)
-                else UnitDocumentWaitingOut.of(v.waiting)
-            ),
-            decision_required=v.decision_required,
-            split=None if v.split is None else UnitDocumentSplitOut.of(v.split),
-        )
-
-
-class UnitRowDocumentLineOut(BaseModel):
-    """The line a row has (spec §5.8), with its description; a row made from a line echoes it back."""
-
-    document_id: int
-    line_no: int
-    description: str | None  # the line's description (what a rule's `document_line` reads)
-
-
 class UnitPreviewRowOut(BaseModel):
     id: int  # stored, or the client's temporary (negative) id
     version: int | None  # null for a row the draft creates
@@ -626,12 +443,6 @@ class UnitPreviewRowOut(BaseModel):
     # the row is a counter-leg the draft creates (a new source transaction on `account_id`, its one entry):
     # the entry it is the other side of. `id` is the client's (or the server's, for a proposal) temporary id
     counter_leg_for: int | None = None
-    # an original entry: its document (suggestions, waiting, the link, the split); null otherwise
-    document: UnitRowDocumentOut | None = None
-    # the row's own line of the document (spec §5.8): a row made from a line by the split along the lines
-    # (a proposed row has a server-issued negative id), the original entry the first line it takes or the
-    # one line of a document of one line, a stored entry the line it references
-    document_line: UnitRowDocumentLineOut | None = None
 
     @staticmethod
     def of(r: PlannedRow, transfer: TransferView | None = None) -> UnitPreviewRowOut:
@@ -652,14 +463,6 @@ class UnitPreviewRowOut(BaseModel):
             tag_ids=list(r.tag_ids),
             counterpart_entry_id=r.counterpart_entry_id,
             counter_leg_for=r.counter_leg_for,
-            document=None if r.document_view is None else UnitRowDocumentOut.of(r.document_view),
-            document_line=None
-            if r.document_line is None
-            else UnitRowDocumentLineOut(
-                document_id=r.document_line[0],
-                line_no=r.document_line[1],
-                description=r.document_line_description,
-            ),
             fields={n: UnitFieldOut.of(f, stored=s is not None) for n, f in r.fields.items()},
             review_flags=list(r.flags),
             derivation=dict(r.derivation),

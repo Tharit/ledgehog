@@ -187,7 +187,6 @@ class DeleteCountsOut(BaseModel):
     tagged_entries: int
     tag_memberships: int
     partners_returning_to_review: int
-    freed_documents: int
 
 
 class SourceDeleteOut(BaseModel):
@@ -196,7 +195,6 @@ class SourceDeleteOut(BaseModel):
     counts: DeleteCountsOut
     removed: list[EntryOut]  # the entries as they stood, with their versions and tags
     removed_entry_ids: list[int]
-    freed_document_ids: list[int]
     partners: list[EntryOut]  # the partners left behind; a dry run: as they stand (their versions)
     units: list[UnitRefOut]  # real run only: the units of the partners
     settle: SettleOut | None
@@ -209,7 +207,6 @@ class SourceDeleteOut(BaseModel):
             counts=DeleteCountsOut(**vars(done.counts)),
             removed=[EntryOut.of(e) for e in done.removed],
             removed_entry_ids=[e.id for e in done.removed],
-            freed_document_ids=list(done.freed_document_ids),
             partners=[EntryOut.of(e) for e in done.partners],
             units=_units(done.units),
             settle=None if done.settle is None else SettleOut.of(done.settle),

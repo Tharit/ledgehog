@@ -750,15 +750,10 @@ def _render_all(plan: SeedPlan) -> list[SeedFile]:
     return files
 
 
-# -- documents (spec §5.5, §5.8, documents.md): card charges by a pass-through provider and its documents --
+# -- documents (spec §5.5, §5.8, documents.md): orders and refunds a test importer delivers ---------------
 
 DOC_PROVIDER = "paypal"
-DOC_PAYEE = "PayPal"  # the payee the card descriptor `PAYPAL *...` resolves to; carries the provider
-DOC_MERCHANT_PAYEE = "Seeed Studio"  # what the exact document's merchant name resolves to (enrichment)
-DOC_PAYEES = (DOC_PAYEE, DOC_MERCHANT_PAYEE)
-DOC_RULES = ("PayPal card descriptor", "Seeed Studio merchant")
 DOC_IMPORTER = "testdocs"
-DOC_CATEGORY = "Subscriptions"  # exists in CATEGORIES: the already-confirmed charge is classified with it
 
 
 # -- the scripted test bank (`testfetch`): a login to refresh accounts from and to fetch, by hand ------
@@ -811,20 +806,6 @@ def testbank_settings(today: date) -> dict[str, object]:
 
 
 @dataclass(frozen=True)
-class DocCharge:
-    """A card charge on the Visa account, `ago` days before its last booking. `confirmed` is a charge the
-    user decided long ago: standing keys, and the user's "none" for a document (spec §6, I20)."""
-
-    key: str
-    name: str  # counterparty name, the card descriptor
-    purpose: str
-    amount: int
-    ago: int
-    instructed: tuple[int, str] | None = None
-    confirmed: bool = False
-
-
-@dataclass(frozen=True)
 class DocLine:
     description: str
     amount: int
@@ -833,7 +814,7 @@ class DocLine:
 
 @dataclass(frozen=True)
 class DocScenario:
-    """One document the test importer delivers; `charge` names the charge it is written for, if any."""
+    """One document the test importer delivers, `ago` days before the seed's last booking."""
 
     external_id: str
     ago: int
@@ -843,36 +824,7 @@ class DocScenario:
     lines: tuple[DocLine, ...]
     currency: str = "EUR"
     provider: str = DOC_PROVIDER
-    charge: str | None = None
 
-
-# what each scenario produces, once settled (the seed prints the actual outcome):
-#   exact       one charge, one document of one line               -> linked, matcher_decision, enriched
-#   multi       one charge, one document of three lines            -> linked, matcher_proposal (review once)
-#   twin-a/b    two identical charges, two identical documents     -> no link; each offers both
-#   refund      a refund charge and a refund document              -> linked (signs match)
-#   instructed  a EUR charge with a USD instructed amount, a USD document -> linked via the instructed one
-#   confirmed   a charge already confirmed (with "none")           -> its document stays unlinked
-#   late        a charge past the coverage                         -> waiting for a document
-DOC_CHARGES: tuple[DocCharge, ...] = (
-    DocCharge("exact", "PAYPAL *SEEEDDEVELO", "PAYPAL *SEEEDDEVELO 35314369001 [seed]", -3_490, 28),
-    DocCharge("multi", "PAYPAL *KOMETA", "PAYPAL *KOMETA 35314369001 [seed]", -6_850, 26),
-    DocCharge("twin-a", "PAYPAL *STREAMBOX", "PAYPAL *STREAMBOX 35314369001 [seed]", -999, 21),
-    DocCharge("twin-b", "PAYPAL *STREAMBOX", "PAYPAL *STREAMBOX 35314369001 [seed]", -999, 20),
-    DocCharge("refund", "PAYPAL *KOMETA", "PAYPAL *KOMETA RUECKERSTATTUNG [seed]", 1_990, 18),
-    DocCharge(
-        "instructed",
-        "PAYPAL *PIXELFORGE",
-        "PAYPAL *PIXELFORGE USD 100.00 [seed]",
-        -9_200,
-        16,
-        instructed=(-10_000, "USD"),
-    ),
-    DocCharge(
-        "confirmed", "PAYPAL *CLOUDNOTES", "PAYPAL *CLOUDNOTES 35314369001 [seed]", -1_200, 14, confirmed=True
-    ),
-    DocCharge("late", "PAYPAL *LATEORDER", "PAYPAL *LATEORDER 35314369001 [seed]", -2_750, 1),
-)
 
 DOC_SCENARIOS: tuple[DocScenario, ...] = (
     DocScenario(
@@ -882,7 +834,6 @@ DOC_SCENARIOS: tuple[DocScenario, ...] = (
         "Seeed Studio",
         "Order 1001",
         (DocLine("Raspberry Pi Zero 2 W", -3_490, 1),),
-        charge="exact",
     ),
     DocScenario(
         "PP-1002",
@@ -895,7 +846,6 @@ DOC_SCENARIOS: tuple[DocScenario, ...] = (
             DocLine("Notebook A5, 3 pack", -3_000, 3),
             DocLine("Shipping", -1_350),
         ),
-        charge="multi",
     ),
     DocScenario("PP-1003", 21, -999, "StreamBox", "Month 1", (DocLine("StreamBox subscription", -999, 1),)),
     DocScenario("PP-1004", 20, -999, "StreamBox", "Month 2", (DocLine("StreamBox subscription", -999, 1),)),
@@ -906,7 +856,6 @@ DOC_SCENARIOS: tuple[DocScenario, ...] = (
         "Versandhaus Kometa",
         "Refund 1002",
         (DocLine("Refund: Notebook A5, 3 pack", 1_990, 3),),
-        charge="refund",
     ),
     DocScenario(
         "PP-1006",
@@ -916,7 +865,6 @@ DOC_SCENARIOS: tuple[DocScenario, ...] = (
         "Invoice 77",
         (DocLine("Texture pack", -10_000, 1),),
         currency="USD",
-        charge="instructed",
     ),
     DocScenario(
         "PP-1007",
@@ -925,9 +873,7 @@ DOC_SCENARIOS: tuple[DocScenario, ...] = (
         "CloudNotes",
         "Plan renewal",
         (DocLine("CloudNotes Plus, monthly", -1_200, 1),),
-        charge="confirmed",
     ),
-    # documents that no charge of the seed describes: the list's unlinked rows, with no match
     DocScenario("PP-1008", 45, -2_100, "Seeed Studio", "Order 0987", (DocLine("Jumper wires", -2_100, 10),)),
     DocScenario(
         "AZ-2001",

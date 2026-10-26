@@ -50,13 +50,9 @@ def test_a_user_key_left_unchanged_stays_and_one_never_wraps_another(scene: Scen
     before = scene.row(e)
     scene.commit(e, DraftEntry(e, category=fixed(food, ("history", {}))))
     after = scene.row(e)
-    # not wrapped again; settling's "none" for the confirmed unit's document and the decided empty payee
-    # (spec §5.9: a commit decides an empty payee as it is) are the keys that are new
-    assert after.derivation == {
-        **before.derivation,
-        "document": {"pass": "matcher_decision"},
-        "payee": {"pass": "user"},
-    }
+    # not wrapped again; the decided empty payee (spec §5.9: a commit decides an empty payee as it is) is
+    # the key that is new
+    assert after.derivation == {**before.derivation, "payee": {"pass": "user"}}
     assert after.version == before.version
 
 

@@ -1,8 +1,7 @@
 """The synchronous SQLAlchemy Core engine over psycopg3 (architecture §2, §5.7).
 
 Every connection the pool opens gets `ledger.max_rate_age` (read by the schema
-function `base_value()`), `ledger.matching_window_days` (read by core/settle/window.py),
-`ledger.document_window_back_days` and `ledger.document_window_ahead_days`, and a guard that
+function `base_value()`) and `ledger.matching_window_days` (read by core/settle/window.py), and a guard that
 refuses float parameters: money is an integer in minor units, rates are Decimal, and a float
 reaching the driver is a bug (architecture §5.6).
 """
@@ -43,14 +42,6 @@ def matching_window_setting(cfg: Config) -> str:
     return str(cfg.matching_window_days)
 
 
-def document_window_back_setting(cfg: Config) -> str:
-    return str(cfg.document_window_back_days)
-
-
-def document_window_ahead_setting(cfg: Config) -> str:
-    return str(cfg.document_window_ahead_days)
-
-
 def make_engine(cfg: Config, *, pool_size: int = 5, max_overflow: int = 5) -> Engine:
     engine = create_engine(
         database_url(cfg),
@@ -60,8 +51,6 @@ def make_engine(cfg: Config, *, pool_size: int = 5, max_overflow: int = 5) -> En
     )
     max_rate_age = max_rate_age_setting(cfg)
     matching_window = matching_window_setting(cfg)
-    document_back = document_window_back_setting(cfg)
-    document_ahead = document_window_ahead_setting(cfg)
 
     @event.listens_for(engine, "connect")
     def _on_connect(dbapi_conn: psycopg.Connection[Any], _record: object) -> None:
@@ -72,12 +61,6 @@ def make_engine(cfg: Config, *, pool_size: int = 5, max_overflow: int = 5) -> En
             dbapi_conn.execute("SELECT set_config('ledger.max_rate_age', %s, false)", (max_rate_age,))
             dbapi_conn.execute(
                 "SELECT set_config('ledger.matching_window_days', %s, false)", (matching_window,)
-            )
-            dbapi_conn.execute(
-                "SELECT set_config('ledger.document_window_back_days', %s, false)", (document_back,)
-            )
-            dbapi_conn.execute(
-                "SELECT set_config('ledger.document_window_ahead_days', %s, false)", (document_ahead,)
             )
         finally:
             dbapi_conn.autocommit = previous

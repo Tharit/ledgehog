@@ -22,7 +22,7 @@ from typing import Any
 
 from sqlalchemy import Connection, text
 
-from app.core.model.queue import ENTRY, LINE, Item, ModelQueue, current_model_queue
+from app.core.model.queue import Item, current_model_queue
 from app.core.plugins.classifier import (
     FIELD_ORDER,
     MAY_BE_EMPTY,
@@ -160,7 +160,6 @@ def rewrite_of(
     accounts: Sequence[AccountFact],
     classifiers: Sequence[Classifier],
     history: HistorySource | None,
-    reopen: bool = False,
 ) -> Rewrite | None:
     """What step 1 writes for one entry of an unconfirmed unit, or None when it writes nothing.
 
@@ -171,7 +170,7 @@ def rewrite_of(
     """
     if row.paired:
         return None
-    current, new = _rederived(row, accounts=accounts, classifiers=classifiers, history=history, reopen=reopen)
+    current, new = _rederived(row, accounts=accounts, classifiers=classifiers, history=history)
     if not diff(current, new) and not _stale_keys(row, current):
         return None
     return _checked(row, new)
@@ -192,7 +191,6 @@ def _rederived(
     accounts: Sequence[AccountFact],
     classifiers: Sequence[Classifier],
     history: HistorySource | None,
-    reopen: bool = False,
 ) -> tuple[dict[Field, Decided | None], Resolved]:
     current = stored_decisions(row)
     new = rederive(
@@ -202,7 +200,6 @@ def _rederived(
         classifiers=classifiers,
         history=history,
         exclude_entry_ids=frozenset({row.input.entry_id}),
-        reopen=reopen,
     )
     return current, new
 
@@ -235,14 +232,13 @@ def rewrite_released(
     accounts: Sequence[AccountFact],
     classifiers: Sequence[Classifier],
     history: HistorySource | None,
-    reopen: bool = False,
 ) -> Rewrite:
     """What step 1 writes for a leg whose pair is released (it or its partner fell): always a write.
 
     The leg is rederived as the unpaired leg it now is, so a second settle finds it as it is left.
     """
     leg = _stripped(row)
-    _, new = _rederived(leg, accounts=accounts, classifiers=classifiers, history=history, reopen=reopen)
+    _, new = _rederived(leg, accounts=accounts, classifiers=classifiers, history=history)
     kind = new.get("type")
     if kind is not None and kind.value == "transfer" and not leg.original:
         return Rewrite(  # cannot happen for a leg that was paired; keep its values rather than break I31
@@ -258,15 +254,13 @@ def settle_rewrites(
     accounts: Sequence[AccountFact],
     classifiers: Sequence[Classifier],
     history: HistorySource | None,
-    reopen: bool = False,
 ) -> dict[int, Rewrite]:
     """What step 1 writes, by entry id, for the entries of `rows` that `reach` selects.
 
     An unpaired entry as `rewrite_of`. A paired leg is rederived: when its type or its own counter-account
     changes, both legs of the pair are released (each is rederived as the unpaired leg it becomes and is
     always written, the partner even if `reach` skipped it); otherwise its differences are written and
-    the pair stands (a changed basis writes the key only). `reopen`: every value of the entries `reach`
-    selects is derived again (step 3, after a link).
+    the pair stands (a changed basis writes the key only).
     """
     by_id = {r.input.entry_id: r for r in rows}
     out: dict[int, Rewrite] = {}
@@ -275,14 +269,10 @@ def settle_rewrites(
         if not reach(row):
             continue
         if not row.paired:
-            if rewrite := rewrite_of(
-                row, accounts=accounts, classifiers=classifiers, history=history, reopen=reopen
-            ):
+            if rewrite := rewrite_of(row, accounts=accounts, classifiers=classifiers, history=history):
                 out[row.input.entry_id] = rewrite
             continue
-        current, new = _rederived(
-            row, accounts=accounts, classifiers=classifiers, history=history, reopen=reopen
-        )
+        current, new = _rederived(row, accounts=accounts, classifiers=classifiers, history=history)
         if pair_falls(row, new):
             released.add(row.input.entry_id)
             if row.counterpart_id in by_id:
@@ -295,7 +285,6 @@ def settle_rewrites(
             accounts=accounts,
             classifiers=classifiers,
             history=history,
-            reopen=reopen and reach(by_id[entry_id]),  # a partner `reach` skipped keeps its standing values
         )
     return out
 
@@ -317,68 +306,22 @@ def resolve_step(conn: Connection) -> StepOutcome:
         classifiers=ctx.classifiers,
         history=ctx.snapshot,
     )
-    if rewrites:
-        run.documents_dirty = True  # a payee may have changed: step 2 looks again
     outcome = write_rewrites(conn, rewrites)
-    _list_for_model(conn, rows, rewrites)
+    _list_for_model(rows, rewrites)
     return outcome
 
 
-_LINES = text(
-    """
-    SELECT l.id, l.description, d.merchant_name, l.category_id, l.category_key
-      FROM external_document_line AS l JOIN external_document AS d ON d.id = l.document_id
-     WHERE l.category_key IS NULL
-        OR l.category_key ->> 'pass' IS DISTINCT FROM 'llm'
-        OR jsonb_typeof(l.category_key -> 'basis') IS DISTINCT FROM 'object'
-        OR jsonb_typeof(l.category_key -> 'basis' -> 'fingerprint') IS DISTINCT FROM 'string'
-        OR (l.category_id IS NULL AND l.category_key -> 'basis' -> 'none' IS DISTINCT FROM 'true'::jsonb)
-     ORDER BY l.id
-    """
-)
-
-
-def _unanswered_lines(conn: Connection, queue: ModelQueue) -> list[Item]:
-    """Every stored line with no answer for its payload: none stored, one whose category was deleted (a
-    category and no `none`), or one made for another payload (spec §5.5, §5.9). The same set after a restart
-    as at ingest, so the list is refilled from the database alone.
-
-    SQL keeps only the lines that may lack an answer (no key, not the model's, no stored fingerprint, or a
-    deleted category without `none`); a line holding a fingerprint is not hashed again: ingest drops an
-    answer whose payload changed (`ingest/documents.py: _drop_stale_answers`, and a replaced line takes an
-    answer only by the fingerprint of its new payload), so a stored fingerprint is the payload's."""
-    out: list[Item] = []
-    for r in conn.execute(_LINES):
-        fingerprint = queue.line_fingerprint(r.merchant_name, r.description)
-        if fingerprint is None:
-            continue
-        key = r.category_key
-        basis = key.get("basis") if isinstance(key, Mapping) and key.get("pass") == "llm" else None
-        if (
-            isinstance(basis, Mapping)
-            and basis.get("fingerprint") == fingerprint
-            and (r.category_id is not None or basis.get("none") is True)
-        ):
-            continue
-        out.append((LINE, int(r.id), fingerprint))
-    return out
-
-
-def _list_for_model(
-    conn: Connection, rows: Sequence[UnconfirmedEntry], rewrites: Mapping[int, Rewrite]
-) -> None:
-    """Hand the model's list what falls to pass 3 (spec §5.9, architecture §5.4): the entries without a line
-    whose category falls to it (a flow, or an entry without a type yet, that no pass proposed a category for:
-    no value, no explained absence, such a key says the field is answered) and whose payload is not empty, and
-    every document line with no answer for its payload. An entry WITH a line is never listed: it takes its
-    line's answer, and the line is asked. Settling never waits for the model: this only fills an in-memory
-    list. No model configured: nothing is listed."""
+def _list_for_model(rows: Sequence[UnconfirmedEntry], rewrites: Mapping[int, Rewrite]) -> None:
+    """Hand the model's list what falls to pass 3 (spec §5.9, architecture §5.4): the entries whose category
+    falls to it (a flow, or an entry without a type yet, that no pass proposed a category for: no value, no
+    explained absence, such a key says the field is answered) and whose payload is not empty. Settling never
+    waits for the model: this only fills an in-memory list. No model configured: nothing is listed."""
     queue = current_model_queue()
     if queue is None:
         return
     wanted: list[Item] = []
     for row in rows:
-        if row.paired or row.input.document_line is not None:
+        if row.paired:
             continue
         rewrite = rewrites.get(row.input.entry_id)
         kind, category = (rewrite.type, rewrite.category_id) if rewrite else (row.type, row.category_id)
@@ -387,8 +330,7 @@ def _list_for_model(
             continue  # a key on the empty category is a proposal's explained absence (an entry settling
             # does not rewrite carries only keys resolution produced)
         if (fingerprint := queue.fingerprint(row.input)) is not None:
-            wanted.append((ENTRY, row.input.entry_id, fingerprint))
-    wanted.extend(_unanswered_lines(conn, queue))
+            wanted.append((row.input.entry_id, fingerprint))
     queue.sync(wanted)
 
 

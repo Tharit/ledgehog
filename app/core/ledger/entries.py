@@ -30,26 +30,6 @@ class PartnerSummary:
 
 
 @dataclass(frozen=True)
-class EntryDocument:
-    """The document of an entry's transaction, in a few words (`ledger_entry.document_id` is held by the
-    original entry only, every entry of the transaction reads this one: spec §5.8)."""
-
-    id: int
-    provider: str
-    merchant_name: str | None
-    line_count: int
-
-
-@dataclass(frozen=True)
-class EntryDocumentLine:
-    """The entry's own line of that document (spec §5.8), None where it references none or one of another
-    document."""
-
-    line_no: int
-    description: str
-
-
-@dataclass(frozen=True)
 class EntryRow:
     id: int
     version: int
@@ -67,18 +47,15 @@ class EntryRow:
     counter_account_id: int | None
     counterpart_entry_id: int | None
     source_transaction_id: int | None
-    document_id: int | None
     review_flags: tuple[str, ...]  # sorted
     tag_ids: tuple[int, ...]  # sorted
     source: SourceFields | None  # None only for derived entries
     derivation: Mapping[str, Any]  # as stored: key name -> {"pass", "basis", ...}
     unit_key: int | None  # the unit it is reviewed in (core/units); None for a derived entry
-    authored: bool  # a user-authored movement (its source has no importer)
+    authored: bool  # a user-authored movement (its source has the origin `user`)
     partner: PartnerSummary | None  # the other leg of a paired transfer
-    # the transaction's document and the entry's own line of it, for the rule editor's example and the panel
-    document: EntryDocument | None = None
-    document_line: EntryDocumentLine | None = None
-    importer: str | None = None  # the source's importer; None for an authored or derived entry
+    importer: str | None = None  # the source's importer; None for an authored, booked or derived entry
+    origin: str | None = None  # the source's origin (`import`, `user`, `booking`); None for a derived entry
 
 
 @dataclass(frozen=True)
@@ -182,7 +159,6 @@ _COLUMNS = (
     le.c.counter_account_id,
     le.c.counterpart_entry_id,
     le.c.source_transaction_id,
-    le.c.document_id,
     le.c.review_flags,
     le.c.derivation,
     partner.c.id.label("partner_id"),
@@ -191,6 +167,7 @@ _COLUMNS = (
     partner.c.amount.label("partner_amount"),
     partner.c.currency.label("partner_currency"),
     st.c.importer,
+    st.c.origin,
     st.c.amount.label("source_amount"),
     st.c.currency.label("source_currency"),
     st.c.counterparty_name,
@@ -206,41 +183,8 @@ _COLUMNS = (
 )
 
 
-_DOCUMENTS = text(
-    """
-    SELECT e.id, d.id AS document_id, d.provider, d.merchant_name,
-           (SELECT count(*) FROM external_document_line AS n WHERE n.document_id = d.id) AS line_count,
-           l.line_no, l.description
-      FROM ledger_entry AS e
-      JOIN ledger_entry AS c
-        ON c.source_transaction_id = e.source_transaction_id AND c.document_id IS NOT NULL
-      JOIN external_document AS d ON d.id = c.document_id
-      LEFT JOIN external_document_line AS l ON l.id = e.document_line_id AND l.document_id = d.id
-     WHERE e.id = ANY(:ids)
-    """
-)
-
-
-def documents_of(
-    conn: Connection, entry_ids: Sequence[int]
-) -> dict[int, tuple[EntryDocument, EntryDocumentLine | None]]:
-    """Per entry whose transaction carries a document: that document and the entry's own line of it (only
-    while the line belongs to it)."""
-    if not entry_ids:
-        return {}
-    found: Any = conn.execute(_DOCUMENTS, {"ids": list(entry_ids)})
-    return {
-        int(r.id): (
-            EntryDocument(int(r.document_id), str(r.provider), r.merchant_name, int(r.line_count)),
-            None if r.line_no is None else EntryDocumentLine(int(r.line_no), str(r.description)),
-        )
-        for r in found
-    }
-
-
 def _build(conn: Connection, rows: Sequence[Any]) -> tuple[EntryRow, ...]:
     tags = tag_ids_of(conn, [r.id for r in rows])
-    documents = documents_of(conn, [r.id for r in rows if r.source_transaction_id is not None])
     unit_keys = unit_keys_of(conn, {r.source_transaction_id for r in rows if r.source_transaction_id})
     return tuple(
         EntryRow(
@@ -260,13 +204,12 @@ def _build(conn: Connection, rows: Sequence[Any]) -> tuple[EntryRow, ...]:
             counter_account_id=r.counter_account_id,
             counterpart_entry_id=r.counterpart_entry_id,
             source_transaction_id=r.source_transaction_id,
-            document_id=r.document_id,
             review_flags=tuple(sorted(r.review_flags)),
             tag_ids=tags.get(r.id, ()),
             source=_source(r),
             derivation=r.derivation,
             unit_key=unit_keys.get(r.source_transaction_id) if r.source_transaction_id else None,
-            authored=r.source_transaction_id is not None and r.importer is None,
+            authored=r.source_transaction_id is not None and r.origin == "user",
             partner=None
             if r.partner_id is None
             else PartnerSummary(
@@ -276,9 +219,8 @@ def _build(conn: Connection, rows: Sequence[Any]) -> tuple[EntryRow, ...]:
                 amount=r.partner_amount,
                 currency=r.partner_currency,
             ),
-            document=documents[r.id][0] if r.id in documents else None,
-            document_line=documents[r.id][1] if r.id in documents else None,
             importer=r.importer,
+            origin=r.origin,
         )
         for r in rows
     )

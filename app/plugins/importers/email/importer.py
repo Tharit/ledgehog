@@ -266,9 +266,6 @@ class EmailImporter:
         self.builder = builder
         self._connect = connect
 
-    def delivers(self, settings: Mapping[str, Any], provider: str) -> bool:
-        return True  # receipts come from any shop (spec §7)
-
     def validate_settings(self, settings: Mapping[str, Any]) -> None:
         parse_settings(settings)
 

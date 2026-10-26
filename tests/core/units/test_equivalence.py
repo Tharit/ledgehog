@@ -1,8 +1,8 @@
 """The pure unit judgement equals the SQL: unit keys, confirmation and flags, over generated units.
 
-Scenarios: single sources, splits, pairs, splits with a paired residual (siblings on one or both legs),
-documents carried by several transactions (flows only: a carrier has no transfer entry, I35), a partner
-that is unconfirmed, proposals and unclassified entries here and there, and derived entries (in no unit).
+Scenarios: single sources, splits, pairs, splits with a paired residual (siblings on one or both legs), a
+partner that is unconfirmed, proposals and unclassified entries here and there, and derived entries (in no
+unit).
 Every scenario lives in one rolled-back transaction; all are compared at once. The single lookups
 (`lookup.py`) and the scoped CTE are held to the same keys.
 """
@@ -20,11 +20,10 @@ from app.core.settle.flags import recompute_review_flags
 from app.core.units.closure import UnitEntry, unit_keys, units_of
 from app.core.units.lookup import unit_ids_of, unit_keys_of
 from app.core.units.state import unit_state
-from tests.core.units.doc_helpers import make_document
 from tests.core.units.helpers import Bench, D, keys
 from tests.fixtures import ledger_seed as seed
 
-_KEY_CHOICES = ["", "", "", "rule", "user", "own_account", "history", "llm", "matcher_proposal"]
+_KEY_CHOICES = ["", "", "", "rule", "user", "own_account", "history", "llm"]
 
 
 def _derivation(rng: random.Random) -> str:
@@ -59,28 +58,11 @@ def _scenario(bench: Bench, rng: random.Random) -> None:
         bench.pair(transfers[0], leg)
 
 
-def _document_scenario(bench: Bench, rng: random.Random) -> None:
-    """One document carried by 2-3 transactions of 1-3 flows each (its original entry holds the link), or
-    by one, with proposals and unfinished entries here and there."""
-    doc = make_document(bench.conn, external_id=f"eq{rng.random()}")
-    for _ in range(rng.randint(1, 3)):
-        n = rng.randint(1, 3)
-        src = bench.source(rng.choice([bench.a, bench.b]), on=D, parts=n)
-        for i in range(n):
-            cols: dict[str, Any] = {"derivation": _derivation(rng)}
-            if i == 0:
-                cols["document_id"] = doc
-            if rng.random() < 0.1:
-                bench.flow(src, done=False, type=None, **cols)
-            else:
-                bench.flow(src, done=rng.random() < 0.8, **cols)
-
-
 def _load(conn: Connection) -> list[UnitEntry]:
     rows = conn.execute(
         text(
-            "SELECT id, source_transaction_id, type, category_id, counterpart_entry_id, derivation,"
-            " document_id FROM ledger_entry"
+            "SELECT id, source_transaction_id, type, category_id, counterpart_entry_id, derivation"
+            " FROM ledger_entry"
         )
     )
     return [
@@ -91,7 +73,6 @@ def _load(conn: Connection) -> list[UnitEntry]:
             category_id=r.category_id,
             counterpart_entry_id=r.counterpart_entry_id,
             derivation=r.derivation,
-            document_id=r.document_id,
         )
         for r in rows
     ]
@@ -103,8 +84,6 @@ def test_pure_judgement_equals_sql(db_conn: Connection, make_account: Any, seed_
     rng = random.Random(seed_value)
     for _ in range(60):
         _scenario(bench, rng)
-    for _ in range(20):
-        _document_scenario(bench, rng)
     seed.derived(db_conn, bench.a)  # a derived entry: in no unit, no flags
     recompute_review_flags(db_conn)
 
@@ -127,8 +106,6 @@ def test_pure_judgement_equals_sql(db_conn: Connection, make_account: Any, seed_
     movements = [e for e in entries if e.source_transaction_id is not None]
     assert set(sql) == {e.id for e in movements} == set(keys_)
     assert len({k for k in keys_.values()}) < len(movements)  # the scenarios do form multi-entry units
-    carriers = {e.source_transaction_id for e in entries if e.document_id is not None}
-    assert len({keys_[e.id] for e in entries if e.source_transaction_id in carriers}) < len(carriers)
     kinds = {s.reasons for s in states.values()}
     assert (
         () in kinds and any("non_standing_keys" in r for r in kinds) and any("incomplete" in r for r in kinds)
@@ -154,7 +131,6 @@ def test_lookups_and_scoped_sql_equal_the_pure_closure(
     rng = random.Random(seed_value)
     for _ in range(25):
         _scenario(bench, rng)
-        _document_scenario(bench, rng)
     entries = _load(db_conn)
     keys_ = unit_keys(entries)
     units = units_of(entries)

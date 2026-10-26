@@ -59,26 +59,6 @@ def _sync(conn: Connection, account: int, through: date | None) -> None:
         make_run(conn, account, covered_through=through, instance_id=instance)
 
 
-def test_the_queue_runs_the_document_matching_once_per_read(
-    db_conn: Connection, bench: Bench, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from app.core.resolution import doc_load
-
-    _leg(bench)
-    calls: list[int] = []
-    real = doc_load._matching
-
-    def counted(conn: Connection) -> Any:
-        calls.append(1)
-        return real(conn)
-
-    monkeypatch.setattr(doc_load, "_matching", counted)
-    review_queue(db_conn)
-    assert len(calls) == 1
-    review_queue(db_conn, section="needs_account")
-    assert len(calls) == 2  # a read of its own: nothing is kept between reads
-
-
 def test_a_leg_with_an_instructed_currency_and_no_account_for_it_needs_an_account(
     db_conn: Connection, bench: Bench
 ) -> None:

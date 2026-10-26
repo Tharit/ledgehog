@@ -3,25 +3,17 @@
 from __future__ import annotations
 
 from collections.abc import Collection, Iterable, Sequence
-from datetime import date
 from typing import Any, cast
 
 from sqlalchemy import Connection, text
 
-from app.core.importers.providers import instance_deliveries
 from app.core.ingest.identity import canonical_text
 from app.core.matching import MAX_WINDOW, Leg, PoolEntry, Summary
-from app.core.matching.documents import DocInput, DocWindow
-from app.core.matching.lines import Line
-from app.core.resolution.doc_load import load_carriers, load_gated
-from app.core.resolution.enrich import LinkedDocument
-from app.core.resolution.load import line_answer_of, load_accounts, load_rules
+from app.core.resolution.load import load_accounts, load_rules
 from app.core.resolution.registry import classifiers_for
 from app.core.resolution.snapshot import HistorySnapshot, load_votes
 from app.core.settle.pairing import load_unpaired_legs
-from app.core.settle.window import document_window, matching_window_days
-from app.core.units.doc_world import DocumentInfo, DocWorld
-from app.core.units.documents import DocumentSource
+from app.core.settle.window import matching_window_days
 from app.core.units.draft import UnitDraft
 from app.core.units.lookup import unit_ids_of
 from app.core.units.plan import Stored, StoredSource, StoredUnit, World
@@ -30,12 +22,10 @@ _ENTRIES = text(
     """
     SELECT e.id, e.version, e.source_transaction_id, e.account_id, e.currency, e.booked_on, e.value_on,
            e.amount, e.type, e.payee_id, e.category_id, e.counter_account_id, e.counterpart_entry_id,
-           e.description, e.note, e.derivation, e.document_id,
-           l.document_id AS line_document_id, l.line_no,
+           e.description, e.note, e.derivation,
            COALESCE((SELECT array_agg(t.tag_id ORDER BY t.tag_id)
                        FROM ledger_entry_tag AS t WHERE t.ledger_entry_id = e.id), '{}') AS tag_ids
       FROM ledger_entry AS e
-      LEFT JOIN external_document_line AS l ON l.id = e.document_line_id
      WHERE e.id = ANY(:ids)
      ORDER BY e.id
     """
@@ -44,7 +34,7 @@ _ENTRIES = text(
 _SOURCES = text(
     """
     SELECT s.id, s.amount, s.account_id, s.currency, s.booked_on, s.value_on,
-           (s.importer IS NULL) AS authored,
+           (s.origin = 'user') AS authored,
            s.counterparty_ref, s.counterparty_name, s.purpose, s.booking_text, s.mandate_ref,
            s.instructed_currency, s.end_to_end_id, s.instructed_amount
       FROM source_transaction AS s
@@ -82,8 +72,6 @@ def load_stored_entries(conn: Connection, anchor_entry_id: int, entry_ids: Itera
             note=r.note,
             derivation=cast(dict[str, Any], r.derivation),
             tag_ids=tuple(int(t) for t in r.tag_ids),
-            document_id=r.document_id,
-            document_line=None if r.line_no is None else (int(r.line_document_id), int(r.line_no)),
         )
         for r in rows
     )
@@ -168,172 +156,7 @@ def load_world(conn: Connection, stored: StoredUnit, draft: UnitDraft, *, ledger
         categories=found_categories,
         payees=found_payees,
         ledger_legs=load_unpaired_legs(conn) if ledger_wide else (),
-        docs=load_doc_world(conn, stored, document_pick_ids(draft)),
     )
-
-
-_PAYEE_PROVIDERS = text("SELECT id, document_provider FROM payee WHERE document_provider IS NOT NULL")
-
-_SOURCES_OF_DOCUMENTS = text(
-    "SELECT i.id, i.disabled, i.settings ->> 'start_date' AS start_date, c.covered_through"
-    "  FROM importer_instance AS i LEFT JOIN v_document_coverage AS c ON c.importer_instance_id = i.id"
-)
-
-# the documents that can matter to the unit: those its entries carry, and those dated within the window of one
-# of its sources' booking dates, in that source's currency or its instructed one, whatever payee a draft may
-# give the entry (documents.md §2, §3); the carriers outside the unit are read apart
-_DOCUMENTS = text(
-    """
-    SELECT d.id, d.provider, d.occurred_on, d.total, d.currency, d.merchant_name, d.version, d.title,
-           d.external_id,
-           (SELECT jsonb_agg(jsonb_build_array(l.line_no, l.amount, l.description) ORDER BY l.line_no)
-              FROM external_document_line AS l WHERE l.document_id = d.id) AS lines,
-           (SELECT jsonb_agg(jsonb_build_array(l.line_no, l.category_id, l.category_key) ORDER BY l.line_no)
-              FROM external_document_line AS l
-             WHERE l.document_id = d.id AND l.category_key IS NOT NULL) AS answers
-      FROM external_document AS d
-     WHERE d.id = ANY(CAST(:carried AS bigint[]))
-        OR EXISTS (SELECT 1 FROM unnest(CAST(:currencies AS text[]), CAST(:booked AS date[]))
-                                AS k(currency, booked_on)
-                    WHERE k.currency = d.currency
-                      AND d.occurred_on BETWEEN k.booked_on - CAST(:back AS int)
-                                            AND k.booked_on + CAST(:ahead AS int))
-    """
-)
-
-# the documents a draft names (picks, lines echoed back), whoever carries them
-_PICKED = text(
-    """
-    SELECT d.id, d.provider, d.occurred_on, d.total, d.currency, d.merchant_name, d.version, d.title,
-           d.external_id,
-           (SELECT jsonb_agg(jsonb_build_array(l.line_no, l.amount, l.description) ORDER BY l.line_no)
-              FROM external_document_line AS l WHERE l.document_id = d.id) AS lines,
-           (SELECT jsonb_agg(jsonb_build_array(l.line_no, l.category_id, l.category_key) ORDER BY l.line_no)
-              FROM external_document_line AS l
-             WHERE l.document_id = d.id AND l.category_key IS NOT NULL) AS answers
-      FROM external_document AS d
-     WHERE d.id = ANY(CAST(:ids AS bigint[]))
-    """
-)
-
-
-def _info(r: Any) -> DocumentInfo:
-    return DocumentInfo(
-        id=int(r.id),
-        version=int(r.version),
-        provider=str(r.provider),
-        external_id=str(r.external_id),
-        occurred_on=r.occurred_on,
-        total=int(r.total),
-        currency=str(r.currency).strip(),
-        merchant_name=r.merchant_name,
-        title=r.title,
-        lines=tuple((int(n), int(a), str(d)) for n, a, d in (r.lines or ())),
-        answers=tuple(
-            (int(n), answer)
-            for n, category, key in (r.answers or ())
-            if (answer := line_answer_of(category, key)) is not None
-        ),
-    )
-
-
-def load_doc_world(conn: Connection, stored: StoredUnit, picks: Collection[int] = ()) -> DocWorld:
-    """What the simulation of settle steps 2 and 3 reads outside `stored` (`doc_world.DocWorld`): a few
-    small queries, each cut to the transactions that have a provider payee or the documents that can match.
-    `picks` are the documents the draft names: read whoever carries them."""
-    payee_providers = {int(r.id): str(r.document_provider) for r in conn.execute(_PAYEE_PROVIDERS)}
-    closure = sorted(e.id for e in stored.entries)
-    carried = sorted({e.document_id for e in stored.entries if e.document_id is not None} | set(picks))
-    if not payee_providers and not carried:
-        return DocWorld(
-            window=DocWindow(0, 0)
-        )  # nothing can be matched, nothing is linked: judged without documents
-    window = document_window(conn)
-    currencies: list[str] = []
-    booked: list[date] = []
-    for src in stored.sources.values():
-        currencies.append(src.currency.strip())
-        booked.append(src.booked_on)
-        if src.instructed_currency is not None and src.instructed_amount is not None:
-            currencies.append(src.instructed_currency.strip())
-            booked.append(src.booked_on)
-    rows = conn.execute(
-        _DOCUMENTS,
-        {
-            "carried": carried,
-            "currencies": currencies,
-            "booked": booked,
-            "back": window.back,
-            "ahead": window.ahead,
-        },
-    ).all()
-    inside = set(closure)
-    # the carriers outside the unit; the unit's own are its rows, which the overlay adds as they stand
-    outside = load_carriers(conn, [int(r.id) for r in rows])
-    docs: list[DocInput] = []
-    details: dict[int, LinkedDocument] = {}
-    infos: dict[int, DocumentInfo] = {}
-    for r in rows:
-        info = _info(r)
-        infos[info.id] = info
-        details[info.id] = LinkedDocument(
-            merchant_name=info.merchant_name, lines=info.lines, answers=info.answers
-        )
-        docs.append(
-            DocInput(
-                info.id,
-                info.provider,
-                info.occurred_on,
-                info.total,
-                info.currency,
-                lines=tuple(Line(n, a) for n, a, _d in info.lines),
-                carriers=tuple(c for c in outside.get(info.id, ()) if c.entry_id not in inside),
-            )
-        )
-    if picks:  # whoever carries them, a document the draft names is known
-        for r in conn.execute(_PICKED, {"ids": sorted(picks)}):
-            info = _info(r)
-            infos[info.id] = info
-            details[info.id] = LinkedDocument(
-                merchant_name=info.merchant_name, lines=info.lines, answers=info.answers
-            )
-    others = load_gated(conn, closure)
-    synced = [
-        r.synced_through
-        for r in conn.execute(
-            text(
-                "SELECT c.synced_through FROM v_account_synced AS s"
-                " JOIN v_account_coverage AS c ON c.account_id = s.account_id WHERE s.synced"
-            )
-        )
-    ]
-    delivering = instance_deliveries(conn)
-    sources = [
-        DocumentSource(
-            delivering.get(int(r.id), frozenset()),
-            bool(r.disabled),
-            date.fromisoformat(r.start_date) if r.start_date else None,
-            r.covered_through,
-        )
-        for r in conn.execute(_SOURCES_OF_DOCUMENTS)
-    ]
-    return DocWorld(
-        window=window,
-        sources=sources,
-        synced=synced,
-        payee_providers=payee_providers,
-        documents=docs,
-        details=details,
-        others=others,
-        infos=infos,
-    )
-
-
-def document_pick_ids(draft: UnitDraft) -> list[int]:
-    """The documents the draft names, ascending: picked, or the one a new entry's line belongs to."""
-    ids = {e.document.document_id for e in draft.entries if e.document.document_id is not None}
-    ids |= {e.document_line.document_id for e in draft.entries if e.document_line is not None}
-    return sorted(ids)
 
 
 def missing_tag(conn: Connection, draft: UnitDraft) -> tuple[int, int] | None:
@@ -460,33 +283,16 @@ def pick_partner_ids(draft: UnitDraft) -> list[int]:
     )
 
 
-_CARRIERS = text(
-    "SELECT min(id) FROM ledger_entry WHERE document_id = ANY(CAST(:docs AS bigint[])) GROUP BY document_id"
-)
-
-
-def carriers_of(conn: Connection, documents: Collection[int]) -> list[int]:
-    """One carrying entry of each of `documents` that has any (its unit holds the other carriers)."""
-    if not documents:
-        return []
-    return [int(i) for i in conn.execute(_CARRIERS, {"docs": sorted(documents)}).scalars()]
-
-
 def drafted_closure(conn: Connection, draft: UnitDraft, anchor_ids: Iterable[int]) -> set[int]:
-    """The unit as drafted: `anchor_ids` (the anchor's own closure), the closure of every partner the draft
-    picks, and the closure of every carrier of a document the draft picks (all the carriers of one document
-    are one unit). A document that no entry carries brings nothing."""
-    return (
-        set(anchor_ids)
-        | load_closure_of(conn, pick_partner_ids(draft))
-        | load_closure_of(conn, carriers_of(conn, document_pick_ids(draft)))
-    )
+    """The unit as drafted: `anchor_ids` (the anchor's own closure) and the closure of every partner the
+    draft picks."""
+    return set(anchor_ids) | load_closure_of(conn, pick_partner_ids(draft))
 
 
 def load_drafted_unit(conn: Connection, draft: UnitDraft) -> tuple[StoredUnit, frozenset[int]] | None:
-    """The closure of the anchor extended by the closure of every partner and of every document carrier the
-    draft picks (the unit as drafted), and the ids of the anchor's own closure. None when the anchor is in no
-    unit. A partner that is in no unit is left out: the plan refuses the pick."""
+    """The closure of the anchor extended by the closure of every partner the draft picks (the unit as
+    drafted), and the ids of the anchor's own closure. None when the anchor is in no unit. A partner that is
+    in no unit is left out: the plan refuses the pick."""
     ids = unit_ids_of(conn, draft.anchor_entry_id)
     if ids is None:
         return None

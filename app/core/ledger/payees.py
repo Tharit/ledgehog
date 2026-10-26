@@ -84,8 +84,6 @@ class PayeeMergeResult:
     entry_ids: tuple[int, ...]  # real run only
     setting_rule_ids: tuple[int, ...]  # rules repointed whose `payee_id` it was
     condition_rule_ids: tuple[int, ...]  # rules whose payee condition it was, rewritten to the target
-    source_document_provider: str | None
-    document_provider_lost: bool  # the source names a provider the target does not
     settle: SettleResult | None = None
 
 
@@ -107,15 +105,12 @@ def create_payee(
     note: str | None = None,
     icon: str | None = None,
     color: str | None = None,
-    document_provider: str | None = None,
 ) -> PayeeWritten:
-    provider = clean_text(document_provider)  # free text (spec §3.6): trimmed, blank means none
     values = {
         "n": clean_name(name),
         "note": clean_text(note),
         "i": clean_presentation("icon", icon),
         "c": clean_presentation("color", color),
-        "d": provider,
     }
 
     def run() -> PayeeRow:
@@ -124,8 +119,7 @@ def create_payee(
             try:
                 new_id = conn.execute(
                     text(
-                        "INSERT INTO payee (name, note, icon, color, document_provider)"
-                        " VALUES (:n, :note, :i, :c, :d) RETURNING id"
+                        "INSERT INTO payee (name, note, icon, color) VALUES (:n, :note, :i, :c) RETURNING id"
                     ),
                     values,
                 ).scalar_one()
@@ -146,14 +140,9 @@ def update_payee(
     note: str | None | EllipsisType = ...,
     icon: str | None | EllipsisType = ...,
     color: str | None | EllipsisType = ...,
-    document_provider: str | None | EllipsisType = ...,
 ) -> PayeeWritten:
-    """Change what is given (`...` leaves a field alone, `None` clears `note`, `icon`, `color`, provider).
-
-    Always settles: matching and waiting for documents read `document_provider` (spec §3.6).
-    """
+    """Change what is given (`...` leaves a field alone, `None` clears `note`, `icon`, `color`)."""
     sets: dict[str, Any] = {}
-    provider = None if isinstance(document_provider, EllipsisType) else clean_text(document_provider)
     if not isinstance(name, EllipsisType):
         sets["name"] = clean_name(name)
     if not isinstance(note, EllipsisType):
@@ -162,8 +151,6 @@ def update_payee(
         sets["icon"] = clean_presentation("icon", icon)
     if not isinstance(color, EllipsisType):
         sets["color"] = clean_presentation("color", color)
-    if not isinstance(document_provider, EllipsisType):
-        sets["document_provider"] = provider
 
     def run() -> PayeeRow:
         with engine.begin() as conn:
@@ -278,8 +265,7 @@ def merge_payee(
 
     Entries (`payee_id`) and rules (`payee_id`; payee conditions are rewritten in the jsonb) are repointed
     (the entries' versions bump), then the source is deleted last. The target's attributes win; the
-    result says when that loses the source's `document_provider`. The real run carries the dry run's
-    `entry_count`; another number writes nothing (`MergeCountChanged`).
+    The real run carries the dry run's `entry_count`; another number writes nothing (`MergeCountChanged`).
     """
     require_count(dry_run, expected_count)
 
@@ -291,7 +277,8 @@ def merge_payee(
             raise StaleReference("into", "payee", target_id)
         if source_id == target_id:
             raise InvalidValue("into", "a payee cannot be merged into itself")
-        source, target = _view(conn, source_id), _view(conn, target_id)
+        target = _view(conn, target_id)
+        _view(conn, source_id)
         params = {"s": source_id, "t": target_id}
         entry_ids = [
             int(i)
@@ -321,9 +308,6 @@ def merge_payee(
             entry_ids=() if dry_run else tuple(sorted(entry_ids)),
             setting_rule_ids=tuple(sorted(setting)),
             condition_rule_ids=tuple(sorted(condition)),
-            source_document_provider=source.document_provider,
-            document_provider_lost=source.document_provider is not None
-            and source.document_provider.lower() != (target.document_provider or "").lower(),
         )
 
     result = retry_on_deadlock(lambda: previewable(engine, dry_run, work))

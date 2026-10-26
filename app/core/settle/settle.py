@@ -8,12 +8,11 @@ Contract shared by every caller:
 * A failure after the caller's write committed does not raise: the settle transaction
   rolls back, the write stands, and the failure is reported in ``SettleResult.error``.
 
-One round is the five ordered steps of architecture §5.2. Before the first round, "none" is recorded for the
-document of every confirmed unit that has none (step 5 does it for what each round newly confirms).
-Step 1 resolves every unconfirmed entry (core/settle/resolution.py), step 4 pairs the unpaired transfer legs
-(core/settle/pairing.py) and step 5 is the review flags, which also report what the round
-newly confirmed; steps 2 and 3 are document matching and the resolution after a link
-(core/settle/documents.py); a step can be replaced with ``register_step(name, fn)``. The steps of one
+One round is the five ordered steps of architecture §5.2. Step 1 resolves every unconfirmed entry
+(core/settle/resolution.py), step 4 pairs the unpaired transfer legs (core/settle/pairing.py) and step 5 is
+the review flags, which also report what the round newly confirmed. Steps 2 and 3 are the bookings on
+clearance accounts and the resolution of the booking entries; they are no-ops until the booking step is
+written (wave C2), and `register_step(name, fn)` replaces a step in its place. The steps of one
 settle share a `SettleRun` (core/settle/run.py). The settle baseline is a pass over every unconfirmed
 unit; narrowing to a dirty set is an optimisation to take only if the time budget is missed.
 """
@@ -27,13 +26,11 @@ from dataclasses import dataclass
 from sqlalchemy import Connection, Engine, text
 
 from app.core.resolution.confirmed import load_confirmed_ids
-from app.core.resolution.doc_load import candidacy_memo, forget_candidacy
-from app.core.settle.documents import match_documents_step, resolve_after_link_step
-from app.core.settle.flags import record_none_documents, review_flags_step
+from app.core.settle.flags import review_flags_step
 from app.core.settle.pairing import pair_transfers_step
 from app.core.settle.resolution import resolve_step
 from app.core.settle.run import StepOutcome, settle_run
-from app.utils.db.changes import DOCUMENTS, LEDGER, note_change
+from app.utils.db.changes import LEDGER, note_change
 from app.utils.db.locks import lock_settle_exclusive
 
 log = logging.getLogger(__name__)
@@ -54,10 +51,20 @@ class SettleResult:
 Step = Callable[[Connection], StepOutcome]
 
 
+def book_clearance_step(conn: Connection) -> StepOutcome:
+    """Step 2: bookings on clearance accounts (spec §5.8). Not written yet: the hook of wave C2."""
+    return StepOutcome()
+
+
+def resolve_bookings_step(conn: Connection) -> StepOutcome:
+    """Step 3: resolution of the booking entries step 2 created or changed. Not written yet (wave C2)."""
+    return StepOutcome()
+
+
 _STEPS: list[tuple[str, Step]] = [
     ("resolve", resolve_step),
-    ("match_documents", match_documents_step),
-    ("resolve_after_link", resolve_after_link_step),
+    ("book_clearance", book_clearance_step),
+    ("resolve_bookings", resolve_bookings_step),
     ("pair_transfers", pair_transfers_step),
     ("review_flags", review_flags_step),
 ]
@@ -77,28 +84,19 @@ def register_step(name: str, fn: Step) -> None:
     raise ValueError(f"unknown settle step: {name!r}")
 
 
-def _run_rounds(conn: Connection) -> tuple[set[int], bool]:
-    """The entries touched, and whether a document was linked."""
+def _run_rounds(conn: Connection) -> set[int]:
+    """The entries touched."""
     touched: set[int] = set()
-    with settle_run() as run, candidacy_memo():
+    with settle_run() as run:
         run.confirmed = load_confirmed_ids(conn)
-        # a unit confirmed before this settle (written complete and standing, such as an entry form's) has
-        # no document key yet either: "none" is recorded for it too, so no later document source reopens it
-        recorded = record_none_documents(conn, sorted(run.confirmed))
-        touched.update(recorded)
-        if recorded:
-            forget_candidacy()  # the "none" it records closes the gate of those units
         for _ in range(MAX_ROUNDS):
             confirmed = 0
             for _name, step in list(_STEPS):
                 outcome = step(conn)
-                moved = set(outcome.touched)
-                touched.update(moved)
-                if moved and outcome.affects_documents:
-                    forget_candidacy()  # a write may change what a document could be linked to
+                touched.update(outcome.touched)
                 confirmed += outcome.newly_confirmed
             if confirmed == 0:
-                return touched, run.document_linked
+                return touched
     raise RuntimeError(f"settling did not converge within {MAX_ROUNDS} rounds")
 
 
@@ -121,13 +119,11 @@ def settle(
                 if wrote is None:
                     return SettleResult()
                 written.update(wrote)
-            touched, document_linked = _run_rounds(conn)
+            touched = _run_rounds(conn)
             touched |= written
             # the change values move when this transaction commits (architecture §5.2)
             if touched:
                 note_change(conn, LEDGER)
-            if document_linked:
-                note_change(conn, DOCUMENTS)
     except Exception as exc:
         log.exception("settle failed; the committed write stands")
         return SettleResult(error=_short(exc))

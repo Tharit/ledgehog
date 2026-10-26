@@ -122,7 +122,7 @@ def test_a_revert_dry_run_returns_the_set_and_versions_and_writes_nothing(api: A
     body = r.json()
     assert set(body) == {
         "run_id", "removed_entry_ids", "removed_confirmed", "partner_entry_ids", "partner_confirmed",
-        "freed_document_ids", "repointed_source_ids", "cleared_duplicate_ids", "derived_changes", "versions",
+        "repointed_source_ids", "cleared_duplicate_ids", "derived_changes", "versions",
         "settle",
     }  # fmt: skip
     assert body["run_id"] == run_id and body["settle"] is None and calls == []

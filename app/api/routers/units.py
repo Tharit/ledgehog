@@ -11,11 +11,9 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel
-from sqlalchemy import Engine, text
 
 from app.api.errors import ApiError, map_error
 from app.api.ids import PathId
-from app.api.routers.accounts import Money
 from app.api.routers.changes import model_queue_of
 from app.api.routers.entries import EntryOut
 from app.api.routers.unit_drafts import (
@@ -68,22 +66,6 @@ class WaitingOut(BaseModel):
     synced_through: date | None  # how far that account has been fetched; null = never
 
 
-class WaitingDocumentOut(BaseModel):
-    provider: str  # the document provider of the unit's first (by entry id) entry that waits for a document
-    # how far the sources still holding it have covered (the earliest); null = one has never run
-    covered_through: date | None
-
-
-class WaitingOrderOut(BaseModel):
-    """A unit waiting for the rest of a document's order (documents.md §7): `charged` of the order's `total`
-    (signed like a charge, compared by magnitude) is carried; the queue says what remains."""
-
-    order: str  # the order's external id
-    provider: str
-    charged: Money
-    total: Money
-
-
 class CurrencyGroupOut(BaseModel):
     currency: str
     count: int  # units (not legs) that need an account in the currency, over the whole section
@@ -98,10 +80,6 @@ class UnitOut(BaseModel):
     needs_account: NeedsAccountOut | None = None
     # ... and for a unit in `waiting`
     waiting: WaitingOut | None = None
-    # ... for a document instead of a partner: set instead of `waiting`
-    waiting_document: WaitingDocumentOut | None = None
-    # ... or for the rest of the order of the document a matcher linked: set instead of the two above
-    waiting_order: WaitingOrderOut | None = None
     # the model is still looking at one of its entries (read from its list when the response is built)
     model_pending: bool = False
 
@@ -117,24 +95,6 @@ class UnitOut(BaseModel):
             waiting=(
                 WaitingOut(account_id=view.waiting.account_id, synced_through=view.waiting.synced_through)
                 if view.waiting
-                else None
-            ),
-            waiting_document=(
-                WaitingDocumentOut(
-                    provider=view.waiting_document.provider,
-                    covered_through=view.waiting_document.covered_through,
-                )
-                if view.waiting_document
-                else None
-            ),
-            waiting_order=(
-                WaitingOrderOut(
-                    order=view.waiting_order.order,
-                    provider=view.waiting_order.provider,
-                    charged=Money(amount=view.waiting_order.charged, currency=view.waiting_order.currency),
-                    total=Money(amount=view.waiting_order.total, currency=view.waiting_order.currency),
-                )
-                if view.waiting_order
                 else None
             ),
         )
@@ -169,28 +129,10 @@ class QueueCountOut(BaseModel):
     needs_account: int
 
 
-# the entries waiting for the line they take their category from: an empty category with no key (a rule, a
-# history match or an explained absence has answered it otherwise), a flow or not yet a type
-_WAITING_ON_LINE = text(
-    "SELECT id FROM ledger_entry WHERE document_line_id = ANY(CAST(:lines AS bigint[]))"
-    " AND category_id IS NULL AND NOT jsonb_exists(derivation, 'category')"
-    " AND (type IS NULL OR type = 'flow')"
-)
-
-
-def _model_pending(request: Request, engine: Engine) -> frozenset[int]:
-    """The entries the model is still looking at, now (empty without a model): the entries on its list and
-    those waiting for a line that is (spec §5.9)."""
+def _model_pending(request: Request) -> frozenset[int]:
+    """The entries the model is still looking at, now (empty without a model): the entries on its list."""
     queue = model_queue_of(request)
-    if queue is None:
-        return frozenset()
-    entries = queue.entry_ids()
-    if not (lines := queue.line_ids()):
-        return entries
-    with engine.connect() as conn:
-        return entries | frozenset(
-            int(i) for i in conn.execute(_WAITING_ON_LINE, {"lines": sorted(lines)}).scalars()
-        )
+    return frozenset() if queue is None else queue.entry_ids()
 
 
 @router.get("/queue")
@@ -212,7 +154,7 @@ def get_review_queue(
         )
     with engine.connect() as conn:
         queue = review_queue(conn, limit=limit, section=section, cursor=cursor)
-    pending = _model_pending(request, engine)
+    pending = _model_pending(request)
     return ReviewQueueOut(
         sections=[QueueSectionOut.of(s, pending) for s in queue.sections], total=queue.total
     )
@@ -244,7 +186,7 @@ def get_unit(request: Request, entry_id: PathId, user: CurrentUser, engine: Engi
         view = read_unit(conn, entry_id)
     if view is None:
         raise UnitMissing(entry_id)
-    return UnitOut.of(view, _model_pending(request, engine))
+    return UnitOut.of(view, _model_pending(request))
 
 
 # a draft that makes no sense against the stored unit: one 422 with the machine code in `details.code`
@@ -256,17 +198,7 @@ map_error(
 )
 map_error(UnitNotFound, 404, "not_found")
 # the closure changed between reading the unit and holding its locks: reload it
-# (or a picked document taken by another entry, or at another version: `reason` `taken` / `version`)
-map_error(
-    UnitMoved,
-    409,
-    "unit_moved",
-    details=lambda e: {
-        "anchor_entry_id": e.anchor_entry_id,
-        "document_id": e.document_id,
-        "reason": e.reason,
-    },
-)
+map_error(UnitMoved, 409, "unit_moved", details=lambda e: {"anchor_entry_id": e.anchor_entry_id})
 
 
 @router.post("/preview")
@@ -296,9 +228,8 @@ def commit_unit(
     """Write the draft in one transaction, then settle. A commit does not confirm: settling does.
 
     409 `conflict` names the entries whose version moved (or that `versions` omitted); 409 `unit_moved` is a
-    closure that changed under the locks, or a picked document that another entry carries (`details.reason`
-    `taken`) or that is at another version (`version`), named in `details.document_id`; 409
-    `stale_reference` a category, payee, account or picked document that no longer exists; 409 `try_again`
+    closure that changed under the locks; 409 `stale_reference` a category, payee or account that no
+    longer exists; 409 `try_again`
     a deadlock lost twice. 422 carries the code of the first problem the preview would
     list (all of them in `details.problems`), or `invalid_draft`. A pick is checked against the widest window
     (90 days), so one the widened preview accepted commits. `window_days` (1 to 90, default the matching

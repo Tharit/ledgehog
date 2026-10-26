@@ -14,18 +14,14 @@ from typing import Literal
 
 from app.core.plugins.classifier import STANDING_PASSES
 from app.core.units.closure import UnitEntry
-from app.core.units.documents import DocumentFacts
 
 # `unpaired_transfer` is an unpaired leg of which nothing more is known (no sync facts were given);
-# `waiting_for_partner` and `unmatched_transfer` are its two states (spec §5.7), judged like the flags
-# `waiting_for_document` and `document_suggested` are a transaction's open document (documents.md §1, §7)
+# `waiting_for_partner` and `unmatched_transfer` are its two states (spec §5.7)
 Reason = Literal[
     "incomplete",
     "unpaired_transfer",
     "waiting_for_partner",
     "unmatched_transfer",
-    "waiting_for_document",
-    "document_suggested",
     "non_standing_keys",
 ]
 LegState = Literal["waiting", "unmatched"]
@@ -60,27 +56,9 @@ def leg_states_of_flags(flags: Mapping[int, Sequence[str]]) -> dict[int, LegStat
     return out
 
 
-def document_facts_of_flags(
-    entries: Sequence[tuple[int, Sequence[str], int | None]],
-) -> dict[int, DocumentFacts]:
-    """The document facts of each `(entry id, review flags, document id)` from the flags settling stored on
-    it: `document_suggested`, and `waiting` on an entry that is not a transfer leg (a leg waits for its
-    partner; the caller passes only the flows): for its document where it carries none, for the rest of its
-    order where it carries one (documents.md §7)."""
-    return {
-        i: DocumentFacts(
-            awaited="waiting" in tokens and document_id is None,
-            suggested="document_suggested" in tokens,
-            rest="waiting" in tokens and document_id is not None,
-        )
-        for i, tokens, document_id in entries
-    }
-
-
 def unit_state(
     entries: Sequence[UnitEntry],
     leg_states: Mapping[int, LegState] | None = None,
-    documents: Mapping[int, DocumentFacts] | None = None,
 ) -> UnitState:
     """The state of the unit made of `entries`, all movements (a derived entry is in no unit).
 
@@ -88,18 +66,9 @@ def unit_state(
     for it is then `waiting_for_partner` or `unmatched_transfer`. A leg it does not name is the generic
     `unpaired_transfer`. A unit has at most one unpaired leg: a source has one transfer entry (I31) and an
     unpaired leg's unit is its own source.
-
-    `documents` says per entry whether its transaction awaits a document, has suggestions or a candidate
-    (what the SQL reads as `doc_awaited`, `doc_suggested`, `doc_candidate`). It counts only for the
-    original entry of a source (the lowest id of its source among `entries`, which holds every entry of
-    each source) that has no `document` key: the gate of documents.md §1. The wait for the rest of an order
-    (`rest`) is the exception: it is of an entry that carries a document, sets the flag `waiting` and holds
-    nothing (documents.md §7: the matcher's key keeps the unit in review by itself).
     """
     if any(not e.movement for e in entries):
         raise ValueError("a derived entry is in no unit")
-    documents = documents or {}
-    open_docs = _open_documents(entries, documents)
     nonstanding = any(has_nonstanding_key(e) for e in entries)
     incomplete = any(is_unclassified(e) for e in entries)
     unpaired_legs = [e for e in entries if e.type == "transfer" and e.counterpart_entry_id is None]
@@ -116,44 +85,17 @@ def unit_state(
             if "unmatched" in known
             else "unpaired_transfer"
         )
-    if any(f.awaited for f in open_docs.values()):
-        reasons.append("waiting_for_document")
-    if any(f.suggested or f.candidate for f in open_docs.values()):
-        # a candidate settling is about to link keeps the unit open too; it has no flag of its own and is
-        # normally gone before anyone reads it (the link is made in the same settle), so it reads as a
-        # suggestion
-        reasons.append("document_suggested")
     if nonstanding:
         reasons.append("non_standing_keys")
     flags = {
         e.id: tuple(
             t
             for t, on in (
-                ("document_suggested", open_docs[e.id].suggested if e.id in open_docs else False),
                 ("unclassified", is_unclassified(e)),
                 ("unconfirmed", nonstanding),
-                (
-                    "waiting",
-                    (open_docs[e.id].awaited if e.id in open_docs else False)
-                    or (e.id in documents and documents[e.id].rest),
-                ),
             )
             if on
         )
         for e in entries
     }
     return UnitState(confirmed=not reasons, reasons=tuple(reasons), flags=flags)
-
-
-def _open_documents(
-    entries: Sequence[UnitEntry], documents: Mapping[int, DocumentFacts]
-) -> dict[int, DocumentFacts]:
-    """The facts that count: those of the original entry of each source that has no `document` key."""
-    first: dict[int | None, int] = {}
-    for e in entries:
-        first[e.source_transaction_id] = min(e.id, first.get(e.source_transaction_id, e.id))
-    return {
-        e.id: documents[e.id]
-        for e in entries
-        if e.id in documents and e.id == first[e.source_transaction_id] and "document" not in e.derivation
-    }

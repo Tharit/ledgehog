@@ -15,7 +15,6 @@ from app.core.units.read import (
     get_unit,
     review_queue,
 )
-from tests.core.units.doc_helpers import make_document
 from tests.core.units.helpers import Bench, D, keys
 from tests.fixtures import ledger_seed as seed
 
@@ -50,40 +49,6 @@ def test_a_pair_is_one_unit_with_both_sources(db_conn: Connection, bench: Bench)
         assert [e.id for e in unit.entries] == [x, y, sib]
         assert unit.state.confirmed
     assert unit.entries[0].partner is not None and unit.entries[0].partner.entry_id == y
-
-
-def _carry(db_conn: Connection, entry: int, doc: int) -> None:
-    db_conn.execute(text("UPDATE ledger_entry SET document_id = :d WHERE id = :e"), {"d": doc, "e": entry})
-
-
-def test_the_carriers_of_one_document_are_one_unit_from_any_of_them(
-    db_conn: Connection, bench: Bench
-) -> None:
-    doc = make_document(db_conn)
-    s1, s2, s3 = bench.source(), bench.source(bench.b), bench.source()
-    a, b, other = bench.flow(s1), bench.flow(s2, done=False), bench.flow(s3)
-    split = bench.flow(s2, done=False)
-    for entry in (a, b):
-        _carry(db_conn, entry, doc)
-    for start in (a, b, split):
-        unit = get_unit(db_conn, start)
-        assert unit is not None and (unit.unit_key, unit.anchor_entry_id) == (s1, a)
-        assert [e.id for e in unit.entries] == [a, b, split]
-    alone = get_unit(db_conn, other)
-    assert alone is not None and [e.id for e in alone.entries] == [other]
-
-
-def test_the_queue_lists_the_carriers_of_a_document_as_one_unit(db_conn: Connection, bench: Bench) -> None:
-    doc = make_document(db_conn)
-    s1, s2 = bench.source(), bench.source(bench.b, on=date(2026, 3, 12))
-    a, b = bench.flow(s1, derivation=keys(category="history")), bench.flow(s2)
-    for entry in (a, b):
-        _carry(db_conn, entry, doc)
-    queue = review_queue(db_conn)
-    listed = [u for section in queue.sections for u in section.units]
-    assert queue.total == 1 and len(listed) == 1
-    assert (listed[0].unit_key, [e.id for e in listed[0].entries]) == (s1, [a, b])
-    assert all(e.unit_key == s1 for e in listed[0].entries)
 
 
 def test_a_confirmed_unit_has_no_reasons_and_a_proposal_names_its_reason(

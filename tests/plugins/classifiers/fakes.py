@@ -28,18 +28,9 @@ class ListHistory:
         self.calls.append(key)
         out: list[Vote] = []
         for v in self.votes:
-            if (
-                v.entry_id in exclude_entry_ids or v.has_line
-            ):  # as the snapshot: a line's vote counts for no key
+            if v.entry_id in exclude_entry_ids:
                 continue
-            if key == "document_merchant":
-                # as the snapshot: a documented vote counts for this key only, an undocumented one never
-                ok = v.documented and canonical_text(v.document_merchant) == canonical_text(
-                    entry.document_merchant
-                )
-            elif v.documented:
-                ok = False
-            elif key == "counterparty_ref":
+            if key == "counterparty_ref":
                 ok = canonical_text(v.counterparty_ref) == canonical_text(entry.counterparty_ref)
             elif key == "counterparty_name":
                 ok = canonical_text(v.counterparty_name) == canonical_text(entry.counterparty_name)

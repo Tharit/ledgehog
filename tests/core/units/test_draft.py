@@ -21,7 +21,7 @@ def test_a_field_draft_defaults_to_keep_and_only_fixed_carries_a_value() -> None
     assert code(lambda: FieldDraft("sometimes")) == "invalid_mode"  # type: ignore[arg-type]
 
 
-@pytest.mark.parametrize("name", ["history", "llm", "matcher_proposal"])
+@pytest.mark.parametrize("name", ["history", "llm"])
 def test_a_client_may_name_a_proposal_pass_as_a_basis(name: str) -> None:
     assert ShownBasis(name, {"n": 1}).pass_name == name
 

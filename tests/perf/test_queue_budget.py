@@ -84,11 +84,11 @@ def test_queue_within_budget_with_transfers(backfill_transfers: Backfill) -> Non
         for kind, count, counter, instructed in (("need", 300, None, "JPY"), ("wait", 150, synced, None)):
             conn.execute(
                 text(
-                    "WITH s AS (INSERT INTO source_transaction (importer, import_run_id, account_id,"
+                    "WITH s AS (INSERT INTO source_transaction (origin, importer, import_run_id, account_id,"
                     " source_id,"
                     " source_format, amount, currency, booked_on, purpose, raw, instructed_amount,"
                     " instructed_currency)"
-                    " SELECT 'perf', :run, :account, :kind || n, 'csv', -(100000 + n), 'EUR', :day,"
+                    " SELECT 'import', 'perf', :run, :account, :kind || n, 'csv', -(100000 + n), 'EUR', :day,"
                     " 'perf', '{}',"
                     " CASE WHEN CAST(:instructed AS text) IS NULL THEN NULL ELSE -(100000 + n) * 150 END,"
                     " CAST(:instructed AS text)"

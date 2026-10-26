@@ -1,6 +1,6 @@
 """The model client protocol (architecture §5.4, spec §5.9 pass 3).
 
-Core's worker (`core/model`) asks a `ModelClient` for the category of one entry or one document line; the
+Core's worker (`core/model`) asks a `ModelClient` for the category of one entry; the
 concrete client (`plugins/classifiers/llm`) owns the payload restriction, the request and the validation of
 the reply. Ids only: an answer can reference an existing category, nothing else.
 """
@@ -27,16 +27,6 @@ class CategoryPath:
 
 
 @dataclass(frozen=True, slots=True)
-class LineInput:
-    """A document line as the model is asked about it (spec §5.9 pass 3): the document's merchant name and
-    the line's description, nothing else."""
-
-    line_id: int
-    document_merchant: str | None
-    description: str
-
-
-@dataclass(frozen=True, slots=True)
 class ModelAnswer:
     """A valid answer: an existing category id and a one-line rationale; or no id, the model's answer that
     no category fits, with the rationale that says what would."""
@@ -58,13 +48,11 @@ class NoAnswer:
 class ModelClient(Protocol):
     name: str
 
-    def fingerprint(self, subject: EntryInput | LineInput) -> str | None:
+    def fingerprint(self, subject: EntryInput) -> str | None:
         """A fingerprint of the payload the model would be given, or None when the payload is empty."""
         ...
 
-    async def ask(
-        self, subject: EntryInput | LineInput, categories: Sequence[CategoryPath]
-    ) -> ModelAnswer | NoAnswer:
+    async def ask(self, subject: EntryInput, categories: Sequence[CategoryPath]) -> ModelAnswer | NoAnswer:
         """The model's answer, or `NoAnswer` with the reason when it has none (the reply was not valid).
         Raises `ModelUnavailable` when the model cannot be reached."""
         ...

@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from sqlalchemy import Engine, text
 
 from app.api.session import CurrentUser, EngineDep
-from app.core.model.queue import ENTRY, LINE, ModelQueue
+from app.core.model.queue import ModelQueue
 from app.core.tasks import TaskRegistry
 from app.core.tasks.changes import DOCUMENTS, LEDGER, ChangeRegister
 
@@ -34,7 +34,7 @@ class ChangeValues(BaseModel):
 class ChangesOut(ChangeValues):
     active_task: str | None  # the current user's running sync or discovery task
     model_pending: int  # entries the model still has to look at (0 without a model); the client polls faster
-    model_pending_lines: int  # document lines the model still has to look at (0 without a model)
+    model_pending_lines: int  # always 0: the model looks at entries only (kept until the client drops it)
 
 
 def model_queue_of(request: Request) -> ModelQueue | None:
@@ -67,6 +67,6 @@ def get_changes(request: Request, user: CurrentUser, engine: EngineDep) -> Chang
     return ChangesOut(
         **values.model_dump(),
         active_task=active.task_id if active is not None else None,
-        model_pending=queue.count(ENTRY) if queue is not None else 0,
-        model_pending_lines=queue.count(LINE) if queue is not None else 0,
+        model_pending=queue.pending() if queue is not None else 0,
+        model_pending_lines=0,
     )

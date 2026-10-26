@@ -12,8 +12,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Literal, Protocol
 
-# The fields resolution decides, in the order of spec §5.9 "Field order" (document and counterpart
-# join with steps 9 and 8).
+# The fields resolution decides, in the order of spec §5.9 "Field order".
 Field = Literal["type", "payee", "category", "counter_account"]
 FIELD_ORDER: tuple[Field, ...] = ("type", "payee", "category", "counter_account")
 
@@ -26,29 +25,19 @@ MAY_BE_EMPTY: frozenset[Field] = frozenset({"payee"})
 # and no key (spec §5.9). A proposal with no value at all is something else: an explained absence.
 EMPTY = "none"
 
-# `derivation` pass names (spec §5.9). Standing: own_account, rule. Proposals: history, llm.
-STANDING_PASSES = frozenset({"own_account", "rule", "matcher_decision", "user"})
+# `derivation` pass names (spec §5.9). Standing: own_account, rule, matcher_decision (a pair settling made),
+# booking (what settling's booking step fixes), user. Proposals: history, llm.
+STANDING_PASSES = frozenset({"own_account", "rule", "matcher_decision", "booking", "user"})
 
-# the history keys of spec §5.9 / classifiers/history.md: the four raw-text keys, in order, which an entry
-# without a document is asked, and the fifth, the document's merchant, the only one an entry WITH a document
-# is asked (for the category only). The booking text is never a key on its own; it only refines key 2.
-HistoryKey = Literal["counterparty_ref", "counterparty_name", "payee", "tokens", "document_merchant"]
+# the history keys of spec §5.9 / classifiers/history.md, in order. The booking text is never a key on its
+# own; it only refines key 2. (Key 5, the entry's source text, is added with its use.)
+HistoryKey = Literal["counterparty_ref", "counterparty_name", "payee", "tokens"]
 HISTORY_KEYS: tuple[HistoryKey, ...] = (
     "counterparty_ref",
     "counterparty_name",
     "payee",
     "tokens",
 )
-DOCUMENT_KEY: HistoryKey = "document_merchant"
-
-
-@dataclass(frozen=True, slots=True)
-class LineAnswer:
-    """The model's stored answer for a document line (spec §5.9 pass 3): the line's `category_id` and the
-    `basis` of its `category_key` (the rationale, the payload's fingerprint, `none` where nothing fits)."""
-
-    category_id: int | None
-    basis: Mapping[str, Any] = field(default_factory=dict, hash=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,7 +45,7 @@ class EntryInput:
     """What resolution reads about one entry: its source transaction and its own columns.
 
     Raw source strings as stored (never canonicalised here); a manual entry has none of them.
-    `user_authored` is true when the entry has no importer (spec §5.9: a user-authored entry
+    `user_authored` is true when the entry's source has the origin `user` (spec §5.9: a user-authored entry
     still resolves, from what it has).
     """
 
@@ -74,19 +63,6 @@ class EntryInput:
     instructed_currency: str | None = None
     end_to_end_id: str | None = None
     instructed_amount: int | None = None  # signed minor units, in `instructed_currency`
-    # what the entry's transaction's linked or picked document adds (spec §5.8, §5.9): the source fields above
-    # stay as stored, whatever the document says. `documented` is true for any such document, a merchant
-    # name or none; `document_merchant` is its merchant name; `document_line` the description of the entry's
-    # OWN line of it (None: the entry has no line)
-    documented: bool = False
-    document_merchant: str | None = None
-    document_line: str | None = None
-    # the pass of the link's `document` key (`user`, `matcher_decision`, `matcher_proposal`): the key the type
-    # the document decides carries (spec §5.9, field order); None reads as `user`
-    document_pass: str | None = None
-    # the model's stored answer for the entry's own line (None: no line, or no answer yet): what pass 3 takes
-    # for an entry with a line instead of asking (spec §5.9)
-    document_line_answer: LineAnswer | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,8 +81,6 @@ ConditionField = Literal[
     "purpose",
     "booking_text",
     "mandate_ref",
-    "document_merchant",
-    "document_line",
     "payee",
 ]
 ConditionOp = Literal["equals", "starts_with", "contains", "regex", "is"]
@@ -116,8 +90,6 @@ CONDITION_FIELDS: tuple[ConditionField, ...] = (
     "purpose",
     "booking_text",
     "mandate_ref",
-    "document_merchant",
-    "document_line",
     "payee",
 )
 CONDITION_OPS: tuple[ConditionOp, ...] = ("equals", "starts_with", "contains", "regex", "is")
@@ -196,12 +168,6 @@ class Vote:
     purpose: str | None = None
     booking_text: str | None = None
     mandate_ref: str | None = None
-    # the document its transaction carries (spec §5.9): `documented` (a merchant name or none), and its
-    # merchant name. A documented vote counts for key `document_merchant` only, never for the raw-text keys;
-    # a vote with a line (`has_line`: the entry's own line of that document) counts for no key at all.
-    documented: bool = False
-    document_merchant: str | None = None
-    has_line: bool = False
 
 
 class HistorySource(Protocol):
@@ -209,7 +175,7 @@ class HistorySource(Protocol):
 
     Returns the votes within the lookback (365 days either side of `entry.booked_on`), left out:
     `exclude_entry_ids` (the entry's own unit). For an equality key the candidates equal the entry
-    on that key's canonical value (for `document_merchant`, the merchant of the entry's document); for
+    on that key's canonical value; for
     `tokens`, they share at least one token. Scoring and
     counting are the classifier's. `payee_id` is the payee resolved so far (key `payee`).
     """

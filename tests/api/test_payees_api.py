@@ -9,7 +9,6 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
 
 from app.api import create_app
-from app.core.importers.providers import configure_document_providers, reset_document_providers
 from app.core.ledger import payees as payee_mod
 from app.core.settle.settle import SettleResult
 from app.utils.db.locks import WriteConflict
@@ -20,14 +19,6 @@ from tests.fixtures import ledger_seed as seed
 
 PAYEES = "/api/ledger/payees"
 BAD_IDS = [0, -1, 2**63, 10**20]
-
-
-@pytest.fixture(autouse=True)
-def _providers():
-    """A document importer is registered, so payees can name its providers; the registry is restored."""
-    configure_document_providers({"testdocs": frozenset({"amazon", "paypal"})})
-    yield
-    reset_document_providers()
 
 
 @pytest.fixture
@@ -94,25 +85,20 @@ def test_create_list_update(anna: TestClient):
             "note": "n",
             "icon": "cart",
             "color": "blue",
-            "document_provider": "amazon",
         },
     )
     assert r.status_code == 201
     body = r.json()
     p = body["payee"]
     assert body["settle"] == {"touched_entry_ids": [], "error": None}
-    assert p == {
-        "id": p["id"], "name": "Amazon", "icon": "cart", "color": "blue", "note": "n",
-        "document_provider": "amazon",
-    }  # fmt: skip
-    assert anna.get(PAYEES).json() == {"payees": [p]}  # GET returns document_provider
-    r = anna.put(f"{PAYEES}/{p['id']}", json={"name": "AMZ", "document_provider": None, "note": "m"})
+    assert p == {"id": p["id"], "name": "Amazon", "icon": "cart", "color": "blue", "note": "n"}
+    assert anna.get(PAYEES).json() == {"payees": [p]}
+    r = anna.put(f"{PAYEES}/{p['id']}", json={"name": "AMZ", "note": "m"})
     assert r.status_code == 200
-    assert r.json()["payee"] == p | {"name": "AMZ", "document_provider": None, "note": "m"}
+    assert r.json()["payee"] == p | {"name": "AMZ", "note": "m"}
     assert anna.put(f"{PAYEES}/{p['id']}", json={}).json()["payee"]["icon"] == "cart"  # absent keeps
     cleared = anna.put(f"{PAYEES}/{p['id']}", json={"icon": None, "color": None}).json()["payee"]
     assert (cleared["icon"], cleared["color"]) == (None, None)
-    assert make(anna, "Bare")["document_provider"] is None
 
 
 def test_errors_duplicates_blank_and_unknown(anna: TestClient):
@@ -204,7 +190,7 @@ def test_a_payee_an_entry_references_is_refused(
 
 @pytest.fixture
 def pair(anna: TestClient, api_engine: Engine, acct: int) -> dict[str, int]:
-    src = make(anna, "Amazon EU", note="src", icon="a", color="red", document_provider="amazon")["id"]
+    src = make(anna, "Amazon EU", note="src", icon="a", color="red")["id"]
     tgt = make(anna, "Amazon", note="tgt", icon="b", color="blue")["id"]
     with api_engine.begin() as conn:
         cat = seed.category(conn, "Shop")
@@ -218,9 +204,7 @@ def pair(anna: TestClient, api_engine: Engine, acct: int) -> dict[str, int]:
     return {"src": src, "tgt": tgt, "sets": sets, "cond": cond, "keep": keep}
 
 
-def test_merge_dry_run_previews_the_repointing_and_warns_about_the_provider(
-    anna: TestClient, api_engine: Engine, pair: dict[str, int]
-):
+def test_merge_dry_run_previews_the_repointing(anna: TestClient, api_engine: Engine, pair: dict[str, int]):
     with api_engine.begin() as conn:
         before = counts(conn)
     r = merge(anna, pair["src"], pair["tgt"], dry_run=True)
@@ -228,23 +212,9 @@ def test_merge_dry_run_previews_the_repointing_and_warns_about_the_provider(
     p = r.json()
     assert (p["dry_run"], p["entry_count"], p["entry_ids"], p["settle"]) == (True, 3, [], None)
     assert p["setting_rule_ids"] == [pair["sets"]] and p["condition_rule_ids"] == [pair["cond"]]
-    assert (p["document_provider_lost"], p["source_document_provider"]) == (True, "amazon")
     assert p["target"]["name"] == "Amazon" and p["source_id"] == pair["src"]
     with api_engine.begin() as conn:
         assert counts(conn) == before
-
-
-def test_provider_warning_only_when_something_is_lost(anna: TestClient, api_engine: Engine):
-    a = make(anna, "A", document_provider="paypal")["id"]
-    b = make(anna, "B", document_provider="paypal")["id"]
-    c = make(anna, "C")["id"]
-    d = make(anna, "D", document_provider="amazon")["id"]
-    assert merge(anna, a, b, dry_run=True).json()["document_provider_lost"] is False  # same
-    assert merge(anna, c, a, dry_run=True).json()["document_provider_lost"] is False  # source has none
-    assert merge(anna, a, c, dry_run=True).json()["document_provider_lost"] is True  # target has none
-    assert merge(anna, a, d, dry_run=True).json()["document_provider_lost"] is True  # a different one
-    e = make(anna, "E", document_provider="PayPal")["id"]
-    assert merge(anna, a, e, dry_run=True).json()["document_provider_lost"] is False  # same, in another case
 
 
 def test_merge_repoints_entries_and_rules_under_the_settling_flag(
@@ -261,10 +231,12 @@ def test_merge_repoints_entries_and_rules_under_the_settling_flag(
     d = r.json()
     assert (d["dry_run"], d["entry_count"], len(d["entry_ids"]), d["settle"]["error"]) == (False, 3, 3, None)
     assert d["target"] == {
-        "id": pair["tgt"], "name": "Amazon", "icon": "b", "color": "blue", "note": "tgt",
-        "document_provider": None,
-    }  # fmt: skip
-    assert d["document_provider_lost"] is True  # the target's attributes won
+        "id": pair["tgt"],
+        "name": "Amazon",
+        "icon": "b",
+        "color": "blue",
+        "note": "tgt",
+    }  # fmt: skip  (the target's attributes won)
     assert payee_ids(api_engine) == {pair["tgt"]}
     with api_engine.begin() as conn:
         assert {r.payee_id for r in conn.execute(text("SELECT payee_id FROM ledger_entry"))} == {
@@ -358,10 +330,7 @@ def test_every_write_settles_after_commit_and_a_failure_is_in_the_200_body(
     assert seen == [1]
     new = anna.post(PAYEES, json={"name": "N"})
     assert new.status_code == 201 and new.json()["settle"]["error"] == "settling failed"
-    assert (
-        anna.put(f"{PAYEES}/{new.json()['payee']['id']}", json={"document_provider": "paypal"}).status_code
-        == 200
-    )
+    assert anna.put(f"{PAYEES}/{new.json()['payee']['id']}", json={"note": "n"}).status_code == 200
     assert anna.delete(f"{PAYEES}/{new.json()['payee']['id']}").json()["settle"]["error"] == "settling failed"
     assert len(seen) == 4
 
@@ -381,28 +350,6 @@ def test_responses_are_typed_in_the_openapi_schema(api_config: Any, api_engine: 
     for (path, method), (status, model) in expected.items():
         ref = schema["paths"][path][method]["responses"][status]["content"]["application/json"]["schema"]
         assert ref == {"$ref": f"#/components/schemas/{model}"}, (path, method)
-    assert "document_provider" in schema["components"]["schemas"]["PayeeOut"]["properties"]
+    assert "document_provider" not in schema["components"]["schemas"]["PayeeOut"]["properties"]
     ops = {schema["paths"][p][m]["operationId"] for (p, m) in expected if m != "get"}
     assert ops == {"create_ledger_payee", "update_ledger_payee", "delete_ledger_payee", "merge_ledger_payee"}
-
-
-def test_a_document_provider_is_free_text_checked_against_nothing(anna: TestClient, api_engine: Engine):
-    reset_document_providers()  # no importer names it, and none is registered at all
-    p = make(anna, "X", document_provider="ebay")
-    assert p["document_provider"] == "ebay"
-    r = anna.put(f"{PAYEES}/{p['id']}", json={"document_provider": "Zalando Shop"})
-    assert r.status_code == 200 and r.json()["payee"]["document_provider"] == "Zalando Shop"
-    assert q(api_engine, "SELECT document_provider FROM payee")[0].document_provider == "Zalando Shop"
-
-
-def test_a_document_provider_is_trimmed_and_blank_means_none(anna: TestClient):
-    p = make(anna, "Z", document_provider="  PayPal ")
-    assert p["document_provider"] == "PayPal"  # trimmed; the spelling stays, matching ignores case
-    for cleared in (None, "", "  "):
-        r = anna.put(f"{PAYEES}/{p['id']}", json={"document_provider": "paypal"})
-        assert r.status_code == 200 and r.json()["payee"]["document_provider"] == "paypal"
-        r = anna.put(f"{PAYEES}/{p['id']}", json={"document_provider": cleared})
-        assert r.status_code == 200 and r.json()["payee"]["document_provider"] is None
-        r = anna.put(f"{PAYEES}/{p['id']}", json={"note": "n"})
-        assert r.status_code == 200
-    assert anna.post(PAYEES, json={"name": "W", "document_provider": ""}).status_code == 201

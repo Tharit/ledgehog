@@ -1,11 +1,9 @@
-"""The document list and detail with reverse matches (spec §5.8, architecture §4.1): read-only queries."""
+"""The document list and detail (spec §5.8, architecture §4.1): read-only queries."""
 
 from app.core.documents.filters import DocumentFilter
 from app.core.documents.read import (
-    Carrier,
     DocumentDetail,
     DocumentLine,
-    DocumentMatch,
     DocumentPage,
     DocumentRow,
     get_document,
@@ -14,11 +12,9 @@ from app.core.documents.read import (
 )
 
 __all__ = [
-    "Carrier",
     "DocumentDetail",
     "DocumentFilter",
     "DocumentLine",
-    "DocumentMatch",
     "DocumentPage",
     "DocumentRow",
     "get_document",

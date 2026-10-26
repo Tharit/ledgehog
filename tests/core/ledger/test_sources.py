@@ -707,7 +707,7 @@ def test_delete_with_tags_and_a_dry_run_that_counts(
     assert fingerprint(isolated_engine) == before
     assert out.dry_run and out.settle is None
     assert out.counts.entries == 2 and out.counts.tagged_entries == 1 and out.counts.tag_memberships == 2
-    assert out.counts.partners_returning_to_review == 0 and out.counts.freed_documents == 0
+    assert out.counts.partners_returning_to_review == 0
     assert [e.id for e in out.removed] == [first, second]
     assert {e.id: e.tag_ids for e in out.removed}[first] == tuple(sorted((t1, t2)))
 

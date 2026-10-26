@@ -7,8 +7,6 @@ settle lock shared and the accounts' locks). What it does for the entries remove
 * a partner loses its counterpart and the counter-account its pair set (key basis
   ``{"from": "counterpart"}``) and the pair's own key, and keeps every other value; a
   counter-leg the system created stays (`unpair` is that half of the routine on its own);
-* a document an entry carried is free again (the link is the entry's column, so it goes
-  with the row; the ids are reported);
 * the derived entries of every affected account are recomputed.
 
 Contract: the routine deletes entries and nothing else of their source rows. Deleting the
@@ -41,7 +39,6 @@ class Affected:
     removed_entry_ids: tuple[int, ...] = ()
     partner_entry_ids: tuple[int, ...] = ()
     account_ids: tuple[int, ...] = ()
-    freed_document_ids: tuple[int, ...] = ()
     # `unpair` only: every entry that lost its link, the ones asked for and their partners
     unpaired_entry_ids: tuple[int, ...] = ()
 
@@ -193,8 +190,7 @@ def remove_entries(
         return Affected()
     rows = conn.execute(
         text(
-            "SELECT id, account_id, document_id, source_transaction_id FROM ledger_entry"
-            " WHERE id = ANY(:ids) ORDER BY id"
+            "SELECT id, account_id, source_transaction_id FROM ledger_entry WHERE id = ANY(:ids) ORDER BY id"
         ),
         {"ids": removed},
     ).all()
@@ -218,5 +214,4 @@ def remove_entries(
         removed_entry_ids=tuple(removed),
         partner_entry_ids=tuple(partners),
         account_ids=tuple(accounts),
-        freed_document_ids=tuple(sorted(r.document_id for r in rows if r.document_id is not None)),
     )

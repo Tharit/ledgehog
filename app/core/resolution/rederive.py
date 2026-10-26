@@ -18,7 +18,7 @@ from app.core.plugins.classifier import (
     Field,
     HistorySource,
 )
-from app.core.resolution.resolve import Decided, Resolved, document_type, resolve
+from app.core.resolution.resolve import Decided, Resolved, resolve
 from app.core.resolution.types import is_explained_absence, stands_for
 
 __all__ = ["diff", "rederive", "resolve_afresh"]
@@ -58,15 +58,11 @@ def rederive(
     classifiers: Sequence[Classifier],
     history: HistorySource | None = None,
     exclude_entry_ids: frozenset[int] = frozenset(),
-    reopen: bool = False,
 ) -> Resolved:
-    """The values of an unconfirmed entry now, given what is stored (`current`).
-
-    `reopen` says a value BEFORE the first field changed (a document was linked, spec §5.9): every standing
-    value is derived again, as it is once a value changes along the walk. A value decided empty is a
+    """The values of an unconfirmed entry now, given what is stored (`current`). A value decided empty is a
     standing value like any other."""
     fixed: dict[Field, Decided] = {}
-    changed = reopen
+    changed = False
     # The last afresh resolution. Resolving around values it decided itself gives the same answer,
     # so the next field reads it instead of resolving the entry again (one resolve, not one per field).
     last: Resolved | None = None
@@ -76,10 +72,7 @@ def rederive(
         cur = current.get(field)
         own = field == "counter_account" and cur is not None and cur.value == entry.account_id
         new: Decided | None
-        if field == "type" and (doc := document_type(entry, cur)) is not None:
-            new = doc  # a linked document decides the type first, whatever stands (spec §5.9, field order)
-            changed = changed or new.value != (cur.value if cur else None)
-        elif cur is not None and cur.pass_name in STANDING_PASSES and not changed and not own:
+        if cur is not None and cur.pass_name in STANDING_PASSES and not changed and not own:
             new = cur
         else:
             if last is None or any(last.get(f) != d for f, d in fixed.items()):

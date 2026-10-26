@@ -92,11 +92,10 @@ def test_an_error_never_quotes_a_value():
     assert "secret.name" not in str(err.value)
 
 
-def test_the_importer_is_a_fetch_importer_for_documents_that_delivers_every_provider():
+def test_the_importer_is_a_fetch_importer_for_documents():
     imp = Rig().importer
     assert isinstance(imp, FetchImporter)
     assert imp.emits == {"documents"} and imp.providers == frozenset()
-    assert imp.delivers(base_settings(), "anything at all") is True
     imp.validate_settings(base_settings())
     with pytest.raises(InvalidProfile):
         imp.validate_settings({})

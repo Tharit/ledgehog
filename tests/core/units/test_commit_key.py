@@ -18,7 +18,7 @@ def test_a_standing_pass_keeps_its_own_key_with_its_basis() -> None:
 
 
 def test_a_proposal_is_accepted_as_the_users_with_the_proposal_as_its_basis() -> None:
-    for pass_name in ("history", "llm", "matcher_proposal"):
+    for pass_name in ("history", "llm"):
         assert _commit_key(Decided("x", pass_name, BASIS), None) == {
             "pass": "user",
             "basis": {"pass": pass_name, "basis": BASIS},

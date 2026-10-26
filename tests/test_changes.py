@@ -104,23 +104,20 @@ def test_notes_do_not_leak_to_the_next_user_of_a_pooled_connection(
 
 
 @pytest.mark.parametrize(
-    ("touched", "linked", "moved"),
+    ("touched", "moved"),
     [
-        (set(), False, []),
-        ({5}, False, [frozenset({"ledger"})]),
-        (set(), True, [frozenset({"documents"})]),
-        ({5}, True, [frozenset({"ledger", "documents"})]),
+        (set(), []),
+        ({5}, [frozenset({"ledger"})]),
     ],
 )
-def test_settling_moves_the_ledger_for_a_touched_entry_and_the_documents_for_a_link(
+def test_settling_moves_the_ledger_for_a_touched_entry(
     isolated_engine: Engine,
     seen: list,
     monkeypatch: pytest.MonkeyPatch,
     touched: set[int],
-    linked: bool,
     moved: list,
 ) -> None:
-    monkeypatch.setattr(settle_module, "_run_rounds", lambda conn: (touched, linked))
+    monkeypatch.setattr(settle_module, "_run_rounds", lambda conn: touched)
     result = settle_module.settle(isolated_engine)
     assert result.error is None and seen == moved  # the exclusive lock itself notes nothing
 

@@ -100,7 +100,6 @@ def test_row_json_shape_and_money(anna: TestClient, api_engine: Engine, acct: in
             "counter_account_id": None,
             "counterpart_entry_id": None,
             "source_transaction_id": src,
-            "document_id": None,
             "review_flags": ["unclassified", "unconfirmed"],
             "tag_ids": [t],
             "source": {
@@ -118,9 +117,8 @@ def test_row_json_shape_and_money(anna: TestClient, api_engine: Engine, acct: in
             "derivation": {},
             "unit_key": src,
             "authored": False,
+            "origin": "import",
             "partner": None,
-            "document": None,
-            "document_line": None,
         }
     ]
     # the one-entry read answers with the same row, nothing more and nothing less

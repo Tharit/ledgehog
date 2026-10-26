@@ -1,7 +1,7 @@
 """Finding a unit in the database (the reads `closure.py` cannot do): keys of sources, entries of a unit.
 
-The SQL twin of `closure.py` for single lookups (indexed: `ix_le_source`, `ux_le_counterpart`,
-`ix_le_document`). The set-based judgement of every unit at once is the CTE in
+The SQL twin of `closure.py` for single lookups (indexed: `ix_le_source`, `ux_le_counterpart`). The
+set-based judgement of every unit at once is the CTE in
 `core/resolution/confirmed.py`.
 """
 
@@ -12,19 +12,13 @@ from dataclasses import dataclass
 
 from sqlalchemy import Connection, text
 
-# The sources a source is joined to, one row each: the partner's source of its transfer entry (one transfer
-# entry per source, I31, and one partner per leg) and the source of every other transaction carrying the
-# document its original entry carries (I35; a carrier has no transfer entry, so a source has either kind)
+# The source a source is joined to: the partner's source of its transfer entry (one transfer entry per
+# source, I31, and one partner per leg)
 _LINKED_SOURCES = text(
     "SELECT t.source_transaction_id AS src, q.source_transaction_id AS linked"
     "  FROM ledger_entry AS t"
     "  JOIN ledger_entry AS q ON q.id = t.counterpart_entry_id"
     " WHERE t.source_transaction_id = ANY(:srcs)"
-    " UNION"
-    " SELECT o.source_transaction_id, c.source_transaction_id"
-    "  FROM ledger_entry AS o"
-    "  JOIN ledger_entry AS c ON c.document_id = o.document_id"
-    " WHERE o.source_transaction_id = ANY(:srcs)"
 )
 
 _UNIT_OF_ENTRY = text(
@@ -36,12 +30,7 @@ _UNIT_OF_ENTRY = text(
               SELECT q.source_transaction_id
                 FROM ledger_entry AS t
                 JOIN ledger_entry AS q ON q.id = t.counterpart_entry_id
-               WHERE t.source_transaction_id = (SELECT src FROM me)
-              UNION
-              SELECT c.source_transaction_id
-                FROM ledger_entry AS o
-                JOIN ledger_entry AS c ON c.document_id = o.document_id
-               WHERE o.source_transaction_id = (SELECT src FROM me))
+               WHERE t.source_transaction_id = (SELECT src FROM me))
     SELECT (SELECT count(*) FROM me) AS found,
            (SELECT src FROM me) AS src,
            COALESCE((SELECT array_agg(e.id ORDER BY e.id)
@@ -53,8 +42,7 @@ _UNIT_OF_ENTRY = text(
 
 
 def unit_keys_of(conn: Connection, sources: Iterable[int]) -> dict[int, int]:
-    """The unit key of each given source transaction: itself, or the lowest id among it, its pair's and the
-    other carriers' of its document."""
+    """The unit key of each given source transaction: itself, or the lowest id among it and its pair's."""
     wanted = sorted(set(sources))
     if not wanted:
         return {}

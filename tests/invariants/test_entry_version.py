@@ -1,6 +1,6 @@
 """trg_le_version (8.6): the optimistic-concurrency token bumps on user-meaningful change only.
 
-Structural columns (account, amount, counterpart, document) bump whoever writes them;
+Structural columns (account, amount, counterpart, source text) bump whoever writes them;
 the user-facing ones (type, category, payee, dates, text, counter-account, currency) bump unless
 settling is rewriting (`ledger.settling = 'on'`); flags and derivation never bump.
 """
@@ -56,14 +56,8 @@ def test_account_change_bumps_even_when_settling(
 
 
 @pytest.mark.parametrize("settling", [False, True])
-def test_document_change_bumps_even_when_settling(db_conn: Connection, entry: int, settling: bool) -> None:
-    doc = scalar(
-        db_conn,
-        "INSERT INTO external_document (provider, external_id, occurred_on, total, currency, raw) "
-        "VALUES ('amazon', :x, DATE '2026-02-10', -1000, 'EUR', '{}') RETURNING id",
-        x=f"doc-{settling}",
-    )
-    assert _update(db_conn, entry, f"document_id = {doc}", settling) == 1
+def test_source_text_change_bumps_even_when_settling(db_conn: Connection, entry: int, settling: bool) -> None:
+    assert _update(db_conn, entry, "source_text = 'Seeed Studio: jumper wires'", settling) == 1
 
 
 @pytest.mark.parametrize("settling", [False, True])

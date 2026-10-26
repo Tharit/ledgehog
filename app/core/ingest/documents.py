@@ -2,17 +2,12 @@
 
 A delivery is upserted in ONE transaction under the settle lock (shared), keyed on `(provider,
 external_id)`; documents belong to no account. A document's lines are replaced with each delivery.
-`version` moves only when what resolution reads changes: total, currency, merchant name or lines
-(`title`, `raw` and `occurred_on` alone do not move it). A changed document resolves its
-unconfirmed carrier afresh (`reresolve_unconfirmed_carrier`); a confirmed one is left alone (I20).
-The run is set `ok` with its coverage in the same transaction, then settling runs on its own. A
-document run is never reverted (§5.5): it upserts in place.
-
-The model's answer for a line (`category_id`, `category_key`, spec §5.9 pass 3) is kept across the replacement
-of lines: a new line takes the stored answer whose payload fingerprint is the fingerprint of its own payload
-(the document's merchant and its description); a changed merchant drops the answers it makes stale. Every
-other line has no answer, and settling puts it on the model's list (`core/settle/resolution.py`). Without a
-model configured nothing can be fingerprinted: no answer is carried.
+`version` moves when the content changes: date, total, currency or lines (merchant name, `title` and
+`raw` alone do not move it). Document ingest writes documents only: it resolves no entry and links
+nothing. What a document means for the ledger, its booking on a clearance account, is settling's
+(`core/settle/settle.py`, the booking step: wave C2), which reads the stored documents. The run is set `ok`
+with its coverage in the same transaction, then settling runs on its own. A document run is never reverted
+(§5.5): it upserts in place.
 """
 
 from __future__ import annotations
@@ -34,17 +29,10 @@ from app.core.ingest.run import (
     run_error_text,
     run_retryable,
 )
-from app.core.model.queue import current_model_queue
 from app.core.plugins.importer import IncomingDocument
-from app.core.resolution import Resolved, resolve_afresh
-from app.core.resolution.load import load_accounts, load_rules, load_unconfirmed
-from app.core.resolution.registry import classifiers_for
-from app.core.resolution.snapshot import load_snapshot
-from app.core.resolution.types import column_of
-from app.core.settle.resolution import new_derivation
 from app.core.settle.settle import SettleResult, settle
 from app.utils.db.changes import DOCUMENTS, note_change
-from app.utils.db.locks import lock_accounts, lock_settle_shared, retry_on_deadlock
+from app.utils.db.locks import lock_settle_shared, retry_on_deadlock
 
 log = logging.getLogger(__name__)
 
@@ -54,8 +42,7 @@ class DocumentRunResult:
     run_id: int
     inserted: int
     updated: int  # existing documents delivered again, changed or not
-    changed: tuple[int, ...]  # ids of the documents whose version moved (what resolution reads changed)
-    reresolved_entry_ids: tuple[int, ...]  # unconfirmed carriers resolved afresh
+    changed: tuple[int, ...]  # ids of the documents whose version moved (their content changed)
     settle: SettleResult
 
 
@@ -71,7 +58,7 @@ def ingest_documents(
     """Upsert one delivery of documents atomically, then settle.
 
     On any failure everything is rolled back, the run ends `failed` and the error is re-raised. A
-    delivery that breaks the contract (a zero total, a repeated key, an unknown currency, no
+    delivery that breaks the contract (a repeated key, an unknown currency, no
     coverage) raises `ContractViolation`. `importer_stats` are the importer's own counts, stored
     under `stats["importer"]`.
     """
@@ -91,7 +78,6 @@ def ingest_documents(
         inserted=written.inserted,
         updated=written.updated,
         changed=written.changed,
-        reresolved_entry_ids=written.reresolved,
         settle=settle(engine),
     )
 
@@ -101,7 +87,6 @@ class _Written:
     inserted: int
     updated: int
     changed: tuple[int, ...]
-    reresolved: tuple[int, ...]
 
 
 def _write(
@@ -148,7 +133,6 @@ def _write(
             updated += 1
             if _update(conn, run, doc, before):
                 changed.append(before.id)
-    reresolved = _reresolve_carriers(conn, changed)
     stats: dict[str, Any] = {
         "inserted": inserted,
         "updated": updated,
@@ -163,14 +147,12 @@ def _write(
         ),
         {"id": run_id, "from": covered_from, "through": covered_through, "stats": json.dumps(stats)},
     )
-    return _Written(inserted, updated, tuple(changed), tuple(reresolved))
+    return _Written(inserted, updated, tuple(changed))
 
 
 def _check_contract(conn: Connection, documents: Sequence[IncomingDocument]) -> None:
     seen: dict[tuple[str, str], int] = {}
     for i, doc in enumerate(documents):
-        if doc.total_minor == 0:
-            raise ContractViolation("zero_total", f"document {i} has total 0: a zero document is not emitted")
         key = (doc.provider, doc.external_id)
         if key in seen:
             raise ContractViolation(
@@ -193,9 +175,9 @@ def _check_contract(conn: Connection, documents: Sequence[IncomingDocument]) -> 
 @dataclass(frozen=True)
 class _Stored:
     id: int
+    occurred_on: date
     total: int
     currency: str
-    merchant_name: str | None
     lines: tuple[tuple[str, int, int | None], ...]
 
 
@@ -205,7 +187,7 @@ def _existing(conn: Connection, documents: Sequence[IncomingDocument]) -> dict[t
     note_change(conn, DOCUMENTS)  # its own FOR UPDATE below, not `lock_rows`
     rows = conn.execute(
         text(
-            "SELECT d.id, d.provider, d.external_id, d.total, d.currency, d.merchant_name"
+            "SELECT d.id, d.provider, d.external_id, d.occurred_on, d.total, d.currency"
             " FROM external_document d"
             " JOIN unnest(CAST(:p AS text[]), CAST(:e AS text[])) AS k(provider, external_id)"
             " ON k.provider = d.provider AND k.external_id = d.external_id ORDER BY d.id FOR UPDATE OF d"
@@ -223,7 +205,7 @@ def _existing(conn: Connection, documents: Sequence[IncomingDocument]) -> dict[t
         lines[ln.document_id].append((ln.description, ln.amount, ln.qty))
     return {
         (r.provider, r.external_id): _Stored(
-            r.id, r.total, r.currency.strip(), r.merchant_name, tuple(lines[r.id])
+            r.id, r.occurred_on, r.total, r.currency.strip(), tuple(lines[r.id])
         )
         for r in rows
     }
@@ -258,12 +240,12 @@ def _insert(conn: Connection, run: Any, doc: IncomingDocument) -> None:
 
 
 def _update(conn: Connection, run: Any, doc: IncomingDocument, before: _Stored) -> bool:
-    """Replace the document's content and lines; True when what resolution reads of it changed."""
+    """Replace the document's content and lines; True when its content changed."""
     after_lines = tuple((ln.description, ln.amount_minor, ln.qty) for ln in doc.lines)
     differs = (
-        before.total != doc.total_minor
+        before.occurred_on != doc.occurred_on
+        or before.total != doc.total_minor
         or before.currency != doc.currency
-        or before.merchant_name != doc.merchant_name
         or before.lines != after_lines
     )
     conn.execute(
@@ -277,162 +259,22 @@ def _update(conn: Connection, run: Any, doc: IncomingDocument, before: _Stored) 
         {**_params(run, doc), "id": before.id, "bump": differs},
     )
     if before.lines != after_lines:
-        answers = _answers_of(conn, before.id)
         conn.execute(text("DELETE FROM external_document_line WHERE document_id = :i"), {"i": before.id})
-        _insert_lines(conn, before.id, doc, answers)
-    elif before.merchant_name != doc.merchant_name:
-        _drop_stale_answers(conn, before.id, doc.merchant_name)
+        _insert_lines(conn, before.id, doc)
     return differs
 
 
-def _fingerprint(merchant: str | None, description: str) -> str | None:
-    """The fingerprint of the payload the model is given for a line; None without a model."""
-    queue = current_model_queue()
-    return queue.line_fingerprint(merchant, description) if queue is not None else None
-
-
-def _answer_fingerprint(category_id: int | None, key: Any) -> str | None:
-    """The payload fingerprint of a line's stored answer, None where it is no answer (no key, not the model's,
-    or a category that was deleted: a category and no `none`)."""
-    basis = key.get("basis") if isinstance(key, dict) and key.get("pass") == "llm" else None
-    if not isinstance(basis, dict) or not (category_id is not None or basis.get("none") is True):
-        return None
-    fingerprint = basis.get("fingerprint")
-    return fingerprint if isinstance(fingerprint, str) else None
-
-
-def _answers_of(conn: Connection, doc_id: int) -> dict[str, tuple[int | None, Any]]:
-    """The stored answers of the document's lines, by the fingerprint of the payload they were given."""
-    out: dict[str, tuple[int | None, Any]] = {}
-    for r in conn.execute(
-        text(
-            "SELECT category_id, category_key FROM external_document_line"
-            " WHERE document_id = :i AND category_key IS NOT NULL ORDER BY line_no"
-        ),
-        {"i": doc_id},
-    ):
-        if (fingerprint := _answer_fingerprint(r.category_id, r.category_key)) is not None:
-            out.setdefault(fingerprint, (r.category_id, r.category_key))
-    return out
-
-
-def _drop_stale_answers(conn: Connection, doc_id: int, merchant: str | None) -> None:
-    """The merchant changed with the lines as they were: an answer given for another payload is dropped."""
-    for r in conn.execute(
-        text(
-            "SELECT id, description, category_id, category_key FROM external_document_line"
-            " WHERE document_id = :i AND category_key IS NOT NULL"
-        ),
-        {"i": doc_id},
-    ).all():
-        if _answer_fingerprint(r.category_id, r.category_key) != _fingerprint(merchant, r.description):
-            conn.execute(
-                text(
-                    "UPDATE external_document_line SET category_id = NULL, category_key = NULL WHERE id = :i"
-                ),
-                {"i": r.id},
-            )
-
-
-def _insert_lines(
-    conn: Connection,
-    doc_id: int,
-    doc: IncomingDocument,
-    answers: dict[str, tuple[int | None, Any]] | None = None,
-) -> None:
+def _insert_lines(conn: Connection, doc_id: int, doc: IncomingDocument) -> None:
     if not doc.lines:
         return
-    rows = []
-    for n, ln in enumerate(doc.lines, start=1):
-        fingerprint = _fingerprint(doc.merchant_name, ln.description) if answers else None
-        category, key = answers[fingerprint] if answers and fingerprint in answers else (None, None)
-        rows.append(
-            {
-                "d": doc_id,
-                "n": n,
-                "description": ln.description,
-                "amount": ln.amount_minor,
-                "qty": ln.qty,
-                "category": category,
-                "key": json.dumps(key) if key is not None else None,
-            }
-        )
+    rows = [
+        {"d": doc_id, "n": n, "description": ln.description, "amount": ln.amount_minor, "qty": ln.qty}
+        for n, ln in enumerate(doc.lines, start=1)
+    ]
     conn.execute(
         text(
-            "INSERT INTO external_document_line (document_id, line_no, description, amount, qty,"
-            " category_id, category_key)"
-            " VALUES (:d, :n, :description, :amount, :qty, :category, CAST(:key AS jsonb))"
+            "INSERT INTO external_document_line (document_id, line_no, description, amount, qty)"
+            " VALUES (:d, :n, :description, :amount, :qty)"
         ),
         rows,
     )
-
-
-def _reresolve_carriers(conn: Connection, changed: Sequence[int]) -> list[int]:
-    """The entries carrying a changed document, resolved afresh when their unit is unconfirmed (I20)."""
-    if not changed:
-        return []
-    rows = conn.execute(
-        text("SELECT id, account_id FROM ledger_entry WHERE document_id = ANY(:d) ORDER BY id"),
-        {"d": list(changed)},
-    ).all()
-    lock_accounts(conn, [r.account_id for r in rows])
-    return reresolve_unconfirmed_carrier(conn, [r.id for r in rows])
-
-
-def reresolve_unconfirmed_carrier(conn: Connection, entry_ids: Sequence[int]) -> list[int]:
-    """Resolve the unconfirmed ones among `entry_ids` afresh: the link, its `document` key and the entry's
-    line of the document are dropped in the one statement (settling makes the link again, and the line with it
-    for a document of one line), and every value, a user's included, is derived again (spec §5.5, §5.9).
-    A confirmed entry is left alone (I20). Returns the entries rewritten.
-
-    The afresh resolution (`resolve_afresh`, as the entry form uses it) runs on the entry's input WITHOUT
-    the document: the link is dropped, so the input has no document merchant and no line (neither the old
-    link's nor the old content of the document's), and history asks its raw keys again. The loader is asked
-    for exactly that (`with_document=False`). Settling then links again where the changed document still
-    matches uniquely, and its step 3 derives the values once more from the document as it now is
-    (documents.md §4, §5).
-    """
-    wanted = set(entry_ids)
-    rows = [r for r in load_unconfirmed(conn, with_document=False) if r.input.entry_id in wanted]
-    if not rows:
-        return []
-    accounts = load_accounts(conn)
-    classifiers = classifiers_for(load_rules(conn))
-    snapshot = load_snapshot(conn)
-    written: list[int] = []
-    for row in rows:
-        entry_id = row.input.entry_id
-        resolved = resolve_afresh(
-            row.input,
-            accounts=accounts,
-            classifiers=classifiers,
-            history=snapshot,
-            exclude_entry_ids=frozenset({entry_id}),
-        )
-        kind = resolved.get("type")
-        if kind is not None and kind.value == "transfer" and not row.original:
-            kind = None  # I31: only the original may be a transfer
-            resolved = Resolved()
-        derivation = {k: v for k, v in new_derivation(row.derivation, resolved).items() if k != "document"}
-        conn.execute(
-            text(
-                "UPDATE ledger_entry SET document_id = NULL, document_line_id = NULL, type = :type,"
-                " payee_id = :payee,"
-                " category_id = :category, counter_account_id = :counter,"
-                " derivation = CAST(:d AS jsonb) WHERE id = :id"
-            ),
-            {
-                "type": str(kind.value) if kind is not None else None,
-                "payee": _id(resolved.get("payee")),
-                "category": _id(resolved.get("category")),
-                "counter": _id(resolved.get("counter_account")),
-                "d": json.dumps(derivation),
-                "id": entry_id,
-            },
-        )
-        written.append(entry_id)
-    return written
-
-
-def _id(decided: Any) -> int | None:
-    return column_of(decided)

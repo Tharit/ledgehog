@@ -11,7 +11,6 @@ def e(
     *,
     type: str | None = "flow",
     partner: int | None = None,
-    doc: int | None = None,
 ) -> UnitEntry:
     return UnitEntry(
         id=id,
@@ -19,7 +18,6 @@ def e(
         type=type,
         category_id=1 if type == "flow" else None,
         counterpart_entry_id=partner,
-        document_id=doc,
     )
 
 
@@ -71,24 +69,3 @@ def test_a_chain_is_followed_transitively() -> None:
         e(4, 10, type="transfer", partner=3),
     ]
     assert set(unit_keys(entries).values()) == {10}
-
-
-def test_the_carriers_of_one_document_share_a_unit_under_the_lowest_source() -> None:
-    entries = [e(1, 30, doc=7), e(2, 30), e(3, 10, doc=7), e(4, 20, doc=7), e(5, 40, doc=8), e(6, 50)]
-    assert unit_keys(entries) == {1: 10, 2: 10, 3: 10, 4: 10, 5: 40, 6: 50}
-    grouped = units_of(entries)
-    assert {k: [x.id for x in v] for k, v in grouped.items()} == {10: [1, 2, 3, 4], 40: [5], 50: [6]}
-
-
-def test_a_document_unit_and_a_pair_stay_apart() -> None:
-    entries = [
-        e(1, 10, doc=7),
-        e(2, 20, doc=7),
-        e(3, 30, type="transfer", partner=4),
-        e(4, 40, type="transfer", partner=3),
-    ]
-    assert unit_keys(entries) == {1: 10, 2: 10, 3: 30, 4: 30}
-
-
-def test_a_carrier_outside_the_loaded_entries_is_not_followed() -> None:
-    assert unit_keys([e(1, 20, doc=7)]) == {1: 20}

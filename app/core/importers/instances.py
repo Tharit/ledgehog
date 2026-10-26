@@ -379,7 +379,7 @@ def _link(
     held = conn.execute(
         text(
             "SELECT count(*) AS n, min(booked_on) AS first, max(booked_on) AS last"
-            " FROM source_transaction WHERE account_id = :a AND importer IS NULL"
+            " FROM source_transaction WHERE account_id = :a AND origin = 'user'"
         ),
         {"a": account_id},
     ).one()

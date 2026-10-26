@@ -1,4 +1,4 @@
-"""trg_source_immutable (8.1) and trg_user_source_unsynced (8.2c)."""
+"""trg_source_immutable (8.1) and trg_authored_source_account (8.2c)."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import pytest
 from sqlalchemy import Connection, text
 
 from tests.invariants.helpers import (
+    CHECK_VIOLATION,
     RAISE_EXCEPTION,
     fire_deferred,
     link_account,
@@ -188,11 +189,17 @@ def test_user_authored_row_cannot_change_currency(db_conn: Connection, make_acco
 
 def test_user_authored_row_cannot_become_imported(db_conn: Connection, make_account: MakeAccount) -> None:
     _, src, _ = _user_row(db_conn, make_account)
-    with rejects(db_conn, sqlstate=RAISE_EXCEPTION, message="keeps its account and currency"):
+    with rejects(db_conn, sqlstate=CHECK_VIOLATION, constraint="ck_origin"):
         db_conn.execute(text("UPDATE source_transaction SET importer = 'x' WHERE id = :i"), {"i": src})
 
 
-# ---- trg_user_source_unsynced
+def test_a_source_keeps_its_origin(db_conn: Connection, make_account: MakeAccount) -> None:
+    _, src, _ = _user_row(db_conn, make_account)
+    with rejects(db_conn, sqlstate=RAISE_EXCEPTION, message="keeps its origin"):
+        db_conn.execute(text("UPDATE source_transaction SET origin = 'booking' WHERE id = :i"), {"i": src})
+
+
+# ---- trg_authored_source_account
 
 
 def test_user_authored_row_refused_on_a_synced_account(

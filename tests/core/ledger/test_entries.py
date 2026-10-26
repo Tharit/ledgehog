@@ -54,7 +54,7 @@ def test_row_shape(db_conn: Connection, acct: int):
     assert (row.source.amount, row.source.currency) == (-1250, "EUR")
     assert (row.payee_id, row.category_id) == (p, c)
     assert row.counter_account_id is None and row.counterpart_entry_id is None
-    assert row.source_transaction_id == seed.source_of(db_conn, e) and row.document_id is None
+    assert row.source_transaction_id == seed.source_of(db_conn, e)
     assert row.review_flags == ("unconfirmed",) and row.tag_ids == (t,)
 
 

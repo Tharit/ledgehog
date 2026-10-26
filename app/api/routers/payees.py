@@ -65,13 +65,10 @@ class PayeeCreateBody(BaseModel):
     note: str | None = None
     icon: PresentationName | None = None
     color: PresentationName | None = None
-    document_provider: str | None = (
-        None  # free text, matched without regard to case; blank means none (`GET /api/documents/providers`)
-    )
 
 
 class PayeeUpdateBody(BaseModel):
-    """Absent fields stay; `null` clears `note`, `icon`, `color` and `document_provider`."""
+    """Absent fields stay; `null` clears `note`, `icon` and `color`."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -79,7 +76,6 @@ class PayeeUpdateBody(BaseModel):
     note: str | None = None
     icon: PresentationName | None = None
     color: PresentationName | None = None
-    document_provider: str | None = None
 
 
 class RuleRefOut(BaseModel):
@@ -135,8 +131,6 @@ class PayeeMergeOut(BaseModel):
     entry_ids: list[int]  # ascending; empty on a dry run
     setting_rule_ids: list[int]  # rules repointed whose payee it was
     condition_rule_ids: list[int]  # rules whose payee condition it was, rewritten to the target
-    source_document_provider: str | None
-    document_provider_lost: bool  # the source names a provider the target does not
     settle: SettleOut | None  # null on a dry run
 
     @classmethod
@@ -149,8 +143,6 @@ class PayeeMergeOut(BaseModel):
             entry_ids=list(result.entry_ids),
             setting_rule_ids=list(result.setting_rule_ids),
             condition_rule_ids=list(result.condition_rule_ids),
-            source_document_provider=result.source_document_provider,
-            document_provider_lost=result.document_provider_lost,
             settle=None if result.settle is None else SettleOut.of(result.settle),
         )
 
@@ -163,7 +155,6 @@ def create_ledger_payee(body: PayeeCreateBody, user: CurrentUser, engine: Engine
         note=body.note,
         icon=body.icon,
         color=body.color,
-        document_provider=body.document_provider,
     )
     return PayeeWriteOut(payee=PayeeOut(**vars(made.payee)), settle=SettleOut.of(made.settle))
 
@@ -180,7 +171,6 @@ def update_ledger_payee(
         note=body.note if "note" in given else ...,
         icon=body.icon if "icon" in given else ...,
         color=body.color if "color" in given else ...,
-        document_provider=body.document_provider if "document_provider" in given else ...,
     )
     return PayeeWriteOut(payee=PayeeOut(**vars(done.payee)), settle=SettleOut.of(done.settle))
 
@@ -200,7 +190,7 @@ def delete_ledger_payee(
 def merge_ledger_payee(
     payee_id: PathId, body: PayeeMergeBody, user: CurrentUser, engine: EngineDep
 ) -> PayeeMergeOut:
-    """Merge into another payee, whose attributes win; `dry_run` previews and warns about the provider."""
+    """Merge into another payee, whose attributes win; `dry_run` previews."""
     result = merge_payee(
         engine, payee_id, body.into, dry_run=body.dry_run, expected_count=body.expected_count
     )

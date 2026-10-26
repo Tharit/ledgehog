@@ -20,7 +20,7 @@ from tests.invariants.helpers import make_category, make_entry, make_movement, m
 settle_module = importlib.import_module("app.core.settle.settle")
 
 MakeAccount = Callable[..., int]
-STEP_NAMES = ("resolve", "match_documents", "resolve_after_link", "pair_transfers", "review_flags")
+STEP_NAMES = ("resolve", "book_clearance", "resolve_bookings", "pair_transfers", "review_flags")
 
 
 @pytest.fixture(autouse=True)
@@ -40,7 +40,7 @@ def _seed(engine: Engine, make_account: MakeAccount) -> dict[str, int]:
             conn,
             make_source(conn, acct),
             category_id=cat,
-            derivation='{"document": {"pass": "matcher_decision"}}',  # as settling leaves a confirmed unit
+            derivation='{"payee": {"pass": "user"}}',  # a standing key: the unit is confirmed
         )
     return {"dirty": dirty, "clean": clean}
 

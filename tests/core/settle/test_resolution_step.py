@@ -29,6 +29,7 @@ DAY = date(2026, 2, 10)
 def _src(conn: Connection, acct: int, *, run: int | None = None, **cols: Any) -> int:
     run = run or make_run(conn, acct)
     values: dict[str, Any] = {
+        "origin": "import",
         "importer": "test",
         "import_run_id": run,
         "account_id": acct,
@@ -64,7 +65,6 @@ def _confirmed(
     d: dict[str, Any] = {
         "type": {"pass": "user"},
         "category": {"pass": "user"},
-        "document": {"pass": "matcher_decision"},  # the "none" settling records on a confirmed unit
     }
     if payee:
         d["payee"] = {"pass": "user"}
@@ -124,7 +124,6 @@ def test_a_rule_resolves_a_confirmed_flow_with_no_flags(isolated_engine: Engine,
         "type": {"pass": "rule", "basis": {"rule_id": rp}},
         "payee": {"pass": "rule", "basis": {"rule_id": rp}},
         "category": {"pass": "rule", "basis": {"rule_id": rc}},
-        "document": {"pass": "matcher_decision"},  # recorded when settling confirmed the unit
     }
     assert r.version == 1
 
@@ -217,7 +216,7 @@ def test_a_confirmed_entry_is_never_touched(isolated_engine: Engine, acct: int) 
             conn,
             _src(conn, acct, counterparty_name="EDEKA Markt"),
             category_id=c,
-            derivation=json.dumps({"document": {"pass": "matcher_decision"}}),
+            derivation=json.dumps({"payee": {"pass": "user"}}),
         )
     before = [_row(isolated_engine, i) for i in (reviewed, keyless)]
     assert settle(isolated_engine).touched_entry_ids == ()
@@ -313,10 +312,10 @@ def test_a_key_without_a_value_is_removed(isolated_engine: Engine, acct: int) ->
             conn,
             _src(conn, acct),
             type=None,
-            derivation=json.dumps({"category": {"pass": "history", "basis": {}}, "document": {"pass": "x"}}),
+            derivation=json.dumps({"category": {"pass": "history", "basis": {}}, "other": {"pass": "x"}}),
         )
     settle(isolated_engine)
-    assert _row(isolated_engine, e).derivation == {"document": {"pass": "x"}}
+    assert _row(isolated_engine, e).derivation == {"other": {"pass": "x"}}
 
 
 def test_a_value_without_a_key_is_kept(isolated_engine: Engine, acct: int) -> None:

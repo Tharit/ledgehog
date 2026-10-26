@@ -1,8 +1,7 @@
 """Documents (architecture §4.1, spec §5.8): `GET /api/documents` and `GET /api/documents/{id}`.
 
-Reads: no lock, no write, no settle. A document is linked only through a unit's commit. Money travels as
-`{"amount": <integer minor units>, "currency": <code>}`; a refund document is positive. The review
-panel's pick by hand reuses the list with the `provider` and `fully_charged=false` filters.
+Reads: no lock, no write, no settle. Money travels as `{"amount": <integer minor units>, "currency":
+<code>}`; a refund document is positive.
 """
 
 from __future__ import annotations
@@ -18,11 +17,9 @@ from app.api.ids import MAX_ID, PathId
 from app.api.routers.accounts import CurrencyCode, Money
 from app.api.session import CurrentUser, EngineDep
 from app.core.documents import (
-    Carrier,
     DocumentDetail,
     DocumentFilter,
     DocumentLine,
-    DocumentMatch,
     DocumentRow,
     get_document,
     list_documents,
@@ -42,29 +39,9 @@ map_error(
 SearchText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
 
 
-class CarrierOut(BaseModel):
-    """The transaction carrying a document: its original entry, which opens the review panel."""
-
-    entry_id: int
-    source_transaction_id: int
-    account_id: int
-    booked_on: date
-    amount: Money
-
-    @staticmethod
-    def of(c: Carrier) -> CarrierOut:
-        return CarrierOut(
-            entry_id=c.entry_id,
-            source_transaction_id=c.source_transaction_id,
-            account_id=c.account_id,
-            booked_on=c.booked_on,
-            amount=Money(amount=c.amount, currency=c.currency),
-        )
-
-
 class DocumentOut(BaseModel):
     id: int
-    version: int  # what a commit picking it carries (spec §5.5)
+    version: int  # detects a conflicting edit (spec §5.5)
     provider: str
     external_id: str
     importer_instance_id: int | None
@@ -73,7 +50,6 @@ class DocumentOut(BaseModel):
     merchant_name: str | None
     title: str | None
     line_count: int
-    carrier_count: int  # the transactions carrying it
 
     @staticmethod
     def of(r: DocumentRow) -> DocumentOut:
@@ -88,7 +64,6 @@ class DocumentOut(BaseModel):
             merchant_name=r.merchant_name,
             title=r.title,
             line_count=r.line_count,
-            carrier_count=r.carrier_count,
         )
 
 
@@ -99,18 +74,11 @@ class DocumentPageOut(BaseModel):
     offset: int
 
 
-class LineCategoryOut(BaseModel):
-    id: int
-    name: str
-
-
 class DocumentLineOut(BaseModel):
     line_no: int
     description: str
     amount: Money  # in the document's currency, signed like the total
     qty: int | None
-    category: LineCategoryOut | None  # the model's answer; null until it has answered (or said none fits)
-    rationale: str | None  # the answer's, also where no category fits; null where there is no answer
 
     @staticmethod
     def of(line: DocumentLine, currency: str) -> DocumentLineOut:
@@ -119,53 +87,11 @@ class DocumentLineOut(BaseModel):
             description=line.description,
             amount=Money(amount=line.amount, currency=currency),
             qty=line.qty,
-            category=None
-            if line.category_id is None or line.category_name is None
-            else LineCategoryOut(id=line.category_id, name=line.category_name),
-            rationale=line.rationale,
-        )
-
-
-class DocumentMatchOut(BaseModel):
-    """A transaction the document would match (documents.md §9), with its unit's state."""
-
-    entry_id: int  # the original entry: opens the review panel with the document picked
-    source_transaction_id: int
-    account_id: int
-    booked_on: date
-    amount: Money
-    instructed_amount: Money | None
-    display_text: str | None
-    payee_id: int | None
-    document_id: int | None  # the document it already carries; picking replaces that link
-    confirmed: bool  # its unit is confirmed
-
-    @staticmethod
-    def of(m: DocumentMatch) -> DocumentMatchOut:
-        instructed = (
-            None
-            if m.instructed_amount is None or m.instructed_currency is None
-            else Money(amount=m.instructed_amount, currency=m.instructed_currency)
-        )
-        return DocumentMatchOut(
-            entry_id=m.entry_id,
-            source_transaction_id=m.source_transaction_id,
-            account_id=m.account_id,
-            booked_on=m.booked_on,
-            amount=Money(amount=m.amount, currency=m.currency),
-            instructed_amount=instructed,
-            display_text=m.display_text,
-            payee_id=m.payee_id,
-            document_id=m.document_id,
-            confirmed=m.confirmed,
         )
 
 
 class DocumentDetailOut(DocumentOut):
     lines: list[DocumentLineOut]
-    carriers: list[CarrierOut]  # by entry id
-    fully_charged: bool  # the carriers' amounts reach the total: then there are no matches
-    matches: list[DocumentMatchOut]  # while the document is not fully charged; empty once it is
 
     @staticmethod
     def detail(d: DocumentDetail) -> DocumentDetailOut:
@@ -173,9 +99,6 @@ class DocumentDetailOut(DocumentOut):
         return DocumentDetailOut(
             **base.model_dump(),
             lines=[DocumentLineOut.of(line, d.document.currency) for line in d.lines],
-            carriers=[CarrierOut.of(c) for c in d.carriers],
-            fully_charged=d.fully_charged,
-            matches=[DocumentMatchOut.of(m) for m in d.matches],
         )
 
 
@@ -185,7 +108,7 @@ class DocumentProvidersOut(BaseModel):
 
 @router.get("/providers")
 def list_document_providers(user: CurrentUser, engine: EngineDep) -> DocumentProvidersOut:
-    """Suggestions for the providers a payee names and the documents list filters by (any may be named)."""
+    """Suggestions for a clearance account's provider list and the documents filter (any may be named)."""
     with engine.connect() as conn:
         return DocumentProvidersOut(providers=provider_names(conn))
 
@@ -201,8 +124,6 @@ def list_documents_view(
     amount_max: Annotated[int | None, Query(ge=0, le=2**63 - 1)] = None,
     currency: CurrencyCode | None = None,
     q: SearchText | None = None,
-    linked: bool | None = None,
-    fully_charged: bool | None = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     offset: Annotated[int, Query(ge=0, le=MAX_ID)] = 0,
 ) -> DocumentPageOut:
@@ -214,8 +135,6 @@ def list_documents_view(
         amount_max=amount_max,
         currency=currency,
         text=q,
-        linked=linked,
-        fully_charged=fully_charged,
     )
     with engine.connect() as conn:
         page = list_documents(conn, flt, limit=limit, offset=offset)
@@ -238,8 +157,7 @@ map_error(DocumentMissing, 404, "not_found")
 
 @router.get("/{document_id}")
 def get_document_view(document_id: PathId, user: CurrentUser, engine: EngineDep) -> DocumentDetailOut:
-    """A document with its lines, its carriers and, while it is not fully charged, the transactions it would
-    match."""
+    """A document with its lines."""
     with engine.connect() as conn:
         found = get_document(conn, document_id)
     if found is None:

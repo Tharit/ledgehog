@@ -260,11 +260,6 @@ class FetchSessionBase:
         return None
 
 
-def delivers_declared(providers: frozenset[str], provider: str) -> bool:
-    """An importer built for fixed providers delivers those, whatever the case of the name."""
-    return provider.lower() in {p.lower() for p in providers}
-
-
 @runtime_checkable
 class FetchImporter(Protocol):
     """An importer that opens a session. Reads neither the database nor the clock."""
@@ -272,12 +267,6 @@ class FetchImporter(Protocol):
     emits: frozenset[str]  # the kinds it delivers: "transactions", "documents"
     # the document providers it names (spec §5.5), for suggestions; empty where it names none
     providers: frozenset[str]
-
-    def delivers(self, settings: Mapping[str, Any], provider: str) -> bool:
-        """Whether an instance with these settings delivers documents of `provider` (compared without
-        regard to case), answered before its first run. A fixed-provider importer answers from its names
-        (`delivers_declared`); one that reads receipts of any provider, from its settings."""
-        ...
 
     def validate_settings(self, settings: Mapping[str, Any]) -> None:
         """Raise `InvalidProfile` naming the setting that is wrong."""

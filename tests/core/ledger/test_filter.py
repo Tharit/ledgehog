@@ -66,7 +66,7 @@ def test_type_and_flag_values_are_closed_sets():
     assert bad(flags=("bogus",)).parameter == "flag"
     LedgerFilter(
         types=("flow", "transfer", "opening", "valuation", "reconciliation"),
-        flags=("unconfirmed", "unclassified", "document_suggested", "waiting", "unmatched_transfer"),
+        flags=("unconfirmed", "unclassified", "waiting", "unmatched_transfer"),
     )
 
 

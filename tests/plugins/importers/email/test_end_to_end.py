@@ -94,9 +94,8 @@ def test_coverage_is_today_minus_two_and_data_starts_at_the_start_date_or_the_co
     assert later.covered_from == later.covered_through == date(2026, 1, 18)
 
 
-def test_every_provider_is_delivered_whatever_the_settings():
+def test_the_importer_names_no_provider():
     importer = Rig(Endpoint()).importer
-    assert importer.delivers(base_settings(), "amazon") and importer.delivers({}, "anything at all")
     assert importer.providers == frozenset() and importer.emits == frozenset({"documents"})
 
 

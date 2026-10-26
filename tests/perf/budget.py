@@ -30,39 +30,8 @@ post-commit 322-330 ms. Measured with load averages of 8-10 from other work on t
 of this variant is the one that comes closest to the 1.0 s budget (one run in four of them exceeded it at
 that load): if it is missed on a quiet machine, narrow the first round (below).
 
-Step 9 wave B (documents, `tests/perf/test_documents_budget.py`): the ~90% confirmed ledger (7,200
-voters) plus 3,000 documents and 1,500 unconfirmed provider-payee charges (600 with one unique document,
-300 in ambiguous pairs, 300 near misses, 300 waiting), about 2,300 unconfirmed entries, as many as the
-70% ledger has. The settle over it: 1.00-1.06 s first (the 600 links and a second round included),
-0.52-0.58 s idle. Measured with load averages of 5-10 from other work on the machine, on which the other
-variants read higher than their notes above (baseline 526 ms, the 70% resolving settle 861 ms, the
-transfer ledger 992 ms). The document steps are about 0.15 s of the first settle: step 2 (the unlinked
-documents, the gated charges, the matcher, one write) 15 ms steady and 70-90 ms with the first round's
-links; step 3 (a targeted resolve of the 600 linked transactions: the units of their entries 27 ms,
-every value derived again) 75-90 ms, and nothing when nothing was linked. The rest is step 1 (about 0.45
-s, as in the other variants) and the flags. Step 2 on a settled ledger with nothing to link: 16-20 ms.
-
-What kept it there. The candidate test of the unit CTE (`doc_candidate`, `doc_suggested`) was first a
-correlated scan of the documents per charge: about 110 ms per evaluation, and the CTE is evaluated about
-seven times per settle (2.4 s first, 1.5-1.8 s idle). It is now one derived table of candidate pairs
-found by two hash joins (10 ms per evaluation). The matcher's `automatic_links` finds candidates through
-an index of the documents (1 ms for 900 charges and 2,400 documents). Step 2 is left out of a round in
-which step 1 wrote nothing (`SettleRun.documents_dirty`). That is the narrowing to a dirty set
-architecture §5.2 allows, for steps 2 and 3 only: step 2 reads only the gated subset (provider payee, no
-document key) and returns at once when no document waits for a charge, and step 3 only the transactions
-linked in this settle. The first settle is the one that comes closest to the 1.0 s budget (over it in
-three runs out of four on the loaded machine, by 0.00-0.06 s): if it is missed on a quiet machine,
-narrow the first round (below).
-
-Line allocation (order documents): a line allocation cannot be done in SQL, so the candidacy of the unit CTE
-is found in Python (`core/resolution/doc_load.py: candidacy`) and bound into it: the gated charges (8 ms), the
-document headers (3 ms), the documents a charge could match (whole, or a partial of two or more lines: 8 ms of
-Python over the headers, then their lines and carriers), and the matcher over a bucket index by amount (1
-ms). One evaluation 22-25 ms on this ledger (the carriers' query had cost 12 ms until its confirmation test
-was read apart). A settle keeps it in a memo that each step touching an entry forgets (`candidacy_memo`): five
-evaluations in the first settle (two of them before any payee is resolved: 5 ms), not seven. First settle
-1.02-1.06 s, idle 0.53 s, step 2 on the settled ledger 37 ms, on the same loaded machine (load averages 5-6)
-as above.
+(The documents variant, which measured document matching in settling, went with it: D230. The booking step
+will be measured when it exists.)
 
 Caveat: if the budget is missed, narrow the first round to a dirty set (architecture §5.2); rounds after the
 first are already narrowed to the entries the newly confirmed votes can reach.

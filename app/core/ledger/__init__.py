@@ -1,8 +1,6 @@
 """The ledger list (spec §3.7, §3.9, §8): the entry filter, its SQL, and the paged list."""
 
 from app.core.ledger.entries import (
-    EntryDocument,
-    EntryDocumentLine,
     EntryPage,
     EntryRow,
     PartnerSummary,
@@ -26,8 +24,6 @@ __all__ = [
     "ENTRY_TYPES",
     "REVIEW_FLAGS",
     "Composed",
-    "EntryDocument",
-    "EntryDocumentLine",
     "EntryPage",
     "EntryRow",
     "InvalidFilter",

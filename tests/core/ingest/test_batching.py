@@ -55,9 +55,9 @@ def test_identity_conflict_mid_chunk_is_skipped_without_an_entry(
         with env.engine.begin() as other_conn:
             other_conn.execute(
                 run_module.text(
-                    "INSERT INTO source_transaction (importer, import_run_id, account_id, source_id,"
+                    "INSERT INTO source_transaction (origin, importer, import_run_id, account_id, source_id,"
                     " amount, currency, booked_on, raw, source_format)"
-                    " VALUES ('csv', :r, :a, 's4', -1, 'EUR', '2020-01-01', '{}', 'csv:test')"
+                    " VALUES ('import', 'csv', :r, :a, 's4', -1, 'EUR', '2020-01-01', '{}', 'csv:test')"
                 ),
                 {"r": other, "a": account_id},
             )

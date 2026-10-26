@@ -2,8 +2,7 @@
 
 The transaction takes the settle lock shared, then the account locks ascending for every account of the
 unit, then the entry rows ascending (`utils.db.locks`). The unit is the unit AS DRAFTED: the anchor's closure
-plus the closure of every partner the draft picks (which holds the former partners of both legs) and of
-every carrier of a document it picks (all the carriers of a document are one unit, I21). The
+plus the closure of every partner the draft picks (which holds the former partners of both legs). The
 proposals the preview shows are taken as picks first (`preview.resolve_draft`, limited to those whose
 entries the client carries versions for): a commit accepts every proposal shown, as the user's decision. The
 unit is read BEFORE the locks to know which accounts to take; after them the closure is read again, and a
@@ -15,23 +14,11 @@ result that would break an invariant is refused by code (`CommitRefused`, the pr
 deferred triggers are a net, not the check.
 
 A counter-leg (spec §5.7) is created here and nowhere else: after the locks and the checks a user-authored
-source transaction on the counter-account (importer NULL, a random `source_id`, the leg's date and purpose, a
+source transaction on the counter-account (origin `user`, a random `source_id`, the leg's date and purpose, a
 `raw` naming the entry it was created for), its one entry typed `transfer` and paired with the leg, every key
 `user`. The counter-account is part of the lock set (the plan under the locks decides which accounts it is: a
 changed set takes the transaction again with more locks, as `ledger/sources.py` does), and its derived
 entries are recomputed. A source that follows its partner's amount is written with it.
-
-A document the draft picks (spec §5.8) is part of it: the picked documents and the ones the unit carries are
-locked, in id order, right after the settle lock and BEFORE the accounts - the order document ingest takes
-(documents, then the carriers' accounts, then the entries), so the two cannot deadlock. A pick that names a
-document that is gone is `StaleReference` (409), one at another version, or one whose members changed since
-the preview (an entry the client carries no version for carries a document of the unit: a charge linked
-since; or an entry it carries a version for has left the closure: a carrier unlinked or removed), or one
-whose lines the preview's line allocation relied on were taken, is `UnitMoved` (409, with the document and
-the reason `taken` or `version`; the unique indexes of I35, `ux_le_document_line` included, are the net
-under the check). A newly appeared carrier is never pulled into the commit: the user previews again. A
-commit that carries no document key for a transaction that is offered documents or awaits one is refused
-(`document_decision_required`, 422) unless the draft picks or says "none".
 
 What is written: a pair the draft breaks is undone (`removal.unpair`, so a partner is left behind as
 the removal routine leaves it), removed entries go through `removal.remove_entries`, created entries are
@@ -69,14 +56,8 @@ from app.core.units.lookup import unit_ids_of
 from app.core.units.overlay import plan_unit
 from app.core.units.plan import Consequence, Plan, PlannedRow, Problem
 from app.core.units.preview import UnitNotFound, resolve_draft
-from app.core.units.state import UnitState, document_facts_of_flags, leg_states_of_flags, unit_state
-from app.core.units.stored import (
-    document_pick_ids,
-    drafted_closure,
-    load_stored_entries,
-    load_world,
-    missing_tag,
-)
+from app.core.units.state import UnitState, leg_states_of_flags, unit_state
+from app.core.units.stored import drafted_closure, load_stored_entries, load_world, missing_tag
 from app.utils.db.errors import constraint_name
 from app.utils.db.locks import WriteConflict, lock_accounts, lock_rows, lock_settle_shared, retry_on_deadlock
 
@@ -88,27 +69,17 @@ _ENTITY = {
     "category_id": "category",
     "payee_id": "payee",
     "counter_account_id": "account",
-    "document_id": "document",
 }
-# problems that say the document the user chose is not what the preview saw: a conflict, not a refusal
-_DOCUMENT_MOVED = {"document_taken": "taken", "document_changed": "version"}
 
 
 class UnitMoved(Exception):
-    """The unit's closure changed between reading it and holding its locks, or the document the draft picks
-    is no longer what the preview saw (`reason`: `taken` by another entry, or at another `version`).
-    Nothing was written."""
+    """The unit's closure changed between reading it and holding its locks, or an entry the client carries a
+    version for has left it. Nothing was written."""
 
-    def __init__(
-        self, anchor_entry_id: int, *, document_id: int | None = None, reason: str | None = None
-    ) -> None:
+    def __init__(self, anchor_entry_id: int) -> None:
         self.anchor_entry_id = anchor_entry_id
-        self.document_id = document_id
-        self.reason = reason
         super().__init__(
             f"the unit of entry {anchor_entry_id} changed while it was being committed: reload it"
-            if document_id is None
-            else f"document {document_id} is no longer what was shown ({reason}): reload the unit"
         )
 
 
@@ -146,38 +117,26 @@ def _read_closure(conn: Connection, anchor_entry_id: int) -> tuple[int, ...] | N
 
 
 def _read_drafted_closure(conn: Connection, draft: UnitDraft) -> tuple[int, ...] | None:
-    """The unit as drafted: the anchor's closure, the closure of each picked partner and of the carriers of
-    each picked document (ascending)."""
+    """The unit as drafted: the anchor's closure and the closure of each picked partner (ascending)."""
     anchor = _read_closure(conn, draft.anchor_entry_id)
     if anchor is None:
         return None
     return tuple(sorted(drafted_closure(conn, draft, anchor)))
 
 
-_UNSEEN_CARRIER = text(
-    "SELECT document_id FROM ledger_entry"
-    " WHERE document_id = ANY(CAST(:docs AS bigint[])) AND id <> ALL(CAST(:seen AS bigint[]))"
-    " ORDER BY document_id LIMIT 1"
-)
 _VERSIONS = text("SELECT id, version FROM ledger_entry WHERE id = ANY(:ids)")
 
 
 def _members_moved(
-    conn: Connection, draft: UnitDraft, anchor_entry_id: int, docs: Collection[int], closure: Collection[int]
+    conn: Connection, draft: UnitDraft, anchor_entry_id: int, closure: Collection[int]
 ) -> None:
-    """The unit's members changed since the preview (409 `unit_moved`, reason `taken`): an entry
-    carries a document of the unit that the client carries no version for (a charge linked since), or an
-    entry the client carries a version for has left the closure and is gone or has moved (a carrier
-    unlinked or removed)."""
-    if docs:
-        found = conn.execute(_UNSEEN_CARRIER, {"docs": sorted(docs), "seen": sorted(draft.versions)}).scalar()
-        if found is not None:
-            raise UnitMoved(anchor_entry_id, document_id=int(found), reason="taken")
+    """The unit's members changed since the preview (409 `unit_moved`): an entry the client carries a
+    version for has left the closure and is gone or has moved (a partner unpaired or removed)."""
     left = sorted(i for i in draft.versions if i not in set(closure))
     if left:
         current = {int(r.id): int(r.version) for r in conn.execute(_VERSIONS, {"ids": left})}
         if any(current.get(i) != draft.versions[i] for i in left):
-            raise UnitMoved(anchor_entry_id, reason="taken")
+            raise UnitMoved(anchor_entry_id)
 
 
 def _accounts_of(conn: Connection, entry_ids: tuple[int, ...]) -> set[int]:
@@ -192,26 +151,15 @@ def _accounts_of(conn: Connection, entry_ids: tuple[int, ...]) -> set[int]:
 
 _INSERT = text(
     "INSERT INTO ledger_entry (source_transaction_id, account_id, amount, currency, booked_on, value_on,"
-    " type, payee_id, category_id, counter_account_id, description, note, document_line_id, derivation)"
+    " type, payee_id, category_id, counter_account_id, description, note, derivation)"
     " VALUES (:src, :account, :amount, :currency, :booked_on, :value_on, :type, :payee, :category, :counter,"
-    " :description, :note, :line, CAST(:derivation AS jsonb)) RETURNING id"
+    " :description, :note, CAST(:derivation AS jsonb)) RETURNING id"
 )
 
-# `:line` is the entry's line of the transaction's document (spec §5.8), written in the same statement as
-# `:document`: set with a pick of a document of one line, on each entry a split along the lines made, cleared
-# whenever the link is changed or dropped
 _UPDATE = text(
     "UPDATE ledger_entry SET type = :type, payee_id = :payee, category_id = :category,"
     " counter_account_id = :counter, amount = :amount, description = :description, note = :note,"
-    " counterpart_entry_id = :counterpart, document_id = :document, document_line_id = :line,"
-    " derivation = CAST(:derivation AS jsonb) WHERE id = :id"
-)
-# a line an entry of the unit holds and another is to take, let go of first
-_FREE_LINES = text("UPDATE ledger_entry SET document_line_id = NULL WHERE id = ANY(:ids)")
-_LINE_IDS = text(
-    "SELECT l.document_id, l.line_no, l.id FROM external_document_line AS l"
-    " JOIN unnest(CAST(:docs AS bigint[]), CAST(:nos AS int[])) AS v(d, n)"
-    " ON l.document_id = v.d AND l.line_no = v.n"
+    " counterpart_entry_id = :counterpart, derivation = CAST(:derivation AS jsonb) WHERE id = :id"
 )
 
 
@@ -232,8 +180,9 @@ def counter_leg_accounts(plan: Plan) -> set[int]:
 
 
 def _insert_counter_leg(conn: Connection, row: PlannedRow) -> int:
-    """The counter-leg (spec §5.7): a user-authored source transaction on the counter-account (I1, I40: the
-    trigger holds, the plan has checked it first), its entry, typed `transfer` and paired with the leg."""
+    """The counter-leg (spec §5.7): a source transaction of the origin `user` on the counter-account (I1,
+    I40: the trigger holds, the plan has checked it first), its entry, typed `transfer` and paired with
+    the leg."""
     leg = row.counter_leg_for
     assert leg is not None
     w = row.written
@@ -241,8 +190,8 @@ def _insert_counter_leg(conn: Connection, row: PlannedRow) -> int:
         conn.execute(
             text(
                 "INSERT INTO source_transaction (account_id, source_id, amount, currency, booked_on,"
-                " purpose, raw) VALUES (:a, :s, :amount, :currency, :on, :purpose, CAST(:raw AS jsonb))"
-                " RETURNING id"
+                " purpose, raw, origin) VALUES (:a, :s, :amount, :currency, :on, :purpose,"
+                " CAST(:raw AS jsonb), 'user') RETURNING id"
             ),
             {
                 "a": row.account_id,
@@ -279,44 +228,6 @@ def _stale(plan: Plan) -> None:
             raise StaleReference(field, _ENTITY.get(field, "row"), int(found) if found is not None else None)
 
 
-def _moved(plan: Plan, anchor_entry_id: int) -> None:
-    """A document the draft picks that was taken or has moved on since the preview: a conflict (409)."""
-    for p in plan.problems:
-        if p.code in _DOCUMENT_MOVED:
-            found = p.detail.get("document_id")
-            raise UnitMoved(
-                anchor_entry_id,
-                document_id=int(found) if found is not None else None,
-                reason=_DOCUMENT_MOVED[p.code],
-            )
-
-
-def _documents_of(conn: Connection, draft: UnitDraft, closure: tuple[int, ...]) -> list[int]:
-    """The documents a commit locks: those the draft names, and those the unit's entries carry now."""
-    carried = conn.execute(
-        text("SELECT document_id FROM ledger_entry WHERE id = ANY(:ids) AND document_id IS NOT NULL"),
-        {"ids": list(closure)},
-    ).scalars()
-    return sorted({*document_pick_ids(draft), *(int(d) for d in carried)})
-
-
-def _line_ids(conn: Connection, plan: Plan) -> dict[tuple[int, int], int]:
-    """The ids of the lines the plan's rows are written with, by (document, line number). The documents are
-    locked and the plan was made under the lock, so the lines are as the plan read them; one that is gone is a
-    stale reference."""
-    wanted = sorted({r.written.document_line for r in plan.rows if r.written.document_line is not None})
-    if not wanted:
-        return {}
-    found = {
-        (int(r.document_id), int(r.line_no)): int(r.id)
-        for r in conn.execute(_LINE_IDS, {"docs": [d for d, _n in wanted], "nos": [n for _d, n in wanted]})
-    }
-    for key in wanted:
-        if key not in found:
-            raise StaleReference("document_line", "document", key[0])
-    return found
-
-
 def _write(conn: Connection, plan: Plan) -> dict[int, int]:
     """The plan's writes; returns the real ids of the created entries by temporary id."""
     if plan.unpaired_entry_ids:
@@ -331,19 +242,6 @@ def _write(conn: Connection, plan: Plan) -> dict[int, int]:
             {"a": amount, "patch": json.dumps({"amount": amount}), "i": source_id},
         )
     changing = [r for r in plan.rows if r.stored is not None and r.written.accepted and _differs(r)]
-    lines = _line_ids(conn, plan)
-    # a line that moves from one entry of the unit to another is let go of first (the unique index on a
-    # line is checked per row); with every line left to its entry this never happens
-    taking = {r.written.document_line for r in plan.rows if r.written.document_line is not None}
-    held = [
-        r.id
-        for r in changing
-        if r.stored is not None
-        and r.stored.document_line in taking
-        and r.stored.document_line != r.written.document_line
-    ]
-    if held:
-        conn.execute(_FREE_LINES, {"ids": sorted(held)})
     created: dict[int, int] = {}
     for row in plan.rows:
         if row.stored is not None:
@@ -368,7 +266,6 @@ def _write(conn: Connection, plan: Plan) -> dict[int, int]:
                     "counter": w.counter_account_id,
                     "description": w.description,
                     "note": w.note,
-                    "line": lines.get(w.document_line) if w.document_line is not None else None,
                     "derivation": json.dumps(w.derivation),
                 },
             ).scalar_one()
@@ -396,8 +293,6 @@ def _write(conn: Connection, plan: Plan) -> dict[int, int]:
                 "description": w.description,
                 "note": w.note,
                 "counterpart": created.get(w.counterpart_entry_id or 0, w.counterpart_entry_id),
-                "document": w.document_id,
-                "line": lines.get(w.document_line) if w.document_line is not None else None,
                 "derivation": json.dumps(w.derivation),
             },
         )
@@ -444,8 +339,6 @@ def _differs(row: PlannedRow) -> bool:
         != (w.type, w.payee_id, w.category_id, w.counter_account_id, w.amount, w.description, w.note)
         or dict(s.derivation) != dict(w.derivation)
         or s.counterpart_entry_id != w.counterpart_entry_id
-        or s.document_id != w.document_id
-        or s.document_line != w.document_line
     )
 
 
@@ -460,25 +353,17 @@ def _commit_once(
             if before is None:
                 raise UnitNotFound(draft.anchor_entry_id)
             closure = before
-            lock_rows(conn, "external_document", _documents_of(conn, draft, before))
             locked = _accounts_of(conn, before) | set(extra_accounts)
             lock_accounts(conn, locked)
             lock_rows(conn, "ledger_entry", before)
             after = _read_drafted_closure(conn, draft)
-            _members_moved(
-                conn,
-                draft,
-                draft.anchor_entry_id,
-                _documents_of(conn, draft, after or before),
-                after or before,
-            )
+            _members_moved(conn, draft, draft.anchor_entry_id, after or before)
             if after != before:
                 raise UnitMoved(draft.anchor_entry_id)
             _check_versions(conn, draft.versions, written=before)
             stored = load_stored_entries(conn, draft.anchor_entry_id, before)
             plan = plan_unit(stored, draft, load_world(conn, stored, draft))
             _stale(plan)
-            _moved(plan, draft.anchor_entry_id)
             if (gone := missing_tag(conn, draft)) is not None:
                 raise StaleReference(f"entries[{gone[0]}].tags.add", "tag", gone[1])
             if plan.problems:
@@ -493,9 +378,6 @@ def _commit_once(
     except DBAPIError as exc:
         orig = exc.orig
         if isinstance(orig, psycopg.errors.UniqueViolation):
-            if (constraint_name(exc) or "").startswith("ux_le_document"):
-                # a document taken between the check and the write (I35): the pick moved
-                raise UnitMoved(draft.anchor_entry_id, reason="taken") from exc
             # a partner or a transfer slot taken between the check and the write: a named conflict
             raise VersionConflict(closure) from exc
         if isinstance(orig, psycopg.errors.CheckViolation | psycopg.errors.RaiseException):
@@ -553,20 +435,16 @@ def _result(engine: Engine, plan: Plan, created: Mapping[int, int], settled: Set
             r.category_id,
             r.counterpart_entry_id,
             r.derivation,
-            r.document_id,
         )
         for r in unit_rows
     ]
     leg_states = leg_states_of_flags({r.id: r.review_flags for r in unit_rows})
-    facts = document_facts_of_flags(
-        [(r.id, r.review_flags, r.document_id) for r in unit_rows if r.type == "flow"]
-    )
     for unit in units_of(entries).values():
         units.append(
             CommittedUnit(
                 anchor_entry_id=unit[0].id,
                 entry_ids=tuple(e.id for e in unit),
-                state=unit_state(list(unit), leg_states, facts),
+                state=unit_state(list(unit), leg_states),
             )
         )
     consequences = tuple(Consequence(created.get(c.entry_id, c.entry_id), c.kind) for c in plan.consequences)

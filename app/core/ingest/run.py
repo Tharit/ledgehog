@@ -507,7 +507,7 @@ def _amount_step(
 ) -> list[int | None]:
     """Step 2. For each remaining row, the existing row it duplicates, or None.
 
-    Candidates: imported (importer IS NOT NULL), not themselves duplicates, not used
+    Candidates: imported (origin `import`), not themselves duplicates, not used
     up by step 1, read BEFORE this delivery writes, so its own rows never qualify.
     """
     if not remaining:
@@ -516,7 +516,7 @@ def _amount_step(
     cands = conn.execute(
         text(
             "SELECT id, booked_on, amount, purpose FROM source_transaction"
-            " WHERE account_id = :a AND booked_on = ANY(:days) AND importer IS NOT NULL"
+            " WHERE account_id = :a AND booked_on = ANY(:days) AND origin = 'import'"
             " AND duplicate_of IS NULL ORDER BY id"
         ),
         {"a": account_id, "days": days},
@@ -573,12 +573,13 @@ def _insert_sources(
     ]
     result = conn.execute(
         text(
-            "INSERT INTO source_transaction (importer, importer_instance_id, import_run_id,"
+            "INSERT INTO source_transaction (origin, importer, importer_instance_id, import_run_id,"
             " account_id, source_id, content_hash, source_format, amount, currency, booked_on,"
             " value_on, instructed_amount, instructed_currency, counterparty_ref, counterparty_bic,"
             " counterparty_name, purpose, end_to_end_id, mandate_ref, booking_text, raw, duplicate_of)"
-            " SELECT :importer, :inst, :run_id, :account, t.source_id, t.content_hash, t.source_format,"
-            " t.amount, t.currency, t.booked_on, t.value_on, t.instructed_amount, t.instructed_currency,"
+            " SELECT 'import', :importer, :inst, :run_id, :account, t.source_id, t.content_hash,"
+            " t.source_format, t.amount, t.currency, t.booked_on, t.value_on, t.instructed_amount,"
+            " t.instructed_currency,"
             " t.counterparty_ref, t.counterparty_bic, t.counterparty_name, t.purpose, t.end_to_end_id,"
             " t.mandate_ref, t.booking_text, t.raw, t.duplicate_of"
             " FROM jsonb_to_recordset(CAST(:records AS jsonb)) AS t(ord int, source_id text,"

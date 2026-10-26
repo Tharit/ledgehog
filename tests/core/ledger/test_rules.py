@@ -354,7 +354,7 @@ def test_deleting_a_rule_leaves_its_keys_on_confirmed_entries(isolated_engine: E
             conn,
             world["acct"],
             category=world["food"],
-            keys={"type": rs.key(rid), "category": rs.key(rid), "document": {"pass": "matcher_decision"}},
+            keys={"type": rs.key(rid), "category": rs.key(rid)},
             counterparty_name="REWE",
         )
     before = _entry_state(isolated_engine)
@@ -601,82 +601,3 @@ def test_a_failed_settle_has_no_breakdown(
 
 def test_a_dry_run_has_no_breakdown(isolated_engine: Engine, world: dict[str, Any], settles: list[int]):
     assert create_rule(isolated_engine, draft(world), dry_run=True).settle_breakdown is None
-
-
-# ---- the default order of a payee rule on a document (spec §5.9, rule editor) --------------------------
-
-
-def payee_rule(
-    engine: Engine, world: dict[str, Any], name: str, priority: int | None, *conds: Any, **kw: Any
-) -> int:
-    d = RuleDraft(
-        name=name, sets="payee", payee_id=world["rewe"], conditions=tuple(conds), priority=priority, **kw
-    )
-    written = create_rule(engine, d, expected_count=0)
-    assert written.rule is not None
-    return written.rule.id
-
-
-MERCHANT = rs.cond("document_merchant", "equals", "CloudNotes")
-
-
-def test_a_new_payee_rule_on_a_document_goes_before_every_payee_rule_without_one(
-    isolated_engine: Engine, world: dict[str, Any], settles: list[int]
-) -> None:
-    descriptor = payee_rule(isolated_engine, world, "descriptor", 100, rs.name_starts("PAYPAL"))
-    plain = payee_rule(isolated_engine, world, "plain", 30, rs.name_is("X"))
-    new = payee_rule(isolated_engine, world, "merchant", None, MERCHANT)
-    with isolated_engine.connect() as conn:
-        rules = {r.id: r for r in list_rules(conn)}
-        assert rules[new].priority == 29
-        assert [r.id for r in list_rules(conn) if r.sets == "payee"] == [new, plain, descriptor]
-
-
-def test_a_second_document_rule_follows_the_first_and_never_moves_the_plain_ones(
-    isolated_engine: Engine, world: dict[str, Any], settles: list[int]
-) -> None:
-    plain = payee_rule(isolated_engine, world, "plain", 100, rs.name_starts("PAYPAL"))
-    first = payee_rule(isolated_engine, world, "first", None, MERCHANT)
-    second = payee_rule(isolated_engine, world, "second", None, rs.cond("document_line", "contains", "USB"))
-    with isolated_engine.connect() as conn:
-        by_id = {r.id: r.priority for r in list_rules(conn)}
-        assert by_id == {plain: 100, first: 99, second: 99}  # a tie: the older rule first
-        assert [r.id for r in list_rules(conn)] == [first, second, plain]
-
-
-def test_an_explicit_priority_is_kept_as_given(
-    isolated_engine: Engine, world: dict[str, Any], settles: list[int]
-) -> None:
-    payee_rule(isolated_engine, world, "plain", 10, rs.name_starts("PAYPAL"))
-    new = payee_rule(isolated_engine, world, "merchant", 500, MERCHANT)
-    with isolated_engine.connect() as conn:
-        row = get_rule(conn, new)
-        assert row is not None and row.priority == 500
-
-
-def test_other_rules_keep_the_default(
-    isolated_engine: Engine, world: dict[str, Any], settles: list[int]
-) -> None:
-    payee_rule(isolated_engine, world, "plain", 10, rs.name_starts("PAYPAL"))
-    # a payee rule without a document condition, and a category rule with one, are not ordered by it
-    plain = payee_rule(isolated_engine, world, "another", None, rs.name_is("Y"))
-    cat = create_rule(
-        isolated_engine,
-        RuleDraft(name="cat", sets="category", category_id=world["food"], conditions=(MERCHANT,)),
-        expected_count=0,
-    ).rule
-    assert cat is not None
-    with isolated_engine.connect() as conn:
-        assert [(r.id, r.priority) for r in list_rules(conn) if r.id in (plain, cat.id)] == [
-            (plain, 100),
-            (cat.id, 100),
-        ]
-
-
-def test_with_no_plain_payee_rule_the_default_stands(
-    isolated_engine: Engine, world: dict[str, Any], settles: list[int]
-) -> None:
-    new = payee_rule(isolated_engine, world, "merchant", None, MERCHANT)
-    with isolated_engine.connect() as conn:
-        row = get_rule(conn, new)
-        assert row is not None and row.priority == 100

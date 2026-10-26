@@ -11,7 +11,6 @@ from collections.abc import Sequence
 
 from app.core.ingest.identity import canonical_text
 from app.core.plugins.classifier import (
-    DOCUMENT_KEY,
     EMPTY,
     HISTORY_KEYS,
     ClassifierContext,
@@ -30,7 +29,6 @@ _MATCHED_ON: dict[HistoryKey, str] = {
     "counterparty_name": "counterparty_name+booking_text",
     "payee": "payee",
     "tokens": "tokens",
-    "document_merchant": "document_merchant",
 }
 
 
@@ -50,17 +48,7 @@ class HistoryClassifier:
             return None
         payee = ctx.resolved.get("payee")
         resolved_payee = payee.value if payee is not None and isinstance(payee.value, int) else None
-        # a documented entry is asked on the document's merchant only, and for the category only: its bank
-        # fields describe the provider, not the purchase (spec §5.9, history.md §2); an undocumented one
-        # never sees that key
-        # an entry with a line is asked no key at all: it takes its line's answer (pass 3)
-        if entry.document_line is not None:
-            keys: tuple[HistoryKey, ...] = ()
-        elif entry.documented:
-            keys = (DOCUMENT_KEY,) if field == "category" else ()
-        else:
-            keys = HISTORY_KEYS
-        for key in keys:
+        for key in HISTORY_KEYS:
             votes = self._matches(key, field, entry, ctx, resolved_payee)
             if votes is None:
                 continue
@@ -93,10 +81,7 @@ class HistoryClassifier:
         """The votes matching `key`, refined; None when the key does not apply."""
         assert ctx.history is not None
         entry_tokens: frozenset[str] = frozenset()
-        if key == DOCUMENT_KEY:
-            if not canonical_text(entry.document_merchant):
-                return None
-        elif key == "counterparty_ref":
+        if key == "counterparty_ref":
             if not canonical_text(entry.counterparty_ref):
                 return None
         elif key == "counterparty_name":

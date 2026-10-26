@@ -34,7 +34,7 @@ def test_a_complete_unit_with_standing_keys_is_confirmed() -> None:
     assert s.confirmed and s.reasons == () and s.flags == {1: (), 2: ()}
 
 
-@pytest.mark.parametrize("p", ["history", "llm", "matcher_proposal", "", "bogus"])
+@pytest.mark.parametrize("p", ["history", "llm", "", "bogus"])
 def test_a_proposal_key_holds_up_the_whole_unit(p: str) -> None:
     s = unit_state([e(1, derivation={"category": {"pass": p}}), e(2)])
     assert not s.confirmed and s.reasons == ("non_standing_keys",)

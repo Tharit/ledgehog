@@ -49,9 +49,9 @@ def test_neither_identity_is_rejected(db_conn: Connection, make_account: MakeAcc
     with rejects(db_conn, sqlstate=CHECK_VIOLATION, constraint="ck_one_identity"):
         db_conn.execute(
             text(
-                "INSERT INTO source_transaction (importer, import_run_id, account_id, source_format, "
+                "INSERT INTO source_transaction (origin, importer, import_run_id, account_id, source_format, "
                 "amount, currency, booked_on, raw) "
-                "VALUES ('t', :r, :a, 'camt053', -1, 'EUR', DATE '2026-02-10', '{}')"
+                "VALUES ('import', 't', :r, :a, 'camt053', -1, 'EUR', DATE '2026-02-10', '{}')"
             ),
             {"r": run, "a": acct},
         )
@@ -126,22 +126,22 @@ def test_user_authored_row_has_no_importer_run_or_format(
 
     acct = make_account(db_conn)
     run = make_run(db_conn, acct)
-    with rejects(db_conn, sqlstate=CHECK_VIOLATION, constraint="ck_user_row"):
-        # importer NULL but a run attached
+    with rejects(db_conn, sqlstate=CHECK_VIOLATION, constraint="ck_origin"):
+        # origin user but a run attached
         db_conn.execute(
             text(
-                "INSERT INTO source_transaction (import_run_id, account_id, source_id, amount, currency, "
-                "booked_on, raw) VALUES (:r, :a, 'u', -1, 'EUR', DATE '2026-02-10', '{}')"
+                "INSERT INTO source_transaction (origin, import_run_id, account_id, source_id, amount, "
+                "currency, booked_on, raw) VALUES ('user', :r, :a, 'u', -1, 'EUR', DATE '2026-02-10', '{}')"
             ),
             {"r": run, "a": acct},
         )
-    with rejects(db_conn, sqlstate=CHECK_VIOLATION, constraint="ck_user_row"):
-        # importer set but no run
+    with rejects(db_conn, sqlstate=CHECK_VIOLATION, constraint="ck_origin"):
+        # origin import but no run
         db_conn.execute(
             text(
-                "INSERT INTO source_transaction (importer, source_format, account_id, source_id, amount, "
-                "currency, booked_on, raw) "
-                "VALUES ('t', 'camt053', :a, 'u', -1, 'EUR', DATE '2026-02-10', '{}')"
+                "INSERT INTO source_transaction (origin, importer, source_format, account_id, source_id, "
+                "amount, currency, booked_on, raw) "
+                "VALUES ('import', 't', 'camt053', :a, 'u', -1, 'EUR', DATE '2026-02-10', '{}')"
             ),
             {"a": acct},
         )
@@ -159,7 +159,7 @@ def test_user_authored_row_is_accepted_on_an_unsynced_account(
 def test_user_authored_row_cannot_be_a_duplicate(db_conn: Connection, make_account: MakeAccount) -> None:
     acct = make_account(db_conn)
     original, _ = make_movement(db_conn, acct)
-    with rejects(db_conn, sqlstate=CHECK_VIOLATION, constraint="ck_user_row"):
+    with rejects(db_conn, sqlstate=CHECK_VIOLATION, constraint="ck_origin"):
         make_source(db_conn, acct, importer=None, duplicate_of=original)
 
 
@@ -196,9 +196,10 @@ def test_instructed_amount_rules(
     with rejects(db_conn, sqlstate=CHECK_VIOLATION, constraint=constraint):
         db_conn.execute(
             text(
-                "INSERT INTO source_transaction (importer, import_run_id, account_id, source_id, "
+                "INSERT INTO source_transaction (origin, importer, import_run_id, account_id, source_id, "
                 "source_format, amount, currency, booked_on, raw, instructed_amount, instructed_currency) "
-                "VALUES ('t', :r, :a, 's', 'camt053', -100, 'EUR', DATE '2026-02-10', '{}', :ia, :ic)"
+                "VALUES ('import', 't', :r, :a, 's', 'camt053', -100, 'EUR', DATE '2026-02-10', '{}', "
+                ":ia, :ic)"
             ),
             params,
         )
@@ -211,9 +212,10 @@ def test_valid_instructed_amount_is_accepted(db_conn: Connection, make_account: 
     run = make_run(db_conn, acct)
     src = db_conn.execute(
         text(
-            "INSERT INTO source_transaction (importer, import_run_id, account_id, source_id, "
+            "INSERT INTO source_transaction (origin, importer, import_run_id, account_id, source_id, "
             "source_format, amount, currency, booked_on, raw, instructed_amount, instructed_currency) "
-            "VALUES ('t', :r, :a, 's', 'camt053', -100, 'EUR', DATE '2026-02-10', '{}', -120, 'USD') "
+            "VALUES ('import', 't', :r, :a, 's', 'camt053', -100, 'EUR', DATE '2026-02-10', '{}', -120, "
+            "'USD') "
             "RETURNING id"
         ),
         {"r": run, "a": acct},

@@ -55,7 +55,6 @@ def test_a_sample_row_validates_against_the_model():
         "counter_account_id": None,
         "counterpart_entry_id": None,
         "source_transaction_id": None,
-        "document_id": None,
         "review_flags": ["unconfirmed"],
         "tag_ids": [3],
         "source": {
@@ -73,14 +72,13 @@ def test_a_sample_row_validates_against_the_model():
         "derivation": {"category": {"pass": "history", "basis": {"from": "similar"}}},
         "unit_key": 7,
         "authored": False,
+        "origin": "import",
         "partner": {
             "entry_id": 9,
             "account_id": 4,
             "booked_on": "2026-03-10",
             "amount": {"amount": 5, "currency": "EUR"},
         },
-        "document": {"id": 3, "provider": "paypal", "merchant_name": "CloudNotes", "line_count": 2},
-        "document_line": {"line_no": 2, "description": "Pro plan"},
     }
     page = EntryPageOut.model_validate({"entries": [row], "total": 1, "limit": 100, "offset": 0})
     assert page.model_dump(mode="json")["entries"] == [row]

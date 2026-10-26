@@ -22,6 +22,7 @@ DAY = date(2026, 2, 10)
 def source(conn: Connection, account_id: int, **cols: Any) -> int:
     """An imported source transaction (columns override the defaults)."""
     values: dict[str, Any] = {
+        "origin": "import",
         "importer": "test",
         "import_run_id": make_run(conn, account_id),
         "account_id": account_id,

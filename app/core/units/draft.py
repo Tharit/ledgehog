@@ -20,15 +20,6 @@ preview shows is accepted), ``pick`` (the stored entry the user chose; a pick is
 ``counter_leg`` (create the other side on the leg's unsynced counter-account: a new source transaction the
 client names with a temporary id, and for a cross-currency leg the amount received) or ``reresolve`` (drop
 the stored pair and let the passes decide again).
-
-A transaction's document is drafted as a `DocumentDraft` on its ORIGINAL entry (spec §5.8, §6; the original
-carries the link, I31/I35): ``keep`` (the link as it stands; a commit decides "none" only where nothing is
-suggested or awaited), ``pick`` (a document, with the version the client saw), ``none`` (the user's decision
-that there is no document), ``reresolve`` (drop the decision and the link: matching decides afresh) and
-``split_along_lines`` (a pick of `document_id` AND the split along its lines, replacing an existing split).
-A new entry made from a line of the document carries its `DocumentLineRef` (the client echoes it from the
-preview). While a link of a document is not yet the user's the draft proposes the split along the lines for
-every carrier of it (`doc_draft`); the user commits it or edits it like any split, there is no decline.
 """
 
 from __future__ import annotations
@@ -42,7 +33,7 @@ from app.core.plugins.classifier import Field
 Mode = Literal["keep", "fixed", "reresolve"]
 MODES: Final[tuple[Mode, ...]] = ("keep", "fixed", "reresolve")
 # the proposal passes a client may name as the basis of a value it accepted (spec §5.9)
-PROPOSAL_PASSES: Final = frozenset({"history", "llm", "matcher_proposal"})
+PROPOSAL_PASSES: Final = frozenset({"history", "llm"})
 DERIVED_FIELDS: Final[tuple[Field, ...]] = ("type", "payee", "category", "counter_account")
 TYPES: Final = ("flow", "transfer")
 
@@ -83,7 +74,7 @@ class ShownBasis:
         if self.pass_name not in PROPOSAL_PASSES:
             raise DraftError(
                 "invalid_basis",
-                "a basis may name only a proposal pass: history, llm or matcher_proposal",
+                "a basis may name only a proposal pass: history or llm",
             )
 
 
@@ -161,57 +152,6 @@ class PairingDraft:
 
 KEEP_PAIRING: Final = PairingDraft()
 
-DocumentMode = Literal["keep", "pick", "none", "reresolve", "split_along_lines"]
-DOCUMENT_MODES: Final[tuple[DocumentMode, ...]] = ("keep", "pick", "none", "reresolve", "split_along_lines")
-
-
-def _positive(n: object) -> bool:
-    return isinstance(n, int) and not isinstance(n, bool) and n > 0
-
-
-@dataclass(frozen=True, slots=True)
-class DocumentDraft:
-    """What the draft says of a transaction's document (spec §5.8), on its original entry.
-
-    ``pick`` and ``split_along_lines`` name a stored document (`document_id`) and the `document_version` the
-    client saw: a commit is refused if the document has moved on.
-    """
-
-    mode: DocumentMode = "keep"
-    document_id: int | None = None
-    document_version: int | None = None
-
-    def __post_init__(self) -> None:
-        if self.mode not in DOCUMENT_MODES:
-            raise DraftError("invalid_document", f"unknown document mode {self.mode!r}", field="document")
-        if self.mode in ("pick", "split_along_lines"):
-            if not _positive(self.document_id) or not _positive(self.document_version):
-                raise DraftError(
-                    "invalid_document",
-                    "a pick names a stored document (a positive id) and the version seen",
-                    field="document",
-                )
-        elif self.document_id is not None or self.document_version is not None:
-            raise DraftError("invalid_document", "only a pick names a document", field="document")
-
-
-KEEP_DOCUMENT: Final = DocumentDraft()
-
-
-@dataclass(frozen=True, slots=True)
-class DocumentLineRef:
-    """The line of a document a new entry was made from (the preview's `document_line`, echoed back): an
-    entry whose document is no longer the one its line belongs to is dropped from the draft (spec §6)."""
-
-    document_id: int
-    line_no: int
-
-    def __post_init__(self) -> None:
-        if not _positive(self.document_id) or not _positive(self.line_no):
-            raise DraftError(
-                "invalid_document_line", "a document line is an id and a line number", field="document_line"
-            )
-
 
 @dataclass(frozen=True, slots=True)
 class DraftEntry:
@@ -234,11 +174,6 @@ class DraftEntry:
     category: FieldDraft = KEEP
     counter_account: FieldDraft = KEEP
     pairing: PairingDraft = KEEP_PAIRING
-    document: DocumentDraft = KEEP_DOCUMENT
-    document_line: DocumentLineRef | None = None
-    # an original entry echoed with an explicit empty `document_line`: the user's decision that its carrier
-    # stays unsplit, without a line (spec §5.9: empty is a value)
-    unsplit: bool = False
     source_entry_id: int | None = None
     tags_add: tuple[int, ...] = ()
     tags_remove: tuple[int, ...] = ()
@@ -273,27 +208,6 @@ class DraftEntry:
             raise DraftError("invalid_pairing", "a new entry is a flow: it has no partner", entry_id=self.id)
         if self.is_new and self.amount is None:
             raise DraftError("amount_missing", "a new entry carries its amount", entry_id=self.id)
-        if self.is_new and self.document.mode != "keep":
-            raise DraftError(
-                "document_not_original",
-                "only a transaction's original entry has a document",
-                entry_id=self.id,
-                field="document",
-            )
-        if self.document_line is not None and not self.is_new:
-            raise DraftError(
-                "invalid_document_line",
-                "only a new entry is made from a document line",
-                entry_id=self.id,
-                field="document_line",
-            )
-        if self.unsplit and self.is_new:
-            raise DraftError(
-                "invalid_document_line",
-                "only an original entry is left without a document line",
-                entry_id=self.id,
-                field="document_line",
-            )
         for tag in (*self.tags_add, *self.tags_remove):
             if not isinstance(tag, int) or isinstance(tag, bool) or tag <= 0:
                 raise DraftError("invalid_tag", "a tag is an id", entry_id=self.id, field="tags")

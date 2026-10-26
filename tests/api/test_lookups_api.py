@@ -57,18 +57,12 @@ def test_payees_are_ordered_by_name_with_presentation_only(anna: TestClient, api
         b = seed.payee(conn, "Bakery")
         a = seed.payee(conn, "Aldi")
         conn.execute(
-            text(
-                "UPDATE payee SET icon = 'cart', color = 'blue', note = 'n', document_provider = 'amazon'"
-                " WHERE id = :i"
-            ),
+            text("UPDATE payee SET icon = 'cart', color = 'blue', note = 'n' WHERE id = :i"),
             {"i": a},
         )
     assert anna.get("/api/ledger/payees").json() == {
         "payees": [
-            {
-                "id": a, "name": "Aldi", "icon": "cart", "color": "blue", "note": "n",
-                "document_provider": "amazon",
-            },
-            {"id": b, "name": "Bakery", "icon": None, "color": None, "note": None, "document_provider": None},
+            {"id": a, "name": "Aldi", "icon": "cart", "color": "blue", "note": "n"},
+            {"id": b, "name": "Bakery", "icon": None, "color": None, "note": None},
         ]
     }  # fmt: skip

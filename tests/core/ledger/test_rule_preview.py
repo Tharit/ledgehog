@@ -392,7 +392,13 @@ def test_every_row_list_carries_the_entry_source_without_extra_queries(
         )
         # a user-authored row: no importer, run or format; it has only a purpose
         user = rs.new_entry(
-            conn, w["acct"], importer=None, import_run_id=None, source_format=None, purpose="REWE Einkauf"
+            conn,
+            w["acct"],
+            origin="user",
+            importer=None,
+            import_run_id=None,
+            source_format=None,
+            purpose="REWE Einkauf",
         )
         lost = rs.rule(conn, "old", "category", w["fun"], conditions=(rs.name_is("REWE"),))
         conn.execute(
@@ -459,77 +465,3 @@ def test_the_preview_reads_the_sources_in_one_batch(isolated_engine: Engine, w: 
         for _ in range(12):
             rs.new_entry(conn, w["acct"], counterparty_name="REWE", purpose="x")
     assert statements_for_preview() == few
-
-
-# ---- the document fields (spec §5.9) -------------------------------------------------------------------
-
-
-def _documented(conn: Any, acct: int, merchant: str, line_text: str | None, **cols: Any) -> int:
-    """An unconfirmed entry whose transaction carries a document of `merchant`; `line_text` is its line."""
-    doc = int(
-        conn.execute(
-            text(
-                "INSERT INTO external_document (provider, external_id, occurred_on, total, currency,"
-                " merchant_name, raw) VALUES ('paypal', :x, :d, -1000, 'EUR', :m, '{}') RETURNING id"
-            ),
-            {"x": f"{merchant}-{line_text}-{cols.get('amount', 0)}", "d": date(2026, 3, 10), "m": merchant},
-        ).scalar_one()
-    )
-    line_id = None
-    if line_text is not None:
-        line_id = conn.execute(
-            text(
-                "INSERT INTO external_document_line (document_id, line_no, description, amount)"
-                " VALUES (:d, 1, :t, -1000) RETURNING id"
-            ),
-            {"d": doc, "t": line_text},
-        ).scalar_one()
-    entry = rs.new_entry(conn, acct, counterparty_name="PAYPAL *X", **cols)
-    conn.execute(
-        text("UPDATE ledger_entry SET document_id = :d, document_line_id = :l WHERE id = :e"),
-        {"d": doc, "l": line_id, "e": entry},
-    )
-    return entry
-
-
-def test_the_preview_evaluates_the_document_fields_through_each_entrys_document_and_line(
-    isolated_engine: Engine, w: dict[str, Any]
-):
-    with isolated_engine.begin() as conn:
-        with_line = _documented(conn, w["acct"], "CloudNotes", "Pro plan", amount=-1000)
-        no_line = _documented(conn, w["acct"], "CloudNotes", None, amount=-1001)
-        other = _documented(conn, w["acct"], "Somebody", "Pro plan", amount=-1002)
-        plain = rs.new_entry(conn, w["acct"], counterparty_name="PAYPAL *X")  # no document at all
-    merchant = cat_draft(w, conditions=(rs.cond("document_merchant", "equals", "cloudnotes"),))
-    p = create_rule(isolated_engine, merchant, dry_run=True).preview
-    assert ids(p.matches.rows) == {with_line, no_line}
-    both = cat_draft(
-        w,
-        conditions=(
-            rs.cond("document_merchant", "equals", "cloudnotes"),
-            rs.cond("document_line", "contains", "pro"),
-        ),
-    )
-    p = create_rule(isolated_engine, both, dry_run=True).preview
-    assert ids(p.matches.rows) == {with_line}  # the entry without a line fails the line condition
-    line_only = cat_draft(w, conditions=(rs.cond("document_line", "starts_with", "Pro"),))
-    p = create_rule(isolated_engine, line_only, dry_run=True).preview
-    assert ids(p.matches.rows) == {with_line, other} and plain not in ids(p.matches.rows)
-    # the source text is the bank's: the descriptor rule matches all four, documented or not
-    descriptor = cat_draft(w, conditions=(rs.cond("counterparty_name", "starts_with", "PAYPAL *"),))
-    p = create_rule(isolated_engine, descriptor, dry_run=True).preview
-    assert ids(p.matches.rows) == {with_line, no_line, other, plain}
-
-
-def test_a_rule_on_the_document_is_accepted_by_the_write_and_refused_when_blank(
-    isolated_engine: Engine, w: dict[str, Any]
-):
-    from app.core.ledger.rules import InvalidRule
-
-    draft = payee_draft(w, conditions=(rs.cond("document_merchant", "contains", "cloud"),))
-    first = create_rule(isolated_engine, draft, dry_run=True)
-    ok = create_rule(isolated_engine, draft, expected_count=first.preview.matches.total)
-    assert ok.rule.conditions[0].field == "document_merchant"
-    blank = cat_draft(w, name="blank", conditions=(rs.cond("document_line", "equals", " "),))
-    with pytest.raises(InvalidRule):
-        create_rule(isolated_engine, blank, dry_run=True)

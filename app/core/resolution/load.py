@@ -13,7 +13,7 @@ from sqlalchemy import Connection, text
 from sqlalchemy.sql.elements import TextClause
 
 from app.core.domain.source import SourceFields
-from app.core.plugins.classifier import AccountFact, Condition, EntryInput, LineAnswer, RuleSpec
+from app.core.plugins.classifier import AccountFact, Condition, EntryInput, RuleSpec
 from app.core.resolution.confirmed import units_binds, units_sql
 
 
@@ -70,9 +70,6 @@ class UnconfirmedEntry:
     unit_key: int = 0  # the unit it belongs to (confirmed.py: source transaction, or the pair's lower one)
     description: str | None = None
     source: SourceFields | None = None  # never the raw record
-    # the document its TRANSACTION carries (the original entry holds the link, a split's other entries share
-    # it): `input` carries its merchant and the entry's own line (spec §5.8, §5.9)
-    document_id: int | None = None
 
 
 def _movements(where: str, *, of_entries: bool = False) -> TextClause:
@@ -81,25 +78,16 @@ def _movements(where: str, *, of_entries: bool = False) -> TextClause:
     WITH units AS ({units_sql(of_entries=of_entries)})
     SELECT e.id, e.account_id, e.currency, e.booked_on, e.amount, e.description,
            u.unit_ok AS confirmed, u.unit_key AS unit_key,
-           (s.importer IS NULL) AS user_authored,
+           (s.origin = 'user') AS user_authored,
            s.counterparty_ref, s.counterparty_name, s.purpose, s.booking_text, s.mandate_ref,
            s.instructed_currency, s.counterparty_bic, s.end_to_end_id, s.instructed_amount,
            s.source_format, s.amount AS source_amount, s.currency AS source_currency,
            e.type, e.payee_id, e.category_id, e.counter_account_id, e.derivation,
            e.counterpart_entry_id AS counterpart_id, (e.counterpart_entry_id IS NOT NULL) AS paired,
-           (u.first_id = e.id) AS original,
-           vd.document_id AS document_id, d.merchant_name AS doc_merchant,
-           el.description AS doc_line, el.category_id AS line_category, el.category_key AS line_key,
-           (SELECT c.derivation -> 'document' ->> 'pass' FROM ledger_entry AS c
-             WHERE c.source_transaction_id = e.source_transaction_id
-               AND c.document_id IS NOT NULL) AS doc_pass
+           (u.first_id = e.id) AS original
       FROM units AS u
       JOIN ledger_entry AS e ON e.id = u.id
       JOIN source_transaction AS s ON s.id = e.source_transaction_id
-      LEFT JOIN v_entry_document AS vd ON vd.ledger_entry_id = e.id
-      LEFT JOIN external_document AS d ON d.id = vd.document_id
-      LEFT JOIN external_document_line AS el
-        ON el.id = e.document_line_id AND el.document_id = vd.document_id
      {where}
      ORDER BY e.booked_on, e.id
     """
@@ -112,13 +100,9 @@ _ALL_MOVEMENTS = _movements("")
 _OF_ENTRIES = _movements("", of_entries=True)
 
 
-def load_unconfirmed(conn: Connection, *, with_document: bool = True) -> list[UnconfirmedEntry]:
-    """The movement entries of every unconfirmed unit (I20: a confirmed unit is never read here).
-
-    The input of an entry whose transaction carries a document has the document's merchant, and the entry's
-    own line where that line belongs to the carrier's document (spec §5.8), unless `with_document` is False:
-    the input without any document, for a caller that drops the link."""
-    return _load(conn, _UNCONFIRMED, with_document=with_document)
+def load_unconfirmed(conn: Connection) -> list[UnconfirmedEntry]:
+    """The movement entries of every unconfirmed unit (I20: a confirmed unit is never read here)."""
+    return _load(conn, _UNCONFIRMED)
 
 
 def load_movements(conn: Connection) -> list[UnconfirmedEntry]:
@@ -133,25 +117,11 @@ def load_units_of(conn: Connection, entry_ids: Sequence[int]) -> list[Unconfirme
     return _load(conn, _OF_ENTRIES, extra={"ids": list(entry_ids)})
 
 
-def line_answer_of(category_id: int | None, key: Any) -> LineAnswer | None:
-    """The answer stored on a document line (`category_id`, `category_key`), None where it has none: no key,
-    or a key that is not the model's."""
-    if not isinstance(key, Mapping) or key.get("pass") != "llm":
-        return None
-    basis = key.get("basis")
-    return LineAnswer(category_id, dict(basis) if isinstance(basis, Mapping) else {})
-
-
-def _merchant(name: str | None) -> str | None:
-    return name if name is not None and name.strip() else None
-
-
 def _load(
-    conn: Connection, query: TextClause, *, with_document: bool = True, extra: Mapping[str, Any] | None = None
+    conn: Connection, query: TextClause, *, extra: Mapping[str, Any] | None = None
 ) -> list[UnconfirmedEntry]:
     out: list[UnconfirmedEntry] = []
     for r in conn.execute(query, {**units_binds(conn), **(extra or {})}):
-        documented = with_document and r.document_id is not None
         raw = EntryInput(
             entry_id=r.id,
             account_id=r.account_id,
@@ -167,13 +137,6 @@ def _load(
             instructed_currency=r.instructed_currency,
             end_to_end_id=r.end_to_end_id,
             instructed_amount=r.instructed_amount,
-            documented=documented,
-            document_merchant=_merchant(r.doc_merchant) if documented else None,
-            document_line=r.doc_line if documented else None,
-            document_line_answer=line_answer_of(r.line_category, r.line_key)
-            if documented and r.doc_line is not None
-            else None,
-            document_pass=(r.doc_pass or "user") if documented else None,
         )
         out.append(
             UnconfirmedEntry(
@@ -190,7 +153,6 @@ def _load(
                 unit_key=r.unit_key,
                 description=r.description,
                 source=SourceFields.of_row(r),
-                document_id=r.document_id,
             )
         )
     return out

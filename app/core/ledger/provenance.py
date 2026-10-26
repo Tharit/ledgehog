@@ -55,7 +55,7 @@ class Provenance:
 def get_provenance(conn: Connection, source_id: int) -> Provenance | None:
     r = conn.execute(
         text(
-            "SELECT s.id, s.account_id, s.currency, s.importer IS NULL AS authored, s.source_format,"
+            "SELECT s.id, s.account_id, s.currency, s.origin = 'user' AS authored, s.source_format,"
             " s.booked_on, s.value_on, s.amount, s.instructed_amount, s.instructed_currency,"
             " s.counterparty_name, s.counterparty_ref, s.counterparty_bic, s.purpose, s.booking_text,"
             " s.end_to_end_id, s.mandate_ref, s.raw,"

@@ -213,7 +213,6 @@ def test_delete_dry_run_then_real(anna: TestClient, cash: int, api_engine: Engin
         "tagged_entries": 0,
         "tag_memberships": 0,
         "partners_returning_to_review": 0,
-        "freed_documents": 0,
     }
     assert (
         [e["id"] for e in d["removed"]] == [eid] and d["removed_entry_ids"] == [eid] and d["partners"] == []

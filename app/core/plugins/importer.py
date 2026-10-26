@@ -186,7 +186,7 @@ class IncomingDocumentLine:
 @dataclass(frozen=True, slots=True)
 class IncomingDocument:
     """One document (spec §5.5), keyed on `(provider, external_id)`. `total_minor` is signed integer
-    minor units of `currency`, negative for a charge, and never zero."""
+    minor units of `currency`, negative for an order, positive for a refund (a total of 0 books nothing)."""
 
     provider: str
     external_id: str

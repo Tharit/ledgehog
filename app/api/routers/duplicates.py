@@ -169,7 +169,6 @@ class MarkDuplicateOut(BaseModel):
     of: int
     removed_entry_ids: list[int]  # the row's entries, gone through the removal routine
     partner_entry_ids: list[int]  # their transfer partners, unpaired and back in review
-    freed_document_ids: list[int]
     repointed_source_ids: list[int]  # rows that duplicated this one, now duplicating `of`
     derived_changes: list[DerivedChangeOut]  # accounts whose opening, reconciliations or valuations moved
     versions: list[EntryVersionOut]  # what a real run must carry in `expected_versions`
@@ -230,7 +229,6 @@ def mark_source_duplicate(
         of=body.of,
         removed_entry_ids=list(done.affected.removed_entry_ids),
         partner_entry_ids=partner_ids,
-        freed_document_ids=list(done.affected.freed_document_ids),
         repointed_source_ids=list(done.repointed_source_ids),
         derived_changes=[
             DerivedChangeOut(

@@ -10,13 +10,9 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import date
 from typing import Any, Literal
 
-from sqlalchemy import Engine, text
-
 from app.core.plugins.importer import FileImporter
-from app.core.resolution.confirmed import units_binds, units_sql
 
 
 @dataclass(frozen=True)
@@ -42,17 +38,3 @@ def describe(name: str, importer: object) -> CatalogEntry:
 def catalog(importers: Mapping[str, object]) -> list[CatalogEntry]:
     """Every registered importer, by name."""
     return [describe(name, importers[name]) for name in sorted(importers)]
-
-
-def oldest_unreviewed_date(engine: Engine) -> date | None:
-    """The booking date of the oldest unconfirmed movement entry, None where there is none: what a
-    document importer's start date is prefilled with (spec §5.5, architecture §4.1)."""
-    with engine.connect() as conn:
-        found: date | None = conn.execute(
-            text(
-                f"SELECT min(e.booked_on) FROM ({units_sql()}) AS u"  # noqa: S608
-                " JOIN ledger_entry AS e ON e.id = u.id WHERE NOT u.unit_ok"
-            ),
-            units_binds(conn),
-        ).scalar_one()
-    return found
