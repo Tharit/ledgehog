@@ -3772,7 +3772,10 @@ partly supersedes D63, D97, D131, D142, D152, D166, D168, D172, D177, D178, D181
   question on splitting during settling.
 - **Each entry has its own source text** (`ledger_entry.source_text`): the text the entry's source gives it, set by
   whatever creates the entry and never editable. A booking writes each line's text there; classification reads it
-  without knowing bookings — a rule condition, history's key 5, the model's payload. Re-derivation matches a
+  without knowing bookings — a rule condition and the model's payload. Booking entries take no part in history:
+  their source fields are shared by every entry, item titles rarely repeat, and a transfer booking's vote would
+  count its leg's twice. Rejected: *a history key on the source text* (exact titles rarely recur; tokens over them
+  are noise ahead of the model). Re-derivation matches a
   booking's entries to the lines by position, inside the booking layer. A booking entry is a flow under a standing
   key and is never a transfer offer or candidate. Rejected: *a line reference on the entry* (`source_line`:
   classification would depend on the booking layer); *the description as input* (editable inputs would reset

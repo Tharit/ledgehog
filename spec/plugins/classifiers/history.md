@@ -12,13 +12,13 @@ is counted, and the parameters.
 
 ## 1. Votes
 
-A **vote** is a confirmed entry with a source transaction that is not a booking
-(`spec.md` I19; a booking follows its source, whose own decision is the vote,
-§5.8), booked within the **lookback** of the entry being resolved, and not in the unit
-being re-resolved (`spec.md` §5.9). An entry with a source text votes only
-for keys 3 and 5 (§2), and only an entry with one votes for key 5. Each
-entry is one vote; the entries of a split vote separately. The plugin asks core's history source for the votes
-matching a key value and never reads the database itself.
+A **vote** is a confirmed entry with a source transaction (`spec.md` I19)
+that is not a booking, booked within the **lookback** of the entry being
+resolved, and not in the unit being re-resolved (`spec.md` §5.9). **Booking
+entries take no part in history** (`spec.md` §5.8): they neither vote nor are
+asked. Each entry is one vote; the entries of a split vote separately. The
+plugin asks core's history source for the votes matching a key value and
+never reads the database itself.
 
 The lookback is symmetric — confirmed entries booked within it on either side
 of the entry's `booked_on` — so a backfilled year learns from the
@@ -40,16 +40,8 @@ only) unless said otherwise.
    **3 characters with no digit**. A vote matches when the Jaccard similarity of
    the two token sets is at least **0.5**. An entry without tokens skips the
    key.
-5. **`source_text`** — canonical equality of the entry's source text
-   (`spec.md` §5.9): an order's item, say, booked as an entry of its own; for
-   the payee and the category (such an entry's type is fixed). For an entry
-   that has a source text it is asked first, then key 3; such an entry is
-   neither asked nor counted on keys 1, 2 and 4. An entry without a source
-   text never sees it.
-
 A key whose input the entry lacks — no `counterparty_ref`, no name — is
-skipped. Keys 1, 2 and 4 read the raw source fields on both sides and never
-see an entry with a source text; key 5 reads the source text only.
+skipped. All keys read the raw source fields on both sides.
 
 ## 3. What is counted, per field
 
@@ -65,8 +57,7 @@ strict majority wins (`spec.md` §5.9).
   flow counts. A vote without a payee votes for *no payee*, which can win: an empty result,
   which ends the search and stores nothing (`spec.md` §5.9) — payees are optional (`spec.md` §3.6), so most matches carrying
   none is evidence. Confirmed flows always carry a category.
-  Key 3 applies to the category only, and only once the payee is resolved;
-  for an entry with a source text it is tried after key 5.
+  Key 3 applies to the category only, and only once the payee is resolved.
 
 *Of how many* is the number of votes counted for that field under that key,
 after the filters above — the matches of `spec.md` §5.9.
@@ -79,7 +70,7 @@ after the filters above — the matches of `spec.md` §5.9.
 ```
 
 `matched_on` is one of `counterparty_ref`, `counterparty_name+booking_text`,
-`payee`, `tokens`, `source_text`; `since` is the earliest booking date among
+`payee`, `tokens`; `since` is the earliest booking date among
 the votes counted. A counter-account basis adds the proposed `account_id`, as
 in `spec.md` §4.
 
@@ -95,9 +86,7 @@ in `spec.md` §4.
 A stop list for key 4 (`gmbh`, `sagt`, `danke`, city names) is the expected
 first refinement once real purpose lines are seen.
 
-**Key 5 is exact on purpose.** It captures reorders (the same capsules, the
-same filter) with certainty and misses a reworded title safely. Similarity
-over source text stays out: titles rarely repeat, and shared filler words
-would propose on weak evidence ahead of the model. Whether key 3 after it
-proposes a mixed payee's majority category for every new item (an Amazon
-payee on a clearance account) is to be watched in the first month.
+**No key on item texts.** Booking entries — an order's items — stay out of
+history (§1): item titles rarely repeat exactly, and tokens over them are
+mostly noise that would propose on weak evidence ahead of the model. Rules on
+the source text and the model classify them.

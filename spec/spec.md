@@ -2200,10 +2200,12 @@ example in view.
 #### Pass 2 — history
 
 Reads past entries joined to their source transactions, so every source field
-of every past case is available. An entry with a source text is neither asked
-nor counted on the keys 1, 2 and 4: its source row's fields are shared by
-every entry of the source and describe none of them. History
-keys on source signals, raw on both sides, and on the source text. **It learns only from confirmed entries with
+of every past case is available. **Booking entries take no part in history**
+(§5.8): they neither vote nor are asked. A document booking's entries share
+one source row, whose fields describe none of them, and item titles rarely
+repeat; a transfer booking follows its leg, whose own decision is the vote.
+Rules and the model classify booking entries. History keys on source
+signals, raw on both sides. **It learns only from confirmed entries with
 a source transaction** (I19) — confirmed by a human, or standing — because no
 other entry carries the source signals it keys on. A user-authored row brings
 only its purpose among the bank's fields, so of the keys on source fields only
@@ -2227,10 +2229,7 @@ outputs. Keys, most specific first:
 3. `payee_id`, where one has resolved — for the category only, since the type
    and counter-account are resolved before the payee; it pools evidence across
    a curated merchant's varying descriptors;
-4. normalised tokens of `counterparty_name` and `purpose`;
-5. the entry's source text (canonicalised as in §5.2), for an entry that has
-   one, for the payee and the category; for such an entry it is tried before
-   key 3, as the more specific. Only such entries vote for it.
+4. normalised tokens of `counterparty_name` and `purpose`.
 
 The booking text is never a key on its own: a bank's booking texts are
 categories of payment ("Lastschrift", "Dauerauftrag"), shared by unrelated
