@@ -111,9 +111,10 @@ def resolve_afresh_step(conn: Connection, entry_ids: Sequence[int]) -> StepOutco
         if diff(current, new) or _stale_keys(row, current):
             rewrites[entry_id] = _rewrite(row, new)
     outcome = write_rewrites(conn, rewrites)
-    if rewrites and current_model_queue() is not None:
-        # step 1 has listed this round's entries already and a list is replaced as a whole: list them again
-        # with the booking entries just resolved, as stored now
+    if current_model_queue() is not None:
+        # step 1 listed this round's entries before these booking entries existed (or had their text) and a
+        # list is replaced as a whole: list them again with the booking entries resolved, as stored now, even
+        # when resolving wrote nothing (a new entry is already as resolution leaves it)
         _list_for_model(load_unconfirmed(conn), {})
     return outcome
 
