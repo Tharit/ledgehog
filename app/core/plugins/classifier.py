@@ -30,14 +30,23 @@ EMPTY = "none"
 STANDING_PASSES = frozenset({"own_account", "rule", "matcher_decision", "booking", "user"})
 
 # the history keys of spec §5.9 / classifiers/history.md, in order. The booking text is never a key on its
-# own; it only refines key 2. (Key 5, the entry's source text, is added with its use.)
-HistoryKey = Literal["counterparty_ref", "counterparty_name", "payee", "tokens"]
+# own; it only refines key 2. Key 5 is the entry's own source text (an entry with one is asked on keys 3 and 5
+# only, tried 5 before 3).
+HistoryKey = Literal["counterparty_ref", "counterparty_name", "payee", "tokens", "source_text"]
 HISTORY_KEYS: tuple[HistoryKey, ...] = (
     "counterparty_ref",
     "counterparty_name",
     "payee",
     "tokens",
 )
+# an entry with a source text is asked these keys only, in this order (key 5 before key 3), and only for the
+# payee and the category (its type is fixed); it is neither asked nor counted on keys 1, 2 and 4
+SOURCE_TEXT_KEYS: tuple[HistoryKey, ...] = ("source_text", "payee")
+
+
+def has_source_text(source_text: str | None) -> bool:
+    """Whether an entry (or a vote) has a source text: the one test, blank is none."""
+    return source_text is not None and bool(source_text.strip())
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,6 +75,11 @@ class EntryInput:
     # the kind of source its booking was made from (`document` or `transfer`), None for an entry that is not a
     # booking's: a booking decides the type first, under the key `booking` (spec §5.9)
     booking: str | None = None
+    # the entry's own source text (spec §5.9): the text its source gives it (a booking's line description),
+    # None for most entries; resolution reads it knowing nothing of where it came from
+    source_text: str | None = None
+    # the name of the entry's account; only the model's payload reads it, of an entry with a source text
+    account_name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,6 +101,8 @@ ConditionField = Literal[
     "purpose",
     "booking_text",
     "mandate_ref",
+    "source_text",
+    "account",
     "payee",
 ]
 ConditionOp = Literal["equals", "starts_with", "contains", "regex", "is"]
@@ -96,11 +112,16 @@ CONDITION_FIELDS: tuple[ConditionField, ...] = (
     "purpose",
     "booking_text",
     "mandate_ref",
+    "source_text",
+    "account",
     "payee",
 )
 CONDITION_OPS: tuple[ConditionOp, ...] = ("equals", "starts_with", "contains", "regex", "is")
-# `payee` (the id of the payee resolved so far, as a digit string) takes `is` only; the others the rest
+# `payee` (the id of the payee resolved so far, as a digit string) and `account` (the id of the entry's own
+# account) take `is` only; the others the rest
 PAYEE_FIELD: ConditionField = "payee"
+ACCOUNT_FIELD: ConditionField = "account"
+ID_FIELDS: tuple[ConditionField, ...] = (PAYEE_FIELD, ACCOUNT_FIELD)
 TEXT_OPS: tuple[ConditionOp, ...] = ("equals", "starts_with", "contains", "regex")
 
 
@@ -174,6 +195,8 @@ class Vote:
     purpose: str | None = None
     booking_text: str | None = None
     mandate_ref: str | None = None
+    # the voter's own source text (spec §5.9): only such a vote counts for key 5
+    source_text: str | None = None
 
 
 class HistorySource(Protocol):

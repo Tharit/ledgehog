@@ -6,13 +6,13 @@ SQLAlchemy Core, set-based: each loader is one query per settle. Nothing here wr
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, cast
 
 from sqlalchemy import Connection, text
 from sqlalchemy.sql.elements import TextClause
 
-from app.core.domain.source import SourceFields
+from app.core.domain.source import BookingRef, SourceFields
 from app.core.plugins.classifier import AccountFact, Condition, EntryInput, RuleSpec
 from app.core.resolution.confirmed import units_binds, units_sql
 
@@ -88,9 +88,12 @@ def _movements(where: str, *, of_entries: bool = False) -> TextClause:
         f"""
     WITH units AS ({units_sql(of_entries=of_entries)})
     SELECT e.id, e.account_id, e.currency, e.booked_on, e.amount, e.description,
+           e.source_text, a.name AS account_name,
            u.unit_ok AS confirmed, u.unit_key AS unit_key,
            (s.origin = 'user') AS user_authored,
            CASE WHEN s.origin = 'booking' THEN split_part(s.source_id, ':', 1) END AS booking_source,
+           CASE WHEN s.origin = 'booking'
+                THEN CAST(split_part(s.source_id, ':', 2) AS bigint) END AS booking_key,
            s.counterparty_ref, s.counterparty_name, s.purpose, s.booking_text, s.mandate_ref,
            s.instructed_currency, s.counterparty_bic, s.end_to_end_id, s.instructed_amount,
            s.source_format, s.amount AS source_amount, s.currency AS source_currency,
@@ -100,6 +103,7 @@ def _movements(where: str, *, of_entries: bool = False) -> TextClause:
       FROM units AS u
       JOIN ledger_entry AS e ON e.id = u.id
       JOIN source_transaction AS s ON s.id = e.source_transaction_id
+      JOIN account AS a ON a.id = e.account_id
      {where}
      ORDER BY e.booked_on, e.id
     """
@@ -129,6 +133,14 @@ def load_units_of(conn: Connection, entry_ids: Sequence[int]) -> list[Unconfirme
     return _load(conn, _OF_ENTRIES, extra={"ids": list(entry_ids)})
 
 
+def _source_of(r: Any) -> SourceFields:
+    """The row's source; a booking's carries its kind and id (the rest is filled where it is shown)."""
+    fields = SourceFields.of_row(r)
+    if r.booking_source is None or r.booking_key is None:
+        return fields
+    return replace(fields, booking=BookingRef(r.booking_source, int(r.booking_key)))
+
+
 def _load(
     conn: Connection, query: TextClause, *, extra: Mapping[str, Any] | None = None
 ) -> list[UnconfirmedEntry]:
@@ -150,6 +162,8 @@ def _load(
             end_to_end_id=r.end_to_end_id,
             instructed_amount=r.instructed_amount,
             booking=r.booking_source,
+            source_text=r.source_text,
+            account_name=r.account_name,
         )
         out.append(
             UnconfirmedEntry(
@@ -165,7 +179,7 @@ def _load(
                 confirmed=r.confirmed,
                 unit_key=r.unit_key,
                 description=r.description,
-                source=SourceFields.of_row(r),
+                source=_source_of(r),
             )
         )
     return out

@@ -185,6 +185,8 @@ def _entry_input(row: _Row) -> EntryInput:
         end_to_end_id=s.end_to_end_id,
         instructed_amount=s.instructed_amount,
         booking=s.booking,
+        source_text=row.stored.source_text if row.stored is not None else None,
+        account_name=row.stored.account_name if row.stored is not None else None,
     )
 
 
@@ -1441,6 +1443,7 @@ def plan_unit(stored: StoredUnit, draft: UnitDraft, world: World) -> Plan:
             booking=r.src.booking,
             booking_key=r.src.booking_key,
             booking_for=r.booking_for,
+            source_text=r.stored.source_text if r.stored is not None else None,
         )
         for r in ordered
     )

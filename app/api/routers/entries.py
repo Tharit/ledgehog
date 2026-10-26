@@ -42,6 +42,18 @@ EntryType = Literal["flow", "transfer", "opening", "valuation", "reconciliation"
 ReviewFlag = Literal["unconfirmed", "unclassified", "waiting", "unmatched_transfer"]
 
 
+class BookingOut(BaseModel):
+    """A booking's source, read only for navigation (the work panel's "Booked from ...", "Open document").
+    `document`: the document's id, `provider` and `external_id`; `transfer`: the charge's entry id and
+    its `account_id`."""
+
+    kind: Literal["document", "transfer"]
+    id: int  # the document's id, or the charge's entry id
+    provider: str | None  # document only
+    external_id: str | None  # document only
+    account_id: int | None  # transfer only: the charge's account
+
+
 class SourceTransactionOut(BaseModel):
     """An entry's source transaction as the UI and rules read it; never the raw record or the hash."""
 
@@ -55,6 +67,7 @@ class SourceTransactionOut(BaseModel):
     mandate_ref: str | None
     instructed_amount: Money | None  # the instructed amount with its currency, where the source reports one
     source_format: str | None
+    booking: BookingOut | None  # a booking's source: what it was booked from; null for any other source
 
     @staticmethod
     def of(src: SourceFields | None) -> SourceTransactionOut | None:
@@ -76,6 +89,15 @@ class SourceTransactionOut(BaseModel):
             mandate_ref=src.mandate_ref,
             instructed_amount=instructed,
             source_format=src.source_format,
+            booking=None
+            if src.booking is None
+            else BookingOut(
+                kind=cast(Literal["document", "transfer"], src.booking.kind),
+                id=src.booking.id,
+                provider=src.booking.provider,
+                external_id=src.booking.external_id,
+                account_id=src.booking.account_id,
+            ),
         )
 
 
@@ -98,7 +120,8 @@ class EntryOut(BaseModel):
     type: EntryType | None
     description: str | None
     note: str | None
-    display_text: str | None
+    display_text: str | None  # description, else source text, else counterparty name, else purpose
+    source_text: str | None  # the text its source gives the entry (a booking's line); null for most
     payee_id: int | None
     category_id: int | None
     counter_account_id: int | None
@@ -126,6 +149,7 @@ class EntryOut(BaseModel):
             description=row.description,
             note=row.note,
             display_text=row.display_text,
+            source_text=row.source_text,
             payee_id=row.payee_id,
             category_id=row.category_id,
             counter_account_id=row.counter_account_id,

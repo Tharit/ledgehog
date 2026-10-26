@@ -204,9 +204,9 @@ def list_rules(conn: Connection) -> list[RuleRow]:
 
 
 def _canonical(cond: Condition) -> Condition:
-    """A payee condition's id as plain digits (`007` is `7`), so a merge finds it by its text. What
-    is not an id is left for the plugin to refuse."""
-    if cond.field == "payee" and cond.value.isascii() and cond.value.isdigit():
+    """A payee or account condition's id as plain digits (`007` is `7`), so a merge finds it by its text.
+    What is not an id is left for the plugin to refuse."""
+    if cond.field in ("payee", "account") and cond.value.isascii() and cond.value.isdigit():
         return replace(cond, value=str(int(cond.value)))
     return cond
 
@@ -248,7 +248,7 @@ def _exists(conn: Connection, table: str, row_id: int) -> bool:
 
 
 def _check_references(conn: Connection, draft: RuleDraft) -> None:
-    """A target or payee condition that no longer exists is `stale_reference`, naming the field."""
+    """A target, payee or account condition that no longer exists is `stale_reference`, naming the field."""
     assert draft.sets is not None
     field = _TARGET_FIELD[draft.sets]
     target = getattr(draft, field)
@@ -259,6 +259,8 @@ def _check_references(conn: Connection, draft: RuleDraft) -> None:
         # the plugin has validated the value as a positive integer id
         if cond.field == "payee" and not _exists(conn, "payee", int(cond.value)):
             raise StaleReference(f"conditions[{i}].value", "payee", int(cond.value))
+        if cond.field == "account" and not _exists(conn, "account", int(cond.value)):
+            raise StaleReference(f"conditions[{i}].value", "account", int(cond.value))
 
 
 def _duplicate(exc: DBAPIError) -> bool:

@@ -43,6 +43,7 @@ le = table(
     column("counter_account_id"),
     column("description"),
     column("note"),
+    column("source_text"),
     column("review_flags", ARRAY(Text)),
     column("derivation", JSONB),
 )
@@ -147,6 +148,7 @@ def _word(word: str) -> ColumnElement[bool]:
     fields = (
         le.c.description,
         le.c.note,
+        le.c.source_text,
         st.c.counterparty_name,
         st.c.purpose,
         st.c.end_to_end_id,

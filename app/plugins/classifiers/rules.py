@@ -12,8 +12,10 @@ from functools import lru_cache
 
 from app.core.ingest.identity import canonical_text
 from app.core.plugins.classifier import (
+    ACCOUNT_FIELD,
     CONDITION_FIELDS,
     CONDITION_OPS,
+    ID_FIELDS,
     PAYEE_FIELD,
     TEXT_OPS,
     ClassifierContext,
@@ -62,18 +64,20 @@ def validate_rule(rule: RuleSpec) -> None:
             raise RuleError(f"{at}: the field is not one a rule can read", f"{at}.field")
         if cond.op not in CONDITION_OPS:
             raise RuleError(f"{at}: the operator is not one a rule knows", f"{at}.op")
-        if cond.field == PAYEE_FIELD:
-            if rule.sets != "category":
-                raise RuleError(f"{at}: a payee condition is only for category rules", f"{at}.field")
+        if cond.field == PAYEE_FIELD and rule.sets != "category":
+            raise RuleError(f"{at}: a payee condition is only for category rules", f"{at}.field")
+        if cond.field in ID_FIELDS:
             if cond.op != "is":
-                raise RuleError(f"{at}: a payee condition takes the operator `is` only", f"{at}.op")
+                what = "a payee" if cond.field == PAYEE_FIELD else "an account"
+                raise RuleError(f"{at}: {what} condition takes the operator `is` only", f"{at}.op")
         elif cond.op not in TEXT_OPS:
             raise RuleError(f"{at}: the operator is not one this field takes", f"{at}.op")
         if not isinstance(cond.value, str) or not cond.value.strip():
             raise RuleError(f"{at}: the value must not be blank", f"{at}.value")
-        if cond.field == PAYEE_FIELD:
-            if _payee_id(cond) is None:
-                raise RuleError(f"{at}: a payee condition's value is a payee id", f"{at}.value")
+        if cond.field in ID_FIELDS:
+            if _id_of(cond) is None:
+                what = "a payee" if cond.field == PAYEE_FIELD else "an account"
+                raise RuleError(f"{at}: {what} condition's value is {what} id", f"{at}.value")
             continue
         if cond.op == "regex":
             if len(cond.value) > MAX_PATTERN_LENGTH:
@@ -88,8 +92,8 @@ def validate_rule(rule: RuleSpec) -> None:
                 raise RuleError(f"{at}: the regex does not compile{where}", f"{at}.value") from exc
 
 
-def _payee_id(cond: Condition) -> int | None:
-    """The id a `payee` condition names: a digit string of a positive integer, else None."""
+def _id_of(cond: Condition) -> int | None:
+    """The id a `payee` or `account` condition names: a digit string of a positive integer, else None."""
     if not _DIGITS.fullmatch(cond.value):
         return None
     wanted = int(cond.value)
@@ -119,8 +123,12 @@ def _wanted(field: str, value: str) -> str:
 def _holds(cond: Condition, entry: EntryInput, ctx_payee_id: int | None) -> bool:
     if cond.field == PAYEE_FIELD:
         # judged on the payee resolved so far; an id that no payee has any more never equals it
-        wanted = _payee_id(cond)
+        wanted = _id_of(cond)
         return wanted is not None and wanted == ctx_payee_id
+    if cond.field == ACCOUNT_FIELD:
+        # judged on the entry's own account; the id of a deleted account is no entry's, so it never matches
+        wanted = _id_of(cond)
+        return wanted is not None and wanted == entry.account_id
     raw: str | None = getattr(entry, cond.field)
     if raw is None or not raw.strip():
         return False  # a condition on a field the entry lacks fails

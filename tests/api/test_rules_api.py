@@ -135,7 +135,7 @@ def test_create_returns_the_rule_the_preview_and_the_settle_result(
         "amount": {"amount": -1000, "currency": "EUR"},
         "counterparty_name": "REWE", "counterparty_ref": None, "counterparty_bic": None, "purpose": None,
         "booking_text": None, "end_to_end_id": None, "mandate_ref": None, "instructed_amount": None,
-        "source_format": "csv",
+        "source_format": "csv", "booking": None,
     }  # fmt: skip
     assert "counterparty_name" not in row  # no flat copy beside `source`
     r = anna.post(RULES, json=body(w, name="  Rewe  ", priority=7, expected_count=1))
@@ -324,6 +324,11 @@ def test_stale_references_are_409_stale_reference_naming_the_field(anna: TestCli
             "conditions[1].value",
             "payee",
         ),
+        (
+            {"conditions": [c("purpose", "contains", "x"), c("account", "is", "999999")]},
+            "conditions[1].value",
+            "account",
+        ),
     ):
         err = assert_envelope(anna.post(RULES, json=body(w, dry_run=True, **kw)), 409, "stale_reference")
         assert err["details"] == {"field": field, "entity": entity, "id": 999_999}
@@ -478,3 +483,22 @@ def test_a_deleted_payee_takes_its_rule_so_the_rule_is_gone_not_stale(
     rid = create(anna, w, count=0, sets="payee", category_id=None, payee_id=w["rewe"], name="payee rule")
     assert anna.delete(f"/api/ledger/payees/{w['rewe']}").status_code == 200
     assert_envelope(anna.get(f"{RULES}/{rid}"), 404, "not_found")
+
+
+def test_source_text_and_account_conditions_round_trip_and_an_account_condition_is_checked(
+    anna: TestClient, w: dict[str, int]
+):
+    conditions = [c("source_text", "starts_with", "USB"), c("account", "is", str(w["acct"]))]
+    rule_id = create(anna, w, conditions=conditions)
+    assert anna.get(f"{RULES}/{rule_id}").json()["conditions"] == conditions
+    # any rule may carry an account condition; its operator is `is`; its value an id
+    ok = body(w, name="p", sets="payee", category_id=None, payee_id=w["rewe"], dry_run=True)
+    assert anna.post(RULES, json={**ok, "conditions": [c("account", "is", "007")]}).status_code in (200, 409)
+    err = assert_envelope(
+        anna.post(RULES, json={**ok, "conditions": [c("account", "equals", "1")]}), 422, "invalid_rule"
+    )
+    assert err["details"][0]["location"] == ["body", "conditions[0].op"]
+    err = assert_envelope(
+        anna.post(RULES, json={**ok, "conditions": [c("account", "is", "abc")]}), 422, "invalid_rule"
+    )
+    assert err["details"][0]["location"] == ["body", "conditions[0].value"]

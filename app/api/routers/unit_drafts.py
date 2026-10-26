@@ -442,6 +442,7 @@ class UnitPreviewRowOut(BaseModel):
     amount: Money
     description: str | None
     note: str | None
+    source_text: str | None  # the text its source gives the entry (a booking's line); null for most
     tag_ids: list[int]
     counterpart_entry_id: int | None
     fields: dict[FieldName, UnitFieldOut]
@@ -476,6 +477,7 @@ class UnitPreviewRowOut(BaseModel):
             amount=Money(amount=r.amount, currency=r.currency),
             description=r.description,
             note=r.note,
+            source_text=r.source_text,
             tag_ids=list(r.tag_ids),
             counterpart_entry_id=r.counterpart_entry_id,
             counter_leg_for=r.counter_leg_for,
@@ -514,6 +516,7 @@ class UnitPreviewRowOut(BaseModel):
             amount=Money(amount=s.amount, currency=s.currency),
             description=s.description,
             note=s.note,
+            source_text=s.source_text,
             tag_ids=list(s.tag_ids),
             counterpart_entry_id=s.counterpart_entry_id,
             booking=booking,

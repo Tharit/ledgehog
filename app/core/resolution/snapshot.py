@@ -20,10 +20,10 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any, Literal, cast
 
-from sqlalchemy import Connection, Row, text
+from sqlalchemy import Connection, Row, TextClause, text
 
 from app.core.ingest.identity import canonical_text
-from app.core.plugins.classifier import EntryInput, HistoryKey, Vote
+from app.core.plugins.classifier import EntryInput, HistoryKey, Vote, has_source_text
 from app.core.plugins.text import jaccard, tokens
 from app.core.resolution.confirmed import units_binds, units_sql
 
@@ -33,6 +33,12 @@ LOOKBACK_DAYS = 365
 # history classifier's threshold (classifiers/history.md §2, `JACCARD_MIN`); a test pins them together.
 # Only the rounds after the first use it, to leave alone entries the new votes cannot reach.
 TOKEN_REACH = 0.5
+
+# Whether a booking's entries (origin `booking`, a document's or a transfer's) vote for history at all. They
+# do not: a booking's counterparty and purpose are its own (spec §5.8) and its entries are decided by their
+# source or by what the user confirms, so they would teach other entries nothing they could rely on. One
+# switch, read when the votes are loaded.
+BOOKING_ENTRIES_VOTE = False
 
 _SortKey = tuple[int, int]  # (booked_on ordinal, entry id)
 
@@ -76,6 +82,7 @@ class HistorySnapshot:
             "counterparty_name": defaultdict(_Bucket),
             "payee": defaultdict(_Bucket),
             "tokens": defaultdict(_Bucket),
+            "source_text": defaultdict(_Bucket),
         }
         self._ids: set[int] = set()
         self.add(votes)
@@ -101,6 +108,13 @@ class HistorySnapshot:
                 continue
             self._ids.add(v.entry_id)
             k = _sort_key(v)
+            if has_source_text(v.source_text):
+                # votes only for keys 3 and 5 (history.md §1)
+                if v.payee_id is not None:
+                    put("payee", v.payee_id, k, v)
+                if own := canonical_text(v.source_text):
+                    put("source_text", own, k, v)
+                continue
             put("counterparty_ref", canonical_text(v.counterparty_ref), k, v)
             put("counterparty_name", canonical_text(v.counterparty_name), k, v)
             if v.payee_id is not None:
@@ -135,6 +149,8 @@ class HistorySnapshot:
         else:
             if key == "payee":
                 value: str | int | None = payee_id
+            elif key == "source_text":
+                value = canonical_text(entry.source_text)
             elif key == "counterparty_ref":
                 value = canonical_text(entry.counterparty_ref)
             else:
@@ -186,6 +202,9 @@ def touches(grown: Grown, entry: EntryInput, payee_id: int | None) -> bool:
     the token key only a vote similar enough to the entry (`TOKEN_REACH`) can matter.
     """
     b = grown.buckets
+    if has_source_text(entry.source_text):
+        own = canonical_text(entry.source_text)
+        return bool(own and ("source_text", own) in b) or (payee_id is not None and ("payee", payee_id) in b)
     # a key whose value the entry lacks is never asked (history.md §2), so an empty value reaches nothing
     for key, raw in (
         ("counterparty_ref", entry.counterparty_ref),
@@ -206,16 +225,26 @@ _VOTES = """
            CASE WHEN e.counterpart_entry_id IS NOT NULL THEN e.counter_account_id END AS counter_account_id,
            CASE WHEN e.counterpart_entry_id IS NOT NULL THEN ca.currency END AS counter_account_currency,
            CASE WHEN e.counterpart_entry_id IS NOT NULL THEN ca.closed_on END AS counter_account_closed_on,
-           s.counterparty_ref, s.counterparty_name, s.purpose, s.booking_text, s.mandate_ref
+           s.counterparty_ref, s.counterparty_name, s.purpose, s.booking_text, s.mandate_ref,
+           e.source_text
       FROM units AS u
       JOIN ledger_entry AS e ON e.id = u.id
       JOIN source_transaction AS s ON s.id = e.source_transaction_id
       LEFT JOIN account AS ca ON ca.id = e.counter_account_id
      WHERE u.unit_ok
+       {booking}
        {only}
 """
-_ALL_VOTES = text(_VOTES.format(units=units_sql(), only=""))
-_VOTES_OF = text(_VOTES.format(units=units_sql(of_entries=True), only="AND e.id = ANY(:ids)"))
+
+
+def _votes_sql(*, of_entries: bool) -> TextClause:
+    return text(
+        _VOTES.format(
+            units=units_sql(of_entries=of_entries),
+            booking="" if BOOKING_ENTRIES_VOTE else "AND s.origin <> 'booking'",
+            only="AND e.id = ANY(:ids)" if of_entries else "",
+        )
+    )
 
 
 def _votes(rows: Iterable[Row[Any]]) -> list[Vote]:
@@ -238,6 +267,7 @@ def _votes(rows: Iterable[Row[Any]]) -> list[Vote]:
                 purpose=m["purpose"],
                 booking_text=m["booking_text"],
                 mandate_ref=m["mandate_ref"],
+                source_text=m["source_text"],
             )
         )
     return out
@@ -245,14 +275,14 @@ def _votes(rows: Iterable[Row[Any]]) -> list[Vote]:
 
 def load_votes(conn: Connection) -> list[Vote]:
     """Every voter: the one query of a settle."""
-    return _votes(conn.execute(_ALL_VOTES, units_binds(conn)))
+    return _votes(conn.execute(_votes_sql(of_entries=False), units_binds(conn)))
 
 
 def load_votes_of(conn: Connection, entry_ids: Sequence[int]) -> list[Vote]:
     """The votes among these entries (those that became confirmed in a round)."""
     if not entry_ids:
         return []
-    return _votes(conn.execute(_VOTES_OF, {**units_binds(conn), "ids": list(entry_ids)}))
+    return _votes(conn.execute(_votes_sql(of_entries=True), {**units_binds(conn), "ids": list(entry_ids)}))
 
 
 def load_snapshot(conn: Connection) -> HistorySnapshot:

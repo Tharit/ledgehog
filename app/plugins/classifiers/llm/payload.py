@@ -1,8 +1,10 @@
 """What the model is given of an entry, and the fingerprint of it (spec §5.9 pass 3, "Limited payload").
 
-The payload of an entry is the counterparty name, booking text and purpose. NEVER the counterparty
-IBAN, BIC, end-to-end id, mandate or other references, amounts, dates, accounts or balances: this module is
-the one place that reads an entry for the model, and `tests/plugins/classifiers/test_llm_payload.py` pins it.
+The payload of an entry is the counterparty name, booking text and purpose, and for an entry with a source
+text, its source text and the name of its account. NEVER the counterparty IBAN, BIC, end-to-end id, mandate
+or other references, amounts, dates or balances, nor an account but the one such an entry is on: this
+module is the one place that reads an entry for the model, and `tests/plugins/classifiers/test_llm_payload.py`
+pins it.
 
 The client sends the payload and fingerprints it for the worker's list; the classifier compares the
 fingerprint with the one stored on the model's answer, so an answer stands only for the payload it was given.
@@ -18,7 +20,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-from app.core.plugins.classifier import EntryInput
+from app.core.plugins.classifier import EntryInput, has_source_text
 
 # the payload's parts of an entry, in the order the model reads them:
 # (label shown to the model, entry attribute)
@@ -27,12 +29,18 @@ _ENTRY_PARTS: tuple[tuple[str, str], ...] = (
     ("booking text", "booking_text"),
     ("purpose", "purpose"),
 )
+# the parts of an entry with a source text, after the above: what its source gives it, and where it is booked
+_SOURCE_TEXT_PARTS: tuple[tuple[str, str], ...] = (
+    ("source text", "source_text"),
+    ("account", "account_name"),
+)
 
 
 def payload_of(subject: EntryInput) -> dict[str, str] | None:
     """The permitted text of an entry, by label; None where it would be empty (the pass does not run)."""
     out: dict[str, str] = {}
-    for label, attr in _ENTRY_PARTS:
+    parts = _ENTRY_PARTS + _SOURCE_TEXT_PARTS if has_source_text(subject.source_text) else _ENTRY_PARTS
+    for label, attr in parts:
         value = getattr(subject, attr)
         if isinstance(value, str) and (text := " ".join(value.split())):
             out[label] = text

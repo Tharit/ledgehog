@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from datetime import date
 
 from app.core.ingest.identity import canonical_text
-from app.core.plugins.classifier import EntryInput, HistoryKey, Vote
+from app.core.plugins.classifier import EntryInput, HistoryKey, Vote, has_source_text
 from app.core.plugins.text import tokens
 
 
@@ -30,7 +30,13 @@ class ListHistory:
         for v in self.votes:
             if v.entry_id in exclude_entry_ids:
                 continue
-            if key == "counterparty_ref":
+            if key not in ("payee", "source_text") and has_source_text(v.source_text):
+                continue  # a vote with a source text votes for keys 3 and 5 only
+            if key == "source_text":
+                ok = bool(canonical_text(entry.source_text)) and canonical_text(
+                    v.source_text
+                ) == canonical_text(entry.source_text)
+            elif key == "counterparty_ref":
                 ok = canonical_text(v.counterparty_ref) == canonical_text(entry.counterparty_ref)
             elif key == "counterparty_name":
                 ok = canonical_text(v.counterparty_name) == canonical_text(entry.counterparty_name)

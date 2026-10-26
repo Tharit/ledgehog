@@ -68,6 +68,7 @@ def entry(
     value_on: date | None = None,
     imported: bool = False,
     source_cols: dict[str, Any] | None = None,
+    source_text: str | None = None,
 ) -> int:
     """A movement entry (its own source transaction unless `source_id` makes it a split sibling).
 
@@ -99,6 +100,7 @@ def entry(
         "type": type,
         "description": description,
         "note": note,
+        "source_text": source_text,
         "category_id": category_id,
         "payee_id": payee_id,
         "booked_on": on,

@@ -57,3 +57,30 @@ def test_the_fingerprint_follows_the_payload_only() -> None:
     c = payload_of(_entry(counterparty_name="X", purpose="more"))
     assert a is not None and b is not None and c is not None
     assert fingerprint_of(a) == fingerprint_of(b) != fingerprint_of(c)
+
+
+def test_an_entry_with_a_source_text_adds_its_source_text_and_its_accounts_name() -> None:
+    plain = _entry(counterparty_name="Amazon", purpose="order 1", account_name="Amazon clearing")
+    booked = _entry(
+        counterparty_name="Amazon",
+        purpose="order 1",
+        source_text="USB-C cable",
+        account_name="Amazon clearing",
+    )
+    assert payload_of(plain) == {"counterparty": "Amazon", "purpose": "order 1"}
+    assert payload_of(booked) == {
+        "counterparty": "Amazon",
+        "purpose": "order 1",
+        "source text": "USB-C cable",
+        "account": "Amazon clearing",
+    }
+    assert fingerprint_of(payload_of(booked) or {}) != fingerprint_of(payload_of(plain) or {})
+    assert "Amazon clearing" in user_message(payload_of(booked) or {})
+
+
+def test_a_source_text_alone_is_a_payload_and_a_blank_one_is_none() -> None:
+    assert payload_of(_entry(source_text="Paperback", account_name="A")) == {
+        "source text": "Paperback",
+        "account": "A",
+    }
+    assert payload_of(_entry(source_text="  ", account_name="A")) is None

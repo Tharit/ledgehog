@@ -334,6 +334,65 @@
         "title": "BalancesOut",
         "type": "object"
       },
+      "BookingOut": {
+        "description": "A booking's source, read only for navigation (the work panel's \"Booked from ...\", \"Open document\").\n`document`: the document's id, `provider` and `external_id`; `transfer`: the charge's entry id and\nits `account_id`.",
+        "properties": {
+          "account_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
+          "external_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "document",
+              "transfer"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "provider",
+          "external_id",
+          "account_id"
+        ],
+        "title": "BookingOut",
+        "type": "object"
+      },
       "ByCategoryOut": {
         "properties": {
           "base_currency": {
@@ -1099,6 +1158,8 @@
               "purpose",
               "booking_text",
               "mandate_ref",
+              "source_text",
+              "account",
               "payee"
             ],
             "title": "Field",
@@ -2010,6 +2071,17 @@
               }
             ]
           },
+          "source_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Text"
+          },
           "source_transaction_id": {
             "anyOf": [
               {
@@ -2085,6 +2157,7 @@
           "description",
           "note",
           "display_text",
+          "source_text",
           "payee_id",
           "category_id",
           "counter_account_id",
@@ -3728,6 +3801,17 @@
                 "type": "null"
               }
             ]
+          },
+          "source_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Text"
           }
         },
         "required": [
@@ -3741,7 +3825,8 @@
           "current_key",
           "shadowed_by_rule_id",
           "keyed_fields",
-          "source"
+          "source",
+          "source_text"
         ],
         "title": "PreviewRowOut",
         "type": "object"
@@ -5331,6 +5416,16 @@
           "amount": {
             "$ref": "#/components/schemas/Money"
           },
+          "booking": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BookingOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "booking_text": {
             "anyOf": [
               {
@@ -5440,7 +5535,8 @@
           "end_to_end_id",
           "mandate_ref",
           "instructed_amount",
-          "source_format"
+          "source_format",
+          "booking"
         ],
         "title": "SourceTransactionOut",
         "type": "object"
@@ -5786,6 +5882,16 @@
             "title": "Booked On",
             "type": "string"
           },
+          "booking": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BookingOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "counterparty_name": {
             "anyOf": [
               {
@@ -5825,6 +5931,15 @@
           "kind": {
             "const": "source",
             "title": "Kind",
+            "type": "string"
+          },
+          "origin": {
+            "enum": [
+              "import",
+              "user",
+              "booking"
+            ],
+            "title": "Origin",
             "type": "string"
           },
           "purpose": {
@@ -5871,6 +5986,8 @@
           "counterparty_name",
           "purpose",
           "authored",
+          "origin",
+          "booking",
           "duplicate_of",
           "entry_id",
           "run_id",
@@ -7788,6 +7905,17 @@
             "title": "Review Flags",
             "type": "array"
           },
+          "source_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Text"
+          },
           "source_transaction_id": {
             "title": "Source Transaction Id",
             "type": "integer"
@@ -7860,6 +7988,7 @@
           "amount",
           "description",
           "note",
+          "source_text",
           "tag_ids",
           "counterpart_entry_id",
           "fields",

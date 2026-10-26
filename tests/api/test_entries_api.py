@@ -95,6 +95,7 @@ def test_row_json_shape_and_money(anna: TestClient, api_engine: Engine, acct: in
             "description": None,
             "note": "n",
             "display_text": "CP",
+            "source_text": None,
             "payee_id": p,
             "category_id": c,
             "counter_account_id": None,
@@ -113,6 +114,7 @@ def test_row_json_shape_and_money(anna: TestClient, api_engine: Engine, acct: in
                 "mandate_ref": "M-1",
                 "instructed_amount": {"amount": -1400, "currency": "USD"},
                 "source_format": "camt053",
+                "booking": None,
             },
             "derivation": {},
             "unit_key": src,
@@ -306,7 +308,7 @@ def test_an_imported_source_without_an_instructed_amount_has_none(
     assert src["instructed_amount"] is None and src["counterparty_name"] == "X"
     assert set(src) == {
         "amount", "counterparty_name", "counterparty_ref", "counterparty_bic", "purpose", "booking_text",
-        "end_to_end_id", "mandate_ref", "instructed_amount", "source_format",
+        "end_to_end_id", "mandate_ref", "instructed_amount", "source_format", "booking",
     }  # fmt: skip
 
 

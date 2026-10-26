@@ -1329,6 +1329,27 @@ export interface components {
             /** Points */
             points: string[];
         };
+        /**
+         * BookingOut
+         * @description A booking's source, read only for navigation (the work panel's "Booked from ...", "Open document").
+         *     `document`: the document's id, `provider` and `external_id`; `transfer`: the charge's entry id and
+         *     its `account_id`.
+         */
+        BookingOut: {
+            /** Account Id */
+            account_id: number | null;
+            /** External Id */
+            external_id: string | null;
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "document" | "transfer";
+            /** Provider */
+            provider: string | null;
+        };
         /** ByCategoryOut */
         ByCategoryOut: {
             /** Base Currency */
@@ -1578,7 +1599,7 @@ export interface components {
              * Field
              * @enum {string}
              */
-            field: "counterparty_name" | "counterparty_ref" | "purpose" | "booking_text" | "mandate_ref" | "payee";
+            field: "counterparty_name" | "counterparty_ref" | "purpose" | "booking_text" | "mandate_ref" | "source_text" | "account" | "payee";
             /**
              * Op
              * @enum {string}
@@ -1851,6 +1872,8 @@ export interface components {
             /** Review Flags */
             review_flags: ("unconfirmed" | "unclassified" | "waiting" | "unmatched_transfer")[];
             source: components["schemas"]["SourceTransactionOut"] | null;
+            /** Source Text */
+            source_text: string | null;
             /** Source Transaction Id */
             source_transaction_id: number | null;
             /** Tag Ids */
@@ -2380,6 +2403,8 @@ export interface components {
             /** Shadowed By Rule Id */
             shadowed_by_rule_id: number | null;
             source: components["schemas"]["SourceTransactionOut"] | null;
+            /** Source Text */
+            source_text: string | null;
         };
         /** PromptEvent */
         PromptEvent: {
@@ -2868,6 +2893,7 @@ export interface components {
          */
         SourceTransactionOut: {
             amount: components["schemas"]["Money"];
+            booking: components["schemas"]["BookingOut"] | null;
             /** Booking Text */
             booking_text: string | null;
             /** Counterparty Bic */
@@ -2997,6 +3023,7 @@ export interface components {
              * Format: date
              */
             booked_on: string;
+            booking: components["schemas"]["BookingOut"] | null;
             /** Counterparty Name */
             counterparty_name: string | null;
             duplicate_of: components["schemas"]["DuplicateOfOut"] | null;
@@ -3009,6 +3036,11 @@ export interface components {
              * @enum {string}
              */
             kind: "source";
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "import" | "user" | "booking";
             /** Purpose */
             purpose: string | null;
             /** Run Id */
@@ -3683,6 +3715,8 @@ export interface components {
             original: boolean;
             /** Review Flags */
             review_flags: string[];
+            /** Source Text */
+            source_text: string | null;
             /** Source Transaction Id */
             source_transaction_id: number;
             stored: components["schemas"]["UnitStoredRowOut"] | null;

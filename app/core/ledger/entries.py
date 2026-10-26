@@ -5,14 +5,14 @@ SQLAlchemy Core composes the filter (architecture §5.2). Reads only: no lock, n
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Iterable, Iterator, Mapping, Sequence
+from dataclasses import dataclass, replace
 from datetime import date
 from typing import Any
 
 from sqlalchemy import Connection, FromClause, func, select, text
 
-from app.core.domain.source import SourceFields
+from app.core.domain.source import BookingRef, SourceFields
 from app.core.ledger.filters import LedgerFilter
 from app.core.ledger.sql import compose, le, partner, st
 from app.core.units.lookup import unit_keys_of
@@ -41,7 +41,7 @@ class EntryRow:
     type: str | None
     description: str | None
     note: str | None
-    display_text: str | None  # description, else counterparty_name, else purpose
+    display_text: str | None  # description, else source text, else counterparty_name, else purpose
     payee_id: int | None
     category_id: int | None
     counter_account_id: int | None
@@ -59,6 +59,7 @@ class EntryRow:
     # a booking's source (spec §5.8): its kind (`document`, `transfer`) and the source's id (the document's,
     # or the charge's entry id); None for an entry that is not a booking's
     booking: tuple[str, int] | None = None
+    source_text: str | None = None  # the text its source gives the entry (a booking's line); None for most
 
 
 @dataclass(frozen=True)
@@ -69,8 +70,10 @@ class EntryPage:
     offset: int
 
 
-def display_text(description: str | None, counterparty: str | None, purpose: str | None) -> str | None:
-    return description or counterparty or purpose or None
+def display_text(
+    description: str | None, source_text: str | None, counterparty: str | None, purpose: str | None
+) -> str | None:
+    return description or source_text or counterparty or purpose or None
 
 
 # the list's order, shared by the page and the stream
@@ -157,6 +160,7 @@ _COLUMNS = (
     le.c.type,
     le.c.description,
     le.c.note,
+    le.c.source_text,
     le.c.payee_id,
     le.c.category_id,
     le.c.counter_account_id,
@@ -190,6 +194,7 @@ _COLUMNS = (
 def _build(conn: Connection, rows: Sequence[Any]) -> tuple[EntryRow, ...]:
     tags = tag_ids_of(conn, [r.id for r in rows])
     unit_keys = unit_keys_of(conn, {r.source_transaction_id for r in rows if r.source_transaction_id})
+    refs = booking_refs(conn, [b for r in rows if (b := _booking_of(r)) is not None])
     return tuple(
         EntryRow(
             id=r.id,
@@ -202,7 +207,7 @@ def _build(conn: Connection, rows: Sequence[Any]) -> tuple[EntryRow, ...]:
             type=r.type,
             description=r.description,
             note=r.note,
-            display_text=display_text(r.description, r.counterparty_name, r.purpose),
+            display_text=display_text(r.description, r.source_text, r.counterparty_name, r.purpose),
             payee_id=r.payee_id,
             category_id=r.category_id,
             counter_account_id=r.counter_account_id,
@@ -210,7 +215,7 @@ def _build(conn: Connection, rows: Sequence[Any]) -> tuple[EntryRow, ...]:
             source_transaction_id=r.source_transaction_id,
             review_flags=tuple(sorted(r.review_flags)),
             tag_ids=tags.get(r.id, ()),
-            source=_source(r),
+            source=_source(r, refs),
             derivation=r.derivation,
             unit_key=unit_keys.get(r.source_transaction_id) if r.source_transaction_id else None,
             authored=r.source_transaction_id is not None and r.origin == "user",
@@ -226,6 +231,7 @@ def _build(conn: Connection, rows: Sequence[Any]) -> tuple[EntryRow, ...]:
             importer=r.importer,
             origin=r.origin,
             booking=_booking_of(r),
+            source_text=r.source_text,
         )
         for r in rows
     )
@@ -238,11 +244,36 @@ def _booking_of(r: Any) -> tuple[str, int] | None:
     return kind, int(key)
 
 
-def _source(r: Any) -> SourceFields | None:
+def _source(r: Any, refs: Mapping[tuple[str, int], BookingRef]) -> SourceFields | None:
     """The nested source: none only for a derived entry (no source transaction)."""
     if r.source_transaction_id is None:
         return None
-    return SourceFields.of_row(r)
+    fields = SourceFields.of_row(r)
+    booking = _booking_of(r)
+    return fields if booking is None else replace(fields, booking=refs.get(booking))
+
+
+_DOCUMENTS = text("SELECT id, provider, external_id FROM external_document WHERE id = ANY(:ids)")
+_CHARGES = text("SELECT id, account_id FROM ledger_entry WHERE id = ANY(:ids)")
+
+
+def booking_refs(
+    conn: Connection, bookings: Iterable[tuple[str, int]]
+) -> Mapping[tuple[str, int], BookingRef]:
+    """The sources of the given bookings (kind, source id): two small lookups, none without a booking."""
+    wanted = set(bookings)
+    out: dict[tuple[str, int], BookingRef] = {}
+    documents = sorted(i for k, i in wanted if k == "document")
+    if documents:
+        for d in conn.execute(_DOCUMENTS, {"ids": documents}):
+            out[("document", d.id)] = BookingRef(
+                "document", d.id, provider=d.provider, external_id=d.external_id
+            )
+    charges = sorted(i for k, i in wanted if k == "transfer")
+    if charges:
+        for c in conn.execute(_CHARGES, {"ids": charges}):
+            out[("transfer", c.id)] = BookingRef("transfer", c.id, account_id=c.account_id)
+    return out
 
 
 def matching_entry_ids(conn: Connection, flt: LedgerFilter) -> list[int]:

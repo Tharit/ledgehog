@@ -50,6 +50,7 @@ def test_a_sample_row_validates_against_the_model():
         "description": None,
         "note": None,
         "display_text": None,
+        "source_text": None,
         "payee_id": None,
         "category_id": None,
         "counter_account_id": None,
@@ -68,6 +69,7 @@ def test_a_sample_row_validates_against_the_model():
             "mandate_ref": None,
             "instructed_amount": {"amount": -7, "currency": "USD"},
             "source_format": "csv",
+            "booking": None,
         },
         "derivation": {"category": {"pass": "history", "basis": {"from": "similar"}}},
         "unit_key": 7,
@@ -114,6 +116,6 @@ def test_source_is_nullable_and_shared_with_the_rule_preview(schema):
     assert "#/components/schemas/SourceTransactionOut" in refs
     assert set(comps["SourceTransactionOut"]["properties"]) == {
         "amount", "counterparty_name", "counterparty_ref", "counterparty_bic", "purpose", "booking_text",
-        "end_to_end_id", "mandate_ref", "instructed_amount", "source_format",
+        "end_to_end_id", "mandate_ref", "instructed_amount", "source_format", "booking",
     }  # fmt: skip
     assert "counterparty_name" not in comps["EntryOut"]["properties"]

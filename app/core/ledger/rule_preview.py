@@ -26,13 +26,14 @@ from __future__ import annotations
 import json
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from typing import Any
 
 from sqlalchemy import Connection, text
 
 from app.core.domain.source import SourceFields
+from app.core.ledger.entries import booking_refs
 from app.core.plugins.classifier import STANDING_PASSES, AccountFact, Field, RuleSpec
 from app.core.resolution import counter_account_ok, rederive
 from app.core.resolution.load import UnconfirmedEntry, load_accounts, load_movements
@@ -69,6 +70,7 @@ class PreviewRow:
     shadowed_by_rule_id: int | None = None  # matches only
     keyed_fields: tuple[str, ...] = ()  # lost-key list only: the fields carrying the rule's key
     source: SourceFields | None = None  # the entry's source, as in the ledger list (D206)
+    source_text: str | None = None  # the entry's own source text (spec §5.9), which a rule may read
 
 
 @dataclass(frozen=True)
@@ -159,6 +161,7 @@ def _row(
         shadowed_by_rule_id=shadow,
         keyed_fields=keyed,
         source=row.source,
+        source_text=row.input.source_text,
     )
 
 
@@ -300,4 +303,32 @@ def build_preview(
         by_id = {r.input.entry_id: r for r in entries}
         lost = [by_id[i] for i in carriers if i in by_id and (deleted or not ev.matches(subject, by_id[i]))]
     list_b = _page(lost, lambda r: _row(r, sets, keyed=_keyed_fields(r, subject.id)), limit, offset)
-    return RulePreview(matches, would_confirm, stay, list_a, list_b)
+    return RulePreview(
+        _with_bookings(conn, matches),
+        would_confirm,
+        stay,
+        _with_bookings(conn, list_a),
+        _with_bookings(conn, list_b),
+    )
+
+
+def _with_bookings(conn: Connection, page: PreviewList) -> PreviewList:
+    """The page's booking sources completed (a document's provider and external id, a charge's account)."""
+    found = booking_refs(
+        conn,
+        [(r.source.booking.kind, r.source.booking.id) for r in page.rows if r.source and r.source.booking],
+    )
+    if not found:
+        return page
+    rows = tuple(
+        replace(
+            r,
+            source=replace(
+                r.source, booking=found.get((r.source.booking.kind, r.source.booking.id), r.source.booking)
+            ),
+        )
+        if r.source and r.source.booking
+        else r
+        for r in page.rows
+    )
+    return PreviewList(page.total, rows)

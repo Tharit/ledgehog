@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 from sqlalchemy import Connection, text
 
-from app.core.ledger import LedgerFilter, list_entries, matching_entry_ids
+from app.core.ledger import LedgerFilter, get_entry, list_entries, matching_entry_ids
 from tests.fixtures import ledger_seed as seed
 
 D = date(2026, 3, 10)
@@ -83,8 +83,11 @@ def test_display_text_falls_back(db_conn: Connection, acct: int):
     b = seed.entry(db_conn, acct, counterparty="C", purpose="P")
     c = seed.entry(db_conn, acct, purpose="P")
     d = seed.entry(db_conn, acct)
+    s = seed.entry(db_conn, acct, counterparty="C", purpose="P", source_text="S")
     page = {e.id: e.display_text for e in list_entries(db_conn, LedgerFilter(), limit=10, offset=0).entries}
-    assert page == {a: "D", b: "C", c: "P", d: None}
+    assert page == {a: "D", b: "C", c: "P", d: None, s: "S"}
+    e = seed.entry(db_conn, acct, description="D", source_text="S")
+    assert get_entry(db_conn, e).display_text == "D"  # type: ignore[union-attr]
 
 
 def test_tag_ids_per_row_sorted_and_empty(db_conn: Connection, acct: int):
@@ -195,6 +198,14 @@ def test_text_matches_each_entry_and_source_field(db_conn: Connection, acct: int
     seed.entry(db_conn, acct, description="nothing relevant")
     assert ids(db_conn, text=q.upper()) == [hit]
     assert ids(db_conn, text=q.lower()) == [hit]
+
+
+def test_text_matches_the_source_text_and_a_row_carries_it(db_conn: Connection, acct: int):
+    hit = seed.entry(db_conn, acct, source_text="Zebra Capsules")
+    seed.entry(db_conn, acct, description="nothing relevant")
+    assert ids(db_conn, text="CAPSULES zebra") == [hit]
+    row = get_entry(db_conn, hit)
+    assert row is not None and row.source_text == "Zebra Capsules" and row.origin == "user"
 
 
 def test_text_matches_payee_and_category_names(db_conn: Connection, acct: int):

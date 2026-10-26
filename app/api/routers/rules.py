@@ -75,6 +75,8 @@ ConditionFieldName = Literal[
     "purpose",
     "booking_text",
     "mandate_ref",
+    "source_text",
+    "account",
     "payee",
 ]
 ConditionOpName = Literal["equals", "starts_with", "contains", "regex", "is"]
@@ -184,6 +186,7 @@ class PreviewRowOut(BaseModel):
     shadowed_by_rule_id: int | None  # matches only: the earlier rule that wins this entry
     keyed_fields: list[str]  # lost-key list only: the fields carrying the rule's key
     source: SourceTransactionOut | None  # as in the ledger list; null only for a derived entry
+    source_text: str | None  # the entry's own source text (a booking's line), which a rule may read
 
     @staticmethod
     def of(row: PreviewRow) -> PreviewRowOut:
@@ -199,6 +202,7 @@ class PreviewRowOut(BaseModel):
             shadowed_by_rule_id=row.shadowed_by_rule_id,
             keyed_fields=list(row.keyed_fields),
             source=SourceTransactionOut.of(row.source),
+            source_text=row.source_text,
         )
 
 

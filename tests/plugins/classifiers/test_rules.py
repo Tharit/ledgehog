@@ -367,3 +367,37 @@ def test_default_rule_tools_are_the_functions_settling_uses() -> None:
     tools = default_rule_tools()
     assert tools.validate is validate_rule and tools.matches is matches
     assert tools.precedence_order is precedence_order
+
+
+# ---- `source_text` and `account` conditions (D230) ----
+
+
+def test_source_text_condition_uses_name_normalisation_and_fails_without_one() -> None:
+    assert matches(one("source_text", "equals", "usb-c  CABLE"), entry(source_text="USB-C cable"))
+    assert matches(one("source_text", "starts_with", "usb"), entry(source_text="USB-C cable"))
+    assert matches(one("source_text", "contains", "c cable"), entry(source_text="USB-C cable"))
+    assert matches(one("source_text", "regex", r"^usb-\w"), entry(source_text="USB-C cable"))
+    assert not matches(one("source_text", "contains", "usb"), entry())
+    assert not matches(one("source_text", "contains", "usb"), entry(source_text=" "))
+
+
+def test_account_condition_is_judged_on_the_entrys_account() -> None:
+    r = rule(1, "category", 5, cond("account", "is", "7"))
+    assert matches(r, entry(account_id=7))
+    assert not matches(r, entry(account_id=8))
+    validate_rule(rule(1, "payee", 5, cond("account", "is", "7")))  # any rule may carry it
+
+
+@pytest.mark.parametrize("value", ["", "abc", "0", "-3", "1.5"])
+def test_account_condition_value_must_be_an_id(value: str) -> None:
+    with pytest.raises(RuleInvalid) as exc:
+        validate_rule(rule(1, "payee", 5, cond("account", "is", value)))
+    assert exc.value.field == "conditions[0].value"
+
+
+def test_account_condition_takes_is_only_and_text_fields_not_is() -> None:
+    with pytest.raises(RuleInvalid) as exc:
+        validate_rule(rule(1, "payee", 5, cond("account", "equals", "7")))
+    assert exc.value.field == "conditions[0].op"
+    with pytest.raises(RuleInvalid):
+        validate_rule(rule(1, "payee", 5, cond("source_text", "is", "x")))

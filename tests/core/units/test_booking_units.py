@@ -500,3 +500,24 @@ def test_the_commit_locks_no_clearance_account_it_does_not_write_and_settling_lo
     assert seen["commit"] == [[scene.checking]]  # the commit writes the charge's account only
     assert seen["step"] == [[account]]  # settling writes, and locks, the clearance account only
     assert booking_of(scene, e) is not None
+
+
+def test_a_preview_reads_the_source_text_and_reresolves_by_it(scene: Scene, documents: DocScene) -> None:
+    import json
+
+    from tests.core.units.scene import RERESOLVE
+
+    documents.clearance()
+    documents.deliver(doc("A1", line("Cable", -1299), line("Book", -3499)))
+    first, second = (e.id for e in documents.entries())
+    books = scene.category("Books")
+    documents.exec(
+        "INSERT INTO rule (sets, category_id, conditions, name) VALUES ('category', :c,"
+        " CAST(:cond AS jsonb), 'books')",
+        c=books,
+        cond=json.dumps([{"field": "source_text", "op": "equals", "value": "book"}]),
+    )
+    plan = preview_unit(scene.engine, scene.draft(first, DraftEntry(second, category=RERESOLVE)))
+    assert (plan.row(first).source_text, plan.row(second).source_text) == ("Cable", "Book")
+    assert plan.row(second).fields["category"].value == books
+    assert plan.row(second).fields["category"].evidence.pass_name == "rule"  # type: ignore[union-attr]

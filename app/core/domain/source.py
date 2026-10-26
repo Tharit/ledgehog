@@ -11,6 +11,18 @@ from typing import Any
 
 
 @dataclass(frozen=True, slots=True)
+class BookingRef:
+    """A booking's source, read only for navigation (spec §5.8, architecture §4.1): `document` with the
+    document's id, provider and external id, or `transfer` with the charge's entry id and its account."""
+
+    kind: str  # `document` | `transfer`
+    id: int  # the document's id, or the charge's entry id
+    provider: str | None = None  # document
+    external_id: str | None = None  # document
+    account_id: int | None = None  # transfer: the charge's account
+
+
+@dataclass(frozen=True, slots=True)
 class SourceFields:
     amount: int  # the source transaction's own signed amount in minor units, in `currency`
     currency: str  # (a split part's entry carries only its part; this is the whole)
@@ -24,6 +36,7 @@ class SourceFields:
     instructed_amount: int | None = None  # signed minor units, in `instructed_currency`
     instructed_currency: str | None = None
     source_format: str | None = None
+    booking: BookingRef | None = None  # a booking's source only; filled where the row is read for the list
 
     @staticmethod
     def of_row(r: Any) -> SourceFields:

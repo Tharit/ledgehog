@@ -17,6 +17,7 @@ from typing import Literal
 from sqlalchemy import Connection, text
 
 from app.core.balance.derived import RecordGap, record_gaps
+from app.core.domain.source import BookingRef
 
 
 @dataclass(frozen=True)
@@ -42,6 +43,8 @@ class SourceItem:
     run_id: int | None
     balance: int | None  # the running balance after it; None for a duplicate
     kind: Literal["source"] = "source"
+    origin: str = "import"  # `import`, `user` or `booking`
+    booking: BookingRef | None = None  # a booking's source, for navigation
 
 
 @dataclass(frozen=True)
@@ -183,10 +186,17 @@ def _sources(conn: Connection, ids: list[int], balances: dict[int, int]) -> dict
     rows = conn.execute(
         text(
             "SELECT s.id, s.booked_on, s.value_on, s.amount, s.counterparty_name, s.purpose,"
-            " s.origin = 'user' AS authored, s.import_run_id AS run_id,"
+            " s.origin = 'user' AS authored, s.origin, s.source_id, s.import_run_id AS run_id,"
             " o.id AS of_id, o.booked_on AS of_on, o.amount AS of_amount,"
+            " d.provider, d.external_id, c.account_id AS charge_account_id,"
             " (SELECT min(e.id) FROM ledger_entry e WHERE e.source_transaction_id = s.id) AS entry_id"
             " FROM source_transaction s LEFT JOIN source_transaction o ON o.id = s.duplicate_of"
+            " LEFT JOIN external_document d ON d.id = CASE WHEN s.origin = 'booking'"
+            "   AND split_part(s.source_id, ':', 1) = 'document'"
+            "   THEN CAST(split_part(s.source_id, ':', 2) AS bigint) END"
+            " LEFT JOIN ledger_entry c ON c.id = CASE WHEN s.origin = 'booking'"
+            "   AND split_part(s.source_id, ':', 1) = 'transfer'"
+            "   THEN CAST(split_part(s.source_id, ':', 2) AS bigint) END"
             " WHERE s.id = ANY(:ids)"
         ),
         {"ids": ids},
@@ -204,6 +214,16 @@ def _sources(conn: Connection, ids: list[int], balances: dict[int, int]) -> dict
             entry_id=r.entry_id,  # a duplicate has no entries
             run_id=r.run_id,
             balance=balances.get(r.id),
+            origin=r.origin,
+            booking=None
+            if r.origin != "booking"
+            else BookingRef(
+                r.source_id.partition(":")[0],
+                int(r.source_id.partition(":")[2]),
+                provider=r.provider,
+                external_id=r.external_id,
+                account_id=r.charge_account_id,
+            ),
         )
         for r in rows
     }

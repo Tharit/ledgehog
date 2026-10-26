@@ -68,6 +68,8 @@ class Stored:
     note: str | None
     derivation: Mapping[str, Any]
     tag_ids: tuple[int, ...] = ()
+    source_text: str | None = None  # the entry's own source text (spec §5.9)
+    account_name: str | None = None  # its account's name (the model's payload reads it with a source text)
 
 
 @dataclass(frozen=True, slots=True)
@@ -268,6 +270,7 @@ class PlannedRow:
     # the counter-leg booking settling will make for this charge (spec §5.7): a row of its own, with a
     # server-issued temporary id, which a commit does not write
     booking_for: int | None = None
+    source_text: str | None = None  # the entry's own source text (spec §5.9)
 
 
 @dataclass(frozen=True, slots=True)

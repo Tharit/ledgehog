@@ -8,7 +8,7 @@ no write, no settle. Money travels as `{"amount", "currency"}` in the account's 
 from __future__ import annotations
 
 from datetime import date
-from typing import Annotated, Literal
+from typing import Annotated, Literal, cast
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from app.api.errors import map_error
 from app.api.ids import MAX_ID, PathId
 from app.api.routers.accounts import Money
+from app.api.routers.entries import BookingOut
 from app.api.session import CurrentUser, EngineDep
 from app.core.balance.statement import RecordItem, SourceItem, StatementAccountMissing, get_statement
 
@@ -39,6 +40,8 @@ class StatementSourceOut(BaseModel):
     counterparty_name: str | None
     purpose: str | None
     authored: bool  # entered by hand
+    origin: Literal["import", "user", "booking"]
+    booking: BookingOut | None  # a booking's source, for navigation; null for any other row
     duplicate_of: DuplicateOfOut | None
     entry_id: int | None  # opens the row's unit in the review panel; null for a duplicate
     run_id: int | None  # null for an authored row
@@ -91,6 +94,16 @@ def _item(item: SourceItem | RecordItem, currency: str) -> StatementSourceOut | 
         counterparty_name=item.counterparty_name,
         purpose=item.purpose,
         authored=item.authored,
+        origin=cast(Literal["import", "user", "booking"], item.origin),
+        booking=None
+        if item.booking is None
+        else BookingOut(
+            kind=cast(Literal["document", "transfer"], item.booking.kind),
+            id=item.booking.id,
+            provider=item.booking.provider,
+            external_id=item.booking.external_id,
+            account_id=item.booking.account_id,
+        ),
         duplicate_of=(
             None
             if dup is None

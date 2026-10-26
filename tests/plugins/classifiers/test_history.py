@@ -371,3 +371,54 @@ def test_a_tie_never_proposes(n: int, m: int) -> None:
     votes = [vote(counterparty_ref="CR", category_id=1) for _ in range(n)]
     votes += [vote(counterparty_ref="CR", category_id=2) for _ in range(n)]
     assert run("category", entry(counterparty_ref="CR"), votes) is None
+
+
+# ---- key 5: the entry's source text (D230) ----
+
+
+def test_key5_source_text_is_tried_before_key3_and_names_its_basis() -> None:
+    votes = [
+        vote(source_text="USB-C cable", payee_id=7, category_id=5, booked_on=date(2026, 2, 1)),
+        vote(source_text="usb c  CABLE!", payee_id=7, category_id=5, booked_on=date(2026, 3, 1)),
+        *[vote(payee_id=7, category_id=9) for _ in range(5)],
+    ]
+    e = entry(source_text="USB-C Cable", counterparty_name="Amazon")
+    p = run("category", e, votes, payee=7)
+    assert p == Proposal(
+        "category", 5, {"matched_on": "source_text", "agree": 2, "of": 2, "since": "2026-02-01"}
+    )
+
+
+def test_an_entry_with_a_source_text_falls_back_to_key3_only() -> None:
+    votes = [vote(payee_id=7, category_id=9, counterparty_name="Amazon") for _ in range(3)]
+    e = entry(source_text="Paperback", counterparty_name="Amazon")
+    p = run("category", e, votes, payee=7)
+    assert p is not None and p.value == 9 and p.basis["matched_on"] == "payee"
+
+
+def test_an_entry_with_a_source_text_is_not_asked_on_keys_1_2_and_4() -> None:
+    votes = [vote(counterparty_ref="X", counterparty_name="Amazon", purpose="order shipment", category_id=5)]
+    e = entry(
+        source_text="Paperback", counterparty_ref="X", counterparty_name="Amazon", purpose="order shipment"
+    )
+    history = ListHistory(votes)
+    ctx = ClassifierContext(history=history)
+    assert H.propose("category", e, ctx) is None
+    assert H.propose("payee", e, ctx) is None
+    assert set(history.calls) <= {"source_text", "payee"}
+
+
+def test_votes_with_a_source_text_are_not_counted_on_keys_1_2_and_4() -> None:
+    votes = [vote(source_text="Paperback", counterparty_ref="X", counterparty_name="Amazon", category_id=5)]
+    assert run("category", entry(counterparty_ref="X"), votes) is None
+    assert run("category", entry(counterparty_name="Amazon"), votes) is None
+
+
+def test_key5_is_for_payee_and_category_only_and_never_for_an_entry_without_a_source_text() -> None:
+    votes = [vote(source_text="Paperback", payee_id=7, category_id=5, counter_account_id=3)]
+    e = entry(source_text="Paperback")
+    assert run("type", e, votes) is None
+    assert run("counter_account", e, votes) is None
+    p = run("payee", e, votes)
+    assert p is not None and p.value == 7 and p.basis["matched_on"] == "source_text"
+    assert run("payee", entry(), votes) is None

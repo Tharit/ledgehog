@@ -13,12 +13,14 @@ from app.core.ingest.identity import canonical_text
 from app.core.plugins.classifier import (
     EMPTY,
     HISTORY_KEYS,
+    SOURCE_TEXT_KEYS,
     ClassifierContext,
     EntryInput,
     Field,
     HistoryKey,
     Proposal,
     Vote,
+    has_source_text,
 )
 from app.core.plugins.text import jaccard, tokens
 
@@ -29,6 +31,7 @@ _MATCHED_ON: dict[HistoryKey, str] = {
     "counterparty_name": "counterparty_name+booking_text",
     "payee": "payee",
     "tokens": "tokens",
+    "source_text": "source_text",
 }
 
 
@@ -48,7 +51,8 @@ class HistoryClassifier:
             return None
         payee = ctx.resolved.get("payee")
         resolved_payee = payee.value if payee is not None and isinstance(payee.value, int) else None
-        for key in HISTORY_KEYS:
+        # an entry with a source text is asked on keys 5 and 3 only (history.md §2)
+        for key in SOURCE_TEXT_KEYS if has_source_text(entry.source_text) else HISTORY_KEYS:
             votes = self._matches(key, field, entry, ctx, resolved_payee)
             if votes is None:
                 continue
@@ -90,6 +94,9 @@ class HistoryClassifier:
         elif key == "payee":
             if field != "category" or resolved_payee is None:
                 return None
+        elif key == "source_text":
+            if field not in ("payee", "category") or not canonical_text(entry.source_text):
+                return None
         else:
             entry_tokens = tokens(entry.counterparty_name, entry.purpose)
             if not entry_tokens:
@@ -117,7 +124,7 @@ class HistoryClassifier:
                 for v in candidates
                 if jaccard(entry_tokens, tokens(v.counterparty_name, v.purpose)) >= JACCARD_MIN
             ]
-        return list(candidates)
+        return list(candidates)  # payee, source_text: equal on the key's own value
 
     @staticmethod
     def _counted(field: Field, votes: Sequence[Vote], ctx: ClassifierContext) -> list[tuple[int | str, Vote]]:
