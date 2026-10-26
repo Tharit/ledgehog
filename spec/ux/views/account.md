@@ -24,7 +24,13 @@ opens its unit in the review panel.
 ## The list
 
 `/accounts`, titled "Accounts", with the primary action "Add account", the
-existing form dialog; once added, the account's page opens. One row per
+existing form dialog; once added, the account's page opens. Choosing the kind
+*Clearance* adds two fields: *Providers* ("The shops whose orders are booked
+on this account, as the documents name them.", picked like tags,
+`ux/patterns.md` §6) and *Start*, a required date ("Orders dated after this
+day are booked here. Choose a day with nothing in flight: no order placed
+and not yet charged."). Saving writes the account's opening balance record,
+0 at the end of that day (`spec.md` §3.3, §3.10). One row per
 account, open accounts first in their sort order, then the closed ones, muted.
 A row shows the account's icon and name, its kind, its balance with the
 currency code (accounts of several currencies stand together,
@@ -54,9 +60,14 @@ header:
   once, or after choosing the start where the account has no coverage. A
   source that is the other user's login shows whose it is in place of its
   action. An unlinked account says how it is fed instead: by hand, or by
-  linking it in Settings → Importers (a link);
+  linking it in Settings → Importers (a link). A clearance account, which is
+  never linked, says instead that it is fed by the orders of its providers —
+  listed, each a link to the documents list filtered by it — and by the
+  charges decided as transfers to it;
 - **"Set balance"** and **"View entries"**, and a `⋯` menu with "Edit", the
-  account's form dialog (name, external reference, note, icon, colour),
+  account's form dialog (name, external reference, note, icon, colour, and
+  for a clearance account its providers, whose change books the documents a
+  new provider brings and moves no existing booking),
   "Close…" or "Reopen", and "Delete…", last and destructive. The server
   refuses to delete an account that holds anything; the decision dialog then
   shows what it holds and offers "Close…" instead.
@@ -72,8 +83,10 @@ The account's rows, newest first, paged like the ledger list and drawn in its
 density (`ux/patterns.md` §4.1, `design.md`). Two kinds of row:
 
 - **A source transaction**: booked date, counterparty, purpose, amount and the
-  balance after it. A row entered by hand shows "entered by hand" where the
-  counterparty would be. A **duplicate** is dimmed, has no balance — it counts
+  balance after it, with its origin tag (`ux/patterns.md` §4.1). The
+  counterparty and purpose cells show what the row holds — a booking's as it
+  wrote them (`spec.md` §5.8) — and stay empty where a row has none, as a row
+  entered by hand has no counterparty. A **duplicate** is dimmed, has no balance — it counts
   toward none (`spec.md` I3) — and reads "duplicate of *date · amount*", which
   opens the row it duplicates.
 - **A balance record**, a marker row above the rows of its own date, since a
@@ -122,6 +135,11 @@ by hand" — followed by the row's actions:
 - on a row **entered by hand**, **"Edit"** and **"Delete…"**, the entry form's
   own edit and delete (`spec.md` §5.6). A user-authored row is never marked as
   a duplicate: where an import now reports it, it is deleted.
+- on a **booking**, **"Open document"** for one booked from a document, the
+  document's detail (`ux/views/documents.md`), or the charge's row for a
+  counter-leg. A booking is neither edited nor deleted here, nor marked as a
+  duplicate: it follows its source (`spec.md` §5.8); a wrong one is offset by
+  an entry made with "Add entry".
 
 A balance marker opens no detail; its actions are "Edit" (a manual record, the
 "Set balance" dialog) and "Delete…", shown on hover and focus as on a settings

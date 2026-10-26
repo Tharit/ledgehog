@@ -9,12 +9,10 @@ protocol and how rules reach the plugin. This document covers only matching.
 
 ## 1. Input
 
-The entry's input as resolution sees it (`spec.md` §5.9): its source
-transaction and, where one is linked or picked, its document, read through the
-fields `document_merchant` and `document_line` (below); the source fields are
-as stored (`spec.md` §5.8). That input is built when resolving and never
-stored. Plus the payee already resolved for the
-entry, for category rules. The rules arrive from core, whole; the plugin never
+The entry's input as resolution sees it (`spec.md` §5.9): its account, its
+source transaction's fields as stored, and its own source text, where it has
+one. That input is built when resolving and never stored. Plus the payee
+already resolved for the entry, for category rules. The rules arrive from core, whole; the plugin never
 reads the database.
 
 **Which rules decide the type** (`spec.md` §5.9): counter-account rules,
@@ -24,8 +22,11 @@ decides the type; it applies in the category field, on whatever payee was
 resolved, a proposed one included. Its value is then standing, and is derived
 again if that payee changes (`spec.md` I18).
 
-A user-authored row carries only a purpose (`spec.md` §5.9), so only purpose
-and payee conditions can hold for it.
+A user-authored row carries only a purpose (`spec.md` §5.9), so only purpose,
+account and payee conditions can hold for it. A booking carries only a
+purpose and, booked from a document, a counterparty name (`spec.md` §5.8): for
+its entries only counterparty-name, purpose, source-text, account and payee
+conditions can hold.
 
 ## 2. Conditions
 
@@ -43,18 +44,19 @@ several conditions.
 | `purpose` | the purpose |
 | `booking_text` | `booking_text` |
 | `mandate_ref` | `mandate_ref` |
-| `document_merchant` | the linked document's merchant name (fails without a document) |
-| `document_line` | the description of the entry's own line of the linked document (`spec.md` §5.8); fails without a document or without a line |
+| `source_text` | the entry's own source text (`spec.md` §5.9); fails for an entry without one |
+| `account` | the entry's account; the value is the account id as a digit string |
 | `payee` | the payee resolved so far in the same resolution, a proposed one included; the value is the payee id as a digit string (category rules only) |
 
-`payee` takes the operator `is` only (equal ids); every other field takes the
-four operators `equals`, `starts_with`, `contains` and `regex`. A payee condition
-whose payee has been deleted never matches.
+`account` and `payee` take the operator `is` only (equal ids); every other
+field takes the four operators `equals`, `starts_with`, `contains` and
+`regex`. A payee or account condition whose payee or account has been deleted
+never matches.
 
 | Fields | Comparison of `equals`, `starts_with`, `contains` |
 |---|---|
 | `counterparty_ref`, `mandate_ref` | both sides as canonical text (`spec.md` §5.2: NFKC, casefolded, alphanumerics only), so an IBAN prefix works |
-| `counterparty_name`, `purpose`, `booking_text`, `document_merchant`, `document_line` | both sides by **name normalisation** (below) |
+| `counterparty_name`, `purpose`, `booking_text`, `source_text` | both sides by **name normalisation** (below) |
 
 `regex` is Python `re`, case-insensitive, `search` — unanchored unless the
 pattern anchors itself — on the raw value of any field.

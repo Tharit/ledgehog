@@ -97,8 +97,9 @@ two documents everything else references.
 The bar: **a subsystem earns its own file in `features/` when absorbing it
 would distort `spec.md`'s structure.** Natural-language querying clears it —
 it has its own resolution model, safety constraints and failure modes.
-Document matching clears it too: its matcher, the document as a rule input and auto-split are
-`features/documents.md`, while the documents, links and invariants it relies
+Booking documents clears it too: which account a document is booked on, the
+spread of its total over its lines and how a booking follows its document are
+`features/documents.md`, while the documents, bookings and invariants it relies
 on stay in `spec.md`. Adding OIDC does not; it is a paragraph in the
 credential policy.
 

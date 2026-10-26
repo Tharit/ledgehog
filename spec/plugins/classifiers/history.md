@@ -14,11 +14,9 @@ is counted, and the parameters.
 
 A **vote** is a confirmed entry with a source transaction (`spec.md` I19),
 booked within the **lookback** of the entry being resolved, and not in the unit
-being re-resolved (`spec.md` §5.9), whose transaction carries no document, for
-keys 1 to 4. A vote for the document key (§2) is a confirmed entry that has no
-line, otherwise as above, whose transaction's linked document has the same
-merchant name. Each entry is one vote; the entries of a
-split vote separately. The plugin asks core's history source for the votes
+being re-resolved (`spec.md` §5.9). An entry with a source text votes only
+for keys 3 and 5 (§2), and only an entry with one votes for key 5. Each
+entry is one vote; the entries of a split vote separately. The plugin asks core's history source for the votes
 matching a key value and never reads the database itself.
 
 The lookback is symmetric — confirmed entries booked within it on either side
@@ -41,17 +39,16 @@ only) unless said otherwise.
    **3 characters with no digit**. A vote matches when the Jaccard similarity of
    the two token sets is at least **0.5**. An entry without tokens skips the
    key.
-5. **`document_merchant`** — canonical equality of the document's merchant name
-   (`spec.md` §5.2), for the category only. It is the only key asked for an
-   entry without a line, of a transaction with a linked or picked document,
-   and such an entry is not asked on keys 1 to 4. An entry with a line is
-   asked on no key: its category comes from the line (`spec.md` §5.9). An
-   entry without a document never sees it.
+5. **`source_text`** — canonical equality of the entry's source text
+   (`spec.md` §5.9): an order's item, say, booked as an entry of its own; for
+   the payee and the category (such an entry's type is fixed). For an entry
+   that has a source text it is asked first, then key 3; such an entry is
+   neither asked nor counted on keys 1, 2 and 4. An entry without a source
+   text never sees it.
 
 A key whose input the entry lacks — no `counterparty_ref`, no name — is
-skipped. Keys 1 to 4 never see a document: a transaction with a document is
-not asked on them and does not vote for them; key 5 reads the merchant name
-only. On keys 1 to 4 both sides are always the raw source fields.
+skipped. Keys 1, 2 and 4 read the raw source fields on both sides and never
+see an entry with a source text; key 5 reads the source text only.
 
 ## 3. What is counted, per field
 
@@ -67,7 +64,8 @@ strict majority wins (`spec.md` §5.9).
   flow counts. A vote without a payee votes for *no payee*, which can win: an empty result,
   which ends the search and stores nothing (`spec.md` §5.9) — payees are optional (`spec.md` §3.6), so most matches carrying
   none is evidence. Confirmed flows always carry a category.
-  Key 3 applies to the category only, and only once the payee is resolved.
+  Key 3 applies to the category only, and only once the payee is resolved;
+  for an entry with a source text it is tried after key 5.
 
 *Of how many* is the number of votes counted for that field under that key,
 after the filters above — the matches of `spec.md` §5.9.
@@ -80,7 +78,7 @@ after the filters above — the matches of `spec.md` §5.9.
 ```
 
 `matched_on` is one of `counterparty_ref`, `counterparty_name+booking_text`,
-`payee`, `tokens`, `document_merchant`; `since` is the earliest booking date among
+`payee`, `tokens`, `source_text`; `since` is the earliest booking date among
 the votes counted. A counter-account basis adds the proposed `account_id`, as
 in `spec.md` §4.
 
@@ -96,10 +94,9 @@ in `spec.md` §4.
 A stop list for key 4 (`gmbh`, `sagt`, `danke`, city names) is the expected
 first refinement once real purpose lines are seen.
 
-An **exact-line key** for documented entries is the expected refinement once
-real documents show how often lines repeat: canonical equality of the line
-description, for the category only, asked and counted
-only for an entry with a line (`spec.md` §5.8). It captures reorders (the same
-capsules, the same filter) with certainty and misses a reworded title safely.
-Similarity over line text stays out: titles rarely repeat, and shared filler
-words would propose on weak evidence ahead of the model.
+**Key 5 is exact on purpose.** It captures reorders (the same capsules, the
+same filter) with certainty and misses a reworded title safely. Similarity
+over source text stays out: titles rarely repeat, and shared filler words
+would propose on weak evidence ahead of the model. Whether key 3 after it
+proposes a mixed payee's majority category for every new item (an Amazon
+payee on a clearance account) is to be watched in the first month.

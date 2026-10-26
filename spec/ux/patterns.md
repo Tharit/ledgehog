@@ -82,14 +82,25 @@ says so; those are revisited after the first month of use, not per view.
 An entry row shows, in this order: date, account (always in the ledger list; a
 view of one account may leave it out), category or the transfer's destination
 ("→ Cash"), payee, tags, description (the entry's own `description` only; the one column that takes the remaining
-width), the review badges (§4.2) and the amount. Derived entries (opening,
+width), the origin tag, the review badges (§4.2) and the amount. Derived entries (opening,
 valuation, reconciliation) render in the same row shape with their type in
-place of a category and no review affordances (spec §3.9).
+place of a category, no origin tag and no review affordances (spec §3.9).
+
+**The origin tag** says who authored a row's source transaction, from its
+`origin` (spec §5.6): a small muted tag, "Imported", "Entered" or "Booked".
+It is the same on every row with a source transaction, in the ledger list and
+in an account's statement (`ux/views/account.md`), and it is the only mark of
+authorship there: every other cell shows the data the row holds, empty where
+it holds none. No list renders a row differently for its account's kind or
+its author.
 
 The description column shows the entry's `description` and nothing borrowed
 from its source transaction: the source fields are shown where they belong, in
-the work panel and in the rule preview's source columns. An entry with no
-description shows an empty cell. Whether imports get a description at creation
+the work panel and in the rule preview's source columns. An entry with a
+source text (spec §5.9) — an order's item booked on a clearance account —
+shows it there, muted, followed by the description where the user gave one:
+the source text is what the entry is, the description stays the user's. An
+entry with neither shows an empty cell. Whether imports get a description at creation
 is open (§10). The API's derived `display_text` is not used by the column.
 
 The entries of one unit (spec §6) are shown together wherever a unit is shown:
@@ -118,14 +129,12 @@ spec §6), one consistent badge per token and nothing else:
 |---|---|---|
 | `unconfirmed` | outlined dot | values are proposals |
 | `unclassified` | "?" | type or category missing |
-| `document_suggested` | document icon | a document may explain this |
-| `waiting` | clock | partner, document or the rest of an order still expected |
+| `waiting` | clock | partner still expected |
 | `unmatched_transfer` | unlink | Transfer leg without a partner |
 
 A confirmed entry shows no badge. Badges carry a tooltip with the sentence in
-the third column; the `waiting` tooltip names the partner's account when the
-entry is an unpaired transfer leg, the provider when it waits for a document,
-and the order when it waits for the rest of one. Account and currency status (spec §3.11) is never shown as an
+the third column; the `waiting` tooltip names the partner's account. Account
+and currency status (spec §3.11) is never shown as an
 entry badge; it belongs to the account (§4.4).
 
 ### 4.3 Derivation and evidence
@@ -140,8 +149,7 @@ Every derived value can show its basis, rendered from the derivation key
 | `history` | "history: 3 of 4 since Mar 2026" |
 | `llm` | "AI model: *its rationale*" |
 | `llm` with no value (`"none"`) | "AI model: no fitting category — *its rationale*" |
-| `matcher_decision` | "matched automatically" |
-| `matcher_proposal` | "document matched — check the split" |
+| `booking` | "from its document" on a booking entry's type; "booked from *account*'s charge" on a counter-leg booking's type, counter-account and pair; "counter-leg booked on *account*" on the charge's pair |
 | `user` with a basis | "confirmed by you, proposed by *…*" |
 | `user` without one | "set by you" |
 | `user` on an empty payee | "No payee" shown muted, with "set by you" |
@@ -152,7 +160,7 @@ Every derived value can show its basis, rendered from the derivation key
 | a counter-leg the preview proposes | "proposed: no open offer" |
 | the counter-account a pair set (basis `{"from": "counterpart"}`) | "from its partner", with no clear control |
 
-Proposals (history, model, matcher proposal) are visually distinct from
+Proposals (history, model) are visually distinct from
 decided values — e.g. italic or a lighter weight — and the distinction is the
 same in every view. Thin evidence is shown as such ("1 of 1"), never rounded
 into a percentage.
@@ -275,12 +283,10 @@ row; a resolved row stays in place, marked (§7).
   many (spec §6). An entry-form edit of a user-authored row always shows the
   general warning the spec requires (spec §5.6), static above Save; that
   warning is its confirmation.
-- **Skipping a document wait is explicit.** Where documents are suggested or
-  awaited, committing without one is a deliberate choice ("commit without a
-  document"), not the default key; the server enforces it and refuses a
-  commit that lacks it (spec §5.8, §6). A payee's document provider is typed
-  or picked like a tag, without creating anything: the known providers are
-  suggested, any value is accepted.
+- **A clearance account's providers are typed or picked like tags**, without
+  creating anything: the known providers are suggested, any value is
+  accepted; one another account of the same currency takes is refused,
+  naming that account (spec §3.3).
 - **Invalid is shown, not blocked.** A draft that would be invalid — an unequal
   same-currency pair, a residual of zero — stays editable and shows why it
   cannot be committed, with the remedies the spec offers (spec §5.7, §5.9);
@@ -380,10 +386,9 @@ row; a resolved row stays in place, marked (§7).
   the marked rows suit real use;
 - the rule editor: its layout, the find box that picks its example entry and
   the example's table beside the conditions, in two groups (from the source
-  transaction; from the entry: payee, document merchant, document line), with
-  the condition picker grouped the same way, and the priority a new payee rule
-  with a document condition is given, before every payee rule without one
-  (which conditions one reaches for on real descriptors);
+  transaction; from the entry: account, source text, payee), with the
+  condition picker grouped the same way (which conditions one reaches for on
+  real descriptors);
 - how rules are ordered by priority, and whether the editor needs to show
   that at all;
 - whether imports get a description at creation (the list shows an entry's own

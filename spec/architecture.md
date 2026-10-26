@@ -187,9 +187,10 @@ then be read independently.
 
 Resources are not tables. The operations that matter are not row edits:
 
-- Committing a unit writes its values, its split, its document decisions and
-  possibly a counter-leg on another account at once, under deferred
-  invariants; settling then derives whether the unit is confirmed.
+- Committing a unit writes its values, its split and possibly a counter-leg
+  on another account at once, under deferred invariants; settling then
+  derives whether the unit is confirmed, and books on a clearance account
+  what the unit's decisions call for.
 - Previewing a unit computes what a commit would write and writes nothing.
 - Marking a source transaction as a duplicate deletes its entries; reverting
   a run deletes everything the run produced and recomputes the account's
@@ -220,7 +221,8 @@ GET    /api/ledger/sources/{id}                provenance: one source transactio
                                                no entry, is read the same way
 
   user-authored source transactions — the entry form (spec §3.9, §5.6), on
-  unsynced accounts only
+  unsynced accounts only, clearance accounts included; an imported row or a
+  booking is refused (422 `not_user_authored`)
 POST   /api/ledger/sources                     enter amount, purpose, date,
                                                account and sign; the client's
                                                random id makes a repeat a
@@ -257,21 +259,17 @@ GET    /api/units/queue                        the units not confirmed, in
                                                by booked date, then anchor
                                                entry id; units decided entirely
                                                by pass 0 and rules appear only
-                                               while they wait for a partner, a
-                                               document or the rest of an
-                                               order; a unit says what it
-                                               needs or waits for, at most one
-                                               of `needs_account {currency}`,
+                                               while they wait for a partner;
+                                               a unit says what it needs or
+                                               waits for, at most one of
+                                               `needs_account {currency}`,
                                                `waiting {account_id,
-                                               synced_through | null}`,
-                                               `waiting_document {provider,
-                                               covered_through | null}`,
-                                               `waiting_order {order,
-                                               provider, charged, total}`
-                                               (amounts, signed like the
-                                               document's total); each unit
-                                               says whether the model is still
-                                               looking at it
+                                               synced_through | null}`; a
+                                               booking's unit says so
+                                               (`booking`, with its source
+                                               kind); each unit says whether
+                                               the model is still looking at
+                                               it
 GET    /api/units/queue/count                  how many units can be acted on
                                                now: `count`, the sum of
                                                `pending_review` and
@@ -285,7 +283,8 @@ POST   /api/units/preview                      stored state + draft → the unit
                                                temporary ids for rows it would
                                                create, issued by the client),
                                                values, derivations, transfer
-                                               offers and document suggestions,
+                                               offers, the bookings settling
+                                               would make for it,
                                                consequences such as a partner
                                                left behind. An in-memory
                                                overlay; writes nothing.
@@ -293,8 +292,8 @@ POST   /api/units/commit                       the full state the user saw;
                                                saves any unit; settling
                                                decides whether it is confirmed
 
-  documents — browsed on their own; linked only through a unit's commit
-  (spec §5.8)
+  documents — browsed on their own; booked on a clearance account by
+  settling, never linked to an entry (spec §5.8)
 GET    /api/documents                          filtered, paged list, newest
                                                first: provider (repeatable),
                                                from and to on the date,
@@ -302,40 +301,36 @@ GET    /api/documents                          filtered, paged list, newest
                                                (magnitudes in minor units,
                                                with currency), q (word by
                                                word over merchant, title and
-                                               line descriptions), linked
-                                               true or false, fully_charged
-                                               true or false (its carriers'
-                                               amounts reach its total);
+                                               line descriptions), booked
+                                               true or false;
                                                limit 1 to 500 (100), offset.
-                                               Each row has the number of
-                                               transactions carrying it.
-                                               Picking by hand in the panel
-                                               reuses the list with provider
-                                               and fully_charged=false
+                                               Each row has its `booking`
+                                               (the account and the booking's
+                                               source transaction) or, not
+                                               booked, `not_booked`, the
+                                               first reason that applies
+                                               (`features/documents.md` §1):
+                                               `zero_total`, `no_account
+                                               {currency}` (no clearance
+                                               account takes its provider in
+                                               its currency), `no_start
+                                               {account_id}` (the account
+                                               that takes it has no balance
+                                               record) or `before_start
+                                               {account_id, start}` (dated on
+                                               or before that account's
+                                               start)
 GET    /api/documents/providers                the known providers, sorted,
-                                               for the payee form's
-                                               suggestions: the distinct
-                                               providers of stored documents
-                                               and the names importers give
-GET    /api/documents/{id}                     a document with its lines, each
-                                               with its category and
-                                               rationale, and its carriers,
-                                               each as the entry carrying it
-                                               and the source transaction's
-                                               own date, amount and
-                                               currency; `fully_charged`
-                                               (its carriers' amounts reach
-                                               its total); for one not fully
-                                               charged, the `matches`: the
-                                               transactions it would match,
-                                               confirmed ones included
-                                               (entry, account, booked date,
-                                               amount, instructed amount,
-                                               display text, payee, the
-                                               document it already carries,
-                                               whether its unit is
-                                               confirmed); a fully charged
-                                               document has none
+                                               for the suggestions of a
+                                               clearance account's provider
+                                               list: the distinct providers
+                                               of stored documents and the
+                                               names importers give
+GET    /api/documents/{id}                     a document with its lines, and
+                                               its booking — the account, the
+                                               source transaction and its
+                                               entries, in line order — or
+                                               `not_booked`, as in the list
 
   dimensions — created only by explicit user action (spec §5.9)
 GET    /api/ledger/categories
@@ -358,10 +353,7 @@ POST   /api/ledger/categories/{id}/merge       into another category of the
                                                keys kept; previewed (spec §3.5)
 GET    /api/ledger/payees
 POST   /api/ledger/payees
-PUT    /api/ledger/payees/{id}                 name, note, icon, colour,
-                                               document_provider (free text,
-                                               trimmed; a write: matching and
-                                               waiting read it, so it settles)
+PUT    /api/ledger/payees/{id}                 name, note, icon, colour
 DELETE /api/ledger/payees/{id}                 only while no entry references
                                                it, taking the rules that set it;
                                                otherwise merge
@@ -391,11 +383,23 @@ PUT    /api/ledger/rules/{id}                  change name, target value,
 DELETE /api/ledger/rules/{id}                  likewise
 GET    /api/ledger/accounts
 POST   /api/ledger/accounts                    create an account; creates
-                                               nothing else (spec §5.7)
+                                               nothing else (spec §5.7), but
+                                               for a clearance account, which
+                                               takes a `start_date` and its
+                                               `providers`: its opening
+                                               record, a manual record of 0
+                                               at the end of the start date,
+                                               written in the same
+                                               transaction (spec §3.10); it
+                                               settles, which books the
+                                               documents it takes
 PUT    /api/ledger/accounts/{id}               name, sort order, note, icon,
                                                colour, external_ref (a write: pass 0
-                                               reads it, so it settles); never
-                                               the kind or the currency
+                                               reads it, so it settles), and
+                                               for a clearance account its
+                                               `providers`, the whole list (a
+                                               write: settling books from it);
+                                               never the kind or the currency
                                                (spec I38)
 DELETE /api/ledger/accounts/{id}               only an account that holds
                                                nothing: no entries, source
@@ -528,13 +532,12 @@ GET    /api/changes                            the change value of the ledger,
                                                of the documents and of each
                                                account, the current user's
                                                active task, how many entries
-                                               and how many document lines
                                                the model still has to look
                                                at; a write's response
                                                carries the values after it
 
   configuration — read-only (§5.7)
-GET    /api/config                             base currency, the windows,
+GET    /api/config                             base currency, the matching window,
                                                default locale, whether OIDC
                                                sign-in is offered or enforced;
                                                never a secret, and read
@@ -622,9 +625,10 @@ a rule write carries `expected_count`, the count of entries its preview
 reported; when the number has moved nothing is written and the answer is 409
 `conflict`, reason `filter_result_changed`, with `expected` and `actual`. A
 rule write's request names the rule (`name`), what it sets (`sets`, on
-creation only), the target value, the conditions (a category rule's may include payee
-conditions, `{"field":"payee","op":"is","value":"<id>"}`; core checks that the
-payee exists) and `priority`; it returns
+creation only), the target value, the conditions (any rule's may include account
+conditions, `{"field":"account","op":"is","value":"<id>"}`, and a category rule's
+payee conditions, `{"field":"payee","op":"is","value":"<id>"}`; core checks that
+the account or payee exists) and `priority`; it returns
 the rule, the preview's lists (the entries matched, the units it would
 confirm, lists A and B, `spec.md` §5.9) and the settle result. It also carries `settle_breakdown` next to `settle` (null on a dry run and when settling failed): the entries settling touched, counted by the final derivation pass of the field the rule sets, as `{total, this_rule, history, other_rules, other}`: decided by this rule, proposed by history, decided by another rule, and everything else (no value for the field, flag-only changes, the user's own decisions, entries that still carry a deleted rule's key). The parts add up to `total`, so the client can say where the touched entries come from without changing the settle steps. A preview row is an entry with its
 `source` (above): its own fields (booked date, account, amount, the current value and key of what the rule
@@ -647,17 +651,17 @@ exists: there is no redirect and no `merged_into`.
 
 **Preview and commit are the whole write path for interpretation.** The
 client holds a draft — the user's choices for one unit — and asks
-`preview` what it implies; converting, splitting, re-pairing and picking a
-document are draft edits, not server operations. Nothing persists until
+`preview` what it implies; converting, splitting and re-pairing are draft
+edits, not server operations. Nothing persists until
 `commit`. A commit is always of one whole
 unit; there is no batch commit and no operation that rejects a single
-derived value (spec §6). Only a commit splits (spec I7): a document's lines
-reach the ledger as a split the preview proposes, never as machine output. A
+derived value (spec §6). Only a commit splits (spec I7), with one exception:
+a booking, which settling creates split along its document's lines and which
+no commit re-splits (below). A
 commit does not confirm: it writes what the user saw, and settling derives
 whether the unit is confirmed. It is refused, with the reason, only where the
-result would break an invariant, the unit moved underneath the panel, or a
-document decision is missing (below); the preview returns the state the commit
-leads to.
+result would break an invariant or the unit moved underneath the panel; the
+preview returns the state the commit leads to.
 
 **What a commit carries.** The draft; the value of every field as the preview
 showed it, with the basis of each proposal shown; temporary ids for the rows
@@ -665,13 +669,13 @@ the draft creates — negative integers the client issues, echoed by the
 preview and mapped to real ids in the commit response; a **tag change** per entry, `tag_ids_added` and
 `tag_ids_removed` relative to the tags the entry had when loaded (never the full set), carried by the preview
 too and omitted for an entry whose tags the draft does not touch; the version of every entry it writes or showed as a
-consequence; and the version of a picked document. The server lays the draft
+consequence. The server lays the draft
 over the stored state again and writes the values sent. It derives the keys
 itself (`spec.md` §5.9): a standing key is kept only where the stored value is
 unchanged and was standing, a value equal to a shown proposal becomes `user`
 with that proposal's key nested as its basis, a `user` value left unchanged
 stays, anything else is `user` without one. The client may name a basis only
-for the passes `history`, `llm` and `matcher_proposal`; it is stored wrapped
+for the passes `history` and `llm`; it is stored wrapped
 under `user`, never trusted as evidence, so a client can never assert a `rule`
 or `own_account` key. A field that may be empty, such as the payee, and that the
 commit leaves empty — cleared (`mode: fixed`, no value) or left so — is decided
@@ -681,11 +685,10 @@ that may not be empty — type, category, counter-account — is not decided by 
 carries no key. A commit does not confirm (`spec.md`
 §5.9, §6). A counter-account that a pick
 fills on a leg that had none is the pair's: it takes the pair's pass with the
-basis `{"from": "counterpart"}`, and leaves with the pair (`spec.md` §5.7). Besides an invalid result and a missing document decision, it
-refuses only on a structural divergence: a moved version, a partner or document line taken, a row the draft
+basis `{"from": "counterpart"}`, and leaves with the pair (`spec.md` §5.7). Besides an invalid result, it
+refuses only on a structural divergence: a moved version, a partner taken, a row the draft
 relies on gone, or a closure that changed under the locks (409 `unit_moved`).
-A commit locks in one order: the settle lock shared, then the documents it
-picks or its unit carries ascending, then the accounts it
+A commit locks in one order: the settle lock shared, then the accounts it
 touches ascending, then the entry rows ascending; it reads the unit before the
 locks and checks it again after.
 
@@ -698,49 +701,21 @@ present tag and removing an absent one are no-ops. A tag deleted meanwhile refus
 that changes only tags is valid and, like any commit without a change, bumps no version; membership changes
 move no `ledger_entry.version` in any case, so no version is involved in them.
 
-**Documents in preview and commit** (`spec.md` §5.8, §6). The draft entry carries
-`document: {mode, document_id, document_version}`, mode one of
-`keep` (also absent), `pick`, `none`, `reresolve`, `split_along_lines`; valid only
-on a transaction's original entry (422 `invalid_draft`, `document_not_original`).
-Entries made from a line carry `document_line {document_id, line_no}`. Unknown
-fields are rejected: nothing a client sends can mark a suggestion as taken. The
-preview's row block `document` holds the stored document, the link after commit and
-settle, its key, the suggestions nearest first (only while undecided),
-`waiting {provider, covered_through | null}` — or, for the rest of an order,
-`waiting {order: external_id, provider, charged, total}` (`charged` and
-`total` are amounts with their currency, signed like the document's total) —
-`decision_required`
-and `split {document_id, proposed, available, replaces_stored_split}`. Problem
-codes:
-`stale_reference` (`document_id`), `document_changed`, `document_taken`,
-`document_provider_mismatch` (only where the payee has a different provider; a
-payee with none takes any document), `document_decision_required`,
-`document_split_unavailable`, `document_not_for_transfer` (a document picked
-on a transfer), `document_with_transfer` (a transaction carrying a document
-keeps a transfer entry, spec I35). A commit is refused with 422
-`document_decision_required` where documents are suggested or one is awaited and
-the draft has no explicit decision (a pick, `none`, `split_along_lines`; the server
-enforces it, the panel offers "Commit without a document" as mode `none`), with 409
-`unit_moved` (`reason` `taken` or `version`) where lines of the chosen document
-that the preview's line allocation relied on were taken since, or it has a
-newer version, and 409 `stale_reference` for one that is gone. The proposed
-split rows are ordinary new rows with server-issued ids. Once the client echoes
-any row carrying a `document_line`, the split is the client's: nothing is
-regenerated, and every kept row must be echoed, a row left out being removed.
-An original row echoed with `document_line` empty is the user's decision —
-empty is a value (`spec.md` §5.9) — and keeps its carrier unsplit, without a
-line.
-`split_along_lines` replaces an existing split, listing the deleted entries and
-their tags as consequences, and needs the draft anchored on the original entry.
-While a link of the document is not yet the user's, the proposal itself
-replaces an existing split, listed the same way; removing the proposed rows is
-an edit of the split like any other. A pick brings the document's other
-carriers into the draft's unit, and `none` takes the carrier out of it; each
-carrier of the unit has its own `document` block and split.
-`document_taken` reports lines of the document that the preview's line
-allocation relied on as taken since. A link settling has yet to make is shown
-in the preview but written by settling after the commit; the split is proposed
-only from a stored link or a pick.
+**Bookings in preview and commit** (`spec.md` §5.8, §6). A booking's unit is
+reviewed like any other, but its structure is its source's: the preview marks
+it `booking`, with its source (`booking {kind, id, …}`, as on the ledger list's
+`source`), each row carries
+its `source_text`, and the panel offers no partner, convert or split controls
+on it. The values open to a draft are the payee, the category, the
+description, the note and the tags; the type stays `flow` on a document's
+booking and `transfer` on a counter-leg. A draft that changes a booking
+entry's type, amount or split, pairs or unpairs it, or removes one of its
+entries is refused with 422 `invalid_draft`, reason `booking_fixed`. A booking
+entry is never a transfer offer or a candidate for another leg. Settling may
+change a booking under an open panel — its document changed — and the
+structural columns that moves (amount, source text, an entry removed) bump the
+versions, so the commit is refused with 409 `unit_moved` and the panel
+reloads, as for every conflict (`patterns.md` §8).
 
 **Pairing in preview and commit** (`spec.md` §5.7). The draft carries a `pairing`
 field per transfer leg, with a mode: `keep`, `pick` (a partner entry id),
@@ -779,11 +754,17 @@ The commit's closure and locks extend to the pick: the closure includes the
 picked partner's own closure and the former partners, and the lock set the
 counter-leg's account — up to four accounts, locked in ascending order, then the
 rows ascending — with the closure read again under the locks (409 `unit_moved`).
-**Only a commit creates a counter-leg:** a user-authored source on the unsynced
-account with importer NULL, its entry typed `transfer`, with the keys `user`;
-the commit then follows the partner's amount where the spec says
-(`spec.md` §5.7). The preview overlay runs the same pure pairing function as
-settling, so the preview equals the commit plus settling.
+**Only a commit creates a user-authored counter-leg:** a source of origin
+`user` on the unsynced account, its entry typed `transfer`, with the keys
+`user`; the commit then follows the partner's amount where the spec says
+(`spec.md` §5.7). **On a clearance account the counter-leg is a booking**,
+made by settling, not by the commit (`spec.md` §5.7): a leg whose
+counter-account is a clearance account has no offers, and once its type and
+counter-account are decided the preview shows the booking settling will make
+for it — a row with a temporary id, `booking_for` naming the leg — which the
+commit does not write. The preview overlay runs the same pure pairing and
+booking functions as settling, so the preview equals the commit plus
+settling.
 
 #### The ledger list and tags
 
@@ -805,7 +786,7 @@ them all, these are the ones that carry a rule.
   currencies is meaningless and nothing is converted for it. `currency` alone selects that currency.
   `direction` (`in` or `out`) keeps amounts above or below zero.
 - `q` is a text of 1 to 200 characters; every word of it must occur, case-insensitively and as a substring,
-  in at least one of the entry's description and note, the source transaction's counterparty name, purpose,
+  in at least one of the entry's description, note and source text, the source transaction's counterparty name, purpose,
   end-to-end id and mandate reference, the payee's name and the category's name.
 - `limit` (1 to 500, default 100) and `offset` page the result.
 
@@ -821,16 +802,17 @@ and `offset`.
 
 **Rows.** An entry as the interpretation layer holds it: id and version, account, `booked_on` and `value_on`,
 the signed amount with its currency (§4.5), type, description and note, `display_text` (derived: the
-description, else the counterparty name, else the purpose; offered for uses such as the
+description, else the source text, else the counterparty name, else the purpose; offered for uses such as the
 panel title and search results, while the list's description column shows `description` alone, `patterns.md` §4.1), payee, category,
-counter-account and counterpart entry, source transaction, document, `derivation`, `unit_key` (the same for every
-entry of a unit), `authored` (true when its source transaction was entered by hand), review flags, tag ids and `source`. A row carries
+counter-account and counterpart entry, source transaction, `source_text` (the text its source gives the entry, null for most, `spec.md` §5.9), `derivation`, `unit_key` (the same for every
+entry of a unit), `origin` (its source transaction's: `import`, `user` or `booking`), review flags, tag ids and `source`. A row carries
 ids only; names, icons and colours come from the account, category, payee and tag lists the client already
 holds, and there is no running balance. A transfer leg also carries a read-only summary of its partner
 (account, date, amount), so the list can show the partner when a filter hides it.
 **`source`** is the entry's source transaction as one nested object, `null` only for derived entries, which
-have none (every movement has one, imported or entered by hand: spec §3). A source entered by hand carries its
-amount and purpose and no counterparty, reference, booking text or source format. It holds the fields rules read or the UI shows: counterparty name, reference and BIC, purpose,
+have none (every movement has one, imported, entered by hand or booked: spec §3). A source entered by hand carries its
+amount and purpose and no counterparty, reference, booking text or source format; a booking's carries its amount,
+purpose and, from a document, counterparty name (spec §5.8), and `booking {kind, id, …}`: its source — `document`, with the document's id, `provider` and `external_id`, or `transfer`, with the charge's entry id and `account_id` — read only for navigation (the work panel's "Booked from …", a row's "Open document"). It holds the fields rules read or the UI shows: counterparty name, reference and BIC, purpose,
 booking text, end-to-end id, mandate reference, instructed amount and currency, and source format. It never
 holds the raw record or the content hash. The client reads the counterparty name and purpose from it; there
 are no flat copies on the entry. Every entry read carries it: the list, `GET /api/ledger/entries/{id}`
@@ -840,7 +822,7 @@ entries (`spec.md` I3) and so never appears. It is a read: it takes no lock, wri
 settle.
 
 **The lists.** `GET /api/ledger/categories` (flat, `parent_id` linking the tree, roots first, then
-`sort_order` and name) and `GET /api/ledger/payees` (by name, with `document_provider`) answer with identity and presentation as
+`sort_order` and name) and `GET /api/ledger/payees` (by name) answer with identity and presentation as
 stored; the client resolves inherited icons and colours. Their writes are the dimension group's.
 
 **Tags.** `GET /api/ledger/tags` lists every tag by name with its derived span (`starts_on`, `ends_on`) and
@@ -892,11 +874,12 @@ over the whole account.
 **Items** are of two kinds, told apart by `kind`:
 
 - `source` — the source transaction's id, `booked_on`, `value_on`, `amount`
-  (§4.5), counterparty name, purpose, `authored` (entered by hand),
+  (§4.5), counterparty name, purpose, `origin` (`import`, `user` or `booking`),
+  for a booking its `booking` (as on the ledger list's `source`),
   `duplicate_of` (the row it duplicates — its id, `booked_on` and amount, so
   the row can name it — else null),
   `entry_id` (the lowest id among its entries, which opens its unit in the
-  review panel; null for a duplicate), `run_id` (null for an authored row) and `balance`, the running
+  review panel; null for a duplicate), `run_id` (null for a row not imported) and `balance`, the running
   balance after it, null for a duplicate. It never carries `raw`: provenance is
   `GET /api/ledger/sources/{id}`.
 - `record` — the record's id, `balance_on`, `record_kind` (`reported` or
@@ -949,6 +932,20 @@ formula.
 shows the facts wherever the account is shown with its balance), and the
 Overview reads the same figure.
 
+**A clearance account's providers.** `providers` is a list of names, each
+trimmed and not blank, compared without regard to case; it is accepted for a
+clearance account only (422 `validation_error` naming `providers` for any
+other kind), as is `start_date`, which a clearance account requires on
+creation and which is no field afterwards: the start is the opening record,
+corrected like any record. A name that another account in the same currency
+takes is refused as a whole write, 409 `conflict`, reason `provider_taken`,
+with details naming the provider and that account. The account rows carry
+`providers` (empty for every other kind). A clearance account is never linked
+to an importer: discovery offers no link to one, and `POST
+/api/importers/instances/{id}/links` to it is 409 `conflict`, reason
+`clearance_account`. Its `external_ref` is set like any account's, so that pass
+0 recognises the provider's IBAN (`spec.md` §5.9).
+
 **An account's linked importers are not a route.**
 `GET /api/importers/instances` already returns every instance with its linked
 accounts, and the page filters them by the account. A household has a handful
@@ -982,7 +979,7 @@ named in the URL.** Operations cascade: a commit may pair a leg with an entry
 elsewhere in the list, create a counter-leg on another account, or return a
 former partner to review; marking or clearing a duplicate recomputes an
 account's derived entries; settling after any write may give other unconfirmed entries new
-proposals.
+proposals, or book, re-derive or remove bookings on clearance accounts.
 
 Without this, a client holding a list has no way to know that a row it is not
 looking at has become stale, and will present as pending something the server
@@ -1022,18 +1019,17 @@ convention. A commit writes the state the user saw (spec §6), so a proposal
 recomputed by the other user's sync must not refuse it; if it did, conflicts
 would fire exactly when both people are working — which is when they are
 least tolerable and most likely to be dismissed unread. Structural changes —
-an entry's account, amount, counterpart or document — always bump it (its
+an entry's account, amount, counterpart or source text — always bump it (its
 source never changes),
 so a commit is refused when the unit itself moved underneath the panel, a
-document settling linked meanwhile included. A commit picking a document
-also carries the document's own version (`spec.md` §5.5).
+booking that followed its document meanwhile included.
 
 **The check and the write are one step.** A write locks the entries it
 carries versions for (`SELECT … FOR UPDATE`, in ascending id order, after
 its advisory locks, §5.2),
 compares the
 versions, and writes in the same transaction. A unique-index violation
-during a write — a leg or document line taken between the check and the insert —
+during a write — a leg taken between the check and the insert —
 is answered as the same named conflict, never as a server error.
 
 **Granularity is per entity, not per request.** An operation touching twelve
@@ -1250,15 +1246,17 @@ app/
     balance/             balance records, derived entries (openings,
                          valuations, reconciliations), unexplained differences
     resolution/          pure resolution: field order, pass 0 (own accounts),
-                         the orchestration of the classifier plugins; the
-                         split along a document's lines
-    matching/            transfer pairing and offers; document matching and
-                         suggestions, the line allocation of a document over
-                         its carriers
+                         the orchestration of the classifier plugins
+    matching/            transfer pairing and offers
+    bookings/            bookings on clearance accounts: what each source
+                         calls for — a document's booking split along its
+                         lines with the spread of its total, a decided
+                         charge's counter-leg — as pure functions, and the
+                         writes of settling's booking step
     units/               unit membership, drafts, preview and commit
     settle/              bringing derived state up to date after every write:
-                         rederiving unconfirmed entries, pairing, document
-                         matches, derived entries, flags
+                         rederiving unconfirmed entries, bookings, pairing,
+                         derived entries, flags
     reporting/           aggregate queries, all conversion via base_value();
                          filtered by the ledger list's own predicate
     tasks/               registry and claims, the task with its events, the
@@ -1320,22 +1318,22 @@ enforcement point:
 
 | Invariant (`spec.md` §2.1) | Enforced in |
 |---|---|
-| I1 source transactions come from an importer, or are a user's on an unsynced account | `ingest`, the entry form's operations, and counter-leg creation in a commit (`core/units`) are the only writers; `CHECK ck_user_row` |
-| I2 imported source transactions immutable except `duplicate_of`; user-authored ones edited through the entry form | Postgres trigger `trg_source_immutable` |
+| I1 source transactions come from an importer, are a user's on an unsynced account, or are bookings on a clearance account | `ingest`, the entry form's operations, counter-leg creation in a commit (`core/units`) and settling's booking step (`core/bookings`) are the only writers; `CHECK ck_origin`; trigger `trg_authored_source_account` |
+| I2 imported source transactions immutable except `duplicate_of`; user-authored ones edited through the entry form; bookings follow their source; no row changes its origin | Postgres trigger `trg_source_immutable`; `core/bookings` is the only writer of a booking |
 | I3 entries carry their source's account, currency and dates and sum to its amount; duplicates have no entries | Postgres deferred triggers `trg_split_sum` (on entries), `trg_source_entries` (on a source's copied columns) and `trg_duplicate_state`; `trg_entry_source_fixed` keeps an entry on its source; `ingest`, a commit, an edit through the entry form and clearing a duplicate write within one transaction |
 | I4 one identity per row, unique per account over all rows | `CHECK ck_one_identity`; partial unique indexes over all rows |
 | I5 one currency per account, for entries, source rows and balance records | composite foreign keys |
 | I6 balance is the sum of entries | `core/reporting`; nothing else sums amounts |
-| I7 one entry per new source transaction; only a commit splits | `ingest` and the entry form; `core/units` is the only writer of splits |
+| I7 one entry per new source transaction; only a commit splits, a booking excepted | `ingest` and the entry form; `core/units` is the only writer of splits, `core/bookings` of a booking's entries |
 | I8 only entries with a source may be incomplete | Postgres `CHECK ck_complete_unless_movement` |
 | I9 category implies flow; payee on flows; kind fixed; no cycles | Postgres `CHECK`, composite FK, triggers `trg_category_kind_fixed` and `trg_category_acyclic` |
 | I10 transfer pair mutual, distinct accounts, opposite signs, same-currency equal; one counterpart | Postgres deferred trigger; partial unique index |
 | I11 a counter-account is in the currency the money arrived in | one function in `core`, used by resolution (evidence filter), the preview and the matcher |
 | I13 one derived entry per record, computed, never edited, tagged or annotated; the opening first | `core/balance` is the only writer; unique indexes; integrity views; `api` exposes no edit and no tagging for them |
 | I17 no pass, matcher, settling or import creates a dimension or account | operations of §4.1; proposal types carry ids, not names |
-| I18 proposals rederived, standing values kept; an entry resolved afresh when its input changes, and later fields derived again when a value changes | `core/settle` calls `core/resolution` and `core/matching` for the entries a change bears on; `core/resolution` applies the field order; the write that changes an entry's input — document ingest, an entry-form edit — resolves that entry afresh in its own transaction (§5.2) |
+| I18 proposals rederived, standing values kept; an entry resolved afresh when its input changes, and later fields derived again when a value changes | `core/settle` calls `core/resolution` and `core/matching` for the entries a change bears on; `core/resolution` applies the field order; the write that changes an entry's input resolves that entry afresh in the same transaction: an entry-form edit, and settling's booking step for the booking entries whose source text it changes (§5.2) |
 | I19 history learns only from confirmed values, a human's or standing ones | `core/resolution` supplies the history; a plugin never sees unconfirmed values |
-| I20 no automatic process changes a reviewed entry | `core/settle` and `core/matching` select only unconfirmed units; `ingest` marks only rows it inserts; derived entries are the exception |
+| I20 no automatic process changes a reviewed entry, a booking following its source excepted | `core/settle` and `core/matching` select only unconfirmed units; `ingest` marks only rows it inserts; derived entries and bookings are the exceptions, and `core/bookings` changes of a booking only what its source changed |
 | I21 review per unit, committed atomically | `core/units`; `api` exposes no other write to an entry's interpretation but the two merges, of payees and of categories, each previewed and one transaction |
 | I22 a transfer confirmed only as a pair | `core/units`, at commit |
 | I23 review flags derived, never patched | set-based recompute in `core/settle` |
@@ -1348,12 +1346,12 @@ enforcement point:
 | I31 at most one transfer entry per source transaction | partial unique index `ux_le_one_transfer_per_source`; the preview refuses first |
 | I32 duplicates by identity (skipped), then by amount against imported source rows only (inserted as duplicates); first in wins | `core/ingest`, nowhere else; composite FK `fk_duplicate_same_account`, trigger `trg_duplicate_state` against chains |
 | I33 an automatic pair needs a known counter-account | `core/matching` |
-| I35 a transaction has one document, a document line is carried once, no transfer entry on a transaction carrying a document | `ledger_entry.document_id` and `document_line_id`, with the partial unique indexes `ux_le_document_per_transaction` and `ux_le_document_line`; the transfer rule: `ck_document_not_on_transfer` on the carrying entry, the commit's refusal for the transaction's other entries |
 | I36 a reported record never dated after its run's coverage | `ingest`; integrity view `v_check_reported_after_coverage` |
 | I37 every write ends by settling | every write operation ends by calling `core/settle`; a model answer is a write of its own |
 | I38 an account's kind fixed at creation | trigger `trg_account_kind_fixed`; integrity view `v_check_derived_type` |
 | I39 ingest serialised per account, settling as a whole | the advisory locks of §5.2 |
-| I40 user-authored source transactions, counter-legs included, only on unsynced accounts | Postgres trigger `trg_user_source_unsynced`; `core/units` offers and creates counter-legs nowhere else; nothing automatic creates them |
+| I40 user-authored source transactions, counter-legs included, only on unsynced accounts | Postgres trigger `trg_authored_source_account`; `core/units` offers and creates user-authored counter-legs nowhere else, and offers none toward a clearance account; nothing automatic creates them (a clearance account's counter-legs are bookings) |
+| I41 bookings only on clearance accounts, which are never linked to an importer; a booking exists exactly while its source calls for it, never a duplicate, never written through the entry form | triggers `trg_authored_source_account` and `trg_account_source_not_clearance`; `CHECK ck_origin` (no duplicate, a `source_id`); settling's booking step (`core/bookings`) is the only writer of bookings and removes what no source calls for; the entry form refuses a booking (422 `not_user_authored`) |
 | pass ordering and field order | `core/resolution`, never a plugin |
 | history's majority rule; its lookback period | `plugins/classifiers/history`; the lookback is a tuning parameter |
 | LLM payload limited to the permitted fields | `plugins/classifiers/llm` |
@@ -1385,11 +1383,11 @@ Transaction boundaries:
   the order revert follows (`spec.md` I30). Runs finishing in the same clock
   tick are ordered by their id. A run that rolls back is set
   `failed` afterwards, in a transaction of its own.
-- **A commit is one transaction**: values, splits, link decisions, a
+- **A commit is one transaction**: values, splits, a
   counter-leg, an adjusted user-authored amount, and the removal routine for a partner left behind. It carries the
   version of every entry it writes — the drafted unit and every entry its
   preview showed as a consequence, such as a partner left behind or a picked
-  leg's former partner — and of a picked document, and is refused if any has
+  leg's former partner — and is refused if any has
   moved (§4.1). A user-authored leg on an unsynced account, its source's only
   entry, paired in one currency with a leg whose amount the draft changes,
   is written with the negated new amount — not an input change, so its values
@@ -1401,9 +1399,10 @@ Transaction boundaries:
 - **Derived entries are recomputed in the transaction that changed their
   inputs** — an import, entering, editing or deleting a user-authored
   transaction, marking or clearing a duplicate, a revert, a commit, a balance
-  record — under the account's lock, so an account's derived entries are never stale between
+  record, and settling's booking step for the clearance accounts it writes
+  on — under the account's lock, so an account's derived entries are never stale between
   operations. The rest of settling (`spec.md` §5) — rederiving unconfirmed
-  entries, pairing, document matches, flags — runs right after the write,
+  entries, bookings, pairing, flags — runs right after the write,
   scoped to what the write touched.
 - **Marking a duplicate is one transaction** — set `duplicate_of`, repoint
   the rows that pointed at the marked row, delete its entries, apply the
@@ -1422,13 +1421,14 @@ Transaction boundaries:
   moves the remaining children, repoints entries and rules, and deletes the
   merged category last: the name index is checked row by row.
 - **Resolving afresh is the writer's.** A write that changes an entry's input
-  (`spec.md` §5.9) — document ingest changing what resolution reads, for an
-  unconfirmed transaction only (`spec.md` §5.5, I20), an edit
-  through the entry form, which re-resolves fully, the user's values included
-  (`spec.md` §5.6) — resolves that entry in its own transaction, as
-  ingest resolves a new entry: a changed document's link is dropped for
-  settling's matching to make again. Settling, which keeps no record of what
-  an entry was resolved from, then does the rest.
+  (`spec.md` §5.9) — an edit through the entry form, which re-resolves fully,
+  the user's values included (`spec.md` §5.6), or settling's booking step
+  re-deriving a booking, which resolves afresh the entries whose source text
+  it changes or creates, confirmed or not (`spec.md` §5.8) — resolves that
+  entry in the transaction that changes it, as ingest resolves a new entry.
+  Document ingest changes no entry: it writes documents only, and their
+  bookings follow in settling. Settling, which keeps no record of what an
+  entry was resolved from, then does the rest.
 - **The import run row is committed before fetching**, so a crashed run leaves
   a `running` record rather than nothing. With one worker no run can outlive
   the process, so start marks every run still `running` as `failed` (§5.7).
@@ -1446,13 +1446,17 @@ Transaction boundaries:
   nor race document ingest, and writes still run alongside each other. After
   the settle lock come the documents, in ascending id order, then account
   locks, in ascending id order, then row locks, in ascending id order: a
-  commit locks the documents it picks or its unit carries, then the accounts
-  of every row its preview showed, then the rows. Document ingest takes
-  documents, then accounts, then rows, so the two never deadlock. Where the plan under the locks needs accounts not yet
+  commit locks the accounts of every row its preview showed, then the rows;
+  document ingest locks only its documents. Where the plan under the locks needs accounts not yet
   locked (a counter-leg's), the commit runs again with them, at most three
-  rounds, and then answers with the "try again" conflict. Settling takes no account lock at all — it creates no
-  rows and recomputes no derived entries; the writes do that in their own
-  transaction. `settle(engine)` opens its own transaction after the write it
+  rounds, and then answers with the "try again" conflict. **Settling takes no
+  account lock but in its booking step**, the one place it creates rows and
+  recomputes derived entries: the step takes the locks of the clearance
+  accounts it writes on, in ascending id order, after the documents in the
+  order above (it reads documents under the exclusive settle lock and locks
+  none). This is a contained exception — only clearance accounts, only
+  bookings; every other row and derived entry is written by the writes, in
+  their own transaction. `settle(engine)` opens its own transaction after the write it
   follows, and sets the transaction-local `ledger.settling` so that its
   rewrites do not bump versions (§4.1). Should PostgreSQL still abort a write on a deadlock, the server
   retries it once, holding its whole payload; if the retry fails too, the
@@ -1464,43 +1468,56 @@ Transaction boundaries:
   failed write moves nothing, and no write path reports changes by hand.
   Document ingest, which locks its documents in its own statement, notes the
   documents itself; settling moves the ledger
-  when it touched an entry and the documents when it linked or unlinked one. A
+  when it touched an entry, and its booking step's account locks move the
+  values of the clearance accounts it wrote on. A
   write made outside the server process moves nothing.
 - **The order of a settle.** One settle runs, over the units it covers:
-  1. resolution, with each transaction's current link — so a linked
-     transaction keeps the document fields its rules read — and without one
-     where none is;
-  2. document matching, for transactions with no decided document — no link
-     of any key, and no "none" — judged on step 1's result, which for them is
-     the resolution without a document; the transactions of which a document
-     is the only candidate are linked to it together, in one write, and never
-     into a document with a confirmed carrier (`spec.md` §5.8). Whether an
-     instance provides a provider is asked through a registry the composition
-     root configures, as with the classifiers (core never imports plugins);
-     there is no schema change;
-  3. resolution again of the fields after a link step 2 made;
+  1. resolution;
+  2. **bookings on clearance accounts**, one step for all of them (`spec.md`
+     §5.8). Its sources are the documents a clearance account takes — the
+     provider listed in the document's currency, dated after the account's
+     start — and the charges whose transfer entry is decided, under standing
+     keys, as a transfer to a clearance account. For each, the step derives
+     what the source calls for, by the rules of `spec.md` §5.7 and §5.8 and
+     `features/documents.md`, compares it
+     with what is booked under the source's `source_id`, and writes only the
+     difference: it books what is not yet booked; re-derives a booking whose
+     source changed — its row, and its entries matched to the document's
+     lines by position, the order of the entries (an unchanged line's entry
+     keeps its values and keys, a changed amount or text is written, a
+     removed line's entry goes through the removal routine, a new line gets a
+     new entry); and removes, through the removal routine, a booking its
+     source no longer calls for. A counter-leg is written paired with its
+     charge. What a source calls for is a pure function of the source, the
+     provider lists and the account's start, so the unique `source_id` makes
+     the step idempotent: a second run writes nothing. It locks the clearance
+     accounts it writes on (lock order, above) and recomputes their derived
+     entries before it ends;
+  3. resolution of the booking entries step 2 created or whose source text it
+     changed;
   4. transfer pairing (`pair_transfers`), in booking-date order (`spec.md`
-     §5.7), over every unpaired transfer leg, in every round; the matching window is the connection setting
+     §5.7), over every unpaired transfer leg but booking entries, which are
+     never candidates, and legs whose counter-account is a clearance account,
+     which only step 2 pairs, in every round; the matching window is the connection setting
      `ledger.matching_window_days`, which core reads from the connection like
      `ledger.max_rate_age` and never from configuration. A pair released by
      step 1 can be made again in the same round;
-  5. review flags, and with them which units are confirmed — recording
-     "none", keyed `matcher_decision`, for each transaction of a newly
-     confirmed unit that has no document key (`spec.md` §6).
+  5. review flags, and with them which units are confirmed (`spec.md` §6).
 
-  Settling creates no rows: counter-legs come only from a commit. Units
-  confirmed in step 5 teach history, which can change the proposals —
-  and so the pairs and confirmation — of other unconfirmed units. Settling
-  therefore repeats steps 1–5, over the unconfirmed units that share a
-  history key value with a unit newly confirmed, until a round confirms
-  nothing new. It terminates, because settling never unconfirms a unit —
-  the "none" it records keeps a document source added later from doing so
-  (`spec.md` I20; a data migration records it for the units confirmed before
-  documents existed) — so the confirmed set only grows; two rounds are the
-  ordinary case, and a maximum round count turns a step that never converges
-  into a reported failure. The five steps are an ordered list. Step 1 re-derives a paired leg of an
+  Settling creates rows only in step 2; every other counter-leg comes from a
+  commit. Units confirmed in step 5 teach history, which can change the
+  proposals — and so the pairs and confirmation — of other unconfirmed units.
+  Settling therefore repeats steps 1–5, over the unconfirmed units that share
+  a history key value with a unit newly confirmed, until a round confirms
+  nothing new. It terminates: step 2 reads only its sources, the provider
+  lists, the accounts' starts and standing decisions, none of which a round
+  changes, so it writes nothing after the first round; from then on settling
+  never unconfirms a unit (`spec.md` I20), so the confirmed set only grows;
+  two rounds are the ordinary case, and a maximum round count turns a step
+  that never converges into a reported failure. The five steps are an ordered list. Step 1 re-derives a paired leg of an
   unconfirmed unit like any other and releases its pair on both legs when its
-  type or its own counter-account changes (`spec.md` §5.7). That is what makes settling idempotent (`spec.md` I37).
+  type or its own counter-account changes (`spec.md` §5.7); a charge so
+  released from a clearance account loses its counter-leg in step 2. That is what makes settling idempotent (`spec.md` I37).
 - **A settle that fails** after the write it follows committed leaves the
   write standing and reports the failure in the operation's response —
   `settle` never raises for its own failure, it returns it as
@@ -1508,7 +1525,7 @@ Transaction boundaries:
   derived state is then stale until the next write, or start, settles —
   settling is idempotent, so nothing is lost.
 - **Unique indexes are not deferrable.** A write that moves a unique value —
-  re-pairing legs, a new anchor taking the opening, re-picking a document —
+  re-pairing legs, a new anchor taking the opening —
   clears the old holder before setting the new one, within its transaction.
 - **What a settle covers.** The **dirty set** of a write is the set of
   unconfirmed units whose derived state it can change:
@@ -1517,21 +1534,22 @@ Transaction boundaries:
     the units it pairs or unpairs;
   - saving, changing or deleting a rule, a changed configuration, linking or
     unlinking an account: every unconfirmed unit;
-  - changing a payee's `document_provider`: the unconfirmed units with that
-    payee;
-  - an import: the new entries, the units whose pairing candidates or document
-    candidates they affect, the other carriers of the documents they link, and
-    every unconfirmed unit when it delivers a balance record or coverage that
-    moves a waiting decision.
+  - an import: the new entries, the units whose pairing candidates they
+    affect, and every unconfirmed unit when it delivers a balance record or
+    coverage that moves a waiting decision;
+  - document ingest, a write of a clearance account's providers and a change
+    of its start: the booking step over the clearance accounts concerned, and
+    the units of the entries it creates or changes.
 
   Key 4 of history (tokens) makes the first case broad, so the **baseline is a
-  pass over every unconfirmed unit**, and narrowing to the dirty set is an
+  pass over every unconfirmed unit**, with the booking step over every
+  clearance account, and narrowing to the dirty set is an
   optimisation taken only where the budget is missed. The budget is set from
   a backfill-sized fixture — a year of history, thousands of unconfirmed
   entries, one commit — and is a test, not a guess. Settling's result — everything it
   touched — is part of the operation's response (§4.1).
 - **Every operation that recomputes derived entries or creates a counter-leg
-  takes a per-account advisory lock** (`pg_advisory_xact_lock` on each
+  or a booking takes a per-account advisory lock** (`pg_advisory_xact_lock` on each
   affected account id, in ascending id order, following the lock order above). Unique
   indexes already make a racing double insert fail loudly; the lock prevents
   the quieter failure, two users' edits on one account each recomputing its
@@ -1606,8 +1624,8 @@ only if a run's settling reported an error.
 
 Passes 1 to 3 of `spec.md` §5.9 are one protocol with three
 implementations, ordered by authority. A classifier receives an entry's
-inputs — its source transaction, a linked or picked document, and the
-fields the review draft fixes — and returns zero or more proposals, each
+inputs — its source transaction, its account, its source text where it has
+one, and the fields the review draft fixes — and returns zero or more proposals, each
 carrying the field it proposes, the value — or none: a proposal may explain
 why the field stays empty — and a **machine-readable basis**, never a prose
 string alone. For history the basis carries the evidence: how
@@ -1630,6 +1648,10 @@ read-only history source. For a key and an entry it returns the candidate
 votes — confirmed entries within the lookback, excluding the given unit —
 with the facts the classifier's filters need: each vote's values, booking
 date and, for a counter-account, that account's currency and closing date.
+For an entry with a source text, the key is that text, canonicalised as in
+`spec.md` §5.2, and the votes are the entries with the same canonical text;
+such an entry is neither asked nor counted on the source keys 1, 2 and 4
+(`spec.md` §5.9).
 Core retrieves candidates by indexed lookups, for equality keys by value and
 for a token key by shared tokens; the classifier scores them — a similarity
 threshold, say — and counts. What counts as a match is the classifier's to
@@ -1665,11 +1687,10 @@ Three properties the implementation must have:
   and the system stays fully usable — this is the state a deployment without
   a model is permanently in, not a degraded mode.
 - **The request payload is restricted** to the fields `spec.md` §5.9 permits:
-  for an entry without a line, counterparty name, booking text and purpose,
-  plus a linked or picked document's merchant; for an entry with a line, and
-  for a line itself, only the document's merchant and the line's description.
-  Never IBAN, BIC, references, amounts, dates,
-  accounts or balances. Enforcing that is the plugin's responsibility and is
+  counterparty name, booking text and purpose, and for an entry with a source
+  text also its source text and the name of its account. Never IBAN, BIC,
+  references, amounts, dates,
+  account numbers or balances. Enforcing that is the plugin's responsibility and is
   tested explicitly; with an empty payload the plugin is not called. Restricted
   is not anonymous: names and purpose lines include private persons' details, so
   a hosted endpoint receives third-party personal data. An on-premise model is
@@ -1680,27 +1701,23 @@ Three properties the implementation must have:
   response fails validation rather than inventing a category.
 
 - **It is asked at most once per input** (`spec.md` §5.9). Its answer is kept
-  only as the field's `llm` key, or, for a document's line, on the line
-  (`category_key`), with a fingerprint of the payload; resolution reuses it
-  while the payload is unchanged, and the plugin keeps no table of its own. A
-  changed payload — a document linked to the entry — asks anew; a re-fetched
-  line with an unchanged payload keeps its answer. A preview never asks the
+  only as the field's `llm` key, with a fingerprint of the payload; resolution
+  reuses it while the payload is unchanged, and the plugin keeps no table of
+  its own. A changed payload — a booking entry whose source text its document
+  changed — asks anew; a booking entry whose text a re-derivation leaves
+  unchanged keeps its answer. A preview never asks the
   model: a payload the commit changes is asked by the settling that follows.
   Settling never waits for the
   model: the request runs outside it, and storing the answer is a write that
   settles like any other.
 
-**One worker asks, in the background.** Settling puts an entry without a line
-whose category falls to the model, with no answer standing for its payload, on
-an in-memory list, and with it a line with no answer for its payload: ingest
-every line of a new or changed document — a re-fetched line whose payload is
-unchanged keeps its answer — and settling the line of an entry whose category
-falls to the model. One worker takes them in order, one request at a time, and
-stores each answer with a write that settles like any other; a line's answer
-settles the unconfirmed entries with that line. An answer for a category a
+**One worker asks, in the background.** Settling puts an entry whose category
+falls to the model, with no answer standing for its payload, on an in-memory
+list. One worker takes them in order, one request at a time, and
+stores each answer with a write that settles like any other. An answer for a category a
 user or a pass of higher authority decided meanwhile is dropped, so nothing
 changes under the user. A restart loses the list and the start's settling
-refills it, every stored line with no answer for its payload included. The request asks for structured output — the category as one of
+refills it. The request asks for structured output — the category as one of
 the listed ids or none, and a one-line rationale — and the category list is
 the same system message on every request, the whole tree in a fixed order,
 so a server that caches a prompt prefix processes only the entry's text.
@@ -1713,7 +1730,7 @@ again after ten minutes, or when settling hands it new work.
 An importer that fetches implements one protocol, `FetchImporter` in
 `core/plugins/fetch.py`; a document importer is one of them. It declares the
 set of kinds it emits (`spec.md` §5.1) and, for documents, the providers it is
-built for, if any; it answers per instance whether it delivers a provider,
+built for, if any (suggestions only), and its re-delivery mode (below);
 validates its settings, gives a default fetch start, and opens a **session**
 from its settings, its `state` and a prompter. The session lists reachable
 accounts — one per currency pocket for multi-currency providers, each with what
@@ -1748,11 +1765,16 @@ Beyond the records, the protocol has an importer report:
   every fetch's start when its run begins (`spec.md` §5.4) and asks the
   importer only as the last resort; the plan read (§4.1) shows the start
   prefilled, editable for that run only where there is no coverage;
-- for documents: a charge or a whole order, complete as the provider shows
-  it, with signed totals, merchant name and lines; an importer built for fixed
-  providers names them and answers per instance whether it delivers a
-  provider, one that reads receipts of any provider answers from the
-  instance's settings (`spec.md` §5.5);
+- for documents: one per order or refund, complete as the provider shows it
+  and dated on its own day — an order on the day it was placed — with signed totals, merchant name and lines
+  (`spec.md` §5.5); and its **re-delivery mode**, `replace` or `keep`,
+  declared by the importer's code like `emits`, never by an instance's
+  settings and never stored. Under `replace` ingest updates a re-delivered
+  document in place; under `keep` it leaves the stored one as it is and counts
+  the delivery as kept in the run's statistics. Either way ingest writes only
+  documents, and settling books them (§5.2). The email importer declares
+  `keep`; the test document importer `testdocs` declares `replace`, so that
+  path is implemented and tested;
 - for any token it would store: the documented scopes, and the introspection
   check where the provider has one (`spec.md` §7).
 
@@ -1907,7 +1929,7 @@ returned by `GET /api/config`.
 | Group | Variables |
 |---|---|
 | Database | `POSTGRES_HOST` (`localhost`), `POSTGRES_PORT` (`5432`), `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` (the last three required); no single database URL; the name stays a variable so each context has its own database (§9) |
-| Ledger | `BASE_CURRENCY` (required, a three-letter code); `MAX_RATE_AGE_DAYS`, `MATCHING_WINDOW_DAYS` (7 each, at least 0); `DOCUMENT_WINDOW_BACK_DAYS` (60), `DOCUMENT_WINDOW_AHEAD_DAYS` (7), each at least 0 — `spec.md` §3.8 |
+| Ledger | `BASE_CURRENCY` (required, a three-letter code); `MAX_RATE_AGE_DAYS`, `MATCHING_WINDOW_DAYS` (7 each, at least 0) — `spec.md` §3.8 |
 | Household | `TIMEZONE` (required, an IANA zone; `spec.md` §5.4), `LOCALE` (`en`) |
 | Users | indexed groups `USER_<n>_LOGIN`, `USER_<n>_NAME`, `USER_<n>_PASSWORD` (the password optional when `OIDC_ENFORCED`), `n` contiguous from 1, logins unique; none is allowed |
 | OIDC | `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` (all three or none; none means no OIDC sign-in), and with them `BASE_URL`, the app's external address, from which the redirect address `<BASE_URL>/api/session/oidc/callback` is built; `OIDC_SCOPES` (`openid email profile`); `OIDC_LOGIN_ATTRIBUTE` (`email`); `OIDC_DISPLAYNAME_ATTRIBUTE` (`name`); `OIDC_ALLOWED_GROUP` (optional; its users need the `groups` scope); `OIDC_ENFORCED` (`false`; `true` or `false`, anything else fails the start; `true` requires OIDC and turns the password path off) |
@@ -2072,8 +2094,8 @@ keyboard speed; other screens may too, and the rule rather than a list of
 exceptions is what governs them.
 
 **The unit panel holds a draft, not a computation.** On the server, `preview`
-is the settle's own functions run on an *overlay*: resolution, matching with
-its line allocation, the split along a document's lines and the review state
+is the settle's own functions run on an *overlay*: resolution, pairing, the
+booking of a counter-leg and the review state
 all take a unit's stored
 state with the draft laid over it, as an in-memory value, and return the
 resulting state without writing; the rows a draft creates carry negative
@@ -2081,8 +2103,8 @@ temporary ids the client issues, which the preview echoes. `commit` writes that 
 calls the same functions on stored state. The entry form's `PUT` and `DELETE` are
 previewed with `dry_run` instead (§4.1). This is the design's riskiest
 component and is built before the panel's UI. The draft is the
-user's choices for one unit; what they imply — proposals, the split a
-document produces, offers, a counter-leg, a partner left behind — comes
+user's choices for one unit; what they imply — proposals, offers, a
+counter-leg, a booking settling would make, a partner left behind — comes
 from `preview`. The panel renders that and sends the full state back with
 `commit`.
 
@@ -2142,20 +2164,19 @@ within a section is open until real units have been seen
 (`ux/views/review-queue.md`). Each unit is committed with one keystroke, which
 moves to the next. There is no batch confirmation; units decided entirely by
 pass 0 and rules arrive confirmed once complete, and enter the queue only
-while they wait for a partner or a document (`spec.md` §5.9, §6). Keyboard-first; the
+while they wait for a partner (`spec.md` §5.9, §6). Keyboard-first; the
 bindings are a cross-view convention, decided once for every view.
 
 Review is per unit (`spec.md` §6): the user opens a unit in the panel, changes
-values, splits, converts, re-pairs or picks a document as draft edits, sees each
+values, splits, converts or re-pairs as draft edits, sees each
 previewed, and commits the whole state at once. A unit appears once, with all
 its entries — both legs of a pair, every entry of a split. The panel is the
 only place an entry's interpretation is edited, apart from the merges (tags are edited there too, and directly elsewhere),
 and it opens for any unit from the queue, the ledger list or a rule's preview.
 Each key's evidence is shown — "1 of 1", "12 of 12" — so a thin proposal stands
 out. A transfer without its partner can be committed but stays in review until the
-partner completes it; a unit with open document suggestions is committed with a
-pick or an explicit "commit without a document" (the server refuses it
-otherwise); the preview says which state the commit leads to.
+partner completes it; a booking's unit offers no partner, convert or split
+(§4.1); the preview says which state the commit leads to.
 
 **The queue is a snapshot, not a live view.** A working set is fetched when the
 screen opens, and nothing is added, removed or reordered for the duration of the
@@ -2175,8 +2196,8 @@ confirmed. This is why operations return their full affected set (§4.1) —
 the client patches rows in place rather than refetching.
 
 **The Review item of the navigation counts what can be done now**: the units
-pending review and those that need an account, not those waiting for a partner
-or a document, which complete themselves. It is a quiet number, hidden at zero,
+pending review and those that need an account, not those waiting for a
+partner, which complete themselves. It is a quiet number, hidden at zero,
 read once when the app starts and again whenever the ledger's change value
 moves (§4.2), by its own read rather than on the change values: those stay a
 question of whether anything changed. The Overview's To review card shows the
@@ -2332,28 +2353,46 @@ Layers:
   counter-account rule not matching an account closed by the booking date;
   counter-leg amounts, same- and cross-currency, with no conversion; a
   standing unit on an unsynced counter-account waiting with its counter-leg
-  proposed, confirmed by one commit; a unit settling confirms keeping its
-  "none" when a document source is added later;
+  proposed, confirmed by one commit;
   a counter-leg left behind by a broken pair staying, as an unpaired leg; a
   same-currency pair made unequal by a split shown invalid, with the
   split-the-difference offer whichever the legs' sources; a form edit of a
   paired user-authored amount breaking the pair, and a form edit never
   changing the account;
   pass 0 recognising a closed account's payout, history no longer proposing
-  it; automatic document linking refused without uniqueness both ways;
-  suggestions never stored; documents matched only to unconfirmed
-  transactions, while a document carried by none offers confirmed ones too;
-  waiting for a document from an instance that has never run, only for
-  transactions dated from its start date on; the split a document's lines propose in the preview, confirmed unit or
-  not, and its
-  guards.
+  it.
+- **Booking tests** — a document booked on the account that takes its
+  provider in its currency, dated after the account's start, one entry per
+  line in line order with each line's text as its source text; the spread of
+  the unitemised amount over the lines of the total's sign, half-even with the
+  remainder on the largest entry, a coupon line kept as listed, zero lines
+  dropped, an entry rounding to zero merged into the largest, no line of the
+  total's sign giving one entry, a total of zero giving no booking; a document
+  in another currency, of a provider no account takes, or dated on or before
+  the start not booked, each with its reason; a re-delivered document under
+  `replace` re-deriving its booking, confirmed or not — entries matched to
+  lines by position, an unchanged line's entry keeping its values and keys, a
+  changed amount or text written and resolved afresh, a removed line's entry
+  deleted with its tags, a new line a new entry — and under `keep` changing
+  nothing; a provider added booking its existing documents, removed or moved
+  leaving the bookings where they are; a charge decided as a transfer to a
+  clearance account — by a rule, by pass 0 or in a commit — getting its
+  counter-leg paired with it, confirmed with it when its keys are standing,
+  retyped or moved to another counter-account losing it, split re-deriving
+  its amount, across currencies by the instructed amount; booking entries
+  never offers or candidates, and a leg toward a clearance account never
+  paired by step 4; the preview showing the counter-leg settling will make;
+  the booking step idempotent, a second settle writing nothing; a draft
+  converting, splitting or pairing a booking entry refused; the entry form
+  refusing a booking and accepting a correction on a clearance account; a
+  provider taken in the same currency refused, the same name on accounts of
+  two currencies accepted; a link to a clearance account refused.
 - **Unit tests** (review) — unit membership across a split and a pair;
   preview writing nothing; a commit applied atomically and refused on a
   structural change but not on a recomputed proposal; a pair confirmed only
   as a whole; a unit decided entirely by pass 0 and rules confirmed without
   review and teaching history, one with a single history key not; a standing
-  value held while rules and history change and derived again when a
-  document is linked; a commit keeping the standing keys of the values it
+  value held while rules and history change; a commit keeping the standing keys of the values it
   leaves unchanged; a changed or deleted rule changing no existing value and
   listing both sets for review by hand; a category merge, refused across kinds and
   taking its children along; a broken pair returning the leg left behind
@@ -2363,9 +2402,9 @@ Layers:
   rederiving unconfirmed entries after a confirmation and never touching a
   reviewed one; a settle whose confirmations change other proposals settling
   them in a further round until none confirms anything new, and a second settle
-  changing nothing; a changed
-  document and an entry-form edit resolving their entries afresh in their own
-  write; history proposing only with a strict majority; re-resolving a
+  changing nothing; an entry-form edit resolving its entries afresh in its own
+  write; history proposing only with a strict majority, and on the canonical
+  source text for an entry that has one; re-resolving a
   confirmed unit without its own votes.
 - **Invariant tests** — assert the database *rejects* what it should. A
   three-leg transfer, a non-mutual pair, a split that does not sum, entries on
@@ -2373,17 +2412,19 @@ Layers:
   of a user-authored row, a user-authored row created on a synced account, a source
   transaction inserted without an entry, coverage on a failed run, an
   entry with both or neither of a source transaction and a balance record, a
-  a line carried by two entries or a transaction carrying two documents, a
-  document on a transaction with a transfer entry, a document on a derived
-  entry, an update to an imported source transaction other than to
+  source text on a derived entry, a booking on an account that is not a
+  clearance account, a booking or a user-authored row with an importer, a
+  run or a format, a booking without a `source_id` or marked as a duplicate,
+  a change of a source transaction's origin, a clearance account linked to an
+  importer, providers on another kind of account or one provider on two
+  accounts of one currency, an update to an imported source transaction other than to
   `duplicate_of`, an entry
   in a currency other than its account's, a child category of another kind, a
   change of a category's kind, a second opening on an account, a manual
   opening, a same-currency pair of unequal amounts, a reported balance record without a run, a second transfer entry
   on one source transaction, a row with both or neither identity, a source row
   or reported record on another account than its run, a transaction run
-  without an account, a second linked document on one transaction or one
-  document on two, a derived entry of type `flow`, a change of an account
+  without an account, a derived entry of type `flow`, a change of an account
   between investment and other, a change of the base currency, a payee on an
   untyped entry, deleting a category a rule references, a source transaction
   or an entry of amount zero. A test that must seed a state the schema

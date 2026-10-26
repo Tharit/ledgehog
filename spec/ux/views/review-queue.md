@@ -15,8 +15,10 @@ to the next. Whether the queue should also group such units, and what makes
 two units alike, is open until the first month of real units has been seen;
 nothing here defines a shape. A unit appears once, with all its entries. Units decided entirely by own
 accounts and rules arrive confirmed once complete (`spec.md` §5.9), and appear
-only in the waiting bucket while a partner or a document is still to come: a
-recurring unit leaves the queue for good once a rule decides it.
+only in the waiting bucket while a partner is still to come: a recurring unit
+leaves the queue for good once a rule decides it. A charge a rule decides as a
+transfer to a clearance account is complete at once, its counter-leg booked
+with it (`spec.md` §5.7), and never appears.
 
 **The navigation counts what can be done.** The Review item shows, beside its
 label, how many units are pending review or need an account — not those
@@ -62,17 +64,9 @@ section, with the count per section.
   request.
 - **Waiting** — entries expecting information that has not had its chance to
   arrive (`spec.md` §6): a partner leg, which cannot be confirmed until
-  paired, a document, which can be committed once the user explicitly
-  decides to commit without it, and the rest of an order, which a commit
-  accepts as charged so far. Waiting is a hint; the unit stays
-  editable. A unit waiting for a partner gives its reason in one line:
-  "Waiting for <account>, synced through <date>", or "…, not synced yet" for
-  an account never fetched; one waiting for a document reads "Waiting for a
-  document from <provider>, covered through <date>", or "…, not synced yet"; one
-  waiting for the rest of an order reads "Waiting for the rest of order
-  <external id> from <provider>: <amount> of <total> not yet charged".
-  The waiting flag wins: a unit in this section stays here even while it has
-  document suggestions.
+  paired. Waiting is a hint; the unit stays editable. A unit waiting for a
+  partner gives its reason in one line: "Waiting for <account>, synced
+  through <date>", or "…, not synced yet" for an account never fetched.
 
 **Unpaired legs show their offers** (`spec.md` §5.7) — unpaired legs and
 entries on the counter-account first, exact matches leading, then legs paired
@@ -84,7 +78,12 @@ elsewhere is never preselected, and a "load more candidates"
 action widens the window for one pick. The offers are listed in the panel's
 popover (`ux/patterns.md` §11). An unmatched leg whose counter-account
 is synced says so: its partner is missing from the import, so the remedy is to
-import what is missing, or to convert the leg if it is not a transfer.
+import what is missing, or to convert the leg if it is not a transfer. A leg
+whose counter-account is a clearance account has no offers: its partner is
+the counter-leg booked from it (`spec.md` §5.7), which the preview shows on
+that account as "booked from this charge", and which goes with the leg when
+the draft converts it or names another counter-account. Booking entries are
+never offered as partners.
 
 **Open for the first month.** Whether and how to group units by what they
 share (type, counter-account or payee, category, the evidence behind them),
@@ -92,12 +91,18 @@ whether grouping is wanted beyond the three sections, and how it would be
 drawn: decided only after the queue has been used on real units.
 
 **The panel offers a rule where a rule's value is changed.** Where the draft
-changes a value a rule set — a payee, say, from the provider's to the
-merchant's — the panel offers "Create rule from this transaction", with the
-document fields available in the editor (`spec.md` §5.9). A split row shows the
-description of its line. Converting a linked transaction to a transfer shows
-its document dropped (`spec.md` §5.8). The document section is in
-`ux/views/documents.md`.
+changes a value a rule set — a category, say — the panel offers "Create rule
+from this transaction", with the entry's account and source text available in
+the editor (`spec.md` §5.9).
+
+**A booking's unit is leaner** (`spec.md` §5.8). Its group says where it came
+from — "Booked from *provider* order *external id*", opening the document's
+detail (`ux/views/documents.md`) — and each row shows its source text. The
+panel offers no partner, no conversion to a transfer and no split: a booking's
+type and split are its document's. Its values — payee, category,
+description, note, tags — are reviewed and committed as for any unit. A
+counter-leg booking shows its charge as its partner and nothing to edit but
+its description, note and tags.
 
 **Keyboard-first.** The bindings are a cross-view convention and belong in
 `ux/patterns.md`.

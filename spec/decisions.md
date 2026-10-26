@@ -710,22 +710,10 @@ the user's pick types it, and history learns from that pick, so the next one
 is typed on arrival. Rejected: pairing untyped entries automatically, which
 saves only the first pick.
 
-## D62 Document importers deliver one document per charge — *partly superseded by D229*
-
-Automatic document matching is exact. Amazon charges an order in parts, often
-weeks after the order date, so an order-level document matches its charges
-only through the line allocation of D229. Granularity is still the importer's
-first choice — one document per charge where the provider exposes charges,
-dated on the charge (spec §5.5) — and the core rule stays exact. Rejected:
-provider-specific windows in the core, which are fuzzy and put provider
-knowledge where it does not belong.
-
-## D63 A document is input to resolution, not a pass of its own
+## D63 A document is input to resolution, not a pass of its own — *partly superseded by D230*
 
 Matching a document's merchant against payee names needs either exact names,
-which rarely agree, or an alias list someone maintains. Instead, re-derivation
-re-runs resolution with the document's merchant name in place of the
-counterparty name and its lines added to the purpose (spec §5.8). Rules,
+which rarely agree, or an alias list someone maintains. Instead, an entry booked from a document line carries the line's text as its source text (spec §5.9). Rules,
 history and the model then work as usual — the model can categorise an
 unfamiliar merchant from real product names — and the separate "document"
 authority tier disappears.
@@ -813,17 +801,6 @@ Such instances are always shared, so either user can upload the statement of a
 shared card, and those needing no input run in the background whenever either
 user syncs (spec §5.11). Rejected: owners on CSV profiles purely to filter the
 UI, which would be a second meaning for the same column.
-
-## D76 Document waiting follows the document source's coverage — *partly superseded by D109, D172 and D177*
-
-Comparing a run's start time with a booking date needs a time zone, which D22
-says the domain does not use. Document importers report the date up to which
-their documents are complete, and an entry waits until that coverage passes its
-booking date plus the matcher's window (spec §5.5, §6). Both waiting rules are
-now the same rule: wait until the source that would deliver the missing piece
-has moved past where it should have. Rejected: using the household's display
-zone, which would have made document waiting the one domain rule depending on
-a time zone.
 
 ## D77 What "verifiably read-only" requires
 
@@ -1012,24 +989,9 @@ unchanged — and the spec now says that instead. Rejected: re-pairing the
 matcher's own unconfirmed pairs when a closer candidate arrives, which changes
 pairs under the user's eyes for no visible gain.
 
-## D96 Document auto-confirmation needs uniqueness both ways — *partly superseded by D108*
+## D97 Document importers have a start date — *partly superseded by D108 and D230*
 
-Two identical charges with one document each saw a single candidate, and the
-first processed took it. Unlike indistinguishable transfer legs (D56), the
-choice matters: the document re-derives payee and category, and the other
-charge may be a different purchase. A link is confirmed automatically only
-when the transaction has exactly one candidate and that document is a
-candidate of no other transaction; otherwise every link is suggested (spec
-§5.8).
-
-## D97 Document importers have a start date — *partly superseded by D108*
-
-Enabling a document source whose first fetch reaches back years would return
-hundreds of confirmed entries to review (I20). Each document importer instance
-has a start date, chosen once like an account's first fetch, below which
-nothing is imported (spec §5.5). Rejected: a bulk "dismiss suggestions before"
-action, which cleans up afterwards what need not be imported; and a separate
-matching cut-off, which keeps documents that do nothing.
+Each document importer instance has a start date below which nothing is imported (spec §5.5); it bounds what is read, and a clearance account's start bounds what is booked (D230).
 
 ## D98 Derived entries are recomputed under a per-account lock — *partly superseded by D114*
 
@@ -1247,44 +1209,6 @@ Rejected:
   preview in the panel.
 - **Two write paths**, preview-and-commit in review but immediate operations
   after confirmation, which would keep both sets of operations alive.
-
-## D108 Documents: one per transaction, unconfirmed transactions only, split by line — *partly superseded by D131, D152, D169 and D229*
-
-Supersedes D52; with D107, D100; partly supersedes D96 and D97; strengthens
-D62.
-
-**Reviewed entries are left alone.** A document arriving for a confirmed
-charge returned it to review and re-derived its values, replacing a human's
-choice with a pass's proposal, then reverting it if the link was downgraded
-(D52). Almost every document arrives while its charge is still unreviewed —
-that is what the waiting bucket is for — so the late case did not justify the
-machinery. The matcher now considers only unconfirmed transactions (spec
-§5.8); a late document is linked by hand in the panel, where a re-resolve
-preview shows what it would change. Waiting stays advisory, and confirming
-early gives up automatic attachment.
-
-**A confirmed link is an input to resolution**, as D63 had it, and D106 does
-the rest: proposals follow the link while the transaction is unconfirmed, and
-disappear with it. No previous values are kept and nothing is reverted.
-
-**One document per transaction** (I35), enforced by a partial unique index.
-D229 lets one document explain several transactions.
-
-**Auto-split by document lines** on unconfirmed transactions: one entry per
-line, converted proportionally where the document is in the instructed
-currency, the residual taking shipping, discounts and rounding; no split
-unless the total matches exactly and the residual keeps its sign. Each line's
-entry takes its own line as input, which settles how a split's entries are
-resolved. A suggested document is picked in the draft, and the preview shows
-the split before the commit.
-
-The document importer's start date is prefilled with the oldest unreviewed
-entry's date, so enabling a source does not produce a pile of unmatched
-documents for reviewed history.
-
-Rejected: suggesting documents on confirmed transactions without a `document`
-key, accepted by resetting the entries — a special case plus a destructive
-reset (D107).
 
 ## D109 Runs are per account and record their coverage; `synced_through` is derived — *partly superseded by D116 and D177*
 
@@ -1545,21 +1469,12 @@ insert. The architecture's per-account lock (D98, D114) already prevented it;
 the rule is now stated where rules belong (spec §5, I39). Rejected: a global
 write lock, for the latency D98 rejected it for.
 
-## D131 Document matching is a subsystem of its own; links store decisions only — *partly superseded by D138, D152 and D169*
+## D131 Document matching is a subsystem of its own; links store decisions only — *partly superseded by D138, D152, D169 and D230*
 
 Partly supersedes D108 and D106 (the model asked once per entry). Document
 matching is out of v1, yet ran through the spec: matcher, enrichment,
-auto-split, a waiting rule, a review flag. Its algorithm and allocation now
-live in a feature document; the spec keeps the domain and what the core
+auto-split, a waiting rule, a review flag. Its mechanics now live in a feature document (since D230, booking documents); the spec keeps the domain and what the core
 requires of it (spec §5.5, §5.8).
-
-Two internals changed on the way. Suggested links were stored and never
-updated, so one that stopped being a candidate stayed open forever. Links now
-store decisions only — confirmed and rejected — and suggestions are computed
-when read; ingest's downgrade to `suggested` goes with them, and a changed
-document instead deletes the automatic links of unconfirmed transactions to
-it. And the model's answer is kept per payload rather than per entry, so a
-document confirmed later is put to it once more (spec §5.9).
 
 ## D132 Housekeeping: review UI out of the spec, retired invariants out of the table, examples as tests
 
@@ -1735,7 +1650,7 @@ changed, so it would mostly reproduce them; and review is per unit, so its
 split siblings — a fee split off, say — would be recomputed too, discarding
 work the broken pair has nothing to do with.
 
-## D142 Housekeeping after the second review — *partly superseded by D150, D163 and D225*
+## D142 Housekeeping after the second review — *partly superseded by D150, D163, D225 and D230*
 
 Consistency fixes after D133–D141, without new mechanisms:
 
@@ -1746,9 +1661,6 @@ Consistency fixes after D133–D141, without new mechanisms:
   requires (D96). The alternatives share both accounts and the exact amount
   and are not told apart by an end-to-end id, so a later, closer-dated
   candidate changes only which dates sit together, and re-pairing covers it.
-- Waiting for a document requires an unconfirmed unit, as matching does. With
-  `waiting` a stored flag (D140), a charge confirmed before its document
-  arrived would otherwise have sat in the queue.
 - History's counter-account evidence excludes accounts closed on or before the
   booking date, as pass 0 does — a hard constraint filtering evidence (D27).
   Closed accounts became pickable with D136.
@@ -1757,9 +1669,7 @@ Consistency fixes after D133–D141, without new mechanisms:
   replacing "never overstated" and "never past what the run asked for",
   which did not fit files (D135); a manual entry is a unit of its own unless
   paired; a rule confirms the units it decides completely, and one with both a
-  payee and a text match counts as keyed on the payee; a link's document is
-  "linked elsewhere", not confirmed; a document provider's category comes from
-  the entry's own resolution.
+  payee and a text match counts as keyed on the payee.
 - Accepted: changing a manual entry's account to one in another currency
   keeps the number and changes its meaning. The panel shows the account's
   currency in the preview before the commit, which is enough.
@@ -1991,18 +1901,14 @@ or, without coverage, after its latest entry or at the importer's default
 `account_source.cursor` is dropped; an importer that needs a credential-scoped
 cursor can bring it back. D11 is corrected accordingly.
 
-## D152 A document's lines are a split the preview proposes; only a commit splits — *partly superseded by D166*
+## D152 A document's lines are a split the preview proposes; only a commit splits — *partly superseded by D166 and D230*
 
 Partly supersedes D108, D131 and D143. Auto-split made settling split unconfirmed
 transactions along their documents' lines, and collapse the split when the link
 went. It was the only automatic process that created and deleted ledger entries,
 and it brought rules of its own: rederived splits, draft choices on regenerated
 rows, a commit refused when "the document a split came from changed", tags
-vanishing with the entries a machine had made. The preview of a linked unit now
-proposes the split along the lines, resolved line by line as before, and the
-commit writes it (spec §5.8, `documents.md` §6). I7 becomes "only a commit
-splits". Units that pass 0 and rules decide completely are confirmed at once
-and never matched, so nothing is lost there.
+vanishing with the entries a machine had made. A booking is the exception: made split as its document says (D230).
 
 Rejected: moving documents and pass 3 out of the core spec and the v1 schema.
 The core is meant to be complete, with plugins added later: with no document
@@ -2403,7 +2309,7 @@ Rejected: re-deriving only pass-derived standing values on an input change and
 keeping a user's as proposals, which would distinguish two kinds of standing
 for a case the waiting flag already signals.
 
-## D166 The panel's anchor; documents keyed and held — *partly superseded by D168, D169 and D229*
+## D166 The panel's anchor; documents keyed and held — *partly superseded by D168, D169, D229 and D230*
 
 Partly supersedes D152 and D163.
 
@@ -2418,28 +2324,6 @@ partner's included — which the different-amount pick of D117 already relied on
 and a split made on the partner's side leaves with it. A commit's concurrency
 check covers every entry it writes, not only the unit's, so a partner left
 behind cannot be changed by the other user unnoticed.
-
-**Documents are keyed and hold automatic confirmation.** Rules that decided
-every value of a charge from a provider confirmed it at ingest, before its
-document could arrive, so the document was never matched; `documents.md` could
-only advise against category rules on such payees. And an automatic link could
-confirm a unit without the split along its lines ever being seen. Now:
-
-- the document link is a keyed field, `document`, on the transaction's original
-  entry: `matcher` for an automatic link, `user` for a pick, or for "none" with
-  no link. Suggestions, like transfer offers, are computed when read and carry
-  no key;
-- a new requirement of confirming: no document still awaited. Settling does not
-  confirm a waiting unit; a commit can decide "no document" and confirm; the
-  waiting ends with the coverage, never permanently;
-- a `matcher` link to a document of several lines is a proposal — the one
-  `matcher` key that is not standing — so the unit is reviewed once, through
-  existing flags and rules, and the commit makes it `user`, with or without the
-  split.
-
-Splitting along the lines during settling stays out, and is sketched as an open
-question (spec §9): the keys would make it idempotent, and what it would bring
-back are the costs that led to D152.
 
 ## D167 A user is a source: manual entries get source transactions — *partly superseded by D168 and D170*
 
@@ -2491,7 +2375,7 @@ Unchanged: the first-fetch prefill (the day after the latest entry, which
 covers user rows and mirror legs alike), synced and unsynced, reconciliation and
 balance records. The document link moves onto entries in a separate step.
 
-## D168 Counter-legs are ordinary transactions; entries are movements or derived — *partly superseded by D170 and D181*
+## D168 Counter-legs are ordinary transactions; entries are movements or derived — *partly superseded by D170, D181 and D230*
 
 Partly supersedes D110, D117, D143, D147, D166 and D167.
 
@@ -2506,8 +2390,7 @@ treating the generated one differently would be the inconsistency.
 
 **A counter-leg is a user-authored transaction** (spec §5.7): a source
 transaction and its entry on the unsynced counter-account (I40), offered by the
-panel or created by settling, and from then on ordinary. It is never changed or
-deleted automatically: when its pair breaks it stays, as a transfer leg without
+panel or created by settling, and from then on ordinary. It is never changed or deleted automatically — except on a clearance account, where it is a booking of its charge (D230): when its pair breaks it stays, as a transfer leg without
 a partner — completed by settling where a candidate matches (D161), and
 otherwise in the queue, where it is deleted through the entry form if it was
 only there to complete the pair. Its amount is the partner's, negated, or for a
@@ -2539,60 +2422,7 @@ them.
 
 Rejected: keeping the lifecycle as provenance, with counter-legs marked on their
 source and deleted with their pair. It would have kept the interpretation layer
-uniform, but made a generated counter-leg and a typed one behave differently.
-
-## D169 The document link is a field of the original entry — *partly superseded by D172, D177 and D225*
-
-Supersedes D138; partly supersedes D8, D11, D108, D131 and D166.
-
-Documents kept a decision system of their own beside the keys: link rows,
-`linked` or `rejected`, `auto` or `manual`, in a join table on the source layer;
-a rejection memory (I25); a special writer in ingest deleting automatic links
-when a document changed; and, since D166, a `document` key recording on the
-entry who decided what a link row already recorded. The rows were workflow
-decisions made in review, stored against the facts.
-
-**The link is a derived field like any other** (spec §5.8, §5.9):
-`ledger_entry.document_id`, on the transaction's original entry, keyed
-`document` — `matcher_decision` or `matcher_proposal` for an automatic link
-(D172), `user` for a pick or for "none",
-a key without a value. The source layer stays facts; the link becomes
-interpretation pointing at enrichment data, as `category_id` points at a
-category. Since D167 every movement has a source transaction, imported or
-user-authored, so this covers a cash receipt as well as an Amazon order: one
-source, split if need be, one document.
-
-- **I35 is enforced on the entries** by two partial unique indexes: a document
-  is carried by at most one entry, and a transaction has at most one entry
-  carrying a document. The original entry keeps its id through splits, so the
-  link survives a re-split; `v_entry_document` resolves any entry's document
-  through its transaction's carrier, one join instead of a copy per entry.
-- **Suggestions are computed only while no document is decided**, so a pick or
-  "none" keeps the other candidates from returning for as long as it stands.
-  I25's permanent rejection memory is retired: a rejected candidate can come
-  back only if the decision itself is reopened, which takes a change of input.
-- **A changed document is a change of input.** Its total, currency, merchant
-  or lines — what resolution reads — changing resolves an unconfirmed
-  transaction afresh, its link included; a change elsewhere in the payload
-  does nothing, so a provider updating an order's status does not discard a
-  user's work. This replaces ingest's special writer.
-- **The document comes first in field order.** Matching judges a transaction
-  as resolved without one, and a link then changes every field after it, as
-  the cascade of D163 already prescribes; a payee that a rule on the document
-  resolves differently cannot undo the link it came from.
-- **A removed entry frees its document**, so marking a duplicate, a revert or
-  deleting a user-authored transaction needs no rule of its own for links.
-
-Rejected:
-
-- **The link only in the key**, which would make it the one derived value
-  without a column, and leave I35 unenforceable.
-- **The link on every entry of a transaction**, which needs an exclusion
-  constraint, a trigger for mixed NULLs and sync on every split, for reads the
-  view gives anyway.
-- **Entries linked to document lines instead**, which cannot represent an
-  unsplit transaction explained by a whole document, or a residual; a line
-  reference remains a possible addition for split entries (spec §9).
+uniform, but made a generated counter-leg and a typed one behave differently. D230 adopts it for clearance accounts only.
 
 ## D170 Housekeeping after the review of the final state — *partly superseded by D172*
 
@@ -2639,7 +2469,7 @@ Wording and one schema fix after the last review.
 - **A form edit of the date** moves the row's entries with it (I3); a pair
   stands, its partner keeping its own date.
 
-## D172 Counter-account column, one rule table, simpler revert, documents in v1 — *partly superseded by D181 and D229*
+## D172 Counter-account column, one rule table, simpler revert, documents in v1 — *partly superseded by D181, D229 and D230*
 
 Partly supersedes D28, D51, D55, D76, D120, D144 and D170. Settled after a
 review of `spec.md` and `schema.sql` for implementability.
@@ -2675,24 +2505,10 @@ review of `spec.md` and `schema.sql` for implementability.
   is dropped: priority alone orders rules of one kind, under the user's
   control. Rejected: keeping specificity tiers, more rules to explain for what
   a priority number already says.
-- **Two matcher keys** (spec §5.9): `matcher_decision` is standing,
-  `matcher_proposal` is a proposal — settling's link to a document of several
-  lines. Replaces the one exception inside `matcher`, so whether a key is
-  standing is read from its pass alone. A settling-made counter-leg's type,
+- **Two matcher keys** (spec §5.9): `matcher_decision` is standing. A settling-made counter-leg's type,
   counter-account and pair carry `matcher_decision`, a commit-made one's
   `user`.
-- **A commit decides every value it leaves as it is, the document included**
-  (spec §5.8, §6). With no document picked it writes "none"; where documents
-  are suggested or one is awaited, the preview asks the user to confirm that.
-  Supersedes D170's note that waiting for a document can make committed work
-  be redone: committing gives up the document instead.
-- **The document window is a ledger setting** (spec §5.8), replacing the matcher's
-  fixed −7/+2 days (D76); D229 gives it two ends. With
-  several instances for one provider, a transaction waits until all that are
-  not disabled have covered it: there is no knowing which one would deliver.
-- **Documents carry a version**, incremented by ingest when what resolution
-  reads changes, so a commit made on an older document is refused (spec §5.5,
-  §6). `document_id` and `counter_account_id` now bump an entry's version
+- **Documents carry a version**, incremented by ingest when what is read of it changes; `counter_account_id` now bumps an entry's version
   outside settling, like the other derived fields.
 - **Runs succeed or fail as a whole; only the latest run reverts** (spec §5.1,
   §5.6, I30). The `partial` status is dropped: a failed run writes nothing,
@@ -2704,25 +2520,6 @@ review of `spec.md` and `schema.sql` for implementability.
   one rule. Document and rate runs upsert in place and are never reverted.
 - **The pairing trigger also checks the former partner** (schema 8.3), so a
   half-broken pair fails at commit rather than only showing on `/check`.
-- **Document matching is in v1**, exercised with a test document importer;
-  only the real document importers are not.
-
-## D173 Documents can be browsed; a late link splits like an early one — *partly superseded by D229*
-
-Follows from D172: a commit now decides "no document", and the matcher only
-considers unconfirmed transactions, so a document that arrives after its
-charge was committed is linked only by a person. Two gaps made that hard.
-
-- **Documents are browsable** (spec §5.8), each with the transactions carrying
-  it, filterable to those not fully charged. For such a document, the
-  transactions it would match by amount and date are offered, confirmed ones
-  included, and picking one opens the panel with the document in the draft.
-  The reverse match is read-time only, like suggestions; settling still never
-  links a confirmed transaction (I20). Rejected: a notice on the transaction
-  when a late document arrives, which is review state on a reviewed unit.
-- **A late link is split like an early one**: a pick in the panel is a link not
-  yet the user's, so the draft proposes the split along the lines, confirmed
-  unit or not (D229).
 
 ## D174 Housekeeping after the implementability review — *partly superseded by D176*
 
@@ -2831,7 +2628,7 @@ windows are 7 days unless set.
   nothing; importer instance management with a CSV dry run; the active sync
   task; the dashboard, the one report and the CSV export.
 
-## D177 Review before implementation: run order, afresh by the writer, settle order, classifier specs — *partly superseded by D178*
+## D177 Review before implementation: run order, afresh by the writer, settle order, classifier specs — *partly superseded by D178 and D230*
 
 Partly supersedes D55 (what "latest run" means), D109 (where a run's status is
 written), D146 (a revert's duplicates), D163 (who resolves afresh), D169 (who
@@ -2874,13 +2671,6 @@ writes a link) and D76 (waiting on a document source that has never run).
   core — the rules, and a read-only history source — and never query the
   database. Rejected: canonicalising names like references, which merges
   descriptors that differ only by punctuation.
-- **Importers declare the document providers they deliver** (spec §5.5), in
-  code, so waiting is known before an instance's first run. An instance that
-  has never run holds its providers' transactions dated from its start date
-  on, as a never-fetched account holds legs waiting on it; disabling it ends
-  that. Rejected: a provider setting per instance, configuration for a fact
-  the code knows; and inferring providers from delivered documents, unknown
-  until the first run.
 - **Counter-legs on an account linked later are accepted** (spec §5.4).
   Settling completes legs pointing at an unsynced account with counter-legs;
   if that account is linked later and its own history imported, nothing
@@ -2905,7 +2695,7 @@ writes a link) and D76 (waiting on a document source that has never run).
   says "standing values", which counter-legs' keys are; units decided by rules
   appear in the queue while they wait; link and unlink are operations.
 
-## D178 Second review before implementation: counter-legs, pairs, merges, documents, settling — *partly superseded by D179, D181 and D225*
+## D178 Second review before implementation: counter-legs, pairs, merges, documents, settling — *partly superseded by D179, D181, D225 and D230*
 
 Partly supersedes D141 (what a leg left behind keeps), D156 (counter-legs on a
 closed account) and D177 (settling's rounds).
@@ -2943,15 +2733,7 @@ closed account) and D177 (settling's rounds).
   value implied it, which needed a rule beside the cascade.
 - **History counts every match** (`plugins/classifiers/history.md`), as spec
   §5.9 says: a flow without a payee votes for no payee.
-- **A split along a document's lines** gives the original entry the first line
-  and the remainder, so lines adding up exactly no longer leave a zero
-  residual; a one-line document is not split (spec §5.8).
-- **A changed `document_id` always bumps the version**, settling's links
-  included, so a commit cannot silently take a document settling linked or
-  overwrite a link it never showed. The commit carries the document's version
-  too.
-- **Settling** resolves with the current link, so an entry linked in an
-  earlier settle keeps the document fields its rules read; it repeats rounds until none
+- **Settling** resolves with the current link; it repeats rounds until none
   confirms anything new, since a new confirmation can also remove a majority
   and let another unit confirm (correcting D177). `finished_at` is read with
   `clock_timestamp()` after the account lock, because `now()` is the
@@ -2965,9 +2747,8 @@ closed account) and D177 (settling's rounds).
   orders are written down. In the schema: an instance's deletion may null its
   rows' link; the deferred triggers fire only on the columns they check; the
   duplicate check re-reads its row; an account's currency is fixed by trigger;
-  `base_value()` rounds exactly; two integrity views were added. The empty
-  value a commit decides is only the document's "none"; `external_ref` may be
-  set on any account. The plan gains a document-matching step and an order its
+  `base_value()` rounds exactly; two integrity views were added. `external_ref` may be
+  set on any account. The plan gains an order its
   steps can follow.
 
 ## D179 Re-review of D178: counter-legs only where nothing is offered — *partly superseded by D180 and D181*
@@ -3033,53 +2814,37 @@ Partly supersedes D179 (which offers block a counter-leg).
   "try again". Crash recovery sets `finished_at`; the unreachable
   source-change clauses left by D179's trigger are removed.
 
-## D181 Full scan before implementation: settling creates no counter-legs; history and documents; locking — *partly superseded by D225*
+## D181 Full scan before implementation: settling creates no counter-legs; history and documents; locking — *partly superseded by D225 and D230*
 
 Partly supersedes D161 (a decided counter-account completed by a counter-leg
 settling creates), its restatements in D162, D163, D168 and D172, and D178,
 D179 and D180 as far as they concern automatic counter-legs.
 
-- **Only a commit creates a counter-leg** (spec §5.7). Automatic creation by
+- **Only a commit creates a counter-leg** (spec §5.7; on a clearance account, settling books it from the charge, D230). Automatic creation by
   settling drove most findings of the last rounds — open offers as blockers,
   closed accounts, follow rules, duplicates, linking order — and it made a
   deleted counter-leg come straight back. A decided leg on an unsynced account
   now waits with its counter-leg proposed, where its counter-account holds no
   open offer, and one keystroke commits it; a rule-decided withdrawal costs
-  that keystroke. Settling creates no rows and takes no account lock.
+  that keystroke. Settling creates no rows and takes no account lock — bookings on clearance accounts apart (D230).
 - **Settling is exclusive, writes share** (architecture §5.2): every write takes
   the settle lock shared, settling exclusively. Settling had read units
   without the lock commits use and could write stale proposals over a commit;
   document ingest raced it the same way. Rejected: re-locking and re-checking
   each unit inside settling, more code for the same guarantee.
-- **Confirmation stays put** (spec §6): settling records "none", keyed
-  `matcher_decision`, for each transaction of a unit it confirms without a
-  document key, and the document conditions apply only to transactions
-  without one. Otherwise a document source set up later turned months of
-  rule-confirmed charges into waiting, matched and re-derived ones, against
-  I20. Rejected: storing review state.
 - **The overlap never reaches into hand-kept history** (spec §5.4): a fetch
   starts no earlier than the day after the account's latest user-authored row.
   After an account kept by counter-legs was linked, the second fetch otherwise
   re-imported its last week as rows nothing deduplicates. Rejected: bounding
   by the first fetched day, which the domain does not read.
-- **Keys 1 to 5 of history do not run for a transaction with a document**, and
-  such a transaction does not vote for them (spec §5.9). Its bank fields
-  describe the provider, so a majority over them was systematically wrong —
-  every PayPal charge alike — and kept the model from being asked. Rejected:
-  history on the payee alone for such transactions, which keeps the
-  systematic error for mixed payees such as Amazon. The document's merchant
-  is asked on a key of its own, for the category (D225).
 - **History keeps its strict majority**, to be watched in the first month for
   mixed payees. Rejected for now: a threshold, which only trades a systematic
   error rate for another; and unanimity, which one slip disables for a whole
   lookback.
-- **An entry's line is stored with it** (spec §5.8, §6; D225): the entry
-  references its line of the document, so the preview and the commit resolve
-  an entry alike.
 - **Fixes.** A category is deleted only without entries, rules or children.
   The commit's set-to-sum joins I2, I3 and the copied-fields table. Entering
   and editing a user-authored transaction recompute derived entries under the
-  account lock. Document ingest re-resolves only unconfirmed transactions. A
+  account lock. A
   sign change through the entry form breaks any pair. The plan gains login and
   sessions, tags, and category and payee management with payee merge, and
   watches mixed payees.
@@ -3656,15 +3421,15 @@ Architecture §4.1, §6.3.
 - Rejected: *a dry-run commit in a rolled-back transaction* (settling opens its own); *server-issued ids for
   draft rows* (the preview would have to persist the draft).
 
-## D212 A commit derives its keys from the values it is sent
+## D212 A commit derives its keys from the values it is sent — *partly superseded by D230*
 
 Spec §5.9, architecture §4.1.
 
-- **A standing value keeps its key** (pass 0, a rule, a matcher decision or a user's, with its basis): a commit
+- **A standing value keeps its key** (pass 0, a rule, a matcher decision, a booking or a user's, with its basis): a commit
   does not rewrite what already stands. **A proposal becomes `user`** with the proposal's key nested as its
-  basis: a value equal to a shown proposal, or one decided by `history`, `llm` or `matcher_proposal`. What the
+  basis: a value equal to a shown proposal, or one decided by `history` or `llm`. What the
   user typed is `user` without a basis. Empty fields carry no key. A commit does not confirm.
-- **The client may name a basis only for the passes `history`, `llm` and `matcher_proposal`;** it is stored
+- **The client may name a basis only for the passes `history` and `llm`;** it is stored
   wrapped under `user` and never trusted as evidence. A client can never assert `rule` or `own_account`.
 - Rejected: *trusting the key the client sends* (a client could mint a standing key and confirm a unit).
 
@@ -3854,49 +3619,23 @@ was a patterns choice.
 - Rejected: *a neutral "Money out | Money in" control* (a mouse or extra key for a choice the sign already states,
   and more space than the field).
 
-## D223 Step 9: documents with a test importer
+## D223 Step 9: documents with a test importer — *partly superseded by D230*
 
 Spec `features/documents.md`, spec §5.5, §5.8, §6, architecture §4.1. The decisions that shape how documents
 meet the existing machinery; D1 to D9 of the step's plan.
 
-- **D1 Documents are part of the one confirmed predicate.** `units_sql` and its Python twin test for an open
-  document, gated to originals with a provider payee and no document key, pinned by a test. Computing it only in
-  settling would let a unit decided by rules count as confirmed, never be loaded, and never match.
-- **D2 A registry the composition root configures** tells settling which instance provides which provider, as for the
-  classifiers; core never imports plugins and the schema is unchanged. The start date is the setting `start_date`.
-- **D3 A data migration records "none"** (`matcher_decision`) on every unit confirmed before documents existed, so a
-  later source cannot reopen it (I20).
-- **D4 Eligibility is judged on the original entry's payee only,** the entry that carries the link.
-- **D5 The waiting flag wins.** A unit waiting for a document is in the waiting section even while suggestions
-  exist, because what it waits for may change the user's other decisions. Rejected: *pending review while
-  suggestions exist* (a decision on a suggestion could be overtaken by the document that is awaited).
 - **D6 A lean documents view** (`ux/views/documents.md`) and a panel section, reusing the ledger table patterns.
-- **D7 Picking by hand reuses `GET /api/documents`** with provider and unlinked filters. Rejected: *a separate
-  endpoint*.
-- **D8 A changed document re-resolves an unconfirmed carrier afresh,** dropping the user's pick; the panel shows it as
-  a consequence. Rejected: *a guard that keeps the pick* (a document whose total changed may no longer be the one).
-- **D9 Replacing an existing split along the lines is built last,** with the tags it deletes listed. Rejected: *cutting
-  it from the first cut*.
 
-## D224 Step 9: the document decision is enforced; providers are registered — *partly superseded by D229*
+## D224 Step 9: the document decision is enforced; providers are registered — *partly superseded by D229 and D230*
 
 Spec §3.6, §5.8, §6, `features/documents.md` §7, architecture §4.1, §5.2, patterns §6. D223 left "commit without a
 document" as something the panel asks for; the server did not check it, so a client could skip a wait unnoticed.
 
-- **The server enforces the explicit decision.** A commit where documents are suggested or one is awaited and the draft
-  has no document decision (a pick, `none`, `split_along_lines`) is refused, 422 `document_decision_required`; the
-  preview reports `decision_required` and the panel offers "Commit without a document" (draft mode `none`). With an
-  importer and a waiting entry the user must consciously decide not to wait. Rejected: *a convention the panel keeps*
-  (nothing a client sends then separates a decision from a default).
 - **Documents join the lock order:** settle shared, documents ascending, accounts, rows. Ingest takes documents,
   accounts, rows in the same order, so the two never deadlock.
-- **A payee's `document_provider` is suggested from `GET /api/documents/providers`;**
-  D229 makes it free text, any value accepted, clearing always allowed.
 - **`ENABLE_TEST_IMPORTERS`** (default off) registers the deterministic test importer `testdocs` in the composition root.
-- **A provider mismatch applies only where the payee has a different provider;** a payee with none takes any document
-  (documents.md §9 offers a document to any payee, found by hand).
 
-## D225 Documents are inputs to rules, not a rewrite
+## D225 Documents are inputs to rules, not a rewrite — *partly superseded by D230*
 
 Spec §5.8, §5.9, §6, §9, `features/documents.md` §1, §4 to §6, §8, `plugins/classifiers/rules.md`,
 `plugins/classifiers/history.md`, schema (`ledger_entry.document_line_id`). Partly supersedes D178 (enrichment in
@@ -3910,34 +3649,11 @@ with its own line in the preview but with all lines after the commit.
 - **A document is an input rules can read; the source is never rewritten.** `counterparty_name`, `purpose` and the
   other source fields are the bank's, with or without a document. Rejected: *enriching the counterparty text and the
   purpose* (what was built).
-- **Two rule fields, entry-level:** `document_merchant` and `document_line`, failing without a document or, for the
+- **A rule field on the entry's source text (D230, `source_text`, formerly `document_line`), entry-level:** `document_line`, failing without a document or, for the
   line, without a line. The rule editor's example shows them with `payee`, in two groups (source transaction, entry).
 - **`document_line` is singular, the entry's own line, or none.** Rejected: *`document_lines`, matching any line*,
   which on an unsplit order of several items matches one item for all of them.
-- **An entry's line is the line it was given, referenced from the entry** (`document_line_id`), so the preview and the
-  commit agree. Applying the lines is one operation: with one line, the original entry takes it in the same write as the
-  link (settling or a commit); with several, the commit's split along the lines gives each entry its line. Every other
-  entry has none. A reference rather than a number: lines have ids, a changed document's lines are replaced (which
-  clears the references), and another document's line is detectable when read. Rejected: *no stored line* (the preview
-  and the commit then resolve differently); *a stored line number*; *deriving a one-line document's line when read* (a
-  second definition of an entry's line, next to the stored one).
-- **The payee of a documented charge is the provider, unless a rule on the document sets a curated merchant.** The
-  descriptor rule stays standing and fires again after the link; a rule on `document_merchant`, ordered before it, is
-  the explicit act of curating the merchant. Two aids, both reusing the editor: the panel offers "Create rule from this
-  transaction" where the draft changes a value a *rule* set (not wherever a user changes a payee or category: only
-  there is the rule what keeps coming back), and the editor gives a new payee rule with a document condition a priority
-  before every payee rule without one. Rejected: *a provider payee that history may replace* (a third value state
-  between proposal and decided value, touching review state, confirmation and the commit).
-- **History asks one new exact key for a documented transaction: the document's merchant, for the category only.**
-  Raw keys 1 to 5 stay closed to documented transactions, which vote only for the merchant key. Threshold unchanged (a
-  single unanimous precedent is a majority); raising it belongs to the model's design (spec §9, the model as the
-  reviewer of weak history). Rejected: *tokenizing lines in history* (product titles rarely repeat and shared words
-  agree for the wrong reasons). Deferred to the tuning section of `history.md`: an exact-line key for reorders, asked
-  before the merchant key and only for an entry with a line.
-- **A link is new input and re-derives the standing values after it, a user's included** (§5.9: new input is when a
-  decision deserves a second look). Only the sentence "never replaces a value a user confirmed" goes. The panel-wide
-  "Re-resolve" keeps its meaning and gets no warning: its preview shows what changes.
-- **A document implies `flow`,** a field-order constraint like "a category implies a flow". A transfer is not a
+- **A booking entry is a `flow`, under a standing key; converting it is refused (D230):** formerly, a document implied `flow`, a field-order constraint like "a category implies a flow". A transfer is not a
   candidate and a pick on it is refused (`document_not_for_transfer`); converting a linked transaction to a transfer
   drops its document, as it drops the payee (I9); the document decides `flow` first, the type taking the link's key (§5.9, field order);
   the schema refuses a document on a transfer (`ck_document_not_on_transfer`). Entries cut before this change are
@@ -4002,54 +3718,84 @@ states.
 - Rejected: *dropping the user's empty payee key* (an incomplete unit could be pulled back into review by a payee
   the user had removed); *keeping a key only for a cleared payee* (two empty states the user cannot tell apart).
 
-## D229 Order documents: one document, several charges
+## D230 Clearance accounts replace document matching
 
-Spec I21, I35, §3.6, §3.8, §5.1, §5.5, §5.8, §5.9 (pass 2, pass 3), §6; documents.md; history.md; architecture §4.1,
-§5.4, §5.5. Partly supersedes D62 (sum-matching rejected), D108 (one document per transaction and per document), D166
-and D173 (an existing split stays), D172 (a symmetric document window) and D224 (registered providers).
+Spec I1, I2, I3, I7, I20, I21, I35, I41, §2, §3.3, §3.6, §3.8, §3.9, §4, §5 to §5.9, §6, §8, §9;
+`features/documents.md`; `rules.md`; `history.md`; schema; architecture §4.1, §5.1, §5.2, §5.4, §5.5, §5.7, §6.3,
+§6.5, §8. Supersedes D62, D76, D96, D108, D169, D173 and D229;
+partly supersedes D63, D97, D131, D142, D152, D166, D168, D172, D177, D178, D181, D212, D223, D224 and D225.
 
-- **A document may explain several charges; each of its lines explains at most one.** An email importer sees
-  orders, and Amazon charges an order in parts without saying which items each part paid. So I35 moves from the
-  document to its lines, and D108's "one document per transaction, and per document" keeps only its first half.
-  A document of one charge behaves as before. D62 rejected sum-matching as fuzzy; a line allocation is exact —
-  each charge equals the sum of the lines it takes — and bounded to documents of at most 20 lines.
-- **Which lines a charge paid is worked out, not stored: the line allocation.** It follows from the links and the
-  amounts whenever it is needed. Where a committed split already says which lines a charge paid, that split is
-  kept if the order still adds up with it. Only if it does not are those lines moved — and then the panel
-  proposes the corrected split, instead of the order no longer being suggested at all. Rejected: *treating
-  committed splits as fixed* (one wrongly split charge would hide its order for good); *a column on the line
-  naming its charge* (the same fact stored twice, kept in step with the links); *matching each charge on its own*
-  (a confirmed charge's lines would move as others arrive); *re-resolving confirmed charges as a changed input*
-  (blurs I20); *a configurable line limit* (a setting nobody can tune; 20 lines bounds the search and covers
-  real orders).
-- **Nothing automatic undoes a user's split.** Settling links a charge only where every committed split can stay
-  as it is, and only into a document none of whose charges is confirmed.
-- **The charges of one document form one unit.** A transaction carrying a document has no transfer entry, so a
-  unit never chains and its closure stays one step. The rule is the commit's: only a commit makes a split's
-  other entries. Rejected: *reviewing each charge alone* (one order's items spread over several panels); *a
-  database trigger for the transfer rule* (it would guard a write only the commit makes, already checked there).
-- **The split along the lines is proposed while any of the document's links is not yet the user's**, for every
-  charge of the document and over any split it has. The preview lists the entries it replaces, with their tags;
-  the user commits the proposal or edits it like any split. Once every link is the user's, nothing is proposed.
-  This replaces D166's and D173's "an existing split stays": the list of replaced entries is now the safeguard.
-  Rejected: *a "decline" for the proposal* (one more control and one more preview state; the draft field
-  `decline_split` goes — a yes or no on redoing the split belongs to a staged panel's document step).
-- **A partly charged order waits for its other charges**, so it is reviewed once, when complete. The wait is
-  advisory, holds no confirmation of its own and needs none to skip: a commit ends it. It ends with account
-  coverage, like every other wait. Rejected: *ending it by the calendar* (elapsed time says nothing about whether
-  a charge has been imported).
-- **The document window is asymmetric**, 60 days back and 7 ahead, replacing D172's symmetric window: an order is
-  charged when it ships, weeks later for a backorder.
-- **Discount and coupon lines go into the remainder.** No line is marked and no importer filters.
-- **Providers are open.** An email importer delivers whatever name a receipt carries, so the payee's
-  `document_provider` is free text with suggestions — the names importers give and the providers of stored
-  documents — and waiting asks each instance whether it delivers a provider. D224 rejected free text because a
-  typo silently matches nothing; the suggestions make a typo unlikely, and receipts from a shop no importer names
-  must still be nameable. Rejected: *a registry of providers* (no complete list exists once receipts can come
-  from anywhere).
-- **An entry made from a document line is classified from that line.** The model is asked about every line when
-  the document arrives, and the answer is stored on the line; every other entry is asked about itself, as
-  before. History's merchant key is not asked for an entry with a line: one merchant covers every kind of
-  spending. Rejected: *settling creating the split* (D152's reasons, worse once lines move between charges); *a
-  cache of answers by payload* (state with no owner); *asking only for stored links* (misses suggestions).
-- Deferred: a staged work panel; editing a line's category by hand; the order number as a tie-breaker.
+- **Bookkeeping instead of matching.** Document matching linked each charge to the order it paid and split it along
+  the order's lines. Real Amazon data broke it again and again — orders charged in parts with no visible logic,
+  discounts not itemised, VAT shown apart, two orders in one charge — and each case added a rule: line allocation,
+  unitemised shares, document-joined units, waiting for the rest of an order, split proposals, line answers for the
+  model. A **clearance account** replaces all of it with bookkeeping the ledger already does: every charge from the
+  provider is a transfer to the account, every order a purchase booked on it, split into its items. When everything
+  is there the account settles at 0; when something is missing or wrong, its balance says so. No charge needs to know
+  which order it paid. Rejected: *document matching itself*, with or without the unitemised amount (a growing rule
+  set that still left cases for a person).
+- **A kind, fixed at creation; no source; providers on the account.** A clearance account cannot be linked to an
+  importer, so it is unsynced and the entry form works on it — the remedy for a cancelled item, a gift card or a
+  misread order. It lists the providers it takes; a provider maps to at most one account per currency, compared
+  without regard to case, so a list absorbs name variants. A booking never converts: a converted amount would never
+  balance against a charge made at the bank's rate. Rejected: *auto-created accounts per provider* (clutter from
+  one-off shops and model-made name variants); *a provider-mapping settings area* (a second place for what the
+  account is for).
+- **A booking is a source transaction of a third origin.** The author was inferred from three NULLs (no importer, no
+  run, no format); `source_format` names a format, not an author, so it cannot carry "booking". An explicit `origin`
+  — `import`, `user`, `booking` — states it as one fact, under one CHECK. This is a column of the source, not D168's
+  retired entry `origin`. The booking's source kind stays in its `source_id` (`document:<id>`, `transfer:<entry>`),
+  an identity.
+- **A booking follows its source, confirmed or not** — the stated exception to I20. A changed document re-derives its
+  booking; unchanged lines keep their entries and the user's decisions, and only what the document changed returns
+  to review. How often that happens is the importer's declared re-delivery mode: `replace` (re-reads the same record)
+  or `keep` (the email importer: a later mail never changes an order). Rejected: *immutable snapshot bookings* (a
+  misread or replaced document would leave a booking only a hand entry can correct, while I20 would protect nothing
+  the user decided on the lines that stayed); *importer-side memory of delivered orders* (work an importer should not
+  carry).
+- **Settling maintains all bookings, in one step**: it books what its sources call for, re-derives what changed and
+  removes what no source calls for, idempotently by `source_id`, locking only the clearance accounts it touches. The
+  contained exception to D181's "settling creates no rows and takes no account lock": only clearance accounts, only
+  bookings. Rejected: *ingest and the provider-list write as the writers* (two more writers of the same rows, and a
+  counter-leg would still need a third).
+- **Counter-legs on a clearance account are bookings of the charge.** A charge decided as a transfer to the account
+  books its counter-leg (`transfer:<entry id>`), which follows the charge: re-typed or re-pointed, it goes; split, it
+  re-derives. So a rule-decided charge is complete, and confirmed, at once (I22 holds as a pair). D181 and D168 stay on
+  every other account, which keeps imported or hand-made rows apart from machine-made ones; a clearance account has
+  no such rows to protect. D168 rejected exactly this lifecycle for counter-legs in general; it is adopted here only.
+  Rejected: *commit-made counter-legs for clearance accounts* (a keystroke per charge, and a deleted or lingering
+  counter-leg would drift the balance unseen).
+- **Made split, spread in proportion.** A booking has one entry per line — an exception to I7 that D152's reasons do
+  not reach: the split is made and re-derived only as its document says, never against a split of the user's, who
+  does not split a booking. What the lines leave of the total is spread over the lines of the total's sign, in
+  proportion; coupons stay as listed; a total of 0 books nothing (`features/documents.md`). This closes spec §9's
+  question on splitting during settling.
+- **Each entry has its own source text** (`ledger_entry.source_text`): the text the entry's source gives it, set by
+  whatever creates the entry and never editable. A booking writes each line's text there; classification reads it
+  without knowing bookings — a rule condition, history's key 5, the model's payload. Re-derivation matches a
+  booking's entries to the lines by position, inside the booking layer. A booking entry is a flow under a standing
+  key and is never a transfer offer or candidate. Rejected: *a line reference on the entry* (`source_line`:
+  classification would depend on the booking layer); *the description as input* (editable inputs would reset
+  standing keys, and a rule could fire on the user's own text); *a `metadata` jsonb column* (untyped and unchecked,
+  for one field); *the document's merchant as an input* (the account names the platform; the merchant stays as
+  provenance); *a seller field on lines* (noise in real data; addable later).
+- **A booking writes its own source fields; lists render only data** (user, 2026-10-26). A document booking's
+  counterparty name is the document's provider and its purpose "Order *external id*" ("Refund *external id*" for a
+  refund); a counter-leg booking carries its charge's date and purpose, like any counter-leg. Its row therefore reads
+  like any row: the ledger list and an account's statement hold nothing specific to an account kind or an author, and
+  every row with a source shows its origin as a small tag — "Imported", "Entered", "Booked" — in place of the
+  statement's "entered by hand". Accepted consequences: the model's payload sees these fields (harmless), and a rule
+  on the counterparty "Amazon" matches booking entries too — their type is fixed to `flow`, so no transfer rule
+  applies. Only navigation reads the format of a `source_id`: the panel's "Booked from *provider* order *id*" and a
+  row's "Open document", like "Open review". Rejected: *the statement assembling "order … from …" or "charge on …"
+  for a booking* (a rendering rule per kind of row, in every list). Creating a clearance account asks for a start date and writes "0 at
+  the end of" it; documents dated after it are booked. Without a start, booking a past year of orders would count each
+  purchase twice: as the old categorised charge and as the booked order. Rejected: *a start date setting on the
+  account* (a second anchor beside the balance records).
+- **Documents stay**, one per order or refund, each dated on its own day — an order on the day it was placed: what the user checks, and where the original mail
+  is shown later. One not booked says why.
+- **No balance signal yet.** A clearance account is shown like any unsynced account (user, 2026-10-26); a balance
+  that is not 0 is normal while charges lag behind orders.
+- Deferred: editing documents by hand (the booking follows; the document `version` detects conflicts); "create a
+  clearance account" from a document not booked; the email importer mapping sender domains to providers; refunds as
+  documents of their own; a status or signal for clearance accounts.

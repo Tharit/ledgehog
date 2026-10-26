@@ -71,7 +71,8 @@ with no editor and none of the actions above. Nothing of an instance is hidden
 from the other user: no credential is ever stored, and the rest is not secret.
 
 **Link account** is a form dialog: an account picker (open accounts which the
-instance does not link yet) and, for a file importer, nothing else — it is never
+instance does not link yet, clearance accounts never) and, for a file
+importer, nothing else — it is never
 asked for a reference. For an importer that fetches, the account at the login
 comes from discovery (*Refresh accounts*, below), which opens this dialog with
 the account fixed and the discovered reference sent. Once an account is chosen

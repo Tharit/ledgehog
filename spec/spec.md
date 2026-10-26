@@ -62,26 +62,29 @@ movements of money, and the difference between those two is the idea the
 whole design rests on.
 
 A **source transaction** is what a source said: one row per movement of
-money, with its raw payload kept. A source is an importer, or a user for the
+money, with its raw payload kept. A source is an importer; a user, for the
 accounts no importer fetches — "€4.50, coffee at Starbucks" on the cash
-account. An imported row is immutable; a row a user authored is edited
-through the form that entered it (§5.6).
+account; or a booking, which settling makes on a clearance account from a
+document or a transfer (§5.8). An imported row is immutable; a row a user
+authored is edited through the form that entered it (§5.6); a booking follows
+its source.
 
 A **ledger entry** is the interpretation of a movement: type, category,
 payee, tags. Exactly one is created per new source transaction; splitting
 it into several is part of interpreting it afterwards. Entries are what the UI
 lists, what reports aggregate, and the only rows that count towards a balance.
 
-Every movement has a source transaction, imported or user-authored — a
-counter-leg the system creates to complete a transfer included (§5.7). Only
+Every movement has a source transaction, imported, user-authored or booked —
+a counter-leg the system creates to complete a transfer included (§5.7). Only
 entries derived from stated balances are not movements and have none (§3.9).
 Rules tied to a source transaction — the split invariant above all — apply to
 every entry that has one.
 
 An **external document** describes money without moving any — an Amazon
-order, a receipt. It belongs to no account, never affects a balance, and is
-linked to the transactions it explains, one or several, only as context
-(§5.8).
+order, a receipt. It belongs to no account and never affects a balance
+itself. Where a clearance account takes its provider, it is booked onto that
+account as a source transaction, one entry per line (§5.8); nothing links it
+to the charges that paid it.
 
 A **balance record** states what an account held on a date — reported by an
 importer or entered by a user. It is a fact about a balance, not a movement,
@@ -93,9 +96,8 @@ source_transaction ──► ledger_entry        1 entry, or N after a split
 
 (none)             ──► ledger_entry        derived from balance records
 
-ledger_entry       ──── external_document  carried by one entry of each
-                                           transaction it explains, optional
-   (the €84.31 charge)    (the order behind it)
+external_document  ──► source_transaction  booked on a clearance account,
+   (the Amazon order)     (a booking)      one entry per line
 
 balance_record     ──► ledger_entry        one derived entry per record:
    (what it held)         (derived)        the opening, then valuations or
@@ -110,13 +112,13 @@ invariant leaves the table, and its number stays unused.
 
 | Id | Invariant | § |
 |---|---|---|
-| I1 | Every source transaction is created by an importer or, on an unsynced account, for a user — through the entry form, or as a counter-leg. | 5.6, 5.7 |
-| I2 | An imported source transaction is immutable after insert, except for whether it is a duplicate (`duplicate_of`); a user-authored one changes only through the entry form, by a commit setting its amount to the sum of its entries, or when its single entry follows a partner in a commit. | 5.6, 5.7 |
-| I3 | The entries of a source transaction that is not a duplicate carry its account, currency and dates and sum to its amount; their amounts change only by a split, by an edit of a user-authored source through the entry form or a commit setting its amount to their sum, or when a user-authored single-entry leg on an unsynced account follows its partner. A duplicate has none. | 3.1, 5.6, 5.7, 5.9 |
+| I1 | Every source transaction has one origin: an importer; a user, on an unsynced account — through the entry form, or as a counter-leg; or a booking, which settling makes on a clearance account. | 5.6, 5.7, 5.8 |
+| I2 | An imported source transaction is immutable after insert, except for whether it is a duplicate (`duplicate_of`); a user-authored one changes only through the entry form, by a commit setting its amount to the sum of its entries, or when its single entry follows a partner in a commit; a booking only as it follows its source. | 5.6, 5.7, 5.8 |
+| I3 | The entries of a source transaction that is not a duplicate carry its account, currency and dates and sum to its amount; their amounts change only by a split, by an edit of a user-authored source through the entry form or a commit setting its amount to their sum, when a user-authored single-entry leg on an unsynced account follows its partner, or when a booking follows its source. A duplicate has none. | 3.1, 5.6, 5.7, 5.8, 5.9 |
 | I4 | A source transaction's identity — its `source_id` where the source assigns one, its content hash otherwise — is unique per account over all rows, duplicates included. | 5.2 |
 | I5 | Every account holds exactly one currency, permanently; every entry and source transaction is in its account's currency. | 3.3, 3.8 |
 | I6 | A balance is the sum of the account's ledger entries. Source transactions, documents and balance records never enter an aggregate. | 3.3 |
-| I7 | A source transaction gets exactly one entry when it is created or stops being a duplicate; only a commit splits an entry. | 5, 5.8, 5.9 |
+| I7 | A source transaction gets exactly one entry when it is created or stops being a duplicate, except a document booking, created with one entry per line; only a commit splits an entry, and never a booking's. | 5, 5.8, 5.9 |
 | I8 | Only entries with a source transaction may be incomplete; derived entries are complete at creation. | 3.4, 3.9 |
 | I9 | A category implies type `flow`; a payee applies only to flows; a category's kind is fixed at creation and a child has its parent's kind; the category tree has no cycles. | 3.4–3.6 |
 | I10 | A transfer pair is mutual, on two distinct accounts, with opposite signs; a same-currency pair is exactly equal and opposite. An entry has at most one counterpart. A transfer leg's counter-account is never its own account, and a paired leg's is its partner's account. | 5.7 |
@@ -125,8 +127,8 @@ invariant leaves the table, and its number stays unused.
 | I17 | No pass, matcher, settling or import creates an account, category or payee. | 5.9 |
 | I18 | Proposals are rederived from current inputs, rules and history; standing values are kept. When an entry's input changes it is resolved afresh, and when a value changes the standing values after it in field order are derived again; a merge's repointing is not a change of value, and a user-authored leg following its partner is not a change of input. | 3.5, 3.6, 5.7, 5.9 |
 | I19 | History learns only from confirmed values: a human's, or standing values. | 5.9 |
-| I20 | No automatic process changes a reviewed entry; derived entries, which are never reviewed, are the only entries recomputed. | 5.9, 6 |
-| I21 | Review is per unit — the entries of a source transaction, of a transfer pair, and of the transactions carrying one document — and a unit's edits take effect atomically when it is committed. | 6 |
+| I20 | No automatic process changes a reviewed entry, except that a booking follows its source; derived entries, which are never reviewed, are the only other entries recomputed. | 5.8, 5.9, 6 |
+| I21 | Review is per unit — the entries of a source transaction and of a transfer pair — and a unit's edits take effect atomically when it is committed. | 6 |
 | I22 | A transfer is confirmed only as a pair. | 5.7, 6 |
 | I23 | Review flags are derived from current state and never patched. | 6 |
 | I24 | No automatic pair is made between legs whose counter-account or end-to-end id distinguishes them. | 5.7 |
@@ -138,12 +140,12 @@ invariant leaves the table, and its number stays unused.
 | I31 | A source transaction has at most one transfer entry. | 5.9 |
 | I32 | An incoming row whose identity the account already holds is skipped. Each remaining incoming row is paired one to one with an imported source row of the same booking date and amount that no incoming identity accounted for, and inserted as its duplicate; the first one in wins. Rows of one delivery are never compared with each other. Only ingest marks rows automatically, and only rows it is inserting. | 5.2 |
 | I33 | An automatic pair requires a known counter-account on at least one leg. | 5.7 |
-| I35 | A transaction has at most one document, carried by its original entry; a document line is carried by at most one entry, of a transaction carrying that line's document; a transaction carrying a document has no transfer entry. | 5.8 |
 | I36 | A reported balance record is never dated after its run's coverage. | 5.1 |
 | I37 | Every write ends by settling, after which derived state reflects current data; a model answer arrives later as a write of its own. | 5 |
 | I38 | An account's kind is fixed at creation; with it, whether the account is an investment account (depot, asset). | 3.3 |
 | I39 | Ingest is serialised per account, settling as a whole. | 5 |
 | I40 | User-authored source transactions — entered, or created as counter-legs — exist only on unsynced accounts; those made before an account became synced stay. | 3.3, 3.9, 5.7 |
+| I41 | A booking exists only on a clearance account, which never has a source; it exists exactly while its source calls for it, and is never a duplicate nor written through the entry form. | 3.3, 5.8 |
 
 ---
 
@@ -180,14 +182,14 @@ credential (§5.11).
 
 **Who and when are recorded only on event records** — import runs, which are
 the log of an activity. Mutable state carries neither: ledger entries,
-dimensions, accounts and document links record no creator, editor or
+dimensions, accounts and documents record no creator, editor or
 timestamp. If that is ever needed, it is an audit log, not columns.
 
 ### 3.3 Accounts
 
 Accounts hold balances: checking, savings, card, cash, digital wallet (a balance
-held with a provider outside a bank, such as PayPal or Wise), depot, loan, and
-other assets valued by hand. Each holds exactly one currency, permanently
+held with a provider outside a bank, such as PayPal or Wise), depot, loan,
+other assets valued by hand, and clearance accounts (below). Each holds exactly one currency, permanently
 (§3.8). An entry and a source transaction are denominated in their account's
 currency, so a balance is always a sum in one currency. **A balance is always
 `SUM(ledger_entry.amount)` for the account** — one column, no special case per
@@ -222,6 +224,32 @@ institution uses for it — an IBAN, a card number, a PayPal pocket. Discovery
 sets it for an account it offers (§5.4), and a user may set it on any
 account, hand-kept ones included, so that pass 0 recognises transfers to it
 (§5.9).
+
+**Clearance accounts.** A *clearance* account clears what is bought through
+a provider such as Amazon: the provider's orders and refunds are booked onto
+it from their documents (§5.8), and the bank's charges for them are transfers
+to it (§5.7), so its balance is zero once everything has arrived, and what is
+missing or wrong shows in its balance. Its kind is fixed at creation (I38),
+like any account's. It never has an `account_source` — linking it to an
+importer is refused by its kind — so it is unsynced, and the rules for unsynced
+accounts apply; the entry form works on it, for corrections such as a
+cancelled item or a gift-card payment (§3.9).
+
+- **Its providers.** It carries the list of providers whose documents it
+  takes: names, trimmed, compared case-insensitively; the known providers —
+  the names importers give (§5.5) and those of stored documents — are
+  suggested, but any value is accepted. A provider is on at most one
+  clearance account per currency, across the ledger: "Amazon" may be on
+  "Amazon.de" in EUR and on "Amazon.com" in USD. A list absorbs a provider's
+  name variants ("Amazon", "Amazon EU").
+- **Its start.** Creating it asks for a start date *D*, and the create form
+  writes its opening: a manual balance record of zero at the end of *D*
+  (§3.10). The account's start is the date of its anchor; only documents
+  dated after it are booked (§5.8), so that purchases the bank side already
+  holds as categorised charges are not counted twice.
+
+Beyond that, a clearance account is shown and reported like any other
+account.
 
 An account may carry an icon and a colour, presentation only (§3.5).
 
@@ -347,21 +375,14 @@ Books and Household, so encoding merchants as category leaves would scatter one
 merchant across the tree and break the moment a split assigns two categories to
 one payee.
 
-A payee may name a `document_provider` — the provider of the external
-documents that describe its charges (PayPal, Amazon). That one attribute drives
-document matching and waiting for a document (§5.8). It is free text, trimmed,
-and matches a document's provider case-insensitively; the known providers —
-the names importers give (§5.5) and those of stored documents — are suggested,
-but any value is accepted, and clearing is always allowed. It may also carry
-an icon and a colour, presentation only (§3.5).
+A payee may carry an icon and a colour, presentation only (§3.5).
 
 Merging two payees repoints their entries, the rules that set the payee and the
 payee conditions naming it, then deletes the merged
 one; as for categories (§3.5), the repointed values keep their keys, nothing is
 derived again or returned to review, and the entries' versions bump (§3.5).
-The target's attributes win: its name, note, icon, colour and
-`document_provider` are kept, and the preview warns when the source's
-`document_provider` would be lost. A write that names a merged-away payee, or
+The target's attributes win: its name, note, icon and colour are kept. A
+write that names a merged-away payee, or
 a deleted category, payee or account, is refused as a `stale_reference`
 conflict (§3.5). A payee no entry references can be deleted, together with the rules that set it;
 a rule whose payee condition names it stays, shown as "Payee deleted" in the
@@ -410,13 +431,11 @@ always a sum in one currency.
 **The ledger has one base currency**, fixed when the ledger is first started
 and never changed, because rates are stored against it. Every report is
 expressed in it. It is not a property of any entry, and no entry stores a
-base-currency value. Three further ledger-wide settings — the maximum rate age
-(§3.8), the matching window (§5.7) and the document window (§5.8) — belong to
-the deployment's configuration, not to the ledger's data: they are changed by
-reconfiguring and restarting, and the ledger settles on start (§5). The first
-two are 7 days unless configured; the document window has two ends, `back`
-and `ahead`, the days before a transaction's `booked_on` and after it, 60 and
-7 unless configured.
+base-currency value. Two further ledger-wide settings — the maximum rate age
+(§3.8) and the matching window (§5.7) — belong to the deployment's
+configuration, not to the ledger's data: they are changed by reconfiguring and
+restarting, and the ledger settles on start (§5). Both are 7 days unless
+configured.
 
 **Currencies are reference data**: ISO code and minor-unit exponent. Every
 amount is an integer in the minor units of its own currency — JPY has none,
@@ -427,9 +446,9 @@ account's — a card payment abroad, a camt `InstdAmt` — the source usually
 reports the original amount. The importer extracts it into
 `instructed_amount` / `instructed_currency`, signed like `amount`, as a fact
 the source reported, however the format encodes it. It is not a hash input
-(§5.2), and nothing aggregates it. It exists for three things: creating a
-cross-currency counter-leg exactly (§5.7), pairing cross-currency transfers
-exactly (§5.7), and matching a document in its own currency (§5.8). It is
+(§5.2), and nothing aggregates it. It exists for two things: creating a
+cross-currency counter-leg exactly — a booked one on a clearance account
+included (§5.7) — and pairing cross-currency transfers exactly (§5.7). It is
 never used for valuation: the entry is in the account's currency already.
 
 **Conversion to the base currency is computed, never stored**, by one
@@ -482,11 +501,12 @@ Every ledger entry is one of two kinds, told apart by what it references:
 
 | Kind | References | Created by | Subject to |
 |---|---|---|---|
-| **movement** | its source transaction | ingest; the entry form; a commit's counter-leg (§5.7) | any type, may be incomplete; split invariant, resolution, review. An imported source is marked as a duplicate, never deleted; a user-authored one is edited or deleted through the entry form (§5.6) |
+| **movement** | its source transaction | ingest; the entry form; a commit's counter-leg (§5.7); settling, as a booking (§5.8) | any type, may be incomplete; split invariant, resolution, review. An imported source is marked as a duplicate, never deleted; a user-authored one is edited or deleted through the entry form (§5.6); a booking follows its source (§5.8) |
 | **derived** | the balance record it is derived from | settling (§5.10) | `opening`, `valuation`, `reconciliation`; amount follows the records; never resolved, never reviewed |
 
-Whether a movement was imported or entered is a fact about its source — its
-`importer` — not a property of the entry.
+Whether a movement was imported, entered or booked is a fact about its
+source — its `origin`: `import`, `user` or `booking` (§5.6) — not a property
+of the entry.
 
 **A user enters a movement as a source transaction**, through a small form:
 the amount and a purpose ("groceries at REWE") are its visible fields; the
@@ -494,8 +514,8 @@ date, the account and the sign are prefilled — today, the cash account, an
 expense — and can be changed when entering; a row's account is fixed once it
 is entered. The form creates the source transaction and its
 one entry, settling resolves it like an import — rules on the purpose, history,
-later the model (§5.9) — and the review panel opens on the unit, to split it,
-link a document or commit it. A manual entry therefore differs from an
+later the model (§5.9) — and the review panel opens on the unit, to split it
+or commit it. A manual entry therefore differs from an
 imported one only in where its source came from.
 
 **User-authored transactions exist only on unsynced accounts** (I40): cash
@@ -507,7 +527,8 @@ and its first fetch is prefilled to start after them (§5.4). User-authored rows
 take no part in deduplication (§5.2).
 
 A manual transfer may point at any account: its counter-leg is created with it
-where the counter-account is unsynced, and where it is synced — cash paid into
+where the counter-account is unsynced — on a clearance account it is booked
+(§5.7) — and where it is synced — cash paid into
 the bank — the leg waits, and pairs when that account's import delivers its
 partner (§5.7). Only the leg is hand-made; the synced account receives nothing
 by hand.
@@ -748,12 +769,41 @@ ledger_entry   #19 Card    -3049  flow  cat='Bank fees'
 ```
 
 The account is EUR, so nothing is converted; the instructed amount is
-provenance and the key for matching the USD document (§5.8). An issuer that
+provenance (§3.8). An issuer that
 folds the fee into the same booking is the transfer-with-fee pattern above: one
 record, split into purchase and fee.
 
 **Refund** — an €80 Amazon return arrives as `+8000`, `type='flow'`,
 `cat=Electronics`, so the expense category nets correctly.
+
+**Orders through a clearance account** — the clearance account Amazon.de
+(EUR) takes the provider "Amazon", from its start on 31 May (§3.3). An order
+of 2 June: a cable at €12.99 and a book at €34.99, €1.99 shipping not
+itemised, paid by a charge on the Giro.
+
+```
+external_document   #5   Amazon  2026-06-02  total -4997
+                         lines 'USB-C cable' -1299, 'Paperback' -3499
+source_transaction  #60  Amazon.de  -4997  source_id='document:5'   (booking)
+ledger_entry   #61 Amazon.de  -1353  flow  cat=Electronics  source_text='USB-C cable'
+ledger_entry   #62 Amazon.de  -3644  flow  cat=Books        source_text='Paperback'
+
+source_transaction  #63  Giro  -4997  counterparty_name='AMAZON PAYMENTS'
+ledger_entry   #64 Giro       -4997  transfer  counterpart=#66
+source_transaction  #65  Amazon.de  +4997  source_id='transfer:64'  (booking)
+ledger_entry   #66 Amazon.de  +4997  transfer  counterpart=#64
+```
+
+Settling books the order as a purchase on the account, one entry per line,
+the shipping spread over the lines in proportion (§5.8); rules, history and
+the model categorise the entries by their source text like any entry. A rule —
+counterparty name starts with `AMAZON`, counter-account Amazon.de — types the
+charge a transfer; its other side is booked by itself, and the pair arrives
+confirmed (§5.7). The account's balance is zero. Two orders in one charge, an
+order charged in parts, a discount that is not itemised need nothing more: the
+balance is zero once every order and charge is in, and until then it shows
+what is missing. A cancelled item is an entry on the account, through the
+entry form, in the item's category.
 
 **Standing confirmation** — the monthly rent, with a payee rule on the
 landlord's IBAN and a category rule on that payee.
@@ -876,8 +926,8 @@ each get dedup subtly wrong.
 **Resolution** — the passes that propose a new entry's type, payee, category
 and counter-account (§5.9).
 
-**Matching** — transfer legs paired with each other (§5.7), source
-transactions linked to documents (§5.8). A pair, once made, stands (§5.7).
+**Matching** — transfer legs paired with each other (§5.7). A pair, once
+made, stands (§5.7).
 
 **Settling** — bringing derived state up to date (below).
 
@@ -889,18 +939,22 @@ A full sync runs:
             (documents, rates) — one import run each
 2. ingest   transactions → identity, deduplication, rows and the reported
                            balance record, one ledger entry per new row
-            documents    → upsert on (provider, external_id)
+            documents    → on (provider, external_id), inserted, or
+                           replaced or kept by the importer's mode (§5.5)
             rates        → upsert on (currency, date)
 3. settle   bring derived state up to date
 ```
 
 **Every write ends by settling** (I37), after which derived state reflects
-current data: the proposals and pairings of unconfirmed entries (§5.9, §5.7),
-document links (§5.8), derived entries (§5.10) and review flags (§6). Writes
+current data: the bookings on clearance accounts (§5.8), the proposals and
+pairings of unconfirmed entries (§5.9, §5.7), derived entries (§5.10) and
+review flags (§6). Bookings are the one place settling writes source
+transactions, and only on clearance accounts. Writes
 include a sync, a file upload, a revert, a commit, entering, editing or
 deleting a user-authored transaction,
 marking or clearing a duplicate, saving or deleting a rule, a merge, changing a category or a payee, creating,
-closing, reopening, linking or unlinking an account, a balance record and a
+closing, reopening, linking or unlinking an account, changing a clearance
+account's providers, a balance record and a
 changed configuration, which takes effect when the deployment restarts.
 Settling is also available as a standalone action, because it is idempotent:
 settling twice changes nothing. Whether it works incrementally or as a full
@@ -924,7 +978,7 @@ The test for each record is: *does it move money, or describe money?*
 
 - **transactions** move money — FinTS, CSV statements, PayPal balance
   movements, credit cards, broker cash accounts.
-- **documents** describe money — Amazon orders and payments, receipts,
+- **documents** describe money — Amazon orders and refunds, receipts,
   invoices, and PayPal payments that PayPal passed through to a card.
 - **rates** are reference exchange rates against the base currency (§3.8).
 
@@ -1162,7 +1216,8 @@ deduplicated, and nothing is deduplicated against it: two identical coffees on
 one day are two purchases, and a person's account of a movement shares neither
 wording nor reliable dates with a bank's (§3.9). Its identity is a random id
 the entry form generates before submitting, so a repeated submission is
-skipped like a re-delivered row. Derived entries are never compared either. Ingest marks only the rows it is inserting, which have no entries
+skipped like a re-delivered row. Nor is a booking deduplicated, or anything
+against it: its identity names its source (§5.8). Derived entries are never compared either. Ingest marks only the rows it is inserting, which have no entries
 yet, so deduplication never changes or removes anything that exists.
 
 **The core does not rank sources.** A CSV file may have been edited, another
@@ -1322,61 +1377,52 @@ Ingest routes by the kind of the run, without loading importer code:
 
 What a document importer delivers:
 
-- **A charge or a whole order, complete as the provider shows it.** A partial
+- **An order or a refund, complete as the provider shows it.** A partial
   view of an order, such as a shipping notice, is not a document. One document
-  per charge wherever the provider exposes individual charges — a shipment
-  charged separately, a partial refund — dated on the charge, with the order it
-  belongs to kept as context in the payload; the whole order where the
-  provider shows nothing finer, which may be charged in several transactions
-  (§5.8).
-- **A signed total** in ledger convention: negative for a charge, positive for
-  a refund or credit note. Its lines are signed the same way: a charge's lines
+  per order and one per refund, each dated on the day the provider gives it —
+  an order on the day it was placed — however the provider charges it.
+- **A signed total** in ledger convention: negative for an order, positive for
+  a refund or credit note. Its lines are signed the same way: an order's lines
   are negative.
-- **The merchant's name and the line descriptions**, where the provider
-  reports them (§5.8).
-- **Whether it delivers a provider's documents**, answered for an instance
-  before its first run. An importer built for fixed providers names them and
-  answers for those; one that reads receipts of any provider answers from the
-  instance's settings. There is no list of providers: a document carries its
-  provider's name, and the core imports every document an instance emits,
-  whatever its provider, subject to the instance's start date (below).
+- **Its provider's name, the merchant's name and the line descriptions**,
+  where the provider reports them. The provider maps the document to a
+  clearance account (§3.3), the lines become the booking's entries (§5.8), and
+  the merchant is shown as provenance; nothing resolves on it.
 - **Its coverage**: the date up to which its documents are known to be
   complete, in the dates of the documents it delivers, recorded as the run's
-  coverage
-  (§5.1). An instance's document coverage is the latest among its
-  non-reverted document runs; waiting for a document is judged from it
-  (§5.8).
+  coverage (§5.1).
 
-**A start date**, chosen once when the instance is set up and kept in its
-settings under the key `start_date` (an ISO date), prefilled with the date of the oldest unreviewed entry. No document dated before it is imported. Documents are only
-matched to unconfirmed transactions (§5.8), so a start date inside reviewed
-history would only produce unmatched documents.
+The core imports every document an instance emits, whatever its provider,
+subject to the instance's **start date**, chosen once when the instance is set
+up and kept in its settings under the key `start_date` (an ISO date): no
+document dated before it is imported.
+
+**Re-delivery.** An importer declares how it takes a document whose
+`(provider, external_id)` is already stored: `replace` updates the stored
+document in place — its date, total, lines and payload — for an importer that
+re-reads the same record, whose later view carries what matters:
+cancellations, partial shipments; `keep` leaves the stored document as it is,
+and the run counts it as kept. A document moves no money, so it needs no
+immutability. Each document carries a version, which increments whenever its
+content changes. A changed date, total, currency or set of lines re-derives
+its booking in the same write (§5.8); a change elsewhere in the payload
+changes nothing.
 
 Consequences:
 
 - **The documents kind has no accounts.** `synced_through` does not apply. The
   sync orchestrator therefore cannot assume every run has an account.
-- **Documents are updated in place.** A re-fetched document replaces its total,
-  lines and payload. Each document carries a version, which ingest increments
-  whenever what resolution reads of it changes (below), so a commit made on an
-  older version is refused (§6). Unlike a source transaction it moves no money, so it
-  needs no immutability — and keeping the first version would drop what
-  matters: cancellations, partial shipments, partial refunds. A change to what
-  resolution reads — its total, currency, merchant or lines — is a change of
-  input for each transaction carrying it: an unconfirmed one is resolved
-  afresh, its link included, so matching runs again (§5.9); a confirmed one
-  is left alone (I20). A change elsewhere in the payload changes nothing.
-- **Ingest puts every line** of a new or changed document on the model's
-  background list (§5.9, pass 3), except a re-fetched line whose payload is
-  unchanged: it keeps its answer, matched by the payload's fingerprint across
-  the replacement of lines.
 
 ### 5.6 Who authors source transactions
 
-**A source transaction comes from an importer or from a user** (I1), and its
-`importer` says which: NULL means it is the user's, on an unsynced account
-(I40) — entered through the entry form (§3.9), or created as a counter-leg by
-a commit (§5.7).
+**A source transaction comes from an importer, a user or a booking** (I1),
+and its `origin` says which — `import`, `user` or `booking`. A user's row is
+on an unsynced account (I40), entered through the entry form (§3.9) or
+created as a counter-leg by a commit (§5.7). A booking is on a clearance
+account, made by settling from a document or a transfer (§5.8); it belongs to
+no run, is never edited or deleted through the entry form, never follows a
+partner in a commit, is never a duplicate nor deduplicated (§5.2), and never
+bounds a fetch (§5.4).
 
 **Imported rows are immutable** (I2): they say what the bank said, and that is
 what makes them a defensible record. Every import is a run, logged and
@@ -1429,9 +1475,11 @@ the entry being removed or unpaired:
   included. An
   unpaired transfer cannot be reviewed (§6), so it returns to review by that
   alone, and the matcher may find it a new partner.
-- **A document** loses a carrier whose entries are removed: its link and the
-  lines its entries carried are free again, and may be matched to another
-  transaction (§5.8); its other carriers stand.
+- **A booking** whose source no longer calls for it — the counter-leg of a
+  charge that is removed, or no longer a transfer to its clearance account —
+  is removed with its entries and their tags by the settling that ends the
+  operation (§5.8); it is not left behind as a partner, and the operation's
+  preview shows it among what it removes (§6).
 - **Derived entries** of every affected account are recomputed (§5.10).
 
 #### Duplicates
@@ -1482,9 +1530,10 @@ other's rows. Failed runs wrote nothing
 what they skipped may be the very rows being deleted, and their coverage and
 balance record would otherwise still vouch for them.
 
-**Document and rate runs are never reverted.** They upsert in place (§5.5),
-so there is no earlier state to return to; a wrong document or rate is
-corrected by the next fetch from its source.
+**Document and rate runs are never reverted.** They write in place (§5.5), so
+there is no earlier state to return to; a wrong rate is corrected by the next
+fetch from its source, a wrong document by the next fetch of an importer that
+replaces documents (§5.5).
 
 Reverting deletes, in one transaction, the run's source transactions —
 duplicates included — and their entries, applying the removal routine. Rows
@@ -1673,10 +1722,12 @@ source transaction and its entry on the counter-account, with the partner's
 `booked_on`, paired with it. Its source has a random id, like a row from the
 entry form, the partner's purpose ("GA-AUSZAHLUNG Sparkasse"), so it reads
 well and teaches history, and a `raw` that records the entry it was created
-for — provenance that nothing reads. **Only a commit creates one:** the panel
-offers it for a leg without a partner whose counter-account is unsynced, and
-proposes it where the leg has no open offer (above); nothing automatic ever
-creates a counter-leg, so one the user deletes stays deleted. A leg whose
+for — provenance that nothing reads. **Only a commit creates one**, except on
+a clearance account, where the counter-leg is a booking settling makes
+(below): the panel offers it for a leg without a partner whose counter-account
+is unsynced and not a clearance account, and proposes it where the leg has no
+open offer (above); nothing else automatic ever creates a counter-leg, so one
+the user deletes stays deleted. A leg whose
 counter-account is decided therefore arrives with its counter-leg proposed and
 is confirmed in one keystroke. The counter-leg's entry is
 typed `transfer`, with its partner's account as its counter-account, and its
@@ -1750,8 +1801,8 @@ currency and without a counter-account does not: it stays in pending review.
 
 A pair carries a `counterpart` key on both legs, written in one transaction
 and cleared together. It names its maker: pass `matcher_decision` for a pair
-settling made, and pass `user` for one a commit wrote, a counter-leg's
-included. Both are standing (§5.9); their basis is empty (`{}`). Whether the pair needs review is
+settling made, pass `user` for one a commit wrote, a counter-leg's
+included, and pass `booking` for a transfer booking's (below). All are standing (§5.9); their basis is empty (`{}`). Whether the pair needs review is
 decided by the legs' other keys, chiefly where the counter-account came from:
 
 - **Decided** — carrying a standing key (§5.9): pass 0, a rule, a user, or
@@ -1776,147 +1827,119 @@ ATM withdrawals are the common case of a counter-leg: history or a rule types
 a withdrawal as a transfer to the cash account (§5.9), and committing it
 creates the cash leg (§4).
 
-### 5.8 Document matching
+#### Transfers to a clearance account
 
-Linking documents to transactions is a step of settling, never called from
-inside an importer, so import order does not matter. How documents and
-transactions are found to match — through the payee whose charges a document
-describes (§3.6) — and how a document's line allocation (below) and the split
-along its lines are worked out are specified as a subsystem of their own. The
-core requires this of it:
+A leg whose type and counter-account are decided — under standing keys, from
+pass 0, a rule or a commit (§5.9) — as a transfer to a clearance account
+(§3.3) is the source of a **transfer booking** on that account (§5.8):
+`source_id` `transfer:<entry id>`, with the leg's `booked_on` and purpose and
+no counterparty name, like any counter-leg (above), and one entry, typed `transfer`, its counter-account the leg's account, paired
+with the leg. The booking's type and counter-account, and the pair on both
+legs, carry the standing key `booking`. Its amount is the leg's, negated;
+across currencies, the leg's instructed amount, negated. A clearance account
+takes a leg only in the currency the money arrived in by the leg's own report
+— its instructed currency, or its own where it has none: the user's choice of
+another currency, with the amount received typed, does not apply.
 
-- **Only unconfirmed transactions are matched** (I20), and settling links only
-  into a document none of whose carriers is confirmed. A document that arrives
-  after its charge was confirmed is linked by hand in the review panel, if at
-  all; one that a confirmed transaction carries is only suggested to other
-  transactions, and a pick of it brings the confirmed carrier into the draft's
-  unit (§6). While a transaction waits for its document, settling does not
-  confirm its unit (§6), so rules that decide everything else do not keep it
-  from its document.
-- **A link is a value of the transaction's original entry**: `document_id`, a
-  derived field keyed `document` like any other (§5.9) — a matcher key where
-  settling linked it, because the transactions carrying the document and the
-  document match each other and nothing else: `matcher_decision` for a document
-  of one line, `matcher_proposal` for one of several, so that the unit is
-  reviewed once and the split along the lines is seen; `user` where a commit
-  picked it or decided "none".
-  A transaction has at most one document; a document may be carried by several
-  transactions, each of its lines by at most one entry (I35), enforced on the
-  entries. Suggestions are computed when read, only while no document is
-  decided — none is linked, whatever its key, and none is "none" — and carry
-  no key: a decision — a pick or "none" — therefore keeps the other candidates
-  from being proposed again for as long as it stands. A transaction whose
-  entries are removed frees its link and the lines its entries carried (§5.6);
-  a document whose content changes resolves its transactions afresh (§5.5).
-- **A link is an input to resolution** (§5.9). The source row is read as
-  stored; the document adds fields that rules read: its merchant name
-  (`document_merchant`) and the entry's own line (`document_line`), below. A
-  rule on the card descriptor, such as `PAYPAL *`, keeps matching, so the entry
-  first resolves as the descriptor says and waits for its document; once
-  linked, a rule on the merchant ordered before it wins. The resolved values
-  appear when a link is made and disappear with it. **The payee of a documented
-  charge is the provider unless such a rule names the merchant** (§3.6: a
-  payee is curated).
-- **A document may be carried by several transactions.** A transaction whose
-  original entry links a document is a **carrier** of it. A **line
-  allocation** of a document over a set of transactions assigns each of its
-  lines to at most one of them so that each transaction's lines sum exactly to
-  its amount, in the document's currency; lines left unassigned are not yet
-  charged. A single transaction whose amount equals the document's total
-  takes every line, however they sum: a whole-document match, possible for
-  any document, the remainder going to the original entry (§5.9). A
-  transaction taking some lines is a partial match, possible only for a
-  document whose lines sum exactly to its total and that has at most 20
-  lines, a fixed limit. A line allocation **keeps** the committed references
-  when it assigns every line an entry references to that entry's transaction.
-- **A line allocation is derived when read**, from the links, the amounts and
-  the line references that committed splits wrote, and never stored. Where
-  several exist, the proposal is the first, in a fixed order, that keeps the
-  committed references — or, where none does, the first of all; it is shown
-  and reviewed. Settling links automatically only on one that keeps them.
-  Where the proposal moves lines a committed split references, the draft
-  proposes that carrier's split along its lines, the entries it replaces shown
-  as consequences (§6). Where a document's carriers admit no line allocation —
-  a pick by hand, a changed document whose confirmed carriers keep their
-  links — every link stands, unsplit. A line folded into a remainder, or a
-  carrier committed without a split, needs no reference.
-- **A link gives its entries their lines.** An entry's line is the document
-  line it references (`document_line_id`). For a document of one line, the
-  original entry takes it with the link, in the same write, by settling or by
-  a commit; for a document of several, the split along the lines gives each
-  entry it makes one of the lines of the document's sign that the line
-  allocation gives its transaction, the original the first. Every other entry
-  has no line — an unsplit carrier of a document of several lines, until a
-  commit gives it one; a split made by hand; an entry added by hand — and a
-  rule's condition on it fails: a line matched there would be any one of the
-  order's items, for all of them. The write that changes the link sets or
-  clears the original entry's reference with it; a changed document's lines
-  are replaced (§5.5), which clears the references to them, and a reference to
-  a line of another document than the transaction's is ignored when read.
-- **A link proposes a split** along the document's lines, in review: the
-  preview of a linked transaction splits it, one entry per line of the
-  document's sign that the line allocation gives the transaction, the original
-  entry taking the first of them and the remainder (§5.9), and the commit
-  writes the split. A line of the opposite sign — a coupon, a discount — is
-  not split out but goes into the remainder, with shipping and rounding. A
-  document of one line proposes no split. Only a commit splits (I7); a split
-  is never stored as machine output. A multi-line document's split is proposed
-  only from a stored link or a pick: a link settling has yet to make is shown
-  in the preview but written by settling after the commit, and only a stored
-  `matcher_proposal` becomes `user` on a commit. The split along the lines is
-  proposed for every carrier of the document while any of its links is not
-  yet the user's — a matcher link, or a pick in the draft — over any split a
-  carrier has (§6); once every link is the user's, nothing is proposed, and
-  re-resolving (§6) shows what would change.
-- **A transaction may wait for its document.** Documents match a transaction
-  when dated within its **document window**: from `back` days before its
-  `booked_on` to `ahead` days after it, two ledger-wide settings (§3.8).
-  Where its payee names a `document_provider` (§3.6) and it carries no
-  document key (§6), the transaction waits while any instance providing that
-  provider's documents that is not disabled, and whose start date (§5.5) is
-  not after `booked_on`, has a document coverage (§5.5) that has not yet
-  reached `booked_on` plus `ahead` — an instance that has never run has none,
-  and holds the transaction too: with several instances there is no knowing
-  which one would deliver it. That waiting holds automatic confirmation (§6);
-  a commit ends it (below).
-- **A transaction may wait for the rest of its document's order.** A
-  transaction carrying a document with a matcher key also waits while the
-  amounts of the document's carriers, in its currency, fall short of its total
-  in magnitude, until the `synced_through` of every synced account (§5.4) has
-  reached the document's `occurred_on` plus `back`; a synced account never
-  fetched holds it too. That waiting holds no automatic confirmation, and
-  skipping it needs no confirmation: a commit makes the link the user's, which
-  ends it, keeping the link.
-- **A document explains a flow.** A transaction with a transfer entry is not
-  a candidate, a pick on it is refused, and the schema refuses a link on a
-  transfer entry. A transaction carrying a document has no transfer entry
-  (I35): a commit that would leave one is refused. Converting a linked
-  transaction to a transfer drops its document, as it drops the payee (I9). A
-  linked or picked document decides `flow` first, whatever the type was: the
-  type takes the link's key (§5.9, field order).
-- **Picking a document in review** is part of the review draft (§6): one of
-  the suggestions, a document found by hand, or "none of these". The preview
-  shows the document's other carriers, brought into the unit (§6), and the
-  values and splits resolved with the document; the commit writes the pick, or
-  "none", as the entry's `document`, replacing an automatic link. A commit
-  without a document picked decides "none", like every value a commit leaves
-  as it is (§6); where documents are suggested or one is awaited, the preview
-  says so and the server refuses the commit unless the draft decides: it picks
-  a document or says "none" explicitly. With an importer and a waiting entry,
-  the user must consciously decide not to wait.
-- **Documents can be browsed on their own**, each with the transactions that
-  carry it, if any, and filtered to those no transaction carries or to those
-  not fully charged. For a document not fully charged — carried by none, or by
-  transactions whose amounts fall short of its total — the transactions it
-  would match by the subsystem's amount and date rules are offered, confirmed
-  ones included; picking one opens the
-  review panel on its unit with the document picked in the draft. Like
-  suggestions, these are computed when read. This is how a document that
-  arrived after its charge was committed is found and linked.
+The booking follows its leg (§5.8): converting the leg to a flow, changing its
+counter-account, or removing it — marked as a duplicate, reverted, deleted —
+removes the booking; a changed date, amount or purpose, a split of the leg,
+re-derives it. The
+pair is therefore complete as soon as the leg is decided, and the unit is
+confirmed when the leg's keys are all standing — a transfer is still
+confirmed only as a pair (I22). A leg whose counter-account is only proposed,
+by history or the model, has no booking until a commit decides it; the
+preview shows the booking the commit leads to.
 
-Nothing else follows from a document: it never reopens a reviewed entry. For
-an unreviewed transaction a link is new input, and re-derives the values after
-it as any new input does (§5.9).
+Transfers on a clearance account are bookings only. A leg pointing at a
+clearance account is paired only with its booking, and an entry on a
+clearance account is a transfer only as a transfer booking: neither is ever a
+candidate, an offer or a pick, no pass proposes `transfer` for any other entry
+there, and converting one to a transfer is refused. A clearance account has
+no imported or hand-made movements to keep apart from machine-made ones — its
+movements are bookings, plus the user's corrections — which is why its
+counter-legs are made automatically and nowhere else.
+
+### 5.8 Bookings
+
+A **booking** is a source transaction that settling makes on a clearance
+account (§3.3) from a source the ledger already holds. There are two sources:
+a document, booked as the order or refund it describes (below), and a transfer
+leg decided to the account, booked as its counter-leg (§5.7). Booking works
+the same for both:
+
+- **Origin and identity.** A booking's `origin` is `booking` (§5.6). Its
+  `source_id` names its source as `<kind>:<id>` — `document:42`,
+  `transfer:17` — and is unique per account (I4); a source has at most one
+  booking. Nothing else links the two. Its `raw` holds only a marker: the
+  source is the record.
+- **Its fields are written from its source.** A booking carries a date, an
+  amount, a purpose and, where its source gives one, a counterparty name —
+  the source's, as stated below and in §5.7 — and no other bank field. It
+  rewrites them as it follows its source. A list shows them as it shows any
+  row's fields: nothing in a list is specific to a booking but its origin.
+- **Made by settling, in one step.** Settling (§5) maintains every booking on
+  clearance accounts: it books what a source calls for and is not yet booked,
+  re-derives a booking whose source changed, and removes one whose source no
+  longer calls for it. Settling twice changes nothing.
+- **A booking follows its source**, confirmed or not — the one exception to
+  I20. Re-deriving keeps what the source did not change: an entry whose part
+  of the source is unchanged keeps its values and keys; one whose amount
+  changed is updated; one whose part is gone is deleted, a consequence, with
+  its tags; a new part gets a new entry; an entry whose source text changed is
+  resolved afresh (§5.9). The user's decisions on what is unchanged stay; only
+  what the source changed returns to review, as new data.
+- **Its structure is its source's.** Its entries are not split, merged,
+  reallocated, converted or re-paired in the review panel (§6); their values,
+  description, note and tags are reviewed and edited like any entry's.
+
+#### Documents as a booking source
+
+- **Which account.** A document is booked on the clearance account that takes
+  its provider in its currency (§3.3), when it is dated after that account's
+  start. A booking never converts: a converted amount would never balance
+  against the bank's charge, made at the bank's own rate.
+- **Not booked.** A document is not booked when its total is zero — paid
+  with vouchers, nothing to clear; when no clearance account takes its
+  provider in its currency ("no Amazon account in USD"); when the account that
+  takes it has no balance record, and so no start; or when it is dated on or
+  before the account's start. It stays in the documents list, marked not
+  booked, with the first of these reasons that applies, derived when read
+  (`features/documents.md` §1).
+- **The mapping decides only where a document not yet booked goes.** Adding a
+  provider to an account books that provider's documents dated after the
+  account's start. Removing a provider, moving it to another account, or a
+  change of the start leaves existing bookings where they are. A document
+  whose own change leaves it unbookable on its account — another currency, a
+  total of zero — loses its booking.
+- **The booking** is dated on the document's `occurred_on`; its amount is the
+  document's total — an order negative, a refund positive — in the account's
+  currency. Its counterparty name is the document's provider, and its
+  purpose "Order *external id*", or "Refund *external id*" for a positive
+  total.
+- **One entry per line**, in the order of the document's lines, each with
+  the line's description as its source text (`source_text`, §5.9). The
+  unitemised amount — the total minus the sum of the lines: a discount not
+  itemised, shipping, a fee — is spread over the lines of the total's sign, in
+  proportion to their amounts, rounded half-even to the minor unit. A line of
+  the opposite sign — a listed coupon — stays as listed, an entry of its own.
+  A line of zero gets no entry, and no entry is zero. With no line of the
+  total's sign, one entry carries the total, without a source text. The exact
+  arithmetic, rounding remainder included, is `features/documents.md` §2.
+- **Re-deriving matches entries to lines by position**: the booking's entries
+  in their order against the lines that get an entry, in theirs
+  (`features/documents.md` §3). A matched entry takes its line's new amount
+  and description; extra entries are deleted, extra lines get new entries.
+- **Type `flow`**, under the key `booking` (§5.9). A document booking's
+  entries are never transfers, and never transfer candidates or offers
+  (§5.7).
+- **What resolution reads** of such an entry is its account and its source
+  text (§5.9): the document's merchant is displayed, never read, and its
+  provider only maps it to an account. A share the spread got wrong is
+  corrected by an entry on the account, through the entry form (§3.9).
+
+**Documents can be browsed on their own**, each with its booking, or the
+reason it is not booked.
 
 ### 5.9 Resolution
 
@@ -1924,38 +1947,40 @@ Ingest creates an entry with only what the source asserted. Everything else —
 type, payee, category, a counter-account — is *derived*, by four passes in
 descending order of authority.
 
-**Resolution is a pure function** of an entry's inputs — its source transaction
-and, where one is linked or picked, its document (§5.8) — the review draft if
-there is one (§6), rules, history and the model's stored answer (pass 3,
-below). Its input is built when resolving and never stored: the source row as
-stored; a linked or picked document adds the fields `document_merchant` and
-`document_line`, which rules read (§5.8). The source row is never changed. It returns values and how each was arrived at; writing them is a
+**Resolution is a pure function** of an entry's inputs — its source
+transaction, and its account and source text — the review draft if there is
+one (§6), rules, history and the model's stored answer (pass 3, below). An
+entry's **source text** (`source_text`) is the text its source gives that
+entry, where the source gives each entry one — a booking gives each entry its
+line's description (§5.8); it is set by whatever creates the entry from its
+source, never by a user, and other entries have none. Resolution reads it
+knowing nothing of where it came from. The source row is never changed. It returns values and how each was arrived at; writing them is a
 separate step. Ingest, settling and the review preview all call it.
 
 **Proposals are rederived; decided values are not** (I18, I20). A proposal
 always reflects current inputs, rules and history: when a confirmation adds
-history or a rule changes, the proposals it bears on are resolved again. (A
-link keyed `matcher_proposal` is a proposal for review, but already a
-decision for matching, §5.8.) A
-**standing value** — set by pass 0, a rule, a matcher decision or a user (below) — is
-decided (for the document field, *decided* means linked, whatever the key, or
-"none", §5.8): it is not rederived when rules or history change. Two events reopen
-standing values. Automatically they reach only entries that are not reviewed:
-nothing automatic changes a reviewed entry (I20), and a reviewed entry gets new
-input only when a user edits its user-authored source (§5.6) — a user's
-operation, which says so and asks first (§6), and which then reopens the unit
-wherever the result is a proposal:
+history or a rule changes, the proposals it bears on are resolved again. A
+**standing value** — set by pass 0, a rule, a matcher decision, a booking or a
+user (below) — is decided: it is not rederived when rules or history change.
+Two events reopen standing values. Automatically they reach only entries that
+are not reviewed: nothing automatic changes a reviewed entry (I20), and a
+reviewed entry gets new input only when a user edits its user-authored source
+(§5.6) — a user's operation, which says so and asks first (§6) — or when a
+booking follows its source (§5.8), the stated exception; either then reopens
+the unit wherever the result is a proposal:
 
-- **The entry's input changes.** Its input is its source row and what
-  resolution reads of its linked document — total, currency, merchant and
-  lines. A user-authored leg whose amount follows its partner (§5.7) has not
-  changed its input. When that content changes (§5.5), the entry is resolved afresh: every
-  value is derived again, the link and a user's values included, because new
-  input is exactly when a decision deserves a second look. The write that
-  changes the input — a document fetch changing what resolution reads, an
-  edit through the entry form — resolves the entry afresh itself, in its own
-  transaction; settling then does the rest. Linking or unlinking a document
-  is a change of the first value in field order, below.
+- **The entry's input changes.** Its input is its source row and its source
+  text. A user-authored leg whose amount follows its partner (§5.7) has not
+  changed its input, nor has a booking entry whose source text a
+  re-derivation leaves as it was: what else a booking rewrites — amounts,
+  dates, its counterparty name and purpose — is no input to its entries
+  (§5.8). When it
+  changes, the entry is resolved afresh: every
+  value is derived again, a user's values included, because new input is
+  exactly when a decision deserves a second look. The write that changes the
+  input resolves the entry afresh itself, in its own transaction — an edit
+  through the entry form, or the settling that re-derives a booking (§5.8);
+  settling then does the rest.
 - **A value changes.** Every standing value after it in field order (below) is
   derived again, the pairing last: a category rule may read the payee, and the
   matcher reads type and counter-account. A counter-account a pair set is part
@@ -1977,18 +2002,16 @@ On derived entries, which are complete at creation, resolution does nothing.
 
 #### Field order
 
-The fields constrain each other — a category implies a flow, a document
-implies a flow, a payee applies only to flows, a counter-account only to
+The fields constrain each other — a category implies a flow, a booking fixes
+the type, a payee applies only to flows, a counter-account only to
 transfers — so they are resolved in a
 fixed order, and no pass proposes a value that contradicts a field already
-decided. The **document** comes first (§5.8): matching judges the
-transaction as resolved without one, and a link then changes everything after
-it. Then:
+decided:
 
-1. **Type**, by the first pass to decide it. A linked or picked document decides
-   `flow` first, the type taking the link's key (a pick `user`, an automatic
-   link of one line `matcher_decision`, one of several `matcher_proposal`),
-   and no later pass can propose `transfer` for it. Otherwise: pass 0 decides `transfer`; rules
+1. **Type**, by the first pass to decide it. A booking decides it first, under
+   the key `booking`: `flow` for a document booking's entries, `transfer` for
+   a transfer booking's (§5.8); no pass proposes over it, and none proposes
+   `transfer` for another entry on a clearance account (§5.7). Otherwise: pass 0 decides `transfer`; rules
    decide `transfer` when a counter-account rule matches and `flow` when
    otherwise a payee rule, or a category rule that has no payee condition,
    matches — counter-account rules come first (Pass 1, below); a category
@@ -2097,9 +2120,8 @@ date (§3.3), so a closed wallet stops receiving withdrawals.
 implicit AND). A condition is `{field, op, value}`. The fields are
 `counterparty_name`, `counterparty_ref`, `purpose`, `booking_text` and
 `mandate_ref`, which take the operators `equals`, `starts_with`, `contains`
-and `regex`; `document_merchant` and `document_line`, which take the same
-operators and fail without a linked or picked document, or, for
-`document_line`, without a line of the entry (§5.8); and `payee`, which takes
+and `regex`; `source_text`, which takes the same operators and fails on an
+entry without a source text (above); and `account` and `payee`, which take
 `is` only. The same field may appear in
 several conditions, and a condition on a field the entry lacks fails. At least
 one condition is required, and a blank value is refused. A
@@ -2112,13 +2134,17 @@ the id as a digit string; several may appear, and only a category rule may
 carry them. It is judged on the payee resolved so far in the same resolution, a
 proposed one included (field order, above). Core checks at write time that the
 payee exists; a rule whose payee has since been deleted stays and never matches
-(§3.6). Rules are stored as a list of such objects;
+(§3.6). **The account condition** is
+`{"field":"account","op":"is","value":"<account id>"}`, judged on the entry's
+own account; any rule may carry it. Core checks at write time that the
+account exists, and a rule whose account has since been deleted stays and
+never matches, like one whose payee was. Rules are stored as a list of such objects;
 the format leaves room for grouping and negation later without a schema change.
 
 Values are compared per plugin: rules compare `counterparty_ref` and
 `mandate_ref` as canonical text on both sides (§5.2: spaces, case and
 punctuation ignored, so an IBAN prefix works), and `counterparty_name`,
-`purpose`, `booking_text`, `document_merchant` and `document_line` with the
+`purpose`, `booking_text` and `source_text` with the
 rules plugin's name normalisation (NFKC,
 casefolded, whitespace collapsed, trimmed, punctuation kept); history key 2
 compares canonical text (§5.2).
@@ -2165,23 +2191,17 @@ confirmed value, and confirmed values are already the input to pass 2. A rule
 is written in the rule editor, which starts from an example: an entry the user
 picks there with a find box, or one the editor is opened with, as the review
 panel does. The editor shows the example's fields beside the conditions in two groups,
-from the source transaction and from the entry (payee, document merchant,
-document line); nothing is ticked or prefilled, and the user writes the
-conditions with the example in view. A new payee rule with a document condition
-is given a priority before every payee rule without one.
+from the source transaction and from the entry (account, payee, source text);
+nothing is ticked or prefilled, and the user writes the conditions with the
+example in view.
 
 #### Pass 2 — history
 
 Reads past entries joined to their source transactions, so every source field
-of every past case is available. An entry without a line, of a transaction
-with a linked or picked document (§5.8), is asked on one key only, the
-document's merchant name, for the category only, and votes only for that key
-(`history.md`); on every other key it is neither asked nor counted, since its
-bank fields describe the provider — every PayPal charge alike — and not the
-purchase, and a majority over them would be systematically wrong and keep the
-model from being asked. An entry with a line is neither asked nor counted on
-any key. History
-keys on source signals, raw on both sides, and on the document's merchant name. **It learns only from confirmed entries with
+of every past case is available. An entry with a source text is neither asked
+nor counted on the keys 1, 2 and 4: its source row's fields are shared by
+every entry of the source and describe none of them. History
+keys on source signals, raw on both sides, and on the source text. **It learns only from confirmed entries with
 a source transaction** (I19) — confirmed by a human, or standing — because no
 other entry carries the source signals it keys on. A user-authored row brings
 only its purpose among the bank's fields, so of the keys on source fields only
@@ -2206,9 +2226,9 @@ outputs. Keys, most specific first:
    and counter-account are resolved before the payee; it pools evidence across
    a curated merchant's varying descriptors;
 4. normalised tokens of `counterparty_name` and `purpose`;
-5. the document's merchant name (canonicalised as in §5.2), for an entry
-   without a line, of a transaction with a document, and for the category
-   only; only such entries vote for it.
+5. the entry's source text (canonicalised as in §5.2), for an entry that has
+   one, for the payee and the category; for such an entry it is tried before
+   key 3, as the more specific. Only such entries vote for it.
 
 The booking text is never a key on its own: a bank's booking texts are
 categories of payment ("Lastschrift", "Dauerauftrag"), shared by unrelated
@@ -2269,40 +2289,23 @@ Constraints on pass 3:
   with a fingerprint of the payload it was given, and reused whenever the
   entry is resolved again with the same payload. It gives way to a pass of
   higher authority or a user's value, and the answer goes with the key it
-  replaces: the core keeps nothing else of it, except a line's answer, kept on
-  the line (below). It is asked anew when the
-  payload changes — a document linked to the entry, say — or when the field
+  replaces: the core keeps nothing else of it. It is asked anew when the
+  payload changes — a booking entry's source text, say — or when the field
   falls to pass 3 again.
   Settling never waits for it: an answer is stored when it arrives, and that
   write settles like any other.
-- **An entry with a line takes the line's answer.** The model's answer for a
-  line is stored on the line, `category_id` and `category_key` — a key of pass
-  `llm`, shaped as an entry's, with the rationale and the payload's
-  fingerprint, or `"none": true` where nothing fits — and asked for at ingest
-  (§5.5); an answer whose category was deleted is no answer. For an entry with
-  a line, passes 0 and 1 run as usual; pass 2 asks no key for it (above).
-  Where they produce no category, pass 3 takes the line's stored answer
-  instead of asking, and where the line has no answer for its payload yet, the
-  line is asked, not the entry. It is a guess shown with its rationale, never
-  confirming, which a commit accepts like any proposal shown. Storing a line's
-  answer reaches the unconfirmed entries with that line: they are resolved
-  again.
-- **Asked in the background.** An entry without a line whose category falls
-  to the model, and a line with no answer for its payload — every line of a
-  new or changed document (§5.5), and the line of an entry whose category
-  falls to the model — wait on a list in memory for one worker, which asks the
-  model one at a time and stores each answer as it arrives. While an entry, or
-  the line it takes its answer from, is on that list
+- **Asked in the background.** An entry whose category falls to the model
+  waits on a list in memory for one worker, which asks the model one at a time
+  and stores each answer as it arrives. While an entry is on that list
   the review queue and the panel say the model is still looking at it; this
   is not a review flag, and nothing of it is stored. When the model is
   unreachable the list empties and its entries are unclassified, as with no
   model; they are asked when it answers again.
-- **Limited payload.** For an entry without a line, the counterparty name,
-  booking text and purpose, and for a transaction with a linked or picked
-  document, the document's merchant name; for an entry with a line (§5.8), and
-  for a line itself, only the document's merchant name and the line's
-  description. Never the counterparty IBAN, BIC, end-to-end id
-  or other reference fields, and never amounts, dates, accounts or balances.
+- **Limited payload.** The counterparty name, booking text and purpose, and
+  for an entry with a source text, its source text and its account's name.
+  Never the counterparty IBAN, BIC, end-to-end id
+  or other reference fields, and never amounts, dates or balances, nor an
+  account but the one an entry with a source text is on.
   Where the payload would be empty, the pass does not run. Limited is not
   anonymous: counterparty names and purpose lines include **private persons'
   names** and other personal details (a SEPA transfer to a friend, a note on
@@ -2334,7 +2337,7 @@ proposals of unconfirmed entries may.
 #### Derivation: how a value was arrived at
 
 Every derived value records its basis in one column, `ledger_entry.derivation`,
-keyed by the field it explains: `document`, `type`, `payee`, `category`,
+keyed by the field it explains: `type`, `payee`, `category`,
 `counter_account`, `counterpart`. The second withdrawal
 in §4 shows a history-derived transfer. A card purchase:
 
@@ -2344,31 +2347,22 @@ in §4 shows a history-derived transfer. A card purchase:
                "basis": {"model": "…", "rationale": "…"}} }
 ```
 
-**Every derived value carries a key.** A key of pass `history`, `llm` or
-`matcher_proposal` is a **proposal**: it stays until a user confirms the
-value. All other keys are **standing**, and a standing value is decided:
+**Every derived value carries a key.** A key of pass `history` or `llm` is a
+**proposal**: it stays until a user confirms the value. All other keys are
+**standing**, and a standing value is decided:
 
 - `own_account` and `rule` — what pass 0 or a rule produced;
-- `matcher_decision` — a pair settling made (§5.7), a link settling made to a
-  document of one line (§5.8), and the "none" settling records for a
-  transaction whose unit it confirms without a document (§6);
-- `user` — what a user decided in a commit, including a document picked, or
-  "none", in which case the key carries no link.
+- `matcher_decision` — a pair settling made (§5.7);
+- `booking` — what a booking sets: its entries' type, a transfer booking's
+  counter-account, and its pair, on both legs (§5.7, §5.8); its basis is
+  empty (`{}`);
+- `user` — what a user decided in a commit.
 
 A proposal may also explain an absence: the field stays empty and its key says why (`"none": true`). The model's is the one so far: when it finds no category that fits, its key carries its rationale, which says what would fit. It stays while its classifier proposes it, like any proposal, and the model is not asked again for the same payload.
-
-`matcher_proposal` is a link that settling made to a document of several
-lines (§5.8): a proposal, so that the unit is reviewed once and the split
-along the lines is seen.
 
 In review a `rule` key reads "rule: its name", linking to the rule; a key
 whose rule has since been deleted (its basis holds only `rule_id`) reads
 "rule deleted".
-
-The document link is a field like any other: `document_id` on the
-transaction's original entry, keyed `document`.
-Document suggestions are not keyed: like transfer offers, they are computed
-when read and are not values.
 
 A **commit** keeps every standing key whose value it leaves unchanged. A
 proposal the user accepts unchanged becomes `user`, with the proposal's key as
@@ -2378,7 +2372,7 @@ key — `{"pass": "user", "basis": {"pass": "history", "basis": {…}}}` — and
 commit derives every key itself from the values it is sent: a value equal to a
 shown proposal becomes `user` with the proposal's key as its basis, a `user`
 value left unchanged stays, anything else is `user` without a basis. The client
-may name a basis only of pass `history`, `llm` or `matcher_proposal`; it is
+may name a basis only of pass `history` or `llm`; it is
 stored wrapped under `user` and never trusted as evidence, and a client can
 never assert `rule`, `own_account` or any other standing key. A value the user
 sets or picks by hand becomes `user` without a basis, empty included where the
@@ -2386,12 +2380,12 @@ field may be empty (field order); an empty field that may not be empty carries
 no key. A counter-account a pair fills is the pair's,
 with the basis `{"from": "counterpart"}` (§5.7). A `user` key left unchanged by a later commit
 stays as it is, so one never wraps another. An entry without a `user` key is
-one no commit has decided: a unit confirmed by pass 0, rules and matcher
-decisions alone. A commit decides every value the user saw.
+one no commit has decided: a unit confirmed by pass 0, rules, matcher
+decisions and bookings alone. A commit decides every value the user saw.
 
 Which values get a key is a deliberate rule, because the keys that are not
 standing *are*, with completeness and pairing, the review state (§6):
-**every value a pass, the matcher or a commit sets carries a key**, so every
+**every value a pass, the matcher, a booking or a commit sets carries a key**, so every
 value shows its basis. A unit whose keys are all standing is confirmed as soon
 as it meets every requirement of confirming
 (§6), and history learns from it as from any confirmed unit. That is not batch
@@ -2417,17 +2411,17 @@ Every field of a ledger entry falls into one of four groups:
 
 | Group | Fields | Editable |
 |---|---|---|
-| **Copied** from its source transaction or account | `account_id`, `currency`, `booked_on`, `value_on`; the amounts, as a sum (I3) | Never — an amount only by a split; a user-authored source through the entry form or set to the sum of its entries by a commit (§5.6), or a user-authored single-entry leg on an unsynced account following its partner (§5.7) |
-| **Derived by a pass** — carrying a key wherever they hold a value (below) | `document_id`, `type`, `payee_id`, `category_id`, `counter_account_id`, `counterpart_entry_id` | In the review panel |
+| **Copied** from its source transaction or account | `account_id`, `currency`, `booked_on`, `value_on`, `source_text`; the amounts, as a sum (I3) | Never — an amount only by a split; a user-authored source through the entry form or set to the sum of its entries by a commit (§5.6), a user-authored single-entry leg on an unsynced account following its partner (§5.7), or a booking following its source (§5.8) |
+| **Derived by a pass** — carrying a key wherever they hold a value (below) | `type`, `payee_id`, `category_id`, `counter_account_id`, `counterpart_entry_id` | In the review panel |
 | **Derived from other rows** | the amount of a derived entry | Never directly — change the record |
-| **Authored** by a human | `description`, `note`, tags, the split allocation | In the review panel, tags too; tags also directly outside it |
+| **Authored** by a human | `description`, `note`, tags, the split allocation — a booking's excepted (§5.8) | In the review panel, tags too; tags also directly outside it |
 
 **Every change to an entry's interpretation is a commit of its unit** (§6),
 with two exceptions that work on many units at once: merging a payee (§3.6)
 and merging a category (§3.5). Each is previewed, runs in one transaction,
 and repoints values with their keys, deciding nothing anew. The user edits
-in the review panel — values, split, a transfer's destination or partner, a
-document — sees the consequences previewed, and commits the whole state at
+in the review panel — values, split, a transfer's destination or partner —
+sees the consequences previewed, and commits the whole state at
 once. The same panel edits confirmed units, which stay confirmed. Tags are
 part of the panel's draft and also stay editable directly everywhere else.
 
@@ -2440,15 +2434,15 @@ reported balances (§5.10) meaningful indefinitely.
 What the panel offers, each previewed before the commit:
 
 - **Converting to a transfer.** A transfer needs a counter-account, which the
-  user supplies, and has no payee or category, nor a document, which is
-  dropped with them (§5.8). The preview then applies §5.7 to
-  the unit: pair with a candidate where there is one; otherwise, on an
+  user supplies, and has no payee or category. The preview then applies §5.7 to
+  the unit: pair with a candidate where there is one; on a clearance account,
+  its booking; otherwise, on an
   unsynced counter-account, a counter-leg, which the commit creates; on a
   synced one the leg is committed with its destination and waits, and is
   paired when its partner is imported (§5.7). The picker offers accounts satisfying the currency
   rule, and "new account", prefilled with the required currency. Converting is
   refused where another entry of the same source transaction is already a
-  transfer (I31).
+  transfer (I31), and for an entry on a clearance account (§5.7).
 
   How much the user supplies is a ladder, not a fixed prompt. A resolvable
   `counterparty_ref` is already pass 0; a counterparty converted before is
@@ -2470,7 +2464,6 @@ What the panel offers, each previewed before the commit:
   residual. The residual is never zero: an allocation that would leave it
   zero is refused in the preview, because an entry has a non-zero amount. Splitting a paired leg can leave a same-currency pair unequal; the
   preview shows it invalid and offers the remedies of §5.7.
-- **Picking a document** (§5.8).
 - **Clearing a value.** Clearing a field that may be empty, such as the payee,
   makes it empty, whatever value it showed, a proposal included, and the commit
   decides it so. Clearing a field that may not be empty — type, category,
@@ -2481,7 +2474,7 @@ What the panel offers, each previewed before the commit:
   or adjust — for values a human decided, what the passes would say instead.
 - **Creating a rule from a change.** Where the draft changes a value a rule
   set, the panel offers to create a rule from the transaction (§5.9, rule
-  editor), with the document's fields available. Only values a rule set earn
+  editor). Only values a rule set earn
   the offer: there the rule is what keeps coming back.
 
 **Breaking a pair.** Re-pairing, converting to a flow and changing the
@@ -2507,9 +2500,10 @@ reports, mark it as a duplicate (§5.6).
 #### Reviewed entries are left alone
 
 No automatic process changes a reviewed entry (I20): not resolution, not the
-matcher, not a document arriving, and not ingest, which marks as duplicates
-only the rows it is inserting (§5.2). Derived entries are recomputed from their
-records, but they are never reviewed (§3.9).
+matcher, and not ingest, which marks as duplicates only the rows it is
+inserting (§5.2). The one exception is a booking, which follows its source
+confirmed or not (§5.8). Derived entries are recomputed from their records,
+but they are never reviewed (§3.9).
 
 A user's operation may change any interpretation, and may return the entries
 it affects to review: a partner left behind when a pair is broken, marked as a
@@ -2662,14 +2656,12 @@ requires no coordination.
 ## 6. Review workflow
 
 Review is **not** tied to an importer. Several importers may need to run before
-review makes sense, and a document may arrive days after the charge.
+review makes sense, and a transfer's partner may arrive days after its leg.
 
 **Review is per unit.** A **unit** is a set of entries reviewed together: the
-entries of a source transaction, the two legs of a transfer pair, and the
-entries of the transactions carrying one document, joined transitively — a
-split whose residual is a paired leg forms one unit with its partner. A
-transaction carrying a document has no transfer entry (I35), so a unit joins a
-transfer pair or one document's carriers, never both. A unit is
+entries of a source transaction and the two legs of a transfer pair, joined
+transitively — a split whose residual is a paired leg forms one unit with its
+partner. A unit is
 **reviewed** when it meets every requirement of confirming (below) and its
 entries carry no derivation keys other than standing ones (§5.9); the whole
 unit is confirmed together. A leg whose partner still carries keys that are not
@@ -2681,7 +2673,6 @@ state belongs to the unit, and an entry has the state of its unit.
 **Review is one atomic action.** The review panel holds a **draft** — the
 user's choices for the unit, laid over its stored state:
 
-- which transactions of the unit belong to which document, or to none (§5.8);
 - a transfer's partner or destination (§5.7);
 - splits of any source transaction in the unit (§5.9), the partner's included;
 - field values;
@@ -2691,60 +2682,41 @@ user's choices for the unit, laid over its stored state:
   not touch an entry's tags carries nothing for it. Re-resolving never touches
   tags, and Reset drops tag changes with everything else.
 
-Every function the panel shows — resolution (§5.9), the line allocation and the
-split along a document's lines (§5.8), transfer offers (§5.7) and document
-suggestions (§5.8) — takes the stored state with the
+Every function the panel shows — resolution (§5.9) and transfer offers
+(§5.7) — takes the stored state with the
 draft over it, and nothing is written until the unit is committed. The preview
 shows the unit as it will stand after settling, so a partner that settling would
-pair with a leg of the draft joins it. The draft is
-resolved top-down: the document determines every entry's input and, while a
-link of the document is not yet the user's, proposes the split along the
-lines the line allocation gives each transaction (§5.8) —
-every entry is resolved with its line (§5.8), in the draft as after the
-commit: an entry made from a line, the original entry of a document of one
-line; every other entry has none; then
-the split; then each entry's fields, in field order (§5.9). While a link of
-the document is not yet the user's, the split along the lines is proposed
-over any existing split — the original entry stays, taking the first line the
-line allocation gives its transaction and the remainder (§5.8), the other
-entries of the old split are deleted, and the preview shows which, with their
-tags — and the user commits it or changes it like any split. Once every link
-is the user's, **split along the lines** stays available as an explicit
-choice. A choice made on a row that disappears — an entry of a split
-the draft regenerated for another document — is dropped, as is a value that
-contradicts a choice above it.
+pair with a leg of the draft joins it, and a booking that settling would make
+or remove for it (§5.7) is shown. The draft is resolved top-down: the split,
+then each entry's fields, in field order (§5.9). A choice made on a row that
+disappears — a booking the draft's choices remove — is dropped, as is a value
+that contradicts a choice above it.
 
 **The panel is anchored on what it was opened from**: an entry's source
 transaction, imported or user-authored. The draft's unit
 is the anchor's closure under the draft — picking a partner adds its whole
-source transaction, breaking a pair removes the partner's, picking a document
-adds its other carriers, deciding "none" for a carrier removes it — and an
+source transaction, breaking a pair removes the partner's — and an
 entry that leaves it is shown as a consequence ("returns to review", "is
 deleted", "is unpaired"), not
 as part of the unit. A split made on a partner's side leaves with it, and is
 committed with it.
 
 **A commit writes the full state the user saw**, in one transaction — the
-link decisions, the split, the values, a counter-leg where §5.7 creates one —
+split, the values, a counter-leg where §5.7 creates one —
 with the keys of §5.9: every proposal shown is accepted, and every value left
 as it is is decided as it is, empty included where the field may be empty
 (§5.9, field order). A field that may not be empty and is empty stays so and
-carries no key. The document may be empty: a commit without a document picked
-decides "none" (§5.8), which the server requires to be said explicitly where documents are
-suggested or one is awaited. **A commit does not
+carries no key. **A commit does not
 confirm**; confirmation is never an action. Settling then derives the unit's
 state like any other (above): it is confirmed when it meets every requirement
 of confirming, and otherwise stays in review — waiting for its partner,
 or unclassified — with everything the user committed kept. A commit needs the result to be valid, not complete: the
 invariants must hold (a split sums to its amount, a counter-account obeys the
-currency rule, a transaction carrying a document has no transfer entry), but
+currency rule), but
 a category, a counter-account or a partner may still be
-missing. It is refused only where the result would be invalid, where a document
-decision is missing (§5.8), or where the unit's structure changed since the
-preview: it gained or lost a member — the chosen partner was paired
-elsewhere, or a transaction joined or left the carriers of a document in the
-unit — or lines of the chosen document that the preview's line allocation
-relied on were taken since, or it has a newer version (§5.5). Proposals
+missing. It is refused only where the result would be invalid, or where the
+unit's structure changed since the preview: it gained or lost a member — the
+chosen partner was paired elsewhere, say. Proposals
 that changed in the meantime do not matter: the user commits what they saw. A partner or
 counter-leg the preview proposed is accepted as chosen: where the commit cannot make it, the
 commit is refused with the problem a chosen one would raise.
@@ -2760,10 +2732,6 @@ partner", "stays unclassified", "stays without a partner", "proposals to check" 
 Nothing in a draft outlives the panel except through a commit. Committing a
 waiting unit is how its work is kept: the leg, its split and its destination
 are committed, and the partner completes it on arrival without touching them.
-A unit waiting for its *document* is different: a commit decides "no
-document" (above), so committing it gives up the document. A user who wants
-the document leaves the unit uncommitted until it arrives; its arrival changes
-the unit's input and resolves it afresh (§5.9).
 
 **The same panel edits confirmed units**, and opens on a new user-authored
 transaction once the entry form has created it (§3.9). Saving a
@@ -2771,6 +2739,10 @@ confirmed unit is a commit like any other; the unit stays confirmed while it
 still meets the requirements of confirming.
 Re-resolving is available for every unit: a preview of what resolution would
 propose now (§5.9).
+
+**On a booking the panel is leaner.** A booking's structure is its source's
+(§5.8), so the panel hides the partner, convert and split controls on its
+entries; their values, description, note and tags are edited as on any entry.
 
 **Every interpretation edit goes through the panel**, wherever it is opened —
 from the queue, the ledger list or a rule's preview — and for any unit,
@@ -2788,8 +2760,7 @@ entry is clean when it is empty:
 |---|---|
 | `unconfirmed` | the entry's unit carries derivation keys other than standing ones: values awaiting a human (§5.9) |
 | `unclassified` | an entry not fully interpreted: `type` NULL, or a flow without a category (§3.4) |
-| `document_suggested` | the transaction has document suggestions awaiting a decision (§5.8) |
-| `waiting` | the entry waits for information that has not had its chance to arrive: a partner leg, a document, or the rest of its document's order (below) |
+| `waiting` | the entry waits for information that has not had its chance to arrive: a partner leg (below) |
 | `unmatched_transfer` | a transfer leg without a partner that is not waiting (§5.7) |
 
 Rules:
@@ -2807,28 +2778,16 @@ Rules:
   unit was reviewed, and by whom, is audit.
 - **Confirming** requires:
   - a complete interpretation (§3.4) — a type and, for a flow, a category;
-  - for a transfer, its pair (I22);
-  - where documents are suggested, a decision: one is picked, or "none of
-    these";
-  - no document still awaited (§5.8): while a transaction waits for its
-    document, settling does not confirm its unit, however standing its values.
-    A commit decides "no document", which satisfies this and gives up
-    automatic attachment; when the coverage reaches the end of the document window
-    without a document, the waiting ends and the unit is confirmed as usual.
-  - These two document conditions apply only to a transaction with no
-    document key. When settling confirms a unit, it records "none", keyed
-    `matcher_decision`, for each of its transactions that has none, as a commit
-    decides "none". Confirmation therefore stays put: a document source set up,
-    enabled or given to a payee later cannot reopen a confirmed unit (I20); a
-    document arriving for it is linked by hand, if at all (§5.8). A data
-    migration records the same "none" on every unit confirmed before documents
-    existed, so a source added later cannot reopen them.
+  - for a transfer, its pair (I22).
 - **Units are confirmed one at a time.** There is no batch confirmation: a
   group of units cannot be confirmed without looking at each, and seeing each
   is the point of review. A unit whose keys are all standing arrives
   confirmed, because a human already decided its values — in a rule, or
   earlier in this unit (§5.9).
-- **Nothing automatic returns a reviewed entry to review** (I20). A user's
+- **Nothing automatic returns a reviewed entry to review** (I20), except a
+  booking following its source (§5.8): what its source changed returns to
+  review as new data, and what its source no longer calls for is removed,
+  without asking — the source changed, not a decision of the user's. A user's
   operation may — a pair broken, marked as a duplicate or reverted elsewhere
   (§5.6). The entry keeps its values — all but a counter-account its broken
 pair set (§5.7) — and returns because its unit no longer
@@ -2845,19 +2804,7 @@ pair set (§5.7) — and returns because its unit no longer
 complete it has not had its chance to arrive — judged from coverage, never from
 elapsed time, and derived, with no state and no cron. Waiting is a hint: the
 unit stays editable. A transfer leg waits for its partner as defined in §5.7,
-and cannot be confirmed until it is paired. A
-transaction may also wait for its document, or for the rest of its document's
-order (§5.8). For a person the wait for a document is advisory — a commit
-decides "no document", once the user confirms skipping the wait, after which
-the unit is confirmed as usual, giving up automatic attachment, because a
-reviewed entry is never changed by a document arriving — but settling does
-not confirm the unit while it lasts (above). The wait for the rest of an order
-holds no automatic confirmation of its own, and skipping it needs no
-confirmation: a commit ends it, keeping the link. **The waiting flag wins:** a
-unit that waits for a document, or for the rest of an order, is in the queue's
-waiting section even while it has suggestions, because what it waits for may
-change the user's other decisions; it moves to pending review once nothing is
-awaited.
+and cannot be confirmed until it is paired.
 
 **Review state never excludes an entry from balances or reports.** Unreviewed
 and unclassified entries count in balances and net worth, and appear in
@@ -3004,8 +2951,9 @@ filter bar replaces most reports.
 - **An amount range compares magnitudes,** in the one currency it names: a
   range across currencies is meaningless, and nothing is converted for it
   (I27). A direction narrows it to money in or money out.
-- **Text** is searched in the entry's description and note, the source
-  transaction's counterparty, purpose, end-to-end id and mandate reference,
+- **Text** is searched in the entry's description, note and source text, the
+  source transaction's counterparty, purpose, end-to-end id and mandate
+  reference,
   the payee's name and the category's name; every word of the text must be
   found, in any of them.
 - **The list holds entries.** Derived entries are among them unless the type
@@ -3040,24 +2988,11 @@ filter bar replaces most reports.
   first key naming a user, which `derivation` otherwise does not record (§5.9).
   Deferred until the tool has been used: whether committing what one knows and
   leaving the rest in review (§6) is handoff enough.
-- **Splitting along a document's lines during settling.** Today only a commit
-  splits (I7), and the panel proposes the split along the lines. A sketch for
-  splitting automatically: relax I7 to "a commit, or settling along a linked
-  document's lines"; key each entry's allocation — the amount a split gave it —
-  with pass `matcher_decision` and the document and line as its basis, or `user` where a
-  user set it. The key rules of §5.9 then make it idempotent: a standing
-  allocation is derived again only when the input changes or an earlier field
-  in field order does, so a later payee or category change never re-splits, and
-  a different document does. What it would bring back: settling creating and
-  deleting entries, which bumps their versions and refuses commits open during
-  review; tags lost with machine-made entries; and a change of input
-  discarding a split the user adjusted, since standing is standing. Deferred
-  until real documents show whether the panel's proposal is enough.
 - **The model as the reviewer of weak history.** Today history proposes on a
   single unanimous precedent, and whatever it proposes keeps the model from
   being asked (§5.9, pass 3). Once the model runs, that is often the wrong way
   round: a shop bought from once proposes the same category next time, while
-  the model, which has the purpose and a document's lines, would do better. A
+  the model, which has the purpose and an entry's source text, would do better. A
   sketch: rules decide first and are never reviewed by the model; history
   proposes on its own only where its evidence is strong (a minimum number of
   votes, all agreeing); below that it proposes nothing and hands its votes to
@@ -3075,6 +3010,21 @@ filter bar replaces most reports.
   unchanged (§5.9, pass 3), so a category added after the model found none
   fitting, or another model configured, does not reach it; the user sets the
   category in the panel instead. Two sketches: an "Ask again" in the panel
-  that drops the entry's or the line's answer, so settling asks anew; or the
+  that drops the entry's answer, so settling asks anew; or the
   category tree in the fingerprint, so a changed tree re-asks every standing
   answer. Deferred until stale answers show up in use.
+- **Editing documents by hand.** A documents editor: an edit of a document is
+  a change of its input, previewed like any edit, and its booking follows it
+  (§5.8) — no new mechanism; the document's version detects a conflicting
+  edit, as an entry's does. Planned.
+- **A document's provider from its sender, or by hand.** An importer reading
+  mail may map a sender's domain — of the mail, or of the original of a
+  forward — to a provider in its settings, so that no model reading decides a
+  provider. Later, a document's provider edited by hand, which books it anew
+  like a change of the mapping (§5.8). Planned.
+- **A clearance account's balance signal.** A clearance account is shown like
+  any other (§3.3). A balance away from zero is normal while charges lag
+  behind orders, so how the account view makes it meaningful — what is older
+  than the matching window and not offset, a record date with nothing in
+  flight, a condition on the Overview — is decided once the accounts are in
+  use. So is creating a clearance account from a document that is not booked.
