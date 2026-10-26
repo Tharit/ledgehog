@@ -42,6 +42,8 @@ class SettleRun:
     # confirmed since the history snapshot was taken or last extended
     to_teach: list[int] = field(default_factory=list)
     resolution: ResolutionContext | None = None
+    # booking entries step 2 created or whose source text it changed, for step 3 to resolve afresh
+    afresh: set[int] = field(default_factory=set)
 
 
 _RUN: ContextVar[SettleRun | None] = ContextVar("settle_run", default=None)

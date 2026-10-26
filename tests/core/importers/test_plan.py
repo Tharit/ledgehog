@@ -55,6 +55,8 @@ class StubFetch:
     """A registered fetch importer: only what planning reads."""
 
     emits = frozenset({"transactions", "documents"})
+
+    redelivery = "replace"
     providers = frozenset({"paypal"})
 
     def delivers(self, settings: Mapping[str, Any], provider: str) -> bool:
@@ -72,6 +74,7 @@ class StubFetch:
 
 class TransactionsOnly(StubFetch):
     emits = frozenset({"transactions"})
+    redelivery = "replace"
 
 
 IMPORTERS: dict[str, object] = {"bank": StubFetch(), "txonly": TransactionsOnly(), "csv": CsvImporter()}

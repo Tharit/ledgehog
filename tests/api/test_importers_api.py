@@ -251,6 +251,8 @@ class _FetchStub:
 
     emits = frozenset({"transactions"})
 
+    redelivery = "replace"
+
     def validate_settings(self, settings) -> None:
         return None
 
@@ -370,6 +372,8 @@ class _DocStub:
     """A document importer: fetches, emits documents, ships no presets."""
 
     emits = frozenset({"documents"})
+
+    redelivery = "replace"
     providers = frozenset({"paypal"})
 
     def validate_settings(self, settings) -> None:

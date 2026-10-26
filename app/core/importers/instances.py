@@ -94,6 +94,14 @@ class AccountClosed(InstanceError):
         super().__init__(f"account {account_id} is closed: reopen it before linking it")
 
 
+class ClearanceAccount(InstanceError):
+    """A clearance account is never linked to an importer (spec §3.3): 409 `clearance_account`."""
+
+    def __init__(self, account_id: int) -> None:
+        self.account_id = account_id
+        super().__init__(f"account {account_id} is a clearance account: it is never linked to an importer")
+
+
 class ExternalRefTaken(InstanceError):
     def __init__(self, instance_id: int, external_ref: str) -> None:
         super().__init__(f"importer instance {instance_id} already links an account as {external_ref!r}")
@@ -363,13 +371,16 @@ def _link(
     instance = _need_instance(conn, instance_id)
     account = conn.execute(
         text(
-            "SELECT a.closed_on, (SELECT count(*) FROM account_source s WHERE s.account_id = a.id) AS links"
+            "SELECT a.closed_on, a.kind,"
+            " (SELECT count(*) FROM account_source s WHERE s.account_id = a.id) AS links"
             " FROM account a WHERE a.id = :i"
         ),
         {"i": account_id},
     ).one_or_none()
     if account is None:
         raise AccountMissing(account_id)
+    if account.kind == "clearance":
+        raise ClearanceAccount(account_id)
     if "transactions" not in instance.emits:
         raise NotAnAccountSource(instance_id)
     if instance.disabled:

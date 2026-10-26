@@ -13,6 +13,7 @@ That is the state of every process until a document importer is registered, and 
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import Literal
 
 from app.core.plugins.fetch import FetchImporter
 
@@ -23,6 +24,7 @@ class _Declared:
     """A document importer built for fixed providers, from their names alone."""
 
     emits = frozenset({"documents"})
+    redelivery: Literal["replace", "keep"] = "replace"
 
     def __init__(self, providers: frozenset[str]) -> None:
         self.providers = frozenset(providers)

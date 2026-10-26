@@ -11,7 +11,7 @@ import logging
 from collections.abc import Callable, Mapping, MutableMapping
 from datetime import date, timedelta
 from email.message import EmailMessage
-from typing import Any
+from typing import Any, Literal
 
 from app.core.plugins.errors import ChallengeAbandoned
 from app.core.plugins.fetch import FetchSession, FetchSessionBase, Prompter, SecretPrompt, SecretText
@@ -258,6 +258,8 @@ class EmailImporter:
 
     emits: frozenset[str] = frozenset({"documents"})
     providers: frozenset[str] = frozenset()
+    # a re-read email is never a changed document: the stored one stays (spec §5.5)
+    redelivery: Literal["replace", "keep"] = "keep"
 
     def __init__(
         self, extractor: Extractor, builder: DocumentBuilder, *, connect: Connect = connect_imap

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, MutableMapping
 from datetime import date
-from typing import Any
+from typing import Any, Literal
 
 from app.core.plugins.errors import InvalidProfile
 from app.core.plugins.fetch import FetchSession, FetchSessionBase, Prompter
@@ -83,6 +83,7 @@ class TestDocumentImporter:
 
     emits: frozenset[str] = frozenset({"documents"})
     providers: frozenset[str] = PROVIDERS
+    redelivery: Literal["replace", "keep"] = "replace"
 
     def validate_settings(self, settings: Mapping[str, Any]) -> None:
         _date(settings, "start_date")

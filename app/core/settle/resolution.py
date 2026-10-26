@@ -32,8 +32,14 @@ from app.core.plugins.classifier import (
     Field,
     HistorySource,
 )
-from app.core.resolution import Decided, Resolved, diff, rederive
-from app.core.resolution.load import UnconfirmedEntry, load_accounts, load_rules, load_unconfirmed
+from app.core.resolution import Decided, Resolved, diff, rederive, resolve_afresh
+from app.core.resolution.load import (
+    UnconfirmedEntry,
+    load_accounts,
+    load_rules,
+    load_unconfirmed,
+    load_units_of,
+)
 from app.core.resolution.registry import classifiers_for
 from app.core.resolution.snapshot import load_snapshot, load_votes_of, touches
 from app.core.resolution.types import column_of, is_decided_empty
@@ -71,6 +77,45 @@ def _context(conn: Connection, run: SettleRun) -> ResolutionContext:
         run.resolution.grown = run.resolution.snapshot.add(load_votes_of(conn, run.to_teach))
     run.to_teach.clear()
     return run.resolution
+
+
+def _current_context(conn: Connection, run: SettleRun) -> ResolutionContext:
+    """The context step 1 loaded in this settle, as it stands (its history is not extended: that is step 1's
+    to do, when the round comes round again); loaded afresh, and kept by nobody, outside a settle."""
+    if run.resolution is not None:
+        return run.resolution
+    return ResolutionContext(load_accounts(conn), classifiers_for(load_rules(conn)), load_snapshot(conn))
+
+
+def resolve_afresh_step(conn: Connection, entry_ids: Sequence[int]) -> StepOutcome:
+    """Step 3 (spec §5.8, §5.9): resolve the given entries afresh, every value derived again, a user's and a
+    confirmed unit's included, and write what differs. The entries are booking entries whose input changed:
+    new, or their source text rewritten."""
+    wanted = set(entry_ids)
+    if not wanted:
+        return StepOutcome()
+    ctx = _current_context(conn, current_run())
+    rewrites: dict[int, Rewrite] = {}
+    for row in load_units_of(conn, sorted(wanted)):
+        entry_id = row.input.entry_id
+        if entry_id not in wanted:
+            continue
+        new = resolve_afresh(
+            row.input,
+            accounts=ctx.accounts,
+            classifiers=ctx.classifiers,
+            history=ctx.snapshot,
+            exclude_entry_ids=frozenset({entry_id}),
+        )
+        current = stored_decisions(row)
+        if diff(current, new) or _stale_keys(row, current):
+            rewrites[entry_id] = _rewrite(row, new)
+    outcome = write_rewrites(conn, rewrites)
+    if rewrites and current_model_queue() is not None:
+        # step 1 has listed this round's entries already and a list is replaced as a whole: list them again
+        # with the booking entries just resolved, as stored now
+        _list_for_model(load_unconfirmed(conn), {})
+    return outcome
 
 
 def _stored_absence(key: object) -> Decided | None:

@@ -81,7 +81,7 @@ def test_a_clean_sync_of_two_accounts_and_documents(rig: Rig) -> None:
     for done, run in zip(finished, runs, strict=True):
         assert done["run_id"] == run.id and done["stats"] == run.stats  # the stored statistics
     assert (finished[0]["stats"]["inserted"], finished[1]["stats"]["inserted"]) == (28, 10)
-    assert finished[2]["stats"] == {"inserted": 1, "updated": 0, "changed": 0, "importer": {}}
+    assert finished[2]["stats"] == {"inserted": 1, "updated": 0, "kept": 0, "changed": 0, "importer": {}}
     assert (rig.rows(a1), rig.rows(a2)) == (28, 10)
     assert rig.q("SELECT count(*) FROM external_document")[0][0] == 1
     assert rig.q("SELECT count(*) FROM balance_record")[0][0] == 2

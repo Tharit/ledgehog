@@ -192,6 +192,7 @@ def _run_item(
                 covered_through=delivery.covered_through,
                 covered_from=delivery.covered_from,
                 importer_stats=delivery.importer_stats,
+                redelivery=inst.importer.redelivery,
             ).settle
             if delivery.position:  # only now: the documents are written (architecture §5.5)
                 state.update(delivery.position)

@@ -11,7 +11,7 @@ import logging
 import re
 from collections.abc import Callable, Mapping, MutableMapping, Sequence
 from datetime import date, timedelta
-from typing import Any, TypeVar
+from typing import Any, Literal, TypeVar
 from urllib.parse import urlsplit
 
 from app.core.plugins.errors import (
@@ -94,6 +94,7 @@ class FintsImporter:
 
     emits: frozenset[str] = frozenset({"transactions"})
     providers: frozenset[str] = frozenset()
+    redelivery: Literal["replace", "keep"] = "replace"  # it delivers no documents
 
     def __init__(
         self, product_id: str | None, product_version: str, *, connect: BankConnect = connect_bank

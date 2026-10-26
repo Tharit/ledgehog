@@ -29,6 +29,8 @@ class FakeDocumentImporter:
 
     emits = frozenset({"documents"})
 
+    redelivery = "replace"
+
     def default_fetch_start(self, settings: Mapping[str, Any], *, today: date) -> date:
         return date(2026, 1, 1)
 

@@ -267,6 +267,9 @@ class FetchImporter(Protocol):
     emits: frozenset[str]  # the kinds it delivers: "transactions", "documents"
     # the document providers it names (spec §5.5), for suggestions; empty where it names none
     providers: frozenset[str]
+    # how it takes a document already stored (spec §5.5): `replace` updates it in place, `keep` leaves it as
+    # stored. Declared by its code like `emits`, never by settings; meaningless without documents
+    redelivery: Literal["replace", "keep"]
 
     def validate_settings(self, settings: Mapping[str, Any]) -> None:
         """Raise `InvalidProfile` naming the setting that is wrong."""

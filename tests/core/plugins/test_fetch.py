@@ -80,6 +80,7 @@ def test_the_session_base_offers_nothing_and_raises_account_unsupported() -> Non
 def test_the_catalog_reads_a_fetch_importers_declared_kinds() -> None:
     class Both:
         emits = frozenset({"transactions", "documents"})
+        redelivery = "replace"
         providers = frozenset({"paypal"})
 
         def delivers(self, settings: object, provider: str) -> bool:

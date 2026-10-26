@@ -79,6 +79,7 @@ def _movements(where: str, *, of_entries: bool = False) -> TextClause:
     SELECT e.id, e.account_id, e.currency, e.booked_on, e.amount, e.description,
            u.unit_ok AS confirmed, u.unit_key AS unit_key,
            (s.origin = 'user') AS user_authored,
+           CASE WHEN s.origin = 'booking' THEN split_part(s.source_id, ':', 1) END AS booking_source,
            s.counterparty_ref, s.counterparty_name, s.purpose, s.booking_text, s.mandate_ref,
            s.instructed_currency, s.counterparty_bic, s.end_to_end_id, s.instructed_amount,
            s.source_format, s.amount AS source_amount, s.currency AS source_currency,
@@ -137,6 +138,7 @@ def _load(
             instructed_currency=r.instructed_currency,
             end_to_end_id=r.end_to_end_id,
             instructed_amount=r.instructed_amount,
+            booking=r.booking_source,
         )
         out.append(
             UnconfirmedEntry(

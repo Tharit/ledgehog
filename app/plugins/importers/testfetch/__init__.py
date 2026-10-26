@@ -52,7 +52,7 @@ import hashlib
 from collections.abc import Callable, Mapping, MutableMapping, Sequence
 from dataclasses import replace
 from datetime import date, timedelta
-from typing import Any
+from typing import Any, Literal
 
 from app.core.plugins.errors import (
     AccountUnsupported,
@@ -350,6 +350,7 @@ class TestFetchImporter:
 
     emits: frozenset[str] = frozenset({"transactions", "documents"})
     providers: frozenset[str] = PROVIDERS
+    redelivery: Literal["replace", "keep"] = "replace"
 
     def validate_settings(self, settings: Mapping[str, Any]) -> None:
         accounts = settings.get("accounts", [])

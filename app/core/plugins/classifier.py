@@ -63,6 +63,9 @@ class EntryInput:
     instructed_currency: str | None = None
     end_to_end_id: str | None = None
     instructed_amount: int | None = None  # signed minor units, in `instructed_currency`
+    # the kind of source its booking was made from (`document`), None for an entry that is not a booking's:
+    # a booking decides the type first, under the key `booking` (spec §5.9)
+    booking: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

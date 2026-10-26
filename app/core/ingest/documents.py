@@ -5,9 +5,10 @@ external_id)`; documents belong to no account. A document's lines are replaced w
 `version` moves when the content changes: date, total, currency, merchant, title or lines (`raw` alone
 does not move it). Document ingest writes documents only: it resolves no entry and links
 nothing. What a document means for the ledger, its booking on a clearance account, is settling's
-(`core/settle/settle.py`, the booking step: wave C2), which reads the stored documents. The run is set `ok`
-with its coverage in the same transaction, then settling runs on its own. A document run is never reverted
-(§5.5): it upserts in place.
+(`core/settle/bookings.py`, the booking step), which reads the stored documents. How a document already
+stored is taken is the importer's declared re-delivery mode (spec §5.5): replaced in place, or kept. The run
+is set `ok` with its coverage in the same transaction, then settling runs on its own. A document run is
+never reverted (§5.5): it upserts in place.
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import Connection, Engine, text
 
@@ -36,12 +37,15 @@ from app.utils.db.locks import lock_settle_shared, retry_on_deadlock
 
 log = logging.getLogger(__name__)
 
+Redelivery = Literal["replace", "keep"]
+
 
 @dataclass(frozen=True)
 class DocumentRunResult:
     run_id: int
     inserted: int
-    updated: int  # existing documents delivered again, changed or not
+    updated: int  # existing documents delivered again and replaced (`replace`), changed or not
+    kept: int  # existing documents delivered again and left as stored (`keep`)
     changed: tuple[int, ...]  # ids of the documents whose version moved (their content changed)
     settle: SettleResult
 
@@ -54,8 +58,12 @@ def ingest_documents(
     covered_through: date | None,
     covered_from: date | None = None,
     importer_stats: Mapping[str, int] | None = None,
+    redelivery: Redelivery = "replace",
 ) -> DocumentRunResult:
     """Upsert one delivery of documents atomically, then settle.
+
+    `redelivery` is the importer's declared mode (spec §5.5): `replace` updates a stored document in place,
+    `keep` leaves it as stored and counts it as kept.
 
     On any failure everything is rolled back, the run ends `failed` and the error is re-raised. A
     delivery that breaks the contract (a repeated key, an unknown currency, no
@@ -67,7 +75,7 @@ def ingest_documents(
 
         def attempt() -> _Written:
             with engine.begin() as conn:
-                return _write(conn, run_id, documents, covered_through, covered_from, given)
+                return _write(conn, run_id, documents, covered_through, covered_from, given, redelivery)
 
         written = retry_on_deadlock(attempt)
     except BaseException as exc:  # the run must not stay `running`
@@ -77,6 +85,7 @@ def ingest_documents(
         run_id=run_id,
         inserted=written.inserted,
         updated=written.updated,
+        kept=written.kept,
         changed=written.changed,
         settle=settle(engine),
     )
@@ -86,6 +95,7 @@ def ingest_documents(
 class _Written:
     inserted: int
     updated: int
+    kept: int
     changed: tuple[int, ...]
 
 
@@ -96,6 +106,7 @@ def _write(
     covered_through: date | None,
     covered_from: date | None,
     importer_stats: dict[str, int],
+    redelivery: Redelivery,
 ) -> _Written:
     lock_settle_shared(conn)
     run = conn.execute(
@@ -121,7 +132,7 @@ def _write(
         )
     _check_contract(conn, documents)
 
-    inserted = updated = 0
+    inserted = updated = kept = 0
     changed: list[int] = []
     existing = _existing(conn, documents)
     for doc in documents:
@@ -129,6 +140,8 @@ def _write(
         if before is None:
             _insert(conn, run, doc)
             inserted += 1
+        elif redelivery == "keep":
+            kept += 1
         else:
             updated += 1
             if _update(conn, run, doc, before):
@@ -136,6 +149,7 @@ def _write(
     stats: dict[str, Any] = {
         "inserted": inserted,
         "updated": updated,
+        "kept": kept,
         "changed": len(changed),
         "importer": importer_stats,
     }
@@ -147,7 +161,7 @@ def _write(
         ),
         {"id": run_id, "from": covered_from, "through": covered_through, "stats": json.dumps(stats)},
     )
-    return _Written(inserted, updated, tuple(changed))
+    return _Written(inserted, updated, kept, tuple(changed))
 
 
 def _check_contract(conn: Connection, documents: Sequence[IncomingDocument]) -> None:

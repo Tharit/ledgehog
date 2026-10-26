@@ -106,6 +106,8 @@ class _Run:
         return pass0(self.entry, own_account_index(self.accounts.values()))
 
     def type_(self) -> Decided | None:
+        if self.entry.booking == "document":  # a document booking's entries are flows, whatever else is said
+            return Decided("flow", "booking", {})
         if (d := self.fixed.get("type")) is not None:
             return d if d.value in _TYPES else None
         for field in ("payee", "category", "counter_account"):

@@ -11,9 +11,9 @@ Contract shared by every caller:
 One round is the five ordered steps of architecture §5.2. Step 1 resolves every unconfirmed entry
 (core/settle/resolution.py), step 4 pairs the unpaired transfer legs (core/settle/pairing.py) and step 5 is
 the review flags, which also report what the round newly confirmed. Steps 2 and 3 are the bookings on
-clearance accounts and the resolution of the booking entries; they are no-ops until the booking step is
-written (wave C2), and `register_step(name, fn)` replaces a step in its place. The steps of one
-settle share a `SettleRun` (core/settle/run.py). The settle baseline is a pass over every unconfirmed
+clearance accounts (core/settle/bookings.py, core/bookings/) and the resolution of the booking entries they
+created or whose source text they changed; `register_step(name, fn)` replaces a step in its place. The steps
+of one settle share a `SettleRun` (core/settle/run.py). The settle baseline is a pass over every unconfirmed
 unit; narrowing to a dirty set is an optimisation to take only if the time budget is missed.
 """
 
@@ -26,6 +26,7 @@ from dataclasses import dataclass
 from sqlalchemy import Connection, Engine, text
 
 from app.core.resolution.confirmed import load_confirmed_ids
+from app.core.settle.bookings import book_clearance_step, resolve_bookings_step
 from app.core.settle.flags import review_flags_step
 from app.core.settle.pairing import pair_transfers_step
 from app.core.settle.resolution import resolve_step
@@ -49,16 +50,6 @@ class SettleResult:
 
 
 Step = Callable[[Connection], StepOutcome]
-
-
-def book_clearance_step(conn: Connection) -> StepOutcome:
-    """Step 2: bookings on clearance accounts (spec §5.8). Not written yet: the hook of wave C2."""
-    return StepOutcome()
-
-
-def resolve_bookings_step(conn: Connection) -> StepOutcome:
-    """Step 3: resolution of the booking entries step 2 created or changed. Not written yet (wave C2)."""
-    return StepOutcome()
 
 
 _STEPS: list[tuple[str, Step]] = [
