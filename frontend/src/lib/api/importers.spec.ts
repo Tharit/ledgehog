@@ -217,6 +217,9 @@ describe('classifyImporterError', () => {
 		]) {
 			expect(await classified(failure(409, code))).toEqual({ kind: code });
 		}
+		expect(await classified(failure(409, 'conflict', { reason: 'clearance_account' }))).toEqual({
+			kind: 'clearance_account'
+		});
 		expect(
 			await classified(failure(422, 'contract_violation', { rule: 'currency_mismatch' }))
 		).toMatchObject({

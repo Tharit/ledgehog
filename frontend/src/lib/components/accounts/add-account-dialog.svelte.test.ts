@@ -10,6 +10,7 @@ import AccountDialogs from './account-dialogs.svelte';
 // components never import the API, not even in tests: the mocks come from here
 const api = vi.hoisted(() => ({
 	createAccount: vi.fn(),
+	listDocumentProviders: vi.fn(),
 	listAccounts: vi.fn(),
 	listCategories: vi.fn(),
 	listPayees: vi.fn(),
@@ -34,6 +35,7 @@ beforeEach(() => {
 	lookupsStore.reset();
 	signedIn([giro, cash, loan]);
 	vi.mocked(api.listAccounts).mockResolvedValue([giro, cash, loan]);
+	vi.mocked(api.listDocumentProviders).mockResolvedValue(['amazon', 'paypal']);
 	vi.mocked(api.listCategories).mockResolvedValue([]);
 	vi.mocked(api.listPayees).mockResolvedValue([]);
 	vi.mocked(api.listTags).mockResolvedValue([]);
@@ -204,5 +206,44 @@ describe('the Add account dialog', () => {
 
 		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 		expect(api.createAccount).not.toHaveBeenCalled();
+	});
+
+	it('offers Providers and a required Start for the kind Clearance, and nothing of them otherwise', async () => {
+		const dialog = await open({ kind: 'clearance' });
+
+		expect(within(dialog).getByLabelText('Providers')).not.toHaveAttribute('placeholder');
+		expect(within(dialog).getByRole('button', { name: 'Start' })).toBeInTheDocument();
+		await fireEvent.input(within(dialog).getByLabelText('Name'), { target: { value: 'Amazon' } });
+		expect(within(dialog).getByRole('button', { name: 'Add' })).toBeDisabled();
+	});
+
+	it('hides them for any other kind', async () => {
+		const dialog = await open({ kind: 'card' });
+
+		expect(within(dialog).queryByLabelText('Providers')).toBeNull();
+		expect(within(dialog).queryByRole('button', { name: 'Start' })).toBeNull();
+	});
+
+	it('adds providers typed or suggested, trimmed and once, and removes one', async () => {
+		const dialog = await open({ kind: 'clearance' });
+		const box = within(dialog).getByLabelText('Providers');
+		await waitFor(() => expect(dialog.querySelectorAll('datalist option')).toHaveLength(2));
+
+		await fireEvent.input(box, { target: { value: '  amazon ' } });
+		await fireEvent.keyDown(box, { key: 'Enter' });
+		await fireEvent.input(box, { target: { value: 'amazon' } });
+		await fireEvent.keyDown(box, { key: 'Enter' });
+		await fireEvent.input(box, { target: { value: 'ebay' } });
+		await fireEvent.blur(box);
+
+		const list = within(dialog).getByRole('list', { name: 'Providers' });
+		expect(
+			within(list)
+				.getAllByRole('listitem')
+				.map((li) => li.textContent?.trim())
+		).toEqual(['amazon', 'ebay']);
+		expect(dialog.querySelectorAll('datalist option')).toHaveLength(1);
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Remove provider ebay' }));
+		expect(within(list).getAllByRole('listitem')).toHaveLength(1);
 	});
 });

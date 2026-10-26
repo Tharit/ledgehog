@@ -5,6 +5,10 @@ import { ApiError } from '#lib/api/index.js';
 export type AccountFailure =
 	| { kind: 'duplicate_external_ref' }
 	| { kind: 'unknown_currency' }
+	| { kind: 'provider_taken'; provider: string; account: string | null }
+	| { kind: 'invalid_provider' }
+	| { kind: 'start_required' }
+	| { kind: 'not_clearance' }
 	| { kind: 'validation' }
 	| { kind: 'network' }
 	| { kind: 'unauthenticated' }
@@ -16,17 +20,52 @@ function reasonOf(details: unknown): unknown {
 		: undefined;
 }
 
+function takenBy(details: unknown): string | null {
+	const account =
+		details !== null && typeof details === 'object' && !Array.isArray(details)
+			? (details as Record<string, unknown>).account
+			: undefined;
+	const name =
+		account !== null && typeof account === 'object'
+			? (account as Record<string, unknown>).name
+			: undefined;
+	return typeof name === 'string' ? name : null;
+}
+
+function providerOf(details: unknown): string {
+	const provider =
+		details !== null && typeof details === 'object' && !Array.isArray(details)
+			? (details as Record<string, unknown>).provider
+			: undefined;
+	return typeof provider === 'string' ? provider : '';
+}
+
 export function classifyAccountError(error: unknown): AccountFailure {
 	if (!(error instanceof ApiError)) return { kind: 'network' };
 	switch (error.code) {
 		case 'conflict':
-			return reasonOf(error.details) === 'duplicate_external_ref'
-				? { kind: 'duplicate_external_ref' }
-				: { kind: 'other' };
+			if (reasonOf(error.details) === 'duplicate_external_ref')
+				return { kind: 'duplicate_external_ref' };
+			if (reasonOf(error.details) === 'provider_taken')
+				return {
+					kind: 'provider_taken',
+					provider: providerOf(error.details),
+					account: takenBy(error.details)
+				};
+			return { kind: 'other' };
 		case 'validation_error':
-			return reasonOf(error.details) === 'unknown_currency'
-				? { kind: 'unknown_currency' }
-				: { kind: 'validation' };
+			switch (reasonOf(error.details)) {
+				case 'unknown_currency':
+					return { kind: 'unknown_currency' };
+				case 'invalid_provider':
+					return { kind: 'invalid_provider' };
+				case 'start_required':
+					return { kind: 'start_required' };
+				case 'not_clearance':
+					return { kind: 'not_clearance' };
+				default:
+					return { kind: 'validation' };
+			}
 		case 'network_error':
 			return { kind: 'network' };
 		case 'unauthenticated':
@@ -37,8 +76,17 @@ export function classifyAccountError(error: unknown): AccountFailure {
 }
 
 /** Where the message stands: under the field it came from, or in the dialog's feedback slot. */
-export function failureField(failure: AccountFailure): 'name' | 'currency' | 'externalRef' | null {
+export function failureField(
+	failure: AccountFailure
+): 'name' | 'currency' | 'externalRef' | 'providers' | 'start' | null {
 	if (failure.kind === 'duplicate_external_ref') return 'externalRef';
+	if (
+		failure.kind === 'provider_taken' ||
+		failure.kind === 'invalid_provider' ||
+		failure.kind === 'not_clearance'
+	)
+		return 'providers';
+	if (failure.kind === 'start_required') return 'start';
 	if (failure.kind === 'validation') return 'name';
 	if (failure.kind === 'unknown_currency') return 'currency';
 	return null;
@@ -50,6 +98,16 @@ export function describeAccountFailure(failure: AccountFailure): string {
 			return 'Another account already uses this bank reference.';
 		case 'unknown_currency':
 			return 'This currency is not known.';
+		case 'provider_taken':
+			return failure.account
+				? `${failure.provider} is already taken by ${failure.account}, an account of the same currency.`
+				: `${failure.provider} is already taken by another account of the same currency.`;
+		case 'invalid_provider':
+			return 'A provider cannot be empty.';
+		case 'start_required':
+			return 'A clearance account needs a start date.';
+		case 'not_clearance':
+			return 'Only a clearance account has providers or a start date.';
 		case 'validation':
 			return 'The server did not accept this name. Check it and try again.';
 		case 'network':

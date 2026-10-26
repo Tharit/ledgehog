@@ -25,7 +25,8 @@ export const ACCOUNT_KIND_ICONS: Readonly<Record<string, string>> = {
 	digital_wallet: 'wallet-cards',
 	depot: 'chart-line',
 	loan: 'hand-coins',
-	asset: 'gem'
+	asset: 'gem',
+	clearance: 'scale'
 };
 
 export function isKnownColor(name: string | null | undefined): name is DimensionColor {

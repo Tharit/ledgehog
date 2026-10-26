@@ -82,7 +82,17 @@
 
 	<div class="flex flex-col gap-1 text-sm" data-slot="sources">
 		<h2 class="text-xs font-medium text-muted-foreground">Sources</h2>
-		{#if sourcesStatus === 'loading'}
+		{#if account.kind === 'clearance'}
+			<p class="text-muted-foreground" data-slot="clearance-sources">
+				Fed by the orders of its providers{#if account.providers.length === 0}
+					(none yet; add them in Edit){:else}:
+					{#each account.providers as provider, i (provider)}{#if i > 0},
+						{/if}<a
+							href={`/documents?provider=${encodeURIComponent(provider)}`}
+							class="text-foreground underline underline-offset-2">{provider}</a
+						>{/each}{/if}, and by the charges decided as transfers to it.
+			</p>
+		{:else if sourcesStatus === 'loading'}
 			<p class="text-muted-foreground">Looking up the importers…</p>
 		{:else if sourcesStatus === 'error'}
 			<p class="text-muted-foreground">The importers could not be loaded.</p>

@@ -28,6 +28,8 @@ export function describeImporterError(error: ImporterError): string {
 			return 'This account is not linked to this importer (any more).';
 		case 'already_linked':
 			return 'This account is already linked to this importer.';
+		case 'clearance_account':
+			return 'A clearance account is fed by the orders of its providers and is never linked.';
 		case 'file_too_large':
 			return 'The file is larger than 10 MiB. Upload a smaller export.';
 		case 'parse_failed':

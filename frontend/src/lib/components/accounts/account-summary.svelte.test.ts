@@ -74,3 +74,31 @@ describe('AccountSummary: the sources', () => {
 		expect(screen.getByRole('button', { name: 'Fetch' })).toBeDisabled();
 	});
 });
+
+describe('AccountSummary: a clearance account', () => {
+	it('says it is fed by the orders of its providers, each linking to the documents filtered by it', () => {
+		render(AccountSummary, {
+			props: {
+				account: account({ id: 7, kind: 'clearance', providers: ['amazon', 'pay pal'] }),
+				sources: [],
+				today: '2026-10-18',
+				onsetbalance: vi.fn(),
+				onedit: vi.fn(),
+				onclose: vi.fn(),
+				onreopen: vi.fn(),
+				ondelete: vi.fn()
+			}
+		});
+
+		expect(screen.getByRole('link', { name: 'amazon' })).toHaveAttribute(
+			'href',
+			'/documents?provider=amazon'
+		);
+		expect(screen.getByRole('link', { name: 'pay pal' })).toHaveAttribute(
+			'href',
+			'/documents?provider=pay%20pal'
+		);
+		expect(screen.getByText(/charges decided as transfers to it/)).toBeInTheDocument();
+		expect(screen.queryByText(/Entered by hand/)).toBeNull();
+	});
+});

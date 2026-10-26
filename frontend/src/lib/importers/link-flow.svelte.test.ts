@@ -71,6 +71,21 @@ describe('LinkAccountFlow', () => {
 		expect(host.linked).not.toHaveBeenCalled();
 	});
 
+	it('says a clearance account is never linked when the server refuses it', async () => {
+		vi.mocked(linkAccount)
+			.mockResolvedValueOnce(link())
+			.mockRejectedValueOnce(
+				new ApiError(409, 'conflict', 'x', { reason: 'clearance_account', account_id: 7 })
+			);
+		const { flow } = setup();
+		await flow.choose(7);
+
+		await flow.confirm();
+
+		expect(flow.error).toContain('clearance account');
+		expect(flow.open).toBe(true);
+	});
+
 	it('with the account fixed by discovery: shows the dry run at once and sends the discovered reference with both calls', async () => {
 		vi.mocked(linkAccount)
 			.mockResolvedValueOnce(link({ account_id: 7, user_authored_count: 3 }))

@@ -41,7 +41,9 @@
 	const moment = $derived(viewMoment(sync.view, () => null));
 	const failure = $derived(store.failure);
 	const linkable = $derived(
-		[...lookupsStore.lookups.accounts.values()].filter((a) => a.closed_on === null)
+		[...lookupsStore.lookups.accounts.values()].filter(
+			(a) => a.closed_on === null && a.kind !== 'clearance'
+		)
 	);
 </script>
 

@@ -5,6 +5,7 @@ import type { AccountUpdateBody, AccountWriteOut } from '#lib/api/types.js';
 import { isKnownIcon } from '#lib/theme/icons.js';
 import { isKnownColor } from '#lib/theme/resolve.js';
 import type { Account } from '#lib/types/domain.js';
+import { loadProviderSuggestions } from './provider-suggestions.js';
 import { classifyAccountError, describeAccountFailure, failureField } from './errors.js';
 
 const orNull = (text: string): string | null => (text.trim() === '' ? null : text.trim());
@@ -16,7 +17,10 @@ export class EditAccountFlow {
 	note = $state('');
 	icon = $state<string | null>(null);
 	color = $state<string | null>(null);
-	errors = $state.raw<{ name?: string; externalRef?: string }>({});
+	/** a clearance account's providers (the whole list) and what the importers suggest */
+	providers = $state<string[]>([]);
+	suggestions = $state<string[]>([]);
+	errors = $state.raw<{ name?: string; externalRef?: string; providers?: string }>({});
 	failure = $state<string | null>(null);
 	busy = $state(false);
 
@@ -27,9 +31,12 @@ export class EditAccountFlow {
 		this.note = account.note ?? '';
 		this.icon = isKnownIcon(account.icon) ? account.icon : null;
 		this.color = isKnownColor(account.color) ? account.color : null;
+		this.providers = [...account.providers];
 		this.errors = {};
 		this.failure = null;
 		this.busy = false;
+		if (account.kind === 'clearance')
+			void loadProviderSuggestions().then((found) => (this.suggestions = found));
 	}
 
 	/** The fields that differ from the account held; empty when nothing changed. */
@@ -44,6 +51,11 @@ export class EditAccountFlow {
 		if (this.icon !== (isKnownIcon(account.icon) ? account.icon : null)) body.icon = this.icon;
 		if (this.color !== (isKnownColor(account.color) ? account.color : null))
 			body.color = this.color;
+		if (
+			account.kind === 'clearance' &&
+			[...this.providers].sort().join('\n') !== [...account.providers].sort().join('\n')
+		)
+			body.providers = this.providers;
 		return body;
 	}
 
@@ -66,7 +78,8 @@ export class EditAccountFlow {
 			const failure = classifyAccountError(error);
 			const text = describeAccountFailure(failure);
 			const field = failureField(failure);
-			if (field === 'name' || field === 'externalRef') this.errors = { [field]: text };
+			if (field === 'name' || field === 'externalRef' || field === 'providers')
+				this.errors = { [field]: text };
 			else this.failure = text.replace('could not be added', 'could not be saved');
 			return null;
 		} finally {

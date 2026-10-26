@@ -111,7 +111,7 @@
 	const linkable = $derived.by<Account[]>(() => {
 		const linked = new Set(store.instance?.accounts.map((a) => a.account_id));
 		return [...lookupsStore.lookups.accounts.values()].filter(
-			(a) => a.closed_on === null && !linked.has(a.id)
+			(a) => a.closed_on === null && a.kind !== 'clearance' && !linked.has(a.id)
 		);
 	});
 

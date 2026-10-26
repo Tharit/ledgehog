@@ -98,7 +98,8 @@ describe('resolveAccount', () => {
 			digital_wallet: 'wallet-cards',
 			depot: 'chart-line',
 			loan: 'hand-coins',
-			asset: 'gem'
+			asset: 'gem',
+			clearance: 'scale'
 		};
 		for (const [kind, icon] of Object.entries(kinds)) {
 			expect(resolveAccount({ kind, icon: null, color: null })).toEqual({ icon, color: 'stone' });

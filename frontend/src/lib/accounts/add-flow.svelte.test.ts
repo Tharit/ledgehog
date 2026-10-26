@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, createAccount } from '#lib/api/index.js';
+import { ApiError, createAccount, listDocumentProviders } from '#lib/api/index.js';
 import { account } from '#lib/ledger/fixtures.js';
 import { buildLookups } from '#lib/ledger/lookups.js';
 import { lookupsStore } from '#lib/stores/lookups.svelte.js';
@@ -8,7 +8,8 @@ import { AddAccountFlow, knownCurrencies } from './add-flow.svelte.js';
 
 vi.mock('#lib/api/index.js', async (importOriginal) => ({
 	...(await importOriginal<typeof import('#lib/api/index.js')>()),
-	createAccount: vi.fn()
+	createAccount: vi.fn(),
+	listDocumentProviders: vi.fn()
 }));
 
 const written = (over = {}) => ({
@@ -193,5 +194,66 @@ describe('AddAccountFlow.submit', () => {
 
 		expect(flow.failure).toMatch(/could not be reached/);
 		expect(flow.errors).toEqual({});
+	});
+
+	it('adds a clearance account with its providers and its start, and not before it has a start', async () => {
+		vi.mocked(createAccount).mockResolvedValue(written());
+		vi.mocked(listDocumentProviders).mockResolvedValue(['amazon', 'paypal']);
+		const flow = new AddAccountFlow();
+		flow.start();
+		flow.name = 'Amazon clearing';
+		flow.kind = 'clearance';
+		flow.providers = ['amazon'];
+		await vi.waitFor(() => expect(flow.suggestions).toEqual(['amazon', 'paypal']));
+
+		expect(flow.canSubmit).toBe(false);
+		expect(await flow.submit()).toBeNull();
+		flow.startDate = '2026-09-30';
+		expect(flow.canSubmit).toBe(true);
+		await flow.submit();
+
+		expect(createAccount).toHaveBeenCalledWith(
+			expect.objectContaining({
+				kind: 'clearance',
+				providers: ['amazon'],
+				start_date: '2026-09-30'
+			})
+		);
+	});
+
+	it('sends no providers and no start for any other kind', async () => {
+		vi.mocked(createAccount).mockResolvedValue(written());
+		const flow = new AddAccountFlow();
+		flow.start();
+		flow.name = 'Cash';
+		flow.providers = ['amazon'];
+		flow.startDate = '2026-09-30';
+
+		await flow.submit();
+
+		const body = vi.mocked(createAccount).mock.calls[0][0];
+		expect(body.providers).toEqual([]);
+		expect(body).not.toHaveProperty('start_date');
+	});
+
+	it('names the account that holds a provider under the Providers field', async () => {
+		vi.mocked(createAccount).mockRejectedValue(
+			new ApiError(409, 'conflict', 'x', {
+				reason: 'provider_taken',
+				provider: 'amazon',
+				account: { id: 4, name: 'Amazon clearing' }
+			})
+		);
+		const flow = new AddAccountFlow();
+		flow.start();
+		flow.name = 'Second';
+		flow.kind = 'clearance';
+		flow.startDate = '2026-09-30';
+		flow.providers = ['amazon'];
+
+		await flow.submit();
+
+		expect(flow.errors.providers).toContain('Amazon clearing');
+		expect(flow.failure).toBeNull();
 	});
 });

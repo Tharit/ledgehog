@@ -2,6 +2,7 @@
 // as props); the shapes they receive are re-exported here so they can still be typed.
 export type {
 	Account,
+	Booking,
 	AccountWriteOut,
 	Category,
 	CategoryDeleteOut,

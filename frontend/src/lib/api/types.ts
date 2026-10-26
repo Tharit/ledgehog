@@ -47,6 +47,8 @@ export type Account = {
 type Schemas = import('../types/api.js').components['schemas'];
 
 export type Entry = Schemas['EntryOut'];
+/** A booking's source, for navigation (spec §5.8). */
+export type Booking = Schemas['BookingOut'];
 export type DocumentRow = Schemas['DocumentOut'];
 export type DocumentProviders = Schemas['DocumentProvidersOut'];
 export type DocumentPage = Schemas['DocumentPageOut'];
@@ -166,5 +168,7 @@ export type DocumentFilter = {
 	amount_min?: number;
 	amount_max?: number;
 	currency?: string;
+	/** `false`: only the documents not booked on a clearance account (the "not booked" filter) */
+	booked?: false;
 	q: string;
 };

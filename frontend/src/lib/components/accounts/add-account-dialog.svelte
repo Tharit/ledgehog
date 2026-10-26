@@ -2,12 +2,15 @@
 	import { untrack } from 'svelte';
 	import ActionDialog, { type DialogFeedback } from '#lib/components/common/action-dialog.svelte';
 	import ChoiceSelect from '#lib/components/common/choice-select.svelte';
+	import DateField from '#lib/components/common/date-field.svelte';
 	import Field from '#lib/components/common/field.svelte';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import { AddAccountFlow } from '#lib/accounts/add-flow.svelte.js';
 	import { EXTERNAL_REF_HINT, EXTERNAL_REF_LABEL } from '#lib/accounts/external-ref.js';
 	import { accounts } from '#lib/accounts/controller.svelte.js';
 	import { ACCOUNT_KINDS } from '#lib/accounts/kinds.js';
+	import ProviderField from './provider-field.svelte';
+	import { session } from '#lib/stores/session.svelte.js';
 	import { lookupsStore } from '#lib/stores/lookups.svelte.js';
 
 	// "Add account": a form dialog (patterns §11.1, §11.2), opened by the account controller from the
@@ -102,6 +105,37 @@
 			{/if}
 		{/snippet}
 	</Field>
+	{#if flow.clearance}
+		<Field
+			label="Providers"
+			hint="The shops whose orders are booked on this account, as the documents name them."
+			error={flow.errors.providers ?? null}
+		>
+			{#snippet children(field)}
+				<ProviderField
+					{...field}
+					bind:providers={flow.providers}
+					suggestions={flow.suggestions}
+					disabled={flow.busy}
+				/>
+			{/snippet}
+		</Field>
+		<Field
+			label="Start"
+			hint="Orders dated after this day are booked here. Choose a day with nothing in flight: no order placed and not yet charged."
+			error={flow.errors.start ?? null}
+		>
+			{#snippet children(field)}
+				<DateField
+					{...field}
+					label="Start"
+					bind:value={flow.startDate}
+					locale={session.config?.locale ?? 'en'}
+					disabled={flow.busy}
+				/>
+			{/snippet}
+		</Field>
+	{/if}
 	<Field
 		label={EXTERNAL_REF_LABEL}
 		hint={EXTERNAL_REF_HINT}

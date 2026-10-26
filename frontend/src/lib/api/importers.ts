@@ -361,6 +361,7 @@ export type ImporterError =
 	| { kind: 'account_closed' }
 	| { kind: 'account_not_linked' }
 	| { kind: 'already_linked' }
+	| { kind: 'clearance_account' }
 	| { kind: 'file_too_large' }
 	| { kind: 'parse_failed'; message: string; retryable: boolean; report: DryRunReport | null }
 	| { kind: 'contract_violation'; rule: string | null; message: string }
@@ -419,6 +420,11 @@ export function classifyImporterError(error: unknown): ImporterError {
 		case 'already_linked':
 		case 'file_too_large':
 			return { kind: error.code };
+		case 'conflict':
+			// a clearance account is fed by documents and never linked (spec §3.3)
+			return named.reason === 'clearance_account'
+				? { kind: 'clearance_account' }
+				: { kind: 'other', status: error.status };
 		case 'parse_failed':
 			return {
 				kind: 'parse_failed',

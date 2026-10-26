@@ -4,6 +4,7 @@
 	import { EXTERNAL_REF_HINT, EXTERNAL_REF_LABEL } from '#lib/accounts/external-ref.js';
 	import ActionDialog, { type DialogFeedback } from '#lib/components/common/action-dialog.svelte';
 	import Field from '#lib/components/common/field.svelte';
+	import ProviderField from './provider-field.svelte';
 	import ColorChoices from '#lib/components/settings/color-choices.svelte';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import { ACCOUNT_ICONS } from '#lib/theme/icon-sets.js';
@@ -72,6 +73,22 @@
 			<Input bind:value={flow.externalRef} {...field} readonly={flow.busy} autocomplete="off" />
 		{/snippet}
 	</Field>
+	{#if account?.kind === 'clearance'}
+		<Field
+			label="Providers"
+			hint="The shops whose orders are booked on this account, as the documents name them. A new provider books the documents it brings; no existing booking moves."
+			error={flow.errors.providers ?? null}
+		>
+			{#snippet children(field)}
+				<ProviderField
+					{...field}
+					bind:providers={flow.providers}
+					suggestions={flow.suggestions}
+					disabled={flow.busy}
+				/>
+			{/snippet}
+		</Field>
+	{/if}
 	<Field label="Note">
 		{#snippet children(field)}
 			<Input bind:value={flow.note} {...field} readonly={flow.busy} autocomplete="off" />

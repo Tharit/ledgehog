@@ -9,7 +9,8 @@ export const ACCOUNT_KINDS: readonly { kind: AccountKind; label: string }[] = [
 	{ kind: 'digital_wallet', label: 'Digital wallet' },
 	{ kind: 'depot', label: 'Depot' },
 	{ kind: 'loan', label: 'Loan' },
-	{ kind: 'asset', label: 'Asset' }
+	{ kind: 'asset', label: 'Asset' },
+	{ kind: 'clearance', label: 'Clearance' }
 ];
 
 /** What a new account is unless the caller knows better: money held by hand. */
