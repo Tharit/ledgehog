@@ -1,12 +1,15 @@
 """The writes of the booking step (architecture §5.2 step 2): apply a `Sync` in the caller's transaction.
 
-The caller holds the settle lock exclusively; this takes the locks of the clearance accounts it writes on,
-in ascending id order, and recomputes their derived entries before it returns. Source rows and entries are
-written set-based. A document's booking is created split, one entry per line (the I7 exception); its
-entries' type is `flow` under the standing key `booking` (spec §5.9). A transfer booking has the one entry,
-typed `transfer`, its counter-account the charge's account, paired with the charge: type, counter-account and
-pair carry the key `booking` on it, the pair on the charge too (spec §5.7). Removed entries go through the
-removal routine, which takes their tags with them and releases the charge a booking was paired with.
+The caller holds the settle lock exclusively; this takes the locks of the accounts it writes on, in
+ascending id order: the clearance accounts, and the accounts of the charges a transfer booking is paired
+with, released or repaired (the pair keys of a charge row are written, its account recomputed). It
+recomputes the derived entries of the clearance accounts before it returns (the removal routine does the
+charges' own). Source rows and entries are written set-based. A document's booking is created split, one
+entry per line (the I7 exception); its entries' type is `flow` under the standing key `booking` (spec §5.9).
+A transfer booking has the one entry, typed `transfer`, its counter-account the charge's account, paired
+with the charge: type, counter-account and pair carry the key `booking` on it, the pair on the charge too
+(spec §5.7). Removed entries go through the removal routine, which takes their tags with them and releases
+the charge a booking was paired with.
 """
 
 from __future__ import annotations
@@ -46,7 +49,8 @@ def _is_document(source_id: str) -> bool:
 def apply_sync(conn: Connection, sync: Sync) -> Written:
     if sync.empty:
         return Written()
-    accounts = lock_accounts(conn, sync.account_ids())
+    accounts = sync.account_ids()
+    lock_accounts(conn, [*accounts, *_charge_accounts(conn, sync)])
     if (
         any(_is_document(p.source_id) for _, p in sync.create)
         or any(_is_document(r.plan.source_id) for r in sync.rederive)
@@ -109,6 +113,28 @@ def apply_sync(conn: Connection, sync: Sync) -> Written:
     for account_id in accounts:
         recompute_derived(conn, account_id)
     return Written(tuple(sorted(set(touched))), tuple(sorted(set(afresh))), tuple(accounts))
+
+
+def _charge_accounts(conn: Connection, sync: Sync) -> set[int]:
+    """The accounts of the charges the plan pairs, repairs or releases: the pair's account, the account of
+    the charge a removed transfer booking was for, and of whatever the entries that go were paired with."""
+    accounts = {p.pair.account_id for _, p in sync.create if p.pair is not None}
+    accounts |= {r.plan.pair.account_id for r in sync.rederive if r.plan.pair is not None}
+    gone = [i for r in sync.rederive for i in r.surplus] + [e.id for b in sync.remove for e in b.entries]
+    charges = [int(b.key) for b in sync.remove if b.kind != DOCUMENT_SOURCE]
+    if gone or charges:
+        accounts |= {
+            int(a)
+            for a in conn.execute(
+                text(
+                    "SELECT DISTINCT p.account_id FROM ledger_entry p WHERE p.id = ANY(:charges) OR EXISTS ("
+                    " SELECT 1 FROM ledger_entry g WHERE g.id = ANY(:gone)"
+                    " AND (p.id = g.counterpart_entry_id OR p.counterpart_entry_id = g.id))"
+                ),
+                {"charges": charges, "gone": gone},
+            ).scalars()
+        }
+    return accounts
 
 
 def _pair(conn: Connection, pairs: list[tuple[int, int, int]]) -> None:
@@ -193,33 +219,41 @@ def _add_entries(conn: Connection, sync: Sync) -> list[int]:
 
 def _insert_entries(conn: Connection, items: list[tuple[int, EntryPlan, PairPlan | None]]) -> list[int]:
     """The entries of bookings, in the order given (their id order is their position). A transfer booking's
-    is typed `transfer` with the charge's account as counter-account, not yet paired (`_pair`)."""
+    is typed `transfer` with the charge's account as counter-account, not yet paired (`_pair`). The ids are
+    drawn from the sequence first, ascending, and given to the entries by position, so the result does not
+    depend on the order `RETURNING` hands rows back in."""
     if not items:
         return []
-    return [
+    ids = sorted(
         int(i)
         for i in conn.execute(
-            text(
-                "INSERT INTO ledger_entry (source_transaction_id, account_id, amount, currency, booked_on,"
-                " source_text, type, counter_account_id, derivation)"
-                " SELECT v.source_id, s.account_id, v.amount, s.currency, s.booked_on, v.source_text, v.type,"
-                "        v.counter, CAST(v.key AS jsonb)"
-                " FROM unnest(CAST(:sources AS bigint[]), CAST(:amounts AS bigint[]), CAST(:texts AS text[]),"
-                "             CAST(:types AS text[]), CAST(:counters AS bigint[]), CAST(:keys AS text[]))"
-                "      WITH ORDINALITY AS v(source_id, amount, source_text, type, counter, key, ord)"
-                " JOIN source_transaction s ON s.id = v.source_id"
-                " ORDER BY v.ord RETURNING id"
-            ),
-            {
-                "sources": [s for s, _, _ in items],
-                "amounts": [e.amount for _, e, _ in items],
-                "texts": [e.source_text for _, e, _ in items],
-                "types": ["flow" if p is None else "transfer" for _, _, p in items],
-                "counters": [None if p is None else p.account_id for _, _, p in items],
-                "keys": [_BOOKING_KEY if p is None else _TRANSFER_KEYS for _, _, p in items],
-            },
+            text("SELECT nextval(pg_get_serial_sequence('ledger_entry', 'id')) FROM generate_series(1, :n)"),
+            {"n": len(items)},
         ).scalars()
-    ]
+    )
+    conn.execute(
+        text(
+            "INSERT INTO ledger_entry (id, source_transaction_id, account_id, amount, currency, booked_on,"
+            " source_text, type, counter_account_id, derivation) OVERRIDING SYSTEM VALUE"
+            " SELECT v.id, v.source_id, s.account_id, v.amount, s.currency, s.booked_on, v.source_text,"
+            "        v.type, v.counter, CAST(v.key AS jsonb)"
+            " FROM unnest(CAST(:ids AS bigint[]), CAST(:sources AS bigint[]), CAST(:amounts AS bigint[]),"
+            "             CAST(:texts AS text[]), CAST(:types AS text[]), CAST(:counters AS bigint[]),"
+            "             CAST(:keys AS text[]))"
+            "      AS v(id, source_id, amount, source_text, type, counter, key)"
+            " JOIN source_transaction s ON s.id = v.source_id"
+        ),
+        {
+            "ids": ids,
+            "sources": [s for s, _, _ in items],
+            "amounts": [e.amount for _, e, _ in items],
+            "texts": [e.source_text for _, e, _ in items],
+            "types": ["flow" if p is None else "transfer" for _, _, p in items],
+            "counters": [None if p is None else p.account_id for _, _, p in items],
+            "keys": [_BOOKING_KEY if p is None else _TRANSFER_KEYS for _, _, p in items],
+        },
+    )
+    return ids
 
 
 def _update_rows(conn: Connection, sync: Sync) -> None:

@@ -69,11 +69,15 @@ class StartRequired(AccountError):
         super().__init__("a clearance account needs a start date")
 
 
+MAX_PROVIDERS = 50
+MAX_PROVIDER_LENGTH = 200
+
+
 class InvalidProvider(AccountError):
-    """A provider is a name: trimmed, not blank (spec §3.3)."""
+    """A provider is a name: trimmed, not blank, at most 200 characters; an account has at most 50."""
 
     def __init__(self) -> None:
-        super().__init__("a provider name must not be blank")
+        super().__init__("a provider name must not be blank, at most 200 characters, at most 50 of them")
 
 
 class ProviderTaken(AccountError):
@@ -326,9 +330,11 @@ def delete_account(engine: Engine, account_id: int) -> SettleResult:
 def _provider_names(providers: Sequence[str]) -> list[str]:
     """The names trimmed, none blank, one spelling per name compared without regard to case (the first)."""
     seen: dict[str, str] = {}
+    if len(providers) > MAX_PROVIDERS:
+        raise InvalidProvider()
     for provider in providers:
         name = provider.strip()
-        if not name:
+        if not name or len(name) > MAX_PROVIDER_LENGTH:
             raise InvalidProvider()
         seen.setdefault(name.lower(), name)
     return list(seen.values())

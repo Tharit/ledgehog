@@ -93,6 +93,9 @@ def _not_blank(value: str) -> str:
 
 
 Name = Annotated[str, Field(min_length=1), AfterValidator(_not_blank)]
+Providers = Annotated[
+    list[Annotated[str, Field(max_length=200)]], Field(max_length=50)
+]  # a clearance account's
 
 
 class Money(BaseModel):
@@ -187,7 +190,7 @@ class CreateBody(BaseModel):
     start_date: date | None = (
         None  # a clearance account requires it (its opening record), any other refuses it
     )
-    providers: list[str] = []  # a clearance account only
+    providers: Providers = []  # a clearance account only
 
 
 class UpdateBody(BaseModel):
@@ -204,7 +207,7 @@ class UpdateBody(BaseModel):
     external_ref: str | None = None
     icon: str | None = None
     color: str | None = None
-    providers: list[str] | None = None  # a clearance account: the whole list; absent leaves it
+    providers: Providers | None = None  # a clearance account: the whole list; absent leaves it
 
 
 class CloseBody(BaseModel):

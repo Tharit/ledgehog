@@ -3,8 +3,10 @@
 Contract shared by every caller:
 
 * ``settle(engine)`` opens **its own** transaction, takes the settle lock exclusively,
-  runs rounds until a round confirms nothing new, and commits. It takes no account lock
-  and creates no rows. It is idempotent (spec I37): a second call touches nothing.
+  runs rounds until a round confirms nothing new, and commits. It is idempotent (spec I37):
+  a second call touches nothing. Its one contained exception is step 2, which maintains the bookings on
+  clearance accounts (creating, re-deriving and removing their rows and entries, and the pair keys of the
+  charges they are paired with) and locks the accounts it writes, ascending, before it writes.
 * A failure after the caller's write committed does not raise: the settle transaction
   rolls back, the write stands, and the failure is reported in ``SettleResult.error``.
 

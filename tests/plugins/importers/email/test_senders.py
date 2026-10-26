@@ -168,6 +168,8 @@ def test_escaped_quotes_stay_inside_the_value_and_a_later_section_still_splits()
 
 
 def test_nested_comments_and_escaped_parentheses_hide_semicolons_and_results():
-    value = "mx.x; dkim=fail (a (b; dmarc=pass) c; spf=pass) header.d=a.example; spf=pass (x \\) ; dmarc=pass)"
+    value = (
+        "mx.x; dkim=fail (a (b; dmarc=pass) c; spf=pass) header.d=a.example; spf=pass (x \\) ; dmarc=pass)"
+    )
     results = parse_authentication_results(value)
     assert [(r.method, r.result) for r in results] == [("dkim", "fail"), ("spf", "pass")]

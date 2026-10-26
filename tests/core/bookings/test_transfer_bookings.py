@@ -460,3 +460,96 @@ def test_a_charge_toward_a_clearance_account_without_a_start_books_nothing(scene
     assert scene.settle().error is None
     assert booking_of(scene, e) is None
     assert scene.row(e).counterpart_entry_id is None
+
+
+# ---- locks --------------------------------------------------------------------------------------------
+
+
+def _spy_locks(monkeypatch: pytest.MonkeyPatch) -> list[list[int]]:
+    from app.core.bookings import write
+
+    taken: list[list[int]] = []
+    real = write.lock_accounts
+
+    def spy(conn, ids):
+        taken.append(sorted(set(ids)))
+        return real(conn, ids)
+
+    monkeypatch.setattr(write, "lock_accounts", spy)
+    return taken
+
+
+def test_step_2_locks_the_charge_account_when_it_pairs_a_new_booking(
+    scene: Scene, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    account = clearance(scene)
+    rule_to(scene, account)
+    charge(scene)
+    taken = _spy_locks(monkeypatch)
+    assert scene.settle().error is None
+    assert taken and sorted({a for t in taken for a in t}) == sorted({account, scene.checking})
+    assert all(t == sorted(t) for t in taken)
+
+
+def test_step_2_locks_the_charge_account_when_it_removes_a_transfer_booking(
+    scene: Scene, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    account = clearance(scene)
+    rule_to(scene, account)
+    e = charge(scene)
+    scene.settle()
+    (leg,) = booking_entries(scene, e)
+    unpair(scene, e, leg.id)
+    cat = scene.category("Books")
+    scene.tx(
+        lambda c: c.execute(
+            text(
+                "UPDATE ledger_entry SET type = 'flow', counter_account_id = NULL, category_id = :c,"
+                " derivation = CAST(:d AS jsonb) WHERE id = :i"
+            ),
+            {"c": cat, "i": e, "d": json.dumps({"type": {"pass": "user"}, "category": {"pass": "user"}})},
+        )
+    )
+    taken = _spy_locks(monkeypatch)
+    assert scene.settle().error is None
+    assert booking_of(scene, e) is None
+    assert (
+        taken and scene.checking in {a for t in taken for a in t} and account in {a for t in taken for a in t}
+    )
+
+
+def test_entries_of_a_booking_are_created_in_position_order(scene: Scene) -> None:
+    account = clearance(scene)
+    rule_to(scene, account)
+    es = [charge(scene, -1000 * (n + 1), ref=f"r{n}") for n in range(3)]
+    assert scene.settle().error is None
+    legs = [booking_entries(scene, e)[0].id for e in es]
+    assert len(set(legs)) == 3
+    assert all(scene.row(e).counterpart_entry_id == leg for e, leg in zip(es, legs, strict=True))
+
+
+def test_editing_an_authored_charge_keeps_the_pair_with_its_booking(scene: Scene) -> None:
+    from app.core.ledger.sources import update_source
+
+    account = clearance(scene)
+    rule_to(scene, account)
+    e = charge(scene, -4997, authored=True)
+    scene.settle()
+    (leg,) = booking_entries(scene, e)
+    src = scene.row(e).source_transaction_id
+    versions = {i: scene.row(i).version for i in (e, leg.id)}
+    before = scene.row(e).derivation
+    dry = update_source(scene.engine, src, amount=-5100, dry_run=True)
+    assert dry.effects.unpaired_entry_ids == () and dry.effects.returned_to_review_ids == ()
+    assert dry.effects.rederived_entry_ids == ()
+    done = update_source(scene.engine, src, amount=-5100, expected_versions=versions)
+    assert done.settle is not None and done.settle.error is None
+    effects = done.effects
+    assert effects.unpaired_entry_ids == () and effects.returned_to_review_ids == ()
+    assert effects.rederived_entry_ids == ()
+    (after,) = booking_entries(scene, e)
+    assert (after.id, after.amount, after.counterpart_entry_id) == (leg.id, 5100, e)
+    row = scene.row(e)
+    assert row.counterpart_entry_id == leg.id and row.derivation == before
+    assert confirmed(scene, e, leg.id)
+    scene.assert_checks_clean()

@@ -514,3 +514,20 @@ def test_a_clearance_account_books_the_documents_its_providers_take(
     assert r.status_code == 200
     assert r.json()["account"]["balance"] == {"amount": -1000, "currency": "EUR"}
     assert len(q(api_engine, "SELECT 1 FROM source_transaction WHERE origin = 'booking'")) == 1
+
+
+@pytest.mark.parametrize(
+    "providers", [[f"P{n}" for n in range(51)], ["x" * 201]], ids=["too_many", "too_long"]
+)
+def test_providers_are_bounded_on_create_and_update(anna: TestClient, providers: list[str]) -> None:
+    assert_envelope(anna.post(ACCOUNTS, json=CLEARANCE | {"providers": providers}), 422, "validation_error")
+    account = anna.post(ACCOUNTS, json=CLEARANCE).json()["account"]
+    assert_envelope(
+        anna.put(f"{ACCOUNTS}/{account['id']}", json={"providers": providers}), 422, "validation_error"
+    )
+
+
+def test_providers_at_the_bounds_are_accepted(anna: TestClient) -> None:
+    names = [f"P{n}" for n in range(49)] + ["x" * 200]
+    r = anna.post(ACCOUNTS, json=CLEARANCE | {"providers": names})
+    assert r.status_code == 201, r.text

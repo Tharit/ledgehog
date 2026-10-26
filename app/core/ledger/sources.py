@@ -511,7 +511,7 @@ _ENTRY_ROWS = text(
     "SELECT e.id, e.account_id, e.currency, e.amount, e.type, e.payee_id, e.category_id,"
     " e.counter_account_id, e.derivation, e.version, e.counterpart_entry_id, p.currency AS partner_currency,"
     " p.account_id AS partner_account, p.source_transaction_id AS partner_source,"
-    " (ps.origin = 'user') AS partner_authored,"
+    " (ps.origin = 'user') AS partner_authored, (ps.origin = 'booking') AS partner_booking,"
     " (SELECT count(*) FROM ledger_entry x WHERE x.source_transaction_id = p.source_transaction_id)"
     " AS partner_entries,"
     " (pa.closed_on IS NULL AND EXISTS (SELECT 1 FROM account_source s WHERE s.account_id = pa.id))"
@@ -580,15 +580,17 @@ def _edit(
         lock_rows(conn, "ledger_entry", everything)
         return EditEffects(versions=tuple((i, int(rows[i].version)) for i in ids))
 
-    # a partner that follows (spec §5.7): user-authored, the only entry of its source, on an unsynced account
+    # a partner that follows (spec §5.7): a booking (settle re-derives it right after; its leg takes the
+    # negated amount here so the pair stands at commit), or user-authored, the only entry of its source, on
+    # an unsynced account
     followable = {
         int(r.id)
         for r in own
         if r.counterpart_entry_id is not None
         and r.partner_currency == src.currency
-        and r.partner_authored
-        and int(r.partner_entries) == 1
-        and not r.partner_synced
+        and (
+            r.partner_booking or (r.partner_authored and int(r.partner_entries) == 1 and not r.partner_synced)
+        )
     }
     plan = plan_amounts(
         int(src.amount),

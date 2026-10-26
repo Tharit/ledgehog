@@ -2,7 +2,8 @@
 
 Order, for every write transaction: the settle lock **shared** first; then the
 account locks in ascending id; then row locks in ascending id. Settling takes the
-settle lock **exclusively**, in its own transaction, and takes no account lock.
+settle lock **exclusively**, in its own transaction, and takes account locks only for the bookings its step 2
+writes (the clearance accounts and the accounts of the charges they are paired with).
 All locks are transaction-scoped: they must be taken inside the transaction they
 protect and are released by its commit or rollback.
 """
