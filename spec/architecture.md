@@ -958,7 +958,9 @@ takes `of` (the row it duplicates), `dry_run` and `expected_versions`, the
 versions of the entries the call removes or unpairs, which its preview returns
 as revert's does; `POST …/not-duplicate` takes none. Both answer with
 everything they touched (*Operations return everything they touched*), the
-latter including the entry the row got.
+latter including the entry the row got. Marking a booking, or marking a row as
+a duplicate of one, is refused (422 `invalid_duplicate`, reason `booking`): a
+booking follows its source and is never a duplicate (`spec.md` §5.8).
 
 **The catalog.** `GET /api/importers` lists what the deployment registers, one
 entry per importer: `name`, `kind` (`file` or `fetch`), `emits` (the kinds of

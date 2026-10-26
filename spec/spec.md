@@ -1884,6 +1884,9 @@ the same for both:
   clearance accounts: it books what a source calls for and is not yet booked,
   re-derives a booking whose source changed, and removes one whose source no
   longer calls for it. Settling twice changes nothing.
+- **The start decides only where a source not yet booked goes.** A booking
+  already made stays when the clearance account's start changes, whatever its
+  source.
 - **A booking follows its source**, confirmed or not — the one exception to
   I20. Re-deriving keeps what the source did not change: an entry whose part
   of the source is unchanged keeps its values and keys; one whose amount
@@ -1910,8 +1913,8 @@ the same for both:
   (`features/documents.md` §1).
 - **The mapping decides only where a document not yet booked goes.** Adding a
   provider to an account books that provider's documents dated after the
-  account's start. Removing a provider, moving it to another account, or a
-  change of the start leaves existing bookings where they are. A document
+  account's start. Removing a provider or moving it to another account leaves
+  existing bookings where they are, as a change of the start does (above). A document
   whose own change leaves it unbookable on its account — another currency, a
   total of zero — loses its booking.
 - **The booking** is dated on the document's `occurred_on`; its amount is the
