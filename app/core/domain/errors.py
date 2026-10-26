@@ -78,6 +78,14 @@ class UserAuthoredRow(DuplicateError):
         )
 
 
+class BookingRow(DuplicateError):
+    def __init__(self, row_id: int, of_row_id: int, booking: int) -> None:
+        super().__init__(
+            f"source transaction {booking} is a booking: a booking follows its source and is never "
+            f"a duplicate ({row_id} of {of_row_id})"
+        )
+
+
 class DuplicateChain(DuplicateError):
     def __init__(self, row_id: int, of_row_id: int) -> None:
         super().__init__(

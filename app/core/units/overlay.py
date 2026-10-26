@@ -720,7 +720,9 @@ def _book(rows: list[_Row], world: World) -> None:
         plan = (
             None
             if facts is None or account is None
-            else transfer_booking_plan(facts, account.currency, account.start)
+            else transfer_booking_plan(
+                facts, account.currency, account.start, booked=b is not None and b.account_id == account.id
+            )
         )
         if b is not None and (plan is None or account is None or b.account_id != account.id):
             rows[:] = [

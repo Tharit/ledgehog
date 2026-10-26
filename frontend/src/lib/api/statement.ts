@@ -34,7 +34,7 @@ export function getProvenance(sourceId: number, signal?: AbortSignal): Promise<P
  * Mark an imported row as a duplicate of `of` (another row of its account). `dryRun` writes
  * nothing and reports what would go and the versions to carry. 409 `conflict` (`details.reason`
  * `already_duplicate`, `duplicate_chain`, or entries that moved: `details.entry_ids`), 422
- * `invalid_duplicate` (`of_self`, `cross_account`, `user_authored`).
+ * `invalid_duplicate` (`of_self`, `cross_account`, `user_authored`, `booking`).
  */
 export function markDuplicate(
 	sourceId: number,

@@ -131,7 +131,10 @@ def plan_sync(
         booking = bookings.get(key)
         account = by_id.get(charge.counter_account_id)
         wanted = transfer_booking_plan(
-            charge, None if account is None else account.currency, None if account is None else account.start
+            charge,
+            None if account is None else account.currency,
+            None if account is None else account.start,
+            booked=booking is not None and account is not None and booking.account_id == account.id,
         )
         if (
             booking is not None

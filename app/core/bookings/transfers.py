@@ -53,17 +53,18 @@ def counter_amount(charge: ChargeFacts) -> int | None:
 
 
 def transfer_booking_plan(
-    charge: ChargeFacts, account_currency: str | None, account_start: date | None
+    charge: ChargeFacts, account_currency: str | None, account_start: date | None, booked: bool = False
 ) -> BookingPlan | None:
     """The booking `charge` calls for on the clearance account it points at (`account_currency` its currency,
     None where it points at none; `account_start` its start), None when it calls for none: the account is not
     a clearance account, or not in the currency the money arrived in (a clearance account takes a charge only
     in that currency; the user's choice of another, with an amount received typed, does not apply), or the
     charge is dated on or before the account's start (or it has none): the leg stays unpaired, in review
-    (spec §5.7)."""
+    (spec §5.7). The start decides only where a charge not yet booked goes: `booked` (the charge already
+    has its booking on this account) skips that check, so a start change never removes a booking (§5.8)."""
     if account_currency is None or account_currency != arrival_currency(charge):
         return None
-    if account_start is None or charge.booked_on <= account_start:
+    if not booked and (account_start is None or charge.booked_on <= account_start):
         return None
     amount = counter_amount(charge)
     if amount is None or amount == 0:

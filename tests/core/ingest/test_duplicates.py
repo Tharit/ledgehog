@@ -10,8 +10,10 @@ from typing import Any
 import pytest
 from sqlalchemy import Engine, text
 
+from app.core.accounts import create_account
 from app.core.domain.errors import (
     AlreadyDuplicate,
+    BookingRow,
     DuplicateChain,
     DuplicateCrossAccount,
     DuplicateOfSelf,
@@ -134,6 +136,17 @@ def test_marking_refuses_a_user_authored_row_in_both_directions(ledger: Ledger) 
         mark_duplicate(ledger.engine, u_src, a_src)
     with pytest.raises(UserAuthoredRow, match="user-authored"):
         mark_duplicate(ledger.engine, a_src, u_src)
+    _nothing_written(ledger, before)
+
+
+def test_marking_refuses_a_booking(ledger: Ledger) -> None:
+    # a clearance account holds bookings only: both rows are bookings
+    pot = create_account(ledger.engine, name="Pot", kind="clearance", currency="EUR", start_date=DAY)
+    b_src, _ = ledger.movement(account=pot, importer=None, origin="booking")
+    c_src, _ = ledger.movement(account=pot, importer=None, origin="booking")
+    before = _snapshot(ledger)
+    with pytest.raises(BookingRow, match="booking"):
+        mark_duplicate(ledger.engine, b_src, c_src)
     _nothing_written(ledger, before)
 
 

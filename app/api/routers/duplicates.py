@@ -27,6 +27,7 @@ from app.api.routers.statement import DuplicateOfOut
 from app.api.session import CurrentUser, EngineDep
 from app.core.domain.errors import (
     AlreadyDuplicate,
+    BookingRow,
     DuplicateChain,
     DuplicateCrossAccount,
     DuplicateError,
@@ -51,6 +52,7 @@ map_error(DuplicateRowMissing, 404, "not_found")
 map_error(DuplicateOfSelf, 422, "invalid_duplicate", details=lambda e: {"reason": "of_self"})
 map_error(DuplicateCrossAccount, 422, "invalid_duplicate", details=lambda e: {"reason": "cross_account"})
 map_error(UserAuthoredRow, 422, "invalid_duplicate", details=lambda e: {"reason": "user_authored"})
+map_error(BookingRow, 422, "invalid_duplicate", details=lambda e: {"reason": "booking"})
 # the rows are as they are: a state conflict
 map_error(AlreadyDuplicate, 409, "conflict", details=lambda e: {"reason": "already_duplicate"})
 map_error(DuplicateChain, 409, "conflict", details=lambda e: {"reason": "duplicate_chain"})

@@ -234,7 +234,10 @@ export function classifyWriteError(error: unknown): WriteFailure {
 		case 'invalid_duplicate':
 			return {
 				kind: 'error',
-				text: 'These two rows cannot stand in this relation.',
+				text:
+					reasonOf(error.details) === 'booking'
+						? 'A booking follows its source and is never a duplicate.'
+						: 'These two rows cannot stand in this relation.',
 				retryable: false
 			};
 		case 'validation_error':

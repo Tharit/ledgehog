@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
 
+from app.core.accounts import create_account
 from app.core.balance.derived import recompute_derived
 from tests.api.accounts_helpers import assert_envelope, seed_account, seed_manual
 from tests.api.conftest import login
@@ -246,6 +247,7 @@ def test_a_real_mark_without_the_versions_of_everything_it_writes_conflicts(
         ("self", 422, "invalid_duplicate", "of_self"),
         ("authored", 422, "invalid_duplicate", "user_authored"),
         ("authored_of", 422, "invalid_duplicate", "user_authored"),
+        ("booking", 422, "invalid_duplicate", "booking"),
         ("cross_account", 422, "invalid_duplicate", "cross_account"),
         ("already", 409, "conflict", "already_duplicate"),
         ("chain", 409, "conflict", "duplicate_chain"),
@@ -258,6 +260,9 @@ def test_marking_refusals(
     src, _ = movement(api_engine, acct)
     twin, _ = movement(api_engine, acct)
     authored, _ = movement(api_engine, acct, importer=None)
+    pot = create_account(api_engine, name="Pot", kind="clearance", currency="EUR", start_date=DAY)
+    booking, _ = movement(api_engine, pot, importer=None, origin="booking")
+    pot_row, _ = movement(api_engine, pot, importer=None, origin="booking")
     foreign, _ = movement(api_engine, other)
     marked_first, _ = movement(api_engine, acct)
     with api_engine.begin() as conn:
@@ -266,6 +271,7 @@ def test_marking_refusals(
         "self": (src, src),
         "authored": (authored, twin),
         "authored_of": (src, authored),
+        "booking": (booking, pot_row),
         "cross_account": (src, foreign),
         "already": (dup, twin),
         "chain": (src, dup),

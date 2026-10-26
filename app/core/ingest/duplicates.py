@@ -19,6 +19,7 @@ from sqlalchemy import Connection, Engine, text
 from app.core.balance.derived import recompute_derived
 from app.core.domain.errors import (
     AlreadyDuplicate,
+    BookingRow,
     DuplicateChain,
     DuplicateCrossAccount,
     DuplicateOfSelf,
@@ -121,9 +122,7 @@ def _begin(
     rows = {
         r.id: r
         for r in conn.execute(
-            text(
-                "SELECT id, account_id, importer, duplicate_of FROM source_transaction WHERE id = ANY(:ids)"
-            ),
+            text("SELECT id, account_id, origin, duplicate_of FROM source_transaction WHERE id = ANY(:ids)"),
             {"ids": list(row_ids)},
         )
     }
@@ -192,10 +191,11 @@ def _mark_once(
         row, of = rows[row_id], rows[of_row_id]
         if row.account_id != of.account_id:
             raise DuplicateCrossAccount(row_id, of_row_id)
-        if row.importer is None:
-            raise UserAuthoredRow(row_id, of_row_id, row_id)
-        if of.importer is None:
-            raise UserAuthoredRow(row_id, of_row_id, of_row_id)
+        for r in (row, of):
+            if r.origin == "booking":  # a booking follows its source and is never a duplicate
+                raise BookingRow(row_id, of_row_id, r.id)
+            if r.origin == "user":
+                raise UserAuthoredRow(row_id, of_row_id, r.id)
         if row.duplicate_of is not None:
             raise AlreadyDuplicate(row_id)
         if of.duplicate_of is not None:

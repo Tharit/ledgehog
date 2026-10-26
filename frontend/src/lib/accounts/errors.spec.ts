@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '#lib/api/index.js';
-import { classifyAccountError, describeAccountFailure, failureField } from './errors.js';
+import {
+	classifyAccountError,
+	classifyWriteError,
+	describeAccountFailure,
+	failureField
+} from './errors.js';
 
 const error = (status: number, code: string, details: unknown = null) =>
 	new ApiError(status, code, 'x', details);
@@ -57,5 +62,16 @@ describe('where and how a failure is said', () => {
 			'other'
 		] as const)
 			expect(describeAccountFailure({ kind }).length).toBeGreaterThan(10);
+	});
+});
+
+describe('classifyWriteError, invalid_duplicate', () => {
+	it('says a booking is never a duplicate', () => {
+		const failure = classifyWriteError(error(422, 'invalid_duplicate', { reason: 'booking' }));
+		expect(failure.text).toMatch(/booking/);
+	});
+	it('says the generic relation for other reasons', () => {
+		const failure = classifyWriteError(error(422, 'invalid_duplicate', { reason: 'of_self' }));
+		expect(failure.text).toMatch(/cannot stand in this relation/);
 	});
 });
