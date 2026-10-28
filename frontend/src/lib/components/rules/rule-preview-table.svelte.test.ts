@@ -34,6 +34,35 @@ function table() {
 
 beforeEach(() => vi.mocked(unitPanel.open).mockClear());
 
+describe('RulePreviewTable: the amount column', () => {
+	it('names one shared currency in the header and codes no cell', () => {
+		table();
+
+		expect(screen.getByRole('columnheader', { name: 'Amount (EUR)' })).toBeInTheDocument();
+		expect(document.body.textContent).not.toMatch(/950\.00\s*EUR/);
+	});
+
+	it('keeps the plain header and codes every cell where the currencies mix', () => {
+		render(RulePreviewTable, {
+			props: {
+				rows: [
+					previewRow({ entry_id: 21 }),
+					previewRow({ entry_id: 22, amount: { amount: -500, currency: 'USD' } })
+				],
+				columns: ['counterparty_name'],
+				sets: 'category',
+				lookups: buildLookups({ accounts: [account()] }),
+				ruleName: () => undefined,
+				label: 'Matches'
+			}
+		});
+
+		expect(screen.getByRole('columnheader', { name: 'Amount' })).toBeInTheDocument();
+		expect(document.body.textContent).toMatch(/950\.00\s*EUR/);
+		expect(document.body.textContent).toMatch(/5\.00\s*USD/);
+	});
+});
+
 describe('RulePreviewTable: rows open the review panel', () => {
 	it('opens on a click, by entry id', async () => {
 		table();

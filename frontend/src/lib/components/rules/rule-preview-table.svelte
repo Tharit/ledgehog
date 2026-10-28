@@ -3,6 +3,7 @@
 	import DateDisplay from '#lib/components/common/date-display.svelte';
 	import MoneyDisplay from '#lib/components/common/money-display.svelte';
 	import ReviewBadge from '#lib/components/common/review-badge.svelte';
+	import { amountHeader, columnCurrency } from '#lib/format/index.js';
 	import type { Lookups } from '#lib/ledger/lookups.js';
 	import { FIELD_LABELS, type ConditionField } from '#lib/rules/conditions.js';
 	import { sourceText } from '#lib/rules/preview.js';
@@ -39,6 +40,10 @@
 		label: string;
 		locale?: string;
 	} = $props();
+
+	// rows can come from accounts of several currencies: one shared currency heads the column,
+	// mixed ones are coded in every cell (patterns §2)
+	const amountCode = $derived(columnCurrency(rows.map((r) => r.amount.currency)));
 
 	const rules = $derived(knownRules(ruleName));
 
@@ -83,7 +88,9 @@
 			<tr class="border-b">
 				<th scope="col" class="px-3 pb-1.5 text-left font-medium whitespace-nowrap">Booked</th>
 				<th scope="col" class="px-3 pb-1.5 text-left font-medium whitespace-nowrap">Account</th>
-				<th scope="col" class="px-3 pb-1.5 text-right font-medium whitespace-nowrap">Amount</th>
+				<th scope="col" class="px-3 pb-1.5 text-right font-medium whitespace-nowrap">
+					{amountHeader('Amount', amountCode)}
+				</th>
 				<th scope="col" class="px-3 pb-1.5 text-left font-medium whitespace-nowrap">Currently</th>
 				{#each columns as field, i (field)}
 					<th
@@ -128,7 +135,12 @@
 							/>{/if}
 					</td>
 					<td class="text-right whitespace-nowrap">
-						<MoneyDisplay minor={row.amount.amount} currency={row.amount.currency} {locale} />
+						<MoneyDisplay
+							minor={row.amount.amount}
+							currency={row.amount.currency}
+							{locale}
+							showCurrency={amountCode === null}
+						/>
 					</td>
 					<td class="min-w-44">
 						{#if row.current_value === null}

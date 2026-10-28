@@ -59,6 +59,7 @@ describe('DocumentsTable', () => {
 		table({ documents: [free, documentRow({ id: 3, total: { amount: 500, currency: 'USD' } })] });
 		expect(screen.getByText('−47.31 EUR')).toBeInTheDocument();
 		expect(screen.getByText('+5.00 USD')).toBeInTheDocument();
+		expect(screen.getByRole('columnheader', { name: 'Amount' })).toBeInTheDocument();
 	});
 
 	it('shows skeleton rows while loading', () => {

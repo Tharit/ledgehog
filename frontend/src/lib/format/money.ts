@@ -113,3 +113,21 @@ export function parseMoneyInput(text: string, currency: string, locale = 'en'): 
 	if (minor > BigInt(Number.MAX_SAFE_INTEGER)) return { ok: false, error: 'too_large' };
 	return { ok: true, minor: negative ? -Number(minor) || 0 : Number(minor) };
 }
+
+/**
+ * The one currency a column of amounts shares, or null where it is empty or mixes several
+ * (patterns §2): a column of one currency names it in its header and its cells show no code.
+ */
+export function columnCurrency(currencies: Iterable<string>): string | null {
+	let found: string | null = null;
+	for (const currency of currencies) {
+		if (found === null) found = currency;
+		else if (found !== currency) return null;
+	}
+	return found;
+}
+
+/** A column header with its shared currency: "Amount (EUR)"; the plain label where it is null. */
+export function amountHeader(label: string, currency: string | null): string {
+	return currency ? `${label} (${currency})` : label;
+}

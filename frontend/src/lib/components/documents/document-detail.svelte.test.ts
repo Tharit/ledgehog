@@ -24,6 +24,11 @@ describe('DocumentDetail', () => {
 		expect(within(table).getByText('2')).toBeInTheDocument();
 	});
 
+	it('names the document currency in the lines header', () => {
+		view(documentDetail());
+		expect(screen.getByRole('columnheader', { name: 'Amount (EUR)' })).toBeInTheDocument();
+	});
+
 	it('says when there are no lines', () => {
 		view(documentDetail({ lines: [] }));
 		expect(screen.getByText('This document has no lines.')).toBeInTheDocument();

@@ -6,7 +6,7 @@
 	import ErrorState from '#lib/components/common/error-state.svelte';
 	import MoneyDisplay from '#lib/components/common/money-display.svelte';
 	import Notice from '#lib/components/common/notice.svelte';
-	import { formatCount } from '#lib/format/index.js';
+	import { amountHeader, columnCurrency, formatCount } from '#lib/format/index.js';
 	import type { Account, DocumentRow } from '#lib/types/domain.js';
 	import { cn } from '#lib/utils.js';
 	import { DOCUMENT_COLUMNS, DOCUMENT_GRID_TEMPLATE } from './columns.js';
@@ -47,8 +47,10 @@
 		onloadmore?: () => void | Promise<void>;
 	} = $props();
 
-	// the currency is written where amounts of several currencies are listed together (patterns §2)
-	const showCurrency = $derived(new Set(documents.map((d) => d.total.currency)).size > 1);
+	// the currency heads the amount column where the documents held share one, and is written in
+	// every cell where they mix (patterns §2)
+	const columnCode = $derived(columnCurrency(documents.map((d) => d.total.currency)));
+	const showCurrency = $derived(columnCode === null && documents.length > 0);
 	const failure = $derived(error ? describeDocumentError(error.code, 'documents') : null);
 	const moreFailure = $derived(
 		moreError ? describeDocumentError(moreError.code, 'documents') : null
@@ -99,7 +101,7 @@
 				>
 					{#each DOCUMENT_COLUMNS as column (column.id)}
 						<div role="columnheader" class={column.align === 'right' ? 'text-right' : undefined}>
-							{column.header}
+							{column.id === 'amount' ? amountHeader(column.header, columnCode) : column.header}
 						</div>
 					{/each}
 				</div>

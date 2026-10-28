@@ -46,6 +46,20 @@ function table(props = {}) {
 
 const row = (key: string) => document.querySelector(`[data-item-key="${key}"]`) as HTMLElement;
 
+describe('StatementTable headers', () => {
+	it('names the account currency in the amount and balance headers, and the cells show none', () => {
+		table({ account: { kind: 'checking', records_since_zero: null, currency: 'EUR' } });
+		expect(screen.getByRole('columnheader', { name: 'Amount (EUR)' })).toBeInTheDocument();
+		expect(screen.getByRole('columnheader', { name: 'Balance (EUR)' })).toBeInTheDocument();
+		expect(within(row('source:4')).queryByText(/EUR/)).toBeNull();
+	});
+
+	it('falls back to the currency of the rows held', () => {
+		table();
+		expect(screen.getByRole('columnheader', { name: 'Amount (EUR)' })).toBeInTheDocument();
+	});
+});
+
 describe('StatementTable rows', () => {
 	it('shows a source row with its counterparty, purpose, amount and running balance', () => {
 		table();

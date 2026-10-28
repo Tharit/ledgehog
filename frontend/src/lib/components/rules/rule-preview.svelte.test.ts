@@ -117,7 +117,7 @@ describe('RulePreview: the matched entries', () => {
 		expect(names.slice(2)).toEqual([
 			'Booked',
 			'Account',
-			'Amount',
+			'Amount (EUR)',
 			'Currently',
 			'Counterparty name'
 		]);
@@ -278,7 +278,7 @@ describe('RulePreview: the two lists to check by hand', () => {
 			'Source transaction',
 			'Booked',
 			'Account',
-			'Amount',
+			'Amount (EUR)',
 			'Currently',
 			'Counterparty name'
 		]);

@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { formatMoney, minorUnitDigits, parseMoneyInput } from './money.js';
+import {
+	amountHeader,
+	columnCurrency,
+	formatMoney,
+	minorUnitDigits,
+	parseMoneyInput
+} from './money.js';
 
 describe('minorUnitDigits', () => {
 	it('follows the currency, not an assumption of two', () => {
@@ -135,5 +141,17 @@ describe('parseMoneyInput', () => {
 			const text = formatMoney(minor, 'EUR', { locale: 'de', showPlus: false });
 			expect(parseMoneyInput(text, 'EUR', 'de')).toEqual(ok(minor));
 		}
+	});
+});
+
+describe('columnCurrency / amountHeader', () => {
+	it('names the one shared currency, else null', () => {
+		expect(columnCurrency(['EUR', 'EUR'])).toBe('EUR');
+		expect(columnCurrency(['EUR', 'USD'])).toBeNull();
+		expect(columnCurrency([])).toBeNull();
+	});
+	it('puts the currency in the header', () => {
+		expect(amountHeader('Amount', 'EUR')).toBe('Amount (EUR)');
+		expect(amountHeader('Amount', null)).toBe('Amount');
 	});
 });

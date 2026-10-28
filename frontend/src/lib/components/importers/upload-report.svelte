@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { formatCount, formatDate, formatMoney } from '#lib/format/index.js';
+	import { amountHeader, formatCount, formatDate, formatMoney } from '#lib/format/index.js';
 	import type { DryRunReport } from '#lib/types/domain.js';
 
 	// What a dry run carries, so that a profile can be judged before the file is used (ux/views/
@@ -23,6 +23,8 @@
 
 	const count = (n: number) => formatCount(n, locale);
 	const money = (minor: number) => formatMoney(minor, currency, { locale, showCurrency: true });
+	// the sample's amounts all carry the report's currency: it heads their column, the cells show none
+	const cell = (minor: number) => formatMoney(minor, currency, { locale });
 	const date = (iso: string) => formatDate(iso, locale);
 
 	const counts = $derived(
@@ -79,7 +81,7 @@
 							<tr>
 								<th class="px-2 py-1 font-medium">Line</th>
 								<th class="px-2 py-1 font-medium">Booking date</th>
-								<th class="px-2 py-1 text-right font-medium">Amount</th>
+								<th class="px-2 py-1 text-right font-medium">{amountHeader('Amount', currency)}</th>
 								<th class="px-2 py-1 font-medium">Cells</th>
 							</tr>
 						</thead>
@@ -89,7 +91,7 @@
 									<td class="px-2 py-1 tabular-nums">{row.row}</td>
 									<td class="px-2 py-1 whitespace-nowrap">{date(row.booked_on)}</td>
 									<td class="px-2 py-1 text-right whitespace-nowrap tabular-nums">
-										{money(row.amount_minor)}
+										{cell(row.amount_minor)}
 									</td>
 									<td class="max-w-md truncate px-2 py-1 text-muted-foreground">
 										{row.cells.join(' | ')}

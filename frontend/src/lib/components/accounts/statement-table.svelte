@@ -6,7 +6,7 @@
 	import KeyboardHelp, { type HelpGroup } from '#lib/components/common/keyboard-help.svelte';
 	import Notice from '#lib/components/common/notice.svelte';
 	import { cursorAfterRefetch, isInvestment, itemKey } from '#lib/accounts/statement.js';
-	import { formatCount } from '#lib/format/index.js';
+	import { amountHeader, columnCurrency, formatCount } from '#lib/format/index.js';
 	import { describeLoadError } from '#lib/ledger/errors.js';
 	import { ledgerKey, moveCursor } from '#lib/ledger/keys.js';
 	import type { Account, StatementItem, StatementRecord } from '#lib/types/domain.js';
@@ -38,7 +38,7 @@
 		items: readonly StatementItem[];
 		total: number;
 		status: 'loading' | 'ready' | 'error';
-		account: Pick<Account, 'kind' | 'records_since_zero'>;
+		account: Pick<Account, 'kind' | 'records_since_zero'> & { currency?: string };
 		loadingMore?: boolean;
 		error?: { code: string; message: string } | null;
 		moreError?: { code: string; message: string } | null;
@@ -56,6 +56,18 @@
 	let container = $state<HTMLElement | null>(null);
 	let lastIndex = 0;
 
+	// a statement is one account, so one currency: it heads the amount and balance columns and the
+	// cells show none (patterns §2); without the account's own, the rows held say it
+	const currency = $derived(
+		account.currency ??
+			columnCurrency(
+				items.map((item) => (item.kind === 'record' ? item.balance.currency : item.amount.currency))
+			)
+	);
+	const headerOf = (column: (typeof STATEMENT_COLUMNS)[number]) =>
+		column.id === 'amount' || column.id === 'balance'
+			? amountHeader(column.header, currency)
+			: column.header;
 	const investment = $derived(isInvestment(account.kind));
 	const localising = $derived(new Set(account.records_since_zero ?? []));
 	const cursorIndex = $derived(
@@ -180,9 +192,12 @@
 					{#each STATEMENT_COLUMNS as column (column.id)}
 						<div
 							role="columnheader"
-							class={'align' in column && column.align === 'right' ? 'text-right' : undefined}
+							class={cn(
+								'min-w-0 truncate',
+								'align' in column && column.align === 'right' && 'text-right'
+							)}
 						>
-							{column.header}
+							{headerOf(column)}
 						</div>
 					{/each}
 				</div>

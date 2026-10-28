@@ -3,13 +3,16 @@
 	import MoneyDisplay from '#lib/components/common/money-display.svelte';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Input } from '#lib/components/ui/input/index.js';
-	import { formatCount } from '#lib/format/index.js';
+	import { amountHeader, columnCurrency, formatCount } from '#lib/format/index.js';
 	import { selectable, type RuleExampleStore } from '#lib/stores/rule-example.svelte.js';
 
 	// The find box of the example: type, the entries list answers (after a pause), ↑ ↓ move through
 	// the results, Enter picks the highlighted one, Esc closes. A combobox with a listbox; the
 	// header row names the columns and is not part of the list. Enter never submits the form.
 	let { store, locale = 'en' }: { store: RuleExampleStore; locale?: string } = $props();
+
+	// one currency among the candidates heads the amount column; mixed ones are coded in every cell
+	const amountCode = $derived(columnCurrency(store.results.map((e) => e.amount.currency)));
 
 	const LISTBOX = 'rule-example-results';
 	const optionId = (index: number) => `rule-example-option-${index}`;
@@ -86,7 +89,7 @@
 							data-slot="example-results-header"
 						>
 							<span>Booked</span>
-							<span class="text-right">Amount</span>
+							<span class="text-right">{amountHeader('Amount', amountCode)}</span>
 							<span>Counterparty name</span>
 							<span>Purpose</span>
 							<span>Booking text</span>
@@ -118,6 +121,7 @@
 										minor={entry.amount.amount}
 										currency={entry.amount.currency}
 										{locale}
+										showCurrency={amountCode === null}
 									/>
 									{#if entry.source}
 										<span class="truncate" title={entry.source.counterparty_name ?? undefined}>
