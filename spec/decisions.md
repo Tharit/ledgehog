@@ -3817,6 +3817,7 @@ Design §5; `ux/views/account.md`.
 - **A page's facts are figure cards,** as on the Overview: an account's balance, a document's total.
 - **An account's secondary actions move into the page header,** before "Add entry"; patterns §11.7 bounds only
   the primary action.
+- **Row hover is a tint of the cursor,** `row-hover`: `surface-muted` on a card read as a hole in the table.
 - Rejected: *the dense views on the background*, as in the mockup's ledger and review — an exception to
   remember, while a flush card keeps the compact density; *putting everything on cards as it is* — headers and
   controls on cards read heavier and blur what is content; *"Set balance" in the Balance card as well* — one
