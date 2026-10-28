@@ -342,7 +342,7 @@ def test_the_documents_are_a_real_importer_instance_and_are_stored_only(seeded: 
     assert _one(dev_engine, "SELECT count(*) FROM external_document_line") >= 9
     with dev_engine.connect() as conn:
         page = list_documents(conn, DocumentFilter(), limit=100, offset=0)
-        by_id = {d.external_id: d for d in page.documents}
+        by_id = {d.source_id: d for d in page.documents}
         assert page.total == len(dev_seed_data.DOC_SCENARIOS) == len(by_id)
         assert {d.provider for d in page.documents} == {"paypal", "amazon"}
         detail = get_document(conn, by_id["PP-1002"].id)

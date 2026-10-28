@@ -4,12 +4,12 @@ import type { Booking } from '#lib/types/domain.js';
 
 /** "Booked from amazon order 304-1" or "Booked from Amazon clearing’s charge". */
 export function bookedFromText(
-	booking: Pick<Booking, 'kind' | 'provider' | 'external_id'>,
+	booking: Pick<Booking, 'kind' | 'provider' | 'reference'>,
 	accountName: string | null
 ): string {
 	if (booking.kind === 'transfer') return `Booked from ${accountName ?? 'an account'}’s charge`;
 	if (!booking.provider) return 'Booked from a document';
-	return `Booked from ${booking.provider} order${booking.external_id ? ` ${booking.external_id}` : ''}`;
+	return `Booked from ${booking.provider} order${booking.reference ? ` ${booking.reference}` : ''}`;
 }
 
 /** Where a booking's source opens: its document's page; a charge has none (its unit opens in review). */

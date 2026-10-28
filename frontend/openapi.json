@@ -343,7 +343,7 @@
         "type": "object"
       },
       "BookingOut": {
-        "description": "A booking's source, read only for navigation (the work panel's \"Booked from ...\", \"Open document\").\n`document`: the document's id, `provider` and `external_id`; `transfer`: the charge's entry id and\nits `account_id`.",
+        "description": "A booking's source, read only for navigation (the work panel's \"Booked from ...\", \"Open document\").\n`document`: the document's id, `provider` and `reference`; `transfer`: the charge's entry id and\nits `account_id`.",
         "properties": {
           "account_id": {
             "anyOf": [
@@ -355,17 +355,6 @@
               }
             ],
             "title": "Account Id"
-          },
-          "external_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "External Id"
           },
           "id": {
             "title": "Id",
@@ -389,13 +378,24 @@
               }
             ],
             "title": "Provider"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
           }
         },
         "required": [
           "kind",
           "id",
           "provider",
-          "external_id",
+          "reference",
           "account_id"
         ],
         "title": "BookingOut",
@@ -1297,8 +1297,10 @@
           "providers": {
             "default": [],
             "items": {
+              "maxLength": 200,
               "type": "string"
             },
+            "maxItems": 50,
             "title": "Providers",
             "type": "array"
           },
@@ -1662,10 +1664,6 @@
               }
             ]
           },
-          "external_id": {
-            "title": "External Id",
-            "type": "string"
-          },
           "id": {
             "title": "Id",
             "type": "integer"
@@ -1722,6 +1720,21 @@
             "title": "Provider",
             "type": "string"
           },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
           "title": {
             "anyOf": [
               {
@@ -1745,12 +1758,13 @@
           "id",
           "version",
           "provider",
-          "external_id",
+          "source_id",
           "importer_instance_id",
           "occurred_on",
           "total",
           "merchant_name",
           "title",
+          "reference",
           "line_count",
           "booking",
           "not_booked",
@@ -1805,10 +1819,6 @@
               }
             ]
           },
-          "external_id": {
-            "title": "External Id",
-            "type": "string"
-          },
           "id": {
             "title": "Id",
             "type": "integer"
@@ -1858,6 +1868,21 @@
             "title": "Provider",
             "type": "string"
           },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
           "title": {
             "anyOf": [
               {
@@ -1881,12 +1906,13 @@
           "id",
           "version",
           "provider",
-          "external_id",
+          "source_id",
           "importer_instance_id",
           "occurred_on",
           "total",
           "merchant_name",
           "title",
+          "reference",
           "line_count",
           "booking",
           "not_booked"
@@ -8795,8 +8821,10 @@
             "anyOf": [
               {
                 "items": {
+                  "maxLength": 200,
                   "type": "string"
                 },
+                "maxItems": 50,
                 "type": "array"
               },
               {

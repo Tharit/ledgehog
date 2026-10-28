@@ -158,7 +158,7 @@ def test_the_overlap_catches_a_message_a_server_made_visible_late():
     late = accepted(3, sent="Mon, 19 Jan 2026 09:00:00 +0000")
     rig.mailbox.add(3, late, date(2026, 1, 19))  # a lower UID, arrived the day before the last run
     delivery = rig.run_and_apply(today=date(2026, 1, 21))
-    assert 3 in rig.mailbox.fetched() and [d.external_id for d in delivery.documents] == ["message:o3@shop"]
+    assert 3 in rig.mailbox.fetched() and [d.source_id for d in delivery.documents] == ["message:o3@shop"]
     assert delivery.position is not None and delivery.position["last_uid"] == 5  # never moves back
 
 

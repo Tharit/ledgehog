@@ -29,8 +29,8 @@ def queue(isolated_engine: Engine) -> Iterator[ModelQueue]:
         configure_model_queue(None)
 
 
-def _ids(scene: Scene, external_id: str = "A1") -> set[int]:
-    return {int(e.id) for e in scene.entries(external_id)}
+def _ids(scene: Scene, source_id: str = "A1") -> set[int]:
+    return {int(e.id) for e in scene.entries(source_id)}
 
 
 def test_a_booking_ingest_lists_its_entries(scene: Scene, queue: ModelQueue) -> None:

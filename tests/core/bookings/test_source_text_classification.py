@@ -30,8 +30,8 @@ def _rule(scene: Scene, sets: str, target: int, conditions: list[dict[str, str]]
     )
 
 
-def _by_text(scene: Scene, external_id: str = "A1") -> dict[str | None, object]:
-    return {e.source_text: e for e in scene.entries(external_id)}
+def _by_text(scene: Scene, source_id: str = "A1") -> dict[str | None, object]:
+    return {e.source_text: e for e in scene.entries(source_id)}
 
 
 def test_a_source_text_rule_decides_one_line_of_a_booking(scene: Scene) -> None:
@@ -107,7 +107,7 @@ def test_the_statement_marks_a_booking_with_its_origin_and_source(scene: Scene) 
         st = get_statement(conn, account)
     (item,) = [i for i in st.items if isinstance(i, SourceItem)]
     assert item.origin == "booking" and item.booking is not None
-    assert (item.booking.kind, item.booking.provider, item.booking.external_id) == (
+    assert (item.booking.kind, item.booking.provider, item.booking.reference) == (
         "document",
         "Amazon",
         "A1",

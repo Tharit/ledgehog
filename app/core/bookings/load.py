@@ -40,7 +40,7 @@ def load_documents(conn: Connection, ids: list[int] | None = None) -> list[Docum
     where = "" if ids is None else " WHERE d.id = ANY(:ids)"
     rows = conn.execute(
         text(
-            "SELECT d.id, d.provider, d.external_id, d.occurred_on, d.total, d.currency,"
+            "SELECT d.id, d.provider, d.reference, d.occurred_on, d.total, d.currency,"
             " l.description, l.amount"
             " FROM external_document d LEFT JOIN external_document_line l ON l.document_id = d.id"
             f"{where} ORDER BY d.id, l.line_no"  # noqa: S608
@@ -51,12 +51,12 @@ def load_documents(conn: Connection, ids: list[int] | None = None) -> list[Docum
     lines: dict[int, list[tuple[str, int]]] = {}
     for r in rows:
         if r.id not in out:
-            out[r.id] = DocumentFacts(r.id, r.provider, r.external_id, r.occurred_on, r.total, r.currency)
+            out[r.id] = DocumentFacts(r.id, r.provider, r.reference, r.occurred_on, r.total, r.currency)
             lines[r.id] = []
         if r.description is not None:
             lines[r.id].append((r.description, r.amount))
     return [
-        DocumentFacts(d.id, d.provider, d.external_id, d.occurred_on, d.total, d.currency, tuple(lines[d.id]))
+        DocumentFacts(d.id, d.provider, d.reference, d.occurred_on, d.total, d.currency, tuple(lines[d.id]))
         for d in out.values()
     ]
 

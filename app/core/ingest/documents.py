@@ -1,7 +1,7 @@
 """The document run (spec §5.5, architecture §5.2 'run transaction'), the `documents` kind.
 
 A delivery is upserted in ONE transaction under the settle lock (shared), keyed on `(provider,
-external_id)`; documents belong to no account. A document's lines are replaced with each delivery.
+source_id)`; documents belong to no account. A document's lines are replaced with each delivery.
 `version` moves when the content changes: date, total, currency, merchant, title or lines (`raw` alone
 does not move it). Document ingest writes documents only: it resolves no entry and links
 nothing. What a document means for the ledger, its booking on a clearance account, is settling's
@@ -136,7 +136,7 @@ def _write(
     changed: list[int] = []
     existing = _existing(conn, documents)
     for doc in documents:
-        before = existing.get((doc.provider, doc.external_id))
+        before = existing.get((doc.provider, doc.source_id))
         if before is None:
             _insert(conn, run, doc)
             inserted += 1
@@ -167,7 +167,7 @@ def _write(
 def _check_contract(conn: Connection, documents: Sequence[IncomingDocument]) -> None:
     seen: dict[tuple[str, str], int] = {}
     for i, doc in enumerate(documents):
-        key = (doc.provider, doc.external_id)
+        key = (doc.provider, doc.source_id)
         if key in seen:
             raise ContractViolation(
                 "repeated_document", f"document {i} repeats the key of document {seen[key]}"
@@ -194,6 +194,7 @@ class _Stored:
     currency: str
     merchant_name: str | None
     title: str | None
+    reference: str | None
     lines: tuple[tuple[str, int, int | None], ...]
 
 
@@ -203,13 +204,13 @@ def _existing(conn: Connection, documents: Sequence[IncomingDocument]) -> dict[t
     note_change(conn, DOCUMENTS)  # its own FOR UPDATE below, not `lock_rows`
     rows = conn.execute(
         text(
-            "SELECT d.id, d.provider, d.external_id, d.occurred_on, d.total, d.currency,"
-            " d.merchant_name, d.title"
+            "SELECT d.id, d.provider, d.source_id, d.occurred_on, d.total, d.currency,"
+            " d.merchant_name, d.title, d.reference"
             " FROM external_document d"
-            " JOIN unnest(CAST(:p AS text[]), CAST(:e AS text[])) AS k(provider, external_id)"
-            " ON k.provider = d.provider AND k.external_id = d.external_id ORDER BY d.id FOR UPDATE OF d"
+            " JOIN unnest(CAST(:p AS text[]), CAST(:e AS text[])) AS k(provider, source_id)"
+            " ON k.provider = d.provider AND k.source_id = d.source_id ORDER BY d.id FOR UPDATE OF d"
         ),
-        {"p": [d.provider for d in documents], "e": [d.external_id for d in documents]},
+        {"p": [d.provider for d in documents], "e": [d.source_id for d in documents]},
     ).all()
     lines: dict[int, list[tuple[str, int, int | None]]] = {r.id: [] for r in rows}
     for ln in conn.execute(
@@ -221,8 +222,15 @@ def _existing(conn: Connection, documents: Sequence[IncomingDocument]) -> dict[t
     ):
         lines[ln.document_id].append((ln.description, ln.amount, ln.qty))
     return {
-        (r.provider, r.external_id): _Stored(
-            r.id, r.occurred_on, r.total, r.currency.strip(), r.merchant_name, r.title, tuple(lines[r.id])
+        (r.provider, r.source_id): _Stored(
+            r.id,
+            r.occurred_on,
+            r.total,
+            r.currency.strip(),
+            r.merchant_name,
+            r.title,
+            r.reference,
+            tuple(lines[r.id]),
         )
         for r in rows
     }
@@ -231,7 +239,7 @@ def _existing(conn: Connection, documents: Sequence[IncomingDocument]) -> dict[t
 def _params(run: Any, doc: IncomingDocument) -> dict[str, Any]:
     return {
         "provider": doc.provider,
-        "external_id": doc.external_id,
+        "source_id": doc.source_id,
         "inst": run.importer_instance_id,
         "run_id": run.id,
         "occurred_on": doc.occurred_on,
@@ -239,6 +247,7 @@ def _params(run: Any, doc: IncomingDocument) -> dict[str, Any]:
         "currency": doc.currency,
         "merchant": doc.merchant_name,
         "title": doc.title,
+        "reference": doc.reference,
         "raw": json.dumps(doc.raw),
     }
 
@@ -246,9 +255,11 @@ def _params(run: Any, doc: IncomingDocument) -> dict[str, Any]:
 def _insert(conn: Connection, run: Any, doc: IncomingDocument) -> None:
     doc_id = conn.execute(
         text(
-            "INSERT INTO external_document (provider, external_id, importer_instance_id, import_run_id,"
-            " occurred_on, total, currency, merchant_name, title, raw) VALUES (:provider, :external_id,"
-            " :inst, :run_id, :occurred_on, :total, :currency, :merchant, :title, CAST(:raw AS jsonb))"
+            "INSERT INTO external_document (provider, source_id, importer_instance_id, import_run_id,"
+            " occurred_on, total, currency, merchant_name, title, reference, raw)"
+            " VALUES (:provider, :source_id,"
+            " :inst, :run_id, :occurred_on, :total, :currency, :merchant, :title, :reference,"
+            " CAST(:raw AS jsonb))"
             " RETURNING id"
         ),
         _params(run, doc),
@@ -265,13 +276,14 @@ def _update(conn: Connection, run: Any, doc: IncomingDocument, before: _Stored) 
         or before.currency != doc.currency
         or before.merchant_name != doc.merchant_name
         or before.title != doc.title
+        or before.reference != doc.reference
         or before.lines != after_lines
     )
     conn.execute(
         text(
             "UPDATE external_document SET importer_instance_id = :inst, import_run_id = :run_id,"
             " occurred_on = :occurred_on, total = :total, currency = :currency, merchant_name = :merchant,"
-            " title = :title, raw = CAST(:raw AS jsonb),"
+            " title = :title, reference = :reference, raw = CAST(:raw AS jsonb),"
             " version = version + CASE WHEN :bump THEN 1 ELSE 0 END"
             " WHERE id = :id"
         ),

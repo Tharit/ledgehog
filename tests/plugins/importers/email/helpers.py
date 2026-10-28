@@ -220,7 +220,7 @@ class StubExtractor:
 
 @dataclass
 class StubBuilder:
-    """A document per extraction: provider from `merchant`, `external_id` from `order_id` else the message."""
+    """A document per extraction: provider from `merchant`, `source_id` from `order_id` else the message."""
 
     seen: list[MessageContext] = field(default_factory=list)
     minor_units: list[Callable[[str], int]] = field(default_factory=list)
@@ -233,7 +233,7 @@ class StubBuilder:
         a = extraction.answer
         return IncomingDocument(
             provider=str(a["merchant"]),
-            external_id=str(a.get("order_id") or f"message:{context.identity}"),
+            source_id=str(a.get("order_id") or f"message:{context.identity}"),
             occurred_on=context.date,
             total_minor=-100,
             currency="EUR",

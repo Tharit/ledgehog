@@ -185,17 +185,22 @@ class IncomingDocumentLine:
 
 @dataclass(frozen=True, slots=True)
 class IncomingDocument:
-    """One document (spec §5.5), keyed on `(provider, external_id)`. `total_minor` is signed integer
-    minor units of `currency`, negative for an order, positive for a refund (a total of 0 books nothing)."""
+    """One document (spec §5.5), keyed on `(provider, source_id)`. `total_minor` is signed integer
+    minor units of `currency`, negative for an order, positive for a refund (a total of 0 books nothing).
+
+    `reference` is the order, invoice or booking number as a person would quote it, where the provider
+    names one: shown and searched, never the key (an importer whose source names none synthesises an
+    `source_id`)."""
 
     provider: str
-    external_id: str
+    source_id: str
     occurred_on: date
     total_minor: int
     currency: str
     raw: Any
     merchant_name: str | None = None
     title: str | None = None
+    reference: str | None = None
     lines: tuple[IncomingDocumentLine, ...] = ()
 
 

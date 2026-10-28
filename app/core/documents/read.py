@@ -43,13 +43,14 @@ doc = table(
     "external_document",
     column("id"),
     column("provider"),
-    column("external_id"),
+    column("source_id"),
     column("importer_instance_id"),
     column("occurred_on"),
     column("total"),
     column("currency"),
     column("merchant_name"),
     column("title"),
+    column("reference"),
     column("version"),
 )
 line = table(
@@ -82,13 +83,14 @@ MAX_PAGE = 500
 class DocumentRow:
     id: int
     provider: str
-    external_id: str
+    source_id: str
     importer_instance_id: int | None
     occurred_on: date
     total: int  # signed minor units, in `currency`; a refund is positive
     currency: str
     merchant_name: str | None
     title: str | None
+    reference: str | None
     version: int
     line_count: int
     booking: DocumentBooking | None = None  # the booking made from it, if any
@@ -156,6 +158,7 @@ def _where(flt: DocumentFilter) -> tuple[ColumnElement[bool], ...]:
                 or_(
                     doc.c.merchant_name.ilike(pattern, escape="\\"),
                     doc.c.title.ilike(pattern, escape="\\"),
+                    doc.c.reference.ilike(pattern, escape="\\"),
                     exists(
                         select(1).where(
                             line.c.document_id == doc.c.id, line.c.description.ilike(pattern, escape="\\")
@@ -180,13 +183,14 @@ def _rows_stmt() -> Select[Any]:
         select(
             doc.c.id,
             doc.c.provider,
-            doc.c.external_id,
+            doc.c.source_id,
             doc.c.importer_instance_id,
             doc.c.occurred_on,
             doc.c.total,
             doc.c.currency,
             doc.c.merchant_name,
             doc.c.title,
+            doc.c.reference,
             doc.c.version,
             _LINES.label("line_count"),
         )
@@ -200,13 +204,14 @@ def _build(rows: Sequence[Any]) -> tuple[DocumentRow, ...]:
         DocumentRow(
             id=r.id,
             provider=r.provider,
-            external_id=r.external_id,
+            source_id=r.source_id,
             importer_instance_id=r.importer_instance_id,
             occurred_on=r.occurred_on,
             total=r.total,
             currency=r.currency.strip(),
             merchant_name=r.merchant_name,
             title=r.title,
+            reference=r.reference,
             version=r.version,
             line_count=r.line_count,
         )
@@ -251,7 +256,7 @@ def _with_booking(
             not_booked=None
             if r.id in booked
             else not_booked(
-                DocumentFacts(r.id, r.provider, r.external_id, r.occurred_on, r.total, r.currency), index
+                DocumentFacts(r.id, r.provider, r.reference, r.occurred_on, r.total, r.currency), index
             ),
         )
         for r in rows

@@ -53,6 +53,15 @@ def test_a_document_is_booked_on_ingest_with_its_fields_from_the_document(scene:
     assert all(e.booked_on == date(2026, 2, 1) and e.currency == "EUR" for e in entries)
 
 
+def test_a_document_without_a_reference_is_booked_with_the_word_alone(scene: Scene) -> None:
+    scene.clearance()
+    scene.deliver(
+        doc("A1", line("Cable", -500), reference=None), doc("R1", line("Cable", 500), reference=None)
+    )
+    assert scene.booking("A1").purpose == "Order"
+    assert scene.booking("R1").purpose == "Refund"
+
+
 def test_a_refund_is_booked_as_a_refund(scene: Scene) -> None:
     scene.clearance()
     scene.deliver(doc("R1", line("Cable", 500), line("Book", 500)))
@@ -396,7 +405,7 @@ def test_keep_leaves_the_stored_document_and_its_booking_and_counts_it(scene: Sc
     scene.deliver(doc("A1", line("A", -100)))
     result = scene.deliver(doc("A1", line("A", -999)), doc("A2", line("B", -50)), redelivery="keep")
     assert (result.inserted, result.updated, result.kept, result.changed) == (1, 0, 1, ())
-    assert scene.q("SELECT total, version FROM external_document WHERE external_id = 'A1'")[0] == (-100, 1)
+    assert scene.q("SELECT total, version FROM external_document WHERE source_id = 'A1'")[0] == (-100, 1)
     assert scene.booking().amount == -100
     stats = scene.q("SELECT stats FROM import_run WHERE id = :i", i=result.run_id)[0].stats
     assert (stats["inserted"], stats["updated"], stats["kept"]) == (1, 0, 1)
@@ -407,5 +416,5 @@ def test_replace_updates_the_document_and_its_booking(scene: Scene) -> None:
     scene.deliver(doc("A1", line("A", -100)))
     result = scene.deliver(doc("A1", line("A", -999)), redelivery="replace")
     assert (result.updated, result.kept) == (1, 0) and len(result.changed) == 1
-    assert scene.q("SELECT total, version FROM external_document WHERE external_id = 'A1'")[0] == (-999, 2)
+    assert scene.q("SELECT total, version FROM external_document WHERE source_id = 'A1'")[0] == (-999, 2)
     assert scene.booking().amount == -999

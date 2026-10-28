@@ -8,7 +8,8 @@ const etsy = documentRow({
 	id: 2,
 	provider: 'paypal',
 	merchant_name: 'Etsy',
-	title: null
+	title: null,
+	reference: null
 });
 const free = documentRow({ id: 1 });
 
@@ -27,30 +28,36 @@ function table(props = {}) {
 }
 
 describe('DocumentsTable', () => {
-	it('lists the documents with provider, date, merchant or title, and amount', () => {
+	it('lists the documents with provider, date, reference, title, and amount', () => {
 		table();
 		const rows = screen.getAllByRole('row').filter((r) => r.hasAttribute('data-document-id'));
 		expect(rows).toHaveLength(2);
 		const first = within(rows[0]);
 		expect(first.getByText('paypal')).toBeInTheDocument();
-		expect(first.getByText('Etsy')).toBeInTheDocument();
+		expect(first.getByText('paypal document')).toBeInTheDocument();
+		expect(first.queryByText('Etsy')).not.toBeInTheDocument();
 		expect(first.getByText('Oct 8, 2026')).toBeInTheDocument();
 		expect(first.getByText('−47.31')).toBeInTheDocument();
 		const second = within(rows[1]);
-		expect(second.getByText('Amazon · Order 304-1')).toBeInTheDocument();
+		expect(second.getByText('304-1')).toBeInTheDocument();
+		expect(second.getByText('Order 304-1')).toBeInTheDocument();
+		expect(second.queryByText(/Amazon/)).not.toBeInTheDocument();
 		expect(screen.getByText('2 of 2')).toBeInTheDocument();
 	});
 
 	it('names the columns', () => {
 		table();
-		for (const name of ['Provider', 'Date', 'Merchant or title', 'Amount', 'Booked']) {
+		for (const name of ['Provider', 'Date', 'Reference', 'Title', 'Amount (EUR)', 'Booked']) {
 			expect(screen.getByRole('columnheader', { name })).toBeInTheDocument();
 		}
 	});
 
 	it('opens the document from its link or a click on its row', async () => {
 		const { onopen } = table();
-		expect(screen.getByRole('link', { name: 'Etsy' })).toHaveAttribute('href', '/documents/2');
+		expect(screen.getByRole('link', { name: 'paypal document' })).toHaveAttribute(
+			'href',
+			'/documents/2'
+		);
 		await fireEvent.click(screen.getByText('paypal'));
 		expect(onopen).toHaveBeenCalledWith(2);
 	});

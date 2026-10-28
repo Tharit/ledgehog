@@ -44,13 +44,13 @@ ReviewFlag = Literal["unconfirmed", "unclassified", "waiting", "unmatched_transf
 
 class BookingOut(BaseModel):
     """A booking's source, read only for navigation (the work panel's "Booked from ...", "Open document").
-    `document`: the document's id, `provider` and `external_id`; `transfer`: the charge's entry id and
+    `document`: the document's id, `provider` and `reference`; `transfer`: the charge's entry id and
     its `account_id`."""
 
     kind: Literal["document", "transfer"]
     id: int  # the document's id, or the charge's entry id
     provider: str | None  # document only
-    external_id: str | None  # document only
+    reference: str | None  # document only; None where it has none
     account_id: int | None  # transfer only: the charge's account
 
 
@@ -95,7 +95,7 @@ class SourceTransactionOut(BaseModel):
                 kind=cast(Literal["document", "transfer"], src.booking.kind),
                 id=src.booking.id,
                 provider=src.booking.provider,
-                external_id=src.booking.external_id,
+                reference=src.booking.reference,
                 account_id=src.booking.account_id,
             ),
         )

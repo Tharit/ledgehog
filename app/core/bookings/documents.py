@@ -42,7 +42,7 @@ class ClearanceAccount:
 class DocumentFacts:
     id: int
     provider: str
-    external_id: str
+    reference: str | None
     occurred_on: date
     total: int
     currency: str
@@ -90,7 +90,8 @@ def not_booked(doc: DocumentFacts, index: Mapping[tuple[str, str], ClearanceAcco
 
 
 def purpose_of(doc: DocumentFacts) -> str:
-    return f"{'Refund' if doc.total > 0 else 'Order'} {doc.external_id}"
+    word = "Refund" if doc.total > 0 else "Order"
+    return f"{word} {doc.reference}" if doc.reference else word
 
 
 @dataclass(frozen=True, slots=True)

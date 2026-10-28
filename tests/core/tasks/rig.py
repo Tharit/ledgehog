@@ -25,7 +25,7 @@ IMPORTERS: dict[str, object] = {"testfetch": TestFetchImporter(), "testdocs": Te
 
 DOC = {
     "provider": "paypal",
-    "external_id": "D1",
+    "source_id": "D1",
     "occurred_on": "2026-06-02",
     "total_minor": -1500,
     "currency": "EUR",

@@ -1334,14 +1334,12 @@ export interface components {
         /**
          * BookingOut
          * @description A booking's source, read only for navigation (the work panel's "Booked from ...", "Open document").
-         *     `document`: the document's id, `provider` and `external_id`; `transfer`: the charge's entry id and
+         *     `document`: the document's id, `provider` and `reference`; `transfer`: the charge's entry id and
          *     its `account_id`.
          */
         BookingOut: {
             /** Account Id */
             account_id: number | null;
-            /** External Id */
-            external_id: string | null;
             /** Id */
             id: number;
             /**
@@ -1351,6 +1349,8 @@ export interface components {
             kind: "document" | "transfer";
             /** Provider */
             provider: string | null;
+            /** Reference */
+            reference: string | null;
         };
         /** ByCategoryOut */
         ByCategoryOut: {
@@ -1753,8 +1753,6 @@ export interface components {
         /** DocumentDetailOut */
         DocumentDetailOut: {
             booking: components["schemas"]["DocumentBookingDetailOut"] | null;
-            /** External Id */
-            external_id: string;
             /** Id */
             id: number;
             /** Importer Instance Id */
@@ -1773,6 +1771,10 @@ export interface components {
             occurred_on: string;
             /** Provider */
             provider: string;
+            /** Reference */
+            reference: string | null;
+            /** Source Id */
+            source_id: string;
             /** Title */
             title: string | null;
             total: components["schemas"]["Money"];
@@ -1792,8 +1794,6 @@ export interface components {
         /** DocumentOut */
         DocumentOut: {
             booking: components["schemas"]["DocumentBookingOut"] | null;
-            /** External Id */
-            external_id: string;
             /** Id */
             id: number;
             /** Importer Instance Id */
@@ -1810,6 +1810,10 @@ export interface components {
             occurred_on: string;
             /** Provider */
             provider: string;
+            /** Reference */
+            reference: string | null;
+            /** Source Id */
+            source_id: string;
             /** Title */
             title: string | null;
             total: components["schemas"]["Money"];

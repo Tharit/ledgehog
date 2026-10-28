@@ -24,6 +24,16 @@ describe('DocumentDetail', () => {
 		expect(within(table).getByText('2')).toBeInTheDocument();
 	});
 
+	it('shows the reference', () => {
+		view(documentDetail());
+		expect(screen.getByText('304-1')).toBeInTheDocument();
+	});
+
+	it('leaves out the Reference row for a document without one', () => {
+		view(documentDetail({ reference: null }));
+		expect(screen.queryByText('Reference')).toBeNull();
+	});
+
 	it('names the document currency in the lines header', () => {
 		view(documentDetail());
 		expect(screen.getByRole('columnheader', { name: 'Amount (EUR)' })).toBeInTheDocument();

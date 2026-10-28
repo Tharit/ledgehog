@@ -11,6 +11,7 @@ from app.core.bookings.documents import (
     account_for,
     not_booked,
     provider_index,
+    purpose_of,
 )
 
 START = date(2026, 1, 31)
@@ -20,7 +21,7 @@ def doc(**kw: object) -> DocumentFacts:
     base: dict[str, object] = {
         "id": 1,
         "provider": "Amazon",
-        "external_id": "A1",
+        "reference": "A1",
         "occurred_on": date(2026, 2, 1),
         "total": -1000,
         "currency": "EUR",
@@ -77,3 +78,10 @@ def test_the_reasons_apply_in_order() -> None:
     )
     index = provider_index([ClearanceAccount(12, "EUR", ("Amazon",), None)])
     assert not_booked(doc(occurred_on=date(2000, 1, 1)), index) == NotBooked("no_start", account_id=12)
+
+
+def test_the_purpose_is_order_or_refund_with_the_reference_where_there_is_one() -> None:
+    assert purpose_of(doc(reference="A1")) == "Order A1"
+    assert purpose_of(doc(reference="A1", total=500)) == "Refund A1"
+    assert purpose_of(doc(reference=None)) == "Order"
+    assert purpose_of(doc(reference=None, total=500)) == "Refund"

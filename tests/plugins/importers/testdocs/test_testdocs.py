@@ -13,7 +13,7 @@ from app.plugins.importers.testdocs import TestDocumentImporter
 
 DOC: dict[str, Any] = {
     "provider": "paypal",
-    "external_id": "A",
+    "source_id": "A",
     "occurred_on": "2026-06-01",
     "total_minor": -1000,
     "currency": "EUR",
@@ -41,17 +41,17 @@ def test_its_session_delivers_what_fetch_does_and_its_default_start_is_the_start
         out = session.fetch_documents(
             since=date(2026, 1, 1), today=date(2026, 7, 1), minor_units_of=lambda c: 2
         )
-        assert [d.external_id for d in out.documents] == ["A"]
+        assert [d.source_id for d in out.documents] == ["A"]
         assert session.accounts() == ()
     finally:
         session.close()
 
 
 def test_fetch_delivers_the_listed_documents_from_since_and_the_coverage():
-    older = {**DOC, "external_id": "B", "occurred_on": "2026-05-01"}
+    older = {**DOC, "source_id": "B", "occurred_on": "2026-05-01"}
     s = settings(DOC, older)
     delivery = TestDocumentImporter().fetch(s, since=date(2026, 5, 15), today=date(2026, 7, 1))
-    assert [d.external_id for d in delivery.documents] == ["A"]
+    assert [d.source_id for d in delivery.documents] == ["A"]
     doc = delivery.documents[0]
     assert (doc.total_minor, doc.currency, doc.merchant_name) == (-1000, "EUR", "Shop")
     assert [(x.description, x.amount_minor, x.qty) for x in doc.lines] == [("Item", -1000, 1)]

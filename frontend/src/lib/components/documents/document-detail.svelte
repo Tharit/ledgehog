@@ -62,9 +62,11 @@
 				/>
 			{/snippet}
 			{#snippet rows()}
-				<CardRow label="Reference">
-					<span class="break-all">{document.external_id}</span>
-				</CardRow>
+				{#if document.reference}
+					<CardRow label="Reference">
+						<span class="break-all">{document.reference}</span>
+					</CardRow>
+				{/if}
 				{#if booking}
 					<CardRow label="Booked on">
 						<span data-slot="booked-on">

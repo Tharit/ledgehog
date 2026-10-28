@@ -95,12 +95,13 @@ class DocumentOut(BaseModel):
     id: int
     version: int  # detects a conflicting edit (spec §5.5)
     provider: str
-    external_id: str
+    source_id: str
     importer_instance_id: int | None
     occurred_on: date
     total: Money
     merchant_name: str | None
     title: str | None
+    reference: str | None  # the order or invoice number the source names, if any
     line_count: int
     booking: DocumentBookingOut | None  # the booking made from it, if any
     not_booked: (
@@ -113,12 +114,13 @@ class DocumentOut(BaseModel):
             id=r.id,
             version=r.version,
             provider=r.provider,
-            external_id=r.external_id,
+            source_id=r.source_id,
             importer_instance_id=r.importer_instance_id,
             occurred_on=r.occurred_on,
             total=Money(amount=r.total, currency=r.currency),
             merchant_name=r.merchant_name,
             title=r.title,
+            reference=r.reference,
             line_count=r.line_count,
             booking=None if r.booking is None else DocumentBookingOut.of(r.booking),
             not_booked=None if r.not_booked is None else NotBookedOut.of(r.not_booked),

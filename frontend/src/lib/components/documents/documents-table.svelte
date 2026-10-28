@@ -10,7 +10,7 @@
 	import type { Account, DocumentRow } from '#lib/types/domain.js';
 	import { cn } from '#lib/utils.js';
 	import { DOCUMENT_COLUMNS, DOCUMENT_GRID_TEMPLATE } from './columns.js';
-	import { describeDocumentError, documentTitle, notBookedReason } from './describe.js';
+	import { describeDocumentError, documentListTitle, notBookedReason } from './describe.js';
 
 	// The list of documents in the shape of the ledger table (patterns §4, §7): a snapshot that
 	// shows what it was given. A row opens the document's page.
@@ -143,12 +143,15 @@
 						>
 							<div role="gridcell" class="truncate">{document.provider}</div>
 							<div role="gridcell"><DateDisplay date={document.occurred_on} {locale} /></div>
+							<div role="gridcell" class="truncate" title={document.reference ?? undefined}>
+								{document.reference ?? ''}
+							</div>
 							<div role="gridcell" class="min-w-0">
 								<a
 									href={`/documents/${document.id}`}
 									class="block truncate rounded-sm outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
 								>
-									{documentTitle(document)}
+									{documentListTitle(document)}
 								</a>
 							</div>
 							<div role="gridcell">

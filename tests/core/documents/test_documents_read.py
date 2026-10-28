@@ -78,6 +78,13 @@ def test_amount_filter_is_a_magnitude_in_a_currency(db_conn: Connection):
     assert ids(db_conn, currency="USD") == [other]
 
 
+def test_text_matches_a_reference(db_conn: Connection):
+    a = make_document(db_conn)
+    make_document(db_conn)
+    db_conn.execute(text("UPDATE external_document SET reference = '112-3456789' WHERE id = :i"), {"i": a})
+    assert ids(db_conn, text="3456") == [a]
+
+
 def test_text_searches_merchant_title_and_lines_word_by_word(db_conn: Connection):
     a = make_document(db_conn)
     b = make_document(db_conn)
@@ -124,9 +131,9 @@ def test_detail_has_lines_in_order_and_none_for_a_missing_document(db_conn: Conn
 
 
 def test_the_provider_filter_ignores_case(db_conn: Connection):
-    a = make_document(db_conn, "PayPal", external_id="a")
-    b = make_document(db_conn, "paypal", external_id="b")
-    make_document(db_conn, "amazon", external_id="c")
+    a = make_document(db_conn, "PayPal", source_id="a")
+    b = make_document(db_conn, "paypal", source_id="b")
+    make_document(db_conn, "amazon", source_id="c")
     assert sorted(ids(db_conn, providers=("PAYPAL",))) == sorted([a, b])
 
 

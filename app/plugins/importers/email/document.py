@@ -63,6 +63,20 @@ def collapse(text: str) -> str:
     return " ".join(text.split())
 
 
+# a reply or forwarding marker, with its optional counter: `Re:`, `AW:`, `Fwd[2]:`, `Wg (3):`
+_SUBJECT_MARKER = re.compile(r"\s*(?:re|fwd?|aw|wg)\s*(?:\[\s*\d+\s*\]|\(\s*\d+\s*\))?\s*:", re.IGNORECASE)
+
+
+def strip_subject_markers(subject: str) -> str:
+    """The subject without the reply and forwarding markers in front of it (plugins/importers/email.md §6).
+
+    Repeatedly, without regard to case, until it starts with something else; `Rechnung: 1` is no `Re:`.
+    """
+    while match := _SUBJECT_MARKER.match(subject):
+        subject = subject[match.end() :]
+    return subject.strip()
+
+
 def _domain_label(name: str) -> str:
     """A bare domain's registrable label (`www.zalando.de` is `zalando`); any other name as it is."""
     if not _DOMAIN.fullmatch(name):
@@ -203,10 +217,11 @@ class EmailDocumentBuilder:
             return Skipped(NO_MERCHANT)
         order_id = answer.get("order_id")
         order = collapse(order_id) if isinstance(order_id, str) else ""
-        subject = collapse(context.subject) if context.subject else ""
+        subject = strip_subject_markers(collapse(context.subject)) if context.subject else ""
         return IncomingDocument(
             provider=provider,
-            external_id=order or f"message:{context.identity}",
+            source_id=order or f"message:{context.identity}",
+            reference=order or None,
             occurred_on=context.date,
             total_minor=-total,
             currency=code,

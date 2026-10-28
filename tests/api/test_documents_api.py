@@ -47,7 +47,11 @@ def test_row_shape_and_money(anna: TestClient, api_engine: Engine):
     with api_engine.begin() as conn:
         d = make_document(conn, "paypal", total=-1000, on=D)
         conn.execute(
-            text("UPDATE external_document SET merchant_name = 'Shop', title = 'T' WHERE id = :i"), {"i": d}
+            text(
+                "UPDATE external_document SET merchant_name = 'Shop', title = 'T', reference = 'R-1'"
+                " WHERE id = :i"
+            ),
+            {"i": d},
         )
         lines(conn, d, ("a", -400), ("b", -600))
         free = make_document(conn, "amazon", total=1500, on=date(2026, 3, 1))
@@ -56,12 +60,13 @@ def test_row_shape_and_money(anna: TestClient, api_engine: Engine):
         "id": d,
         "version": 1,
         "provider": "paypal",
-        "external_id": rows[d]["external_id"],
+        "source_id": rows[d]["source_id"],
         "importer_instance_id": None,
         "occurred_on": "2026-03-10",
         "total": {"amount": -1000, "currency": "EUR"},
         "merchant_name": "Shop",
         "title": "T",
+        "reference": "R-1",
         "line_count": 2,
         "booking": None,
         "not_booked": {"reason": "no_account", "currency": "EUR", "account_id": None, "start": None},
@@ -148,7 +153,7 @@ def test_providers_lists_importer_names_and_stored_providers_sorted(anna: TestCl
         assert anna.get(f"{URL}/providers").json() == {"providers": ["amazon", "paypal", "zalando"]}
         with api_engine.begin() as conn:  # stored providers join in; a spelling already named is not repeated
             for provider in ("Ebay", "PayPal", "ebay"):
-                make_document(conn, provider, external_id=f"p-{provider}")
+                make_document(conn, provider, source_id=f"p-{provider}")
         assert anna.get(f"{URL}/providers").json() == {"providers": ["Ebay", "amazon", "paypal", "zalando"]}
     finally:
         reset_document_providers()
@@ -257,7 +262,6 @@ def test_the_provenance_of_a_booking_carries_its_origin_and_where_it_was_booked_
         "kind": "document",
         "id": d,
         "provider": "Amazon",
-        "external_id": body["booking"]["external_id"],
+        "reference": body["booking"]["reference"],
         "account_id": None,
     }
-    assert body["booking"]["external_id"]

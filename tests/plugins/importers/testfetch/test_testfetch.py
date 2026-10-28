@@ -167,15 +167,15 @@ def test_discovery_lists_accounts_with_what_each_can_deliver() -> None:
 def test_documents_are_testdocs_behaviour() -> None:
     doc = {
         "provider": "paypal",
-        "external_id": "D1",
+        "source_id": "D1",
         "occurred_on": "2026-06-02",
         "total_minor": -100,
         "currency": "EUR",
     }
-    old = {**doc, "external_id": "D0", "occurred_on": "2026-05-01"}
+    old = {**doc, "source_id": "D0", "occurred_on": "2026-05-01"}
     sess = session({"start_date": "2026-05-01", "documents": [doc, old]})
     got = sess.fetch_documents(since=date(2026, 6, 1), today=TODAY, minor_units_of=lambda c: 2)
-    assert [d.external_id for d in got.documents] == ["D1"]
+    assert [d.source_id for d in got.documents] == ["D1"]
     assert got.covered_through == date(2026, 6, 14) and got.covered_from == date(2026, 5, 1)
 
 
@@ -296,7 +296,7 @@ def test_valid_settings_pass() -> None:
             "documents": [
                 {
                     "provider": "paypal",
-                    "external_id": "D",
+                    "source_id": "D",
                     "occurred_on": "2026-02-01",
                     "total_minor": -1,
                     "currency": "EUR",

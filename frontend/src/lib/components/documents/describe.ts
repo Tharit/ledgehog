@@ -11,6 +11,13 @@ export function documentTitle(
 	return parts.length > 0 ? parts.join(' · ') : `${document.provider} document`;
 }
 
+/** The title as the list shows it: the document's own, else "provider document". */
+export function documentListTitle(document: Pick<DocumentRow, 'title' | 'provider'>): string {
+	return document.title !== null && document.title.trim() !== ''
+		? document.title
+		: `${document.provider} document`;
+}
+
 export type DocumentFailure = { title: string; message: string; retryable: boolean };
 
 /** A failed read in words, routed by code (patterns §8); `what` is "documents" or "document". */

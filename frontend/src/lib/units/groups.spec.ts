@@ -230,7 +230,7 @@ describe('bookings (spec §5.8)', () => {
 					kind: 'document',
 					id: 31,
 					provider: 'amazon',
-					external_id: '304-1',
+					reference: '304-1',
 					account_id: null
 				}
 			}),

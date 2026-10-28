@@ -248,7 +248,7 @@ class _Run:
         if isinstance(result, Skipped):
             self.count(uid, result.reason)
             return
-        key = (result.provider, result.external_id)
+        key = (result.provider, result.source_id)
         if key in self.documents:  # under `keep` the earlier one by UID, then by order, wins
             self.count(uid, SAME_ORDER)
             return

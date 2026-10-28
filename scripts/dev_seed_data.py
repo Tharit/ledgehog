@@ -816,7 +816,7 @@ class DocLine:
 class DocScenario:
     """One document the test importer delivers, `ago` days before the seed's last booking."""
 
-    external_id: str
+    source_id: str
     ago: int
     total: int
     merchant: str | None

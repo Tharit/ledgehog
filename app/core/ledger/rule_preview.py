@@ -313,7 +313,7 @@ def build_preview(
 
 
 def _with_bookings(conn: Connection, page: PreviewList) -> PreviewList:
-    """The page's booking sources completed (a document's provider and external id, a charge's account)."""
+    """The page's booking sources completed (a document's provider and reference, a charge's account)."""
     found = booking_refs(
         conn,
         [(r.source.booking.kind, r.source.booking.id) for r in page.rows if r.source and r.source.booking],

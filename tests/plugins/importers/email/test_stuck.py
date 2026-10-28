@@ -61,7 +61,7 @@ def test_the_third_run_in_a_row_gives_the_message_up_and_goes_on():
         assert rig.state["stuck"] == {"uid": 2, "uidvalidity": 1, "attempts": attempts}
     delivery = rig.run()
     assert delivery.importer_stats["gave_up"] == 1
-    assert sorted(d.external_id for d in delivery.documents) == ["Order 1", "Order 3"]
+    assert sorted(d.source_id for d in delivery.documents) == ["Order 1", "Order 3"]
     assert "stuck" not in rig.state
     assert delivery.position is not None and delivery.position["last_uid"] == 3
     assert fingerprint_in(

@@ -89,7 +89,7 @@ describe('RowDetailDialog: a booking', () => {
 				kind: 'document',
 				id: 31,
 				provider: 'amazon',
-				external_id: '304-1',
+				reference: '304-1',
 				account_id: null
 			}
 		});
@@ -111,7 +111,7 @@ describe('RowDetailDialog: a booking', () => {
 				kind: 'transfer',
 				id: 55,
 				provider: null,
-				external_id: null,
+				reference: null,
 				account_id: 4
 			},
 			bookingAccountName: 'Amazon clearing'

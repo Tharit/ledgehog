@@ -17,11 +17,11 @@ def make_document(
     total: int = -1000,
     on: date = date(2026, 3, 10),
     currency: str = "EUR",
-    external_id: str | None = None,
+    source_id: str | None = None,
 ) -> int:
     cols: dict[str, Any] = {
         "provider": provider,
-        "external_id": external_id
+        "source_id": source_id
         or f"d{conn.execute(text('SELECT count(*) FROM external_document')).scalar_one()}",
         "occurred_on": on,
         "total": total,

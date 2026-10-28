@@ -72,10 +72,10 @@ def line(description: str = "Item", amount: int = -1000, qty: int | None = None)
     return IncomingDocumentLine(description, amount, qty)
 
 
-def document(external_id: str = "D1", **kw: Any) -> IncomingDocument:
+def document(source_id: str = "D1", **kw: Any) -> IncomingDocument:
     base: dict[str, Any] = {
         "provider": "paypal",
-        "external_id": external_id,
+        "source_id": source_id,
         "occurred_on": date(2026, 6, 1),
         "total_minor": -1000,
         "currency": "EUR",

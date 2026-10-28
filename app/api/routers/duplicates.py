@@ -138,7 +138,7 @@ class ProvenanceOut(BaseModel):
                 kind=cast(Literal["document", "transfer"], p.booking.kind),
                 id=p.booking.id,
                 provider=p.booking.provider,
-                external_id=p.booking.external_id,
+                reference=p.booking.reference,
                 account_id=p.booking.account_id,
             ),
         )

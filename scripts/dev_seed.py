@@ -530,7 +530,7 @@ def _last_booking(engine: Engine) -> date:
 def _document_json(d: data.DocScenario, last_on: date) -> dict[str, Any]:
     return {
         "provider": d.provider,
-        "external_id": d.external_id,
+        "source_id": d.source_id,
         "occurred_on": (last_on - timedelta(days=d.ago)).isoformat(),
         "total_minor": d.total,
         "currency": d.currency,

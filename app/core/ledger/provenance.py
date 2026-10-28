@@ -66,7 +66,7 @@ def get_provenance(conn: Connection, source_id: int) -> Provenance | None:
             " r.id AS run_id, r.importer AS run_importer, r.importer_instance_id AS instance_id,"
             " i.label AS instance_label, r.started_at, r.finished_at,"
             " o.id AS of_id, o.booked_on AS of_on, o.amount AS of_amount,"
-            " d.provider, d.external_id, c.account_id AS charge_account_id,"
+            " d.provider, d.reference, c.account_id AS charge_account_id,"
             " (SELECT min(e.id) FROM ledger_entry e WHERE e.source_transaction_id = s.id) AS entry_id"
             " FROM source_transaction s"
             " LEFT JOIN external_document d ON d.id = CASE WHEN s.origin = 'booking'"
@@ -119,7 +119,7 @@ def get_provenance(conn: Connection, source_id: int) -> Provenance | None:
             r.source_id.partition(":")[0],
             int(r.source_id.partition(":")[2]),
             provider=r.provider,
-            external_id=r.external_id,
+            reference=r.reference,
             account_id=r.charge_account_id,
         ),
     )

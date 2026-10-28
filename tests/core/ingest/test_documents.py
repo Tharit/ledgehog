@@ -36,8 +36,8 @@ def deliver(
     return ingest_documents(engine, run_id, docs, covered_through=covered_through, covered_from=covered_from)
 
 
-def doc_row(engine: Engine, external_id: str = "D1") -> Any:
-    return q(engine, "SELECT * FROM external_document WHERE external_id = :e", e=external_id)[0]
+def doc_row(engine: Engine, source_id: str = "D1") -> Any:
+    return q(engine, "SELECT * FROM external_document WHERE source_id = :e", e=source_id)[0]
 
 
 def make_instance(engine: Engine, emits: str = "{documents}", disabled: bool = False) -> int:
@@ -57,7 +57,7 @@ def test_fake_satisfies_the_protocol():
     fake = FakeDocumentImporter([document("A"), document("B", occurred_on=date(2026, 1, 1))])
     assert isinstance(fake, FetchImporter)
     out = fake.fetch({}, since=date(2026, 3, 1), today=THROUGH)
-    assert [d.external_id for d in out.documents] == ["A"]
+    assert [d.source_id for d in out.documents] == ["A"]
 
 
 def test_insert_with_lines_and_ok_run_with_coverage(isolated_engine):
@@ -98,6 +98,7 @@ def test_upsert_is_idempotent(isolated_engine):
         {"lines": (line(), line("More", -5))},
         {"merchant_name": "Somebody"},
         {"title": "Other"},
+        {"reference": "ORD-7"},
     ],
 )
 def test_version_moves_on_a_content_change(isolated_engine, change):
@@ -105,6 +106,13 @@ def test_version_moves_on_a_content_change(isolated_engine, change):
     result = deliver(isolated_engine, [document(**change)])
     d = doc_row(isolated_engine)
     assert d.version == 2 and result.changed == (d.id,)
+
+
+def test_a_delivered_reference_is_stored(isolated_engine):
+    deliver(isolated_engine, [document(reference="ORD-7")])
+    assert doc_row(isolated_engine).reference == "ORD-7"
+    deliver(isolated_engine, [document()])  # a source that names none any more clears it
+    assert doc_row(isolated_engine).reference is None
 
 
 def test_version_stays_on_a_raw_only_change(isolated_engine):

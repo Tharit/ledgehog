@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
+from types import EllipsisType
 from typing import Any
 
 from sqlalchemy import Engine, text
@@ -22,18 +23,21 @@ __all__ = ["START", "Scene", "doc", "line"]
 
 
 def doc(
-    external_id: str = "A1",
+    source_id: str = "A1",
     *lines: IncomingDocumentLine,
     total: int | None = None,
     provider: str = "Amazon",
     occurred_on: date = date(2026, 2, 1),
     currency: str = "EUR",
+    reference: str | None | EllipsisType = ...,
 ) -> IncomingDocument:
     """An order of `lines`; the total is the lines' sum unless given. No lines and no total: one line of
-    -1000; no lines and a total: a document without lines."""
+    -1000; no lines and a total: a document without lines. Its reference is its `source_id` unless given
+    (None: it has none)."""
     lines = lines or (() if total is not None else (line("Item", -1000),))
     return document(
-        external_id,
+        source_id,
+        reference=source_id if reference is ... else reference,
         provider=provider,
         occurred_on=occurred_on,
         currency=currency,
@@ -66,24 +70,24 @@ class Scene:
         with self.engine.connect() as conn:
             return list(conn.execute(text(sql), params).all())
 
-    def document_id(self, external_id: str = "A1") -> int:
-        return int(self.q("SELECT id FROM external_document WHERE external_id = :e", e=external_id)[0].id)
+    def document_id(self, source_id: str = "A1") -> int:
+        return int(self.q("SELECT id FROM external_document WHERE source_id = :e", e=source_id)[0].id)
 
-    def booking(self, external_id: str = "A1") -> Any | None:
+    def booking(self, source_id: str = "A1") -> Any | None:
         rows = self.q(
             "SELECT s.* FROM source_transaction s WHERE s.source_id = :s",
-            s=f"document:{self.document_id(external_id)}",
+            s=f"document:{self.document_id(source_id)}",
         )
         return rows[0] if rows else None
 
     def bookings(self) -> list[Any]:
         return self.q("SELECT * FROM source_transaction WHERE origin = 'booking' ORDER BY id")
 
-    def entries(self, external_id: str = "A1") -> list[Any]:
+    def entries(self, source_id: str = "A1") -> list[Any]:
         return self.q(
             "SELECT e.* FROM ledger_entry e JOIN source_transaction s ON s.id = e.source_transaction_id"
             " WHERE s.source_id = :s ORDER BY e.id",
-            s=f"document:{self.document_id(external_id)}",
+            s=f"document:{self.document_id(source_id)}",
         )
 
     def balance(self, account_id: int) -> int:

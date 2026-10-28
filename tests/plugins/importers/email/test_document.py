@@ -70,7 +70,7 @@ def amounts(d: IncomingDocument) -> list[int]:
 
 def test_a_complete_answer_is_a_document_in_ledger_signs():
     d = doc(answer())
-    assert (d.provider, d.external_id, d.occurred_on, d.total_minor, d.currency) == (
+    assert (d.provider, d.source_id, d.occurred_on, d.total_minor, d.currency) == (
         "Shop",
         "A-1",
         date(2026, 1, 5),
@@ -129,10 +129,10 @@ def test_qty_only_where_it_is_a_whole_number_from_one():
     assert [ln.qty for ln in d.lines] == [3, 2, None, None, None, None, None]
 
 
-def test_external_id_is_the_order_id_collapsed_else_the_message():
-    assert doc(answer(order_id="  A  1 ")).external_id == "A 1"
+def test_source_id_is_the_order_id_collapsed_else_the_message():
+    assert doc(answer(order_id="  A  1 ")).source_id == "A 1"
     for missing in (None, "", "   "):
-        assert doc(answer(order_id=missing)).external_id == "message:inner@shop"
+        assert doc(answer(order_id=missing)).source_id == "message:inner@shop"
 
 
 def test_title_and_merchant_name_are_cut_and_the_title_may_be_absent():
@@ -145,6 +145,54 @@ def test_title_and_merchant_name_are_cut_and_the_title_may_be_absent():
 
     assert len(build(answer(), replace(CONTEXT, subject=long)).title or "") == 200  # type: ignore[union-attr]
     assert build(answer(), replace(CONTEXT, subject=None)).title is None  # type: ignore[union-attr]
+
+
+def test_reference_is_the_order_id_collapsed_else_none():
+    d = doc(answer(order_id="  A  1 "))
+    assert (d.reference, d.source_id) == ("A 1", "A 1")
+    for missing in (None, "", "   "):
+        d = doc(answer(order_id=missing))
+        assert (d.reference, d.source_id) == (None, "message:inner@shop")
+
+
+def _title(subject: str | None) -> str | None:
+    from dataclasses import replace
+
+    result = build(answer(), replace(CONTEXT, subject=subject))
+    assert isinstance(result, IncomingDocument), result
+    return result.title
+
+
+@pytest.mark.parametrize(
+    ("subject", "title"),
+    [
+        ("Fwd: Order 7", "Order 7"),
+        ("Re: Order 7", "Order 7"),
+        ("AW: Order 7", "Order 7"),
+        ("WG: Order 7", "Order 7"),
+        ("Fw: Order 7", "Order 7"),
+        ("fwd: order 7", "order 7"),
+        ("rE:   aw:Order 7", "Order 7"),
+        ("Re[2]: Order 7", "Order 7"),
+        ("Fwd(3) : Order 7", "Order 7"),
+        ("Fwd: Re: Fwd: Order 7", "Order 7"),
+        ("Rechnung: 123", "Rechnung: 123"),
+        ("Reminder: Order 7", "Reminder: Order 7"),
+        ("Order 7 Re: x", "Order 7 Re: x"),
+        ("Fwd: Rechnung: 123", "Rechnung: 123"),
+    ],
+)
+def test_the_titles_reply_and_forwarding_markers_are_removed(subject: str, title: str):
+    assert _title(subject) == title
+
+
+def test_a_subject_of_nothing_but_markers_is_no_title():
+    assert _title("Re: Fwd:") is None
+    assert _title("AW:") is None
+
+
+def test_markers_come_off_before_the_title_is_cut():
+    assert len(_title("Re: " + "x" * 300) or "") == 200
 
 
 # ---- completeness -----------------------------------------------------------------------------------

@@ -188,7 +188,7 @@ def _sources(conn: Connection, ids: list[int], balances: dict[int, int]) -> dict
             "SELECT s.id, s.booked_on, s.value_on, s.amount, s.counterparty_name, s.purpose,"
             " s.origin = 'user' AS authored, s.origin, s.source_id, s.import_run_id AS run_id,"
             " o.id AS of_id, o.booked_on AS of_on, o.amount AS of_amount,"
-            " d.provider, d.external_id, c.account_id AS charge_account_id,"
+            " d.provider, d.reference, c.account_id AS charge_account_id,"
             " (SELECT min(e.id) FROM ledger_entry e WHERE e.source_transaction_id = s.id) AS entry_id"
             " FROM source_transaction s LEFT JOIN source_transaction o ON o.id = s.duplicate_of"
             " LEFT JOIN external_document d ON d.id = CASE WHEN s.origin = 'booking'"
@@ -221,7 +221,7 @@ def _sources(conn: Connection, ids: list[int], balances: dict[int, int]) -> dict
                 r.source_id.partition(":")[0],
                 int(r.source_id.partition(":")[2]),
                 provider=r.provider,
-                external_id=r.external_id,
+                reference=r.reference,
                 account_id=r.charge_account_id,
             ),
         )

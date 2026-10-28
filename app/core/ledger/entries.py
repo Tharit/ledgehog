@@ -261,7 +261,7 @@ def _source(r: Any, refs: Mapping[tuple[str, int], BookingRef]) -> SourceFields 
     return fields if booking is None else replace(fields, booking=refs.get(booking))
 
 
-_DOCUMENTS = text("SELECT id, provider, external_id FROM external_document WHERE id = ANY(:ids)")
+_DOCUMENTS = text("SELECT id, provider, reference FROM external_document WHERE id = ANY(:ids)")
 _CHARGES = text("SELECT id, account_id FROM ledger_entry WHERE id = ANY(:ids)")
 
 
@@ -274,9 +274,7 @@ def booking_refs(
     documents = sorted(i for k, i in wanted if k == "document")
     if documents:
         for d in conn.execute(_DOCUMENTS, {"ids": documents}):
-            out[("document", d.id)] = BookingRef(
-                "document", d.id, provider=d.provider, external_id=d.external_id
-            )
+            out[("document", d.id)] = BookingRef("document", d.id, provider=d.provider, reference=d.reference)
     charges = sorted(i for k, i in wanted if k == "transfer")
     if charges:
         for c in conn.execute(_CHARGES, {"ids": charges}):

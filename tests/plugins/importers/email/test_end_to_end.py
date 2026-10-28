@@ -73,7 +73,7 @@ def test_a_forwarded_receipt_becomes_a_document_with_its_counts_and_position():
     rig.mailbox.add(1, message(1), ARRIVED)
     delivery = rig.run()
     [doc] = delivery.documents
-    assert (doc.provider, doc.external_id, doc.total_minor, doc.currency) == ("Shop", "A-1", -3000, "EUR")
+    assert (doc.provider, doc.source_id, doc.total_minor, doc.currency) == ("Shop", "A-1", -3000, "EUR")
     assert doc.occurred_on == date(2026, 1, 5) and doc.title == "Order 1"
     assert doc.raw["source"] == "text" and doc.raw["model"] == "text-1" and doc.raw["uid"] == 1
     assert doc.raw["message_id"] == "o1@shop" and doc.raw["outer_message_id"] == "o1@shop"

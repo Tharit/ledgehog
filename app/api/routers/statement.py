@@ -101,7 +101,7 @@ def _item(item: SourceItem | RecordItem, currency: str) -> StatementSourceOut | 
             kind=cast(Literal["document", "transfer"], item.booking.kind),
             id=item.booking.id,
             provider=item.booking.provider,
-            external_id=item.booking.external_id,
+            reference=item.booking.reference,
             account_id=item.booking.account_id,
         ),
         duplicate_of=(

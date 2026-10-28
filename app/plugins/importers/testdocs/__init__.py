@@ -8,7 +8,7 @@ Settings (`importer_instance.settings`):
 
     start_date       ISO date: the instance's start date (spec §5.5)
     covered_through  ISO date: how far the "provider" is complete
-    documents        list of {provider, external_id, occurred_on, total_minor, currency, merchant_name?,
+    documents        list of {provider, source_id, occurred_on, total_minor, currency, merchant_name?,
                      title?, lines?: [{description, amount_minor, qty?}]}
 """
 
@@ -47,7 +47,7 @@ def _document(raw: Any) -> IncomingDocument:
         )
         doc = IncomingDocument(
             provider=str(raw["provider"]),
-            external_id=str(raw["external_id"]),
+            source_id=str(raw["source_id"]),
             occurred_on=date.fromisoformat(str(raw["occurred_on"])),
             total_minor=int(raw["total_minor"]),
             currency=str(raw["currency"]),
