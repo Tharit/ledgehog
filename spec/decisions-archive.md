@@ -1204,3 +1204,7 @@ Document ingest re-resolves only unconfirmed transactions.
   "Re-resolve" keeps its meaning and gets no warning: its preview shows what changes.
 
 `document_merchant` and
+
+## D230 Clearance accounts replace document matching, in part — *superseded by D235*
+
+- **A booking writes its own source fields; lists render only data** (user, 2026-10-26). [...] Its row therefore reads like any row: the ledger list and an account's statement hold nothing specific to an account kind or an author, and every row with a source shows its origin as a small tag — "Imported", "Entered", "Booked" — in place of the statement's "entered by hand".

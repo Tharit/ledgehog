@@ -146,7 +146,8 @@ charts, lists and tables. A card is one of two kinds:
 - **padded** (20px) — a self-contained block: a figure, a form, a chart, a
   short summary list. Its title, if any, is inside, at the top.
 - **flush** — a page's list or table: no padding, rows edge to edge divided by
-  hairlines, a header row tinted `surface-muted` along its top. Its heading,
+  hairlines, a header row tinted `surface-muted` along its top; the ledger list's total row
+  (`patterns.md` §4.1) takes the same tint along its bottom. Its heading,
   if any, sits above it on the background; a list in groups is one card per
   group.
 

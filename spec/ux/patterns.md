@@ -47,6 +47,11 @@ says so; those are revisited after the first month of use, not per view.
   accounts of several currencies appear together. An amount in another
   currency — the instructed amount (spec §3.8), a base-currency value — always
   shows its code. Base-currency values in reports are labelled as such.
+  A column of amounts names its currency in its header where all its amounts
+  share one — "Amount (EUR)", "Balance (EUR)" — and its cells then show none;
+  where they mix, the header says "Amount" and every cell shows its code. A
+  list decides by what the server says its filter selects where it can (the
+  ledger list's `sums`), else by the rows it holds.
 - **Alignment.** Amount columns are right-aligned with tabular numerals.
 - **Unvalued is not zero.** A value with no usable rate renders as "unvalued"
   (a dash with a tooltip naming the currency and its rate age, spec §3.11),
@@ -82,16 +87,18 @@ says so; those are revisited after the first month of use, not per view.
 An entry row shows, in this order: date, account (always in the ledger list; a
 view of one account may leave it out), category or the transfer's destination
 ("→ Cash"), payee, tags, description (the entry's own `description` only; the one column that takes the remaining
-width), the origin tag, the review badges (§4.2) and the amount. Derived entries (opening,
+width), the review badges (§4.2) and the amount. Derived entries (opening,
 valuation, reconciliation) render in the same row shape with their type in
-place of a category, no origin tag and no review affordances (spec §3.9).
+place of a category and no review affordances (spec §3.9).
 
 **The origin tag** says who authored a row's source transaction, from its
 `origin` (spec §5.6): a small muted tag, "Imported", "Entered" or "Booked".
-It is the same on every row with a source transaction, in the ledger list and
-in an account's statement (`ux/views/account.md`), and it is the only mark of
-authorship there: every other cell shows the data the row holds, empty where
-it holds none. No list renders a row differently for its account's kind or
+It belongs to an account's statement (`ux/views/account.md`), the list of what
+the account's sources delivered, and is the only mark of authorship there. A
+list of entries — the ledger list, the review queue — does not show it: its
+rows are read by what they mean, and the work panel's provenance says who
+wrote the source (§4.5). Every cell shows the data the row holds, empty where
+it holds none, and no list renders a row differently for its account's kind or
 its author.
 
 The description column shows the entry's `description` and nothing borrowed
@@ -114,11 +121,22 @@ own.** Filtering, counting, paging and tagging all act on entries
 (architecture §4.1); anything grouped is only how rows are drawn. The entries
 of a split are adjacent, because the list's order keeps them together. There
 is no parent row and no expander. The whole unit opens in the panel. The entries of a split are
-also visually joined, with a marker on the first row whose tooltip gives the
-unit's total. A transfer leg shows its partner —
+also visually joined, and each carries a marker whose tooltip gives the unit's
+total, so a split is recognisable from any of its rows. A transfer leg shows its partner —
 account, date and amount — from a read-only summary the row carries, so it
 works when a filter hides the partner; the partner's own row is highlighted
 when it is in view.
+
+**The ledger list ends in a total row**, in its card beneath the last row: the
+count — "100 of 214 entries" — with "Load more" while rows remain, and the sum
+of the amounts of every entry the filter selects, "Total of all 214", ending at
+the amount column. The sum is the server's (§1), computed with the count over
+the whole filter and never from the rows held; it is part of the snapshot (§7),
+so a refresh updates it as it does the count. It is one sum per currency and
+never converted (spec I27): one figure where the filter selects one currency,
+figures side by side with their codes where it selects several. The row sticks
+to the bottom of the viewport while the list is in view, as the header row
+sticks to its top.
 
 ### 4.2 Review state
 

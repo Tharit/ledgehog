@@ -3188,7 +3188,7 @@ transfer's legs may be days apart.
 
 - **Every row is an entry.** Filter, order, count, page, tag and any later sum are defined on entries and
   never change; grouping is presentation. A split's entries sit next to each other, visually joined, with a
-  marker on the first row; the unit opens in the panel.
+  marker on each of its rows; the unit opens in the panel.
 - **A transfer leg carries a read-only summary of its partner** (account, date, amount: one join, an additive
   field). It works when an account filter hides the partner, and the partner's row is
   highlighted when visible. Sorting cannot bring the legs together without lying about a date.
@@ -3718,7 +3718,7 @@ states.
 - Rejected: *dropping the user's empty payee key* (an incomplete unit could be pulled back into review by a payee
   the user had removed); *keeping a key only for a cleared payee* (two empty states the user cannot tell apart).
 
-## D230 Clearance accounts replace document matching
+## D230 Clearance accounts replace document matching — *partly superseded by D235*
 
 Spec I1, I2, I3, I7, I20, I21, I35, I41, §2, §3.3, §3.6, §3.8, §3.9, §4, §5 to §5.9, §6, §8, §9;
 `features/documents.md`; `rules.md`; `history.md`; schema; architecture §4.1, §5.1, §5.2, §5.4, §5.5, §5.7, §6.3,
@@ -3786,8 +3786,8 @@ partly supersedes D63, D97, D131, D142, D152, D166, D168, D172, D177, D178, D181
   counterparty name is the document's provider and its purpose "Order *external id*" ("Refund *external id*" for a
   refund); a counter-leg booking carries its charge's date and purpose, like any counter-leg. Its row therefore reads
   like any row: the ledger list and an account's statement hold nothing specific to an account kind or an author, and
-  every row with a source shows its origin as a small tag — "Imported", "Entered", "Booked" — in place of the
-  statement's "entered by hand". Accepted consequences: the model's payload sees these fields (harmless), and a rule
+  every statement row with a source shows its origin as a small tag — "Imported", "Entered", "Booked" — in place of the
+  "entered by hand". Accepted consequences: the model's payload sees these fields (harmless), and a rule
   on the counterparty "Amazon" matches booking entries too — their type is fixed to `flow`, so no transfer rule
   applies. Only navigation reads the format of a `source_id`: the panel's "Booked from *provider* order *id*" and a
   row's "Open document", like "Open review". Rejected: *the statement assembling "order … from …" or "charge on …"
@@ -3863,3 +3863,20 @@ email.md; spec §5.5, §5.8, §5.9, §7; architecture §5.5, §5.7.
 - **Text first, PDF as fallback.** German shops attach terms and conditions as PDFs; reading the PDF first would
   lose the order in the body. The vision model gets no schema: constrained decoding made it loop.
 - **The password is typed at every sync**, like the PIN: a mailbox password is not verifiably read-only.
+
+## D235 The ledger list's total; lists of entries without the origin tag
+
+patterns §4.1; architecture §4.1 (*The ledger list and tags*); design §5; D196, D230.
+
+- **The ledger list sums its filter.** The answer carries, beside the count, the sum of the amounts of every entry the filter selects, so the total row states "Total of all *n*" whatever the page holds; the client adds nothing (patterns §1). A sum of the loaded rows would change with every "Load more" and mean nothing.
+- **One sum per currency, never converted** (user, 2026-10-28). The ledger list is not reporting (I27): one currency is one figure, a mix is shown as it is. Rejected: *a base-currency `Line`, as the reports have* (conversion outside reporting, and an unvalued remainder on a list).
+- **Every entry of a split carries the marker.** On the first row only, the others were unexplained wherever the cursor or a scroll landed on them.
+- **Lists of entries drop the origin tag** (user, 2026-10-28), partly superseding D230. The ledger list and the review queue are read by what an entry means; who authored its source is the statement's concern, and the panel's provenance says it for any entry. The statement keeps the tag. Rejected: *keeping it in the ledger list to match the statement* (a column on every row for a fact rarely asked of an entry).
+
+## D236 A column names its one currency in its header
+
+patterns §2; D235.
+
+- **The header carries the currency a column shares** (user, 2026-10-28): "Amount (EUR)", as the category report already had it, and the cells drop the code. Where a column mixes currencies, the header says "Amount" and every cell shows its code, as before. A list of one currency is then explicit without repeating the code on every row.
+- **Decided by the server's answer where it has one.** The ledger list decides by its `sums` (D235), so loading more never relabels it. A list without such a figure — the documents list — decides by the rows it holds, and loading more may relabel it (accepted, user 2026-10-28).
+- The rule preview and the rule example's candidate list showed no code even where currencies mixed; they follow §2 like every other list.

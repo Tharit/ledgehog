@@ -798,8 +798,9 @@ A value that cannot be understood or a filter that contradicts itself (`from` af
 one, the derived entries, first: a balance record is the state at the end of its day, so it stands above
 the day's movements), then by id descending: the order is total, so pages do
 not overlap, and the entries of one split, which share a date and a source transaction, are adjacent. Paging
-is by offset. The answer is `entries`, `total` (every entry the filter selects, whatever the page), `limit`
-and `offset`.
+is by offset. The answer is `entries`, `total` (every entry the filter selects, whatever the page), `sums` (the signed sum of their amounts per
+currency, `[{amount, currency}]`, one item per currency present, ordered by code; nothing is converted,
+`spec.md` I27), `limit` and `offset`.
 
 **Rows.** An entry as the interpretation layer holds it: id and version, account, `booked_on` and `value_on`,
 the signed amount with its currency (§4.5), type, description and note, `display_text` (derived: the
