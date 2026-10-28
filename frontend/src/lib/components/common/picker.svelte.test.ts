@@ -26,6 +26,21 @@ describe('Picker', () => {
 		expect(onselect).toHaveBeenCalledWith(1);
 	});
 
+	it('draws a tag item as a chip and an icon item as a tile', async () => {
+		setup({
+			items: [
+				{ id: 1, label: 'Lisbon', color: 'lavender', tag: true },
+				{ id: 2, label: 'Giro', icon: 'landmark', color: 'forest' }
+			]
+		});
+
+		const [chipRow, tileRow] = await screen.findAllByRole('option');
+		expect(chipRow.querySelector('[data-slot="tag-chip"]')).not.toBeNull();
+		expect(chipRow.querySelector('span[style*="--tile-fg"]')).toBeNull();
+		expect(tileRow.querySelector('[data-slot="tag-chip"]')).toBeNull();
+		expect(tileRow.querySelector('span[style*="--tile-fg"] svg')).not.toBeNull();
+	});
+
 	it('shows why an item cannot be chosen', () => {
 		setup();
 

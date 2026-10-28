@@ -66,26 +66,30 @@
 	const accountOptions = $derived<ChipOption<number>[]>(
 		[...lookups.accounts.values()]
 			.sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name))
-			.map((a) => ({ value: a.id, label: a.name, color: resolveAccount(a).color }))
+			.map((a) => ({ value: a.id, label: a.name, ...resolveAccount(a) }))
 	);
 	const categoryOptions = $derived<ChipOption<number>[]>(
 		[...lookups.categories.values()]
 			.map((c) => ({
 				value: c.id,
 				label: categoryPath(c, lookups.categories),
-				color: resolveCategory(c, lookups.categories).color
+				...resolveCategory(c, lookups.categories)
 			}))
 			.sort((a, b) => a.label.localeCompare(b.label))
 	);
 	const payeeOptions = $derived<ChipOption<number>[]>(
 		[...lookups.payees.values()]
 			.sort((a, b) => a.name.localeCompare(b.name))
-			.map((p) => ({ value: p.id, label: p.name, color: resolvePayee(p).color }))
+			.map((p) => {
+				const { icon, color, initial } = resolvePayee(p);
+				// the initial stands in for the icon only where there is none
+				return { value: p.id, label: p.name, icon, color, initial: icon ? undefined : initial };
+			})
 	);
 	const tagOptions = $derived<ChipOption<number>[]>(
 		[...lookups.tags.values()]
 			.sort((a, b) => a.name.localeCompare(b.name))
-			.map((t) => ({ value: t.id, label: t.name, color: resolveTag(t).color }))
+			.map((t) => ({ value: t.id, label: t.name, tag: true, color: resolveTag(t).color }))
 	);
 	const flagOptions: ChipOption<string>[] = REVIEW_FLAG_ORDER.map((flag) => ({
 		value: flag,

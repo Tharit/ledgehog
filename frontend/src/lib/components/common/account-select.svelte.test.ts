@@ -18,13 +18,15 @@ beforeEach(() => {
 });
 
 describe('AccountSelect', () => {
-	it('shows the chosen account with its dot, or asks to choose', async () => {
+	it('shows the chosen account with its tile, or asks to choose', async () => {
 		const view = render(AccountSelect, {
 			props: { accounts: [cash, loan], label: 'Account', value: 3 }
 		});
 
 		expect(trigger()).toHaveTextContent('Hand loan');
-		expect(trigger().querySelector('[data-slot="account-dot"]')).not.toBeNull();
+		expect(trigger().querySelector('[data-slot="account-dot"]')).toBeNull();
+		const tile = trigger().querySelector<HTMLElement>('span[style*="--tile-fg"]');
+		expect(tile?.querySelector('svg')).not.toBeNull();
 		await view.rerender({ accounts: [cash, loan], label: 'Account', value: null });
 		expect(trigger()).toHaveTextContent('Choose an account…');
 	});
@@ -41,6 +43,16 @@ describe('AccountSelect', () => {
 		expect(onchange).toHaveBeenCalledWith(3);
 		expect(trigger()).toHaveTextContent('Hand loan');
 		await waitFor(() => expect(screen.queryByRole('option')).toBeNull());
+	});
+
+	it('draws each listed account as a tile, not a dot', async () => {
+		render(AccountSelect, { props: { accounts: [cash, loan], label: 'Account', value: null } });
+
+		await fireEvent.click(trigger());
+		const option = await screen.findByRole('option', { name: /Hand loan/ });
+
+		expect(option.querySelector('span[style*="--tile-fg"] svg')).not.toBeNull();
+		expect(option.querySelector('[data-slot="account-dot"]')).toBeNull();
 	});
 
 	it('finds an account by typing', async () => {

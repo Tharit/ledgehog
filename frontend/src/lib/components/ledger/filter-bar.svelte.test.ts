@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { account, category, tag } from '#lib/ledger/fixtures.js';
+import { account, category, payee, tag } from '#lib/ledger/fixtures.js';
 import { emptyFilter, type LedgerFilterState } from '#lib/ledger/filter.js';
 import { buildLookups } from '#lib/ledger/lookups.js';
 import FilterBar from './filter-bar.svelte';
@@ -8,6 +8,7 @@ import FilterBar from './filter-bar.svelte';
 const lookups = buildLookups({
 	accounts: [account(), account({ id: 2, name: 'Cash', currency: 'USD' })],
 	categories: [category()],
+	payees: [payee({ id: 20, name: 'REWE' }), payee({ id: 21, name: 'Kiosk', icon: 'store' })],
 	tags: [tag()]
 });
 
@@ -122,6 +123,53 @@ describe('FilterBar: chips', () => {
 	});
 });
 
+describe('FilterBar: the lead tile of an option', () => {
+	const tileOf = (row: HTMLElement) => row.querySelector<HTMLElement>('span[style*="--tile-fg"]');
+
+	it('draws a category in its own icon and colour', async () => {
+		bar();
+
+		await fireEvent.click(screen.getByRole('button', { name: /All categories/ }));
+		const row = (await screen.findByRole('checkbox', { name: 'Groceries' })).closest('label')!;
+
+		expect(tileOf(row)?.querySelector('svg')).not.toBeNull();
+		expect(tileOf(row)?.getAttribute('style')).toContain('--dim-sage');
+	});
+
+	it('draws an account in its own colour, with its kind icon, not a dot', async () => {
+		bar();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'All accounts' }));
+		const row = (await screen.findByRole('checkbox', { name: 'Giro' })).closest('label')!;
+
+		expect(tileOf(row)?.querySelector('svg')).not.toBeNull();
+		expect(tileOf(row)?.getAttribute('style')).toContain('--dim-forest');
+		expect(row.querySelector('[data-slot="account-dot"]')).toBeNull();
+	});
+
+	it('gives a payee with no icon its initial, and one with an icon its glyph', async () => {
+		bar();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'All payees' }));
+		const plain = (await screen.findByRole('checkbox', { name: 'REWE' })).closest('label')!;
+		const iconed = screen.getByRole('checkbox', { name: 'Kiosk' }).closest('label')!;
+
+		expect(tileOf(plain)).toHaveTextContent('R');
+		expect(tileOf(plain)?.querySelector('svg')).toBeNull();
+		expect(tileOf(iconed)?.querySelector('svg')).not.toBeNull();
+	});
+
+	it('draws a tag as a chip, not a tile', async () => {
+		bar();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Tags' }));
+		const row = (await screen.findByRole('checkbox', { name: 'Lisbon trip' })).closest('label')!;
+
+		expect(row.querySelector('[data-slot="tag-chip"]')).not.toBeNull();
+		expect(tileOf(row)).toBeNull();
+	});
+});
+
 describe('FilterBar: the type section of the category chip', () => {
 	it('lists the five types with their row icons', async () => {
 		bar();
@@ -173,6 +221,7 @@ describe('FilterBar: the review state chip', () => {
 			'Partner still expected'
 		);
 		expect(within(list).getByRole('checkbox', { name: 'Waiting' })).toBeInTheDocument();
+		expect(list.querySelector('span[style*="--tile-fg"]')).toBeNull();
 	});
 });
 

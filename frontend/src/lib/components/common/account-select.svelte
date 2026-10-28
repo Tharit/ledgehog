@@ -1,8 +1,9 @@
 <script lang="ts">
 	import ChevronsUpDownIcon from '@lucide/svelte/icons/chevrons-up-down';
-	import AccountDot from '#lib/components/common/account-dot.svelte';
+	import DimensionIcon from '#lib/components/common/dimension-icon.svelte';
 	import Picker, { type PickerItem } from '#lib/components/common/picker.svelte';
 	import * as Popover from '#lib/components/ui/popover/index.js';
+	import { resolveAccount } from '#lib/theme/resolve.js';
 	import type { Account } from '#lib/types/domain.js';
 	import { cn } from '#lib/utils.js';
 
@@ -30,7 +31,7 @@
 	let open = $state(false);
 	const selected = $derived(accounts.find((a) => a.id === value) ?? null);
 	const items = $derived<PickerItem[]>(
-		accounts.map((a) => ({ id: a.id, label: a.name, color: a.color, dot: true }))
+		accounts.map((a) => ({ id: a.id, label: a.name, ...resolveAccount(a) }))
 	);
 
 	function choose(id: number) {
@@ -52,9 +53,10 @@
 			selected === null && 'text-muted-foreground'
 		)}
 	>
-		<span class="flex min-w-0">
+		<span class="flex min-w-0 items-center gap-2">
 			{#if selected}
-				<AccountDot name={selected.name} color={selected.color} />
+				<DimensionIcon {...resolveAccount(selected)} />
+				<span class="truncate">{selected.name}</span>
 			{:else}
 				<span>Choose an account…</span>
 			{/if}

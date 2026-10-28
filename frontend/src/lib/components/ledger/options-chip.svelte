@@ -2,8 +2,14 @@
 	export type ChipOption<T extends string | number> = {
 		value: T;
 		label: string;
-		/** a dimension colour name: shown as a dot before the label */
+		/** a dimension colour name: with `icon` (or `initial`) the option's lead tile, with `tag` its chip */
 		color?: string;
+		/** the member's icon name: its lead tile, in `color` (design §6) */
+		icon?: string | null;
+		/** stands in for the icon (a payee without one) */
+		initial?: string;
+		/** a tag: drawn as a chip in `color`, never a tile */
+		tag?: boolean;
 		/** a longer explanation, as a tooltip */
 		hint?: string;
 		/** a review token: its badge (the one the rows show) is drawn before the label */
@@ -13,8 +19,9 @@
 
 <script lang="ts" generics="T extends string | number">
 	import type { Snippet } from 'svelte';
-	import AccountDot from '#lib/components/common/account-dot.svelte';
+	import DimensionIcon from '#lib/components/common/dimension-icon.svelte';
 	import ReviewBadge from '#lib/components/common/review-badge.svelte';
+	import TagChip from '#lib/components/common/tag-chip.svelte';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import FilterChip from './filter-chip.svelte';
@@ -93,9 +100,12 @@
 						{#if option.flag}
 							<span aria-hidden="true" class="inline-flex"><ReviewBadge flag={option.flag} /></span>
 						{/if}
-						{#if option.color}
-							<AccountDot name={option.label} color={option.color} />
+						{#if option.tag}
+							<TagChip name={option.label} color={option.color} />
 						{:else}
+							{#if option.icon !== undefined || option.initial !== undefined}
+								<DimensionIcon icon={option.icon} color={option.color} initial={option.initial} />
+							{/if}
 							<span class="truncate">{option.label}</span>
 						{/if}
 					</label>

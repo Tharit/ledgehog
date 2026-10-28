@@ -9,8 +9,8 @@
 		color?: string | null;
 		/** stands in for the icon (a payee without one) */
 		initial?: string;
-		/** a colour dot and the name instead of an icon tile (tags) */
-		dot?: boolean;
+		/** a chip in `color` instead of an icon tile (tags) */
+		tag?: boolean;
 		/** a heading to list it under; items follow in the order given, a group at its first item */
 		group?: string;
 	};
@@ -18,8 +18,8 @@
 
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import AccountDot from '#lib/components/common/account-dot.svelte';
 	import DimensionIcon from '#lib/components/common/dimension-icon.svelte';
+	import TagChip from '#lib/components/common/tag-chip.svelte';
 	import * as Command from '#lib/components/ui/command/index.js';
 
 	// The one list to choose from (patterns §11.2 "Popover choice" / "Pick dialog"): a find box,
@@ -113,8 +113,8 @@
 	>
 		{#if row}
 			{@render row(item)}
-		{:else if item.dot}
-			<AccountDot name={item.label} color={item.color} />
+		{:else if item.tag}
+			<TagChip name={item.label} color={item.color} />
 		{:else}
 			{#if item.icon !== undefined || item.initial !== undefined}
 				<DimensionIcon icon={item.icon} color={item.color} initial={item.initial} />
