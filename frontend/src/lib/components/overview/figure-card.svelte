@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import Card from '#lib/components/common/card.svelte';
 
 	// One of the Overview's figure cards (overview.md, design §6 comfortable): a title, a large
 	// figure (28px / 700) and quiet rows beneath that appear only when they have something to say.
@@ -21,8 +22,9 @@
 	} = $props();
 </script>
 
-<section
-	class="flex min-w-0 flex-col gap-3 rounded-xl border border-border bg-card p-5 shadow-card"
+<Card
+	element="section"
+	class="flex min-w-0 flex-col gap-3"
 	data-slot="figure-card"
 	aria-label={title}
 	aria-busy={loading || undefined}
@@ -41,4 +43,4 @@
 			<div class="flex flex-col gap-1.5 text-sm">{@render rows()}</div>
 		{/if}
 	{/if}
-</section>
+</Card>

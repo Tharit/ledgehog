@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import Card from '#lib/components/common/card.svelte';
 
 	// A half-width card of the Overview: a section heading, optionally with a link at the right of
 	// it ("All accounts →"), and a body of rows (design §6 comfortable).
@@ -17,8 +18,9 @@
 	} = $props();
 </script>
 
-<section
-	class="flex min-w-0 flex-col gap-3 rounded-xl border border-border bg-card p-5 shadow-card"
+<Card
+	element="section"
+	class="flex min-w-0 flex-col gap-3"
 	data-slot="list-card"
 	aria-label={title}
 >
@@ -34,4 +36,4 @@
 		{/if}
 	</header>
 	{@render children()}
-</section>
+</Card>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Card from '#lib/components/common/card.svelte';
 	import ActionButton from '#lib/components/common/action-button.svelte';
 	import EmptyState from '#lib/components/common/empty-state.svelte';
 	import ErrorState from '#lib/components/common/error-state.svelte';
@@ -68,8 +69,9 @@
 {:else}
 	<div class="flex flex-col gap-4" data-slot="sync-plan">
 		{#each plan as instance (instance.instance_id)}
-			<section
-				class="flex flex-col gap-1 rounded-xl border border-border bg-card p-4"
+			<Card
+				element="section"
+				class="flex flex-col gap-1"
 				data-slot="plan-instance"
 				data-busy={instance.busy}
 				aria-label={instance.label}
@@ -108,7 +110,7 @@
 						</li>
 					{/if}
 				</ul>
-			</section>
+			</Card>
 		{/each}
 
 		<div class="flex flex-col items-end gap-2">

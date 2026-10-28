@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Card from '#lib/components/common/card.svelte';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
 	import { onDestroy, onMount } from 'svelte';
 	import ActionButton from '#lib/components/common/action-button.svelte';
@@ -232,9 +233,9 @@
 		/>
 	{:else if store.importer}
 		<!-- one explicit save button; Enter in a field does not submit (⌘/Ctrl+Enter does) -->
-		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-		<form
-			class="flex max-w-3xl flex-col gap-6 rounded-xl border bg-card p-5 shadow-card"
+		<Card
+			element="form"
+			class="flex max-w-3xl flex-col gap-6"
 			aria-label="Importer"
 			onsubmit={(event) => event.preventDefault()}
 			{onkeydown}
@@ -306,7 +307,7 @@
 					</ActionButton>
 				</div>
 			{/if}
-		</form>
+		</Card>
 
 		{#if store.editing && store.instance}
 			<div class="max-w-3xl">

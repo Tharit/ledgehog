@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Card from '#lib/components/common/card.svelte';
 	import type { Snippet } from 'svelte';
 	import ActionButton from '#lib/components/common/action-button.svelte';
 	import ChoiceSelect from '#lib/components/common/choice-select.svelte';
@@ -60,9 +61,9 @@
 </script>
 
 <!-- one explicit save button; Enter in a field does not submit (⌘/Ctrl+Enter does) -->
-<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-<form
-	class="flex flex-col gap-5 rounded-xl border bg-card p-5 shadow-card"
+<Card
+	element="form"
+	class="flex flex-col gap-5"
 	aria-label="Rule"
 	onsubmit={(event) => event.preventDefault()}
 	{onkeydown}
@@ -164,4 +165,4 @@
 		{/if}
 		<span class="basis-full text-xs text-muted-foreground">⌘/Ctrl + Enter saves.</span>
 	</div>
-</form>
+</Card>

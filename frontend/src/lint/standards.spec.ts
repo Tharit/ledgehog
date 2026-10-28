@@ -74,4 +74,15 @@ describe('interaction standards', () => {
 		);
 		expect(found).toEqual([]);
 	});
+
+	it('draws a card only through card.svelte: no shadow-card, no rounded-xl with bg-card', () => {
+		const found = files
+			.filter(({ path }) => !path.endsWith(join('common', 'card.svelte')))
+			.filter(
+				({ text }) =>
+					text.includes('shadow-card') || (/\brounded-xl\b/.test(text) && /\bbg-card\b/.test(text))
+			)
+			.map(({ path }) => path);
+		expect(found).toEqual([]);
+	});
 });

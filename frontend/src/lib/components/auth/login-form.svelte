@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Card from '#lib/components/common/card.svelte';
 	import ActionButton from '#lib/components/common/action-button.svelte';
 	import Field from '#lib/components/common/field.svelte';
 	import { Input } from '#lib/components/ui/input/index.js';
@@ -29,10 +30,7 @@
 	}
 </script>
 
-<form
-	class="flex w-full max-w-sm flex-col gap-4 rounded-xl border bg-card p-5 shadow-card"
-	onsubmit={submit}
->
+<Card element="form" class="flex w-full max-w-sm flex-col gap-4" onsubmit={submit}>
 	<!-- Placeholder wordmark: the raster mascot must be redrawn as SVG before it ships (design §9). -->
 	<h1 class="text-[28px] font-semibold text-primary">Ledgehog</h1>
 	{#if passwordLogin}
@@ -68,4 +66,4 @@
 			data-sveltekit-reload>Log in with SSO</ActionButton
 		>
 	{/if}
-</form>
+</Card>

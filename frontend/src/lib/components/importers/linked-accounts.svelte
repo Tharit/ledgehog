@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Card from '#lib/components/common/card.svelte';
 	import ActionButton from '#lib/components/common/action-button.svelte';
 	import { accountUrl } from '#lib/importers/links.js';
 	import type { Lookups } from '#lib/ledger/lookups.js';
@@ -27,8 +28,9 @@
 	} = $props();
 </script>
 
-<section
-	class="flex flex-col gap-3 rounded-xl border bg-card p-5 shadow-card"
+<Card
+	element="section"
+	class="flex flex-col gap-3"
 	aria-label="Linked accounts"
 	data-slot="linked-accounts"
 >
@@ -80,4 +82,4 @@
 			{/each}
 		</ul>
 	{/if}
-</section>
+</Card>

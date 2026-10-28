@@ -378,7 +378,7 @@
 				{/each}
 			{:else if panel.status === 'missing'}
 				<div
-					class="flex flex-col items-start gap-3 rounded-xl border bg-card p-5"
+					class="flex flex-col items-start gap-3 rounded-lg border bg-card p-5"
 					data-slot="no-review"
 				>
 					<h3 class="text-base font-semibold">{NO_REVIEW_TITLE}</h3>

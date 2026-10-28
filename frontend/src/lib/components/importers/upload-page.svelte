@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Card from '#lib/components/common/card.svelte';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
 	import { onDestroy, onMount } from 'svelte';
 	import ActionButton from '#lib/components/common/action-button.svelte';
@@ -72,18 +73,15 @@
 			onretry={() => store.init()}
 		/>
 	{:else if store.phase === 'done' && store.run}
-		<div
-			class="flex max-w-3xl flex-col gap-4 rounded-xl border bg-card p-5 shadow-card"
-			data-slot="upload-done"
-		>
+		<Card class="flex max-w-3xl flex-col gap-4" data-slot="upload-done">
 			<h2 class="text-base font-semibold">The file was uploaded</h2>
 			<RunSummary run={store.run} {currency} locale={store.locale} />
 			<div>
 				<ActionButton href={back}>Back to the account</ActionButton>
 			</div>
-		</div>
+		</Card>
 	{:else}
-		<div class="flex max-w-3xl flex-col gap-5 rounded-xl border bg-card p-5 shadow-card">
+		<Card class="flex max-w-3xl flex-col gap-5">
 			<Field
 				label="File"
 				hint="For this account only; up to 10 MiB. Choosing it checks it at once, and nothing is written until you upload it."
@@ -174,6 +172,6 @@
 					Upload
 				</ActionButton>
 			</div>
-		</div>
+		</Card>
 	{/if}
 </div>

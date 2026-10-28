@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Card from '#lib/components/common/card.svelte';
 	import Link2Icon from '@lucide/svelte/icons/link-2';
 	import PencilIcon from '@lucide/svelte/icons/pencil';
 	import EmptyState from '#lib/components/common/empty-state.svelte';
@@ -132,7 +133,7 @@
 		upload a file from the account's page.
 	</EmptyState>
 {:else}
-	<ul class="flex flex-col rounded-xl border bg-card shadow-card" data-slot="importer-list">
+	<Card variant="flush" element="ul" class="flex flex-col" data-slot="importer-list">
 		{#each instances as instance (instance.id)}
 			{@const run = lastRunText(instance.last_run_at, timeZone, locale)}
 			{@const login = loginText(instance, catalog)}
@@ -179,5 +180,5 @@
 				{/if}
 			</li>
 		{/each}
-	</ul>
+	</Card>
 {/if}

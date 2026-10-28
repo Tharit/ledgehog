@@ -6,6 +6,7 @@
 		type OpenPrompt,
 		type TaskInstance
 	} from '#lib/sync/events.js';
+	import Card from '#lib/components/common/card.svelte';
 	import type { AccountInfo } from '#lib/sync/progress.js';
 	import type { SyncItem } from '#lib/types/domain.js';
 	import InstanceFailure from './instance-failure.svelte';
@@ -56,8 +57,9 @@
 	const again = $derived(ended && canRunAgain(instance));
 </script>
 
-<section
-	class="flex flex-col gap-1 rounded-xl border border-border bg-card p-4"
+<Card
+	element="section"
+	class="flex flex-col gap-1"
 	data-slot="instance-card"
 	data-state={instance.state}
 	aria-label={label}
@@ -93,4 +95,4 @@
 			onrunagain={() => onrunagain?.(runAgainItems(instance))}
 		/>
 	{/if}
-</section>
+</Card>

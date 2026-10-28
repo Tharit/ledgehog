@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Card from '#lib/components/common/card.svelte';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import EmptyState from '#lib/components/common/empty-state.svelte';
 	import ErrorState from '#lib/components/common/error-state.svelte';
@@ -60,7 +61,7 @@
 		{#each groups as group (group.sets)}
 			<section aria-label={SETS_INFO[group.sets].group} class="flex flex-col gap-1">
 				<h2 class="text-base font-semibold">{SETS_INFO[group.sets].group}</h2>
-				<ul class="flex flex-col rounded-xl border bg-card shadow-card">
+				<Card variant="flush" element="ul" class="flex flex-col">
 					{#each group.rules as rule (rule.id)}
 						<li
 							class="group grid min-h-12 grid-cols-[minmax(0,1fr)_minmax(0,14rem)_auto] items-center gap-x-4 border-b border-border px-4 py-1.5 last:border-b-0"
@@ -103,7 +104,7 @@
 							/>
 						</li>
 					{/each}
-				</ul>
+				</Card>
 			</section>
 		{/each}
 	</div>

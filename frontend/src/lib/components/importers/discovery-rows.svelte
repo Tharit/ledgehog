@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Card from '#lib/components/common/card.svelte';
 	import ActionButton from '#lib/components/common/action-button.svelte';
 	import { ACCOUNT_KINDS } from '#lib/accounts/kinds.js';
 	import { NOTHING_TO_FETCH_TEXT, rowState, type RowState } from '#lib/importers/discovery.js';
@@ -30,7 +31,7 @@
 		hint === null ? null : (ACCOUNT_KINDS.find((k) => k.kind === hint)?.label ?? hint);
 </script>
 
-<ul class="flex flex-col rounded-xl border bg-card shadow-card" data-slot="discovery-rows">
+<Card variant="flush" element="ul" class="flex flex-col" data-slot="discovery-rows">
 	{#each entries as entry (entry.account.external_ref)}
 		{@const state = rowState(entry)}
 		{@const ref = entry.account.external_ref}
@@ -83,4 +84,4 @@
 			</div>
 		</li>
 	{/each}
-</ul>
+</Card>

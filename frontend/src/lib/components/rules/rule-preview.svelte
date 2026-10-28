@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Card from '#lib/components/common/card.svelte';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { formatCount } from '#lib/format/index.js';
 	import type { Lookups } from '#lib/ledger/lookups.js';
@@ -107,10 +108,11 @@
 	{/if}
 {/snippet}
 
-<section
+<Card
+	element="section"
 	aria-label="Preview"
 	aria-busy={status === 'loading'}
-	class="flex min-w-0 flex-col gap-4 rounded-xl border bg-card p-5 shadow-card"
+	class="flex min-w-0 flex-col gap-4"
 >
 	<h2 class="text-base font-semibold">Preview</h2>
 
@@ -173,4 +175,4 @@
 			{/each}
 		</div>
 	{/if}
-</section>
+</Card>
