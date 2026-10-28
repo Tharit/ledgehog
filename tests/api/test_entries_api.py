@@ -49,7 +49,7 @@ def test_requires_a_session(client: TestClient):
 
 
 def test_empty_ledger(anna: TestClient):
-    assert listed(anna) == {"entries": [], "total": 0, "limit": 100, "offset": 0}
+    assert listed(anna) == {"entries": [], "total": 0, "sums": [], "limit": 100, "offset": 0}
 
 
 def test_row_json_shape_and_money(anna: TestClient, api_engine: Engine, acct: int):
@@ -177,8 +177,43 @@ def test_pagination_over_http(anna: TestClient, api_engine: Engine, acct: int):
     assert sorted(seen) == sorted(made) and len(set(seen)) == 7
     assert seen == entry_ids(anna)
     past = listed(anna, limit=3, offset=500)
-    assert past == {"entries": [], "total": 7, "limit": 3, "offset": 500}
+    assert past == {
+        "entries": [],
+        "total": 7,
+        "sums": [{"amount": -7000, "currency": "EUR"}],
+        "limit": 3,
+        "offset": 500,
+    }
     assert listed(anna, limit=500)["limit"] == 500
+
+
+def test_sums_cover_every_match_per_currency_ordered_by_code(anna: TestClient, api_engine: Engine, acct: int):
+    with api_engine.begin() as conn:
+        accounts = {c: seed.account(conn, c, currency=c) for c in ("USD", "EUR", "CHF")}
+    for amount, currency in [
+        (-300, "USD"),
+        (500, "EUR"),
+        (-200, "EUR"),
+        (-100, "CHF"),
+        (50, "USD"),
+        (-900, "EUR"),
+    ]:
+        add(api_engine, accounts[currency], amount=amount, currency=currency)
+    every = [
+        {"amount": -100, "currency": "CHF"},
+        {"amount": -600, "currency": "EUR"},
+        {"amount": -250, "currency": "USD"},
+    ]
+    page = listed(anna, limit=2)
+    assert len(page["entries"]) == 2 and page["total"] == 6 and page["sums"] == every
+    assert listed(anna, limit=2, offset=500)["sums"] == every
+    # the filter is respected, and a currency absent from the selection is not listed
+    assert listed(anna, currency="EUR", limit=1)["sums"] == [{"amount": -600, "currency": "EUR"}]
+    assert listed(anna, direction="in")["sums"] == [
+        {"amount": 500, "currency": "EUR"},
+        {"amount": 50, "currency": "USD"},
+    ]
+    assert listed(anna, currency="GBP")["sums"] == []
 
 
 @pytest.mark.parametrize(

@@ -1935,6 +1935,8 @@ export interface components {
             limit: number;
             /** Offset */
             offset: number;
+            /** Sums */
+            sums: components["schemas"]["Money"][];
             /** Total */
             total: number;
         };

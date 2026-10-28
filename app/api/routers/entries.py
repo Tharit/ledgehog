@@ -176,6 +176,7 @@ class EntryOut(BaseModel):
 class EntryPageOut(BaseModel):
     entries: list[EntryOut]
     total: int  # entries matching the filter, whatever the page
+    sums: list[Money]  # their signed amounts summed per currency, ordered by code; nothing is converted
     limit: int
     offset: int
 
@@ -231,7 +232,11 @@ def list_entries_view(
     with engine.connect() as conn:
         page = list_entries(conn, flt, limit=limit, offset=offset)
     return EntryPageOut(
-        entries=[EntryOut.of(e) for e in page.entries], total=page.total, limit=page.limit, offset=page.offset
+        entries=[EntryOut.of(e) for e in page.entries],
+        total=page.total,
+        sums=[Money(amount=a, currency=c) for c, a in page.sums],
+        limit=page.limit,
+        offset=page.offset,
     )
 
 

@@ -66,6 +66,7 @@ class EntryRow:
 class EntryPage:
     entries: tuple[EntryRow, ...]
     total: int  # entries matching the filter, whatever the page
+    sums: tuple[tuple[str, int], ...]  # (currency, signed minor-unit sum) of every matching entry, by code
     limit: int
     offset: int
 
@@ -94,6 +95,13 @@ def list_entries(conn: Connection, flt: LedgerFilter, *, limit: int, offset: int
     """
     parts = compose(flt)
     total = conn.execute(select(func.count()).select_from(parts.source).where(*parts.where)).scalar_one()
+    sums = conn.execute(
+        select(le.c.currency, func.sum(le.c.amount))
+        .select_from(parts.source)
+        .where(*parts.where)
+        .group_by(le.c.currency)
+        .order_by(le.c.currency)
+    ).all()
     entries = _paged(
         conn,
         select(*_COLUMNS)
@@ -103,7 +111,7 @@ def list_entries(conn: Connection, flt: LedgerFilter, *, limit: int, offset: int
         .limit(limit)
         .offset(offset),
     )
-    return EntryPage(entries, int(total), limit, offset)
+    return EntryPage(entries, int(total), tuple((c, int(a)) for c, a in sums), limit, offset)
 
 
 def stream_entries(

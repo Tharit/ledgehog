@@ -2339,6 +2339,13 @@
             "title": "Offset",
             "type": "integer"
           },
+          "sums": {
+            "items": {
+              "$ref": "#/components/schemas/Money"
+            },
+            "title": "Sums",
+            "type": "array"
+          },
           "total": {
             "title": "Total",
             "type": "integer"
@@ -2347,6 +2354,7 @@
         "required": [
           "entries",
           "total",
+          "sums",
           "limit",
           "offset"
         ],

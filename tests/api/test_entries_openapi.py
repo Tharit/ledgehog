@@ -82,7 +82,15 @@ def test_a_sample_row_validates_against_the_model():
             "amount": {"amount": 5, "currency": "EUR"},
         },
     }
-    page = EntryPageOut.model_validate({"entries": [row], "total": 1, "limit": 100, "offset": 0})
+    page = EntryPageOut.model_validate(
+        {
+            "entries": [row],
+            "total": 1,
+            "sums": [{"amount": -1250, "currency": "EUR"}],
+            "limit": 100,
+            "offset": 0,
+        }
+    )
     assert page.model_dump(mode="json")["entries"] == [row]
 
 
