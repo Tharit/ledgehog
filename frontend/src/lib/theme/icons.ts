@@ -14,6 +14,7 @@ import Building2Icon from '@lucide/svelte/icons/building-2';
 import BusIcon from '@lucide/svelte/icons/bus';
 import CarIcon from '@lucide/svelte/icons/car';
 import ChartLineIcon from '@lucide/svelte/icons/chart-line';
+import CheckIcon from '@lucide/svelte/icons/check';
 import CircleDashedIcon from '@lucide/svelte/icons/circle-dashed';
 import CircleEllipsisIcon from '@lucide/svelte/icons/circle-ellipsis';
 import CircleParkingIcon from '@lucide/svelte/icons/circle-parking';
@@ -38,6 +39,7 @@ import HammerIcon from '@lucide/svelte/icons/hammer';
 import HandCoinsIcon from '@lucide/svelte/icons/hand-coins';
 import HeartPulseIcon from '@lucide/svelte/icons/heart-pulse';
 import HouseIcon from '@lucide/svelte/icons/house';
+import InboxIcon from '@lucide/svelte/icons/inbox';
 import LampIcon from '@lucide/svelte/icons/lamp';
 import LandmarkIcon from '@lucide/svelte/icons/landmark';
 import LeafIcon from '@lucide/svelte/icons/leaf';
@@ -59,6 +61,7 @@ import ShieldIcon from '@lucide/svelte/icons/shield';
 import ShirtIcon from '@lucide/svelte/icons/shirt';
 import ShoppingBasketIcon from '@lucide/svelte/icons/shopping-basket';
 import ShoppingCartIcon from '@lucide/svelte/icons/shopping-cart';
+import SigmaIcon from '@lucide/svelte/icons/sigma';
 import SmartphoneIcon from '@lucide/svelte/icons/smartphone';
 import SparklesIcon from '@lucide/svelte/icons/sparkles';
 import StethoscopeIcon from '@lucide/svelte/icons/stethoscope';
@@ -102,6 +105,7 @@ const ICONS: Record<string, IconComponent> = {
 	bus: BusIcon,
 	car: CarIcon,
 	'chart-line': ChartLineIcon,
+	check: CheckIcon,
 	'circle-dashed': CircleDashedIcon,
 	'circle-ellipsis': CircleEllipsisIcon,
 	'circle-parking': CircleParkingIcon,
@@ -126,6 +130,7 @@ const ICONS: Record<string, IconComponent> = {
 	'hand-coins': HandCoinsIcon,
 	'heart-pulse': HeartPulseIcon,
 	house: HouseIcon,
+	inbox: InboxIcon,
 	lamp: LampIcon,
 	landmark: LandmarkIcon,
 	leaf: LeafIcon,
@@ -147,6 +152,7 @@ const ICONS: Record<string, IconComponent> = {
 	shirt: ShirtIcon,
 	'shopping-basket': ShoppingBasketIcon,
 	'shopping-cart': ShoppingCartIcon,
+	sigma: SigmaIcon,
 	smartphone: SmartphoneIcon,
 	sparkles: SparklesIcon,
 	stethoscope: StethoscopeIcon,

@@ -29,6 +29,8 @@
 			key: line.key,
 			label: line.label,
 			color: colorOf(line),
+			icon: line.icon,
+			tile: line.tileColor,
 			props: { defined: (d: BalanceRow) => d[line.key] !== null && d[line.key] !== undefined }
 		}))
 	);
@@ -56,7 +58,12 @@
 			<FigureTooltip
 				describe={(d: BalanceRow) => ({
 					title: String(d.label),
-					rows: series.map((s) => ({ label: s.label, value: money(d[s.key]), color: s.color }))
+					rows: series.map((s) => ({
+						label: s.label,
+						value: money(d[s.key]),
+						icon: s.icon,
+						color: s.tile
+					}))
 				})}
 			/>
 		{/snippet}

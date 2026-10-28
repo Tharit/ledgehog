@@ -27,7 +27,9 @@
 			key: s.key,
 			label: s.label,
 			value: s.value,
-			color: dimensionVars(s.color).fg
+			color: dimensionVars(s.color).fg,
+			icon: s.icon,
+			tile: s.color
 		}))
 	);
 	const config = $derived(
@@ -53,7 +55,7 @@
 		{#snippet tooltip()}
 			<FigureTooltip
 				describe={(d) => ({
-					rows: [{ label: d.label, value: money(d.value), color: d.color }]
+					rows: [{ label: d.label, value: money(d.value), icon: d.icon, color: d.tile }]
 				})}
 			/>
 		{/snippet}

@@ -5,6 +5,7 @@
 	import type { StackRow, StackSeries } from '#lib/reports/charts.js';
 	import { dimensionVars } from '#lib/theme/dimensions.js';
 	import { CHART_SIZE } from './chart-size.js';
+	import DimensionIcon from '#lib/components/common/dimension-icon.svelte';
 	import FigureTooltip from './figure-tooltip.svelte';
 
 	// The top categories and "Other" as stacked bars per period, in the categories' resolved colours
@@ -25,7 +26,13 @@
 	} = $props();
 
 	const chartSeries = $derived(
-		series.map((s) => ({ key: s.key, label: s.label, color: dimensionVars(s.color).fg }))
+		series.map((s) => ({
+			key: s.key,
+			label: s.label,
+			color: dimensionVars(s.color).fg,
+			icon: s.icon,
+			tile: s.color
+		}))
 	);
 	const config = $derived(
 		Object.fromEntries(chartSeries.map((s) => [s.key, { label: s.label, color: s.color }]))
@@ -52,7 +59,12 @@
 						title: String(d.label),
 						rows: chartSeries
 							.filter((s) => Number(d[s.key]) !== 0)
-							.map((s) => ({ label: s.label, value: money(Number(d[s.key])), color: s.color }))
+							.map((s) => ({
+								label: s.label,
+								value: money(Number(d[s.key])),
+								icon: s.icon,
+								color: s.tile
+							}))
 					})}
 				/>
 			{/snippet}
@@ -61,8 +73,7 @@
 	<ul class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground" data-slot="chart-legend">
 		{#each chartSeries as s (s.key)}
 			<li class="flex items-center gap-1.5">
-				<span class="size-2.5 rounded-[2px]" style:background-color={s.color} aria-hidden="true"
-				></span>
+				<DimensionIcon icon={s.icon} color={s.tile} size="compact" />
 				{s.label}
 			</li>
 		{/each}

@@ -3,8 +3,8 @@
 	import { categoryHref, type Scope } from '#lib/reports/links.js';
 	import { notInCategories } from '#lib/reports/tables.js';
 	import type { ByCategory } from '#lib/reports/types.js';
-	import { dimensionVars } from '#lib/theme/dimensions.js';
 	import type { Category } from '#lib/types/domain.js';
+	import DimensionIcon from '#lib/components/common/dimension-icon.svelte';
 	import Card from '#lib/components/common/card.svelte';
 	import CategoryDonut from './category-donut.svelte';
 	import CategoryTable from './category-table.svelte';
@@ -55,11 +55,7 @@
 				<ul class="flex flex-col gap-1 text-sm" data-slot="donut-legend">
 					{#each donut.slices as slice (slice.key)}
 						<li class="flex items-center gap-2" data-slice={slice.key}>
-							<span
-								class="size-2.5 shrink-0 rounded-[2px]"
-								style:background-color={dimensionVars(slice.color).fg}
-								aria-hidden="true"
-							></span>
+							<DimensionIcon icon={slice.icon} color={slice.color} size="compact" />
 							<span>{slice.label}</span>
 						</li>
 					{/each}

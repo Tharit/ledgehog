@@ -95,6 +95,23 @@ describe('ByCategoryView', () => {
 		}
 	});
 
+	it('draws each legend entry as its category’s icon tile, "Other" as circle-ellipsis', () => {
+		const { container } = render(ByCategoryView, {
+			props: { report: byCategoryTree(), categories, scope }
+		});
+
+		const legend = container.querySelector('[data-slot="donut-legend"]')!;
+		for (const item of legend.querySelectorAll('li')) {
+			expect(item.querySelector('span[style] svg')).toBeInTheDocument();
+		}
+		const food = legend.querySelector('[data-slice="c1"] span[style]')!;
+		expect(food.getAttribute('style')).toContain('--dim-sage');
+		expect(
+			legend.querySelector('[data-slice="other"] .lucide-circle-ellipsis')
+		).toBeInTheDocument();
+		expect(legend.querySelector('.rounded-\\[2px\\]')).toBeNull();
+	});
+
 	it('gives the donut an explicit width, or its grid cell collapses it to nothing', () => {
 		const { container } = render(ByCategoryView, {
 			props: { report: byCategoryTree(), categories, scope }

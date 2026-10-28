@@ -2,13 +2,15 @@
 // mapping is tested without a chart. A chart is never the only place a figure is: every one has
 // its table beside it, built from the same answers.
 import { formatDate, formatDateRange, formatMonth, formatPointLabel } from '#lib/format/index.js';
+import { measureLook } from '#lib/theme/measures.js';
 import { resolveAccount, resolveCategory } from '#lib/theme/resolve.js';
 import type { Account, Category } from '#lib/types/domain.js';
 import type { Balances, CategorySeries, OverTime, Period, Savings, Step } from './shapes.js';
 import type { ByCategory, Line } from './types.js';
 
-/** The colour of "Other" in every chart (design §8). */
+/** The colour of "Other" in every chart (design §8), and its lead tile's icon (design §6). */
 export const OTHER_COLOR = 'stone';
+export const OTHER_ICON = 'circle-ellipsis';
 
 export const minorOf = (line: Line): number | null => line.total?.amount ?? null;
 
@@ -46,6 +48,8 @@ export type Slice = {
 	value: number;
 	/** a dimension colour name */
 	color: string;
+	/** the lead tile's icon name (design §6) */
+	icon: string;
 	line: Line;
 	/** null for "Other" */
 	categoryId: number | null;
@@ -72,6 +76,7 @@ export function donutSlices(
 			label: category?.name ?? 'Category',
 			value,
 			color: resolveCategory(category, categories).color,
+			icon: resolveCategory(category, categories).icon,
 			line: slice.total,
 			categoryId: slice.category_id
 		});
@@ -83,6 +88,7 @@ export function donutSlices(
 			label: 'Other',
 			value: Math.abs(minorOf(other) ?? 0),
 			color: OTHER_COLOR,
+			icon: OTHER_ICON,
 			line: other,
 			categoryId: null
 		});
@@ -127,7 +133,14 @@ export function incomeExpensePoints(
 
 // ---- Over time: by category
 
-export type StackSeries = { key: string; label: string; color: string; categoryId: number | null };
+export type StackSeries = {
+	key: string;
+	label: string;
+	color: string;
+	/** the lead tile's icon name (design §6) */
+	icon: string;
+	categoryId: number | null;
+};
 export type StackRow = { key: string; label: string; [series: string]: string | number };
 
 /**
@@ -152,12 +165,19 @@ export function categoryStack(
 			key: `c${category_id}`,
 			label: category?.name ?? 'Category',
 			color: resolveCategory(category, categories).color,
+			icon: resolveCategory(category, categories).icon,
 			categoryId: category_id
 		});
 		values.push(source.total);
 	}
 	if (report.other?.some((line) => (minorOf(line) ?? 0) !== 0)) {
-		series.push({ key: 'other', label: 'Other', color: OTHER_COLOR, categoryId: null });
+		series.push({
+			key: 'other',
+			label: 'Other',
+			color: OTHER_COLOR,
+			icon: OTHER_ICON,
+			categoryId: null
+		});
 		values.push(report.other);
 	}
 	const rows = report.periods.map((period, i) => {
@@ -185,7 +205,16 @@ export function pointColumnLabel(point: string, locale = 'en'): string {
 	return isMonthEnd(point) ? formatPointLabel(point, locale) : formatDate(point, locale);
 }
 
-export type BalanceLine = { key: string; label: string; color: string; accountId: number | null };
+export type BalanceLine = {
+	key: string;
+	label: string;
+	/** the line's colour: a dimension colour name, or `primary` for the net worth */
+	color: string;
+	/** the lead tile (design §6): the account's own, or the net worth measure's, stone */
+	icon: string;
+	tileColor: string;
+	accountId: number | null;
+};
 export type BalanceRow = {
 	key: string;
 	date: Date;
@@ -205,17 +234,29 @@ export function balanceRows(
 	netWorth = true
 ): { lines: BalanceLine[]; rows: BalanceRow[] } {
 	const lines: BalanceLine[] = netWorth
-		? [{ key: 'net_worth', label: 'Net worth', color: 'primary', accountId: null }]
+		? [
+				{
+					key: 'net_worth',
+					label: 'Net worth',
+					color: 'primary',
+					icon: measureLook('net_worth').icon,
+					tileColor: measureLook('net_worth').color,
+					accountId: null
+				}
+			]
 		: [];
 	const chosen = report.accounts.filter(
 		(a) => shown.has(a.account_id) && a.balances.some((b) => b !== null)
 	);
 	for (const a of chosen) {
 		const account = accounts.get(a.account_id);
+		const look = account ? resolveAccount(account) : { icon: OTHER_ICON, color: OTHER_COLOR };
 		lines.push({
 			key: `a${a.account_id}`,
 			label: account?.name ?? 'Account',
-			color: account ? resolveAccount(account).color : OTHER_COLOR,
+			color: look.color,
+			icon: look.icon,
+			tileColor: look.color,
 			accountId: a.account_id
 		});
 	}

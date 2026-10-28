@@ -8,6 +8,7 @@ import {
 	periodLabel,
 	pointColumnLabel
 } from './charts.js';
+import { resolveCategory } from '#lib/theme/resolve.js';
 import { line } from './fixtures.js';
 import {
 	balances,
@@ -149,5 +150,37 @@ describe('pointColumnLabel', () => {
 	it('writes a month-end as its month and today as its date', () => {
 		expect(pointColumnLabel('2026-09-30')).toBe('Sep 26');
 		expect(pointColumnLabel('2026-10-20')).toBe('Oct 20, 2026');
+	});
+});
+
+describe('the lead tiles of the chart series (design §6)', () => {
+	it('gives the donut its categories’ own icons and "Other" circle-ellipsis on stone', () => {
+		const { slices } = donutSlices(byCategoryTree(), categories);
+		expect(slices.find((s) => s.key === 'other')).toMatchObject({
+			icon: 'circle-ellipsis',
+			color: 'stone'
+		});
+		expect(slices.find((s) => s.key === 'c1')).toMatchObject({
+			icon: 'shopping-cart',
+			color: 'sage'
+		});
+	});
+
+	it('gives the stack the same', () => {
+		const { series } = categoryStack(overTimeCategories(), categories);
+		expect(series.find((s) => s.key === 'other')).toMatchObject({
+			icon: 'circle-ellipsis',
+			color: 'stone'
+		});
+		expect(series.find((s) => s.key === 'c4')).toMatchObject({
+			icon: resolveCategory(categories.get(4), categories).icon,
+			color: 'slate'
+		});
+	});
+
+	it('gives the net worth line sigma on stone though the line is primary, and an account its own', () => {
+		const { lines } = balanceRows(balances(), accounts, new Set([2]));
+		expect(lines[0]).toMatchObject({ color: 'primary', icon: 'sigma', tileColor: 'stone' });
+		expect(lines[1]).toMatchObject({ icon: 'piggy-bank', color: 'teal', tileColor: 'teal' });
 	});
 });

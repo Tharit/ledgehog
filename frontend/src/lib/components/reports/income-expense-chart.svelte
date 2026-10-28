@@ -3,6 +3,7 @@
 	import * as Chart from '#lib/components/ui/chart/index.js';
 	import { formatCompactAmount, formatMoney } from '#lib/format/index.js';
 	import type { IncomeExpensePoint } from '#lib/reports/charts.js';
+	import { measureLook } from '#lib/theme/measures.js';
 	import { CHART_SIZE } from './chart-size.js';
 	import FigureTooltip from './figure-tooltip.svelte';
 
@@ -68,9 +69,9 @@
 				describe={(d: IncomeExpensePoint) => ({
 					title: d.label,
 					rows: [
-						{ label: 'Income', value: money(d.income), color: 'var(--amount-positive)' },
-						{ label: 'Expense', value: money(d.expense), color: 'var(--amount-negative)' },
-						{ label: 'Savings', value: money(d.savings), color: 'var(--primary)' }
+						{ label: 'Income', value: money(d.income), ...measureLook('income') },
+						{ label: 'Expense', value: money(d.expense), ...measureLook('expense') },
+						{ label: 'Savings', value: money(d.savings), ...measureLook('savings') }
 					]
 				})}
 			/>
