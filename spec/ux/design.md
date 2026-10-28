@@ -258,6 +258,16 @@ the unit panel; never in a ledger row.
 | a valuation entry | `gauge` |
 | a reconciliation entry | `scale` |
 
+**The Overview's figure cards** each carry a fixed icon beside their title,
+16px, in the default `text-muted`; no other figure card has one:
+
+| Card | Icon |
+|---|---|
+| Net worth | `sigma` |
+| Savings rate | `percent` |
+| Spend | `receipt` |
+| To review | `inbox`, `check` at zero |
+
 An unclassified entry shows no category icon: its category slot is the absent
 value "Unclassified" (§7). The type filter shows the four icons above for their types and names a flow with `coins`, drawn the same way; a flow in a row shows its category, never this icon.
 
