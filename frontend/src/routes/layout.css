@@ -25,8 +25,8 @@
 	--muted-foreground: #6b6359;
 	--accent: #dde3d3;
 	--accent-foreground: #172923;
-	/* a hovered row: the cursor's accent, halved over the card (design §2) */
-	--row-hover: color-mix(in srgb, var(--accent) 50%, var(--card));
+	/* a hovered row: the cursor's accent at 30 % over the card (design §2) */
+	--row-hover: color-mix(in srgb, var(--accent) 30%, var(--card));
 	--sage: #91a88d;
 	--destructive: #b04a33;
 	--amount-positive: #3b7a57;
