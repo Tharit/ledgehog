@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PercentIcon from '@lucide/svelte/icons/percent';
 	import IncompleteMarker from '#lib/components/reports/incomplete-marker.svelte';
 	import LineFigure from '#lib/components/reports/line-figure.svelte';
 	import { formatMonth, formatRate } from '#lib/format/index.js';
@@ -22,6 +23,7 @@
 
 <FigureCard
 	title="Savings rate"
+	icon={PercentIcon}
 	caption={savings
 		? `Last 12 months, ${formatMonth(savings.last_12.from, locale)} – ${formatMonth(savings.last_12.to, locale)}`
 		: undefined}

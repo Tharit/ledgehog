@@ -1,4 +1,5 @@
 <script lang="ts">
+	import SigmaIcon from '@lucide/svelte/icons/sigma';
 	import AbsentValue from '#lib/components/common/absent-value.svelte';
 	import MoneyDisplay from '#lib/components/common/money-display.svelte';
 	import LineFigure from '#lib/components/reports/line-figure.svelte';
@@ -18,7 +19,12 @@
 		count === 1 ? '1 transfer still unpaired' : `${count} transfers still unpaired`;
 </script>
 
-<FigureCard title="Net worth" loading={netWorth === null}>
+<FigureCard
+	title="Net worth"
+	icon={SigmaIcon}
+	caption="All accounts, today"
+	loading={netWorth === null}
+>
 	{#snippet figure()}
 		{#if netWorth?.total}
 			<MoneyDisplay

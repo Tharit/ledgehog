@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ReceiptIcon from '@lucide/svelte/icons/receipt';
 	import LineFigure from '#lib/components/reports/line-figure.svelte';
 	import { formatDate, formatMonthName } from '#lib/format/index.js';
 	import { byCategoryHref, ledgerHref } from '#lib/reports/figures.js';
@@ -6,9 +7,9 @@
 	import CardRow from '#lib/components/common/card-row.svelte';
 	import FigureCard from '#lib/components/common/figure-card.svelte';
 
-	// This month so far: expense-kind flows, refunds netting, signed (spec §8). Directly under it
-	// the unclassified amount out and the month's reconciliations, so that the figure does not
-	// understate itself. The rows compare with last month, in full and to the same day. Every
+	// This month so far: expense-kind flows, refunds netting, signed (spec §8). Its first two
+	// rows are the unclassified amount out and the month's reconciliations, so that the figure does
+	// not understate itself. The rows then compare with last month, in full and to the same day. Every
 	// amount links to the report or the ledger that lists what it sums.
 	let { spend, locale = 'en' }: { spend: Overview['spend'] | null; locale?: string } = $props();
 
@@ -18,7 +19,7 @@
 			? [
 					{
 						line: month.unclassified_out,
-						label: 'unclassified',
+						label: 'Plus unclassified',
 						href: ledgerHref({
 							from: month.from,
 							to: month.to,
@@ -28,7 +29,7 @@
 					},
 					{
 						line: month.reconciliations,
-						label: 'reconciliations',
+						label: 'Plus reconciliations',
 						href: ledgerHref({ from: month.from, to: month.to, type: ['reconciliation'] })
 					}
 				].filter((part) => part.line.count > 0)
@@ -38,6 +39,7 @@
 
 <FigureCard
 	title="Spend"
+	icon={ReceiptIcon}
 	caption={month ? `${formatMonthName(month.from, locale)} so far` : undefined}
 	loading={spend === null}
 >
@@ -53,18 +55,11 @@
 	{/snippet}
 	{#snippet rows()}
 		{#if spend && month}
-			{#if beside.length > 0}
-				<p class="flex flex-wrap items-baseline gap-x-1.5 text-sm" data-slot="spend-beside">
-					<span class="text-muted-foreground">plus</span>
-					{#each beside as part, i (part.label)}
-						{#if i > 0}<span class="text-muted-foreground">&middot;</span>{/if}
-						<a href={part.href} class="inline-flex items-baseline gap-1.5 hover:underline">
-							<LineFigure line={part.line} {locale} />
-							<span class="text-muted-foreground">{part.label}</span>
-						</a>
-					{/each}
-				</p>
-			{/if}
+			{#each beside as part (part.label)}
+				<CardRow label={part.label} href={part.href}>
+					<LineFigure line={part.line} {locale} />
+				</CardRow>
+			{/each}
 			<CardRow label="Last month" href={byCategoryHref(spend.last_month.from, spend.last_month.to)}>
 				<LineFigure line={spend.last_month.spend} {locale} showPlus={false} />
 			</CardRow>

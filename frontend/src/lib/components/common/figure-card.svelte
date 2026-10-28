@@ -1,20 +1,27 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import Card from '#lib/components/common/card.svelte';
+	import type { IconComponent } from '#lib/theme/icons.js';
 
-	// One of the Overview's figure cards (overview.md, design §6 comfortable): a title, a large
-	// figure (28px / 700) and quiet rows beneath that appear only when they have something to say.
-	// While `loading` the figure is a skeleton and the rows are not drawn: a first load only, a
-	// refetch keeps the figures on screen (patterns §7).
+	// A figure card (overview.md, design §6 comfortable): a header of an optional icon and the title
+	// with a one-line subtitle under it, a large figure (28px / 700) and quiet rows beneath that
+	// appear only when they have something to say. The Overview's four cards pass an icon and a
+	// subtitle and put nothing but rows under the figure, so their rows begin on the same line; while
+	// `loading` without a subtitle yet, a bar holds its line so that the header stays two lines
+	// tall. While `loading` the figure is a skeleton and the rows are not drawn: a first load only,
+	// a refetch keeps the figures on screen (patterns §7).
 	let {
 		title,
+		icon: Icon,
 		caption,
 		loading = false,
 		figure,
 		rows
 	}: {
 		title: string;
-		/** what the figure covers ("Oct 2025 – Sep 2026") */
+		/** a Lucide icon drawn before the title */
+		icon?: IconComponent;
+		/** what the figure covers ("Oct 2025 – Sep 2026"), one line */
 		caption?: string;
 		loading?: boolean;
 		figure: Snippet;
@@ -30,9 +37,19 @@
 	aria-busy={loading || undefined}
 >
 	<header class="flex flex-col gap-0.5">
-		<h2 class="text-sm font-semibold">{title}</h2>
+		<h2 class="flex items-center gap-1.5 text-sm font-semibold">
+			{#if Icon}<Icon
+					size={16}
+					strokeWidth={1.75}
+					class="text-muted-foreground"
+					aria-hidden="true"
+				/>{/if}
+			{title}
+		</h2>
 		{#if caption}
-			<p class="text-xs text-muted-foreground">{caption}</p>
+			<p class="truncate text-xs text-muted-foreground">{caption}</p>
+		{:else if loading}
+			<div class="h-4 w-24 animate-pulse rounded bg-muted" data-slot="caption-skeleton"></div>
 		{/if}
 	</header>
 	{#if loading}

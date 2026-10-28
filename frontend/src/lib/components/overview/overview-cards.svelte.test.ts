@@ -118,7 +118,9 @@ describe('the Savings rate card', () => {
 
 		const { region } = card('Savings rate');
 		expect(region).toHaveTextContent('Last 12 months, Oct 2025 – Sep 2026');
-		expect(within(region).getByRole('heading', { level: 2 }).textContent).toBe('Savings rate');
+		expect(within(region).getByRole('heading', { level: 2 }).textContent?.trim()).toBe(
+			'Savings rate'
+		);
 		expect(region.querySelector('.text-\\[28px\\]')).toHaveTextContent('42%');
 	});
 
@@ -196,13 +198,16 @@ describe('the Spend card', () => {
 		expect(card('Spend').region).toHaveTextContent('October so far');
 	});
 
-	it('says nothing beside the figure when nothing is unclassified or reconciled', () => {
+	it('has no unclassified or reconciliation row when there is nothing of either', () => {
 		render(SpendCard, { props: { spend: overview().spend } });
 
-		expect(card('Spend').region.querySelector('[data-slot="spend-beside"]')).toBeNull();
+		const { region } = card('Spend');
+		expect(region).not.toHaveTextContent('Plus unclassified');
+		expect(region).not.toHaveTextContent('Plus reconciliations');
+		expect(region.querySelector('[data-slot="spend-beside"]')).toBeNull();
 	});
 
-	it('puts the unclassified amount out and the reconciliations right under it, each linking to the ledger', () => {
+	it('puts the unclassified amount out and the reconciliations first among the rows, each linking to the ledger', () => {
 		const base = overview().spend;
 		render(SpendCard, {
 			props: {
@@ -217,21 +222,26 @@ describe('the Spend card', () => {
 			}
 		});
 
-		const beside = card('Spend').region.querySelector<HTMLElement>('[data-slot="spend-beside"]')!;
-		expect(beside).toHaveTextContent(
-			/plus\s*−310\.00 EUR\s*unclassified\s*·\s*−42\.00 EUR\s*reconciliations/
-		);
-		expect(within(beside).getByRole('link', { name: /unclassified/ })).toHaveAttribute(
+		const { region, row } = card('Spend');
+		expect(row('Plus unclassified').getByText('−310.00 EUR')).toBeInTheDocument();
+		expect(row('Plus reconciliations').getByText('−42.00 EUR')).toBeInTheDocument();
+		expect(screen.getByRole('link', { name: /Plus unclassified/ })).toHaveAttribute(
 			'href',
 			`/ledger?from=${FROM}&to=${TO}&uncategorised=true&direction=out`
 		);
-		expect(within(beside).getByRole('link', { name: /reconciliations/ })).toHaveAttribute(
+		expect(screen.getByRole('link', { name: /Plus reconciliations/ })).toHaveAttribute(
 			'href',
 			`/ledger?from=${FROM}&to=${TO}&type=reconciliation`
 		);
+		const labels = [...region.querySelectorAll('[data-slot="card-row"]')].map((r) =>
+			r.textContent?.trim()
+		);
+		expect(labels[0]).toMatch(/^Plus unclassified/);
+		expect(labels[1]).toMatch(/^Plus reconciliations/);
+		expect(labels[2]).toMatch(/^Last month/);
 	});
 
-	it('names only the part that has entries', () => {
+	it('has a row only for the part that has entries', () => {
 		const base = overview().spend;
 		render(SpendCard, {
 			props: {
@@ -242,10 +252,9 @@ describe('the Spend card', () => {
 			}
 		});
 
-		const beside = card('Spend').region.querySelector<HTMLElement>('[data-slot="spend-beside"]')!;
-		expect(beside).toHaveTextContent(/plus\s*−42\.00 EUR\s*reconciliations/);
-		expect(beside).not.toHaveTextContent('unclassified');
-		expect(beside).not.toHaveTextContent('·');
+		const { region, row } = card('Spend');
+		expect(row('Plus reconciliations').getByText('−42.00 EUR')).toBeInTheDocument();
+		expect(region).not.toHaveTextContent('Plus unclassified');
 	});
 
 	it('compares with last month in full and to the same day, each linking to its range', () => {
@@ -285,36 +294,38 @@ describe('the Spend card', () => {
 });
 
 describe('the To review card', () => {
-	it('shows the count with its split and a link into the queue', () => {
+	it('shows the count linking to the queue, with a row per part', () => {
 		render(ReviewCard, { props: { counts: { pendingReview: 11, needsAccount: 3 } } });
 
-		const { region } = card('To review');
-		expect(region).toHaveTextContent('14');
-		expect(region).toHaveTextContent('11 to review · 3 need an account');
-		expect(screen.getByRole('link', { name: 'Open the review queue →' })).toHaveAttribute(
-			'href',
-			'/review'
-		);
+		const { region, row, queryRows } = card('To review');
+		expect(screen.getByRole('link', { name: '14' })).toHaveAttribute('href', '/review');
+		expect(screen.getAllByRole('link')).toHaveLength(1);
+		expect(queryRows()).toHaveLength(2);
+		expect(row('Ready to review').getByText('11')).toBeInTheDocument();
+		expect(row('Needs an account').getByText('3')).toBeInTheDocument();
+		expect(region.querySelector('.text-\\[28px\\] svg')).toBeNull();
 	});
 
-	it('leaves out a part that is zero, and agrees in number', () => {
+	it('leaves out a part that is zero', () => {
 		const { unmount } = render(ReviewCard, {
 			props: { counts: { pendingReview: 0, needsAccount: 1 } }
 		});
-		expect(card('To review').region).toHaveTextContent('1 needs an account');
-		expect(card('To review').region).not.toHaveTextContent('to review ·');
+		expect(card('To review').region).toHaveTextContent('Needs an account');
+		expect(card('To review').region).not.toHaveTextContent('Ready to review');
 		unmount();
 
 		render(ReviewCard, { props: { counts: { pendingReview: 2, needsAccount: 0 } } });
-		expect(card('To review').region).toHaveTextContent('2 to review');
-		expect(card('To review').region).not.toHaveTextContent('need');
+		expect(card('To review').region).toHaveTextContent('Ready to review');
+		expect(card('To review').region).not.toHaveTextContent('Needs an account');
 	});
 
-	it('says "All reviewed" at zero, with no link', () => {
+	it('says "All reviewed" at zero, with no link and no rows', () => {
 		render(ReviewCard, { props: { counts: { pendingReview: 0, needsAccount: 0 } } });
 
-		expect(card('To review').region).toHaveTextContent('All reviewed');
+		const { region, queryRows } = card('To review');
+		expect(region).toHaveTextContent('All reviewed');
 		expect(screen.queryByRole('link')).toBeNull();
+		expect(queryRows()).toHaveLength(0);
 	});
 
 	it('is a skeleton until the count is known, not a false "All reviewed"', () => {
@@ -323,6 +334,29 @@ describe('the To review card', () => {
 		const { region } = card('To review');
 		expect(region.querySelector('[data-slot="figure-skeleton"]')).not.toBeNull();
 		expect(region).not.toHaveTextContent('All reviewed');
+	});
+});
+
+describe('the four figure cards', () => {
+	it('each carry an icon beside the title and a one-line subtitle, so that their rows align', () => {
+		render(NetWorthCard, { props: { netWorth: overview().net_worth } });
+		render(SavingsCard, { props: { savings: overview().savings } });
+		render(SpendCard, { props: { spend: overview().spend } });
+		render(ReviewCard, { props: { counts: { pendingReview: 11, needsAccount: 3 } } });
+
+		for (const name of ['Net worth', 'Savings rate', 'Spend', 'To review']) {
+			const { region } = card(name);
+			const heading = within(region).getByRole('heading', { level: 2 });
+			expect(heading.querySelector('svg'), `${name} icon`).not.toBeNull();
+			const caption = region.querySelector('header > p');
+			expect(caption?.textContent?.trim(), `${name} subtitle`).toBeTruthy();
+		}
+	});
+
+	it('hold the subtitle line while loading, so that the skeletons align', () => {
+		render(SpendCard, { props: { spend: null } });
+
+		expect(card('Spend').region.querySelector('[data-slot="caption-skeleton"]')).not.toBeNull();
 	});
 });
 

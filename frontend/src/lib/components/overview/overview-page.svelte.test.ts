@@ -128,7 +128,8 @@ describe('the Overview page', () => {
 
 		const card = await screen.findByRole('region', { name: 'To review' });
 		expect(card).toHaveTextContent('5');
-		expect(card).toHaveTextContent('4 to review · 1 needs an account');
+		expect(card).toHaveTextContent(/Ready to review\s*4/);
+		expect(card).toHaveTextContent(/Needs an account\s*1/);
 	});
 
 	it('draws the top categories with the names the shared lists hold', async () => {
