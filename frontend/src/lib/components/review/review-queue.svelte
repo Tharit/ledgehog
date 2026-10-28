@@ -37,10 +37,15 @@
 	import ErrorState from '#lib/components/common/error-state.svelte';
 	import KeyboardHelp, { type HelpGroup } from '#lib/components/common/keyboard-help.svelte';
 	import EntryRow from '#lib/components/ledger/entry-row.svelte';
-	import { COLUMNS, GRID_TEMPLATE, ROW_GRID } from '#lib/components/ledger/columns.js';
+	import {
+		COLUMNS,
+		GRID_TEMPLATE,
+		ROW_GRID,
+		columnHeader
+	} from '#lib/components/ledger/columns.js';
 	import { changes } from '#lib/stores/changes.svelte.js';
 	import { modelQueueLine } from '#lib/units/model-pending.js';
-	import { formatCount } from '#lib/format/index.js';
+	import { columnCurrency, formatCount } from '#lib/format/index.js';
 	import { ledgerKey, moveCursor } from '#lib/ledger/keys.js';
 	import { UNIT_FRAME, unitTotal } from '#lib/ledger/unit-runs.js';
 	import type { Lookups } from '#lib/ledger/lookups.js';
@@ -89,6 +94,9 @@
 	const units = $derived(store.units);
 	const cursorIndex = $derived(
 		cursorId === null ? -1 : units.findIndex((u) => u.anchor_entry_id === cursorId)
+	);
+	const columnCode = $derived(
+		columnCurrency(units.flatMap((u) => u.entries.map((e) => e.amount.currency)))
 	);
 	const showCurrency = $derived(
 		new Set(units.flatMap((u) => u.entries.map((e) => e.amount.currency))).size > 1
@@ -289,7 +297,7 @@
 											class={column.align === 'right' ? 'text-right' : undefined}
 										>
 											{#if column.hiddenHeader}<span class="sr-only">{column.header}</span
-												>{:else}{column.header}{/if}
+												>{:else}{columnHeader(column, columnCode)}{/if}
 										</div>
 									{/each}
 								</div>
@@ -304,7 +312,7 @@
 											{@const total = unitTotal(unit.entries)}
 											<EntryRow
 												joined={unit.entries.length > 1}
-												unitTotal={entry.id === unit.entries[0].id ? total : null}
+												unitTotal={total}
 												modelPending={unit.model_pending && entry.id === unit.entries[0].id}
 												{entry}
 												{lookups}

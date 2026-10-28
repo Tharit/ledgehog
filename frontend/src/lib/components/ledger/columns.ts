@@ -3,16 +3,10 @@
 // change its `width`. Description is the flexible column and takes the remaining width; every
 // other column has a fixed width so the rows align.
 
+import { amountHeader } from '#lib/format/index.js';
+
 export type ColumnId =
-	| 'date'
-	| 'account'
-	| 'category'
-	| 'payee'
-	| 'tags'
-	| 'description'
-	| 'origin'
-	| 'review'
-	| 'amount';
+	'date' | 'account' | 'category' | 'payee' | 'tags' | 'description' | 'review' | 'amount';
 
 export type Column = {
 	id: ColumnId;
@@ -31,7 +25,6 @@ export const COLUMNS: readonly Column[] = [
 	{ id: 'payee', header: 'Payee', width: '9rem' },
 	{ id: 'tags', header: 'Tags', width: '12rem' },
 	{ id: 'description', header: 'Description', width: 'minmax(0, 1fr)' },
-	{ id: 'origin', header: 'Origin', hiddenHeader: true, width: '4.5rem' },
 	{ id: 'review', header: 'Review', hiddenHeader: true, width: '4.5rem' },
 	{ id: 'amount', header: 'Amount', width: '7rem', align: 'right' }
 ];
@@ -46,3 +39,8 @@ export const GRID_TEMPLATE = gridTemplate(COLUMNS);
 
 /** Classes every row shares so that its cells sit on the column tracks. */
 export const ROW_GRID = 'grid items-center gap-x-3';
+
+/** A column's header text: the amount column names the currency its amounts share (patterns §2). */
+export function columnHeader(column: Column, currency: string | null): string {
+	return column.id === 'amount' ? amountHeader(column.header, currency) : column.header;
+}

@@ -59,7 +59,6 @@ describe('EntryRow: a flow entry', () => {
 			'payee',
 			'tags',
 			'description',
-			'origin',
 			'review',
 			'amount'
 		]);
@@ -86,23 +85,12 @@ describe('EntryRow: a flow entry', () => {
 		expect(screen.queryByText('No text')).toBeNull();
 	});
 
-	it.each([
-		['import', 'Imported'],
-		['user', 'Entered'],
-		['booking', 'Booked']
-	] as const)('tags a row of origin %s as %s, muted', (origin, word) => {
-		row({ origin });
+	it('carries no origin tag', () => {
+		row({ origin: 'import' });
 
-		const cells = within(screen.getByRole('row')).getAllByRole('gridcell');
-		expect(cells[cell('origin')]).toHaveTextContent(word);
-		expect(screen.getByText(word)).toHaveClass('text-muted-foreground');
-	});
-
-	it('has no origin tag on a derived entry', () => {
-		row({ type: 'opening', origin: null });
-
-		const cells = within(screen.getByRole('row')).getAllByRole('gridcell');
-		expect(cells[cell('origin')].textContent?.trim()).toBe('');
+		expect(screen.queryByText('Imported')).toBeNull();
+		expect(screen.queryByText('Entered')).toBeNull();
+		expect(screen.queryByText('Booked')).toBeNull();
 	});
 
 	it('shows the source text muted, then the description the user gave', () => {

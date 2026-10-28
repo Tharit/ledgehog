@@ -117,6 +117,7 @@
 		bind:this={table}
 		entries={ledger.entries}
 		total={ledger.total}
+		sums={ledger.sums}
 		status={ledger.status}
 		loadingMore={ledger.loadingMore}
 		error={ledger.error}

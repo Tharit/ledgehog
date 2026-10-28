@@ -9,7 +9,7 @@ export type UnitRun = {
 	/** the server's `unit_key` of the run; null for an entry in no unit */
 	key: number | null;
 	entries: readonly Entry[];
-	/** a split's total, on the marker of its first row; null for a single entry or a pair */
+	/** a split's total, on the marker of each of its rows; null for a single entry or a pair */
 	total: Money | null;
 };
 

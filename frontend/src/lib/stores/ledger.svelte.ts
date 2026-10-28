@@ -37,7 +37,7 @@ import {
 	withIds
 } from '#lib/ledger/patch.js';
 import type { Lookups } from '#lib/ledger/lookups.js';
-import type { Entry, EntryTagIds, Tag } from '#lib/types/domain.js';
+import type { Entry, EntryTagIds, Money, Tag } from '#lib/types/domain.js';
 import { applyAffected, clearMarks, noMarks, type Marks } from '#lib/units/patch.js';
 import type { Affected } from '#lib/units/types.js';
 import { lookupsStore, type LookupsStore } from './lookups.svelte.js';
@@ -64,6 +64,8 @@ export class LedgerStore {
 	entries = $state.raw<Entry[]>([]);
 	/** every entry matching the filter, whatever the page */
 	total = $state(0);
+	/** the signed sum of every entry matching the filter, per currency (the list's total row) */
+	sums = $state.raw<Money[]>([]);
 	status = $state<LedgerStatus>('loading');
 	/** why the first page failed (status `error`) */
 	error = $state.raw<ApiError | null>(null);
@@ -164,6 +166,7 @@ export class LedgerStore {
 		this.loadingMore = false;
 		this.entries = [];
 		this.total = 0;
+		this.sums = [];
 		this.touchedIds = NO_IDS;
 		this.movedIds = NO_IDS;
 		this.marks = noMarks();
@@ -179,6 +182,7 @@ export class LedgerStore {
 			if (generation !== this.#generation) return;
 			this.entries = page.entries;
 			this.total = page.total;
+			this.sums = page.sums;
 			this.status = 'ready';
 		} catch (error) {
 			if (generation !== this.#generation) return; // superseded by a newer fetch
@@ -204,6 +208,7 @@ export class LedgerStore {
 			if (generation !== this.#generation) return;
 			this.entries = [...this.entries, ...page.entries];
 			this.total = page.total;
+			this.sums = page.sums;
 		} catch (error) {
 			if (generation !== this.#generation) return;
 			this.moreError = asApiError(error);
@@ -229,6 +234,7 @@ export class LedgerStore {
 		try {
 			const fresh: Entry[] = [];
 			let total = this.total;
+			let sums = this.sums;
 			while (fresh.length < wanted) {
 				const limit = Math.min(REFRESH_PAGE, wanted - fresh.length);
 				const page = await listEntries(filter, {
@@ -239,11 +245,13 @@ export class LedgerStore {
 				if (generation !== this.#generation || controller.signal.aborted) return;
 				fresh.push(...page.entries);
 				total = page.total;
+				sums = page.sums;
 				if (page.entries.length < limit) break;
 			}
 			const merged = mergeRefreshed(this.entries, fresh, held);
 			this.entries = merged.entries;
 			this.total = total;
+			this.sums = sums;
 			this.movedIds = nextMoved(this.movedIds, fresh, merged.missing);
 		} catch {
 			if (generation !== this.#generation || controller.signal.aborted) return;

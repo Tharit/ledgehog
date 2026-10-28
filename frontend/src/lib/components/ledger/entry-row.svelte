@@ -13,7 +13,6 @@
 	import MoneyDisplay from '#lib/components/common/money-display.svelte';
 	import ModelActivityMark from '#lib/components/common/model-activity-mark.svelte';
 	import { MODEL_STILL_LOOKING } from '#lib/units/model-pending.js';
-	import OriginTag from '#lib/components/common/origin-tag.svelte';
 	import ReviewBadge from '#lib/components/common/review-badge.svelte';
 	import TagChip from '#lib/components/common/tag-chip.svelte';
 	import type { Lookups } from '#lib/ledger/lookups.js';
@@ -62,7 +61,7 @@
 		joined?: boolean;
 		/** the cursor is on another row of this row's unit: a lighter cursor background */
 		unitCursor?: boolean;
-		/** a split's total: the first row of the split shows a marker whose tooltip says it */
+		/** a split's total: every row of the split shows a marker whose tooltip says it */
 		unitTotal?: Money | null;
 		/** the model is still looking at this row's unit: a quiet mark in the badge slot */
 		modelPending?: boolean;
@@ -240,8 +239,6 @@
 					<span class="min-w-0 truncate" title={entry.description}>{entry.description}</span>
 				{/if}
 			</div>
-		{:else if column.id === 'origin'}
-			<div role="gridcell" class="min-w-0"><OriginTag origin={entry.origin} /></div>
 		{:else if column.id === 'review'}
 			<div role="gridcell" class="flex min-w-0 items-center gap-1 overflow-hidden">
 				{#if confirmed}

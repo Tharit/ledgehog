@@ -32,7 +32,7 @@ vi.mock('#lib/api/index.js', async (importOriginal) => ({
 }));
 
 function page(ids: number[], total: number, offset = 0) {
-	return { entries: ids.map((id) => entry({ id })), total, limit: 100, offset };
+	return { entries: ids.map((id) => entry({ id })), total, sums: [], limit: 100, offset };
 }
 
 function deferred<T>() {
@@ -66,6 +66,26 @@ describe('LedgerStore: entries', () => {
 		expect(store.total).toBe(3);
 		expect(vi.mocked(listEntries).mock.calls[0][0]).toMatchObject({ account_id: [1] });
 		expect(vi.mocked(listEntries).mock.calls[0][1]).toMatchObject({ limit: 100, offset: 0 });
+	});
+
+	it('holds the sums the server sent, and clears them on a reload', async () => {
+		vi.mocked(listEntries).mockResolvedValue({
+			...page([2, 1], 2),
+			sums: [{ amount: -150, currency: 'EUR' }]
+		});
+		const store = new LedgerStore();
+		store.applyFilter(emptyFilter());
+		await flush();
+		expect(store.sums).toEqual([{ amount: -150, currency: 'EUR' }]);
+
+		vi.mocked(listEntries).mockResolvedValue({
+			...page([2, 1], 2),
+			sums: [{ amount: -200, currency: 'EUR' }]
+		});
+		const reloading = store.reload();
+		expect(store.sums).toEqual([]);
+		await reloading;
+		expect(store.sums).toEqual([{ amount: -200, currency: 'EUR' }]);
 	});
 
 	it('does not fetch again for the same filter (a URL echo)', async () => {
@@ -291,6 +311,7 @@ describe('LedgerStore: tagging one entry', () => {
 		vi.mocked(listEntries).mockResolvedValue({
 			entries: [entry({ id: 3 }), entry({ id: 2, tag_ids: [7] }), entry({ id: 1 })],
 			total: 3,
+			sums: [],
 			limit: 100,
 			offset: 0
 		});
@@ -436,6 +457,7 @@ describe('LedgerStore: tagging one entry', () => {
 		vi.mocked(listEntries).mockResolvedValue({
 			entries: [entry({ id: 3 }), entry({ id: 1 })],
 			total: 2,
+			sums: [],
 			limit: 3,
 			offset: 0
 		});
@@ -509,6 +531,7 @@ describe('LedgerStore: Tag all', () => {
 		vi.mocked(listEntries).mockResolvedValue({
 			entries: [entry({ id: 2, tag_ids: [30] }), entry({ id: 1, tag_ids: [30] })],
 			total: 2,
+			sums: [],
 			limit: 100,
 			offset: 0
 		});
@@ -561,6 +584,7 @@ describe('LedgerStore: refreshInPlace', () => {
 				entry({ id: 99 })
 			],
 			total: 7,
+			sums: [],
 			limit: 3,
 			offset: 0
 		});
@@ -593,6 +617,7 @@ describe('LedgerStore: refreshInPlace', () => {
 		vi.mocked(listEntries).mockResolvedValue({
 			entries: [entry({ id: 3, tag_ids: [7] }), entry({ id: 2, tag_ids: [7] })],
 			total: 2,
+			sums: [],
 			limit: 100,
 			offset: 0
 		});
@@ -605,6 +630,7 @@ describe('LedgerStore: refreshInPlace', () => {
 		vi.mocked(listEntries).mockResolvedValue({
 			entries: [entry({ id: 3, tag_ids: [7] }), entry({ id: 2, tag_ids: [7] })],
 			total: 2,
+			sums: [],
 			limit: 2,
 			offset: 0
 		});
@@ -621,6 +647,7 @@ describe('LedgerStore: refreshInPlace', () => {
 				.slice(options?.offset ?? 0, (options?.offset ?? 0) + (options?.limit ?? 0))
 				.map((id) => entry({ id, version: 2 })),
 			total: 1500,
+			sums: [],
 			limit: options?.limit ?? 0,
 			offset: options?.offset ?? 0
 		}));
@@ -689,6 +716,7 @@ describe('LedgerStore: what the unit panel does to the rows', () => {
 		vi.mocked(listEntries).mockResolvedValue({
 			entries: [3, 2, 1].map((id) => entry({ id, unit_key: id })),
 			total: 3,
+			sums: [],
 			limit: 100,
 			offset: 0
 		});
@@ -717,6 +745,7 @@ describe('LedgerStore: what the unit panel does to the rows', () => {
 		vi.mocked(listEntries).mockResolvedValue({
 			entries: [entry({ id: 3, unit_key: 3, tag_ids: [7] }), entry({ id: 1, unit_key: 1 })],
 			total: 2,
+			sums: [],
 			limit: 100,
 			offset: 0
 		});

@@ -6,7 +6,8 @@
 	import ErrorState from '#lib/components/common/error-state.svelte';
 	import KeyboardHelp, { type HelpGroup } from '#lib/components/common/keyboard-help.svelte';
 	import Notice from '#lib/components/common/notice.svelte';
-	import { formatCount } from '#lib/format/index.js';
+	import MoneyDisplay from '#lib/components/common/money-display.svelte';
+	import { columnCurrency, formatCount, formatMoney } from '#lib/format/index.js';
 	import { describeLoadError } from '#lib/ledger/errors.js';
 	import { DERIVED_NOT_TAGGABLE } from '#lib/ledger/errors.js';
 	import { ledgerKey, moveCursor } from '#lib/ledger/keys.js';
@@ -14,14 +15,14 @@
 	import type { Lookups } from '#lib/ledger/lookups.js';
 	import { CHANGED_BY_YOU, CHANGED_ELSEWHERE } from '#lib/ledger/patch.js';
 	import { isDerivedType } from '#lib/ledger/types.js';
-	import type { Entry, Tag } from '#lib/types/domain.js';
+	import type { Entry, Money, Tag } from '#lib/types/domain.js';
 	import { DERIVED_NOTICE } from '#lib/units/describe.js';
 	import { unitPanel } from '#lib/units/panel-instance.js';
 	import { markOf, noMarks, type Marks } from '#lib/units/patch.js';
 	import { neighbourEntry, registerUnitSource } from '#lib/units/sources.js';
 	import type { Affected } from '#lib/units/types.js';
 	import { cn } from '#lib/utils.js';
-	import { COLUMNS, GRID_TEMPLATE, ROW_GRID } from './columns.js';
+	import { COLUMNS, GRID_TEMPLATE, ROW_GRID, columnHeader } from './columns.js';
 	import EntryRow from './entry-row.svelte';
 	import TagPicker from './tag-picker.svelte';
 
@@ -30,6 +31,7 @@
 	let {
 		entries,
 		total,
+		sums = [],
 		status,
 		loadingMore = false,
 		error = null,
@@ -52,6 +54,8 @@
 	}: {
 		entries: readonly Entry[];
 		total: number;
+		/** the signed sum of every entry matching the filter, per currency, as the server sent it */
+		sums?: readonly Money[];
 		status: 'loading' | 'ready' | 'error';
 		loadingMore?: boolean;
 		error?: { code: string; message: string } | null;
@@ -91,8 +95,17 @@
 	const cursorIndex = $derived(
 		cursorId === null ? -1 : entries.findIndex((e) => e.id === cursorId)
 	);
-	// the currency is written where amounts of several currencies are listed together (patterns §2)
-	const showCurrency = $derived(new Set(entries.map((e) => e.amount.currency)).size > 1);
+	// the currency is named in the header where the amounts share one, and written in every cell
+	// where they mix (patterns §2); the server's sums say what the filter selects, so Load more
+	// never relabels. Without sums, the rows held decide.
+	const columnCode = $derived(
+		sums.length > 0
+			? columnCurrency(sums.map((s) => s.currency))
+			: columnCurrency(entries.map((e) => e.amount.currency))
+	);
+	const showCurrency = $derived(
+		sums.length > 0 ? sums.length > 1 : columnCode === null && entries.length > 0
+	);
 
 	// the tag picker (`t`): tags the ONE entry under the cursor, never the filter's result
 	let pickerOpen = $state(false);
@@ -230,6 +243,29 @@
 			?.scrollIntoView?.({ block: 'nearest' });
 	});
 
+	const showTotals = $derived(status === 'ready' && entries.length > 0);
+	// a figure carries its currency code when the total spans several currencies
+	const sumsCoded = $derived(sums.length > 1);
+	const totalLabel = $derived(`Total of all ${formatCount(total, locale)}`);
+	const totalName = $derived(
+		`${totalLabel} entries: ${sums
+			.map((sum) =>
+				formatMoney(sum.amount, sum.currency, { locale, showCurrency: sumsCoded, showPlus: true })
+			)
+			.join(', ')}`
+	);
+	// The footer takes over the card's bottom edge, so the last row's own bottom rounding and
+	// divider go (the footer's top border is the divider); without it the old rules stay.
+	const LAST_ROW = $derived(
+		showTotals
+			? '[&>:last-child]:border-b-0 [&>:last-child>:last-child]:border-b-0'
+			: '[&>:last-child]:rounded-b-[11px] [&>:last-child]:border-b-0 [&>:last-child>:last-child]:rounded-b-[11px] [&>:last-child>:last-child]:border-b-0'
+	);
+
+	// To drop the sticky footer (it stays at the bottom of the view while the list is on screen),
+	// empty this one constant.
+	const STICKY_FOOTER = 'sticky bottom-0 z-10';
+
 	const failure = $derived(error ? describeLoadError(error.code) : null);
 	const moreFailure = $derived(moreError ? describeLoadError(moreError.code) : null);
 
@@ -278,7 +314,7 @@
 				bind:this={container}
 				role="grid"
 				tabindex="-1"
-				class="outline-none [&>:last-child]:rounded-b-[11px] [&>:last-child]:border-b-0 [&>:last-child>:last-child]:rounded-b-[11px] [&>:last-child>:last-child]:border-b-0"
+				class={cn('outline-none', LAST_ROW)}
 				aria-label="Entries"
 				aria-busy={status === 'loading'}
 			>
@@ -291,9 +327,12 @@
 					style:grid-template-columns={GRID_TEMPLATE}
 				>
 					{#each COLUMNS as column (column.id)}
-						<div role="columnheader" class={column.align === 'right' ? 'text-right' : undefined}>
+						<div
+							role="columnheader"
+							class={cn('min-w-0 truncate', column.align === 'right' && 'text-right')}
+						>
 							{#if column.hiddenHeader}<span class="sr-only">{column.header}</span
-								>{:else}{column.header}{/if}
+								>{:else}{columnHeader(column, columnCode)}{/if}
 						</div>
 					{/each}
 				</div>
@@ -315,7 +354,7 @@
 										></div>
 									{:else if column.id === 'amount'}
 										<div class="ml-auto h-3 w-14 animate-pulse rounded bg-muted"></div>
-									{:else if column.id !== 'tags' && column.id !== 'origin' && column.id !== 'review'}
+									{:else if column.id !== 'tags' && column.id !== 'review'}
 										<div class="h-3 w-2/3 animate-pulse rounded bg-muted"></div>
 									{/if}
 								</div>
@@ -326,7 +365,7 @@
 					{#each runs as run (run.entries[0].id)}
 						{@const joined = run.entries.length > 1}
 						{#snippet rows()}
-							{#each run.entries as entry, i (entry.id)}
+							{#each run.entries as entry (entry.id)}
 								{@const mark = markOf(marks, entry.id)}
 								<EntryRow
 									{entry}
@@ -338,7 +377,7 @@
 									unitCursor={joined &&
 										entry.id !== cursorId &&
 										run.entries.some((e) => e.id === cursorId)}
-									unitTotal={i === 0 ? run.total : null}
+									unitTotal={run.total}
 									changed={changedIds.has(entry.id) ||
 										movedIds.has(entry.id) ||
 										(mark !== undefined && !marks.resolved.has(entry.id))}
@@ -363,36 +402,64 @@
 					{/each}
 				{/if}
 			</div>
+			{#if showTotals}
+				<!-- outside the grid: it is a summary of the whole list, not a row of entries -->
+				<div
+					data-total-row
+					class={cn(
+						STICKY_FOOTER,
+						'flex min-h-8 items-center gap-3 rounded-b-[11px] border-t border-border bg-muted px-3 text-xs font-medium text-muted-foreground'
+					)}
+				>
+					<span class="shrink-0 font-normal">
+						{formatCount(entries.length, locale)} of {formatCount(total, locale)} entries
+					</span>
+					{#if entries.length < total}
+						<ActionButton
+							variant="outline"
+							class="h-6 px-2 text-xs"
+							onclick={onloadmore}
+							busy={loadingMore}
+							busyLabel="Loading…"
+						>
+							Load more
+						</ActionButton>
+					{/if}
+					{#if moreFailure}
+						<Notice role="alert">
+							{moreFailure.title}.
+							{#snippet action()}
+								{#if moreFailure.retryable}
+									<ActionButton variant="link" class="h-auto p-0" onclick={onloadmore}>
+										Try again
+									</ActionButton>
+								{/if}
+							{/snippet}
+						</Notice>
+					{/if}
+					<KeyboardHelp groups={HELP} bind:open={helpOpen} />
+					{#if sums.length > 0}
+						<div
+							role="group"
+							aria-label={totalName}
+							class="ml-auto flex shrink-0 items-center gap-3"
+						>
+							<span aria-hidden="true">{totalLabel}</span>
+							{#each sums as sum (sum.currency)}
+								<span aria-hidden="true" class="text-[13px] font-normal">
+									<MoneyDisplay
+										minor={sum.amount}
+										currency={sum.currency}
+										{locale}
+										showCurrency={sumsCoded}
+									/>
+								</span>
+							{/each}
+						</div>
+					{/if}
+				</div>
+			{/if}
 		</Card>
-
-		{#if status === 'ready'}
-			<div class="flex flex-wrap items-center gap-3 py-3 text-xs text-muted-foreground">
-				<span>{formatCount(entries.length, locale)} of {formatCount(total, locale)}</span>
-				{#if entries.length < total}
-					<ActionButton
-						variant="outline"
-						onclick={onloadmore}
-						busy={loadingMore}
-						busyLabel="Loading…"
-					>
-						Load more
-					</ActionButton>
-				{/if}
-				{#if moreFailure}
-					<Notice role="alert">
-						{moreFailure.title}.
-						{#snippet action()}
-							{#if moreFailure.retryable}
-								<ActionButton variant="link" class="h-auto p-0" onclick={onloadmore}>
-									Try again
-								</ActionButton>
-							{/if}
-						{/snippet}
-					</Notice>
-				{/if}
-				<KeyboardHelp groups={HELP} bind:open={helpOpen} class="ml-auto" />
-			</div>
-		{/if}
 	{/if}
 
 	<TagPicker

@@ -216,9 +216,11 @@ describe('ReviewQueue', () => {
 		}
 		expect(groups[2].className).not.toContain('group/unit');
 		const markers = document.querySelectorAll('[data-unit-marker]');
-		expect(markers).toHaveLength(1);
+		expect(markers).toHaveLength(2);
 		expect(groups[0].querySelector('[data-entry-id="1"]')!.contains(markers[0])).toBe(true);
-		expect(markers[0].getAttribute('title')).toMatch(/^Split total .*5\.00/);
+		expect(groups[0].querySelector('[data-entry-id="2"]')!.contains(markers[1])).toBe(true);
+		for (const marker of markers)
+			expect(marker.getAttribute('title')).toMatch(/^Split total .*5\.00/);
 	});
 
 	it('the cursor highlights every row of its unit', async () => {

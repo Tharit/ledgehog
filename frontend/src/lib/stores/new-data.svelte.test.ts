@@ -119,6 +119,7 @@ describe('the views that hold a snapshot', () => {
 		vi.mocked(listEntries).mockResolvedValue({
 			entries: [entry({ id: 1 })],
 			total: 1,
+			sums: [],
 			limit: 100,
 			offset: 0
 		});
@@ -134,7 +135,13 @@ describe('the views that hold a snapshot', () => {
 	});
 
 	it('the ledger list does not show the news for documents or an account', async () => {
-		vi.mocked(listEntries).mockResolvedValue({ entries: [], total: 0, limit: 100, offset: 0 });
+		vi.mocked(listEntries).mockResolvedValue({
+			entries: [],
+			total: 0,
+			sums: [],
+			limit: 100,
+			offset: 0
+		});
 		const store = new LedgerStore();
 		await store.reload();
 
@@ -216,7 +223,7 @@ describe('the views that hold a snapshot', () => {
 		vi.mocked(listEntries).mockImplementation(
 			() =>
 				new Promise((resolve) => {
-					release = () => resolve({ entries: [], total: 0, limit: 100, offset: 0 });
+					release = () => resolve({ entries: [], total: 0, sums: [], limit: 100, offset: 0 });
 				})
 		);
 		const store = new LedgerStore();
@@ -250,7 +257,13 @@ describe('a background write the watcher has not polled yet', () => {
 	});
 
 	it('the ledger list and the review queue read the values before they fetch', async () => {
-		vi.mocked(listEntries).mockResolvedValue({ entries: [], total: 0, limit: 100, offset: 0 });
+		vi.mocked(listEntries).mockResolvedValue({
+			entries: [],
+			total: 0,
+			sums: [],
+			limit: 100,
+			offset: 0
+		});
 		vi.mocked(getQueue).mockResolvedValue(queueFixture());
 		const list = new LedgerStore();
 		const queue = new ReviewQueueStore();

@@ -14,6 +14,7 @@ function page(ids: number[], total = ids.length) {
 	return {
 		entries: ids.map((id) => entry({ id, source: source({ counterparty_name: `Shop ${id}` }) })),
 		total,
+		sums: [],
 		limit: FIND_LIMIT,
 		offset: 0
 	};
@@ -167,6 +168,7 @@ describe('RuleExampleStore: finding', () => {
 		vi.mocked(listEntries).mockResolvedValue({
 			entries: [entry({ id: 1, type: null, source: source({ counterparty_name: 'Shop' }) })],
 			total: 1,
+			sums: [],
 			limit: FIND_LIMIT,
 			offset: 0
 		});
@@ -188,6 +190,7 @@ describe('RuleExampleStore: finding', () => {
 				entry({ id: 4, source: source({}) })
 			],
 			total: 4,
+			sums: [],
 			limit: FIND_LIMIT,
 			offset: 0
 		});

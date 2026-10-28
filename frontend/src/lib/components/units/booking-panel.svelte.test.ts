@@ -280,6 +280,5 @@ describe('the panel on a charge to a clearance account', () => {
 
 		const deleted = dialog.querySelector('[data-slot="consequences"][data-kind="deleted"]');
 		expect(deleted).toHaveTextContent('Old order');
-		expect(deleted).toHaveTextContent('Booked');
 	});
 });

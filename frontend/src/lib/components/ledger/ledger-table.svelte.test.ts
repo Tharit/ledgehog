@@ -117,7 +117,7 @@ describe('LedgerTable: rows and the footer', () => {
 		table({ lookups: buildLookups({ accounts: [account()] }) });
 
 		const headers = screen.getAllByRole('columnheader').map((h) => h.textContent?.trim());
-		expect(headers).toEqual(COLUMNS.map((c) => c.header));
+		expect(headers).toEqual(COLUMNS.map((c) => (c.id === 'amount' ? 'Amount (EUR)' : c.header)));
 		expect(headers[1]).toBe('Account');
 		expect(screen.getAllByRole('row')[0].style.gridTemplateColumns).toBe(GRID_TEMPLATE);
 	});
@@ -125,7 +125,40 @@ describe('LedgerTable: rows and the footer', () => {
 	it('says how many of the matches are shown', () => {
 		table({ total: 1234, locale: 'en' });
 
-		expect(screen.getByText('3 of 1,234')).toBeInTheDocument();
+		expect(screen.getByText('3 of 1,234 entries')).toBeInTheDocument();
+	});
+
+	it('ends in a total row with the server-sent sum of all matches', () => {
+		table({ total: 214, sums: [{ amount: -123456, currency: 'EUR' }] });
+
+		const footer = document.querySelector('[data-total-row]')!;
+		expect(footer).toHaveTextContent('Total of all 214');
+		expect(footer.textContent).toContain('−1,234.56');
+		expect(footer.textContent).not.toContain('EUR');
+		expect(
+			within(footer as HTMLElement).getByRole('group', {
+				name: /^Total of all 214 entries: −1,234\.56/
+			})
+		).toBeInTheDocument();
+	});
+
+	it('writes the currency code on each figure when the sum spans several currencies', () => {
+		table({
+			total: 5,
+			sums: [
+				{ amount: 1000, currency: 'EUR' },
+				{ amount: -250, currency: 'USD' }
+			]
+		});
+
+		const footer = document.querySelector('[data-total-row]')!;
+		expect(footer.textContent).toMatch(/10\.00\s*EUR/);
+		expect(footer.textContent).toMatch(/2\.50\s*USD/);
+	});
+
+	it('has no total row while loading or when nothing matches', () => {
+		table({ entries: [], total: 0, status: 'loading' });
+		expect(document.querySelector('[data-total-row]')).toBeNull();
 	});
 
 	it('offers "Load more" only while there are more, and asks for them', async () => {
@@ -166,10 +199,32 @@ describe('LedgerTable: rows and the footer', () => {
 		expect(container.textContent).toContain(' EUR');
 	});
 
+	it('heads the amount column with the one currency the sums share, and codes no cell', () => {
+		const { container } = table({ sums: [{ amount: -4731, currency: 'EUR' }] });
+
+		expect(screen.getByRole('columnheader', { name: 'Amount (EUR)' })).toBeInTheDocument();
+		expect(container.querySelector('[data-entry-id]')).not.toHaveTextContent('EUR');
+	});
+
+	it('keeps the plain header and codes every cell where the sums mix, whatever rows are loaded', () => {
+		table({
+			sums: [
+				{ amount: -4731, currency: 'EUR' },
+				{ amount: -250, currency: 'USD' }
+			]
+		});
+
+		expect(screen.getByRole('columnheader', { name: 'Amount' })).toBeInTheDocument();
+		expect(screen.getAllByText(/−47\.31\s*EUR/).length).toBeGreaterThan(0);
+	});
+
 	it('leaves the currency out while all amounts share one', () => {
 		const { container } = table();
 
-		expect(container.textContent).not.toContain('EUR');
+		expect(screen.getByRole('columnheader', { name: 'Amount (EUR)' })).toBeInTheDocument();
+		for (const row of container.querySelectorAll('[data-entry-id]')) {
+			expect(row.textContent).not.toContain('EUR');
+		}
 	});
 });
 
@@ -836,12 +891,14 @@ describe('LedgerTable: the entries of a unit are drawn together (patterns §4.1)
 		expect(document.querySelector('[data-entry-id="5"]')!.className).not.toContain('bg-accent');
 	});
 
-	it('marks the first row of a split with the unit total, and nothing on a pair', () => {
+	it('marks every row of a split with the unit total, and nothing on a pair', () => {
 		table({ entries: rows, total: rows.length });
 
 		const markers = document.querySelectorAll('[data-unit-marker]');
-		expect(markers).toHaveLength(1);
+		expect(markers).toHaveLength(2);
 		expect(document.querySelector('[data-entry-id="4"]')!.contains(markers[0])).toBe(true);
-		expect(markers[0].getAttribute('title')).toMatch(/^Split total .*5\.00/);
+		expect(document.querySelector('[data-entry-id="3"]')!.contains(markers[1])).toBe(true);
+		for (const marker of markers)
+			expect(marker.getAttribute('title')).toMatch(/^Split total .*5\.00/);
 	});
 });
