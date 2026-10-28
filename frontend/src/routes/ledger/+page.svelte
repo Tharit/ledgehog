@@ -52,10 +52,11 @@
 		// the panel's address survives a filter change
 		if (unitPanel.unitId !== null) params.set(UNIT_PARAM, String(unitPanel.unitId));
 		const query = params.toString();
-		const typing = document.activeElement === searchEl;
-		await goto(`${page.url.pathname}${query ? `?${query}` : ''}`, { replaceState: true });
-		// a navigation moves focus to the page; typing in the filter box goes on
-		if (typing) searchEl?.focus({ preventScroll: true });
+		// the filter box (or any control) the user is using keeps its focus and caret
+		await goto(`${page.url.pathname}${query ? `?${query}` : ''}`, {
+			replaceState: true,
+			reset: false
+		});
 	}
 
 	// the line holds one notice: a write's, else the lists that did not load

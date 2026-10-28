@@ -125,7 +125,7 @@
 	title={changed || resolved ? changedTitle : undefined}
 	class={cn(
 		ROW_GRID,
-		'group relative h-8 scroll-mt-10 border-b border-border px-3 text-[13px]',
+		'group relative h-8 scroll-mt-10 scroll-mb-10 border-b border-border px-3 text-[13px]',
 		cursor ? 'bg-accent' : unitCursor ? 'bg-accent/60' : 'hover:bg-row-hover',
 		joined && !cursor && 'group-hover/unit:bg-row-hover',
 		resolved && 'text-muted-foreground'
@@ -149,9 +149,11 @@
 
 	{#each COLUMNS as column (column.id)}
 		{#if column.id === 'date'}
-			<div role="gridcell"><DateDisplay date={entry.booked_on} {locale} /></div>
+			<div role="gridcell" class="min-w-0 truncate">
+				<DateDisplay date={entry.booked_on} {locale} />
+			</div>
 		{:else if column.id === 'account'}
-			<div role="gridcell" class="min-w-0">
+			<div role="gridcell" class="flex min-w-0 items-center" title={account?.name}>
 				{#if account}
 					<AccountDot name={account.name} color={resolveAccount(account).color} />
 				{/if}
@@ -173,7 +175,10 @@
 					{/if}
 				{:else if entry.category_id !== null}
 					<DimensionIcon icon={categoryLook.icon} color={categoryLook.color} />
-					<span class="truncate">{category ? category.name : `Category ${entry.category_id}`}</span>
+					{@const categoryName = category ? category.name : `Category ${entry.category_id}`}
+					<span class="truncate" title={partnerTitle ? undefined : categoryName}
+						>{categoryName}</span
+					>
 				{:else}
 					<AbsentValue
 						label="Unclassified"
@@ -182,7 +187,11 @@
 				{/if}
 			</div>
 		{:else if column.id === 'payee'}
-			<div role="gridcell" class="min-w-0 truncate">
+			<div
+				role="gridcell"
+				class="min-w-0 truncate"
+				title={!fixed && payee ? payee.name : undefined}
+			>
 				{#if !fixed && payee}{payee.name}{/if}
 			</div>
 		{:else if column.id === 'tags'}
@@ -234,7 +243,7 @@
 		{:else if column.id === 'origin'}
 			<div role="gridcell" class="min-w-0"><OriginTag origin={entry.origin} /></div>
 		{:else if column.id === 'review'}
-			<div role="gridcell" class="flex items-center gap-1 overflow-hidden">
+			<div role="gridcell" class="flex min-w-0 items-center gap-1 overflow-hidden">
 				{#if confirmed}
 					<CheckIcon size={14} strokeWidth={1.75} aria-label="Confirmed" role="img" />
 				{:else if !fixed}
@@ -247,7 +256,8 @@
 				{/if}
 			</div>
 		{:else if column.id === 'amount'}
-			<div role="gridcell">
+			<!-- not truncated: an ellipsis would hide digits of an amount -->
+			<div role="gridcell" class="min-w-0">
 				<MoneyDisplay
 					minor={entry.amount.amount}
 					currency={entry.amount.currency}

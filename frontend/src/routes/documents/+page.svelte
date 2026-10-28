@@ -36,7 +36,10 @@
 		// the panel's address survives a filter change
 		if (unitPanel.unitId !== null) params.set(UNIT_PARAM, String(unitPanel.unitId));
 		const query = params.toString();
-		await goto(`${page.url.pathname}${query ? `?${query}` : ''}`, { replaceState: true });
+		await goto(`${page.url.pathname}${query ? `?${query}` : ''}`, {
+			replaceState: true,
+			reset: false
+		});
 	}
 
 	const currencies = $derived([

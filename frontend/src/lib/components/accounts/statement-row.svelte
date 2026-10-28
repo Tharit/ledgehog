@@ -54,7 +54,7 @@
 	{#if cursor}
 		<span class="absolute inset-y-0 left-0 w-0.5 bg-primary" aria-hidden="true"></span>
 	{/if}
-	<div role="gridcell"><DateDisplay date={row.booked_on} {locale} /></div>
+	<div role="gridcell" class="min-w-0 truncate"><DateDisplay date={row.booked_on} {locale} /></div>
 	<div role="gridcell" class="flex min-w-0 items-baseline gap-2">
 		{#if row.counterparty_name}
 			<span class="min-w-0 shrink truncate" title={row.counterparty_name}>
@@ -80,10 +80,11 @@
 		{/if}
 	</div>
 	<div role="gridcell" class="min-w-0"><OriginTag origin={row.origin} /></div>
-	<div role="gridcell">
+	<!-- amounts are not truncated: an ellipsis would hide digits -->
+	<div role="gridcell" class="min-w-0">
 		<MoneyDisplay minor={row.amount.amount} currency={row.amount.currency} {locale} />
 	</div>
-	<div role="gridcell">
+	<div role="gridcell" class="min-w-0">
 		{#if row.balance}
 			<MoneyDisplay
 				minor={row.balance.amount}

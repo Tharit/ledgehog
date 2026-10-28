@@ -296,3 +296,48 @@ describe('EntryRow: the cursor', () => {
 		expect(onselect).toHaveBeenCalledOnce();
 	});
 });
+
+describe('EntryRow: overflow', () => {
+	const longAccounts = buildLookups({
+		accounts: [
+			account({ id: 1, name: 'A checking account with a very long name indeed' }),
+			account({ id: 2, name: 'Another account with an equally long name', color: 'ochre' })
+		],
+		categories: [category()],
+		payees: [payee({ id: 20, name: 'A payee whose name does not fit in its column at all' })]
+	});
+
+	it('clips every cell, so no content spills into a neighbour', () => {
+		row({ payee_id: 20, category_id: 10 });
+
+		for (const gridcell of within(screen.getByRole('row')).getAllByRole('gridcell')) {
+			expect(gridcell).toHaveClass('min-w-0');
+		}
+	});
+
+	it('truncates a long account name and shows it whole as a tooltip', () => {
+		render(EntryRow, { props: { entry: entry({}), lookups: longAccounts } });
+
+		const accountCell = screen.getAllByRole('gridcell')[cell('account')];
+		expect(accountCell).toHaveAttribute('title', 'A checking account with a very long name indeed');
+		expect(accountCell.querySelector('[data-slot="account-dot"]')?.parentElement).toHaveClass(
+			'max-w-full',
+			'min-w-0'
+		);
+		expect(accountCell.querySelector('.truncate')).toHaveTextContent('A checking account');
+	});
+
+	it('titles a long payee and a long category name', () => {
+		render(EntryRow, {
+			props: { entry: entry({ payee_id: 20, category_id: 10 }), lookups: longAccounts }
+		});
+
+		const cells = screen.getAllByRole('gridcell');
+		expect(cells[cell('payee')]).toHaveAttribute(
+			'title',
+			'A payee whose name does not fit in its column at all'
+		);
+		expect(cells[cell('payee')]).toHaveClass('truncate');
+		expect(cells[cell('category')].querySelector('.truncate')).toHaveAttribute('title');
+	});
+});

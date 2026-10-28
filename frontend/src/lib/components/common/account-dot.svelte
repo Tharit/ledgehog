@@ -7,7 +7,7 @@
 	const vars = $derived(dimensionVars(color));
 </script>
 
-<span class="inline-flex min-w-0 items-center gap-1.5">
+<span class="inline-flex max-w-full min-w-0 items-center gap-1.5">
 	<span
 		class="size-2 shrink-0 rounded-full bg-(--dot)"
 		style:--dot={vars.fg}

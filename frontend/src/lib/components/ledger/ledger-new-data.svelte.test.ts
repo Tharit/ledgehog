@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { goto } from '$app/navigation';
 import { signedIn } from '#lib/entry-form/fixtures.js';
 import { documentRow } from '#lib/documents/fixtures.js';
 import { account } from '#lib/ledger/fixtures.js';
@@ -168,5 +169,39 @@ describe('the importers list, which is not a snapshot', () => {
 		await poll({ ledger: 'b:2', documents: 'b:2' });
 		await waitFor(() => expect(importersApi.listInstances).toHaveBeenCalledTimes(2));
 		expect(screen.queryByText(/New data/)).toBeNull();
+	});
+});
+
+describe('a filter-driven navigation', () => {
+	// SvelteKit moves focus to the body on a navigation unless told to keep it; the filter box
+	// would look focused but swallow no keystrokes
+	it('keeps the focus and the scroll position (reset: false) on the ledger page', async () => {
+		render(LedgerPage);
+		await waitFor(() => expect(api.listEntries).toHaveBeenCalledTimes(1));
+
+		await fireEvent.input(screen.getByLabelText('Filter entries by text'), {
+			target: { value: 'rewe' }
+		});
+
+		await waitFor(() => expect(goto).toHaveBeenCalled());
+		expect(goto).toHaveBeenCalledWith('/ledger?q=rewe', {
+			replaceState: true,
+			reset: false
+		});
+	});
+
+	it('keeps the focus and the scroll position (reset: false) on the documents page', async () => {
+		render(DocumentsPage);
+		await waitFor(() => expect(api.listDocuments).toHaveBeenCalledTimes(1));
+
+		await fireEvent.input(screen.getByLabelText('Filter documents by text'), {
+			target: { value: 'invoice' }
+		});
+
+		await waitFor(() => expect(goto).toHaveBeenCalled());
+		expect(vi.mocked(goto).mock.calls[0][1]).toMatchObject({
+			replaceState: true,
+			reset: false
+		});
 	});
 });

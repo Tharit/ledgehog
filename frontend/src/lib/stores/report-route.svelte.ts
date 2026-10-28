@@ -19,7 +19,7 @@ export function useReport<T>(
 ) {
 	const controller = new ReportController(id, fetcher, {
 		search: () => page.url.search,
-		navigate: (path) => void goto(path, { replaceState: true }),
+		navigate: (path) => void goto(path, { replaceState: true, reset: false }),
 		today,
 		pathname: () => page.url.pathname
 	});

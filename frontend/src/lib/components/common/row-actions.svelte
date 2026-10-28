@@ -50,7 +50,7 @@
 
 <div
 	data-slot="row-actions"
-	class="flex shrink-0 items-center gap-0.5 text-muted-foreground opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 has-data-[state=open]:opacity-100 [@media(hover:none)]:opacity-100"
+	class="flex shrink-0 items-center justify-end gap-0.5 text-muted-foreground opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 has-data-[state=open]:opacity-100 [@media(hover:none)]:opacity-100"
 >
 	{#each inline as action (action.verb)}
 		{@const Icon = action.icon}
