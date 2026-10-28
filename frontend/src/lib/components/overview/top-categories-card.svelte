@@ -103,7 +103,7 @@
 					<svelte:element
 						this={bar.href ? 'a' : 'div'}
 						href={bar.href}
-						class="flex min-h-12 items-center gap-3 rounded-sm px-1 text-sm outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+						class="flex min-h-12 items-center gap-3 rounded-sm px-1 text-sm outline-none hover:bg-row-hover focus-visible:ring-2 focus-visible:ring-ring"
 					>
 						<DimensionIcon icon={bar.icon} color={bar.color} size="comfortable" />
 						<span class="w-28 shrink-0 truncate font-medium">{bar.name}</span>

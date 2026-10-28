@@ -832,7 +832,7 @@ describe('LedgerTable: the entries of a unit are drawn together (patterns §4.1)
 		expect(first).toHaveAttribute('data-cursor');
 		expect(second).not.toHaveAttribute('data-cursor');
 		expect(second.className).toContain('bg-accent/60');
-		expect(second.className).toContain('group-hover/unit:bg-muted');
+		expect(second.className).toContain('group-hover/unit:bg-row-hover');
 		expect(document.querySelector('[data-entry-id="5"]')!.className).not.toContain('bg-accent');
 	});
 

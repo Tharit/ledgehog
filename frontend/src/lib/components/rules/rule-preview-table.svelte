@@ -106,7 +106,7 @@
 				<tr
 					data-entry-id={row.entry_id}
 					tabindex="0"
-					class="cursor-default hover:bg-muted focus-visible:bg-accent focus-visible:outline-none"
+					class="cursor-default hover:bg-row-hover focus-visible:bg-accent focus-visible:outline-none"
 					onclick={(event) => open(row.entry_id, event.currentTarget)}
 					onkeydown={(event) => {
 						if (event.key === 'Enter' && event.target === event.currentTarget) {

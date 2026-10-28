@@ -194,7 +194,7 @@ describe('ReviewQueue', () => {
 			expect(group.className).toContain('border-l-2');
 			expect(group.className).toContain('group/unit');
 			for (const row of group.querySelectorAll('[role="row"]'))
-				expect(row.className).toContain('group-hover/unit:bg-muted');
+				expect(row.className).toContain('group-hover/unit:bg-row-hover');
 		}
 		expect(groups[2].className).not.toContain('group/unit');
 		const markers = document.querySelectorAll('[data-unit-marker]');

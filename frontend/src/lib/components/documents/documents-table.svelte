@@ -134,7 +134,7 @@
 							role="row"
 							data-document-id={document.id}
 							class={cn(
-								'grid h-8 items-center gap-x-3 border-b border-border px-3 text-[13px] hover:bg-muted'
+								'grid h-8 items-center gap-x-3 border-b border-border px-3 text-[13px] hover:bg-row-hover'
 							)}
 							style:grid-template-columns={DOCUMENT_GRID_TEMPLATE}
 							onclick={(event) => rowClick(event, document.id)}

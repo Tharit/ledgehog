@@ -117,7 +117,7 @@
 		<fieldset class="flex min-w-0 flex-col gap-1" data-slot="candidates">
 			<legend class="mb-1 font-medium">The original</legend>
 			{#each flow.candidates as candidate (candidate.id)}
-				<label class="flex min-w-0 items-center gap-2 rounded-md px-1 py-0.5 hover:bg-muted">
+				<label class="flex min-w-0 items-center gap-2 rounded-md px-1 py-0.5 hover:bg-row-hover">
 					<input
 						class="shrink-0"
 						type="radio"

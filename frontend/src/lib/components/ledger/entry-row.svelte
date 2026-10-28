@@ -126,8 +126,8 @@
 	class={cn(
 		ROW_GRID,
 		'group relative h-8 scroll-mt-10 border-b border-border px-3 text-[13px]',
-		cursor ? 'bg-accent' : unitCursor ? 'bg-accent/60' : 'hover:bg-muted',
-		joined && !cursor && 'group-hover/unit:bg-muted',
+		cursor ? 'bg-accent' : unitCursor ? 'bg-accent/60' : 'hover:bg-row-hover',
+		joined && !cursor && 'group-hover/unit:bg-row-hover',
 		resolved && 'text-muted-foreground'
 	)}
 	style:grid-template-columns={GRID_TEMPLATE}

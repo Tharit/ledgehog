@@ -42,7 +42,7 @@
 	class={cn(
 		STATEMENT_ROW,
 		'relative h-8 scroll-mt-10 border-b border-border px-3 text-[13px]',
-		cursor ? 'bg-accent' : 'hover:bg-muted',
+		cursor ? 'bg-accent' : 'hover:bg-row-hover',
 		row.duplicate_of !== null && 'text-muted-foreground opacity-70'
 	)}
 	style:grid-template-columns={STATEMENT_TEMPLATE}

@@ -50,7 +50,7 @@
 				<a
 					href={`/accounts/${account.id}`}
 					class={cn(
-						'flex min-h-14 items-center gap-3 border-b border-border py-2 outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring',
+						'flex min-h-14 items-center gap-3 border-b border-border py-2 outline-none hover:bg-row-hover focus-visible:ring-2 focus-visible:ring-ring',
 						flush ? 'px-4' : 'px-1',
 						closed && 'text-muted-foreground'
 					)}

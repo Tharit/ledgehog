@@ -85,4 +85,17 @@ describe('interaction standards', () => {
 			.map(({ path }) => path);
 		expect(found).toEqual([]);
 	});
+
+	it('tints a hovered row with row-hover (design §2): hover:bg-muted stays on controls', () => {
+		// the files of the row-bearing folders whose hover belongs to a control (chips, swatches), not a row
+		const controls = ['options-chip.svelte', 'filter-bar.svelte', 'account-edit-dialog.svelte'];
+		const found = files
+			.filter(({ path }) =>
+				/components[\\/](ledger|review|accounts|rules|documents|overview)[\\/]/.test(path)
+			)
+			.filter(({ path }) => !controls.some((name) => path.endsWith(name)))
+			.filter(({ text }) => /hover:bg-muted/.test(text))
+			.map(({ path }) => path);
+		expect(found).toEqual([]);
+	});
 });

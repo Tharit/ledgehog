@@ -57,7 +57,7 @@
 	class={cn(
 		STATEMENT_ROW,
 		'group relative h-8 scroll-mt-10 border-b border-border px-3 text-[13px] font-medium',
-		cursor ? 'bg-accent' : 'bg-muted/60 hover:bg-muted'
+		cursor ? 'bg-accent' : 'bg-muted/60 hover:bg-row-hover'
 	)}
 	style:grid-template-columns={STATEMENT_TEMPLATE}
 	onclick={() => onselect?.()}

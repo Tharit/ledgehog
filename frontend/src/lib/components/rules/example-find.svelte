@@ -105,7 +105,7 @@
 									class={[
 										'grid grid-cols-[6rem_6rem_minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,1fr)] items-center gap-x-3 border-b border-border px-3 py-1 text-[13px] last:border-b-0',
 										!usable && 'cursor-default',
-										usable && (index === store.highlighted ? 'bg-accent' : 'hover:bg-muted')
+										usable && (index === store.highlighted ? 'bg-accent' : 'hover:bg-row-hover')
 									]}
 									onmousedown={(event) => event.preventDefault()}
 									onmousemove={() => {
