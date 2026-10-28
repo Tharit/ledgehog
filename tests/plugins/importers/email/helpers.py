@@ -88,6 +88,15 @@ def make_message(
     return m
 
 
+def with_raw_auth(msg: EmailMessage, raw: str) -> EmailMessage:
+    """`msg` parsed off the wire with `raw` (folded lines allowed) as its topmost Authentication-Results."""
+    from app.plugins.importers.email.message import parse_message
+
+    return parse_message(
+        b"Authentication-Results: " + raw.replace("\n", "\r\n").encode() + b"\r\n" + msg.as_bytes()
+    )
+
+
 def forward_by_hand(
     inner: EmailMessage, *, sender: str = FAMILY, message_id: str = "<fwd@family>"
 ) -> EmailMessage:

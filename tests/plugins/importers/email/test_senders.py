@@ -11,7 +11,7 @@ from app.plugins.importers.email.senders import (
     is_accepted,
     parse_authentication_results,
 )
-from tests.plugins.importers.email.helpers import FAMILY, SHOP, make_message
+from tests.plugins.importers.email.helpers import FAMILY, SHOP, make_message, with_raw_auth
 
 ALLOWED = [FAMILY]
 
@@ -87,9 +87,37 @@ def verdict(auth: str | None, *, sender: str = SHOP, headers: dict[str, str] | N
 def test_a_forward_by_hand_needs_dmarc_pass_for_its_listed_from():
     assert verdict("mx.x; dmarc=pass header.from=example.com", sender=FAMILY) is Verdict.ACCEPTED
     assert verdict("mx.x; dmarc=fail header.from=example.com", sender=FAMILY) is Verdict.NOT_AUTHENTICATED
-    assert verdict("mx.x; dkim=pass header.d=example.com", sender=FAMILY) is Verdict.NOT_AUTHENTICATED
     # a dmarc pass for another domain than the From's is no vouching for the From
     assert verdict("mx.x; dmarc=pass header.from=evil.example", sender=FAMILY) is Verdict.NOT_AUTHENTICATED
+
+
+NETCUP = (
+    "mxf914;\n"
+    "    dkim=pass header.d=mkleinhans.de;\n"
+    "    spf=pass (sender IP is 79.135.106.27) smtp.mailfrom=mail@mkleinhans.de\n"
+    "    smtp.helo=mail-10627.protonmail.ch"
+)
+
+
+def by_hand(auth: str, *, sender: str = "mail@mkleinhans.de") -> Verdict:
+    return check_sender(with_raw_auth(make_message(sender=sender, auth=None), auth), [sender])
+
+
+def test_a_forward_by_hand_passes_on_an_aligned_dkim_signature_without_a_dmarc_result():
+    assert by_hand(NETCUP) is Verdict.ACCEPTED
+    assert by_hand(NETCUP.replace("dkim=pass", "dkim=fail")) is Verdict.NOT_AUTHENTICATED
+    assert by_hand(NETCUP.replace("mkleinhans.de;\n    spf", "other.example;\n    spf")) is (
+        Verdict.NOT_AUTHENTICATED
+    )
+    assert by_hand("mx.x; dmarc=pass header.from=mkleinhans.de") is Verdict.ACCEPTED
+    assert by_hand("mx.x; spf=pass smtp.mailfrom=mail@mkleinhans.de") is Verdict.NOT_AUTHENTICATED
+
+
+def test_a_forward_by_hand_aligns_dkim_on_a_parent_domain_that_has_a_dot():
+    sender = "me@sub.example.org"
+    assert by_hand("mx.x; dkim=pass header.d=example.org", sender=sender) is Verdict.ACCEPTED
+    assert by_hand("mx.x; dkim=pass header.d=org", sender=sender) is Verdict.NOT_AUTHENTICATED
+    assert by_hand("mx.x; dkim=pass header.d=evil.org", sender=sender) is Verdict.NOT_AUTHENTICATED
 
 
 def test_an_automatic_forward_needs_the_shops_dkim_pass_and_a_forwarding_header():

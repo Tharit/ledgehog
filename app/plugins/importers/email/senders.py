@@ -181,8 +181,9 @@ class Verdict(Enum):
 
 def check_sender(msg: Message, senders: Collection[str]) -> Verdict:
     """Accepted when a listed address is named and the topmost `Authentication-Results` shows: for a forward
-    by hand, its listed `From` with a DMARC pass; for an automatic forward, a DKIM pass for the `From`'s
-    domain (or a parent) or an ARC pass, and a forwarding header naming a listed address."""
+    by hand, its listed `From` with a DMARC pass or a DKIM pass aligned with it; for an automatic forward, a
+    DKIM pass for the `From`'s domain (or a parent) or an ARC pass, and a forwarding header naming a listed
+    address."""
     allowed = {s.strip().lower() for s in senders}
     sender = from_address(msg)
     forwarded = not allowed.isdisjoint(forwarding_addresses_of(msg))
@@ -192,7 +193,7 @@ def check_sender(msg: Message, senders: Collection[str]) -> Verdict:
     results = topmost_results(msg)
     if sender is not None:
         domain = _domain_of(sender)
-        if by_hand and _dmarc_passes(results, domain):
+        if by_hand and (_dmarc_passes(results, domain) or _dkim_passes(results, domain)):
             return Verdict.ACCEPTED
         if forwarded and (_dkim_passes(results, domain) or _arc_passes(results)):
             return Verdict.ACCEPTED

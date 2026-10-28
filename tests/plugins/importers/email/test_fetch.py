@@ -24,6 +24,7 @@ from tests.plugins.importers.email.helpers import (
     base_settings,
     forward_by_hand,
     make_message,
+    with_raw_auth,
 )
 
 ARRIVED = date(2026, 1, 6)
@@ -356,6 +357,19 @@ def test_a_forward_by_hand_attaches_the_original_and_the_guard_is_not_applied_to
     delivery = rig.run()
     assert [d.title for d in delivery.documents] == ["Order 1"]  # the inner From is the shop, not listed
     assert rig.builder.seen[0].outer_identity == "fwd@family" and rig.builder.seen[0].identity == "o1@shop"
+
+
+def test_a_forward_by_hand_with_a_provider_header_without_dmarc_is_read():
+    auth = (
+        "mxf914;\n    dkim=pass header.d=example.com;\n"
+        "    spf=pass (sender IP is 79.135.106.27) smtp.mailfrom=family@example.com\n"
+        "    smtp.helo=mail-10627.protonmail.ch"
+    )
+    outer = make_message(
+        sender=FAMILY, message_id="<np@f>", html=None, text="see", attached=[order(1)], auth=None
+    )
+    delivery = Rig(FakeMailbox({1: (with_raw_auth(outer, auth).as_bytes(), ARRIVED)})).run()
+    assert delivery.importer_stats["not_authenticated"] == 0 and len(delivery.documents) == 1
 
 
 def test_a_stranger_forwarding_a_listed_senders_mail_is_not_accepted_the_guard_is_on_the_outer_message():
