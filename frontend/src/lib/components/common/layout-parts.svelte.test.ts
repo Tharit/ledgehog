@@ -196,3 +196,21 @@ describe('Notice action slot', () => {
 		expect(screen.queryByRole('button')).toBeNull();
 	});
 });
+
+describe('PageHeader: an icon', () => {
+	it('draws the icon snippet beside the title, and nothing without one', () => {
+		const { unmount } = render(PageHeader, {
+			props: {
+				title: 'Giro',
+				level: 1,
+				icon: createRawSnippet(() => ({ render: () => '<span data-testid="mark"></span>' }))
+			}
+		});
+		const title = screen.getByRole('heading', { level: 1, name: 'Giro' });
+		expect(title.parentElement).toContainElement(screen.getByTestId('mark'));
+		unmount();
+
+		render(PageHeader, { props: { title: 'Giro', level: 1 } });
+		expect(document.querySelector('[data-slot="page-title"]')).toBeNull();
+	});
+});

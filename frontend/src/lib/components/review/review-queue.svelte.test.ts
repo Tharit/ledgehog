@@ -109,6 +109,24 @@ describe('ReviewQueue', () => {
 		expect(screen.getByText(/Nothing is waiting/)).toBeInTheDocument();
 	});
 
+	it('gives each section heading its review state glyph, bare, and no tile', async () => {
+		await shown({ pending_review: [flow(1, 'REWE')] });
+
+		const glyphs = {
+			'Pending review': 'circle-dashed',
+			'Needs an account': 'unlink',
+			Waiting: 'clock'
+		};
+		for (const [title, glyph] of Object.entries(glyphs)) {
+			const heading = screen.getByRole('heading', { name: new RegExp(title) });
+			const svg = heading.querySelector('svg');
+			expect(svg).toHaveClass(`lucide-${glyph}`);
+			expect(svg).toHaveClass('text-muted-foreground');
+			expect(svg).toHaveAttribute('width', '16');
+			expect(heading.querySelector('span[style*="--tile-fg"]')).toBeNull();
+		}
+	});
+
 	it('lists units by date as given, in the entry-row shape, with no basis column', async () => {
 		await shown({
 			pending_review: [

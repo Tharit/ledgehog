@@ -106,6 +106,9 @@ describe('TagAll: the dialog', () => {
 		const accounts = screen.getByRole('list', { name: 'Newly tagged by account' });
 		expect(accounts).toHaveTextContent('Giro');
 		expect(accounts).toHaveTextContent('Cash');
+		// each row is an account: its tile, not its dot
+		expect(accounts.querySelectorAll('span[style*="--tile-fg"]')).toHaveLength(2);
+		expect(accounts.querySelector('[data-slot="account-dot"]')).toBeNull();
 		expect(vi.mocked(applyTag).mock.calls[0][1]).toMatchObject({ dry_run: true, account_id: [1] });
 		await waitFor(() => expect(confirm()).toBeEnabled());
 	});

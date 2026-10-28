@@ -16,12 +16,14 @@
 	import Notice from '#lib/components/common/notice.svelte';
 	import NewDataNotice from '#lib/components/common/new-data-notice.svelte';
 	import ActionButton from '#lib/components/common/action-button.svelte';
+	import DimensionIcon from '#lib/components/common/dimension-icon.svelte';
 	import PageHeader from '#lib/components/common/page-header.svelte';
 	import { entryForm } from '#lib/entry-form/controller.svelte.js';
 	import { formatDate } from '#lib/format/index.js';
 	import { AccountPageStore } from '#lib/stores/account-page.svelte.js';
 	import { AccountRunsStore } from '#lib/stores/account-runs.svelte.js';
 	import { refetchOnChange } from '#lib/stores/new-data.svelte.js';
+	import { resolveAccount } from '#lib/theme/resolve.js';
 	import { session } from '#lib/stores/session.svelte.js';
 	import { entryDeps } from '#lib/stores/sync.svelte.js';
 	import { isBusyRefusal, refusalText, startOrReview } from '#lib/sync/entry.js';
@@ -161,6 +163,9 @@
 			actionLabel={account.synced ? undefined : 'Add entry'}
 			onaction={() => entryForm.openAdd({ filtered: [account.id] })}
 		>
+			{#snippet icon()}
+				<DimensionIcon {...resolveAccount(account)} size="comfortable" />
+			{/snippet}
 			{#snippet actions()}
 				<AccountActions
 					{account}

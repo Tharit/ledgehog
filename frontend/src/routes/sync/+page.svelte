@@ -60,7 +60,13 @@
 	const accountOf = (id: number): AccountInfo | null => {
 		const account = lookupsStore.lookups.accounts.get(id);
 		return account
-			? { name: account.name, color: account.color, currency: account.currency }
+			? {
+					name: account.name,
+					icon: account.icon,
+					color: account.color,
+					kind: account.kind,
+					currency: account.currency
+				}
 			: null;
 	};
 	const importerOf = (instanceId: number) =>

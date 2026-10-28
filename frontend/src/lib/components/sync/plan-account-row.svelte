@@ -1,7 +1,8 @@
 <script lang="ts">
-	import AccountDot from '#lib/components/common/account-dot.svelte';
+	import DimensionIcon from '#lib/components/common/dimension-icon.svelte';
 	import DateField from '#lib/components/common/date-field.svelte';
 	import Field from '#lib/components/common/field.svelte';
+	import { resolveAccount } from '#lib/theme/resolve.js';
 	import { formatDate } from '#lib/format/index.js';
 	import { sinceSourceText } from '#lib/sync/plan.js';
 	import type { AccountInfo } from '#lib/sync/progress.js';
@@ -36,8 +37,9 @@
 	data-slot="plan-account"
 	data-editable={account.editable}
 >
-	<span class="min-w-40 font-medium">
-		{#if info}<AccountDot name={info.name} color={info.color} />{:else}{name}{/if}
+	<span class="flex min-w-40 items-center gap-2 font-medium">
+		{#if info}<DimensionIcon {...resolveAccount(info)} />{/if}
+		<span>{name}</span>
 	</span>
 	{#if account.editable}
 		<div class="w-44">

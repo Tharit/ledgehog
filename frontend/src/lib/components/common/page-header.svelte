@@ -14,7 +14,8 @@
 		onaction,
 		actionHref,
 		actionDisabled = false,
-		actions
+		actions,
+		icon
 	}: {
 		title: string;
 		description?: string;
@@ -27,17 +28,29 @@
 		actionDisabled?: boolean;
 		/** the page's secondary actions, before the primary one */
 		actions?: Snippet;
+		/** a page about one member shows its icon beside the title (design §6): a comfortable tile */
+		icon?: Snippet;
 	} = $props();
 </script>
 
 <div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-2" data-slot="page-header">
 	<div class="flex flex-col gap-1">
-		<svelte:element
-			this={level === 1 ? 'h1' : 'h2'}
-			class={level === 1 ? 'text-[28px] font-semibold' : 'text-base font-semibold'}
-		>
-			{title}
-		</svelte:element>
+		{#snippet heading()}
+			<svelte:element
+				this={level === 1 ? 'h1' : 'h2'}
+				class={level === 1 ? 'text-[28px] font-semibold' : 'text-base font-semibold'}
+			>
+				{title}
+			</svelte:element>
+		{/snippet}
+		{#if icon}
+			<div class="flex items-center gap-3" data-slot="page-title">
+				{@render icon()}
+				{@render heading()}
+			</div>
+		{:else}
+			{@render heading()}
+		{/if}
 		{#if description}
 			<p class="max-w-prose text-sm text-muted-foreground">{description}</p>
 		{/if}

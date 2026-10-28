@@ -1,10 +1,11 @@
 <script lang="ts">
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
-	import AccountDot from '#lib/components/common/account-dot.svelte';
+	import DimensionIcon from '#lib/components/common/dimension-icon.svelte';
 	import RunSummary from '#lib/components/importers/run-summary.svelte';
 	import { formatDate } from '#lib/format/index.js';
 	import type { TaskItem } from '#lib/sync/events.js';
 	import { itemRun, itemSummary, type AccountInfo } from '#lib/sync/progress.js';
+	import { resolveAccount } from '#lib/theme/resolve.js';
 	import { cn } from '#lib/utils.js';
 
 	// One row of a login's card (ux/views/sync.md "Progress and report"): the account, or
@@ -98,6 +99,9 @@
 	{#if isDocuments || !account}
 		<span class="font-medium">{label}</span>
 	{:else}
-		<span class="font-medium"><AccountDot name={label} color={account.color} /></span>
+		<span class="flex min-w-0 items-center gap-2 font-medium">
+			<DimensionIcon {...resolveAccount(account)} />
+			<span class="truncate">{label}</span>
+		</span>
 	{/if}
 {/snippet}

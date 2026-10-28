@@ -1,5 +1,5 @@
 <script lang="ts">
-	import AccountDot from '#lib/components/common/account-dot.svelte';
+	import DimensionIcon from '#lib/components/common/dimension-icon.svelte';
 	import TagChip from '#lib/components/common/tag-chip.svelte';
 	import ActionButton from '#lib/components/common/action-button.svelte';
 	import ActionDialog, { type DialogFeedback } from '#lib/components/common/action-dialog.svelte';
@@ -162,10 +162,12 @@
 						{#each preview.per_account as row (row.account_id)}
 							{@const account = lookups.accounts.get(row.account_id)}
 							<li class="flex items-center justify-between gap-2">
-								<AccountDot
-									name={account ? account.name : `Account ${row.account_id}`}
-									color={account ? resolveAccount(account).color : null}
-								/>
+								<span class="flex min-w-0 items-center gap-2">
+									{#if account}<DimensionIcon {...resolveAccount(account)} />{/if}
+									<span class="truncate"
+										>{account ? account.name : `Account ${row.account_id}`}</span
+									>
+								</span>
 								<span class="tabular-nums">{count(row.newly_tagged)}</span>
 							</li>
 						{/each}

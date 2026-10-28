@@ -1,6 +1,13 @@
 <script lang="ts" module>
 	import type { SectionKind } from '#lib/units/types.js';
 
+	/** The state each section holds (design §6): the glyph of its review token, in the heading slot. */
+	const SECTION_TOKEN: Readonly<Record<SectionKind, string>> = {
+		pending_review: 'unconfirmed',
+		needs_account: 'unmatched_transfer',
+		waiting: 'waiting'
+	};
+
 	/** What each section is called and what its empty state says (views/review-queue.md). */
 	export const SECTION_INFO: Readonly<Record<SectionKind, { title: string; empty: string }>> = {
 		pending_review: {
@@ -21,6 +28,7 @@
 
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
+	import { REVIEW_BADGE_ICONS } from '#lib/components/common/review-badge.svelte';
 	import { accounts as accountDialog } from '#lib/accounts/controller.svelte.js';
 	import Card from '#lib/components/common/card.svelte';
 	import NoticeLine from '#lib/components/common/notice-line.svelte';
@@ -197,9 +205,19 @@
 		{/if}
 		{#each store.sections as section (section.kind)}
 			{@const info = SECTION_INFO[section.kind]}
+			{@const SectionIcon = REVIEW_BADGE_ICONS[SECTION_TOKEN[section.kind]]}
 			<section aria-labelledby={`section-${section.kind}`} data-section={section.kind}>
-				<h2 id={`section-${section.kind}`} class="mb-2 text-base font-semibold">
-					{info.title}
+				<h2
+					id={`section-${section.kind}`}
+					class="mb-2 flex items-center gap-2 text-base font-semibold"
+				>
+					<SectionIcon
+						size={16}
+						strokeWidth={1.75}
+						class="shrink-0 text-muted-foreground"
+						aria-hidden="true"
+					/>
+					<span>{info.title}</span>
 					<span class="font-normal text-muted-foreground" data-slot="section-count">
 						({formatCount(section.total, locale)})
 					</span>

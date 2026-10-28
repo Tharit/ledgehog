@@ -103,6 +103,10 @@ describe('the sync page: the plan', () => {
 		expect(within(giro).getAllByRole('button', { name: /^Start of/ })).toHaveLength(1);
 		expect(within(giro).getByRole('button', { name: 'Start of Pocket' })).toBeInTheDocument();
 		expect(within(giro).getByText('Documents')).toBeInTheDocument();
+		// an account row of the plan is read by its account: its tile
+		expect(
+			giro.querySelector('[data-slot="plan-account"] span[style*="--tile-fg"]')
+		).not.toBeNull();
 		const busy = screen.getByRole('region', { name: 'Card login' });
 		expect(within(busy).getByText('another sync is using this login')).toBeInTheDocument();
 	});
@@ -263,6 +267,9 @@ describe('the sync page: progress and the report', () => {
 		const card = await screen.findByRole('region', { name: 'Giro login' });
 		expect(within(card).getByText('Done · 12 inserted · 31 skipped')).toBeInTheDocument();
 		expect(within(card).getByText(/Fetching from Jan 1, 2026/)).toBeInTheDocument();
+		const row = card.querySelector('[data-slot="item-row"]')!;
+		expect(row.querySelector('span[style*="--tile-fg"] svg.lucide-landmark')).not.toBeNull();
+		expect(row.querySelector('[data-slot="account-dot"]')).toBeNull();
 		await fireEvent.click(within(card).getByRole('button', { name: /Giro, Done/ }));
 		expect(within(card).getByText('12 rows')).toBeInTheDocument();
 	});

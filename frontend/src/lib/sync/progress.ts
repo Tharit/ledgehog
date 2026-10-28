@@ -3,8 +3,14 @@
 import type { RunSummaryInput } from '#lib/importers/run.js';
 import type { TaskItem } from './events.js';
 
-/** What the page knows of an account, for a row: its name, colour and currency. */
-export type AccountInfo = { name: string; color: string | null; currency: string };
+/** What the page knows of an account, for a row: its name, currency and what its tile is drawn from. */
+export type AccountInfo = {
+	name: string;
+	icon: string | null;
+	color: string | null;
+	kind: string;
+	currency: string;
+};
 
 function count(value: unknown): number {
 	return typeof value === 'number' ? value : 0;
