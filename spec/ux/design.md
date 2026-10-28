@@ -191,9 +191,8 @@ quiet marker on the row that fades once the cursor has visited it.
 
 ## 6. Icons
 
-Lucide (`@lucide/svelte`, architecture §2), stroke 1.75px, 18px by default and
-16px in compact rows, drawn in `text-muted` unless a dimension colour applies.
-No filled, glossy or 3D icons.
+Lucide (`@lucide/svelte`, architecture §2), stroke 1.75px. No filled, glossy
+or 3D icons. Size and colour come from the slot an icon sits in, below.
 
 Each dimension has its own curated set, the only names its editor offers:
 suitable icons, not the whole library.
@@ -241,35 +240,79 @@ landmark  shield  film  music  gamepad-2  book-open  package  truck  gift
 paw-print  scissors  wrench  dumbbell  graduation-cap  user  users
 ```
 
-**Where they show.** One icon per compact row, and it is the category's
-(fixed icons below for transfers and derived entries). An account in a
-compact row — the account column, a transfer's "→ Cash" — is its name after
-an 8px dot in its colour. Account icons appear where the account is the
-subject: the account list, the Overview, pickers, the account view. Payee
-icons likewise only where the payee is the subject: the payee list, pickers,
-the unit panel; never in a ledger row.
+**Where they show.** Every icon sits in one of three slots, and the slot
+decides how it is drawn, never the thing it stands for.
 
-**Fixed icons**, not configurable, drawn in `stone`:
+- **Lead** — one tile at the start of a row, a legend entry, a tooltip row, a
+  filter option or a picker's row: the dimension that row is read by. An
+  entry's row is read by its category, or by its type where the entry is
+  derived; an account's row by its account; a report's row by whatever it
+  groups. The rounded square of §3, 24px in compact rows and 32px in
+  comfortable ones, its glyph 16px and 18px. A segmented control's segments
+  are words (§5), not tiles.
+- **Marker** — after the content, a bare glyph, 14px, `text-muted`, always
+  with a tooltip: what is *true of* that row. The review badges below, the
+  split marker, the model mark.
+- **Heading** — before the title of a card or a section, a bare glyph, 16px,
+  `text-muted`: what kind of thing it holds.
+
+**The lead tile takes four sources, and its colour says which:**
+
+| The row is read by | Its icon | Its colour |
+|---|---|---|
+| a category, an account, a payee | the member's own | the member's own, on its tint |
+| an account kind | the kind's default (above) | `stone` |
+| an entry type | its fixed icon (below) | `stone` |
+| a measure | its fixed icon (below) | `stone` |
+
+A coloured tile is therefore a thing in the ledger, and a `stone` tile the
+app's own vocabulary. A category may carry a glyph a measure also uses —
+`percent`, `receipt` — and the two cannot be read for each other, because one
+is coloured and the other is not; nothing forbids the overlap. A chart's
+series colour does not change its tile: where a series is a measure, its tile
+is `stone` though its line is not.
+
+**A row has one lead tile and no more.** Every other member it names is its
+name after an 8px dot in its colour — the ledger's account column, a
+transfer's "→ Cash", a counter-account in the unit panel — and a payee is
+named without a dot, never in a ledger row. A tag carries a colour only and is
+a chip wherever it appears. **A page about one member** — an account, a payee —
+shows that member's icon beside its title in the page header
+(`patterns.md` §11.7).
+
+**An empty lead slot** shows its absent value in words (§7) and takes no icon:
+an unclassified entry's category slot reads "Unclassified".
+
+**Fixed icons**, not configurable: `stone` in a lead slot, `text-muted` in a
+marker or a heading slot. An entry type and the report line that sums it are
+one concept and share one glyph.
 
 | What | Icon |
 |---|---|
-| a transfer ("→ Cash") | `arrow-left-right` |
-| an opening entry | `flag` |
-| a valuation entry | `gauge` |
-| a reconciliation entry | `scale` |
+| a transfer ("→ Cash"), the transfers (net) line | `arrow-left-right` |
+| an opening entry, the openings line | `flag` |
+| a valuation entry, the valuations line | `gauge` |
+| a reconciliation entry, the reconciliations line | `scale` |
+| a flow, in the type filter only | `coins` |
+| net worth | `sigma` |
+| income | `hand-coins` |
+| expense, and a period's spend | `receipt` |
+| savings | `piggy-bank` |
+| the savings rate | `percent` |
+| the unclassified line | `circle-question-mark` |
+| the review queue | `inbox`, `check` at zero |
 
-**The Overview's figure cards** each carry a fixed icon beside their title,
-16px, in the default `text-muted`; no other figure card has one:
+A balance takes no icon: its account is what its row is read by. An unvalued
+amount takes none either — it is an absent value (§7), not a measure. Some of
+these glyphs are also an account kind's default, or a name a category may
+carry; they are told apart by their colour, as above.
 
-| Card | Icon |
-|---|---|
-| Net worth | `sigma` |
-| Savings rate | `percent` |
-| Spend | `receipt` |
-| To review | `inbox`, `check` at zero |
+**A figure card's title** takes its measure's icon in the heading slot: the
+Overview's four do (`views/overview.md`). A card whose figure belongs to one
+subject — an account's balance, a document's total — takes none, because the
+page header above it already names that subject.
 
-An unclassified entry shows no category icon: its category slot is the absent
-value "Unclassified" (§7). The type filter shows the four icons above for their types and names a flow with `coins`, drawn the same way; a flow in a row shows its category, never this icon.
+A flow in a row shows its category, never `coins`.
 
 **Review badges** (`patterns.md` §4.2), 14px, `text-muted`, always with their
 tooltip:
@@ -280,6 +323,11 @@ tooltip:
 | `unclassified` | `circle-question-mark` |
 | `waiting` | `clock` |
 | `unmatched_transfer` | `unlink` |
+
+A review state is a marker wherever it appears, never a tile: the bare glyph
+in a row, in the review-state filter's options, and in the heading slot of a
+queue section — *Pending review* `circle-dashed`, *Needs an account* `unlink`,
+*Waiting* `clock` (`views/review-queue.md`).
 
 ## 7. States
 
