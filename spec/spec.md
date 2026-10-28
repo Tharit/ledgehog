@@ -939,7 +939,7 @@ A full sync runs:
             (documents, rates) — one import run each
 2. ingest   transactions → identity, deduplication, rows and the reported
                            balance record, one ledger entry per new row
-            documents    → on (provider, external_id), inserted, or
+            documents    → on (provider, source_id), inserted, or
                            replaced or kept by the importer's mode (§5.5)
             rates        → upsert on (currency, date)
 3. settle   bring derived state up to date
@@ -1373,7 +1373,7 @@ Ingest routes by the kind of the run, without loading importer code:
 
 - `transactions` → identified and deduplicated per account (§5.2), become
   source transactions.
-- `documents` → keyed on `(provider, external_id)`, belong to no account.
+- `documents` → keyed on `(provider, source_id)`, belong to no account.
 
 What a document importer delivers:
 
@@ -1388,6 +1388,18 @@ What a document importer delivers:
   where the provider reports them. The provider maps the document to a
   clearance account (§3.3), the lines become the booking's entries (§5.8), and
   the merchant is shown as provenance; nothing resolves on it.
+- **Its identity, `source_id`** — the id its source gives it, as `source_id`
+  is on a transaction (§5.2): the importer's own key for this document, stable
+  across deliveries so that a re-delivery finds the stored document. Unlike a
+  transaction's it is never null, and no content hash stands in for it: an
+  importer whose source names nothing usable synthesises one. With `provider`
+  it keys the document.
+- **Its reference**, where the provider names one: the order, invoice or
+  booking number as a person would quote it. It is shown and searched
+  (`ux/views/documents.md`), and nothing resolves on it. It is the
+  **provider's**, never the importer's — a receipt fetched from a mailbox is
+  *keyed* by the mail it arrived in and *referenced* by the order number the
+  shop printed, and those are not the same thing.
 - **Its coverage**: the date up to which its documents are known to be
   complete, in the dates of the documents it delivers, recorded as the run's
   coverage (§5.1).
@@ -1398,7 +1410,7 @@ up and kept in its settings under the key `start_date` (an ISO date): no
 document dated before it is imported.
 
 **Re-delivery.** An importer declares how it takes a document whose
-`(provider, external_id)` is already stored: `replace` updates the stored
+`(provider, source_id)` is already stored: `replace` updates the stored
 document in place — its date, total, lines and payload — for an importer that
 re-reads the same record, whose later view carries what matters:
 cancellations, partial shipments; `keep` leaves the stored document as it is,
@@ -1920,8 +1932,8 @@ the same for both:
 - **The booking** is dated on the document's `occurred_on`; its amount is the
   document's total — an order negative, a refund positive — in the account's
   currency. Its counterparty name is the document's provider, and its
-  purpose "Order *external id*", or "Refund *external id*" for a positive
-  total.
+  purpose "Order *reference*", or "Refund *reference*" for a positive
+  total; where the document has no reference, "Order" or "Refund" alone.
 - **One entry per line**, in the order of the document's lines, each with
   the line's description as its source text (`source_text`, §5.9). The
   unitemised amount — the total minus the sum of the lines: a discount not

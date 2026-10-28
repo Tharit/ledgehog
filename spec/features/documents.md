@@ -55,7 +55,8 @@ changes, loses its booking (§4).
 The booking itself — a source transaction of origin `booking` on the
 account, `source_id` `document:<id>`, dated on the document's `occurred_on`,
 for its total, with the provider as its counterparty name and "Order
-*external id*" ("Refund *external id*" for a positive total) as its purpose —
+*reference*" ("Refund *reference*" for a positive total), or the word alone
+where the document has no reference, as its purpose —
 is `spec.md` §5.6 and §5.8's. It is made with **one entry per
 line**, each carrying the line's description as its source text
 (`spec.md` §5.9), and amounts that sum to the total:

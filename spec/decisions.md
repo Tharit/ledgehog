@@ -3783,16 +3783,17 @@ partly supersedes D63, D97, D131, D142, D152, D166, D168, D172, D177, D178, D181
   for one field); *the document's merchant as an input* (the account names the platform; the merchant stays as
   provenance); *a seller field on lines* (noise in real data; addable later).
 - **A booking writes its own source fields; lists render only data** (user, 2026-10-26). A document booking's
-  counterparty name is the document's provider and its purpose "Order *external id*" ("Refund *external id*" for a
-  refund); a counter-leg booking carries its charge's date and purpose, like any counter-leg. Its row therefore reads
-  like any row: the ledger list and an account's statement hold nothing specific to an account kind or an author, and
-  every statement row with a source shows its origin as a small tag — "Imported", "Entered", "Booked" — in place of the
-  "entered by hand". Accepted consequences: the model's payload sees these fields (harmless), and a rule
-  on the counterparty "Amazon" matches booking entries too — their type is fixed to `flow`, so no transfer rule
-  applies. Only navigation reads the format of a `source_id`: the panel's "Booked from *provider* order *id*" and a
-  row's "Open document", like "Open review". Rejected: *the statement assembling "order … from …" or "charge on …"
-  for a booking* (a rendering rule per kind of row, in every list). Creating a clearance account asks for a start date and writes "0 at
-  the end of" it; documents dated after it are booked. Without a start, booking a past year of orders would count each
+  counterparty name is the document's provider and its purpose "Order *reference*" ("Refund *reference*" for a
+  refund), the word alone where there is none; a counter-leg booking carries its charge's date and purpose, like
+  any counter-leg. Its row therefore reads like any row: the ledger list and an account's statement hold nothing
+  specific to an account kind or an author, and every statement row with a source shows its origin as a small tag —
+  "Imported", "Entered", "Booked" — in place of "entered by hand". Accepted consequences: the
+  model's payload sees these fields (harmless), and a rule on the counterparty "Amazon" matches booking entries
+  too — their type is fixed to `flow`, so no transfer rule applies. Only navigation reads the format of a
+  `source_id`: the panel's "Booked from *provider* order *reference*" and a row's "Open document", like "Open
+  review". Rejected: *the statement assembling "order … from …" or "charge on …" for a booking* (a rendering rule
+  per kind of row, in every list). Creating a clearance account asks for a start date and writes "0 at the end of"
+  it; documents dated after it are booked. Without a start, booking a past year of orders would count each
   purchase twice: as the old categorised charge and as the booked order. Rejected: *a start date setting on the
   account* (a second anchor beside the balance records).
 - **Documents stay**, one per order or refund, each dated on its own day — an order on the day it was placed: what the user checks, and where the original mail
@@ -3863,6 +3864,54 @@ email.md; spec §5.5, §5.8, §5.9, §7; architecture §5.5, §5.7.
 - **Text first, PDF as fallback.** German shops attach terms and conditions as PDFs; reading the PDF first would
   lose the order in the body. The vision model gets no schema: constrained decoding made it loop.
 - **The password is typed at every sync**, like the PIN: a mailbox password is not verifiably read-only.
+- **A listed sender address covers its plus addresses.** `martin+amazon@proton.me` is read for a listed
+  `martin@proton.me`: the tag is the mailbox owner's own, handed out per shop, and the domain that authentication
+  rests on is unchanged, so nothing the sender check guards is widened. Only `+` separates a tag; a listed address
+  that carries one matches only itself. Rejected: *ignoring dots in the local part too* (Gmail's convention — dots
+  are significant at most providers, so it would accept a genuinely different mailbox).
+- **The title loses the forwarding client's markers.** A forward by hand quoted inline is its own inner message,
+  so its subject arrives as "Fwd: Re: …". A leading `Re`, `Fw`, `Fwd`, `Aw` or `Wg`, with an optional counter, is
+  stripped repeatedly before the title is cut to 200 characters. Accepted consequence: `RE:` is also the German
+  abbreviation for *Rechnung*, so `RE: 12345` is read as a marker and titled `12345`; the two cannot be told
+  apart, and the order number now has a column of its own.
+- **The order number is the document's reference, not its key** (D233). The mail's Message-ID stays the key where
+  the shop names no order number.
+
+## D233 A document's `source_id` and its reference
+
+spec §5.5; `schema.sql`; `ux/views/documents.md`; `plugins/importers/email.md` §6.
+
+- **Two different ids, two names.** A document's key was `external_id`, which reads as the vendor's id, and most
+  of the spec took it that way. The email importer could not honour that: a receipt naming no order number still
+  needs a key, so it stored `message:` and the mail's Message-ID there. The key is renamed `source_id`, as on a
+  transaction (§5.2) — the id the source assigns — and the provider's order, invoice or booking number moved to a
+  new nullable `reference`. A receipt is *keyed* by the mail it arrived in and *referenced* by the number the shop
+  printed; those are not the same thing.
+- **`source_id` is never null**, unlike a transaction's: a document has no content hash to fall back on, so an
+  importer whose source names nothing usable synthesises one.
+- **The reference is what is shown.** The documents list has a Reference column, the text filter matches it, the
+  detail shows it, and a booking's purpose is "Order *reference*" — "Order" alone where there is none. Nothing
+  resolves on it.
+- Rejected: *showing the key as the reference* (`message:CAF…@mail.gmail.com` as a column value); *marking a
+  synthesised key by its prefix and hiding those in the views* (one importer's detail leaking into a core view);
+  *giving the importer a generic synthetic prefix instead of renaming* (it changes the key, so every stored
+  document re-keys and duplicates).
+
+## D234 What an importer delivers decides what its instance shows
+
+`ux/views/importers.md`; spec §5.1, §5.5; `features/documents.md` §1.
+
+- **A documents-only importer has no linked accounts.** A document is booked onto whichever clearance account
+  takes its provider (D230), never fetched for a linked account. The instance list shows "delivers documents"
+  where it would list linked accounts, drops "Link account" from the row, and the instance page replaces its
+  Linked accounts section with one line saying where the documents go.
+- **The catalog says what an importer delivers**, not only how it is fed: "takes a file", "fetches transactions",
+  "fetches documents", "fetches transactions and documents". A file importer always delivers transactions, so it
+  needs no second half.
+- **Hidden for documents, disabled otherwise.** "Link account" is dropped for an importer that delivers documents
+  only, and stays disabled for one that delivers neither transactions nor documents, which the server refuses
+  anyway.
+- Rejected: *leaving the row's accounts slot empty* (the row goes quiet with nothing explaining why it has none).
 
 ## D235 The ledger list's total; lists of entries without the origin tag
 

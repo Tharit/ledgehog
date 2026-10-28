@@ -814,7 +814,7 @@ holds, and there is no running balance. A transfer leg also carries a read-only 
 **`source`** is the entry's source transaction as one nested object, `null` only for derived entries, which
 have none (every movement has one, imported, entered by hand or booked: spec §3). A source entered by hand carries its
 amount and purpose and no counterparty, reference, booking text or source format; a booking's carries its amount,
-purpose and, from a document, counterparty name (spec §5.8), and `booking {kind, id, …}`: its source — `document`, with the document's id, `provider` and `external_id`, or `transfer`, with the charge's entry id and `account_id` — read only for navigation (the work panel's "Booked from …", a row's "Open document"). It holds the fields rules read or the UI shows: counterparty name, reference and BIC, purpose,
+purpose and, from a document, counterparty name (spec §5.8), and `booking {kind, id, …}`: its source — `document`, with the document's id, `provider` and `reference`, or `transfer`, with the charge's entry id and `account_id` — read only for navigation (the work panel's "Booked from …", a row's "Open document"). It holds the fields rules read or the UI shows: counterparty name, reference and BIC, purpose,
 booking text, end-to-end id, mandate reference, instructed amount and currency, and source format. It never
 holds the raw record or the content hash. The client reads the counterparty name and purpose from it; there
 are no flat copies on the entry. Every entry read carries it: the list, `GET /api/ledger/entries/{id}`

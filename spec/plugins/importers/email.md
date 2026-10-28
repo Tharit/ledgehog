@@ -23,7 +23,7 @@ what fails.
 | `port` | Optional, 1 to 65535. Empty means 993 for `tls`, 143 for `starttls`. |
 | `username` | The login name at the server. |
 | `mailbox` | Optional; empty means `INBOX`. The folder read, by its full name; a name outside ASCII is sent in IMAP's modified UTF-7. |
-| `senders` | The addresses whose mail is accepted (§3), at least one. Each is one address (`local@domain`), stored trimmed and lower-cased; duplicates are refused. |
+| `senders` | The addresses whose mail is accepted (§3), at least one. Each is one address (`local@domain`), stored trimmed and lower-cased; duplicates are refused. A listed address stands for its plus addresses too (§3). |
 | `start_date` | The instance's start date (`spec.md` §5.5), required. |
 
 Unknown keys are refused, naming the key (`InvalidProfile`), and so is a
@@ -103,8 +103,15 @@ are accepted:
   (`message/rfc822`) or quoted inline.
 
 **A message is read when it names an address in `senders` and its sender is
-authenticated.** Addresses are compared as whole addresses without regard to
-case. The addresses read are:
+authenticated.** Addresses are compared without regard to case, and **a listed
+address stands for its plus addresses**: an address matches a listed one when
+it is that address, or when its local part up to the first `+`, with its
+domain, is that address — `martin+amazon@proton.me` is read for a listed
+`martin@proton.me`. The tag is the mailbox owner's own, handed out per shop,
+and the domain authentication rests on is unchanged. A listed address that
+itself carries a `+` matches only itself, and only `+` separates a tag: a
+provider that uses another separator is listed by whole address. The addresses
+read are:
 
 | Header | Set by | Read as |
 |---|---|---|
@@ -150,8 +157,8 @@ document and, where a clearance account takes its provider, a purchase booked
 there that no charge offsets: the account's balance shows it, and an entry by
 hand offsets it. A forward by hand cannot be forged this way: its `From` must
 be a listed address with a DMARC pass or an aligned DKIM pass. Mapping sender domains to providers, planned, narrows
-which shops can be booked at all. Matching is by exact address: a provider's
-alias or dotted variant is a separate entry in `senders`.
+which shops can be booked at all. Beyond the plus tag, matching is by exact
+address: a provider's alias or dotted variant is a separate entry in `senders`.
 
 **The inner message.** Of an accepted message, every part of type
 `message/rfc822` at its first level is an inner message, handled on its own (a
@@ -268,14 +275,23 @@ order, and the first check that fails skips the inner message under its count:
 | Field | From |
 |---|---|
 | `provider` | the merchant, canonicalised (below) |
-| `external_id` | the `order_id`, trimmed and whitespace collapsed, where it has one; else `message:` and the inner message's identity (§4) |
+| `source_id` | the `order_id`, trimmed and whitespace collapsed, where it has one; else `message:` and the inner message's identity (§4) |
+| `reference` | the `order_id`, trimmed and whitespace collapsed, where the mail names one; else none |
 | `occurred_on` | the order's date: the inner message's date (§4). Under `keep` (below) a document is the first complete mail of its order, its confirmation, sent when the order was placed |
 | `total_minor` | minus the total, in minor units: a charge is negative; a purchase paid entirely with a voucher has 0, and is delivered, though not booked (`spec.md` §5.8) |
 | `currency` | the checked currency |
 | `merchant_name` | the merchant as the model gave it, trimmed, whitespace collapsed, at most 200 characters |
-| `title` | the inner message's subject, at most 200 characters |
+| `title` | the inner message's subject, its reply and forwarding markers removed (below), at most 200 characters |
 | lines | one per item, in the order given: `description` its name, `amount_minor` minus its amount (a discount becomes a positive line, which stays an entry of its own, `spec.md` §5.8), `qty` its quantity where that is a whole number from 1, else none. A line of amount zero is dropped. |
 | `raw` | `{"message_id", "outer_message_id", "uid", "uidvalidity", "date", "source": "text" or "pdf", "pdf": <its file name>, "extraction": <the validated answer as returned>, "model": <the model's name>}`. The message itself stays in the mailbox and is not copied. |
+
+**The subject's markers.** A forward by hand quoted inline is its own inner
+message (§3), so its subject carries what the forwarding client put in front
+of it. A leading `Re`, `Fw`, `Fwd`, `Aw` or `Wg`, followed by a colon and
+optionally by a counter in brackets or parentheses (`Re[2]:`), is removed with
+the whitespace around it, repeatedly and without regard to case, until the
+subject starts with something else; what remains is the subject as the sender
+wrote it. A subject that is nothing but markers is no title.
 
 **The provider** is inferred from the merchant alone, deterministically: NFKC;
 whitespace trimmed and collapsed; a name that is a bare domain
@@ -300,7 +316,7 @@ the settings, so that no misread decides a provider, is planned.
 later mail about an order — a shipping notice, an invoice, a cancellation —
 is a partial or derived view, never the same document read again, so the
 first complete mail of an order wins. **Within one delivery** the key
-`(provider, external_id)` is unique (`spec.md` §5.1): where two inner
+`(provider, source_id)` is unique (`spec.md` §5.1): where two inner
 messages give the same key, the earlier — by UID, then by order within the
 message — is delivered and the later counts as `same_order`. Across runs, a
 document already stored is kept as it is, and ingest counts the re-delivery
@@ -371,7 +387,9 @@ over `imaplib`, and its logic is tested against a fake of it; the model through
 one client, tested against a fake transport. The corpus covers each forwarding
 form of §3 (Gmail's, Exchange's, `Resent-From`, `Delivered-To`, by hand attached
 and inline, several attached), each with a passing, a failing and no
-`Authentication-Results` header and one written below the topmost, each count of §8, the converter's markers, the
-two readings of item amounts, the provider canonicalisation and a PDF. A real
-message never becomes a fixture as it is; what it shows becomes a hand-built
-case.
+`Authentication-Results` header and one written below the topmost, a plus
+address matched against a listed base address and a listed plus address matched
+only by itself, each count of §8, the converter's markers, the subject's reply
+and forwarding markers, the two readings of item amounts, the provider
+canonicalisation and a PDF. A real message never becomes a fixture as it is;
+what it shows becomes a hand-built case.

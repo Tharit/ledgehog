@@ -96,7 +96,7 @@ from this transaction", with the entry's account and source text available in
 the editor (`spec.md` §5.9).
 
 **A booking's unit is leaner** (`spec.md` §5.8). Its group says where it came
-from — "Booked from *provider* order *external id*", opening the document's
+from — "Booked from *provider* order *reference*", or "Booked from *provider* order" where it has none, opening the document's
 detail (`ux/views/documents.md`) — and each row shows its source text. The
 panel offers no partner, no conversion to a transfer and no split: a booking's
 type and split are its document's. Its values — payee, category,

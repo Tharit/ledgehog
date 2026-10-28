@@ -14,24 +14,36 @@ Fetching and syncing are not here but in `ux/views/sync.md`; the discovery of an
 instance's accounts is *Refresh accounts*, below. The FinTS importer's setup is
 *The FinTS form*, below, the email importer's *The email form*.
 
+**What an importer delivers decides what its instance shows.** An importer
+delivers transactions, documents, or both (`spec.md` §5.1, §5.5;
+`architecture.md` §4.1). A document is never fetched for an account: it is
+booked onto whichever clearance account takes its provider
+(`features/documents.md` §1). So an instance of an importer that delivers
+documents only has no linked accounts, and nothing here offers to link one.
+
 ## The instance list
 
 Titled "Importers", with the primary action "Add importer". A row shows the
 instance's label, its importer, the accounts it is linked to — each a link to
-the account's page — when it last ran ("never run" for none, relative with the
-absolute instant in a tooltip, `ux/patterns.md` §3) and "disabled" when it is.
+the account's page, "no accounts linked" where it has none, and, for an
+importer that delivers documents only, "delivers documents" in their place —
+when it last ran ("never run" for none, relative with the absolute instant in a
+tooltip, `ux/patterns.md` §3) and "disabled" when it is.
 For an instance that holds a login, whose it is is shown too — "your login",
 "*Name*'s login", or "shared" where either user may run it (`spec.md` §5.11);
 a file importer holds none and is always shared. A row opens its page (below). It follows the settings-row
-rule (`ux/patterns.md` §11.3): two icon actions, "Edit" and "Link account" —
-for an instance of an importer that fetches and emits transactions, "Refresh
-accounts" instead (below) — and
-one `⋯` menu holding "Disable" or "Enable", "Reset…" and, last in the
-destructive style, "Delete…".
+rule (`ux/patterns.md` §11.3): the icon action "Edit"; beside it "Link
+account" — for an instance of an importer that fetches and emits transactions,
+"Refresh accounts" instead (below) — which an instance that delivers documents
+only does not show at all; and one `⋯` menu holding "Disable" or "Enable",
+"Reset…" and, last in the destructive style, "Delete…".
 
 - **Add importer** opens a pick dialog over the importer catalog
-  (`architecture.md` §4.1): each importer by name with whether it takes a file
-  or fetches. Choosing one opens the add page for it.
+  (`architecture.md` §4.1): each importer by name with how it is fed and what
+  it delivers: "takes a file", or "fetches transactions", "fetches documents",
+  "fetches transactions and documents". A file importer always delivers
+  transactions, so it needs no second half. Choosing one opens the add page for
+  it.
 - **Reset…** is offered only for an importer that keeps state, a login; a file
   importer has none. The decision dialog says it clears the state and keeps the
   settings.
@@ -64,6 +76,9 @@ editor with "Save importer" and Cancel (`ux/patterns.md` §11.2). It holds:
 - **Linked accounts**, listing each with "Unlink…" and the action "Link
   account", for an instance already saved; for an importer that fetches and
   emits transactions the action is "Refresh accounts" (below).
+  The section is absent altogether for an importer that delivers documents only;
+  in its place one line says where its documents go: "What this importer
+  delivers is booked onto the clearance account that takes each provider."
 
 For the other user's login the page is read-only: everything it shows — the
 label, the settings, whose login it is, the linked accounts, when it last ran —
