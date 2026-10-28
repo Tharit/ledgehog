@@ -67,6 +67,11 @@ describe('notInCategories', () => {
 			['unclassified-in', '/ledger?from=2026-10-01&to=2026-10-31&uncategorised=true&direction=in'],
 			['reconciliations', '/ledger?from=2026-10-01&to=2026-10-31&type=reconciliation']
 		]);
+		expect(side.lines.map((l) => l.measure)).toEqual([
+			'unclassified',
+			'unclassified',
+			'reconciliations'
+		]);
 		expect(side.unconfirmed).toEqual({
 			count: 3,
 			href: '/ledger?from=2026-10-01&to=2026-10-31&flag=unconfirmed'
@@ -76,6 +81,17 @@ describe('notInCategories', () => {
 
 describe('savingsTable', () => {
 	const table = savingsTable(overTimeSavings(), categories, scope);
+
+	it('carries each row’s measure, not left to its label', () => {
+		expect(table.rows.map((r) => r.measure)).toEqual([
+			'income',
+			'expense',
+			'unclassified',
+			'reconciliations',
+			'savings',
+			'savings_rate'
+		]);
+	});
 
 	it('has the rows in order and a column per period and a Total', () => {
 		expect(table.columns.map((c) => c.label)).toEqual(['Aug 2026', 'Sep 1 – Sep 15', 'Total']);
@@ -163,7 +179,8 @@ describe('categoryTrendTable', () => {
 		expect(table.rows[1].cells[2].href).toBe('/ledger?from=2026-10-01&to=2026-10-31&category_id=1');
 	});
 
-	it('ends in the kind total per period', () => {
+	it('ends in the kind total per period, read by the kind’s measure', () => {
+		expect(table.total.measure).toBe('expense');
 		expect(table.total.cells.map((c) => c.kind === 'line' && c.line.total?.amount)).toEqual([
 			-40000, -51500, -91500
 		]);
@@ -191,6 +208,10 @@ describe('balanceTable', () => {
 			[null, 'No balance could be valued.']
 		]);
 		expect(table.groups[2].rows).toEqual([]);
+	});
+
+	it('reads the net worth row by its measure', () => {
+		expect(table.net.measure).toBe('net_worth');
 	});
 
 	it('says what the net worth leaves out', () => {

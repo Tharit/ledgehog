@@ -4,6 +4,7 @@ import { isKnownIcon, iconFor, DEFAULT_ICON } from './icons.js';
 import {
 	categoryPath,
 	resolveAccount,
+	resolveAccountKind,
 	resolveCategory,
 	resolvePayee,
 	resolveTag
@@ -155,5 +156,16 @@ describe('icons', () => {
 		expect(iconFor('no-such')).toBe(iconFor(DEFAULT_ICON));
 		expect(iconFor(undefined)).toBe(iconFor(DEFAULT_ICON));
 		expect(iconFor('car')).not.toBe(iconFor(DEFAULT_ICON));
+	});
+});
+
+describe('resolveAccountKind', () => {
+	it('is the kind’s default icon on stone', () => {
+		expect(resolveAccountKind('depot')).toEqual({ icon: 'chart-line', color: 'stone' });
+		expect(resolveAccountKind('clearance')).toEqual({ icon: 'scale', color: 'stone' });
+	});
+
+	it('falls back to the default icon for an unknown kind', () => {
+		expect(resolveAccountKind('mystery')).toEqual({ icon: DEFAULT_ICON, color: 'stone' });
 	});
 });

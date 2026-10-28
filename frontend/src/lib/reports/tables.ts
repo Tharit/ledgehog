@@ -2,6 +2,7 @@
 // data"), as plain models the components draw: rows, cells, and the link every number carries.
 import { formatMoney } from '#lib/format/index.js';
 import { ACCOUNT_KINDS } from '#lib/accounts/kinds.js';
+import { type Measure } from '#lib/theme/measures.js';
 import type { Account, Category } from '#lib/types/domain.js';
 import { minorOf, periodLabel } from './charts.js';
 import {
@@ -121,6 +122,8 @@ export function categoryTable(
 export type SideLine = {
 	key: string;
 	label: string;
+	/** the measure whose lead tile the row takes */
+	measure: Measure;
 	line: Line;
 	href: string;
 	explanation: string;
@@ -135,6 +138,7 @@ export function notInCategories(
 		lines: [
 			{
 				key: 'unclassified-out',
+				measure: 'unclassified',
 				label: 'Unclassified, out',
 				line: report.unclassified_out,
 				href: unclassifiedHref(scope, 'out'),
@@ -142,6 +146,7 @@ export function notInCategories(
 			},
 			{
 				key: 'unclassified-in',
+				measure: 'unclassified',
 				label: 'Unclassified, in',
 				line: report.unclassified_in,
 				href: unclassifiedHref(scope, 'in'),
@@ -149,6 +154,7 @@ export function notInCategories(
 			},
 			{
 				key: 'reconciliations',
+				measure: 'reconciliations',
 				label: 'Reconciliations',
 				line: report.reconciliations,
 				href: reconciliationsHref(scope),
@@ -167,7 +173,14 @@ export type TrendCell =
 	| { kind: 'line'; line: Line; href?: string; title?: string }
 	| { kind: 'rate'; bp: number | null; incomplete: boolean; title: string };
 
-export type TrendRow = { key: string; label: string; strong?: boolean; cells: TrendCell[] };
+export type TrendRow = {
+	key: string;
+	label: string;
+	/** the measure whose lead tile the row takes */
+	measure: Measure;
+	strong?: boolean;
+	cells: TrendCell[];
+};
 
 function periodScope(period: Period, scope: Scope): Scope {
 	return { ...scope, from: period.from, to: period.to };
@@ -208,6 +221,7 @@ export function savingsTable(
 	const rows: TrendRow[] = [
 		{
 			key: 'income',
+			measure: 'income',
 			label: 'Income',
 			cells: line(
 				(s) => s.income,
@@ -216,6 +230,7 @@ export function savingsTable(
 		},
 		{
 			key: 'expense',
+			measure: 'expense',
 			label: 'Expense',
 			cells: line(
 				(s) => s.expense,
@@ -224,6 +239,7 @@ export function savingsTable(
 		},
 		{
 			key: 'unclassified',
+			measure: 'unclassified',
 			label: 'Unclassified',
 			cells: line(
 				(s) => s.unclassified,
@@ -232,6 +248,7 @@ export function savingsTable(
 		},
 		{
 			key: 'reconciliations',
+			measure: 'reconciliations',
 			label: 'Reconciliations',
 			cells: line(
 				(s) => s.reconciliations,
@@ -240,12 +257,14 @@ export function savingsTable(
 		},
 		{
 			key: 'savings',
+			measure: 'savings',
 			label: 'Savings',
 			strong: true,
 			cells: line((s) => s.savings, undefined, SAVINGS_TITLE)
 		},
 		{
 			key: 'rate',
+			measure: 'savings_rate',
 			label: 'Savings rate',
 			cells: steps.map((s): TrendCell => ({
 				kind: 'rate',
@@ -302,6 +321,7 @@ export function categoryTrendTable(
 		rows,
 		total: {
 			key: 'total',
+			measure: kind,
 			label: 'Total',
 			strong: true,
 			cells: totals.map((line, i): TrendCell => ({
@@ -326,6 +346,8 @@ export type BalanceCell = {
 export type BalanceTableRow = {
 	key: string;
 	label: string;
+	/** set on the net-worth row, which is read by a measure rather than an account */
+	measure?: Measure;
 	accountId: number | null;
 	cells: BalanceCell[];
 };
@@ -369,6 +391,7 @@ export function balanceTable(
 	const net: BalanceTableRow = {
 		key: 'net-worth',
 		label: 'Net worth',
+		measure: 'net_worth',
 		accountId: null,
 		cells: netWorthCells(report.net_worth, base)
 	};

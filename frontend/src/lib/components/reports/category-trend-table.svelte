@@ -3,6 +3,7 @@
 	import TreeToggle from '#lib/components/common/tree-toggle.svelte';
 	import { foldedRows, toggled } from '#lib/reports/fold.js';
 	import type { CategoryTrendRow, Column, TrendRow } from '#lib/reports/tables.js';
+	import { measureLook } from '#lib/theme/measures.js';
 	import { resolveCategory } from '#lib/theme/resolve.js';
 	import type { Category } from '#lib/types/domain.js';
 	import FigureLink from './figure-link.svelte';
@@ -28,6 +29,7 @@
 	// opens collapsed to the top level; the state is per row key, so a refetch keeps what is open
 	let expanded = $state.raw<ReadonlySet<string>>(new Set());
 	const shown = $derived(foldedRows(rows, expanded));
+	const totalLook = $derived(measureLook(total.measure));
 </script>
 
 <div class="overflow-x-auto">
@@ -85,7 +87,12 @@
 		</tbody>
 		<tfoot>
 			<tr class="font-medium" data-row="total">
-				<th scope="row" class="sticky left-0 bg-card py-2 pr-4 pl-4 text-left">{total.label}</th>
+				<th scope="row" class="sticky left-0 bg-card py-2 pr-4 pl-4 text-left">
+					<span class="flex items-center gap-2">
+						<DimensionIcon icon={totalLook.icon} color={totalLook.color} size="compact" />
+						{total.label}
+					</span>
+				</th>
 				{#each total.cells as cell, i (columns[i].key)}
 					<td class="px-3 py-2 text-right whitespace-nowrap last:pr-4">
 						{#if cell.kind === 'line'}

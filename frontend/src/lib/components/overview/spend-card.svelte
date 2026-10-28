@@ -1,9 +1,10 @@
 <script lang="ts">
-	import ReceiptIcon from '@lucide/svelte/icons/receipt';
 	import LineFigure from '#lib/components/reports/line-figure.svelte';
 	import { formatDate, formatMonthName } from '#lib/format/index.js';
 	import { byCategoryHref, ledgerHref } from '#lib/reports/figures.js';
 	import type { Overview } from '#lib/reports/types.js';
+	import { iconFor } from '#lib/theme/icons.js';
+	import { MEASURE_ICONS } from '#lib/theme/measures.js';
 	import CardRow from '#lib/components/common/card-row.svelte';
 	import FigureCard from '#lib/components/common/figure-card.svelte';
 
@@ -39,7 +40,7 @@
 
 <FigureCard
 	title="Spend"
-	icon={ReceiptIcon}
+	icon={iconFor(MEASURE_ICONS.expense)}
 	caption={month ? `${formatMonthName(month.from, locale)} so far` : undefined}
 	loading={spend === null}
 >

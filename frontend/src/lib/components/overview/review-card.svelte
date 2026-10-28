@@ -1,7 +1,7 @@
 <script lang="ts">
-	import CheckIcon from '@lucide/svelte/icons/check';
-	import InboxIcon from '@lucide/svelte/icons/inbox';
 	import { formatCount } from '#lib/format/index.js';
+	import { iconFor } from '#lib/theme/icons.js';
+	import { MEASURE_ICONS } from '#lib/theme/measures.js';
 	import CardRow from '#lib/components/common/card-row.svelte';
 	import FigureCard from '#lib/components/common/figure-card.svelte';
 
@@ -21,7 +21,7 @@
 
 <FigureCard
 	title="To review"
-	icon={total === 0 ? CheckIcon : InboxIcon}
+	icon={iconFor(total === 0 ? 'check' : MEASURE_ICONS.review)}
 	caption="Imported, not yet confirmed"
 	loading={counts === null}
 >

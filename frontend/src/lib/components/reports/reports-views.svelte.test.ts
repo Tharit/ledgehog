@@ -8,11 +8,23 @@ import {
 	reportLookups
 } from '#lib/reports/trend-fixtures.js';
 import type { Scope } from '#lib/reports/links.js';
+import { dimensionVars } from '#lib/theme/dimensions.js';
 import BalancesView from './balances-view.svelte';
 import ByCategoryView from './by-category-view.svelte';
 import OverTimeView from './over-time-view.svelte';
 
 const { categories, accounts } = reportLookups();
+/** The tile that draws an icon: its glyph's wrapper, with the colour it was given. */
+function tileOf(within: Element | null, icon: string): HTMLElement | null {
+	const glyph = within?.querySelector(`.lucide-${icon}`);
+	return (glyph?.parentElement as HTMLElement | null) ?? null;
+}
+
+function expectStone(tile: HTMLElement | null) {
+	expect(tile).not.toBeNull();
+	expect(tile!.style.getPropertyValue('--tile-fg')).toBe(dimensionVars('stone').fg);
+}
+
 const scope: Scope = { from: '2026-10-01', to: '2026-10-31', accountIds: [], tagIds: [] };
 
 function hrefOf(row: HTMLElement): string | null {
@@ -150,6 +162,22 @@ describe('ByCategoryView', () => {
 		);
 	});
 
+	it('leads the total and the not-in-the-categories rows with their measure’s stone tile', () => {
+		const { container } = render(ByCategoryView, {
+			props: { report: byCategoryTree(), categories, scope }
+		});
+		const table = container.querySelector('[data-slot="category-table"]') as HTMLElement;
+
+		expectStone(tileOf(table.querySelector('[data-slot="category-total"] th'), 'receipt'));
+		const line = (key: string) => table.querySelector(`[data-line="${key}"] th`);
+		expectStone(tileOf(line('unclassified-out'), 'circle-question-mark'));
+		expectStone(tileOf(line('unclassified-in'), 'circle-question-mark'));
+		expectStone(tileOf(line('reconciliations'), 'scale'));
+		expectStone(tileOf(line('unconfirmed'), 'inbox'));
+		// an "(itself)" row sits under its parent's tile and has none of its own
+		expect(table.querySelector('[data-itself="true"] th [class*="size-6"]')).toBeNull();
+	});
+
 	it('says so when the period has nothing', () => {
 		render(ByCategoryView, {
 			props: {
@@ -192,6 +220,25 @@ describe('OverTimeView, income and expense', () => {
 		// the rate of an incomplete period carries the marker
 		expect(row('rate').querySelector('[data-slot="incomplete-marker"]')).not.toBeNull();
 		expect(screen.getByRole('columnheader', { name: 'Total' })).toBeInTheDocument();
+	});
+
+	it('leads each row with its measure’s stone tile', () => {
+		const { container } = render(OverTimeView, {
+			props: { report: overTimeSavings(), categories, scope }
+		});
+
+		const icons = {
+			income: 'hand-coins',
+			expense: 'receipt',
+			unclassified: 'circle-question-mark',
+			reconciliations: 'scale',
+			savings: 'piggy-bank',
+			rate: 'percent'
+		};
+		for (const [key, icon] of Object.entries(icons)) {
+			const row = container.querySelector(`[data-slot="savings-table"] [data-row="${key}"] th`);
+			expectStone(tileOf(row, icon));
+		}
 	});
 
 	it('draws the chart at a fixed height, not an aspect ratio', () => {
@@ -238,6 +285,8 @@ describe('OverTimeView, by category', () => {
 		]);
 		expect(table.querySelector('[data-itself="true"]')).toHaveTextContent('Food (itself)');
 		expect(table.querySelector('[data-row="total"]')).toHaveTextContent('−915.00');
+		// the total is read by its measure, the kind's
+		expectStone(tileOf(table.querySelector('[data-row="total"] th'), 'receipt'));
 	});
 
 	it('draws the stack chart at a fixed height', () => {
@@ -298,6 +347,36 @@ describe('BalancesView', () => {
 		expect(table.querySelector('[data-row="net-worth"]')).toHaveTextContent('5,000.00');
 		expect(table.querySelector('[data-group="checking"]')).toBeInTheDocument();
 		expect(table.querySelector('[data-row="a1"] a')).toHaveAttribute('href', '/accounts/1');
+	});
+
+	it('leads net worth with sigma, a kind with its stone tile, an account with its own', async () => {
+		const { container } = render(BalancesView, { props: { report: balances(), accounts } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Expand Checking' }));
+		const table = container.querySelector('[data-slot="balances-table"]') as HTMLElement;
+
+		expectStone(tileOf(table.querySelector('[data-row="net-worth"] th'), 'sigma'));
+		expectStone(tileOf(table.querySelector('[data-group="checking"] th'), 'landmark'));
+		expectStone(tileOf(table.querySelector('[data-group="savings"] th'), 'piggy-bank'));
+		// Giro: a checking account in forest, so its tile carries the kind's glyph in its own colour
+		const giro = tileOf(table.querySelector('[data-row="a1"] th'), 'landmark');
+		expect(giro).not.toBeNull();
+		expect(giro!.style.getPropertyValue('--tile-fg')).toBe(dimensionVars('forest').fg);
+	});
+
+	it('draws the same marks in the chart toggles and beside the unvalued accounts', () => {
+		const { container } = render(BalancesView, { props: { report: balances(), accounts } });
+		const toggles = container.querySelector('[data-slot="account-toggles"]');
+
+		expectStone(tileOf(toggles!.querySelector('label:has([type=checkbox])'), 'sigma'));
+		// the kind group label (the second, after "Total") is its stone tile
+		expectStone(tileOf(toggles!.querySelectorAll('span.w-28')[1], 'landmark'));
+		const giro = tileOf(
+			screen.getByRole('checkbox', { name: 'Giro' }).closest('label'),
+			'landmark'
+		);
+		expect(giro!.style.getPropertyValue('--tile-fg')).toBe(dimensionVars('forest').fg);
+		const depot = tileOf(container.querySelector('[data-slot="unvalued"] li'), 'chart-line');
+		expect(depot!.style.getPropertyValue('--tile-fg')).toBe(dimensionVars('plum').fg);
 	});
 
 	it('lists an account with no valued balance beneath, not in the table', () => {

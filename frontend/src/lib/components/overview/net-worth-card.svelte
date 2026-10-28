@@ -1,11 +1,12 @@
 <script lang="ts">
-	import SigmaIcon from '@lucide/svelte/icons/sigma';
 	import AbsentValue from '#lib/components/common/absent-value.svelte';
 	import MoneyDisplay from '#lib/components/common/money-display.svelte';
 	import LineFigure from '#lib/components/reports/line-figure.svelte';
 	import { formatDate } from '#lib/format/index.js';
 	import { UNPAIRED_TRANSFERS_HREF } from '#lib/reports/figures.js';
 	import type { NetWorth } from '#lib/reports/types.js';
+	import { iconFor } from '#lib/theme/icons.js';
+	import { MEASURE_ICONS } from '#lib/theme/measures.js';
 	import CardRow from '#lib/components/common/card-row.svelte';
 	import FigureCard from '#lib/components/common/figure-card.svelte';
 
@@ -21,7 +22,7 @@
 
 <FigureCard
 	title="Net worth"
-	icon={SigmaIcon}
+	icon={iconFor(MEASURE_ICONS.net_worth)}
 	caption="All accounts, today"
 	loading={netWorth === null}
 >

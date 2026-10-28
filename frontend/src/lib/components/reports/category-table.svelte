@@ -8,6 +8,7 @@
 	import { categoryTable, notInCategories } from '#lib/reports/tables.js';
 	import type { ByCategory } from '#lib/reports/types.js';
 	import { dimensionVars } from '#lib/theme/dimensions.js';
+	import { measureLook } from '#lib/theme/measures.js';
 	import { resolveCategory } from '#lib/theme/resolve.js';
 	import type { Category } from '#lib/types/domain.js';
 	import FigureLink from './figure-link.svelte';
@@ -33,6 +34,8 @@
 	const rows = $derived(foldedRows(categoryTable(report, categories, scope), expanded));
 	const side = $derived(notInCategories(report, scope));
 	const kindLabel = $derived(report.kind === 'income' ? 'Income' : 'Expense');
+	const totalLook = $derived(measureLook(report.kind));
+	const reviewLook = measureLook('review');
 </script>
 
 <div class="overflow-x-auto">
@@ -94,7 +97,12 @@
 		</tbody>
 		<tbody data-slot="category-total">
 			<tr class="font-medium">
-				<th scope="row" class="py-2 pl-4 text-left">{kindLabel}, total</th>
+				<th scope="row" class="py-2 pl-4 text-left">
+					<span class="flex items-center gap-2">
+						<DimensionIcon icon={totalLook.icon} color={totalLook.color} size="compact" />
+						{kindLabel}, total
+					</span>
+				</th>
 				<td class="px-3 py-2 text-right tabular-nums">{formatCount(report.total.count, locale)}</td>
 				<td class="px-3 py-2 text-right">
 					<FigureLink
@@ -115,9 +123,13 @@
 				</th>
 			</tr>
 			{#each side.lines as item (item.key)}
+				{@const look = measureLook(item.measure)}
 				<tr class="border-b border-border/60" data-line={item.key}>
 					<th scope="row" class="py-2 pl-4 text-left font-normal">
-						<AbsentValue label={item.label} explanation={item.explanation} />
+						<span class="flex items-center gap-2">
+							<DimensionIcon icon={look.icon} color={look.color} size="compact" />
+							<AbsentValue label={item.label} explanation={item.explanation} />
+						</span>
 					</th>
 					<td class="px-3 py-2 text-right tabular-nums">{formatCount(item.line.count, locale)}</td>
 					<td class="px-3 py-2 text-right">
@@ -129,10 +141,13 @@
 			{/each}
 			<tr class="border-b-0" data-line="unconfirmed">
 				<th scope="row" class="py-2 pl-4 text-left font-normal">
-					<AbsentValue
-						label="Not yet confirmed"
-						explanation="Entries of this period whose values are proposals. The table includes their proposed categories."
-					/>
+					<span class="flex items-center gap-2">
+						<DimensionIcon icon={reviewLook.icon} color={reviewLook.color} size="compact" />
+						<AbsentValue
+							label="Not yet confirmed"
+							explanation="Entries of this period whose values are proposals. The table includes their proposed categories."
+						/>
+					</span>
 				</th>
 				<td class="px-3 py-2 text-right tabular-nums">
 					{#if side.unconfirmed.count > 0}

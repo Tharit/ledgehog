@@ -3,6 +3,7 @@
 	import DimensionIcon from '#lib/components/common/dimension-icon.svelte';
 	import LineFigure from '#lib/components/reports/line-figure.svelte';
 	import { formatMonthName } from '#lib/format/index.js';
+	import { OTHER_ICON } from '#lib/reports/charts.js';
 	import { byCategoryHref, ledgerHref } from '#lib/reports/figures.js';
 	import type { ByCategory, Line } from '#lib/reports/types.js';
 	import { dimensionVars } from '#lib/theme/dimensions.js';
@@ -50,7 +51,7 @@
 				name: 'Other',
 				line: report.other,
 				color: 'stone',
-				icon: 'circle-ellipsis'
+				icon: OTHER_ICON
 			});
 		}
 		return rows;

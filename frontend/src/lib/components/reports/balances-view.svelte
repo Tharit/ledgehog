@@ -1,6 +1,6 @@
 <script lang="ts">
 	import AbsentValue from '#lib/components/common/absent-value.svelte';
-	import AccountDot from '#lib/components/common/account-dot.svelte';
+	import DimensionIcon from '#lib/components/common/dimension-icon.svelte';
 	import Card from '#lib/components/common/card.svelte';
 	import MoneyDisplay from '#lib/components/common/money-display.svelte';
 	import TreeToggle from '#lib/components/common/tree-toggle.svelte';
@@ -8,7 +8,8 @@
 	import { toggled } from '#lib/reports/fold.js';
 	import type { Balances } from '#lib/reports/shapes.js';
 	import { balanceTable, type BalanceCell } from '#lib/reports/tables.js';
-	import { resolveAccount } from '#lib/theme/resolve.js';
+	import { measureLook } from '#lib/theme/measures.js';
+	import { resolveAccount, resolveAccountKind } from '#lib/theme/resolve.js';
 	import type { Account } from '#lib/types/domain.js';
 	import BalanceChart from './balance-chart.svelte';
 
@@ -32,6 +33,7 @@
 
 	const table = $derived(balanceTable(report, accounts, locale));
 	const chart = $derived(balanceRows(report, accounts, new Set(shown), locale, showNet));
+	const netLook = measureLook('net_worth');
 	const columns = $derived(
 		report.points.map((p) => ({ key: p, label: pointColumnLabel(p, locale) }))
 	);
@@ -79,21 +81,26 @@
 			<fieldset class="flex flex-col gap-2" data-slot="account-toggles">
 				<legend class="mb-1 text-sm font-medium">Show in the chart</legend>
 				<div class="flex flex-wrap items-center gap-x-4 gap-y-1">
-					<span class="w-20 text-xs text-muted-foreground">Total</span>
+					<span class="w-28 text-xs text-muted-foreground">Total</span>
 					<label class="flex items-center gap-2 text-sm">
 						<input type="checkbox" class="size-4 accent-primary" bind:checked={showNet} />
 						<span class="inline-flex items-center gap-1.5">
-							<span class="size-2 shrink-0 rounded-full bg-primary" aria-hidden="true"></span>
+							<DimensionIcon icon={netLook.icon} color={netLook.color} size="compact" />
 							Net worth
 						</span>
 					</label>
 				</div>
 				{#each table.groups as group (group.key)}
 					{#if group.rows.length > 0}
+						{@const kindLook = resolveAccountKind(group.key)}
 						<div class="flex flex-wrap items-center gap-x-4 gap-y-1">
-							<span class="w-20 text-xs text-muted-foreground">{group.label}</span>
+							<span class="flex w-28 items-center gap-1.5 text-xs text-muted-foreground">
+								<DimensionIcon icon={kindLook.icon} color={kindLook.color} size="compact" />
+								{group.label}
+							</span>
 							{#each group.rows as row (row.key)}
 								{@const account = row.accountId === null ? undefined : accounts.get(row.accountId)}
+								{@const look = account ? resolveAccount(account) : null}
 								<label class="flex items-center gap-2 text-sm">
 									<input
 										type="checkbox"
@@ -102,10 +109,14 @@
 										onchange={(event) =>
 											row.accountId !== null && toggle(row.accountId, event.currentTarget.checked)}
 									/>
-									<AccountDot
-										name={row.label}
-										color={account ? resolveAccount(account).color : null}
-									/>
+									<span class="inline-flex items-center gap-1.5">
+										{#if look}<DimensionIcon
+												icon={look.icon}
+												color={look.color}
+												size="compact"
+											/>{/if}
+										{row.label}
+									</span>
 								</label>
 							{/each}
 						</div>
@@ -133,7 +144,10 @@
 					<tbody>
 						<tr class="border-b border-border font-medium last:border-b-0" data-row="net-worth">
 							<th scope="row" class="sticky left-0 bg-card py-2 pr-4 pl-4 text-left">
-								{table.net.label}
+								<span class="flex items-center gap-2">
+									<DimensionIcon icon={netLook.icon} color={netLook.color} size="compact" />
+									{table.net.label}
+								</span>
 							</th>
 							{#each table.net.cells as cell, i (columns[i].key)}
 								<td class="px-3 py-2 text-right whitespace-nowrap last:pr-4"
@@ -143,6 +157,7 @@
 						</tr>
 						{#each table.groups as group (group.key)}
 							{@const open = expanded.has(group.key)}
+							{@const kindLook = resolveAccountKind(group.key)}
 							<tr
 								class="border-b border-border/60 font-medium last:border-b-0"
 								data-group={group.key}
@@ -155,6 +170,7 @@
 											toggleable={group.rows.length > 0}
 											ontoggle={() => (expanded = toggled(expanded, group.key))}
 										/>
+										<DimensionIcon icon={kindLook.icon} color={kindLook.color} size="compact" />
 										{group.label}
 									</span>
 								</th>
@@ -166,13 +182,20 @@
 							</tr>
 							{#if open}
 								{#each group.rows as row (row.key)}
+									{@const account =
+										row.accountId === null ? undefined : accounts.get(row.accountId)}
+									{@const look = account ? resolveAccount(account) : null}
 									<tr class="border-b border-border/60 last:border-b-0" data-row={row.key}>
 										<th
 											scope="row"
 											class="sticky left-0 bg-card py-2 pr-4 pl-4 text-left font-normal"
 										>
 											<span class="flex items-center gap-2 pl-6">
-												<span class="size-6 shrink-0" aria-hidden="true"></span>
+												{#if look}
+													<DimensionIcon icon={look.icon} color={look.color} size="compact" />
+												{:else}
+													<span class="size-6 shrink-0" aria-hidden="true"></span>
+												{/if}
 												{#if row.accountId !== null}
 													<a
 														href={`/accounts/${row.accountId}`}
@@ -207,14 +230,19 @@
 				</p>
 				<Card variant="flush" element="ul" class="mt-1 text-sm">
 					{#each table.unvalued as item (item.accountId)}
+						{@const account = accounts.get(item.accountId)}
+						{@const look = account ? resolveAccount(account) : null}
 						<li
-							class="flex items-baseline justify-between gap-3 border-b border-border px-4 py-2 last:border-b-0"
+							class="flex items-center justify-between gap-3 border-b border-border px-4 py-2 last:border-b-0"
 						>
-							<a
-								href={`/accounts/${item.accountId}`}
-								class="rounded-sm outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-								>{item.name}</a
-							>
+							<span class="flex items-center gap-2">
+								{#if look}<DimensionIcon icon={look.icon} color={look.color} size="compact" />{/if}
+								<a
+									href={`/accounts/${item.accountId}`}
+									class="rounded-sm outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+									>{item.name}</a
+								>
+							</span>
 							<span class="amount text-muted-foreground">{item.native}</span>
 						</li>
 					{/each}

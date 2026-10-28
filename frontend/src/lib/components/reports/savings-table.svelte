@@ -1,6 +1,8 @@
 <script lang="ts">
+	import DimensionIcon from '#lib/components/common/dimension-icon.svelte';
 	import { formatRate } from '#lib/format/index.js';
 	import type { Column, TrendRow } from '#lib/reports/tables.js';
+	import { measureLook } from '#lib/theme/measures.js';
 	import FigureLink from './figure-link.svelte';
 	import IncompleteMarker from './incomplete-marker.svelte';
 
@@ -38,12 +40,16 @@
 		</thead>
 		<tbody>
 			{#each rows as row (row.key)}
+				{@const look = measureLook(row.measure)}
 				<tr
 					class={['border-b border-border/60 last:border-b-0', row.strong && 'font-medium']}
 					data-row={row.key}
 				>
 					<th scope="row" class="sticky left-0 bg-card py-2 pr-4 pl-4 text-left font-normal">
-						{row.label}
+						<span class="flex items-center gap-2">
+							<DimensionIcon icon={look.icon} color={look.color} size="compact" />
+							{row.label}
+						</span>
 					</th>
 					{#each row.cells as cell, i (columns[i].key)}
 						<td

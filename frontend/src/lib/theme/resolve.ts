@@ -80,6 +80,11 @@ export function resolveAccount(account: Pick<Account, 'icon' | 'color' | 'kind'>
 	};
 }
 
+/** An account kind's lead tile: the kind's default icon on `stone` (design.md §6). */
+export function resolveAccountKind(kind: string): ResolvedLook {
+	return { icon: ACCOUNT_KIND_ICONS[kind] ?? DEFAULT_ICON, color: DEFAULT_DIMENSION_COLOR };
+}
+
 /** A payee's icon is null when it has none: its initial stands in (design.md §3). */
 export function resolvePayee(payee: Pick<Payee, 'icon' | 'color' | 'name'>): {
 	icon: string | null;
