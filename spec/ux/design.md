@@ -50,7 +50,7 @@ CSS variable shadcn-svelte uses, so the theme is one stylesheet.
 | primary-foreground | `--primary-foreground` | `#FFFAF3` | text on primary |
 | primary-hover | — | `#356554` | hover on primary |
 | accent | `--accent`, `--sidebar-accent` | `#DDE3D3` | selected navigation, list cursor row |
-| row-hover | — | `#EEEFE3` | hovered row: `accent` at 50 % over `surface` |
+| row-hover | — | `#F5F3E9` | hovered row: `accent` at 30 % over `surface` |
 | sage | — | `#91A88D` | translucent area fills, decoration |
 | ring | `--ring` | `#356554` | focus ring |
 | amount-positive | — | `#3B7A57` | amounts above zero |
@@ -279,8 +279,9 @@ section numbers in this table are `patterns.md`'s.
 | State | Look |
 |---|---|
 | list cursor (`patterns.md` §5) | row background `accent`, 2px `primary` bar on the left edge |
+| the cursor's unit (`patterns.md` §5) | the unit's other rows take `accent` at 60 % |
 | keyboard focus inside a panel | 2px `ring` outline, 2px offset |
-| hover | row background `row-hover` (`accent` at 50 % over `surface`); never stronger than the cursor |
+| hover | row background `row-hover` (`accent` at 30 % over `surface`); never stronger than the cursor or a unit member |
 | clickable | the pointer cursor on every control that acts on a click; `not-allowed` on a disabled one |
 | committed by you (§7) | row text `text-muted`; a confirmed unit also shows a `check` icon in the badge slot, an unconfirmed one keeps its review badge |
 | changed as a consequence (§7) | 2px `ochre` bar on the left edge, with the tooltip "changed by your last action" |
