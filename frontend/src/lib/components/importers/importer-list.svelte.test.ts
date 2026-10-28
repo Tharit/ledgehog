@@ -90,6 +90,40 @@ describe('ImporterList', () => {
 		expect(fn.onlink).not.toHaveBeenCalled();
 	});
 
+	it('shows "delivers documents" and no Link account for an instance that delivers documents only', async () => {
+		list(
+			[
+				instance({ id: 5, label: 'Receipts', importer: 'email', emits: ['documents'] }),
+				instance({ id: 6, label: 'Giro' })
+			],
+			{
+				catalog: [
+					catalogEntry(),
+					catalogEntry({ name: 'email', kind: 'fetch', emits: ['documents'] })
+				]
+			}
+		);
+
+		expect(screen.getByText('delivers documents')).toBeInTheDocument();
+		expect(screen.getAllByText('no accounts linked')).toHaveLength(1);
+		expect(screen.getByRole('button', { name: 'Edit Receipts' })).toBeInTheDocument();
+		expect(screen.queryByRole('button', { name: 'Link an account to Receipts' })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Refresh the accounts of Receipts' })).toBeNull();
+		expect(screen.getByRole('button', { name: 'Link an account to Giro' })).toBeInTheDocument();
+	});
+
+	it('reserves a fixed actions track, so the columns line up whatever the row’s actions', () => {
+		list([
+			instance({ id: 5, label: 'Receipts', importer: 'email', emits: ['documents'] }),
+			instance({ id: 2, label: 'Theirs', importer: 'fints', manageable: false })
+		]);
+
+		for (const id of [5, 2]) {
+			const row = document.querySelector(`[data-instance-id="${id}"]`);
+			expect(row?.className).toContain('_minmax(4.75rem,auto)]');
+		}
+	});
+
 	it('offers Enable on a disabled instance and Reset… only for an importer that keeps state', async () => {
 		list([instance({ id: 3, label: 'Bank', importer: 'fints', disabled: true })]);
 

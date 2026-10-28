@@ -206,7 +206,7 @@ export type UploadResult = {
 
 // ---- calls -----------------------------------------------------------------------------------
 
-/** What a new instance can be made from: each importer, whether it takes a file or fetches. */
+/** What a new instance can be made from: each importer, how it is fed and what it delivers. */
 export function listImporters(signal?: AbortSignal): Promise<CatalogEntry[]> {
 	return request('GET', '/api/importers', { signal });
 }

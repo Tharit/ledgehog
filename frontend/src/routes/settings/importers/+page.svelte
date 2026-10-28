@@ -50,7 +50,7 @@
 <div class="flex flex-col gap-4">
 	<PageHeader
 		title="Importers"
-		description="An importer reads a statement export into the accounts linked to it. One importer holds the settings of one file format."
+		description="An importer brings in transactions, from a statement export or a bank, into the accounts linked to it, or documents, which are booked onto the clearance account that takes their provider."
 		actionLabel="Add importer"
 		onaction={() => (adding = true)}
 		actionDisabled={store.status !== 'ready'}

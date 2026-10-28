@@ -51,7 +51,25 @@ export function importerTitle(name: string): string {
 	return name === 'csv' ? 'CSV or spreadsheet' : name;
 }
 
-/** The catalog's words for how an importer is fed. */
-export function kindText(kind: CatalogEntry['kind']): string {
-	return kind === 'file' ? 'takes a file' : 'fetches';
+/**
+ * An importer that delivers documents and no transactions: its instances have no linked accounts (a
+ * document is booked onto the clearance account that takes its provider, features/documents.md §1),
+ * so nothing links one.
+ */
+export function deliversDocumentsOnly(importer: Pick<CatalogEntry, 'emits'>): boolean {
+	return importer.emits.includes('documents') && !importer.emits.includes('transactions');
+}
+
+/**
+ * The catalog's words for how an importer is fed and what it delivers: "takes a file" (a file
+ * importer always delivers transactions), or "fetches" with what. Rates are not named; an importer
+ * that fetches only rates reads as plain "fetches".
+ */
+export function kindText(entry: Pick<CatalogEntry, 'kind' | 'emits'>): string {
+	if (entry.kind === 'file') return 'takes a file';
+	const transactions = entry.emits.includes('transactions');
+	const documents = entry.emits.includes('documents');
+	if (transactions && documents) return 'fetches transactions and documents';
+	if (transactions) return 'fetches transactions';
+	return documents ? 'fetches documents' : 'fetches';
 }

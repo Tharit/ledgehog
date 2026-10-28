@@ -7,7 +7,14 @@
 	import RowActions, { type RowAction } from '#lib/components/common/row-actions.svelte';
 	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
 	import { canRefreshAccounts } from '#lib/importers/discovery.js';
-	import { canReset, hasRuns, importerTitle, lastRunText, loginText } from '#lib/importers/list.js';
+	import {
+		canReset,
+		deliversDocumentsOnly,
+		hasRuns,
+		importerTitle,
+		lastRunText,
+		loginText
+	} from '#lib/importers/list.js';
 	import { accountUrl, instanceUrl } from '#lib/importers/links.js';
 	import type { CatalogEntry, ImporterInstance } from '#lib/types/domain.js';
 	import type { Lookups } from '#lib/ledger/lookups.js';
@@ -15,7 +22,7 @@
 	// The importer instances (ux/views/importers.md "The instance list"): the label (a link to its
 	// page), its importer, the accounts it links to, when it last ran and "disabled" where it is. The
 	// settings-row rule (patterns §11.3): "Edit" and "Link account" ("Refresh accounts" for an
-	// importer that fetches) as icons, one `⋯` menu with
+	// importer that fetches; none for one that delivers documents only) as icons, one `⋯` menu with
 	// Disable or Enable, Reset… (an importer that keeps state) and, last, Delete…, which stays visible
 	// but disabled, with its reason, on an instance that has run. An instance that holds a login says
 	// whose ("your login", "<Name>’s login" or "shared"); the other user's login is read-only: its row
@@ -80,6 +87,8 @@
 				}
 			];
 		}
+		// documents are booked onto a clearance account, never linked: nothing to link
+		if (deliversDocumentsOnly(instance)) return [edit];
 		return [
 			edit,
 			{
@@ -87,6 +96,7 @@
 				label: `Link an account to ${instance.label}`,
 				icon: Link2Icon,
 				onselect: () => onlink?.(instance),
+				// documents-only is hidden above; this guards any other importer that delivers no transactions
 				disabled: instance.disabled || !instance.emits.includes('transactions')
 			}
 		];
@@ -129,16 +139,17 @@
 	</div>
 {:else if instances.length === 0}
 	<EmptyState title="No importers yet" actionLabel="Add importer" onaction={onadd}>
-		An importer reads a statement export or fetches from a bank. Add one, link it to an account, and
-		upload a file from the account's page.
+		An importer brings in transactions from a statement export or a bank, or documents from a
+		mailbox. Add one; for transactions, link it to an account too.
 	</EmptyState>
 {:else}
 	<Card variant="flush" element="ul" class="flex flex-col" data-slot="importer-list">
 		{#each instances as instance (instance.id)}
 			{@const run = lastRunText(instance.last_run_at, timeZone, locale)}
 			{@const login = loginText(instance, catalog)}
+			<!-- The actions track is fixed at the widest case (3 icons): the actions vary per row (2 or 3 icons, or none where the instance is not manageable), and a content-sized track would move the columns to its left. -->
 			<li
-				class="group grid min-h-12 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-x-4 border-b border-border px-4 py-1.5 last:border-b-0"
+				class="group grid min-h-12 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(4.75rem,auto)] items-center gap-x-4 border-b border-border px-4 py-1.5 last:border-b-0"
 				data-instance-id={instance.id}
 			>
 				<div class="flex min-w-0 flex-col">
@@ -172,7 +183,9 @@
 							{lookups.accounts.get(link.account_id)?.name ?? `Account #${link.account_id}`}
 						</a>
 					{:else}
-						<span class="text-muted-foreground">no accounts linked</span>
+						<span class="text-muted-foreground">
+							{deliversDocumentsOnly(instance) ? 'delivers documents' : 'no accounts linked'}
+						</span>
 					{/each}
 				</div>
 				{#if instance.manageable}

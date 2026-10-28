@@ -11,7 +11,7 @@
 	import LeaveGuard from '#lib/components/rules/leave-guard.svelte';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import { canRefreshAccounts } from '#lib/importers/discovery.js';
-	import { lastRunText, loginText } from '#lib/importers/list.js';
+	import { deliversDocumentsOnly, lastRunText, loginText } from '#lib/importers/list.js';
 	import { refreshNotice, startRefresh } from '#lib/importers/refresh.js';
 	import { sync } from '#lib/stores/sync.svelte.js';
 	import { InstanceDecisionFlow } from '#lib/importers/decision-flow.svelte.js';
@@ -124,7 +124,9 @@
 			const fetches = canRefreshAccounts(stored, store.catalog);
 			if (intent === 'added') {
 				say(
-					`Importer “${stored.label}” was added. ${fetches ? 'Refresh its accounts' : 'Link an account'} to use it.`
+					deliversDocumentsOnly(stored)
+						? `Importer “${stored.label}” was added.`
+						: `Importer “${stored.label}” was added. ${fetches ? 'Refresh its accounts' : 'Link an account'} to use it.`
 				);
 			}
 			// a fetch importer's accounts come from discovery, with their reference: no picker for them
@@ -311,16 +313,23 @@
 
 		{#if store.editing && store.instance}
 			<div class="max-w-3xl">
-				<LinkedAccounts
-					instance={store.instance}
-					lookups={lookupsStore.lookups}
-					refreshable={canRefreshAccounts(store.instance, store.catalog)}
-					{readOnly}
-					onrefresh={() => store.instance && void refresh(store.instance.id)}
-					onlink={() => store.instance && link.start(store.instance)}
-					onunlink={(accountId) =>
-						store.instance && decision.start('unlink', store.instance, accountId)}
-				/>
+				{#if deliversDocumentsOnly(store.instance)}
+					<p class="text-sm text-muted-foreground" data-slot="documents-line">
+						What this importer delivers is booked onto the clearance account that takes each
+						provider.
+					</p>
+				{:else}
+					<LinkedAccounts
+						instance={store.instance}
+						lookups={lookupsStore.lookups}
+						refreshable={canRefreshAccounts(store.instance, store.catalog)}
+						{readOnly}
+						onrefresh={() => store.instance && void refresh(store.instance.id)}
+						onlink={() => store.instance && link.start(store.instance)}
+						onunlink={(accountId) =>
+							store.instance && decision.start('unlink', store.instance, accountId)}
+					/>
+				{/if}
 			</div>
 		{/if}
 	{/if}

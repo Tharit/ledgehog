@@ -6,7 +6,7 @@
 	import type { CatalogEntry } from '#lib/types/domain.js';
 
 	// "Add importer": a pick dialog over the importer catalog (ux/views/importers.md; patterns
-	// §11.2). Each importer by name, with whether it takes a file or fetches. Choosing one is the
+	// §11.2). Each importer by name, with how it is fed and what it delivers. Choosing one is the
 	// whole action: it opens the add page for it. An importer without a setup form yet is shown with
 	// the reason it cannot be chosen.
 	let {
@@ -24,7 +24,7 @@
 	const items = $derived<PickerItem[]>(
 		catalog.map((entry, id) => ({
 			id,
-			label: `${importerTitle(entry.name)} — ${kindText(entry.kind)}`,
+			label: `${importerTitle(entry.name)} — ${kindText(entry)}`,
 			disabled: hasSettingsForm(entry.name) ? undefined : 'no setup form for it yet'
 		}))
 	);

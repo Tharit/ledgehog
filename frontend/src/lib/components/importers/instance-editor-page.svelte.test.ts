@@ -302,6 +302,38 @@ describe('the instance page, editing', () => {
 	});
 });
 
+describe('the instance page, for an importer that delivers documents only', () => {
+	async function editingEmail(intent: 'added' | null = null) {
+		api.listImporters.mockResolvedValue([
+			catalogEntry({ name: 'email', kind: 'fetch', emits: ['documents'], presets: {} })
+		]);
+		return editing(
+			{ importer: 'email', emits: ['documents'], settings: {}, accounts: [], access: 'shared' },
+			intent
+		);
+	}
+
+	it('has no linked accounts section, only a line saying where its documents go', async () => {
+		await editingEmail();
+
+		expect(screen.queryByText('Linked accounts')).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Link account' })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Refresh accounts' })).toBeNull();
+		expect(
+			screen.getByText(
+				'What this importer delivers is booked onto the clearance account that takes each provider.'
+			)
+		).toBeInTheDocument();
+	});
+
+	it('says only that it was added, and opens no link dialog', async () => {
+		await editingEmail('added');
+
+		expect(screen.getByText('Importer “Giro” was added.')).toBeInTheDocument();
+		expect(screen.queryByRole('dialog')).toBeNull();
+	});
+});
+
 describe('the instance page, for the other user’s login', () => {
 	const theirs = {
 		access: 'owner' as const,
