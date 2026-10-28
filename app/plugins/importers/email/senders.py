@@ -1,5 +1,6 @@
-"""Who may send (spec/plugins/importers/email.md §3): a message is read when it names a listed address, whole
-addresses compared without regard to case, and its sender is authenticated.
+"""Who may send (spec/plugins/importers/email.md §3): a message is read when it names a listed address
+(compared without regard to case; a listed address stands for its plus addresses) and its sender is
+authenticated.
 
 Every header naming an address can be written by whoever sends the message, so the inbox provider's verdict
 counts: the topmost `Authentication-Results` header (RFC 8601), read as recorded; no signature is verified
@@ -179,6 +180,24 @@ class Verdict(Enum):
     NOT_AUTHENTICATED = "not_authenticated"  # a listed address the provider did not vouch for
 
 
+def _base(address: str) -> str:
+    """The address without its plus tag: the local part up to the first `+`, kept only where something
+    precedes it. The tag is the mailbox owner's own; the domain authentication rests on is never touched."""
+    local, at, domain = address.rpartition("@")
+    head = local.partition("+")[0]
+    if not at or "@" in local or not head or head == local:  # a local part holds no `@`
+        return address
+    return f"{head}@{domain}"
+
+
+def _listed(address: str, allowed: set[str]) -> bool:
+    return address in allowed or _base(address) in allowed
+
+
+def _any_listed(addresses: Collection[str], allowed: set[str]) -> bool:
+    return any(_listed(a, allowed) for a in addresses)
+
+
 def check_sender(msg: Message, senders: Collection[str]) -> Verdict:
     """Accepted when a listed address is named and the topmost `Authentication-Results` shows: for a forward
     by hand, its listed `From` with a DMARC pass or a DKIM pass aligned with it; for an automatic forward, a
@@ -186,9 +205,9 @@ def check_sender(msg: Message, senders: Collection[str]) -> Verdict:
     address."""
     allowed = {s.strip().lower() for s in senders}
     sender = from_address(msg)
-    forwarded = not allowed.isdisjoint(forwarding_addresses_of(msg))
-    by_hand = sender is not None and sender in allowed
-    if not (by_hand or forwarded or not allowed.isdisjoint(addresses_of(msg))):
+    forwarded = _any_listed(forwarding_addresses_of(msg), allowed)
+    by_hand = sender is not None and _listed(sender, allowed)
+    if not (by_hand or forwarded or _any_listed(addresses_of(msg), allowed)):
         return Verdict.NOT_ACCEPTED
     results = topmost_results(msg)
     if sender is not None:

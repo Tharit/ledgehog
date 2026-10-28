@@ -1,4 +1,5 @@
-"""Who may send (email.md §3): whole addresses, case-insensitive, outer message only, authenticated."""
+"""Who may send (email.md §3): whole addresses (a plus address stands for its listed base),
+case-insensitive, outer message only, authenticated."""
 
 from __future__ import annotations
 
@@ -52,7 +53,6 @@ def test_a_display_name_that_contains_an_address_does_not_count():
 @pytest.mark.parametrize(
     "other",
     [
-        "family+shop@example.com",
         "xfamily@example.com",
         "family@mail.example.com",
         "family@example.com.evil.example",
@@ -201,3 +201,58 @@ def test_nested_comments_and_escaped_parentheses_hide_semicolons_and_results():
     )
     results = parse_authentication_results(value)
     assert [(r.method, r.result) for r in results] == [("dkim", "fail"), ("spf", "pass")]
+
+
+# ---- plus addresses (email.md §3) ------------------------------------------------------------------------
+
+PLUS = "family+amazon@example.com"
+PASS = "mx.x; dmarc=pass header.from=example.com"
+
+
+def test_a_plus_address_from_a_forward_by_hand_matches_the_listed_base():
+    msg = make_message(sender=PLUS, auth=PASS)
+    assert check_sender(msg, ALLOWED) is Verdict.ACCEPTED
+
+
+@pytest.mark.parametrize("header", ["Delivered-To", "X-Forwarded-For", "X-Original-To"])
+def test_a_plus_address_in_a_forwarding_header_matches_the_listed_base(header: str):
+    assert is_accepted(make_message(sender=SHOP, headers={header: PLUS}), ALLOWED)
+
+
+def test_a_listed_plus_address_matches_itself():
+    listed = ["family+shop@example.com"]
+    assert is_accepted(make_message(sender=SHOP, headers={"Delivered-To": listed[0]}), listed)
+    assert is_accepted(make_message(sender=listed[0], auth=PASS), listed)
+
+
+@pytest.mark.parametrize(
+    "named", ["family+other@example.com", "family@example.com", "family+shop+x@example.com"]
+)
+def test_a_listed_plus_address_matches_neither_another_tag_nor_the_bare_base(named: str):
+    listed = ["family+shop@example.com"]
+    msg = make_message(sender=named, headers={"Delivered-To": named}, auth=PASS)
+    assert check_sender(msg, listed) is Verdict.NOT_ACCEPTED
+
+
+@pytest.mark.parametrize(
+    "named", ["+tag@example.com", "+@example.com", "family+tag@example.org", "family+tag"]
+)
+def test_no_stripping_to_an_empty_local_part_or_across_domains(named: str):
+    msg = make_message(sender=named, headers={"Delivered-To": named}, auth=PASS)
+    assert check_sender(msg, ["@example.com", ALLOWED[0]]) is Verdict.NOT_ACCEPTED
+
+
+def test_a_plus_address_that_fails_authentication_is_not_authenticated_not_unaccepted():
+    bad = "mx.x; dmarc=fail header.from=example.com"
+    assert check_sender(make_message(sender=PLUS, auth=bad), ALLOWED) is Verdict.NOT_AUTHENTICATED
+    assert check_sender(make_message(sender=SHOP, headers={"Delivered-To": PLUS}, auth=None), ALLOWED) is (
+        Verdict.NOT_AUTHENTICATED
+    )
+
+
+def test_a_local_part_holding_an_at_sign_is_not_stripped():
+    odd = "family+x@evil.example@example.com"
+    assert check_sender(make_message(sender=odd, auth=PASS), ALLOWED) is Verdict.NOT_ACCEPTED
+    assert check_sender(make_message(sender=SHOP, headers={"Delivered-To": odd}, auth=PASS), ALLOWED) is (
+        Verdict.NOT_ACCEPTED
+    )
