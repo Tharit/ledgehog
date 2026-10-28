@@ -12,7 +12,7 @@ profile is `plugins/importers/csv.md`; the contracts are `architecture.md`
 are managed: a tab of Settings beside categories, payees, rules and tags.
 Fetching and syncing are not here but in `ux/views/sync.md`; the discovery of an
 instance's accounts is *Refresh accounts*, below. The FinTS importer's setup is
-*The FinTS form*, below.
+*The FinTS form*, below, the email importer's *The email form*.
 
 ## The instance list
 
@@ -135,6 +135,24 @@ connection test: *Refresh accounts* is one, and every extra login spends an
 attempt. The page's CSV-specific parts — the preset select, the hints about the
 file and about `source_format` — are shown for a CSV profile only.
 
+## The email form
+
+The email importer's settings (`plugins/importers/email.md` §1), each with a
+visible label and helper text and no placeholder: *Mail server* ("The IMAP
+server of the mailbox the receipts are forwarded to."), *Security* (a select:
+"TLS" and "STARTTLS", with "TLS" chosen on add; helper "TLS is the usual
+choice. There is no unencrypted connection."), *Port*, optional ("Leave empty
+for the usual port: 993 with TLS, 143 with STARTTLS."), *Login name* ("The name
+you sign in to the mailbox with."), *Folder*, filled with `INBOX` on add ("The
+folder the receipts arrive in."), *Senders*, one address per line ("Mail is read
+only when it was sent or forwarded by one of these addresses and the
+mailbox's provider could confirm where it came from.") and *Start date*, filled
+with today on add ("No receipt dated before it is imported."). Below them two
+lines: "The password is not stored.
+You will be asked for it whenever this login is used. Where your provider
+offers app passwords, use one." and "Every message read is sent whole to the
+configured model, names and addresses included." There is no connection test.
+
 ## Uploading a file
 
 Started from the account page, with "Upload file" on a linked source: the page
@@ -218,6 +236,10 @@ what the importer left out (zero bookings it dropped, a statement payment it
 did not emit); the balance record the run wrote, with its date and balance; the
 coverage; and the unexplained difference before and after, which where it is
 non-zero names the reported records that localise it, linking to the statement.
+For a document run it says how many documents were inserted, how many
+updated and how many kept, and what the importer counted, each count with its label — for the
+email importer the outcomes of `plugins/importers/email.md` §8, "skipped:
+incomplete", say — zero counts left out.
 A failed run shows its error and whether trying again can help. The component
 takes a run's stored statistics; for a dry run the same shape, with the links
 to rolled-back rows left out; in a sync's report, where the event carries

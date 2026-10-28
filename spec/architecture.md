@@ -1740,7 +1740,9 @@ accounts — one per currency pocket for multi-currency providers, each with wha
 it can deliver, transactions and a balance (used by discovery only) — fetches
 one account from a start date and reports the account's booked closing balance
 if it has one, fetches the documents from the instance's `start_date`
-(`spec.md` §5.5), and closes; the orchestrator always closes it. The orchestrator
+(`spec.md` §5.5) — given the lookup from currency to its minor-unit exponent an
+account fetch is given, since a document states its own currency — and closes;
+the orchestrator always closes it. The orchestrator
 calls only the methods for the kinds the importer emits. An importer emits
 only final, booked records, in ledger sign convention. Each
 transaction record carries its `source_format`, the instructed amount where the
@@ -1827,6 +1829,22 @@ whatever the outcome, if it changed, so a medium chosen before a failed sign-in
 is not asked for again. No PIN, password, TAN or token that does not meet
 `spec.md` §7 may be put in it. What the FinTS importer keeps there is listed in
 `plugins/importers/fints.md` §1.
+
+**A document delivery may carry a position**: what the importer learned from
+the data it delivered — how far into a mailbox it has read — as an update of
+`state`. The caller applies it only once the run's documents are written; a
+run that fails, or whose delivery is discarded after an abort, leaves the
+position where it was, and the source is read again. Re-delivering a document
+is harmless, since documents are keyed (`spec.md` §5.5). Everything else in
+`state` is written back as above.
+
+**A document importer may read documents with the model.** The composition
+root hands it the model's configuration, and the vision model's where one is
+set (§5.7); such an importer is registered only where the model is configured.
+It asks for extraction, never a category. What it sends is the document whole,
+not pass 3's restricted payload (§5.4): a hosted endpoint receives the
+household's and third parties' personal data, which the configuration
+documentation states next to both endpoints.
 
 Errors are exception classes, not strings, because the queue's behaviour
 depends on the distinction:
@@ -1925,7 +1943,7 @@ name on a bad or missing value, and exposes one immutable, typed object that is
 passed to what needs it — `core` never reads the environment itself. Nothing at
 run time writes configuration: changing a value means changing the variable and
 restarting. Each variable that holds a secret (`POSTGRES_PASSWORD`,
-`USER_<n>_PASSWORD`, `OIDC_CLIENT_SECRET`, `MODEL_API_KEY`) also accepts a `_FILE` variant
+`USER_<n>_PASSWORD`, `OIDC_CLIENT_SECRET`, `MODEL_API_KEY`, `VISION_MODEL_API_KEY`) also accepts a `_FILE` variant
 naming a file (Docker and Compose secrets), and no secret is ever logged or
 returned by `GET /api/config`.
 
@@ -1936,7 +1954,8 @@ returned by `GET /api/config`.
 | Household | `TIMEZONE` (required, an IANA zone; `spec.md` §5.4), `LOCALE` (`en`) |
 | Users | indexed groups `USER_<n>_LOGIN`, `USER_<n>_NAME`, `USER_<n>_PASSWORD` (the password optional when `OIDC_ENFORCED`), `n` contiguous from 1, logins unique; none is allowed |
 | OIDC | `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` (all three or none; none means no OIDC sign-in), and with them `BASE_URL`, the app's external address, from which the redirect address `<BASE_URL>/api/session/oidc/callback` is built; `OIDC_SCOPES` (`openid email profile`); `OIDC_LOGIN_ATTRIBUTE` (`email`); `OIDC_DISPLAYNAME_ATTRIBUTE` (`name`); `OIDC_ALLOWED_GROUP` (optional; its users need the `groups` scope); `OIDC_ENFORCED` (`false`; `true` or `false`, anything else fails the start; `true` requires OIDC and turns the password path off) |
-| Model | `MODEL_ENDPOINT` and `MODEL_NAME` (both or neither), optional `MODEL_API_KEY`; absent means pass 3 does not run (§5.4); optional `MODEL_REASONING_EFFORT` (`low`, `medium` or `high`, anything else fails the start), sent as the request's reasoning effort for a model that reasons, and not sent when unset |
+| Model | `MODEL_ENDPOINT` and `MODEL_NAME` (both or neither), optional `MODEL_API_KEY`; absent means pass 3 does not run (§5.4) and no importer that reads documents with the model is registered (§5.5); optional `MODEL_REASONING_EFFORT` (`low`, `medium` or `high`, anything else fails the start), sent as the request's reasoning effort for a model that reasons, and not sent when unset |
+| Vision model | `VISION_MODEL_ENDPOINT` and `VISION_MODEL_NAME` (both or neither), optional `VISION_MODEL_API_KEY`: a model that reads images, over the protocol of §5.4, used only by a document importer to read documents given as page images (PDF attachments); absent means such documents are not read. No reasoning effort is sent |
 | Bank access | `FINTS_PRODUCT_ID` (optional): the registration number of `spec.md` §7.1, sent with every FinTS request; absent means a FinTS login stops before asking for a PIN (`NotRegistered`), and nothing else is affected |
 | Development | `ENABLE_TEST_IMPORTERS` (`false`; `true` or `false`, anything else fails the start): registers the deterministic test importers in the composition root — `testdocs`, so documents can be exercised before a real document importer exists (`features/documents.md`), and `testfetch`, scripted by its settings to exercise every prompt kind and failure class without a bank; a deployment leaves it off. `EXPOSE_OPENAPI` (`false`; `true` or `false`, anything else fails the start): serves the OpenAPI document at `/api/openapi.json`, without a session, so the frontend's types can be generated from a running server (§6.7); a deployment leaves it off. `/docs` and `/redoc` never exist, whatever the value: they load scripts from a third-party host |
 

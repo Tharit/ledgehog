@@ -3821,3 +3821,44 @@ Design §5; `ux/views/account.md`.
   remember, while a flush card keeps the compact density; *putting everything on cards as it is* — headers and
   controls on cards read heavier and blur what is content; *"Set balance" in the Balance card as well* — one
   action in two places.
+
+## D232 The email importer
+
+email.md; spec §5.5, §5.8, §5.9, §7; architecture §5.5, §5.7.
+
+- **One dedicated inbox, read-only, with authenticated senders.** The household forwards receipts there, by rule or
+  by hand. A message is read when its `From` or a forwarding header names a listed address and the inbox's provider
+  vouches for it in the topmost `Authentication-Results` header: a forward by hand needs its listed `From` to pass
+  DMARC or an aligned DKIM signature; an automatic forward needs the shop's DKIM pass, or an ARC pass from the forwarder, and a forwarding header
+  naming a listed address. Anything else is skipped, as `not_accepted` or `not_authenticated`. Headers alone can be
+  written by anyone, and a forged mail would book a purchase on a clearance account (D230). What remains is a
+  genuine receipt of someone else's purchase forwarded with a forged forwarding header, which needs the inbox's
+  address; the planned sender-domain mapping narrows it. Rejected: *a check of the listed addresses alone* (every
+  header it reads can be forged); *verifying DKIM ourselves* (run days after delivery, when keys may be rotated or
+  revoked, with DNS lookups and a dependency; a later fallback for a provider that adds no
+  `Authentication-Results`); *merchant allow or block lists* (settings that must be curated for every new shop);
+  *reading the users' own inboxes* (every mail of theirs to the model).
+- **The model extracts; code decides.** No "is this a receipt" field: a document that is not a receipt carries the
+  same amounts. A document is delivered only when it states a total and lines that account for it — what they
+  leave unitemised no larger than the lines themselves — which keeps mails without an order's lines out without
+  asking the model what kind of mail it is. Total and lines are delivered as read: booking spreads what the lines
+  leave over them (D230), and a purchase paid with a voucher, total 0, is delivered too, though not booked. Rejected: *lines that add up
+  exactly* (Amazon's mails list items before a discount the total already has). The one exception is `refund`,
+  a fact the document states, without which a refund would arrive as a charge.
+- **A later mail never changes an order**: the importer declares the re-delivery mode `keep`, so the first complete
+  mail of an order wins and a shipping notice, invoice or cancellation is kept out. Rejected: *importer-side memory
+  of delivered order ids* (work the importer should not carry); *`replace`* (a partial mail would degrade a complete
+  order, and its booking with it). Given up: cancellations by mail, corrected by an entry on the clearance account.
+- **Refunds are not delivered yet.** Keyed by the order id, a refund would collide with its order's document. Parked:
+  refunds as positive documents with a key of their own, once real refund mails are seen.
+- **The position advances only with a written run.** A UID position with UIDVALIDITY, an overlap by arrival date
+  and a short memory of Message-IDs; kept in `state`, but applied only when the run's documents are written, since
+  `state` is otherwise written back whatever the outcome. Rejected: *re-reading from the start date every run*
+  (the model asked for every mail, every time); *Message-IDs checked against stored documents* (the importer reads
+  no database, and mails that yield no document would still be asked again).
+- **The provider is the merchant, canonicalised in code.** Legal forms and domain suffixes stripped; no list of
+  merchants; the document key keeps the provider as stored, and only a clearance account's list compares without
+  regard to case. Planned: sender domains mapped to providers in the settings, so no misread decides a provider.
+- **Text first, PDF as fallback.** German shops attach terms and conditions as PDFs; reading the PDF first would
+  lose the order in the body. The vision model gets no schema: constrained decoding made it loop.
+- **The password is typed at every sync**, like the PIN: a mailbox password is not verifiably read-only.
