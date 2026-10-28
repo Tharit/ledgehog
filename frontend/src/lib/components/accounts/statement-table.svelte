@@ -1,5 +1,6 @@
 <script lang="ts">
 	import ActionButton from '#lib/components/common/action-button.svelte';
+	import Card from '#lib/components/common/card.svelte';
 	import EmptyState from '#lib/components/common/empty-state.svelte';
 	import ErrorState from '#lib/components/common/error-state.svelte';
 	import KeyboardHelp, { type HelpGroup } from '#lib/components/common/keyboard-help.svelte';
@@ -159,82 +160,86 @@
 			entered by hand.
 		</EmptyState>
 	{:else}
-		<div
-			bind:this={container}
-			role="grid"
-			tabindex="-1"
-			class="outline-none"
-			aria-label="Statement rows"
-			aria-busy={status === 'loading'}
-		>
+		<Card variant="flush">
 			<div
-				role="row"
-				class={cn(
-					STATEMENT_ROW,
-					'sticky top-0 z-10 h-8 border-b border-border bg-muted px-3 text-xs font-medium text-muted-foreground'
-				)}
-				style:grid-template-columns={STATEMENT_TEMPLATE}
+				bind:this={container}
+				role="grid"
+				tabindex="-1"
+				class="outline-none [&>:last-child]:rounded-b-[11px] [&>:last-child]:border-b-0 [&>:last-child>:last-child]:border-b-0"
+				aria-label="Statement rows"
+				aria-busy={status === 'loading'}
 			>
-				{#each STATEMENT_COLUMNS as column (column.id)}
-					<div
-						role="columnheader"
-						class={'align' in column && column.align === 'right' ? 'text-right' : undefined}
-					>
-						{column.header}
-					</div>
-				{/each}
-			</div>
+				<div
+					role="row"
+					class={cn(
+						STATEMENT_ROW,
+						'sticky top-0 z-10 h-8 rounded-t-[11px] border-b border-border bg-muted px-3 text-xs font-medium text-muted-foreground'
+					)}
+					style:grid-template-columns={STATEMENT_TEMPLATE}
+				>
+					{#each STATEMENT_COLUMNS as column (column.id)}
+						<div
+							role="columnheader"
+							class={'align' in column && column.align === 'right' ? 'text-right' : undefined}
+						>
+							{column.header}
+						</div>
+					{/each}
+				</div>
 
-			{#if status === 'loading'}
-				{#each Array.from({ length: 8 }, (_, n) => n) as i (i)}
-					<div
-						role="row"
-						class={cn(STATEMENT_ROW, 'h-8 border-b border-border px-3')}
-						style:grid-template-columns={STATEMENT_TEMPLATE}
-						data-skeleton
-					>
-						<div role="gridcell"><div class="h-3 w-2/3 animate-pulse rounded bg-muted"></div></div>
-						<div role="gridcell">
-							<div
-								class="h-3 animate-pulse rounded bg-muted"
-								style:width={`${45 + ((i * 17) % 40)}%`}
-							></div>
+				{#if status === 'loading'}
+					{#each Array.from({ length: 8 }, (_, n) => n) as i (i)}
+						<div
+							role="row"
+							class={cn(STATEMENT_ROW, 'h-8 border-b border-border px-3')}
+							style:grid-template-columns={STATEMENT_TEMPLATE}
+							data-skeleton
+						>
+							<div role="gridcell">
+								<div class="h-3 w-2/3 animate-pulse rounded bg-muted"></div>
+							</div>
+							<div role="gridcell">
+								<div
+									class="h-3 animate-pulse rounded bg-muted"
+									style:width={`${45 + ((i * 17) % 40)}%`}
+								></div>
+							</div>
+							<div role="gridcell"></div>
+							<div role="gridcell">
+								<div class="ml-auto h-3 w-14 animate-pulse rounded bg-muted"></div>
+							</div>
+							<div role="gridcell">
+								<div class="ml-auto h-3 w-16 animate-pulse rounded bg-muted"></div>
+							</div>
 						</div>
-						<div role="gridcell"></div>
-						<div role="gridcell">
-							<div class="ml-auto h-3 w-14 animate-pulse rounded bg-muted"></div>
-						</div>
-						<div role="gridcell">
-							<div class="ml-auto h-3 w-16 animate-pulse rounded bg-muted"></div>
-						</div>
-					</div>
-				{/each}
-			{:else}
-				{#each items as item (itemKey(item))}
-					{#if item.kind === 'record'}
-						<StatementMarker
-							record={item}
-							{investment}
-							{locale}
-							cursor={itemKey(item) === cursorKey}
-							localises={localising.has(item.id)}
-							onselect={() => (cursorKey = itemKey(item))}
-							onedit={() => onedit?.(item)}
-							ondelete={() => ondelete?.(item)}
-						/>
-					{:else}
-						<StatementRow
-							row={item}
-							{locale}
-							cursor={itemKey(item) === cursorKey}
-							onselect={() => (cursorKey = itemKey(item))}
-							onopen={() => onopen?.(item.id)}
-							onopenoriginal={(id) => onopen?.(id)}
-						/>
-					{/if}
-				{/each}
-			{/if}
-		</div>
+					{/each}
+				{:else}
+					{#each items as item (itemKey(item))}
+						{#if item.kind === 'record'}
+							<StatementMarker
+								record={item}
+								{investment}
+								{locale}
+								cursor={itemKey(item) === cursorKey}
+								localises={localising.has(item.id)}
+								onselect={() => (cursorKey = itemKey(item))}
+								onedit={() => onedit?.(item)}
+								ondelete={() => ondelete?.(item)}
+							/>
+						{:else}
+							<StatementRow
+								row={item}
+								{locale}
+								cursor={itemKey(item) === cursorKey}
+								onselect={() => (cursorKey = itemKey(item))}
+								onopen={() => onopen?.(item.id)}
+								onopenoriginal={(id) => onopen?.(id)}
+							/>
+						{/if}
+					{/each}
+				{/if}
+			</div>
+		</Card>
 
 		{#if status === 'ready'}
 			<div class="flex flex-wrap items-center gap-3 py-3 text-xs text-muted-foreground">

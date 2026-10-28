@@ -7,6 +7,7 @@
 	import { AccountDialogs } from '#lib/accounts/page-dialogs.svelte.js';
 	import { RowDetail } from '#lib/accounts/row-detail.svelte.js';
 	import { ACCOUNT_KINDS } from '#lib/accounts/kinds.js';
+	import AccountActions from '#lib/components/accounts/account-actions.svelte';
 	import AccountPageDialogs from '#lib/components/accounts/account-page-dialogs.svelte';
 	import AccountRuns from '#lib/components/accounts/account-runs.svelte';
 	import AccountSummary from '#lib/components/accounts/account-summary.svelte';
@@ -159,7 +160,18 @@
 			{description}
 			actionLabel={account.synced ? undefined : 'Add entry'}
 			onaction={() => entryForm.openAdd({ filtered: [account.id] })}
-		/>
+		>
+			{#snippet actions()}
+				<AccountActions
+					{account}
+					onsetbalance={() => dialogs.open('balance')}
+					onedit={() => dialogs.open('edit')}
+					onclose={() => dialogs.open('close')}
+					onreopen={() => view.reopen()}
+					ondelete={() => dialogs.open('delete')}
+				/>
+			{/snippet}
+		</PageHeader>
 
 		<AccountSummary
 			{account}
@@ -167,11 +179,6 @@
 			sourcesStatus={runs.sourcesStatus}
 			locale={view.locale}
 			today={view.today}
-			onsetbalance={() => dialogs.open('balance')}
-			onedit={() => dialogs.open('edit')}
-			onclose={() => dialogs.open('close')}
-			onreopen={() => view.reopen()}
-			ondelete={() => dialogs.open('delete')}
 			onfetch={fetchHere}
 		/>
 

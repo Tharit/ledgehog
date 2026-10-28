@@ -5,8 +5,8 @@
 	import { formatDate } from '#lib/format/index.js';
 	import { UNPAIRED_TRANSFERS_HREF } from '#lib/reports/figures.js';
 	import type { NetWorth } from '#lib/reports/types.js';
-	import CardRow from './card-row.svelte';
-	import FigureCard from './figure-card.svelte';
+	import CardRow from '#lib/components/common/card-row.svelte';
+	import FigureCard from '#lib/components/common/figure-card.svelte';
 
 	// Every account's balance at today's rate (spec §8). The rows say what the figure leaves out or
 	// holds back: what could not be valued (per currency, with the accounts), the transfers still

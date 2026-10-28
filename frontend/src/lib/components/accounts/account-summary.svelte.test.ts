@@ -28,11 +28,6 @@ function summary(sources: SourceLine[]) {
 			account: account({ id: 7 }),
 			sources,
 			today: '2026-10-18',
-			onsetbalance: vi.fn(),
-			onedit: vi.fn(),
-			onclose: vi.fn(),
-			onreopen: vi.fn(),
-			ondelete: vi.fn(),
 			onfetch
 		}
 	});
@@ -41,6 +36,23 @@ function summary(sources: SourceLine[]) {
 
 const line = (id: number) =>
 	document.querySelector(`[data-source-instance="${id}"]`) as HTMLElement;
+
+describe('AccountSummary: the balance card', () => {
+	it('has the balance as its figure and the facts as its rows', () => {
+		summary([]);
+
+		const card = screen.getByRole('region', { name: 'Balance' });
+		expect(within(card).getByRole('heading', { name: 'Balance' })).toBeInTheDocument();
+		expect(card.querySelector('[data-fact="age"]')).not.toBeNull();
+	});
+
+	it('has no account actions: they are the page header’s', () => {
+		summary([]);
+
+		expect(screen.queryByRole('button', { name: 'Set balance' })).toBeNull();
+		expect(screen.queryByRole('link', { name: 'View entries' })).toBeNull();
+	});
+});
 
 describe('AccountSummary: the sources', () => {
 	it('offers "Upload file" on a file importer and "Fetch" on one that fetches', () => {
@@ -81,12 +93,7 @@ describe('AccountSummary: a clearance account', () => {
 			props: {
 				account: account({ id: 7, kind: 'clearance', providers: ['amazon', 'pay pal'] }),
 				sources: [],
-				today: '2026-10-18',
-				onsetbalance: vi.fn(),
-				onedit: vi.fn(),
-				onclose: vi.fn(),
-				onreopen: vi.fn(),
-				ondelete: vi.fn()
+				today: '2026-10-18'
 			}
 		});
 

@@ -47,6 +47,12 @@
 	{:else if list.status === 'loading'}
 		<p class="text-sm text-muted-foreground">Loading the accounts…</p>
 	{:else}
-		<AccountList accounts={list.accounts} locale={list.locale} today={list.today} onadd={add} />
+		<AccountList
+			accounts={list.accounts}
+			locale={list.locale}
+			today={list.today}
+			flush
+			onadd={add}
+		/>
 	{/if}
 </div>

@@ -3,8 +3,8 @@
 	import LineFigure from '#lib/components/reports/line-figure.svelte';
 	import { formatMonth, formatRate } from '#lib/format/index.js';
 	import type { Overview, SavingsSpan } from '#lib/reports/types.js';
-	import CardRow from './card-row.svelte';
-	import FigureCard from './figure-card.svelte';
+	import CardRow from '#lib/components/common/card-row.svelte';
+	import FigureCard from '#lib/components/common/figure-card.svelte';
 
 	// Savings over income of the last 12 complete months, in whole percent, "—" when income is not
 	// positive (spec §8). A marker says when the period holds unclassified entries, reconciliations

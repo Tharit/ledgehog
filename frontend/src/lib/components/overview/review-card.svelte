@@ -2,7 +2,7 @@
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import InboxIcon from '@lucide/svelte/icons/inbox';
 	import { formatCount } from '#lib/format/index.js';
-	import FigureCard from './figure-card.svelte';
+	import FigureCard from '#lib/components/common/figure-card.svelte';
 
 	// The review queue's count as the navigation shows it, split into the units to review and the
 	// units that need an account, and a way into the queue. At zero: "All reviewed". `counts` is

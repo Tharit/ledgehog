@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import ActionButton from '#lib/components/common/action-button.svelte';
+	import Card from '#lib/components/common/card.svelte';
 	import EmptyState from '#lib/components/common/empty-state.svelte';
 	import ErrorState from '#lib/components/common/error-state.svelte';
 	import KeyboardHelp, { type HelpGroup } from '#lib/components/common/keyboard-help.svelte';
@@ -272,95 +273,97 @@
 			</EmptyState>
 		{/if}
 	{:else}
-		<div
-			bind:this={container}
-			role="grid"
-			tabindex="-1"
-			class="outline-none"
-			aria-label="Entries"
-			aria-busy={status === 'loading'}
-		>
+		<Card variant="flush">
 			<div
-				role="row"
-				class={cn(
-					ROW_GRID,
-					'sticky top-0 z-10 h-8 border-b border-border bg-muted px-3 text-xs font-medium text-muted-foreground'
-				)}
-				style:grid-template-columns={GRID_TEMPLATE}
+				bind:this={container}
+				role="grid"
+				tabindex="-1"
+				class="outline-none [&>:last-child]:rounded-b-[11px] [&>:last-child]:border-b-0 [&>:last-child>:last-child]:rounded-b-[11px] [&>:last-child>:last-child]:border-b-0"
+				aria-label="Entries"
+				aria-busy={status === 'loading'}
 			>
-				{#each COLUMNS as column (column.id)}
-					<div role="columnheader" class={column.align === 'right' ? 'text-right' : undefined}>
-						{#if column.hiddenHeader}<span class="sr-only">{column.header}</span
-							>{:else}{column.header}{/if}
-					</div>
-				{/each}
-			</div>
+				<div
+					role="row"
+					class={cn(
+						ROW_GRID,
+						'sticky top-0 z-10 h-8 rounded-t-[11px] border-b border-border bg-muted px-3 text-xs font-medium text-muted-foreground'
+					)}
+					style:grid-template-columns={GRID_TEMPLATE}
+				>
+					{#each COLUMNS as column (column.id)}
+						<div role="columnheader" class={column.align === 'right' ? 'text-right' : undefined}>
+							{#if column.hiddenHeader}<span class="sr-only">{column.header}</span
+								>{:else}{column.header}{/if}
+						</div>
+					{/each}
+				</div>
 
-			{#if status === 'loading'}
-				{#each Array.from({ length: 12 }, (_, n) => n) as i (i)}
-					<div
-						role="row"
-						class={cn(ROW_GRID, 'h-8 border-b border-border px-3')}
-						style:grid-template-columns={GRID_TEMPLATE}
-						data-skeleton
-					>
-						{#each COLUMNS as column (column.id)}
-							<div role="gridcell">
-								{#if column.id === 'description'}
-									<div
-										class="h-3 animate-pulse rounded bg-muted"
-										style:width={`${55 + ((i * 17) % 40)}%`}
-									></div>
-								{:else if column.id === 'amount'}
-									<div class="ml-auto h-3 w-14 animate-pulse rounded bg-muted"></div>
-								{:else if column.id !== 'tags' && column.id !== 'origin' && column.id !== 'review'}
-									<div class="h-3 w-2/3 animate-pulse rounded bg-muted"></div>
-								{/if}
-							</div>
-						{/each}
-					</div>
-				{/each}
-			{:else}
-				{#each runs as run (run.entries[0].id)}
-					{@const joined = run.entries.length > 1}
-					{#snippet rows()}
-						{#each run.entries as entry, i (entry.id)}
-							{@const mark = markOf(marks, entry.id)}
-							<EntryRow
-								{entry}
-								{lookups}
-								{locale}
-								{showCurrency}
-								cursor={entry.id === cursorId}
-								{joined}
-								unitCursor={joined &&
-									entry.id !== cursorId &&
-									run.entries.some((e) => e.id === cursorId)}
-								unitTotal={i === 0 ? run.total : null}
-								changed={changedIds.has(entry.id) ||
-									movedIds.has(entry.id) ||
-									(mark !== undefined && !marks.resolved.has(entry.id))}
-								changedTitle={mark ??
-									(changedIds.has(entry.id) ? CHANGED_BY_YOU : CHANGED_ELSEWHERE)}
-								resolved={marks.resolved.has(entry.id)}
-								confirmed={marks.confirmed.has(entry.id)}
-								onselect={() => (cursorId = entry.id)}
-								onopen={() => openUnit(entry.id)}
-								ontags={() => {
-									cursorId = entry.id;
-									openPicker();
-								}}
-							/>
-						{/each}
-					{/snippet}
-					{#if joined}
-						<div role="rowgroup" data-unit={run.key} class={UNIT_FRAME}>{@render rows()}</div>
-					{:else}
-						{@render rows()}
-					{/if}
-				{/each}
-			{/if}
-		</div>
+				{#if status === 'loading'}
+					{#each Array.from({ length: 12 }, (_, n) => n) as i (i)}
+						<div
+							role="row"
+							class={cn(ROW_GRID, 'h-8 border-b border-border px-3')}
+							style:grid-template-columns={GRID_TEMPLATE}
+							data-skeleton
+						>
+							{#each COLUMNS as column (column.id)}
+								<div role="gridcell">
+									{#if column.id === 'description'}
+										<div
+											class="h-3 animate-pulse rounded bg-muted"
+											style:width={`${55 + ((i * 17) % 40)}%`}
+										></div>
+									{:else if column.id === 'amount'}
+										<div class="ml-auto h-3 w-14 animate-pulse rounded bg-muted"></div>
+									{:else if column.id !== 'tags' && column.id !== 'origin' && column.id !== 'review'}
+										<div class="h-3 w-2/3 animate-pulse rounded bg-muted"></div>
+									{/if}
+								</div>
+							{/each}
+						</div>
+					{/each}
+				{:else}
+					{#each runs as run (run.entries[0].id)}
+						{@const joined = run.entries.length > 1}
+						{#snippet rows()}
+							{#each run.entries as entry, i (entry.id)}
+								{@const mark = markOf(marks, entry.id)}
+								<EntryRow
+									{entry}
+									{lookups}
+									{locale}
+									{showCurrency}
+									cursor={entry.id === cursorId}
+									{joined}
+									unitCursor={joined &&
+										entry.id !== cursorId &&
+										run.entries.some((e) => e.id === cursorId)}
+									unitTotal={i === 0 ? run.total : null}
+									changed={changedIds.has(entry.id) ||
+										movedIds.has(entry.id) ||
+										(mark !== undefined && !marks.resolved.has(entry.id))}
+									changedTitle={mark ??
+										(changedIds.has(entry.id) ? CHANGED_BY_YOU : CHANGED_ELSEWHERE)}
+									resolved={marks.resolved.has(entry.id)}
+									confirmed={marks.confirmed.has(entry.id)}
+									onselect={() => (cursorId = entry.id)}
+									onopen={() => openUnit(entry.id)}
+									ontags={() => {
+										cursorId = entry.id;
+										openPicker();
+									}}
+								/>
+							{/each}
+						{/snippet}
+						{#if joined}
+							<div role="rowgroup" data-unit={run.key} class={UNIT_FRAME}>{@render rows()}</div>
+						{:else}
+							{@render rows()}
+						{/if}
+					{/each}
+				{/if}
+			</div>
+		</Card>
 
 		{#if status === 'ready'}
 			<div class="flex flex-wrap items-center gap-3 py-3 text-xs text-muted-foreground">

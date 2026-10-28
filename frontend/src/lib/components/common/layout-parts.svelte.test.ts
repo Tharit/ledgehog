@@ -110,6 +110,20 @@ describe('PageHeader', () => {
 		expect(onaction).toHaveBeenCalledOnce();
 	});
 
+	it('draws its secondary actions before the primary one', () => {
+		render(PageHeader, {
+			props: {
+				title: 'Giro',
+				level: 1,
+				actionLabel: 'Add entry',
+				actions: createRawSnippet(() => ({ render: () => '<button>Set balance</button>' }))
+			}
+		});
+
+		const buttons = screen.getAllByRole('button').map((b) => b.textContent?.trim());
+		expect(buttons).toEqual(['Set balance', 'Add entry']);
+	});
+
 	it('is an h1 on a route of its own', () => {
 		render(PageHeader, { props: { title: 'Ledger', level: 1 } });
 

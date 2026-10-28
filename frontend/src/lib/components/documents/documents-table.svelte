@@ -1,5 +1,6 @@
 <script lang="ts">
 	import ActionButton from '#lib/components/common/action-button.svelte';
+	import Card from '#lib/components/common/card.svelte';
 	import DateDisplay from '#lib/components/common/date-display.svelte';
 	import EmptyState from '#lib/components/common/empty-state.svelte';
 	import ErrorState from '#lib/components/common/error-state.svelte';
@@ -84,99 +85,106 @@
 			</EmptyState>
 		{/if}
 	{:else}
-		<div role="grid" aria-label="Documents" aria-busy={status === 'loading'}>
+		<Card variant="flush">
 			<div
-				role="row"
-				class="sticky top-0 z-10 grid h-8 items-center gap-x-3 border-b border-border bg-muted px-3 text-xs font-medium text-muted-foreground"
-				style:grid-template-columns={DOCUMENT_GRID_TEMPLATE}
+				role="grid"
+				aria-label="Documents"
+				aria-busy={status === 'loading'}
+				class="[&>:last-child]:rounded-b-[11px] [&>:last-child]:border-b-0"
 			>
-				{#each DOCUMENT_COLUMNS as column (column.id)}
-					<div role="columnheader" class={column.align === 'right' ? 'text-right' : undefined}>
-						{column.header}
-					</div>
-				{/each}
-			</div>
+				<div
+					role="row"
+					class="sticky top-0 z-10 grid h-8 items-center gap-x-3 rounded-t-[11px] border-b border-border bg-muted px-3 text-xs font-medium text-muted-foreground"
+					style:grid-template-columns={DOCUMENT_GRID_TEMPLATE}
+				>
+					{#each DOCUMENT_COLUMNS as column (column.id)}
+						<div role="columnheader" class={column.align === 'right' ? 'text-right' : undefined}>
+							{column.header}
+						</div>
+					{/each}
+				</div>
 
-			{#if status === 'loading'}
-				{#each Array.from({ length: 8 }, (_, n) => n) as i (i)}
-					<div
-						role="row"
-						class="grid h-8 items-center gap-x-3 border-b border-border px-3"
-						style:grid-template-columns={DOCUMENT_GRID_TEMPLATE}
-						data-skeleton
-					>
-						{#each DOCUMENT_COLUMNS as column (column.id)}
+				{#if status === 'loading'}
+					{#each Array.from({ length: 8 }, (_, n) => n) as i (i)}
+						<div
+							role="row"
+							class="grid h-8 items-center gap-x-3 border-b border-border px-3"
+							style:grid-template-columns={DOCUMENT_GRID_TEMPLATE}
+							data-skeleton
+						>
+							{#each DOCUMENT_COLUMNS as column (column.id)}
+								<div role="gridcell">
+									{#if column.id === 'amount'}
+										<div class="ml-auto h-3 w-14 animate-pulse rounded bg-muted"></div>
+									{:else}
+										<div
+											class="h-3 animate-pulse rounded bg-muted"
+											style:width={column.id === 'title' ? `${55 + ((i * 17) % 40)}%` : '66%'}
+										></div>
+									{/if}
+								</div>
+							{/each}
+						</div>
+					{/each}
+				{:else}
+					{#each documents as document (document.id)}
+						<!-- the link in the title cell is the keyboard path; a click anywhere else opens too -->
+						<!-- svelte-ignore a11y_click_events_have_key_events, a11y_interactive_supports_focus -->
+						<div
+							role="row"
+							data-document-id={document.id}
+							class={cn(
+								'grid h-8 items-center gap-x-3 border-b border-border px-3 text-[13px] hover:bg-muted'
+							)}
+							style:grid-template-columns={DOCUMENT_GRID_TEMPLATE}
+							onclick={(event) => rowClick(event, document.id)}
+						>
+							<div role="gridcell" class="truncate">{document.provider}</div>
+							<div role="gridcell"><DateDisplay date={document.occurred_on} {locale} /></div>
+							<div role="gridcell" class="min-w-0">
+								<a
+									href={`/documents/${document.id}`}
+									class="block truncate rounded-sm outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+								>
+									{documentTitle(document)}
+								</a>
+							</div>
 							<div role="gridcell">
-								{#if column.id === 'amount'}
-									<div class="ml-auto h-3 w-14 animate-pulse rounded bg-muted"></div>
-								{:else}
-									<div
-										class="h-3 animate-pulse rounded bg-muted"
-										style:width={column.id === 'title' ? `${55 + ((i * 17) % 40)}%` : '66%'}
-									></div>
+								<MoneyDisplay
+									minor={document.total.amount}
+									currency={document.total.currency}
+									{locale}
+									{showCurrency}
+								/>
+							</div>
+							<div role="gridcell" class="min-w-0 truncate" data-slot="booked">
+								{#if document.booking}
+									{@const booked = document.booking}
+									<a
+										href={`/accounts/${booked.account_id}`}
+										class="rounded-sm outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+									>
+										{accounts.get(booked.account_id)?.name ?? `Account ${booked.account_id}`}
+									</a>
+								{:else if document.not_booked}
+									{@const reason = notBookedReason(document.not_booked, {
+										provider: document.provider,
+										accountName:
+											document.not_booked.account_id === null
+												? null
+												: (accounts.get(document.not_booked.account_id)?.name ?? null),
+										locale
+									})}
+									<span class="text-muted-foreground" title={`Not booked: ${reason}`}>
+										Not booked: {reason}
+									</span>
 								{/if}
 							</div>
-						{/each}
-					</div>
-				{/each}
-			{:else}
-				{#each documents as document (document.id)}
-					<!-- the link in the title cell is the keyboard path; a click anywhere else opens too -->
-					<!-- svelte-ignore a11y_click_events_have_key_events, a11y_interactive_supports_focus -->
-					<div
-						role="row"
-						data-document-id={document.id}
-						class={cn(
-							'grid h-8 items-center gap-x-3 border-b border-border px-3 text-[13px] hover:bg-muted'
-						)}
-						style:grid-template-columns={DOCUMENT_GRID_TEMPLATE}
-						onclick={(event) => rowClick(event, document.id)}
-					>
-						<div role="gridcell" class="truncate">{document.provider}</div>
-						<div role="gridcell"><DateDisplay date={document.occurred_on} {locale} /></div>
-						<div role="gridcell" class="min-w-0">
-							<a
-								href={`/documents/${document.id}`}
-								class="block truncate rounded-sm outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-							>
-								{documentTitle(document)}
-							</a>
 						</div>
-						<div role="gridcell">
-							<MoneyDisplay
-								minor={document.total.amount}
-								currency={document.total.currency}
-								{locale}
-								{showCurrency}
-							/>
-						</div>
-						<div role="gridcell" class="min-w-0 truncate" data-slot="booked">
-							{#if document.booking}
-								{@const booked = document.booking}
-								<a
-									href={`/accounts/${booked.account_id}`}
-									class="rounded-sm outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-								>
-									{accounts.get(booked.account_id)?.name ?? `Account ${booked.account_id}`}
-								</a>
-							{:else if document.not_booked}
-								{@const reason = notBookedReason(document.not_booked, {
-									provider: document.provider,
-									accountName:
-										document.not_booked.account_id === null
-											? null
-											: (accounts.get(document.not_booked.account_id)?.name ?? null),
-									locale
-								})}
-								<span class="text-muted-foreground" title={`Not booked: ${reason}`}>
-									Not booked: {reason}
-								</span>
-							{/if}
-						</div>
-					</div>
-				{/each}
-			{/if}
-		</div>
+					{/each}
+				{/if}
+			</div>
+		</Card>
 
 		{#if status === 'ready'}
 			<div class="flex flex-wrap items-center gap-3 py-3 text-xs text-muted-foreground">

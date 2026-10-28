@@ -2,6 +2,7 @@
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import { LATEST_RUNS, statusLabel, summaryLine, type ImportRun } from '#lib/accounts/runs.js';
 	import ActionButton from '#lib/components/common/action-button.svelte';
+	import Card from '#lib/components/common/card.svelte';
 	import Notice from '#lib/components/common/notice.svelte';
 	import RunNextStep from '#lib/components/importers/run-next-step.svelte';
 	import RunSummary from '#lib/components/importers/run-summary.svelte';
@@ -49,7 +50,7 @@
 </script>
 
 <section class="flex flex-col gap-1" aria-label="Runs" data-slot="account-runs">
-	<h2 class="text-xs font-medium text-muted-foreground">Runs</h2>
+	<h2 class="text-base font-semibold">Runs</h2>
 	{#if status === 'loading'}
 		<p class="text-sm text-muted-foreground">Loading the runs…</p>
 	{:else if status === 'error'}
@@ -64,11 +65,15 @@
 			No import has run for this account.
 		</p>
 	{:else}
-		<ul class="flex flex-col">
+		<Card variant="flush" element="ul">
 			{#each shown as run (run.id)}
 				{@const open = openId === run.id}
-				<li class="border-b border-border" data-run-id={run.id} data-status={run.status}>
-					<div class="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5 text-[13px]">
+				<li
+					class="border-b border-border last:border-b-0"
+					data-run-id={run.id}
+					data-status={run.status}
+				>
+					<div class="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-1.5 text-[13px]">
 						<button
 							type="button"
 							class="flex min-w-0 flex-1 items-center gap-2 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -125,13 +130,13 @@
 						{/if}
 					</div>
 					{#if open}
-						<div class="pb-3 pl-6">
+						<div class="pr-4 pb-3 pl-10">
 							<RunSummary {run} {currency} {locale} />
 						</div>
 					{/if}
 				</li>
 			{/each}
-		</ul>
+		</Card>
 		{#if !showAll && runs.length > LATEST_RUNS}
 			<div>
 				<ActionButton variant="link" class="h-auto p-0" onclick={onshowall}>Show all</ActionButton>

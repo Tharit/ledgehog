@@ -22,6 +22,7 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 	import { accounts as accountDialog } from '#lib/accounts/controller.svelte.js';
+	import Card from '#lib/components/common/card.svelte';
 	import NoticeLine from '#lib/components/common/notice-line.svelte';
 	import ActionButton from '#lib/components/common/action-button.svelte';
 	import EmptyState from '#lib/components/common/empty-state.svelte';
@@ -73,6 +74,9 @@
 		}
 	];
 	const template = GRID_TEMPLATE;
+	// a grid in a flush card: its tinted header and last row follow the card's curve
+	const LAST_ROW =
+		'[&>:last-child]:rounded-b-[11px] [&>:last-child]:border-b-0 [&>:last-child>:last-child]:rounded-b-[11px] [&>:last-child>:last-child]:border-b-0';
 
 	const units = $derived(store.units);
 	const cursorIndex = $derived(
@@ -202,23 +206,25 @@
 				</h2>
 
 				{#if store.status === 'loading'}
-					<div role="grid" aria-label={info.title}>
-						{#each [0, 1, 2] as n (n)}
-							<div
-								role="row"
-								class={cn(ROW_GRID, 'h-8 border-b border-border px-3')}
-								style:grid-template-columns={template}
-								data-skeleton
-							>
-								<div role="gridcell" class="col-span-full">
-									<div
-										class="h-3 animate-pulse rounded bg-muted"
-										style:width={`${50 + ((n * 17) % 40)}%`}
-									></div>
+					<Card variant="flush">
+						<div role="grid" aria-label={info.title} class={LAST_ROW}>
+							{#each [0, 1, 2] as n (n)}
+								<div
+									role="row"
+									class={cn(ROW_GRID, 'h-8 border-b border-border px-3')}
+									style:grid-template-columns={template}
+									data-skeleton
+								>
+									<div role="gridcell" class="col-span-full">
+										<div
+											class="h-3 animate-pulse rounded bg-muted"
+											style:width={`${50 + ((n * 17) % 40)}%`}
+										></div>
+									</div>
 								</div>
-							</div>
-						{/each}
-					</div>
+							{/each}
+						</div>
+					</Card>
 				{:else if section.units.length === 0}
 					<p class="text-sm text-muted-foreground" data-slot="section-empty">{info.empty}</p>
 				{:else}
@@ -228,7 +234,7 @@
 							: info.title}
 						{#if block.group}
 							{@const currency = block.group.currency}
-							<div class="mt-2 mb-1 flex flex-wrap items-center gap-3" data-group={currency}>
+							<div class="mt-4 mb-2 flex flex-wrap items-center gap-3" data-group={currency}>
 								<h3 class="text-sm font-medium">{heading}</h3>
 								<ActionButton
 									variant="outline"
@@ -249,66 +255,68 @@
 								</NoticeLine>
 							{/if}
 						{/if}
-						<div role="grid" aria-label={heading}>
-							<div
-								role="row"
-								class={cn(
-									ROW_GRID,
-									'h-8 border-b border-border bg-muted px-3 text-xs font-medium text-muted-foreground'
-								)}
-								style:grid-template-columns={template}
-							>
-								{#each COLUMNS as column (column.id)}
+						<Card variant="flush">
+							<div role="grid" aria-label={heading} class={LAST_ROW}>
+								<div
+									role="row"
+									class={cn(
+										ROW_GRID,
+										'h-8 rounded-t-[11px] border-b border-border bg-muted px-3 text-xs font-medium text-muted-foreground'
+									)}
+									style:grid-template-columns={template}
+								>
+									{#each COLUMNS as column (column.id)}
+										<div
+											role="columnheader"
+											class={column.align === 'right' ? 'text-right' : undefined}
+										>
+											{#if column.hiddenHeader}<span class="sr-only">{column.header}</span
+												>{:else}{column.header}{/if}
+										</div>
+									{/each}
+								</div>
+								{#each block.units as unit (unit.anchor_entry_id)}
 									<div
-										role="columnheader"
-										class={column.align === 'right' ? 'text-right' : undefined}
+										role="rowgroup"
+										data-unit={unit.anchor_entry_id}
+										class={unit.entries.length > 1 ? UNIT_FRAME : undefined}
 									>
-										{#if column.hiddenHeader}<span class="sr-only">{column.header}</span
-											>{:else}{column.header}{/if}
+										{#each unit.entries as entry (entry.id)}
+											{@const mark = markOf(store.marks, entry.id)}
+											{@const total = unitTotal(unit.entries)}
+											<EntryRow
+												joined={unit.entries.length > 1}
+												unitTotal={entry.id === unit.entries[0].id ? total : null}
+												modelPending={unit.model_pending && entry.id === unit.entries[0].id}
+												{entry}
+												{lookups}
+												{locale}
+												{showCurrency}
+												cursor={unit.anchor_entry_id === cursorId}
+												changed={mark !== undefined && !store.marks.resolved.has(entry.id)}
+												changedTitle={mark}
+												resolved={store.marks.resolved.has(entry.id)}
+												confirmed={store.marks.confirmed.has(entry.id)}
+												onselect={() => (cursorId = unit.anchor_entry_id)}
+												onopen={() => openUnit(unit)}
+												ontags={() => openUnit(unit)}
+											/>
+										{/each}
+										{#if unit.waiting}
+											<div role="row" class="border-b border-border px-3 py-1">
+												<div
+													role="gridcell"
+													class="text-xs text-muted-foreground"
+													data-slot="waiting-reason"
+												>
+													{waitingReason(unit.waiting, lookups, locale)}
+												</div>
+											</div>
+										{/if}
 									</div>
 								{/each}
 							</div>
-							{#each block.units as unit (unit.anchor_entry_id)}
-								<div
-									role="rowgroup"
-									data-unit={unit.anchor_entry_id}
-									class={unit.entries.length > 1 ? UNIT_FRAME : undefined}
-								>
-									{#each unit.entries as entry (entry.id)}
-										{@const mark = markOf(store.marks, entry.id)}
-										{@const total = unitTotal(unit.entries)}
-										<EntryRow
-											joined={unit.entries.length > 1}
-											unitTotal={entry.id === unit.entries[0].id ? total : null}
-											modelPending={unit.model_pending && entry.id === unit.entries[0].id}
-											{entry}
-											{lookups}
-											{locale}
-											{showCurrency}
-											cursor={unit.anchor_entry_id === cursorId}
-											changed={mark !== undefined && !store.marks.resolved.has(entry.id)}
-											changedTitle={mark}
-											resolved={store.marks.resolved.has(entry.id)}
-											confirmed={store.marks.confirmed.has(entry.id)}
-											onselect={() => (cursorId = unit.anchor_entry_id)}
-											onopen={() => openUnit(unit)}
-											ontags={() => openUnit(unit)}
-										/>
-									{/each}
-									{#if unit.waiting}
-										<div role="row" class="border-b border-border px-3 py-1">
-											<div
-												role="gridcell"
-												class="text-xs text-muted-foreground"
-												data-slot="waiting-reason"
-											>
-												{waitingReason(unit.waiting, lookups, locale)}
-											</div>
-										</div>
-									{/if}
-								</div>
-							{/each}
-						</div>
+						</Card>
 					{/each}
 					<div class="flex flex-wrap items-center gap-3 py-2 text-xs text-muted-foreground">
 						<span>

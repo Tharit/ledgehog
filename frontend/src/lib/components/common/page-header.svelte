@@ -1,9 +1,11 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import ActionButton from './action-button.svelte';
 
 	// Title, one-sentence description and the page's one primary action, at the right of the title
 	// row at the same size on every screen (patterns §11.7). The action is the page's "Add"; a page
-	// that has none passes none. `level` is 1 on a route of its own, 2 under the Settings tabs.
+	// that has none passes none. `actions` are the page's secondary actions (outline or ghost, a
+	// menu), drawn before it. `level` is 1 on a route of its own, 2 under the Settings tabs.
 	let {
 		title,
 		description,
@@ -11,7 +13,8 @@
 		actionLabel,
 		onaction,
 		actionHref,
-		actionDisabled = false
+		actionDisabled = false,
+		actions
 	}: {
 		title: string;
 		description?: string;
@@ -22,6 +25,8 @@
 		/** the action leads to a route (a page that adds, "Add rule") */
 		actionHref?: string;
 		actionDisabled?: boolean;
+		/** the page's secondary actions, before the primary one */
+		actions?: Snippet;
 	} = $props();
 </script>
 
@@ -37,9 +42,14 @@
 			<p class="max-w-prose text-sm text-muted-foreground">{description}</p>
 		{/if}
 	</div>
-	{#if actionLabel}
-		<ActionButton href={actionHref} disabled={actionDisabled} onclick={onaction} class="shrink-0">
-			{actionLabel}
-		</ActionButton>
+	{#if actions || actionLabel}
+		<div class="flex shrink-0 items-center gap-2" data-slot="page-actions">
+			{@render actions?.()}
+			{#if actionLabel}
+				<ActionButton href={actionHref} disabled={actionDisabled} onclick={onaction}>
+					{actionLabel}
+				</ActionButton>
+			{/if}
+		</div>
 	{/if}
 </div>

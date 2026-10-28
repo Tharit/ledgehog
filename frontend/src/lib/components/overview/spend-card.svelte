@@ -3,8 +3,8 @@
 	import { formatDate, formatMonthName } from '#lib/format/index.js';
 	import { byCategoryHref, ledgerHref } from '#lib/reports/figures.js';
 	import type { Overview } from '#lib/reports/types.js';
-	import CardRow from './card-row.svelte';
-	import FigureCard from './figure-card.svelte';
+	import CardRow from '#lib/components/common/card-row.svelte';
+	import FigureCard from '#lib/components/common/figure-card.svelte';
 
 	// This month so far: expense-kind flows, refunds netting, signed (spec §8). Directly under it
 	// the unclassified amount out and the month's reconciliations, so that the figure does not
