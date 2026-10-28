@@ -46,12 +46,12 @@
 	const accountOptions = $derived<ChipOption<number>[]>(
 		[...lookups.accounts.values()]
 			.sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name))
-			.map((a) => ({ value: a.id, label: a.name, color: resolveAccount(a).color }))
+			.map((a) => ({ value: a.id, label: a.name, ...resolveAccount(a) }))
 	);
 	const tagOptions = $derived<ChipOption<number>[]>(
 		[...lookups.tags.values()]
 			.sort((a, b) => a.name.localeCompare(b.name))
-			.map((t) => ({ value: t.id, label: t.name, color: resolveTag(t).color }))
+			.map((t) => ({ value: t.id, label: t.name, tag: true, color: resolveTag(t).color }))
 	);
 
 	function named(

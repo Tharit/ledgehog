@@ -1,6 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import { parseParams } from '#lib/reports/params.js';
+import { tag } from '#lib/ledger/fixtures.js';
+import { buildLookups } from '#lib/ledger/lookups.js';
 import { reportLookups } from '#lib/reports/trend-fixtures.js';
 import ReportControls from './report-controls.svelte';
 
@@ -61,5 +63,36 @@ describe('ReportControls', () => {
 
 		expect(await screen.findByRole('button', { name: 'Last 12 months' })).toBeInTheDocument();
 		expect(screen.getByRole('button', { name: 'Last year' })).toBeInTheDocument();
+	});
+});
+
+describe('ReportControls: the mark of an account and a tag option', () => {
+	const tileOf = (row: HTMLElement) => row.querySelector<HTMLElement>('span[style*="--tile-fg"]');
+	const withTags = () =>
+		buildLookups({
+			accounts: [...lookups.accounts.values()],
+			tags: [tag({ id: 30, name: 'Lisbon trip', color: 'lavender' })]
+		});
+
+	it('draws an account with its icon in its own colour', async () => {
+		setup('');
+
+		await fireEvent.click(screen.getByRole('button', { name: 'All accounts' }));
+		const row = (await screen.findByRole('checkbox', { name: 'Giro' })).closest('label')!;
+
+		expect(tileOf(row)?.querySelector('svg')).not.toBeNull();
+		expect(tileOf(row)?.getAttribute('style')).toContain('--dim-forest');
+	});
+
+	it('draws a tag as a chip in its colour, not a tile', async () => {
+		setup('', { lookups: withTags() });
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Tags' }));
+		const row = (await screen.findByRole('checkbox', { name: 'Lisbon trip' })).closest('label')!;
+
+		const chip = row.querySelector<HTMLElement>('[data-slot="tag-chip"]');
+		expect(chip).not.toBeNull();
+		expect(chip?.getAttribute('style')).toContain('--dim-lavender');
+		expect(tileOf(row)).toBeNull();
 	});
 });

@@ -1,20 +1,40 @@
 <script lang="ts" module>
-	export type ChipOption<T extends string | number> = {
+	type Common<T extends string | number> = {
 		value: T;
 		label: string;
-		/** a dimension colour name: with `icon` (or `initial`) the option's lead tile, with `tag` its chip */
-		color?: string;
-		/** the member's icon name: its lead tile, in `color` (design §6) */
-		icon?: string | null;
-		/** stands in for the icon (a payee without one) */
-		initial?: string;
-		/** a tag: drawn as a chip in `color`, never a tile */
-		tag?: boolean;
 		/** a longer explanation, as a tooltip */
 		hint?: string;
 		/** a review token: its badge (the one the rows show) is drawn before the label */
 		flag?: string;
 	};
+
+	// A colour alone draws nothing: it needs a tile (icon or initial) or a chip (tag) to be
+	// drawn on, so the union has no variant that takes a `color` without one of them.
+	export type ChipOption<T extends string | number> = Common<T> &
+		(
+			| {
+					/** a tag: drawn as a chip in `color`, never a tile */
+					tag: true;
+					color?: string;
+					icon?: never;
+					initial?: never;
+			  }
+			| {
+					/** the member's lead tile (design §6): its icon (null: the `initial`) in `color` */
+					icon: string | null;
+					/** stands in for the icon (a payee without one) */
+					initial?: string;
+					color?: string;
+					tag?: false;
+			  }
+			| {
+					initial: string;
+					icon?: string | null;
+					color?: string;
+					tag?: false;
+			  }
+			| { tag?: false; color?: never; icon?: never; initial?: never }
+		);
 </script>
 
 <script lang="ts" generics="T extends string | number">
