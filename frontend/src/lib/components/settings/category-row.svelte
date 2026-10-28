@@ -87,15 +87,21 @@
 	]);
 </script>
 
-<li data-slot="category-row" data-category-id={category.id} data-revealed={revealed || undefined}>
+<li
+	class="border-b border-border last:border-b-0"
+	data-slot="category-row"
+	data-category-id={category.id}
+	data-revealed={revealed || undefined}
+>
 	<div
 		bind:this={body}
 		tabindex="-1"
 		class={cn(
-			'group flex min-h-12 items-center gap-2 border-b border-border py-1 transition-colors duration-1000 outline-none focus-visible:ring-2 focus-visible:ring-ring',
+			'group flex min-h-12 items-center gap-2 px-4 py-1 transition-colors duration-1000 outline-none focus-visible:ring-2 focus-visible:ring-ring',
+			'rounded-[inherit]',
 			revealed && 'bg-accent'
 		)}
-		style:padding-left={`${row.depth * 24}px`}
+		style:padding-left={`${16 + row.depth * 24}px`}
 	>
 		<TreeToggle
 			name={category.name}

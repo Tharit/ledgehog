@@ -25,12 +25,12 @@
 	<table class="w-full text-sm" data-slot="savings-table">
 		<caption class="sr-only">Income, expense and savings per period, in {currency}</caption>
 		<thead class="text-xs text-muted-foreground">
-			<tr class="border-b border-border">
-				<th class="sticky left-0 bg-background py-2 pr-4 text-left font-medium" scope="col"
+			<tr class="border-b border-border bg-muted">
+				<th class="sticky left-0 bg-muted py-2 pr-4 pl-4 text-left font-medium" scope="col"
 					>{currency}</th
 				>
 				{#each columns as column (column.key)}
-					<th class="px-3 py-2 text-right font-medium whitespace-nowrap" scope="col"
+					<th class="px-3 py-2 text-right font-medium whitespace-nowrap last:pr-4" scope="col"
 						>{column.label}</th
 					>
 				{/each}
@@ -38,12 +38,18 @@
 		</thead>
 		<tbody>
 			{#each rows as row (row.key)}
-				<tr class={['border-b border-border/60', row.strong && 'font-medium']} data-row={row.key}>
-					<th scope="row" class="sticky left-0 bg-background py-2 pr-4 text-left font-normal">
+				<tr
+					class={['border-b border-border/60 last:border-b-0', row.strong && 'font-medium']}
+					data-row={row.key}
+				>
+					<th scope="row" class="sticky left-0 bg-card py-2 pr-4 pl-4 text-left font-normal">
 						{row.label}
 					</th>
 					{#each row.cells as cell, i (columns[i].key)}
-						<td class="px-3 py-2 text-right whitespace-nowrap" data-column={columns[i].key}>
+						<td
+							class="px-3 py-2 text-right whitespace-nowrap last:pr-4"
+							data-column={columns[i].key}
+						>
 							{#if cell.kind === 'line'}
 								<FigureLink line={cell.line} href={cell.href} title={cell.title} {locale} />
 							{:else}

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import AbsentValue from '#lib/components/common/absent-value.svelte';
 	import AccountDot from '#lib/components/common/account-dot.svelte';
+	import Card from '#lib/components/common/card.svelte';
 	import MoneyDisplay from '#lib/components/common/money-display.svelte';
 	import TreeToggle from '#lib/components/common/tree-toggle.svelte';
 	import { balanceRows, pointColumnLabel } from '#lib/reports/charts.js';
@@ -58,131 +59,144 @@
 	{#if report.points.length === 0}
 		<p class="text-sm text-muted-foreground" data-slot="nothing">No month-end in this period.</p>
 	{:else}
-		{#if chart.lines.length === 0}
-			<p
-				class="flex h-72 items-center justify-center text-sm text-muted-foreground"
-				data-slot="nothing-selected"
-			>
-				Nothing selected.
-			</p>
-		{:else}
-			<BalanceChart
-				lines={chart.lines}
-				rows={chart.rows}
-				currency={report.base_currency}
-				{locale}
-			/>
-		{/if}
+		<Card class="flex flex-col gap-6">
+			{#if chart.lines.length === 0}
+				<p
+					class="flex h-72 items-center justify-center text-sm text-muted-foreground"
+					data-slot="nothing-selected"
+				>
+					Nothing selected.
+				</p>
+			{:else}
+				<BalanceChart
+					lines={chart.lines}
+					rows={chart.rows}
+					currency={report.base_currency}
+					{locale}
+				/>
+			{/if}
 
-		<fieldset class="flex flex-col gap-2" data-slot="account-toggles">
-			<legend class="mb-1 text-sm font-medium">Show in the chart</legend>
-			<div class="flex flex-wrap items-center gap-x-4 gap-y-1">
-				<span class="w-20 text-xs text-muted-foreground">Total</span>
-				<label class="flex items-center gap-2 text-sm">
-					<input type="checkbox" class="size-4 accent-primary" bind:checked={showNet} />
-					<span class="inline-flex items-center gap-1.5">
-						<span class="size-2 shrink-0 rounded-full bg-primary" aria-hidden="true"></span>
-						Net worth
-					</span>
-				</label>
-			</div>
-			{#each table.groups as group (group.key)}
-				{#if group.rows.length > 0}
-					<div class="flex flex-wrap items-center gap-x-4 gap-y-1">
-						<span class="w-20 text-xs text-muted-foreground">{group.label}</span>
-						{#each group.rows as row (row.key)}
-							{@const account = row.accountId === null ? undefined : accounts.get(row.accountId)}
-							<label class="flex items-center gap-2 text-sm">
-								<input
-									type="checkbox"
-									class="size-4 accent-primary"
-									checked={row.accountId !== null && shown.includes(row.accountId)}
-									onchange={(event) =>
-										row.accountId !== null && toggle(row.accountId, event.currentTarget.checked)}
-								/>
-								<AccountDot
-									name={row.label}
-									color={account ? resolveAccount(account).color : null}
-								/>
-							</label>
-						{/each}
-					</div>
-				{/if}
-			{/each}
-		</fieldset>
-
-		<div class="overflow-x-auto">
-			<table class="w-full text-sm" data-slot="balances-table">
-				<caption class="sr-only">Balances at the month-ends, in {report.base_currency}</caption>
-				<thead class="text-xs text-muted-foreground">
-					<tr class="border-b border-border">
-						<th class="sticky left-0 bg-background py-2 pr-4 text-left font-medium" scope="col"
-							>{report.base_currency}</th
-						>
-						{#each columns as column (column.key)}
-							<th class="px-3 py-2 text-right font-medium whitespace-nowrap" scope="col"
-								>{column.label}</th
-							>
-						{/each}
-					</tr>
-				</thead>
-				<tbody>
-					<tr class="border-b border-border font-medium" data-row="net-worth">
-						<th scope="row" class="sticky left-0 bg-background py-2 pr-4 text-left">
-							{table.net.label}
-						</th>
-						{#each table.net.cells as cell, i (columns[i].key)}
-							<td class="px-3 py-2 text-right whitespace-nowrap">{@render figure(cell)}</td>
-						{/each}
-					</tr>
-					{#each table.groups as group (group.key)}
-						{@const open = expanded.has(group.key)}
-						<tr class="border-b border-border/60 font-medium" data-group={group.key}>
-							<th scope="row" class="sticky left-0 bg-background py-2 pr-4 text-left">
-								<span class="flex items-center gap-2">
-									<TreeToggle
-										name={group.label}
-										expanded={open}
-										toggleable={group.rows.length > 0}
-										ontoggle={() => (expanded = toggled(expanded, group.key))}
+			<fieldset class="flex flex-col gap-2" data-slot="account-toggles">
+				<legend class="mb-1 text-sm font-medium">Show in the chart</legend>
+				<div class="flex flex-wrap items-center gap-x-4 gap-y-1">
+					<span class="w-20 text-xs text-muted-foreground">Total</span>
+					<label class="flex items-center gap-2 text-sm">
+						<input type="checkbox" class="size-4 accent-primary" bind:checked={showNet} />
+						<span class="inline-flex items-center gap-1.5">
+							<span class="size-2 shrink-0 rounded-full bg-primary" aria-hidden="true"></span>
+							Net worth
+						</span>
+					</label>
+				</div>
+				{#each table.groups as group (group.key)}
+					{#if group.rows.length > 0}
+						<div class="flex flex-wrap items-center gap-x-4 gap-y-1">
+							<span class="w-20 text-xs text-muted-foreground">{group.label}</span>
+							{#each group.rows as row (row.key)}
+								{@const account = row.accountId === null ? undefined : accounts.get(row.accountId)}
+								<label class="flex items-center gap-2 text-sm">
+									<input
+										type="checkbox"
+										class="size-4 accent-primary"
+										checked={row.accountId !== null && shown.includes(row.accountId)}
+										onchange={(event) =>
+											row.accountId !== null && toggle(row.accountId, event.currentTarget.checked)}
 									/>
-									{group.label}
-								</span>
-							</th>
-							{#each group.cells as cell, i (columns[i].key)}
-								<td class="px-3 py-2 text-right whitespace-nowrap">{@render figure(cell)}</td>
+									<AccountDot
+										name={row.label}
+										color={account ? resolveAccount(account).color : null}
+									/>
+								</label>
+							{/each}
+						</div>
+					{/if}
+				{/each}
+			</fieldset>
+		</Card>
+
+		<Card variant="flush">
+			<div class="overflow-x-auto">
+				<table class="w-full text-sm" data-slot="balances-table">
+					<caption class="sr-only">Balances at the month-ends, in {report.base_currency}</caption>
+					<thead class="text-xs text-muted-foreground">
+						<tr class="border-b border-border bg-muted">
+							<th class="sticky left-0 bg-muted py-2 pr-4 pl-4 text-left font-medium" scope="col"
+								>{report.base_currency}</th
+							>
+							{#each columns as column (column.key)}
+								<th class="px-3 py-2 text-right font-medium whitespace-nowrap last:pr-4" scope="col"
+									>{column.label}</th
+								>
 							{/each}
 						</tr>
-						{#if open}
-							{#each group.rows as row (row.key)}
-								<tr class="border-b border-border/60" data-row={row.key}>
-									<th
-										scope="row"
-										class="sticky left-0 bg-background py-2 pr-4 text-left font-normal"
-									>
-										<span class="flex items-center gap-2 pl-6">
-											<span class="size-6 shrink-0" aria-hidden="true"></span>
-											{#if row.accountId !== null}
-												<a
-													href={`/accounts/${row.accountId}`}
-													class="rounded-sm outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-													>{row.label}</a
-												>
-											{:else}
-												{row.label}
-											{/if}
-										</span>
-									</th>
-									{#each row.cells as cell, i (columns[i].key)}
-										<td class="px-3 py-2 text-right whitespace-nowrap">{@render figure(cell)}</td>
-									{/each}
-								</tr>
+					</thead>
+					<tbody>
+						<tr class="border-b border-border font-medium last:border-b-0" data-row="net-worth">
+							<th scope="row" class="sticky left-0 bg-card py-2 pr-4 pl-4 text-left">
+								{table.net.label}
+							</th>
+							{#each table.net.cells as cell, i (columns[i].key)}
+								<td class="px-3 py-2 text-right whitespace-nowrap last:pr-4"
+									>{@render figure(cell)}</td
+								>
 							{/each}
-						{/if}
-					{/each}
-				</tbody>
-			</table>
-		</div>
+						</tr>
+						{#each table.groups as group (group.key)}
+							{@const open = expanded.has(group.key)}
+							<tr
+								class="border-b border-border/60 font-medium last:border-b-0"
+								data-group={group.key}
+							>
+								<th scope="row" class="sticky left-0 bg-card py-2 pr-4 pl-4 text-left">
+									<span class="flex items-center gap-2">
+										<TreeToggle
+											name={group.label}
+											expanded={open}
+											toggleable={group.rows.length > 0}
+											ontoggle={() => (expanded = toggled(expanded, group.key))}
+										/>
+										{group.label}
+									</span>
+								</th>
+								{#each group.cells as cell, i (columns[i].key)}
+									<td class="px-3 py-2 text-right whitespace-nowrap last:pr-4"
+										>{@render figure(cell)}</td
+									>
+								{/each}
+							</tr>
+							{#if open}
+								{#each group.rows as row (row.key)}
+									<tr class="border-b border-border/60 last:border-b-0" data-row={row.key}>
+										<th
+											scope="row"
+											class="sticky left-0 bg-card py-2 pr-4 pl-4 text-left font-normal"
+										>
+											<span class="flex items-center gap-2 pl-6">
+												<span class="size-6 shrink-0" aria-hidden="true"></span>
+												{#if row.accountId !== null}
+													<a
+														href={`/accounts/${row.accountId}`}
+														class="rounded-sm outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+														>{row.label}</a
+													>
+												{:else}
+													{row.label}
+												{/if}
+											</span>
+										</th>
+										{#each row.cells as cell, i (columns[i].key)}
+											<td class="px-3 py-2 text-right whitespace-nowrap last:pr-4"
+												>{@render figure(cell)}</td
+											>
+										{/each}
+									</tr>
+								{/each}
+							{/if}
+						{/each}
+					</tbody>
+				</table>
+			</div>
+		</Card>
 
 		{#if table.unvalued.length > 0}
 			<section class="flex flex-col gap-1" aria-labelledby="not-in-chart" data-slot="unvalued">
@@ -191,9 +205,11 @@
 					These accounts have no balance that could be valued (no usable exchange rate), so they are
 					in neither the chart nor the net worth.
 				</p>
-				<ul class="text-sm">
+				<Card variant="flush" element="ul" class="mt-1 text-sm">
 					{#each table.unvalued as item (item.accountId)}
-						<li class="flex items-baseline justify-between gap-3 py-1">
+						<li
+							class="flex items-baseline justify-between gap-3 border-b border-border px-4 py-2 last:border-b-0"
+						>
 							<a
 								href={`/accounts/${item.accountId}`}
 								class="rounded-sm outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
@@ -202,7 +218,7 @@
 							<span class="amount text-muted-foreground">{item.native}</span>
 						</li>
 					{/each}
-				</ul>
+				</Card>
 			</section>
 		{/if}
 	{/if}

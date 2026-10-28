@@ -4,6 +4,7 @@
 	import type { OverTime } from '#lib/reports/shapes.js';
 	import { categoryTrendTable, savingsTable } from '#lib/reports/tables.js';
 	import type { Category } from '#lib/types/domain.js';
+	import Card from '#lib/components/common/card.svelte';
 	import CategoryStackChart from './category-stack-chart.svelte';
 	import CategoryTrendTable from './category-trend-table.svelte';
 	import IncomeExpenseChart from './income-expense-chart.svelte';
@@ -31,38 +32,46 @@
 	{@const points = incomeExpensePoints(report.periods, report.savings, report.step, locale)}
 	{@const table = savingsTable(report, categories, scope, locale)}
 	<div class="flex flex-col gap-6">
-		<IncomeExpenseChart {points} currency={report.base_currency} {locale} />
-		<SavingsTable
-			columns={table.columns}
-			rows={table.rows}
-			currency={report.base_currency}
-			{locale}
-		/>
+		<Card>
+			<IncomeExpenseChart {points} currency={report.base_currency} {locale} />
+		</Card>
+		<Card variant="flush">
+			<SavingsTable
+				columns={table.columns}
+				rows={table.rows}
+				currency={report.base_currency}
+				{locale}
+			/>
+		</Card>
 	</div>
 {:else if report.categories}
 	{@const stack = categoryStack(report, categories, locale)}
 	{@const table = categoryTrendTable(report, categories, scope, locale)}
 	<div class="flex flex-col gap-6">
 		{#if stack.series.length > 0}
-			<CategoryStackChart
-				series={stack.series}
-				rows={stack.rows}
-				currency={report.base_currency}
-				{sign}
-				{locale}
-			/>
+			<Card>
+				<CategoryStackChart
+					series={stack.series}
+					rows={stack.rows}
+					currency={report.base_currency}
+					{sign}
+					{locale}
+				/>
+			</Card>
 		{/if}
 		{#if table.rows.length === 0}
 			<p class="text-sm text-muted-foreground" data-slot="nothing">Nothing in this period.</p>
 		{:else}
-			<CategoryTrendTable
-				columns={table.columns}
-				rows={table.rows}
-				total={table.total}
-				{categories}
-				currency={report.base_currency}
-				{locale}
-			/>
+			<Card variant="flush">
+				<CategoryTrendTable
+					columns={table.columns}
+					rows={table.rows}
+					total={table.total}
+					{categories}
+					currency={report.base_currency}
+					{locale}
+				/>
+			</Card>
 		{/if}
 	</div>
 {/if}

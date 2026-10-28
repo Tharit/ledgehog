@@ -5,6 +5,7 @@
 	import type { ByCategory } from '#lib/reports/types.js';
 	import { dimensionVars } from '#lib/theme/dimensions.js';
 	import type { Category } from '#lib/types/domain.js';
+	import Card from '#lib/components/common/card.svelte';
 	import CategoryDonut from './category-donut.svelte';
 	import CategoryTable from './category-table.svelte';
 	import FigureLink from './figure-link.svelte';
@@ -44,7 +45,7 @@
 {:else}
 	<div class="flex flex-col gap-8">
 		{#if donut.slices.length > 0}
-			<div
+			<Card
 				class="flex flex-wrap items-center justify-center gap-x-10 gap-y-6"
 				data-slot="donut-section"
 			>
@@ -63,7 +64,7 @@
 						</li>
 					{/each}
 				</ul>
-			</div>
+			</Card>
 		{/if}
 		{#if donut.opposite.length > 0}
 			<p class="text-sm text-muted-foreground" data-slot="opposite-note">
@@ -78,6 +79,8 @@
 			</p>
 		{/if}
 
-		<CategoryTable {report} {categories} {scope} {locale} />
+		<Card variant="flush">
+			<CategoryTable {report} {categories} {scope} {locale} />
+		</Card>
 	</div>
 {/if}

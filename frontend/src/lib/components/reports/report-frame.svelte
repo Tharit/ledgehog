@@ -1,5 +1,6 @@
 <script lang="ts" generics="T">
 	import type { Snippet } from 'svelte';
+	import Card from '#lib/components/common/card.svelte';
 	import ErrorState from '#lib/components/common/error-state.svelte';
 	import { describeReportError } from '#lib/reports/errors.js';
 
@@ -32,8 +33,8 @@
 	/>
 {:else if data === null}
 	<div class="flex flex-col gap-4" data-slot="report-skeleton" aria-busy="true">
-		<div class="h-56 animate-pulse rounded-md bg-muted"></div>
-		<div class="h-40 animate-pulse rounded-md bg-muted"></div>
+		<Card><div class="h-56 animate-pulse rounded-md bg-muted"></div></Card>
+		<Card variant="flush"><div class="h-40 animate-pulse bg-muted"></div></Card>
 	</div>
 {:else}
 	{@render children(data)}

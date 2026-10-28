@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
+	import Card from '#lib/components/common/card.svelte';
 	import EmptyState from '#lib/components/common/empty-state.svelte';
 	import ErrorState from '#lib/components/common/error-state.svelte';
 	import NoticeLine from '#lib/components/common/notice-line.svelte';
@@ -65,9 +66,9 @@
 	<NoticeLine notice={store.notice} />
 
 	{#if store.status === 'loading'}
-		<div aria-busy="true" aria-label="Loading payees" data-slot="payees-loading">
+		<Card variant="flush" aria-busy="true" aria-label="Loading payees" data-slot="payees-loading">
 			{#each [0, 1, 2, 3, 4] as i (i)}
-				<div class="flex h-12 items-center gap-3 border-b border-border">
+				<div class="flex h-12 items-center gap-3 border-b border-border px-4 last:border-b-0">
 					<div class="size-8 shrink-0 animate-pulse rounded-full bg-muted"></div>
 					<div
 						class="h-3 animate-pulse rounded bg-muted"
@@ -75,7 +76,7 @@
 					></div>
 				</div>
 			{/each}
-		</div>
+		</Card>
 	{:else if store.status === 'error' && store.error}
 		<ErrorState
 			title="The payees could not be loaded"
@@ -97,7 +98,7 @@
 				class="max-w-xs"
 			/>
 		{/if}
-		<ul aria-label="Payees">
+		<Card variant="flush" element="ul" aria-label="Payees">
 			{#each shown as payee (payee.id)}
 				<PayeeRow
 					{payee}
@@ -107,9 +108,9 @@
 					onedit={() => openForm(payee)}
 				/>
 			{:else}
-				<li class="py-2 text-sm text-muted-foreground">No payee matches.</li>
+				<li class="px-4 py-3 text-sm text-muted-foreground">No payee matches.</li>
 			{/each}
-		</ul>
+		</Card>
 	{/if}
 </div>
 

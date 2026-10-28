@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import type { CategoriesStore } from '#lib/categories/store.svelte.js';
+	import Card from '#lib/components/common/card.svelte';
 	import EmptyState from '#lib/components/common/empty-state.svelte';
 	import ErrorState from '#lib/components/common/error-state.svelte';
 	import NoticeLine from '#lib/components/common/notice-line.svelte';
@@ -65,9 +66,14 @@
 	<NoticeLine notice={store.notice} />
 
 	{#if store.status === 'loading'}
-		<div aria-busy="true" aria-label="Loading categories" data-slot="categories-loading">
+		<Card
+			variant="flush"
+			aria-busy="true"
+			aria-label="Loading categories"
+			data-slot="categories-loading"
+		>
 			{#each [0, 1, 2, 3, 4] as i (i)}
-				<div class="flex h-12 items-center gap-3 border-b border-border">
+				<div class="flex h-12 items-center gap-3 border-b border-border px-4 last:border-b-0">
 					<div class="size-8 shrink-0 animate-pulse rounded-full bg-muted"></div>
 					<div
 						class="h-3 animate-pulse rounded bg-muted"
@@ -75,7 +81,7 @@
 					></div>
 				</div>
 			{/each}
-		</div>
+		</Card>
 	{:else if store.status === 'error' && store.error}
 		<ErrorState
 			title="The categories could not be loaded"

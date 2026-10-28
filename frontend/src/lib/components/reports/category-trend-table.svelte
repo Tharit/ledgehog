@@ -34,12 +34,12 @@
 	<table class="w-full text-sm" data-slot="category-trend-table">
 		<caption class="sr-only">Amounts per category and period, in {currency}</caption>
 		<thead class="text-xs text-muted-foreground">
-			<tr class="border-b border-border">
-				<th class="sticky left-0 bg-background py-2 pr-4 text-left font-medium" scope="col"
+			<tr class="border-b border-border bg-muted">
+				<th class="sticky left-0 bg-muted py-2 pr-4 pl-4 text-left font-medium" scope="col"
 					>{currency}</th
 				>
 				{#each columns as column (column.key)}
-					<th class="px-3 py-2 text-right font-medium whitespace-nowrap" scope="col"
+					<th class="px-3 py-2 text-right font-medium whitespace-nowrap last:pr-4" scope="col"
 						>{column.label}</th
 					>
 				{/each}
@@ -53,7 +53,7 @@
 					data-category={row.categoryId}
 					data-itself={row.itself}
 				>
-					<th scope="row" class="sticky left-0 bg-background py-2 pr-4 text-left font-normal">
+					<th scope="row" class="sticky left-0 bg-card py-2 pr-4 pl-4 text-left font-normal">
 						<span
 							class="flex items-center gap-2 whitespace-nowrap"
 							style:padding-left={`${row.depth * 1.5}rem`}
@@ -73,7 +73,10 @@
 						</span>
 					</th>
 					{#each row.cells as cell, i (columns[i].key)}
-						<td class="px-3 py-2 text-right whitespace-nowrap" data-column={columns[i].key}>
+						<td
+							class="px-3 py-2 text-right whitespace-nowrap last:pr-4"
+							data-column={columns[i].key}
+						>
 							<FigureLink line={cell.line} href={cell.href} {locale} />
 						</td>
 					{/each}
@@ -82,9 +85,9 @@
 		</tbody>
 		<tfoot>
 			<tr class="font-medium" data-row="total">
-				<th scope="row" class="sticky left-0 bg-background py-2 pr-4 text-left">{total.label}</th>
+				<th scope="row" class="sticky left-0 bg-card py-2 pr-4 pl-4 text-left">{total.label}</th>
 				{#each total.cells as cell, i (columns[i].key)}
-					<td class="px-3 py-2 text-right whitespace-nowrap">
+					<td class="px-3 py-2 text-right whitespace-nowrap last:pr-4">
 						{#if cell.kind === 'line'}
 							<FigureLink line={cell.line} href={cell.href} {locale} />
 						{/if}

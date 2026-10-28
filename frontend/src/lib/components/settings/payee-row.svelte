@@ -52,12 +52,18 @@
 	]);
 </script>
 
-<li data-slot="payee-row" data-payee-id={payee.id} data-revealed={revealed || undefined}>
+<li
+	class="border-b border-border last:border-b-0"
+	data-slot="payee-row"
+	data-payee-id={payee.id}
+	data-revealed={revealed || undefined}
+>
 	<div
 		bind:this={body}
 		tabindex="-1"
 		class={cn(
-			'group flex min-h-12 items-center gap-3 border-b border-border py-1 transition-colors duration-1000 outline-none focus-visible:ring-2 focus-visible:ring-ring',
+			'group flex min-h-12 items-center gap-3 px-4 py-1 transition-colors duration-1000 outline-none focus-visible:ring-2 focus-visible:ring-ring',
+			'rounded-[inherit]',
 			revealed && 'bg-accent'
 		)}
 	>
