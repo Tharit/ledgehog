@@ -46,8 +46,16 @@ net-worth figure are the Overview's (`ux/views/overview.md`), not this list's.
 the kind and currency, and "closed on *date*" for a closed account. The
 primary action is "Add entry" — the entry form, its account prefilled to
 this one — on an unsynced account, where rows may be entered by hand (`spec.md`
-I40); a synced account's page has none (`ux/patterns.md` §11.7). Under the
-header:
+I40); a synced account's page has none (`ux/patterns.md` §11.7).
+
+Before it in the title row sit the account's secondary actions: "Set
+balance", "View entries", and a `⋯` menu with "Edit", the account's form
+dialog (name, external reference, note, icon, colour, and for a clearance
+account its providers, whose change books the documents a new provider brings
+and moves no existing booking), "Close…" or "Reopen", and "Delete…", last and
+destructive. The server refuses to delete an account that holds anything; the
+decision dialog then shows what it holds and offers "Close…" instead. Under
+the header:
 
 - **the balance and the facts line** (`ux/patterns.md` §4.4): data age,
   "balance not anchored", the unexplained difference as an amount. The
@@ -63,14 +71,7 @@ header:
   linking it in Settings → Importers (a link). A clearance account, which is
   never linked, says instead that it is fed by the orders of its providers —
   listed, each a link to the documents list filtered by it — and by the
-  charges decided as transfers to it;
-- **"Set balance"** and **"View entries"**, and a `⋯` menu with "Edit", the
-  account's form dialog (name, external reference, note, icon, colour, and
-  for a clearance account its providers, whose change books the documents a
-  new provider brings and moves no existing booking),
-  "Close…" or "Reopen", and "Delete…", last and destructive. The server
-  refuses to delete an account that holds anything; the decision dialog then
-  shows what it holds and offers "Close…" instead.
+  charges decided as transfers to it.
 
 "Set balance" is a form dialog with the date, defaulting to today, and the
 balance, its help text saying that the record counts everything dated on that

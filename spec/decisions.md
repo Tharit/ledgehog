@@ -3802,3 +3802,22 @@ partly supersedes D63, D97, D131, D142, D152, D166, D168, D172, D177, D178, D181
 - Deferred: editing documents by hand (the booking follows; the document `version` detects conflicts); "create a
   clearance account" from a document not booked; the email importer mapping sender domains to providers; refunds as
   documents of their own; a status or signal for clearance accounts.
+
+## D231 Content on cards, structure on the background
+
+Design §5; `ux/views/account.md`.
+
+- **One rule for every page.** Which content got a card was decided page by page: the Overview, Sync, Importers
+  and Rules used cards; the ledger, the review queue, accounts, reports and the settings of categories, payees and
+  tags put their content straight on the background. Now content — figures, forms, charts, lists, tables — sits
+  on a card, and structure — the header, tabs, filter bars, report controls, notices, headings — on the
+  background.
+- **Two kinds of card,** both already in use: *padded* for a self-contained block, its title inside if it has
+  one; *flush* for a page's list or table, its heading above, one card per group (as Settings → Rules).
+- **A page's facts are figure cards,** as on the Overview: an account's balance, a document's total.
+- **An account's secondary actions move into the page header,** before "Add entry"; patterns §11.7 bounds only
+  the primary action.
+- Rejected: *the dense views on the background*, as in the mockup's ledger and review — an exception to
+  remember, while a flush card keeps the compact density; *putting everything on cards as it is* — headers and
+  controls on cards read heavier and blur what is content; *"Set balance" in the Balance card as well* — one
+  action in two places.

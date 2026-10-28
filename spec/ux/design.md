@@ -135,13 +135,32 @@ An 8px grid, with 4px steps inside compact elements.
 | Borders | 1px `border` |
 | Shadow | `0 1px 2px rgb(60 40 20 / 0.06)` on cards only |
 
+**Surfaces.** A page's content sits on cards (`surface`, 1px `border`, 12px
+radius, the card shadow); its structure sits on the background. On the
+background: the page header with its title, description and actions; section
+tabs; a filter bar or a report's controls; notices; the heading of a list or
+a group; an action that follows a stack of cards. On a card: figures, forms,
+charts, lists and tables. A card is one of two kinds:
+
+- **padded** (20px) — a self-contained block: a figure, a form, a chart, a
+  short summary list. Its title, if any, is inside, at the top.
+- **flush** — a page's list or table: no padding, rows edge to edge divided by
+  hairlines, a header row tinted `surface-muted` along its top. Its heading,
+  if any, sits above it on the background; a list in groups is one card per
+  group.
+
+Facts about the page's subject (an account's balance, a document's total) are
+a row of figure cards under the header, as on the Overview. An empty or error
+state is a padded card in place of the content. Surfaces inside a dialog or
+the work panel are not cards.
+
 **Two densities, named so no view invents a third:**
 
 - **Comfortable** — overview, account and report cards, settings. Rows 48px,
   14px text, category icon 32px, a second line allowed for metadata.
 - **Compact** — the ledger list, the review queue, the unit panel and any
   table of entries. Rows 32px, one line, 13px text, category icon 24px,
-  horizontal dividers only, no card padding around the table.
+  horizontal dividers only, in a flush card.
 
 **Controls.** One scale, so no view picks a height:
 
