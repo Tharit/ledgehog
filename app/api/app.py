@@ -13,6 +13,7 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, Request, Response
@@ -20,6 +21,7 @@ from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import Engine
 
 from app.api.errors import install_error_handlers
+from app.api.frontend import Frontend, SecurityHeaders
 from app.api.openapi import install_openapi, operation_id
 from app.api.redaction import install_redaction
 from app.api.routers import include_routers
@@ -49,13 +51,18 @@ def create_app(
     tasks: TaskRegistry | None = None,
     changes: ChangeRegister | None = None,
     oidc_transport: httpx.BaseTransport | None = None,
+    frontend: Path | None = None,
 ) -> FastAPI:
     """Build the API. Time comes from `app.utils.clock` only (tests freeze it with `clock.frozen`).
 
     `importers` maps an importer name (`importer_instance.importer`) to its implementation;
     the composition root supplies it, because the API never imports a concrete plugin. `tasks` is
     the one task registry of the process (architecture §5.3), created by the composition root.
+    `frontend` is the built SPA directory; without an `index.html` in it only the API is served, and
+    an `index.html` that cannot be served under the policy refuses the start (architecture §6.7).
     """
+
+    served = Frontend.load(frontend)  # reads index.html once; may refuse the start
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -108,4 +115,6 @@ def create_app(
     include_routers(app)  # registers each module's domain error mappings as it is imported...
     install_error_handlers(app)  # ...so the handlers are installed after
     install_openapi(app)
+    served.mount(app)
+    app.add_middleware(SecurityHeaders, policy=served.policy)
     return app

@@ -11,6 +11,7 @@ import logging
 from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from fastapi import FastAPI
 from sqlalchemy import Connection, Engine, text
@@ -240,11 +241,13 @@ def start(
     engine: Engine | None = None,
     *,
     importers: Mapping[str, FileImporter | FetchImporter] | None = None,
+    frontend: Path | None = None,
 ) -> StartedApp:
     """Run the start sequence (1: `config` is already validated) and build the app.
 
     With no `engine` one is made and owned by the app (disposed at shutdown). `importers`
-    is the plugin registry the composition root supplies (name -> implementation).
+    is the plugin registry the composition root supplies (name -> implementation); `frontend` the
+    built SPA directory it serves.
     """
     from app.api import create_app  # step 8 builds the API; imported late to keep this module light
 
@@ -273,7 +276,14 @@ def start(
         worker = configure_model(config, engine)  # before 7: the settle lists what the model is to look at
         result = run_settle(engine)  # 7
         # 8: the one task registry of the process (architecture §5.3) is created here, with the app
-        app = create_app(config, engine, owns_engine=owns_engine, importers=importers, tasks=TaskRegistry())
+        app = create_app(
+            config,
+            engine,
+            owns_engine=owns_engine,
+            importers=importers,
+            tasks=TaskRegistry(),
+            frontend=frontend,
+        )
         attach_model(app, worker)
     except BaseException:
         if owns_engine:

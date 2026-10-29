@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Awaitable, Callable, MutableMapping
 from importlib.metadata import PackageNotFoundError, version
+from pathlib import Path
 from typing import Any
 
 from anyio import to_thread
@@ -36,6 +37,8 @@ from app.startup import start
 from app.utils.config import Config
 
 log = logging.getLogger("ledgehog")
+
+FRONTEND = Path(__file__).resolve().parent.parent / "frontend" / "build"  # architecture §6.7
 
 
 def configure_logging() -> None:
@@ -94,7 +97,8 @@ def build() -> FastAPI:
     configure_classifiers(default_classifiers)  # before start: the start sequence settles
     configure_rule_tools(default_rule_tools())
     config = Config.from_env()
-    return start(config, importers=register_importers(config)).app  # before start: it settles
+    importers = register_importers(config)  # before start: it settles
+    return start(config, importers=importers, frontend=FRONTEND).app
 
 
 class LazyApp:
