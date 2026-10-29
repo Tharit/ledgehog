@@ -6,16 +6,19 @@
 	import Notice from '#lib/components/common/notice.svelte';
 	import RunNextStep from '#lib/components/importers/run-next-step.svelte';
 	import RunSummary from '#lib/components/importers/run-summary.svelte';
-	import { formatDate, formatInstant } from '#lib/format/index.js';
+	import { formatCount, formatDate, formatInstant } from '#lib/format/index.js';
 	import { cn } from '#lib/utils.js';
 
-	// The account's import log (ux/views/account.md "Runs"): every run, newest first. A row shows the instance, the start as an instant, its status, "covered through" and one
-	// line of its summary, and opens the run summary in place. A reverted run is marked; a failed one
+	// The account's import log (ux/views/account.md "Runs"): every run, newest first, paged like the statement ("n of total", "Load more").
+	// A row shows the instance, the start as an instant, its status, "covered through" and one line of its summary, and opens the run summary in place. A reverted run is marked; a failed one
 	// shows its error, then what to do next (`run-next-step`). "Revert…" is offered on the one run the server marks revertible; an earlier
 	// successful run says that later runs are reverted first.
 	let {
 		runs,
+		total,
 		status,
+		loadingMore = false,
+		moreFailed = false,
 		instanceLabel,
 		importerKind = () => null,
 		currency,
@@ -23,9 +26,12 @@
 		timeZone = 'UTC',
 		onrevert,
 		onretry,
-		onrunagain
+		onrunagain,
+		onloadmore
 	}: {
 		runs: readonly ImportRun[];
+		/** every run the account has, whatever the page */
+		total?: number;
 		status: 'loading' | 'ready' | 'error';
 		/** the label of the instance a run came from; a deleted instance has none */
 		instanceLabel: (run: ImportRun) => string;
@@ -38,9 +44,13 @@
 		onretry?: () => void;
 		/** "Run again" on a failed fetch run: a one-item sync of its instance and account */
 		onrunagain?: (run: ImportRun) => void;
+		onloadmore?: () => void | Promise<void>;
+		loadingMore?: boolean;
+		moreFailed?: boolean;
 	} = $props();
 
 	let openId = $state<number | null>(null);
+	const count = $derived(total ?? runs.length);
 </script>
 
 <section class="flex flex-col gap-1" aria-label="Runs" data-slot="account-runs">
@@ -130,5 +140,31 @@
 				</li>
 			{/each}
 		</Card>
+		<div
+			class="flex flex-wrap items-center gap-3 py-3 text-xs text-muted-foreground"
+			data-slot="runs-footer"
+		>
+			<span>{formatCount(runs.length, locale)} of {formatCount(count, locale)}</span>
+			{#if runs.length < count}
+				<ActionButton
+					variant="outline"
+					onclick={onloadmore}
+					busy={loadingMore}
+					busyLabel="Loading…"
+				>
+					Load more
+				</ActionButton>
+			{/if}
+			{#if moreFailed}
+				<Notice role="alert">
+					More runs could not be loaded.
+					{#snippet action()}
+						<ActionButton variant="link" class="h-auto p-0" onclick={onloadmore}>
+							Try again
+						</ActionButton>
+					{/snippet}
+				</Notice>
+			{/if}
+		</div>
 	{/if}
 </section>

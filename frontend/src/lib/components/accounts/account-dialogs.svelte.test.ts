@@ -78,7 +78,7 @@ beforeEach(() => {
 	});
 	api.getEntry.mockResolvedValue(entry({ id: 10 }));
 	api.listAccounts.mockResolvedValue([account({ id: 1 })]);
-	api.listRuns.mockResolvedValue([]);
+	api.listRuns.mockResolvedValue({ runs: [], total: 0, limit: 100, offset: 0 });
 	api.markDuplicate.mockImplementation(async (id: number, _of: number, o?: { dryRun?: boolean }) =>
 		o?.dryRun ? preview(id) : { ...preview(id), dry_run: false }
 	);

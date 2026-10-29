@@ -4,7 +4,7 @@
 	import AccountRuns from '#lib/components/accounts/account-runs.svelte';
 	import { session } from '#lib/stores/session.svelte.js';
 
-	// The Runs tab (ux/views/account.md "The Runs tab"): the whole import log. A clearance account has
+	// The Runs tab (ux/views/account.md "The Runs tab"): the import log, paged. A clearance account has
 	// no runs and no tabs: its address here goes to its statement.
 	const ctx = useAccountPage();
 	const { view, runs, dialogs } = ctx;
@@ -18,6 +18,10 @@
 {#if account && account.kind !== 'clearance'}
 	<AccountRuns
 		runs={runs.runs}
+		total={runs.total}
+		loadingMore={runs.loadingMore}
+		moreFailed={runs.moreFailed}
+		onloadmore={() => runs.loadMore()}
 		status={runs.runsStatus}
 		instanceLabel={runs.instanceLabel}
 		importerKind={runs.importerKind}

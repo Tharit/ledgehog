@@ -183,4 +183,20 @@ describe('AccountRuns', () => {
 		await fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
 		expect(h.onretry).toHaveBeenCalled();
 	});
+
+	it('says how many runs are shown of the whole, and loads more while some remain', async () => {
+		const onloadmore = vi.fn();
+		runs({ total: 3, onloadmore });
+		expect(screen.getByText('2 of 3')).toBeInTheDocument();
+		await fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
+		expect(onloadmore).toHaveBeenCalledOnce();
+	});
+
+	it('offers no Load more once every run is shown, and a retry when a load failed', () => {
+		runs({ total: 2, moreFailed: true, onloadmore: vi.fn() });
+		expect(screen.getByText('2 of 2')).toBeInTheDocument();
+		expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull();
+		expect(screen.getByRole('alert')).toHaveTextContent('More runs could not be loaded.');
+		expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+	});
 });

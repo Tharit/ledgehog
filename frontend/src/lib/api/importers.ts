@@ -161,7 +161,11 @@ export type RunFilter = {
 	instanceId?: number;
 	status?: RunStatus;
 	limit?: number;
+	offset?: number;
 };
+
+/** One page of runs; `total` counts every run matching the filter, whatever the page. */
+export type RunPage = { runs: ImportRun[]; total: number; limit: number; offset: number };
 
 export type RevertResult = {
 	run_id: number;
@@ -305,13 +309,14 @@ export function uploadFile(
 }
 
 /** Runs, newest first, optionally of one account, one instance or one status. */
-export function listRuns(filter: RunFilter = {}, signal?: AbortSignal): Promise<ImportRun[]> {
+export function listRuns(filter: RunFilter = {}, signal?: AbortSignal): Promise<RunPage> {
 	return request('GET', '/api/importers/runs', {
 		query: {
 			account_id: filter.accountId,
 			instance_id: filter.instanceId,
 			status: filter.status,
-			limit: filter.limit
+			limit: filter.limit,
+			offset: filter.offset ? filter.offset : undefined
 		},
 		signal
 	});

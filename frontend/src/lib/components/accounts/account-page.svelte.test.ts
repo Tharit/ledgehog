@@ -57,7 +57,7 @@ beforeEach(() => {
 		accounts: { '7': 'b:1' },
 		active_task: null
 	});
-	importersApi.listRuns.mockResolvedValue([]);
+	importersApi.listRuns.mockResolvedValue({ runs: [], total: 0, limit: 100, offset: 0 });
 	importersApi.listImporters.mockResolvedValue([]);
 	importersApi.listInstances.mockResolvedValue([]);
 });

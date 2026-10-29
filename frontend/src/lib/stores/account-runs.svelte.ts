@@ -3,6 +3,7 @@
 // of their own) and its runs, the import log. Page-scoped, like the page store that refreshes it
 // after the page's own writes.
 import {
+	DEFAULT_PAGE_SIZE,
 	listImporters,
 	listInstances,
 	listRuns,
@@ -12,15 +13,17 @@ import {
 } from '#lib/api/index.js';
 import { sourceLines, type SourceLine } from '#lib/accounts/sources.js';
 
-// the whole log: the most the server returns in one read
-const RUNS_LIMIT = 500;
-
 export type PartStatus = 'loading' | 'ready' | 'error';
 
 export class AccountRunsStore {
 	accountId = $state<number | null>(null);
 	runs = $state.raw<ImportRun[]>([]);
+	/** every run the account has, whatever the page */
+	total = $state(0);
 	runsStatus = $state<PartStatus>('loading');
+	loadingMore = $state(false);
+	/** the last "load more" failed: the runs held stay */
+	moreFailed = $state(false);
 	instances = $state.raw<ImporterInstance[]>([]);
 	catalog = $state.raw<CatalogEntry[]>([]);
 	sourcesStatus = $state<PartStatus>('loading');
@@ -34,32 +37,63 @@ export class AccountRunsStore {
 	async load(accountId: number): Promise<void> {
 		this.accountId = accountId;
 		this.runs = [];
+		this.total = 0;
+		this.loadingMore = false;
+		this.moreFailed = false;
 		this.runsStatus = 'loading';
 		this.sourcesStatus = 'loading';
 		const generation = ++this.#generation;
 		await Promise.all([this.#loadRuns(accountId, generation), this.#loadSources(generation)]);
 	}
 
-	/** The runs again (after a revert, an upload elsewhere, a mark): the instances stay. */
+	/** The first page of runs again (after a revert, an upload elsewhere, a mark): the instances stay. */
 	async reload(): Promise<void> {
 		const accountId = this.accountId;
 		if (accountId === null) return;
 		const generation = this.#generation;
 		try {
-			const runs = await listRuns({ accountId, limit: RUNS_LIMIT });
+			const page = await listRuns({ accountId, limit: DEFAULT_PAGE_SIZE });
 			if (generation !== this.#generation) return;
-			this.runs = runs;
+			this.runs = page.runs;
+			this.total = page.total;
+			this.moreFailed = false;
 			this.runsStatus = 'ready';
 		} catch {
 			// the runs held stay
 		}
 	}
 
+	/** Append the next page (offset = runs held). */
+	async loadMore(): Promise<void> {
+		const accountId = this.accountId;
+		if (accountId === null || this.runsStatus !== 'ready' || this.loadingMore) return;
+		if (this.runs.length >= this.total) return;
+		const generation = this.#generation;
+		this.loadingMore = true;
+		this.moreFailed = false;
+		try {
+			const page = await listRuns({
+				accountId,
+				limit: DEFAULT_PAGE_SIZE,
+				offset: this.runs.length
+			});
+			if (generation !== this.#generation) return;
+			this.runs = [...this.runs, ...page.runs];
+			this.total = page.total;
+		} catch {
+			if (generation !== this.#generation) return;
+			this.moreFailed = true;
+		} finally {
+			if (generation === this.#generation) this.loadingMore = false;
+		}
+	}
+
 	async #loadRuns(accountId: number, generation: number): Promise<void> {
 		try {
-			const runs = await listRuns({ accountId, limit: RUNS_LIMIT });
+			const page = await listRuns({ accountId, limit: DEFAULT_PAGE_SIZE });
 			if (generation !== this.#generation) return;
-			this.runs = runs;
+			this.runs = page.runs;
+			this.total = page.total;
 			this.runsStatus = 'ready';
 		} catch {
 			if (generation !== this.#generation) return;

@@ -170,7 +170,7 @@ describe('AppShell: the count of an item', () => {
 		});
 	}
 
-	it('shows the number beside the label as a count chip, in the neutral stone', () => {
+	it('shows the number beside the label as a count chip, a cut-out of the sidebar', () => {
 		withCount(12);
 
 		const count = screen
@@ -178,8 +178,13 @@ describe('AppShell: the count of an item', () => {
 			.querySelector('[data-slot="nav-count"]');
 		expect(count).toHaveTextContent('12');
 		const chip = count!.querySelector('[data-slot="count-chip"]')!;
-		expect(chip).toHaveClass('h-5', 'rounded-sm', 'tabular-nums');
-		expect(chip).toHaveStyle({ '--chip-fg': 'var(--dim-stone)' });
+		expect(chip).toHaveClass(
+			'h-5',
+			'rounded-sm',
+			'tabular-nums',
+			'bg-muted-foreground',
+			'text-sidebar'
+		);
 	});
 
 	it('shows nothing at zero, and nothing without a count', () => {

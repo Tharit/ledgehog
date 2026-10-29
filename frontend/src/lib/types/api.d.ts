@@ -4805,6 +4805,7 @@ export interface operations {
                 instance_id?: number | null;
                 status?: ("running" | "ok" | "failed" | "reverted") | null;
                 limit?: number;
+                offset?: number;
             };
             header?: never;
             path?: never;

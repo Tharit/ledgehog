@@ -138,9 +138,11 @@ describe('uploadFile', () => {
 
 describe('runs', () => {
 	it('lists runs with the filter as query parameters', async () => {
-		answer([]);
+		answer({ runs: [], total: 0, limit: 20, offset: 0 });
 		await listRuns({ accountId: 5, status: 'ok', limit: 20 });
 		expect(last()[0]).toBe('/api/importers/runs?account_id=5&status=ok&limit=20');
+		await listRuns({ accountId: 5, limit: 100, offset: 200 });
+		expect(last()[0]).toBe('/api/importers/runs?account_id=5&limit=100&offset=200');
 		await listRuns();
 		expect(last()[0]).toBe('/api/importers/runs');
 	});

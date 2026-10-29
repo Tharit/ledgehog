@@ -69,7 +69,7 @@ beforeEach(async () => {
 	api.listDocuments.mockResolvedValue({ documents: [documentRow()], total: 1 });
 	api.listDocumentProviders.mockResolvedValue([]);
 	api.getStatement.mockResolvedValue({ items: [], total: 0, limit: 100, offset: 0 });
-	importersApi.listRuns.mockResolvedValue([]);
+	importersApi.listRuns.mockResolvedValue({ runs: [], total: 0, limit: 100, offset: 0 });
 	importersApi.listImporters.mockResolvedValue([]);
 	importersApi.listInstances.mockResolvedValue([]);
 	api.readChanges.mockResolvedValue({ ...base, active_task: null });

@@ -181,7 +181,7 @@ describe('the views that hold a snapshot', () => {
 	it('the account page is keyed on its account, and the header, facts and statement are read together', async () => {
 		vi.mocked(listAccounts).mockResolvedValue([account({ id: 7 })]);
 		vi.mocked(getStatement).mockResolvedValue({ items: [], total: 0, limit: 100, offset: 0 });
-		vi.mocked(listRuns).mockResolvedValue([]);
+		vi.mocked(listRuns).mockResolvedValue({ runs: [], total: 0, limit: 100, offset: 0 });
 		const store = new AccountPageStore();
 		await store.open(7);
 		await flush();
@@ -204,7 +204,7 @@ describe('the views that hold a snapshot', () => {
 	it('the statement is not read again because the shared accounts were refreshed', async () => {
 		vi.mocked(listAccounts).mockResolvedValue([account({ id: 7 })]);
 		vi.mocked(getStatement).mockResolvedValue({ items: [], total: 0, limit: 100, offset: 0 });
-		vi.mocked(listRuns).mockResolvedValue([]);
+		vi.mocked(listRuns).mockResolvedValue({ runs: [], total: 0, limit: 100, offset: 0 });
 		const store = new AccountPageStore();
 		await store.open(7);
 		await flush();
@@ -245,7 +245,7 @@ describe('a background write the watcher has not polled yet', () => {
 	it('the account page reads the values before it fetches: the next poll is no news', async () => {
 		vi.mocked(listAccounts).mockResolvedValue([account({ id: 7 })]);
 		vi.mocked(getStatement).mockResolvedValue({ items: [], total: 0, limit: 100, offset: 0 });
-		vi.mocked(listRuns).mockResolvedValue([]);
+		vi.mocked(listRuns).mockResolvedValue({ runs: [], total: 0, limit: 100, offset: 0 });
 		await poll({ accounts: { '7': 'b:1' } });
 		background({ accounts: { '7': 'b:2' } });
 

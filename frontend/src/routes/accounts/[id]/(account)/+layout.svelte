@@ -207,17 +207,24 @@
 			onfetch={fetchHere}
 		/>
 
-		<!-- one reserved line, so a notice appearing never moves the rows (patterns §7) -->
-		<NewDataNotice stale={view.news.stale} onrefresh={() => view.afterWrite()} notice={view.notice}>
-			{#snippet noticeAction()}
-				{#if view.notice?.action}
-					{@const run = view.notice.action}
-					<ActionButton variant="link" class="h-auto p-0" onclick={run.run}
-						>{run.label}</ActionButton
-					>
-				{/if}
-			{/snippet}
-		</NewDataNotice>
+		<!-- one reserved line, so a notice appearing never moves the rows (patterns §7), pulled half a gap
+		towards the cards and the tabs so the three read as one section -->
+		<div class="-my-2">
+			<NewDataNotice
+				stale={view.news.stale}
+				onrefresh={() => view.afterWrite()}
+				notice={view.notice}
+			>
+				{#snippet noticeAction()}
+					{#if view.notice?.action}
+						{@const run = view.notice.action}
+						<ActionButton variant="link" class="h-auto p-0" onclick={run.run}
+							>{run.label}</ActionButton
+						>
+					{/if}
+				{/snippet}
+			</NewDataNotice>
+		</div>
 
 		<!-- a clearance account has no runs, so no tabs: its statement follows the header -->
 		{#if account.kind !== 'clearance'}
