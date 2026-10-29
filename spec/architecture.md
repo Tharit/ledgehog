@@ -2268,11 +2268,14 @@ share an origin and the `SameSite=Lax` session cookie is sent.
 **Every response carries a strict Content-Security-Policy.** The bundle is the
 only code the page runs and the origin the only place it talks to:
 `default-src 'none'`; `script-src`, `style-src`, `img-src`, `font-src`,
-`connect-src` and `manifest-src` are `'self'`; `base-uri`, `form-action` and
-`frame-ancestors` are `'none'`; Trusted Types are required, Svelte's policy
-the only one allowed. SvelteKit boots the SPA with one inline script: the
-server hashes it from `index.html` at start and adds the hash to
-`script-src`, and refuses to start if the file holds any other inline script.
+`connect-src` and `manifest-src` are `'self'`, except that style attributes
+are allowed (`style-src-attr 'unsafe-inline'`): SvelteKit and Bits UI write
+fixed ones, and with scripts locked a style attribute can neither run code nor
+reach another host; `base-uri`, `form-action` and `frame-ancestors` are
+`'none'`; Trusted Types are required, Svelte's policy the only one allowed.
+SvelteKit boots the SPA with one inline script: the server hashes it from
+`index.html` at start and adds the hash to `script-src`, and refuses to start
+if the file holds no inline script or more than one.
 Alongside: `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`,
 `Cross-Origin-Opener-Policy: same-origin`. User-supplied content (a
 document's file, an e-mail's HTML) is never served as a page on the app's
