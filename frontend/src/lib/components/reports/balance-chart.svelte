@@ -38,7 +38,9 @@
 		Object.fromEntries(series.map((s) => [s.key, { label: s.label, color: s.color }]))
 	);
 	const money = (value: unknown) =>
-		typeof value === 'number' ? formatMoney(value, currency, { locale }) : 'unvalued';
+		typeof value === 'number'
+			? formatMoney(value, currency, { locale, showPlus: false })
+			: 'unvalued';
 </script>
 
 <Chart.Container {config} class={CHART_SIZE} data-slot="balance-chart">
