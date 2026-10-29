@@ -2265,6 +2265,19 @@ never shadowed. In development, the Vite dev server proxies `/api` to a locally 
 (`127.0.0.1:8000`, or the address in `LEDGEHOG_API`), so the page and the API
 share an origin and the `SameSite=Lax` session cookie is sent.
 
+**Every response carries a strict Content-Security-Policy.** The bundle is the
+only code the page runs and the origin the only place it talks to:
+`default-src 'none'`; `script-src`, `style-src`, `img-src`, `font-src`,
+`connect-src` and `manifest-src` are `'self'`; `base-uri`, `form-action` and
+`frame-ancestors` are `'none'`; Trusted Types are required, Svelte's policy
+the only one allowed. SvelteKit boots the SPA with one inline script: the
+server hashes it from `index.html` at start and adds the hash to
+`script-src`, and refuses to start if the file holds any other inline script.
+Alongside: `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`,
+`Cross-Origin-Opener-Policy: same-origin`. User-supplied content (a
+document's file, an e-mail's HTML) is never served as a page on the app's
+origin.
+
 **The frontend lives in `frontend/`**; its `src/` is the tree of §6.2, and the
 build's `frontend/build` is what the image carries (§10). Packages are managed
 with npm: the lockfile is committed, versions are saved exact and install
