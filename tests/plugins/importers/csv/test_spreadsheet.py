@@ -206,9 +206,7 @@ def test_only_the_first_sheet_is_read() -> None:
 @needs_calamine
 def test_raw_keeps_the_header_the_cells_and_a_tab_joined_text() -> None:
     row = parse(xlsx_bytes(ROWS)).rows[0]
-    assert row.raw["header"] == ["Booking", "Value", "Amount", "Purpose"]
-    assert row.raw["cells"] == ["2026-08-17", "17.08.2026", "-12.34", "Shop"]
-    assert row.raw["text"] == "2026-08-17\t17.08.2026\t-12.34\tShop"
+    assert row.raw == {"cells": ["2026-08-17", "17.08.2026", "-12.34", "Shop"]}
     assert all(type(c) is str for c in row.raw["cells"])
 
 

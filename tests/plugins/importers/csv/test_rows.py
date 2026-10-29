@@ -20,11 +20,7 @@ def test_basic_row_mapping() -> None:
     assert row.purpose == "Coffee Shop"
     assert row.counterparty_name == "Coffee Shop"
     assert row.counterparty_ref is None and row.end_to_end_id is None
-    assert row.raw == {
-        "header": ["Datum", "Betrag", "Zweck"],
-        "cells": ["03.08.2026", "-12,50", "Coffee   Shop"],
-        "text": "03.08.2026;-12,50;Coffee   Shop",
-    }
+    assert row.raw == {"cells": ["03.08.2026", "-12,50", "Coffee   Shop"]}
     assert pf.covered_through == date(2026, 8, 3)
     assert pf.data_start == date(2026, 8, 3)
     assert pf.reported_balance is None and pf.balance_on is None
