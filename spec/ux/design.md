@@ -175,8 +175,8 @@ the work panel are not cards.
 | Icon button | 32px; 24px in a row | row actions, close |
 
 **A count chip** — a number asking for attention, the Review item's
-(`views/review-queue.md`) — is a tag chip in `stone` (§3) with tabular
-numerals.
+(`views/review-queue.md`) — has a tag chip's shape in `text-muted`, its
+tabular numerals in `sidebar`, as if cut out of it.
 
 Variants by role: *primary* for the one action that finishes a surface;
 *outline* for Cancel and for secondary actions; *ghost* for header and popover

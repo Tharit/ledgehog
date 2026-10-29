@@ -480,7 +480,10 @@ POST   /api/importers/instances/{id}/upload    a CSV file → one run per
                                                does not link them. Ids of rows
                                                that already existed are real.
 GET    /api/importers/runs                     the import log; `account_id`,
-                                               `instance_id`, `status`, `limit`;
+                                               `instance_id`, `status`; paged
+                                               as the ledger list is, `limit`
+                                               (1 to 500, default 100) and
+                                               `offset`, with `total`;
                                                each run with its statistics,
                                                whether it is revertible and, for
                                                a failed run, whether trying

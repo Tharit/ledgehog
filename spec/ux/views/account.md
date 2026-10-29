@@ -117,7 +117,7 @@ transaction had one. The header's balance is the account's (`ux/patterns.md`
 **A snapshot, refetched after its own writes.** New data for this account, from
 any source, arrives as a passive notice, "New data — Refresh"
 (`ux/patterns.md` §7), whose refresh reloads the header, the facts and the
-statement together, so the balance and the newest row do not disagree. A write
+statement together, so the balance and the records do not disagree. A write
 made from this page —
 a duplicate marked or cleared, a run reverted, a record set or deleted, a row
 entered, edited or deleted — refetches the pages the statement holds instead
@@ -166,7 +166,7 @@ an entry again and is in review, with "Open in review".
 
 ## The Runs tab
 
-The account's import log (`spec.md` §5.6), every run, newest first. A run row shows the
+The account's import log (`spec.md` §5.6), every run, newest first, paged like the statement. A run row shows the
 instance, the start as an instant (`ux/patterns.md` §3), its status, "covered
 through *date*" and one line of its summary — inserted, inserted as
 duplicates, skipped — and opens the run summary (`ux/views/importers.md`). A
