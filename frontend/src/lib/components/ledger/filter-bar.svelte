@@ -32,7 +32,6 @@
 		searchEl = $bindable(null),
 		onchange,
 		ondown,
-		exportHref,
 		trailing
 	}: {
 		filter: EntryFilter;
@@ -46,8 +45,6 @@
 		onchange: (next: EntryFilter) => void;
 		/** `↓` in the text box: the keyboard moves to the list */
 		ondown?: () => void;
-		/** where "Export CSV" goes: the CSV of the current filter; the action is left out without it */
-		exportHref?: string;
 		/** the "Tag all N…" action, at the end of the bar */
 		trailing?: Snippet;
 	} = $props();
@@ -290,10 +287,6 @@
 	/>
 	{#if !isEmpty(filter)}
 		<Button variant="ghost" onclick={clearAll}>Clear</Button>
-	{/if}
-	{#if exportHref}
-		<!-- a plain link to the server's CSV of this filter; the router must leave it to the browser -->
-		<Button variant="secondary" href={exportHref} data-sveltekit-reload>Export CSV</Button>
 	{/if}
 	{@render trailing?.()}
 </div>

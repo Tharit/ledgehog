@@ -5,7 +5,9 @@
 	import { exportUrl } from '#lib/api/entries.js';
 	import NewDataNotice from '#lib/components/common/new-data-notice.svelte';
 	import PageHeader from '#lib/components/common/page-header.svelte';
+	import ExportDialog from '#lib/components/ledger/export-dialog.svelte';
 	import FilterBar from '#lib/components/ledger/filter-bar.svelte';
+	import LedgerActions from '#lib/components/ledger/ledger-actions.svelte';
 	import LedgerTable from '#lib/components/ledger/ledger-table.svelte';
 	import TagAll from '#lib/components/ledger/tag-all.svelte';
 	import {
@@ -70,6 +72,14 @@
 				: null)
 	);
 
+	// "Download" fetches the CSV of the filter as it is now. A plain navigation: the response is an
+	// attachment, so the page stays, and the client router never sees it.
+	let exporting = $state(false);
+	function download() {
+		exporting = false;
+		window.location.assign(exportUrl(ledger.filter));
+	}
+
 	function focusSearch() {
 		searchEl?.focus({ preventScroll: true });
 		searchEl?.select();
@@ -87,7 +97,13 @@
 		description="Every entry across your accounts. Narrow it with the filters, then tag the rows by key or all at once."
 		actionLabel="Add entry"
 		onaction={() => entryForm.openAdd({ filtered: ledger.filter.account_id })}
-	/>
+	>
+		{#snippet actions()}
+			<LedgerActions onexport={() => (exporting = true)} />
+		{/snippet}
+	</PageHeader>
+
+	<ExportDialog open={exporting} onclose={() => (exporting = false)} onconfirm={download} />
 
 	<FilterBar
 		filter={ledger.filter}
@@ -97,7 +113,6 @@
 		baseCurrency={ledger.baseCurrency}
 		bind:searchEl
 		ondown={() => table?.enterList()}
-		exportHref={exportUrl(ledger.filter)}
 		onchange={show}
 	>
 		{#snippet trailing()}
