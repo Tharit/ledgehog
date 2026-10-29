@@ -73,6 +73,12 @@ the header:
   listed, each a link to the documents list filtered by it — and by the
   charges decided as transfers to it.
 
+**Two tabs** (`design.md` §5) follow the header and its cards, each its own
+address: **Transactions**, `/accounts/[id]`, the statement; **Runs**,
+`/accounts/[id]/runs`, the import log. The new-data notice stands above them. A
+clearance account, which has no runs, has no tabs: its statement follows the
+header.
+
 "Set balance" is a form dialog with the date, defaulting to today, and the
 balance, its help text saying that the record counts everything dated on that
 day (`spec.md` §5.10). On a date that already holds a manual record it edits
@@ -80,15 +86,15 @@ that record.
 
 ## The statement
 
-The account's rows, newest first, paged like the ledger list and drawn in its
+The Transactions tab: the account's rows, newest first, paged like the ledger list and drawn in its
 density (`ux/patterns.md` §4.1, `design.md`). Two kinds of row:
 
-- **A source transaction**: booked date, counterparty, purpose, amount and the
-  balance after it, with its origin tag (`ux/patterns.md` §4.1). The
+- **A source transaction**: booked date, counterparty, purpose and amount,
+  with its origin tag; its Balance cell is empty (`ux/patterns.md` §4.1). The
   counterparty and purpose cells show what the row holds — a booking's as it
   wrote them (`spec.md` §5.8) — and stay empty where a row has none, as a row
-  entered by hand has no counterparty. A **duplicate** is dimmed, has no balance — it counts
-  toward none (`spec.md` I3) — and reads "duplicate of *date · amount*", which
+  entered by hand has no counterparty. A **duplicate** is dimmed — it counts
+  toward no balance (`spec.md` I3) — and reads "duplicate of *date · amount*", which
   opens the row it duplicates.
 - **A balance record**, a marker row above the rows of its own date, since a
   record is the state at the end of its day: its kind (reported or manual), its
@@ -103,12 +109,10 @@ density (`ux/patterns.md` §4.1, `design.md`). Two kinds of row:
   with the next record (`spec.md` §5.10). The reported records that localise
   the unexplained difference carry a quiet mark.
 
-**The balance column re-anchors at every record**: after a record, rows count
-on from its balance; before the anchor they are counted back from it; an
-account without a record counts from zero and its header says "balance not
-anchored". The newest row's balance is therefore the header's balance, whatever
-lies in between. The column is the server's, not computed by the client
-(`architecture.md` §4.1, which has the precise rule).
+**The Balance column holds the records' balances alone.** A balance is stated
+where a record states it; a running balance on every row would read as if each
+transaction had one. The header's balance is the account's (`ux/patterns.md`
+§4.4); an account without a record says "balance not anchored".
 
 **A snapshot, refetched after its own writes.** New data for this account, from
 any source, arrives as a passive notice, "New data — Refresh"
@@ -117,7 +121,7 @@ statement together, so the balance and the newest row do not disagree. A write
 made from this page —
 a duplicate marked or cleared, a run reverted, a record set or deleted, a row
 entered, edited or deleted — refetches the pages the statement holds instead
-of patching them, because it moves the balance of every row after it; the
+of patching them, because it moves the gap of every record after it; the
 cursor stays on the row it acted on. This is the statement's one exception to
 *patch, don't refetch*.
 
@@ -160,10 +164,9 @@ the preview names are consequences, stated as such; the page still shows none.
 have given it, and nothing confirmed changes. A notice says that the row has
 an entry again and is in review, with "Open in review".
 
-## Runs
+## The Runs tab
 
-The account's import log (`spec.md` §5.6), a section below the header, above
-the statement: the latest five runs, with "Show all". A run row shows the
+The account's import log (`spec.md` §5.6), every run, newest first. A run row shows the
 instance, the start as an instant (`ux/patterns.md` §3), its status, "covered
 through *date*" and one line of its summary — inserted, inserted as
 duplicates, skipped — and opens the run summary (`ux/views/importers.md`). A
@@ -180,6 +183,5 @@ and the partners unpaired, as counts per group with confirmed entries
 counted. The verb is "Revert
 run".
 
-**Open for the first month.** Whether runs belong above the statement, below
-it or on a tab; whether the records that localise a difference want a list of
+**Open for the first month.** Whether the records that localise a difference want a list of
 their own; whether the statement wants a date filter or a search.

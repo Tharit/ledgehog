@@ -22,7 +22,7 @@ with it (`spec.md` §5.7), and never appears.
 
 **The navigation counts what can be done.** The Review item shows, beside its
 label, how many units are pending review or need an account — not those
-waiting — muted, and nothing at zero (architecture §6.5). While the model is
+waiting — as a count chip (`design.md` §5), and nothing at zero (architecture §6.5). While the model is
 looking at entries, a small activity mark beside the count says so, and its
 tooltip how many.
 
@@ -50,8 +50,8 @@ section, with the count per section.
   decision.
 - **Needs an account** — unmatched legs whose counter-account does not exist
   (`spec.md` §5.7), grouped by the currency they need, with one add action
-  per currency group; this per-currency grouping is the one defined grouping
-  in the queue:
+  per currency group; this and the waiting section's grouping by account are
+  the queue's only defined groupings:
 
   ```
   3 transfers need an account in USD          [ Add account ]
@@ -64,8 +64,9 @@ section, with the count per section.
   request.
 - **Waiting** — entries expecting information that has not had its chance to
   arrive (`spec.md` §6): a partner leg, which cannot be confirmed until
-  paired. Waiting is a hint; the unit stays editable. A unit waiting for a
-  partner gives its reason in one line: "Waiting for <account>, synced
+  paired. Waiting is a hint; the unit stays editable. The section is grouped
+  by the account waited for, as the needs-an-account section is by currency:
+  each group's heading gives the reason once — "Waiting for <account>, synced
   through <date>", or "…, not synced yet" for an account never fetched.
 
 **Unpaired legs show their offers** (`spec.md` §5.7) — unpaired legs and

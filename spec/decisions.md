@@ -3929,3 +3929,13 @@ patterns §2; D235.
 - **The header carries the currency a column shares** (user, 2026-10-28): "Amount (EUR)", as the category report already had it, and the cells drop the code. Where a column mixes currencies, the header says "Amount" and every cell shows its code, as before. A list of one currency is then explicit without repeating the code on every row.
 - **Decided by the server's answer where it has one.** The ledger list decides by its `sums` (D235), so loading more never relabels it. A list without such a figure — the documents list — decides by the rows it holds, and loading more may relabel it (accepted, user 2026-10-28).
 - The rule preview and the rule example's candidate list showed no code even where currencies mixed; they follow §2 like every other list.
+
+## D237 Account page tabs, a statement without running balances, waiting grouped by account
+
+`ux/views/account.md`, `ux/views/review-queue.md`; design §5; architecture §4.1, §6.5; D235.
+
+- **The account page has two tabs, Transactions and Runs** (user, 2026-10-29). Both lists grow without bound; stacked, the runs pushed the statement down, and five of them with "Show all" was neither the whole log nor out of the way. The Runs tab is the whole log. A clearance account has no runs and no tabs. Rejected: *runs below the statement* (out of reach on a long statement).
+- **The statement shows no running balance** (user, 2026-10-29). A balance on every row read as if each transaction had one, and blurred the records, which are the account's only stated balances. The column stays for the records; the API drops the field, which nothing else read. The invariant it guarded is asserted on the records: Bₙ plus the movements after Dₙ is the account's balance. Rejected: *hiding it in the client only* (a computed field no client reads).
+- **Waiting is grouped by the account waited for** (user, 2026-10-29), one card per group as the needs-an-account section is by currency, the reason said once in the group's heading. Rejected: *the reason under every unit* (the same line repeated); *group rows inside one table* (a second way to draw a grouped list; to be revisited if one card per group does not read well).
+- **A row of figure cards is filled**: a figure keeps an Overview tile's width, the sources card takes the rest.
+- **The Review count is a count chip** (user, 2026-10-29), a tag chip in `stone`: the familiar mark of something new, where a bare muted number read as part of the label.

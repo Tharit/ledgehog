@@ -260,6 +260,10 @@ GET    /api/units/queue                        the units not confirmed, in
                                                entry id; units decided entirely
                                                by pass 0 and rules appear only
                                                while they wait for a partner;
+                                               the needs-an-account section
+                                               carries its currency groups and
+                                               the waiting section its account
+                                               groups, each with its count;
                                                a unit says what it needs or
                                                waits for, at most one of
                                                `needs_account {currency}`,
@@ -418,9 +422,8 @@ DELETE /api/ledger/balance-records/{id}        remove any record, reported ones
 GET    /api/ledger/accounts/{id}/statement     the account's source transactions
                                                and counting balance records in
                                                one list, newest first, with the
-                                               running balance and each record's
-                                               gap computed; paged like the
-                                               ledger list
+                                               each record's gap computed;
+                                               paged like the ledger list
 
   tags — direct writes outside the panel (spec §3.7)
 GET    /api/ledger/tags
@@ -881,14 +884,13 @@ over the whole account.
   `duplicate_of` (the row it duplicates — its id, `booked_on` and amount, so
   the row can name it — else null),
   `entry_id` (the lowest id among its entries, which opens its unit in the
-  review panel; null for a duplicate), `run_id` (null for a row not imported) and `balance`, the running
-  balance after it, null for a duplicate. It never carries `raw`: provenance is
+  review panel; null for a duplicate), and `run_id` (null for a row not imported). It never carries `raw`: provenance is
   `GET /api/ledger/sources/{id}`.
 - `record` — the record's id, `balance_on`, `record_kind` (`reported` or
   `manual`), `balance`, `anchor` (true for the account's earliest record),
   `rows_sum` and `difference`, both null for the anchor.
 
-**The running balance and the gap are one rule**, the formula of `spec.md`
+**The gap** is the formula of `spec.md`
 §3.10 applied to source transactions and records alone. Let the counting
 records be R₁…Rₙ in order of `(balance_on, id)`, with balances Bᵢ on dates Dᵢ,
 and let the *movements* be the account's source transactions that are not
@@ -905,18 +907,10 @@ formula.
   (`spec.md` §5.10). The function that derives the entries computes the
   difference, and the statement calls it rather than reading the entries, so
   the two agree by construction.
-- **Running balance** of a movement, after it, a day's movements taken by source
-  id: in an interval i > 1, Bᵢ₋₁ plus the movements of the interval up to and
-  including it; in the anchor's interval, B₁ minus the movements of that
-  interval after it, so what precedes the anchor is counted back from it; after
-  Dₙ, Bₙ plus the movements dated after Dₙ up to and including it. With no
-  counting record, the sum of the movements from zero up to and including it. A
-  duplicate has none.
-- **The newest balance is the ledger balance.** The opening and the differences
+- **The records add up to the ledger balance.** The opening and the differences
   telescope: the derived entries and movements dated up to Dₙ add up to Bₙ
-  (`spec.md` §3.10). I6 makes the account's balance the sum of its entries, so
-  the balance of the newest item — a movement's running balance, or Bₙ where the
-  newest item is Rₙ itself — equals it. A test asserts this for every account.
+  (`spec.md` §3.10), so Bₙ plus the movements dated after Dₙ is the account's
+  balance, the sum of its entries (I6). A test asserts this for every account.
 - **Edge cases.** Records sharing a date stand after that day's movements, by id,
   and a later one's interval holds no movement: its `difference` is the change
   in balance between the two. A record of a reverted run does not count
@@ -924,8 +918,8 @@ formula.
   An investment account follows the same formula: the difference is what the
   entry layer calls a valuation (`spec.md` §3.3), and an account kept by records
   alone has `record` items and none of the other kind. A closed account is
-  unchanged. No counting record means *balance not anchored*: running balances
-  count from zero and there are no `record` items.
+  unchanged. No counting record means *balance not anchored*: there are no
+  `record` items.
 
 **The account's facts gain `balance`**, the sum of its entries as money, next to
 `synced_through`, `last_data_on`, `unexplained_difference`, `anchored` and
@@ -2220,7 +2214,7 @@ the client patches rows in place rather than refetching.
 
 **The Review item of the navigation counts what can be done now**: the units
 pending review and those that need an account, not those waiting for a
-partner, which complete themselves. It is a quiet number, hidden at zero,
+partner, which complete themselves. It is a count chip, hidden at zero,
 read once when the app starts and again whenever the ledger's change value
 moves (§4.2), by its own read rather than on the change values: those stay a
 question of whether anything changed. The Overview's To review card shows the

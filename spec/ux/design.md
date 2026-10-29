@@ -152,7 +152,9 @@ charts, lists and tables. A card is one of two kinds:
   group.
 
 Facts about the page's subject (an account's balance, a document's total) are
-a row of figure cards under the header, as on the Overview. An empty or error
+a row of figure cards under the header, as on the Overview. The row is
+filled: a figure card keeps the width of an Overview tile, and a card that is
+not a figure (an account's sources) takes the rest of the row. An empty or error
 state is a padded card in place of the content. Surfaces inside a dialog or
 the work panel are not cards.
 
@@ -171,6 +173,10 @@ the work panel are not cards.
 | Button, input, select, filter chip | 32px | everywhere |
 | Compact button | 24px | inside popovers and table rows only |
 | Icon button | 32px; 24px in a row | row actions, close |
+
+**A count chip** — a number asking for attention, the Review item's
+(`views/review-queue.md`) — is a tag chip in `stone` (§3) with tabular
+numerals.
 
 Variants by role: *primary* for the one action that finishes a surface;
 *outline* for Cancel and for secondary actions; *ghost* for header and popover
