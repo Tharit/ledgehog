@@ -3945,3 +3945,12 @@ patterns §2; D235.
 `plugins/importers/csv.md` §3; `spec.md` §5.1.
 
 - **CSV `raw` keeps only the row's cells** (user, 2026-10-29). The header is the same on every row of a file, and the original line repeats the cells (for a spreadsheet it is the cells joined), so both are dropped; rows already stored keep their payload. Rejected: *the header on every row* (redundant); *name→value pairs* (a header may repeat a name).
+
+## D239 A strict Content-Security-Policy, its one inline script hashed at start
+
+architecture §6.7.
+
+- **The browser enforces what §6.7 already promised** (user, 2026-10-29): nothing from a third-party host, no inline code. The ledger's data is sensitive, and the email importer brings in content an attacker controls, so the policy is a second wall behind escaping. The bundle needed almost no change: Svelte sets dynamic styles through the CSSOM, which CSP does not restrict, and no code uses `eval` or `{@html}`.
+- **The server hashes SvelteKit's one inline bootstrap from `index.html` at start**, so the hash cannot drift from the build, and refuses to start on anything else. Rejected: *SvelteKit's `kit.csp`* (a `<meta>` policy cannot carry `frame-ancestors`, and the policy would live in two places); *moving the bootstrap into a separate file after the build* (breaks when SvelteKit changes its output); *`'strict-dynamic'`* (not needed with one origin, and it blocks the `modulepreload` links); *re-hashing when the file changes* (it only helps development, where the server is restarted after a rebuild, user 2026-10-29).
+- **Style attributes are allowed** (user, 2026-10-29): SvelteKit's route announcer and Bits UI write fixed ones, which a browser showed blocked. With scripts locked and `img-src 'self'`, a style attribute can neither run code nor reach another host. `<style>` elements stay `'self'`. Rejected: *`'unsafe-hashes'` with each library string's hash* (a scan of minified code for almost no gain); *CSS overriding the blocked styles* (the console fills with violations that hide real ones).
+- **Trusted Types are required**: free today, because Svelte already routes its template HTML through a policy. Any raw HTML sink added later, in our code or a dependency's, fails at once.
