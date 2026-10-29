@@ -170,14 +170,16 @@ describe('AppShell: the count of an item', () => {
 		});
 	}
 
-	it('shows a quiet number beside the label, muted and not a badge', () => {
+	it('shows the number beside the label as a count chip, in the neutral stone', () => {
 		withCount(12);
 
 		const count = screen
 			.getByRole('link', { name: /^Review/ })
 			.querySelector('[data-slot="nav-count"]');
 		expect(count).toHaveTextContent('12');
-		expect(count).toHaveClass('text-muted-foreground');
+		const chip = count!.querySelector('[data-slot="count-chip"]')!;
+		expect(chip).toHaveClass('h-5', 'rounded-sm', 'tabular-nums');
+		expect(chip).toHaveStyle({ '--chip-fg': 'var(--dim-stone)' });
 	});
 
 	it('shows nothing at zero, and nothing without a count', () => {

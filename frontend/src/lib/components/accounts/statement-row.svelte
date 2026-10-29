@@ -8,9 +8,9 @@
 	import { STATEMENT_ROW, STATEMENT_TEMPLATE } from './statement-columns.js';
 
 	// One source transaction of the account's statement: booked date, counterparty, purpose, origin
-	// tag, amount and the balance after it. The cells show what the row holds, empty where it holds
+	// tag and amount; its Balance cell is empty, a balance is stated where a record states it. The cells show what the row holds, empty where it holds
 	// none (a row entered by hand has no counterparty); the tag is the only mark of authorship. A
-	// duplicate is dimmed, has no balance and names the row it duplicates, which a click opens.
+	// duplicate is dimmed and names the row it duplicates, which a click opens.
 	// No action buttons (patterns §11.3): the row opens its detail.
 	let {
 		row,
@@ -84,15 +84,6 @@
 	<div role="gridcell" class="min-w-0">
 		<MoneyDisplay minor={row.amount.amount} currency={row.amount.currency} {locale} />
 	</div>
-	<div role="gridcell" class="min-w-0">
-		{#if row.balance}
-			<MoneyDisplay
-				minor={row.balance.amount}
-				currency={row.balance.currency}
-				{locale}
-				showPlus={false}
-				class="text-muted-foreground"
-			/>
-		{/if}
-	</div>
+	<!-- the Balance column holds the records' balances alone (ux/patterns.md §4.1) -->
+	<div role="gridcell" class="min-w-0"></div>
 </div>

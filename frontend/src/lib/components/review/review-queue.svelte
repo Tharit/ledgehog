@@ -55,12 +55,14 @@
 	import { markOf } from '#lib/units/patch.js';
 	import { registerUnitSource } from '#lib/units/sources.js';
 	import {
+		accountKey,
 		completableNotice,
+		currencyKey,
 		groupHeading,
 		unitsOfGroup,
 		waitingReason
 	} from '#lib/units/queue.js';
-	import type { QueueGroup, Unit } from '#lib/units/types.js';
+	import type { QueueAccountGroup, QueueGroup, Unit } from '#lib/units/types.js';
 	import { cn } from '#lib/utils.js';
 
 	// The review queue (views/review-queue.md): three sections (pending review, needs an account,
@@ -110,19 +112,43 @@
 	// the panel steps through this queue; the newest registration is the active one
 	onMount(() => registerUnitSource(store.source));
 
-	/** A section's blocks: the needs-an-account section is one block per currency group (the
-	 * server's order; the store keeps the units in that order too, so stepping matches), the others
-	 * are one block without a heading. */
-	type Block = { key: string; group: QueueGroup | null; units: Unit[] };
-	function blocksOf(kind: string, sectionUnits: Unit[], groups: QueueGroup[]): Block[] {
-		if (kind !== 'needs_account') return [{ key: kind, group: null, units: sectionUnits }];
-		return groups
-			.map((group) => ({
-				key: `group-${group.currency}`,
-				group,
-				units: unitsOfGroup(sectionUnits, group.currency)
-			}))
-			.filter((block) => block.units.length > 0);
+	/** A section's blocks: the needs-an-account section is one block per currency group and the
+	 * waiting section one per account waited for (the server's order; the store keeps the units in
+	 * that order too, so stepping matches), the other is one block without a heading. */
+	type Block = {
+		key: string;
+		group: QueueGroup | null;
+		waitingGroup: QueueAccountGroup | null;
+		units: Unit[];
+	};
+	function blocksOf(
+		kind: string,
+		sectionUnits: Unit[],
+		groups: QueueGroup[],
+		accountGroups: QueueAccountGroup[]
+	): Block[] {
+		const plain = { group: null, waitingGroup: null };
+		if (kind === 'needs_account') {
+			return groups
+				.map((group) => ({
+					key: `group-${group.currency}`,
+					group,
+					waitingGroup: null,
+					units: unitsOfGroup(sectionUnits, currencyKey(group.currency))
+				}))
+				.filter((block) => block.units.length > 0);
+		}
+		if (kind === 'waiting') {
+			return accountGroups
+				.map((waitingGroup) => ({
+					key: `account-${waitingGroup.account_id}`,
+					group: null,
+					waitingGroup,
+					units: unitsOfGroup(sectionUnits, accountKey(waitingGroup.account_id))
+				}))
+				.filter((block) => block.units.length > 0);
+		}
+		return [{ key: kind, ...plain, units: sectionUnits }];
 	}
 
 	function addAccount(currency: string, event: MouseEvent) {
@@ -254,10 +280,12 @@
 				{:else if section.units.length === 0}
 					<p class="text-sm text-muted-foreground" data-slot="section-empty">{info.empty}</p>
 				{:else}
-					{#each blocksOf(section.kind, section.units, section.groups) as block (block.key)}
+					{#each blocksOf(section.kind, section.units, section.groups, section.accountGroups) as block (block.key)}
 						{@const heading = block.group
 							? groupHeading(block.group.count, block.group.currency, locale)
-							: info.title}
+							: block.waitingGroup
+								? waitingReason(block.waitingGroup, lookups, locale)
+								: info.title}
 						{#if block.group}
 							{@const currency = block.group.currency}
 							<div class="mt-4 mb-2 flex flex-wrap items-center gap-3" data-group={currency}>
@@ -280,6 +308,13 @@
 									{/snippet}
 								</NoticeLine>
 							{/if}
+						{:else if block.waitingGroup}
+							<div
+								class="mt-4 mb-2 flex flex-wrap items-center gap-3"
+								data-group-account={block.waitingGroup.account_id}
+							>
+								<h3 class="text-sm font-medium">{heading}</h3>
+							</div>
 						{/if}
 						<Card variant="flush">
 							<div role="grid" aria-label={heading} class={LAST_ROW}>
@@ -328,17 +363,6 @@
 												ontags={() => openUnit(unit)}
 											/>
 										{/each}
-										{#if unit.waiting}
-											<div role="row" class="border-b border-border px-3 py-1">
-												<div
-													role="gridcell"
-													class="text-xs text-muted-foreground"
-													data-slot="waiting-reason"
-												>
-													{waitingReason(unit.waiting, lookups, locale)}
-												</div>
-											</div>
-										{/if}
 									</div>
 								{/each}
 							</div>

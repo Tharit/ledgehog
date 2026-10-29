@@ -1264,6 +1264,15 @@ export interface components {
             /** Type */
             type: string;
         };
+        /** AccountGroupOut */
+        AccountGroupOut: {
+            /** Account Id */
+            account_id: number;
+            /** Count */
+            count: number;
+            /** Synced Through */
+            synced_through: string | null;
+        };
         /** AccountMatchOut */
         AccountMatchOut: {
             /** Closed */
@@ -2564,6 +2573,8 @@ export interface components {
         };
         /** QueueSectionOut */
         QueueSectionOut: {
+            /** Account Groups */
+            account_groups: components["schemas"]["AccountGroupOut"][];
             /** Groups */
             groups: components["schemas"]["CurrencyGroupOut"][];
             /**
@@ -3088,7 +3099,6 @@ export interface components {
             amount: components["schemas"]["Money"];
             /** Authored */
             authored: boolean;
-            balance: components["schemas"]["Money"] | null;
             /**
              * Booked On
              * Format: date

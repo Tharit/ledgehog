@@ -8,6 +8,9 @@ import {
 	completableNotice,
 	groupHeading,
 	insertUnitEntries,
+	accountKey,
+	currencyKey,
+	groupKeys,
 	orderByGroups,
 	patchUnitEntries,
 	unitsOfGroup,
@@ -79,8 +82,22 @@ describe('orderByGroups', () => {
 			{ currency: 'EUR', count: 1 },
 			{ currency: 'USD', count: 2 }
 		];
-		expect(orderByGroups(units, groups).map((u) => u.anchor_entry_id)).toEqual([2, 1, 3, 4]);
-		expect(unitsOfGroup(units, 'USD').map((u) => u.anchor_entry_id)).toEqual([1, 3]);
+		const keys = groupKeys({ groups, accountGroups: [] });
+		expect(orderByGroups(units, keys).map((u) => u.anchor_entry_id)).toEqual([2, 1, 3, 4]);
+		expect(unitsOfGroup(units, currencyKey('USD')).map((u) => u.anchor_entry_id)).toEqual([1, 3]);
+	});
+
+	it('orders the waiting units by the account groups, the same way', () => {
+		const waiting = (id: number, account_id: number) =>
+			unit({ anchor_entry_id: id, waiting: { account_id, synced_through: null } });
+		const units = [waiting(1, 5), waiting(2, 3), waiting(3, 5), waiting(4, 9)];
+		const accountGroups = [
+			{ account_id: 3, synced_through: null, count: 1 },
+			{ account_id: 5, synced_through: null, count: 2 }
+		];
+		const keys = groupKeys({ groups: [], accountGroups });
+		expect(orderByGroups(units, keys).map((u) => u.anchor_entry_id)).toEqual([2, 1, 3, 4]);
+		expect(unitsOfGroup(units, accountKey(5)).map((u) => u.anchor_entry_id)).toEqual([1, 3]);
 	});
 });
 

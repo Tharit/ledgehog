@@ -28,6 +28,7 @@
 <script lang="ts">
 	import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle';
 	import LogOutIcon from '@lucide/svelte/icons/log-out';
+	import CountChip from './count-chip.svelte';
 	import IconButton from './icon-button.svelte';
 	import ModelActivityMark from './model-activity-mark.svelte';
 
@@ -74,9 +75,7 @@
 			{/if}
 		</span>
 		{#if item.count}
-			<span class="shrink-0 text-xs text-muted-foreground tabular-nums" data-slot="nav-count">
-				{item.count}
-			</span>
+			<span data-slot="nav-count" class="inline-flex"><CountChip count={item.count} /></span>
 		{/if}
 		{#if item.activity}
 			<ModelActivityMark label={item.activity} size={12} />

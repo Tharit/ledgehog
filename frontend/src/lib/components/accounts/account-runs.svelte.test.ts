@@ -29,7 +29,6 @@ function run(over: Partial<ImportRun> = {}): ImportRun {
 function runs(props = {}) {
 	const handlers = {
 		onrevert: vi.fn(),
-		onshowall: vi.fn(),
 		onretry: vi.fn(),
 		onrunagain: vi.fn()
 	};
@@ -167,12 +166,11 @@ describe('AccountRuns', () => {
 		expect(within(li(6)).getByText('Skipped by identity')).toBeInTheDocument();
 	});
 
-	it('shows the latest five with Show all for the rest', async () => {
+	it('shows every run, with no Show all', () => {
 		const many = Array.from({ length: 7 }, (_, i) => run({ id: 10 - i }));
-		const h = runs({ runs: many });
-		expect(document.querySelectorAll('[data-run-id]')).toHaveLength(5);
-		await fireEvent.click(screen.getByRole('button', { name: 'Show all' }));
-		expect(h.onshowall).toHaveBeenCalled();
+		runs({ runs: many });
+		expect(document.querySelectorAll('[data-run-id]')).toHaveLength(7);
+		expect(screen.queryByRole('button', { name: 'Show all' })).toBeNull();
 	});
 
 	it('says when no import has run', () => {

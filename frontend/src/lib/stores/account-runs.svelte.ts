@@ -12,13 +12,15 @@ import {
 } from '#lib/api/index.js';
 import { sourceLines, type SourceLine } from '#lib/accounts/sources.js';
 
+// the whole log: the most the server returns in one read
+const RUNS_LIMIT = 500;
+
 export type PartStatus = 'loading' | 'ready' | 'error';
 
 export class AccountRunsStore {
 	accountId = $state<number | null>(null);
 	runs = $state.raw<ImportRun[]>([]);
 	runsStatus = $state<PartStatus>('loading');
-	showAll = $state(false);
 	instances = $state.raw<ImporterInstance[]>([]);
 	catalog = $state.raw<CatalogEntry[]>([]);
 	sourcesStatus = $state<PartStatus>('loading');
@@ -31,7 +33,6 @@ export class AccountRunsStore {
 
 	async load(accountId: number): Promise<void> {
 		this.accountId = accountId;
-		this.showAll = false;
 		this.runs = [];
 		this.runsStatus = 'loading';
 		this.sourcesStatus = 'loading';
@@ -45,7 +46,7 @@ export class AccountRunsStore {
 		if (accountId === null) return;
 		const generation = this.#generation;
 		try {
-			const runs = await listRuns({ accountId, limit: 100 });
+			const runs = await listRuns({ accountId, limit: RUNS_LIMIT });
 			if (generation !== this.#generation) return;
 			this.runs = runs;
 			this.runsStatus = 'ready';
@@ -56,7 +57,7 @@ export class AccountRunsStore {
 
 	async #loadRuns(accountId: number, generation: number): Promise<void> {
 		try {
-			const runs = await listRuns({ accountId, limit: 100 });
+			const runs = await listRuns({ accountId, limit: RUNS_LIMIT });
 			if (generation !== this.#generation) return;
 			this.runs = runs;
 			this.runsStatus = 'ready';

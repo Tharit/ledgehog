@@ -19,8 +19,7 @@ const items = [
 		id: 3,
 		booked_on: '2026-10-10',
 		counterparty_name: 'REWE',
-		duplicate_of: { id: 2, booked_on: '2026-10-09', amount: eur(-4000) },
-		balance: null
+		duplicate_of: { id: 2, booked_on: '2026-10-09', amount: eur(-4000) }
 	}),
 	sourceRow({
 		id: 2,
@@ -61,12 +60,13 @@ describe('StatementTable headers', () => {
 });
 
 describe('StatementTable rows', () => {
-	it('shows a source row with its counterparty, purpose, amount and running balance', () => {
+	it('shows a source row with its counterparty, purpose and amount, and an empty Balance cell', () => {
 		table();
 		const r = within(row('source:4'));
 		expect(r.getByText('Netflix')).toBeInTheDocument();
 		expect(r.getByText('−12.99')).toBeInTheDocument();
-		expect(r.getByText('960.00')).toBeInTheDocument();
+		const cells = r.getAllByRole('gridcell');
+		expect(cells[cells.length - 1]).toBeEmptyDOMElement();
 	});
 
 	it('tags each row with its origin and shows nothing where an entered row has no counterparty', () => {
@@ -89,14 +89,13 @@ describe('StatementTable rows', () => {
 		expect(within(row('source:9')).getByText('Entered')).toBeInTheDocument();
 	});
 
-	it('dims a duplicate, gives it no balance and names the row it duplicates', () => {
+	it('dims a duplicate and names the row it duplicates', () => {
 		table();
 		const dup = row('source:3');
 		expect(dup).toHaveAttribute('data-duplicate');
 		expect(
 			within(dup).getByRole('button', { name: /duplicate of Oct 9, 2026 · −40\.00/ })
 		).toBeInTheDocument();
-		expect(within(dup).queryByText('960.00')).not.toBeInTheDocument();
 	});
 
 	it('opens the row a duplicate duplicates', async () => {

@@ -5,9 +5,6 @@ import type { ImportRun } from '#lib/api/index.js';
 // components name the type from here (they never import the API)
 export type { ImportRun };
 
-/** the runs shown before "Show all" */
-export const LATEST_RUNS = 5;
-
 export function statusLabel(status: ImportRun['status']): string {
 	switch (status) {
 		case 'ok':

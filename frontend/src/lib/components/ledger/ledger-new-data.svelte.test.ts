@@ -6,7 +6,7 @@ import { documentRow } from '#lib/documents/fixtures.js';
 import { account } from '#lib/ledger/fixtures.js';
 import { changes } from '#lib/stores/changes.svelte.js';
 import { lookupsStore } from '#lib/stores/lookups.svelte.js';
-import AccountPage from '../../../routes/accounts/[id]/+page.svelte';
+import AccountPage from '../accounts/account-route.harness.svelte';
 import DocumentsPage from '../../../routes/documents/+page.svelte';
 import LedgerPage from '../../../routes/ledger/+page.svelte';
 import ImportersPage from '../../../routes/settings/importers/+page.svelte';

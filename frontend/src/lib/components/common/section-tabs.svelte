@@ -1,10 +1,15 @@
 <script lang="ts" module>
-	export type SectionTab = { href: string; label: string };
+	export type SectionTab = {
+		href: string;
+		label: string;
+		/** current on its own path alone, not on the paths below it (a tab that is the parent of another) */
+		exact?: boolean;
+	};
 </script>
 
 <script lang="ts">
 	// The tab bar of an area (Settings, Reports): links, so each screen has its own address. The
-	// current tab is the one whose path the current path is, or is below. `query` is carried onto
+	// current tab is the one whose path the current path is, or is below (an `exact` tab: is). `query` is carried onto
 	// every link (the reports' shared controls stay when the tab changes).
 	let {
 		tabs,
@@ -24,7 +29,8 @@
 
 <nav aria-label={label} class="flex gap-1 border-b border-border">
 	{#each tabs as tab (tab.href)}
-		{@const active = currentPath === tab.href || currentPath.startsWith(tab.href + '/')}
+		{@const active =
+			currentPath === tab.href || (!tab.exact && currentPath.startsWith(tab.href + '/'))}
 		<a
 			href={`${tab.href}${suffix}`}
 			aria-current={active ? 'page' : undefined}

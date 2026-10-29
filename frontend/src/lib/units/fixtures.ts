@@ -49,7 +49,15 @@ export function section(
 	units: Unit[],
 	over: Partial<QueueSection> = {}
 ): QueueSection {
-	return { kind, total: units.length, units, groups: [], next_cursor: null, ...over };
+	return {
+		kind,
+		total: units.length,
+		units,
+		groups: [],
+		account_groups: [],
+		next_cursor: null,
+		...over
+	};
 }
 
 export function queue(

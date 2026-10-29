@@ -78,10 +78,7 @@ describe('StatementStore', () => {
 			const store = new StatementStore();
 			await store.load(7);
 			vi.mocked(getStatement).mockResolvedValueOnce({
-				items: [
-					recordRow({ id: 9 }),
-					sourceRow({ id: 3, balance: { amount: 1, currency: 'EUR' } })
-				],
+				items: [recordRow({ id: 9 }), sourceRow({ id: 3, amount: { amount: 1, currency: 'EUR' } })],
 				total: 2,
 				limit: 100,
 				offset: 0

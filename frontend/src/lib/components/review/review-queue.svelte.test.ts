@@ -537,20 +537,51 @@ describe('ReviewQueue: needs an account and waiting', () => {
 		expect(store.neighbour(3, 1)).toBe(1);
 	});
 
-	it('gives a waiting unit its reason in one line, and the unit stays a plain row', async () => {
-		await shown({
-			waiting: [
-				unit({ ...flow(1, 'Out'), waiting: { account_id: 2, synced_through: '2026-10-12' } }),
-				unit({ ...flow(2, 'Out 2'), waiting: { account_id: 2, synced_through: null } })
-			]
-		});
+	function waitingQueue(
+		units: ReturnType<typeof unit>[],
+		accountGroups: { account_id: number; synced_through: string | null; count: number }[]
+	) {
+		const base = queue({ waiting: units });
+		return {
+			...base,
+			sections: base.sections.map((s) =>
+				s.kind === 'waiting' ? { ...s, account_groups: accountGroups } : s
+			)
+		};
+	}
+	const waitingFor = (id: number, account_id: number, synced_through: string | null) =>
+		unit({ ...flow(id, `Out ${id}`), waiting: { account_id, synced_through } });
 
-		const reasons = [...document.querySelectorAll('[data-slot="waiting-reason"]')].map((n) =>
-			n.textContent!.trim()
+	it('draws the waiting section as one card per account, its reason once in the heading', async () => {
+		vi.mocked(getQueue).mockResolvedValue(
+			waitingQueue(
+				[waitingFor(1, 2, '2026-10-12'), waitingFor(2, 1, null), waitingFor(3, 2, '2026-10-12')],
+				[
+					{ account_id: 1, synced_through: null, count: 1 },
+					{ account_id: 2, synced_through: '2026-10-12', count: 2 }
+				]
+			)
 		);
-		expect(reasons).toHaveLength(2);
-		expect(reasons[0]).toMatch(/^Waiting for Savings, synced through .*12.*2026$/);
-		expect(reasons[1]).toBe('Waiting for Savings, not synced yet');
-		expect(screen.getByRole('heading', { name: /Waiting/ })).toHaveTextContent('(2)');
+		const store = new ReviewQueueStore();
+		await store.load();
+		render(ReviewQueue, { props: { store, lookups, locale: 'en' } });
+
+		const headings = [...document.querySelectorAll('[data-group-account] h3')].map((h) =>
+			h.textContent!.trim()
+		);
+		expect(headings).toHaveLength(2);
+		expect(headings[0]).toBe('Waiting for Giro, not synced yet');
+		expect(headings[1]).toMatch(/^Waiting for Savings, synced through .*12.*2026$/);
+		expect(document.querySelectorAll('[data-slot="waiting-reason"]')).toHaveLength(0);
+		const section = document.querySelector('[data-section="waiting"]')!;
+		expect(section.querySelectorAll('[role="grid"]')).toHaveLength(2);
+		expect(screen.queryByRole('button', { name: 'Add account' })).toBeNull(); // no action on a waiting group
+		expect(screen.getByRole('heading', { name: /Waiting \(/ })).toHaveTextContent('(3)');
+		// the units step in the order drawn: the account group first, then the next
+		expect(store.units.map((u) => u.anchor_entry_id)).toEqual([2, 1, 3]);
+		const drawn = [...section.querySelectorAll('[data-unit]')].map((n) =>
+			Number(n.getAttribute('data-unit'))
+		);
+		expect(drawn).toEqual([2, 1, 3]);
 	});
 });

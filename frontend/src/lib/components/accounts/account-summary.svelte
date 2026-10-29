@@ -53,7 +53,7 @@
 		{/snippet}
 	</FigureCard>
 
-	<Card element="section" class="flex min-w-0 flex-col gap-3 xl:col-span-2" aria-label="Sources">
+	<Card element="section" class="flex min-w-0 flex-col gap-3 xl:col-span-3" aria-label="Sources">
 		<h2 class="text-sm font-semibold">Sources</h2>
 		<div class="flex flex-col gap-1 text-sm" data-slot="sources">
 			{#if account.kind === 'clearance'}

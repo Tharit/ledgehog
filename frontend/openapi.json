@@ -78,6 +78,37 @@
         "title": "AccountDerivedOut",
         "type": "object"
       },
+      "AccountGroupOut": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "integer"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "synced_through": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Synced Through"
+          }
+        },
+        "required": [
+          "account_id",
+          "synced_through",
+          "count"
+        ],
+        "title": "AccountGroupOut",
+        "type": "object"
+      },
       "AccountMatchOut": {
         "properties": {
           "closed": {
@@ -4428,6 +4459,13 @@
       },
       "QueueSectionOut": {
         "properties": {
+          "account_groups": {
+            "items": {
+              "$ref": "#/components/schemas/AccountGroupOut"
+            },
+            "title": "Account Groups",
+            "type": "array"
+          },
           "groups": {
             "items": {
               "$ref": "#/components/schemas/CurrencyGroupOut"
@@ -4472,7 +4510,8 @@
           "total",
           "units",
           "next_cursor",
-          "groups"
+          "groups",
+          "account_groups"
         ],
         "title": "QueueSectionOut",
         "type": "object"
@@ -6135,16 +6174,6 @@
             "title": "Authored",
             "type": "boolean"
           },
-          "balance": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Money"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "booked_on": {
             "format": "date",
             "title": "Booked On",
@@ -6258,8 +6287,7 @@
           "booking",
           "duplicate_of",
           "entry_id",
-          "run_id",
-          "balance"
+          "run_id"
         ],
         "title": "StatementSourceOut",
         "type": "object"

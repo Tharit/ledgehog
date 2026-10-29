@@ -5,19 +5,19 @@
 	import { accountIdOf } from '#lib/accounts/address.js';
 	import { RowAddress } from '#lib/accounts/row-address.svelte.js';
 	import { AccountDialogs } from '#lib/accounts/page-dialogs.svelte.js';
+	import { AccountPageContext, provideAccountPage } from '#lib/accounts/page-context.svelte.js';
 	import { RowDetail } from '#lib/accounts/row-detail.svelte.js';
 	import { ACCOUNT_KINDS } from '#lib/accounts/kinds.js';
 	import AccountActions from '#lib/components/accounts/account-actions.svelte';
 	import AccountPageDialogs from '#lib/components/accounts/account-page-dialogs.svelte';
-	import AccountRuns from '#lib/components/accounts/account-runs.svelte';
 	import AccountSummary from '#lib/components/accounts/account-summary.svelte';
-	import StatementTable from '#lib/components/accounts/statement-table.svelte';
 	import ErrorState from '#lib/components/common/error-state.svelte';
 	import Notice from '#lib/components/common/notice.svelte';
 	import NewDataNotice from '#lib/components/common/new-data-notice.svelte';
 	import ActionButton from '#lib/components/common/action-button.svelte';
 	import DimensionIcon from '#lib/components/common/dimension-icon.svelte';
 	import PageHeader from '#lib/components/common/page-header.svelte';
+	import SectionTabs, { type SectionTab } from '#lib/components/common/section-tabs.svelte';
 	import { entryForm } from '#lib/entry-form/controller.svelte.js';
 	import { formatDate } from '#lib/format/index.js';
 	import { AccountPageStore } from '#lib/stores/account-page.svelte.js';
@@ -27,6 +27,12 @@
 	import { session } from '#lib/stores/session.svelte.js';
 	import { entryDeps } from '#lib/stores/sync.svelte.js';
 	import { isBusyRefusal, refusalText, startOrReview } from '#lib/sync/entry.js';
+	import type { Snippet } from 'svelte';
+
+	// The account page (ux/views/account.md): the header, its cards and the new-data notice, then
+	// the two tabs, Transactions and Runs, each its own address. The layout owns the page's state and
+	// its dialogs, so a tab change reads nothing again; the upload page (`../upload`) is outside it.
+	let { children }: { children: Snippet } = $props();
 
 	const view = new AccountPageStore();
 	const runs = new AccountRunsStore();
@@ -53,7 +59,6 @@
 	// statement the row is on, and so does a link from a run summary. Shallow routing does not move
 	// `page.url`, so the real address is read (as the unit panel does) after our own changes, after
 	// Back and Forward, and after a navigation.
-	let table = $state<ReturnType<typeof StatementTable> | null>(null);
 	const address = new RowAddress({
 		url: () => new URL(location.href),
 		push: (url) => pushState(url, {}),
@@ -108,6 +113,16 @@
 		);
 	}
 
+	const context = new AccountPageContext(
+		view,
+		runs,
+		dialogs,
+		openDetail,
+		fetchHere,
+		() => accountId
+	);
+	provideAccountPage(context);
+
 	onDestroy(() => {
 		view.dispose();
 		runs.dispose();
@@ -129,6 +144,11 @@
 					.join(' · ')
 			: undefined
 	);
+	// the Transactions tab is the account's own address, so it is current there alone
+	const tabs = $derived<readonly SectionTab[]>([
+		{ href: `/accounts/${accountId}`, label: 'Transactions', exact: true },
+		{ href: `/accounts/${accountId}/runs`, label: 'Runs' }
+	]);
 </script>
 
 <svelte:head>
@@ -199,37 +219,12 @@
 			{/snippet}
 		</NewDataNotice>
 
-		<AccountRuns
-			runs={runs.runs}
-			status={runs.runsStatus}
-			instanceLabel={runs.instanceLabel}
-			importerKind={runs.importerKind}
-			showAll={runs.showAll}
-			currency={account.currency}
-			locale={view.locale}
-			timeZone={session.config?.timezone ?? 'UTC'}
-			onshowall={() => (runs.showAll = true)}
-			onrevert={(run) => dialogs.open('revert', { runId: run.id })}
-			onretry={() => accountId !== null && runs.load(accountId)}
-			onrunagain={(run) => run.instance_id !== null && fetchHere(run.instance_id)}
-		/>
+		<!-- a clearance account has no runs, so no tabs: its statement follows the header -->
+		{#if account.kind !== 'clearance'}
+			<SectionTabs {tabs} label="Account sections" currentPath={page.url.pathname} />
+		{/if}
 
-		<StatementTable
-			bind:this={table}
-			items={view.statement.items}
-			total={view.statement.total}
-			status={view.statement.status}
-			{account}
-			loadingMore={view.statement.loadingMore}
-			error={view.statement.error}
-			moreError={view.statement.moreError}
-			locale={view.locale}
-			onopen={openDetail}
-			onedit={(record) => dialogs.open('balance', { record })}
-			ondelete={(record) => dialogs.open('record-delete', { record })}
-			onloadmore={() => view.statement.loadMore()}
-			onretry={() => accountId !== null && view.statement.load(accountId)}
-		/>
+		{@render children()}
 	{/if}
 </div>
 
@@ -238,7 +233,7 @@
 		onclosefocus={(event) => {
 			// a click on a row focused the list; giving focus back must not scroll it into view
 			event.preventDefault();
-			table?.focusList();
+			context.focusStatement?.();
 		}}
 		{view}
 		{runs}

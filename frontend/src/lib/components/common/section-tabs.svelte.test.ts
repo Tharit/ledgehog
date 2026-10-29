@@ -34,4 +34,22 @@ describe('SectionTabs', () => {
 			'/reports/balances?from=2026-01-01&to=2026-02-01&tag_id=4'
 		);
 	});
+
+	it('marks an exact tab current on its own path alone', () => {
+		const tabs = [
+			{ href: '/accounts/5', label: 'Transactions', exact: true },
+			{ href: '/accounts/5/runs', label: 'Runs' }
+		];
+		const { unmount } = render(SectionTabs, {
+			props: { tabs, label: 'Account', currentPath: '/accounts/5/runs' }
+		});
+		expect(screen.getByRole('link', { name: 'Runs' })).toHaveAttribute('aria-current', 'page');
+		expect(screen.getByRole('link', { name: 'Transactions' })).not.toHaveAttribute('aria-current');
+		unmount();
+		render(SectionTabs, { props: { tabs, label: 'Account', currentPath: '/accounts/5' } });
+		expect(screen.getByRole('link', { name: 'Transactions' })).toHaveAttribute(
+			'aria-current',
+			'page'
+		);
+	});
 });

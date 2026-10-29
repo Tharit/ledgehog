@@ -4,7 +4,7 @@ import type { Entry } from '#lib/types/domain.js';
 import { insertCreated } from './patch.js';
 import { formatCount, formatDate } from '#lib/format/index.js';
 import type { Lookups } from '#lib/ledger/lookups.js';
-import type { Affected, QueueGroup, Unit } from './types.js';
+import type { Affected, QueueAccountGroup, QueueGroup, Unit } from './types.js';
 
 /** The units held followed by a further page, leaving out units that are already held. */
 export function appendUnits(held: readonly Unit[], more: readonly Unit[]): Unit[] {
@@ -45,28 +45,52 @@ export function completableNotice(count: number, locale = 'en'): string {
 		: `${formatCount(count, locale)} units can now be completed: refresh`;
 }
 
+/** The identity of a group of units: a currency (needs an account) or an account (waiting). */
+export type GroupKey = string;
+export const currencyKey = (currency: string): GroupKey => `currency:${currency}`;
+export const accountKey = (accountId: number): GroupKey => `account:${accountId}`;
+
+/** The group a unit is drawn in, or null for a unit in a section without groups. */
+export function groupKeyOf(unit: Unit): GroupKey | null {
+	if (unit.needs_account) return currencyKey(unit.needs_account.currency);
+	if (unit.waiting) return accountKey(unit.waiting.account_id);
+	return null;
+}
+
 /**
- * The units in the order of the server's currency groups (stable within a group, so by date as
- * given). The page shows the groups in this order, and stepping goes through the units in it:
- * what is drawn is what `[` and `]` walk. Units without a group follow, in the order given.
+ * The units in the order of the server's groups (currency groups, or account groups of the waiting
+ * section; stable within a group, so by date as given). The page shows the groups in this order,
+ * and stepping goes through the units in it: what is drawn is what `[` and `]` walk. Units without
+ * a group follow, in the order given.
  */
-export function orderByGroups(units: readonly Unit[], groups: readonly QueueGroup[]): Unit[] {
-	const rank = new Map(groups.map((g, i) => [g.currency, i]));
-	const of = (u: Unit) => rank.get(u.needs_account?.currency ?? '') ?? groups.length;
+export function orderByGroups(units: readonly Unit[], keys: readonly GroupKey[]): Unit[] {
+	const rank = new Map(keys.map((key, i) => [key, i]));
+	const of = (u: Unit) => rank.get(groupKeyOf(u) ?? '') ?? keys.length;
 	return units
 		.map((unit, at) => ({ unit, at }))
 		.sort((a, b) => of(a.unit) - of(b.unit) || a.at - b.at)
 		.map((x) => x.unit);
 }
 
-/** A group of units under one heading: the groups present among `units`, in the groups' order. */
-export function unitsOfGroup(units: readonly Unit[], currency: string): Unit[] {
-	return units.filter((u) => u.needs_account?.currency === currency);
+/** The keys of a section's groups, in the server's order. */
+export function groupKeys(section: {
+	groups: readonly QueueGroup[];
+	accountGroups: readonly QueueAccountGroup[];
+}): GroupKey[] {
+	return [
+		...section.groups.map((g) => currencyKey(g.currency)),
+		...section.accountGroups.map((g) => accountKey(g.account_id))
+	];
+}
+
+/** A group of units under one heading: the units of `key` among `units`, in the order given. */
+export function unitsOfGroup(units: readonly Unit[], key: GroupKey): Unit[] {
+	return units.filter((u) => groupKeyOf(u) === key);
 }
 
 /** "Waiting for Savings, synced through 12 Oct 2026" / "…, not synced yet". */
 export function waitingReason(
-	waiting: NonNullable<Unit['waiting']>,
+	waiting: { account_id: number; synced_through: string | null },
 	lookups: Lookups,
 	locale = 'en'
 ): string {

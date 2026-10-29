@@ -1,6 +1,6 @@
 <script lang="ts">
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
-	import { LATEST_RUNS, statusLabel, summaryLine, type ImportRun } from '#lib/accounts/runs.js';
+	import { statusLabel, summaryLine, type ImportRun } from '#lib/accounts/runs.js';
 	import ActionButton from '#lib/components/common/action-button.svelte';
 	import Card from '#lib/components/common/card.svelte';
 	import Notice from '#lib/components/common/notice.svelte';
@@ -9,8 +9,7 @@
 	import { formatDate, formatInstant } from '#lib/format/index.js';
 	import { cn } from '#lib/utils.js';
 
-	// The account's import log (ux/views/account.md "Runs"): the latest five runs, "Show all" for the
-	// rest. A row shows the instance, the start as an instant, its status, "covered through" and one
+	// The account's import log (ux/views/account.md "Runs"): every run, newest first. A row shows the instance, the start as an instant, its status, "covered through" and one
 	// line of its summary, and opens the run summary in place. A reverted run is marked; a failed one
 	// shows its error, then what to do next (`run-next-step`). "Revert…" is offered on the one run the server marks revertible; an earlier
 	// successful run says that later runs are reverted first.
@@ -19,11 +18,9 @@
 		status,
 		instanceLabel,
 		importerKind = () => null,
-		showAll = false,
 		currency,
 		locale = 'en',
 		timeZone = 'UTC',
-		onshowall,
 		onrevert,
 		onretry,
 		onrunagain
@@ -34,11 +31,9 @@
 		instanceLabel: (run: ImportRun) => string;
 		/** what the importer a run came from is (the catalog says): it decides the next step of a failed run */
 		importerKind?: (run: ImportRun) => 'file' | 'fetch' | null;
-		showAll?: boolean;
 		currency: string;
 		locale?: string;
 		timeZone?: string;
-		onshowall?: () => void;
 		onrevert?: (run: ImportRun) => void;
 		onretry?: () => void;
 		/** "Run again" on a failed fetch run: a one-item sync of its instance and account */
@@ -46,11 +41,9 @@
 	} = $props();
 
 	let openId = $state<number | null>(null);
-	const shown = $derived(showAll ? runs : runs.slice(0, LATEST_RUNS));
 </script>
 
 <section class="flex flex-col gap-1" aria-label="Runs" data-slot="account-runs">
-	<h2 class="text-base font-semibold">Runs</h2>
 	{#if status === 'loading'}
 		<p class="text-sm text-muted-foreground">Loading the runs…</p>
 	{:else if status === 'error'}
@@ -66,7 +59,7 @@
 		</p>
 	{:else}
 		<Card variant="flush" element="ul">
-			{#each shown as run (run.id)}
+			{#each runs as run (run.id)}
 				{@const open = openId === run.id}
 				<li
 					class="border-b border-border last:border-b-0"
@@ -137,10 +130,5 @@
 				</li>
 			{/each}
 		</Card>
-		{#if !showAll && runs.length > LATEST_RUNS}
-			<div>
-				<ActionButton variant="link" class="h-auto p-0" onclick={onshowall}>Show all</ActionButton>
-			</div>
-		{/if}
 	{/if}
 </section>

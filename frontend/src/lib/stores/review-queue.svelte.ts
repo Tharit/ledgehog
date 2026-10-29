@@ -12,6 +12,7 @@ import type { StepDirection, UnitSource } from '#lib/units/sources.js';
 import {
 	SECTION_ORDER,
 	type Affected,
+	type QueueAccountGroup,
 	type QueueGroup,
 	type SectionKind,
 	type Unit
@@ -20,6 +21,7 @@ import { unitReadsRules } from '#lib/units/panel.svelte.js';
 import {
 	appendUnits,
 	insertUnitEntries,
+	groupKeys,
 	orderByGroups,
 	patchUnitEntries
 } from '#lib/units/queue.js';
@@ -33,6 +35,8 @@ export type SectionState = {
 	units: Unit[];
 	/** needs-an-account only: the units per currency over the whole section, by currency code */
 	groups: QueueGroup[];
+	/** waiting only: the units per account waited for, over the whole section, in the server's order */
+	accountGroups: QueueAccountGroup[];
 	nextCursor: string | null;
 	loadingMore: boolean;
 	moreError: ApiError | null;
@@ -50,6 +54,7 @@ function emptySections(): SectionState[] {
 		total: 0,
 		units: [],
 		groups: [],
+		accountGroups: [],
 		nextCursor: null,
 		loadingMore: false,
 		moreError: null
@@ -143,11 +148,13 @@ export class ReviewQueueStore {
 			this.sections = SECTION_ORDER.map((kind) => {
 				const found = queue.sections.find((s) => s.kind === kind);
 				const groups = found?.groups ?? [];
+				const accountGroups = found?.account_groups ?? [];
 				return {
 					kind,
 					total: found?.total ?? 0,
-					units: orderByGroups(found?.units ?? [], groups),
+					units: orderByGroups(found?.units ?? [], groupKeys({ groups, accountGroups })),
 					groups,
+					accountGroups,
 					nextCursor: found?.next_cursor ?? null,
 					loadingMore: false,
 					moreError: null
@@ -179,12 +186,16 @@ export class ReviewQueueStore {
 			// the section as it is NOW (an action may have patched its rows meanwhile)
 			const now = this.sections.find((s) => s.kind === kind) ?? section;
 			this.#update(kind, {
-				// the units of a later page join their currency group
+				// the units of a later page join their group
 				units: orderByGroups(
 					appendUnits(now.units, found?.units ?? []),
-					found?.groups ?? now.groups
+					groupKeys({
+						groups: found?.groups ?? now.groups,
+						accountGroups: found?.account_groups ?? now.accountGroups
+					})
 				),
 				groups: found?.groups ?? now.groups,
+				accountGroups: found?.account_groups ?? now.accountGroups,
 				total: found?.total ?? section.total,
 				nextCursor: found?.next_cursor ?? null,
 				loadingMore: false

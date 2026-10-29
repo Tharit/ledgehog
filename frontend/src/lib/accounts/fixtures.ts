@@ -16,7 +16,6 @@ export function sourceRow(over: Partial<StatementSource> = {}): StatementSource 
 		duplicate_of: null,
 		entry_id: 10,
 		run_id: 5,
-		balance: eur(96000),
 		booking: null,
 		origin: 'import',
 		...over

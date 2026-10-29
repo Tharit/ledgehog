@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { signedIn } from '#lib/entry-form/fixtures.js';
 import { account } from '#lib/ledger/fixtures.js';
 import { lookupsStore } from '#lib/stores/lookups.svelte.js';
-import AccountPage from '../../../routes/accounts/[id]/+page.svelte';
+import AccountPage from './account-route.harness.svelte';
 
 // components never import the API, not even in tests: the mocks come from here
 const api = vi.hoisted(() => ({
