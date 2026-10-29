@@ -11,7 +11,6 @@
 	import ListChecksIcon from '@lucide/svelte/icons/list-checks';
 	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
 	import SettingsIcon from '@lucide/svelte/icons/settings';
-	import favicon from '#lib/assets/favicon.svg';
 	import AppShell, { type NavItem } from '#lib/components/common/app-shell.svelte';
 	import AccountDialogs from '#lib/components/accounts/account-dialogs.svelte';
 	import ErrorState from '#lib/components/common/error-state.svelte';
@@ -119,10 +118,6 @@
 		if (session.status === 'authenticated' && onLogin) void goto('/');
 	});
 </script>
-
-<svelte:head>
-	<link rel="icon" href={favicon} />
-</svelte:head>
 
 {#if session.status === 'authenticated' && session.user && !onLogin}
 	<AppShell

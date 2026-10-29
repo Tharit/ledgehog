@@ -42,6 +42,8 @@ def test_every_response_carries_the_policy_and_its_companions(served):
         policy = response.headers["content-security-policy"]
         assert f"script-src 'self' {HASH};" in policy
         assert policy.startswith("default-src 'none'; ")
+        assert "style-src 'self'; style-src-attr 'unsafe-inline';" in policy
+        assert "style-src 'self' 'unsafe-inline'" not in policy
         assert policy.endswith("require-trusted-types-for 'script'; trusted-types svelte-trusted-html")
         assert response.headers["x-content-type-options"] == "nosniff"
         assert response.headers["referrer-policy"] == "no-referrer"

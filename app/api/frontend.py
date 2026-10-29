@@ -1,8 +1,8 @@
 """Serving the SPA bundle and the security headers every response carries (architecture §6.7).
 
 `Frontend.load` reads `index.html` once, at app creation: it finds the one inline script SvelteKit
-boots the SPA with and hashes it for the Content-Security-Policy; any other inline script refuses the
-start. The bundle is optional in development: without an `index.html` the app serves the API only.
+boots the SPA with and hashes it for the Content-Security-Policy; no inline script, or more than one,
+refuses the start. The bundle is optional in development: without an `index.html` the app serves the API only.
 """
 
 from __future__ import annotations
@@ -23,7 +23,8 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 log = logging.getLogger(__name__)
 
 _POLICY = (
-    "default-src 'none'; script-src {script_src}; style-src 'self'; img-src 'self'; font-src 'self'; "
+    "default-src 'none'; script-src {script_src}; style-src 'self'; "
+    "style-src-attr 'unsafe-inline'; img-src 'self'; font-src 'self'; "
     "connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; "
     "frame-ancestors 'none'; require-trusted-types-for 'script'; trusted-types svelte-trusted-html"
 )
