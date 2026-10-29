@@ -211,3 +211,28 @@ def test_the_count_is_pending_review_and_needs_account_never_waiting(
     assert (split.pending_review, split.needs_account, split.count) == (1, 1, 2)
     queue = _sections(review_queue(db_conn))
     assert actionable_count(db_conn) == len(queue["pending_review"]) + len(queue["needs_account"])
+
+
+def test_waiting_groups_count_units_per_account_in_the_accounts_order_over_the_whole_section(
+    db_conn: Connection, bench: Bench, make_account: Any
+) -> None:
+    late = make_account(db_conn, name="Zeta")
+    early = make_account(db_conn, name="Alpha")
+    db_conn.execute(text("UPDATE account SET sort_order = 1 WHERE id = :a"), {"a": late})
+    db_conn.execute(text("UPDATE account SET sort_order = 2 WHERE id = :a"), {"a": early})
+    _sync(db_conn, late, date(2026, 3, 1))
+    _sync(db_conn, early, None)
+    for i, account in enumerate([early, late, early, early, late]):
+        _wait(db_conn, _leg(bench, instructed=None, counter_account_id=account, on=date(2026, 1, 1 + i)))
+    q = review_queue(db_conn, limit=2)
+    waiting = q.sections[2]
+    assert len(waiting.units) == 2 and waiting.total == 5 and waiting.next_cursor
+    # sort order first (not name or id), whatever the page
+    assert [(g.account_id, g.synced_through, g.count) for g in waiting.account_groups] == [
+        (late, date(2026, 3, 1), 2),
+        (early, None, 3),
+    ]
+    assert q.sections[0].account_groups == () and q.sections[1].account_groups == ()
+    assert waiting.groups == ()
+    later = review_queue(db_conn, section="waiting", limit=2, cursor=waiting.next_cursor)
+    assert [(g.account_id, g.count) for g in later.sections[0].account_groups] == [(late, 2), (early, 3)]

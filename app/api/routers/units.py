@@ -71,6 +71,12 @@ class CurrencyGroupOut(BaseModel):
     count: int  # units (not legs) that need an account in the currency, over the whole section
 
 
+class AccountGroupOut(BaseModel):
+    account_id: int
+    synced_through: date | None  # how far that account has been fetched; null = never
+    count: int  # units (not legs) waiting for the account, over the whole section
+
+
 class UnitBookingOut(BaseModel):
     """The unit holds a booking (spec §5.8): the kind of its source. A document's booking is reviewed like
     any other; a transfer booking is the counter-leg of a charge on a clearance account, in the unit of its
@@ -120,6 +126,8 @@ class QueueSectionOut(BaseModel):
     units: list[UnitOut]  # by the anchor's booked_on, then anchor id
     next_cursor: str | None
     groups: list[CurrencyGroupOut]  # `needs_account` only: units per required currency, by code; else []
+    # `waiting` only: units per account waited for, in the accounts' own order; else []
+    account_groups: list[AccountGroupOut]
 
     @staticmethod
     def of(section: QueueSection, model_pending: frozenset[int] = frozenset()) -> QueueSectionOut:
@@ -129,6 +137,10 @@ class QueueSectionOut(BaseModel):
             units=[UnitOut.of(u, model_pending) for u in section.units],
             next_cursor=section.next_cursor,
             groups=[CurrencyGroupOut(currency=g.currency, count=g.count) for g in section.groups],
+            account_groups=[
+                AccountGroupOut(account_id=g.account_id, synced_through=g.synced_through, count=g.count)
+                for g in section.account_groups
+            ],
         )
 
 

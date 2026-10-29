@@ -37,7 +37,7 @@ def test_an_empty_account(anna: TestClient, api_engine: Engine) -> None:
     assert anna.get(url(aid)).json() == {"items": [], "total": 0, "limit": 100, "offset": 0}
 
 
-def test_items_of_both_kinds_with_money_and_the_running_balance(anna: TestClient, api_engine: Engine) -> None:
+def test_items_of_both_kinds_with_money(anna: TestClient, api_engine: Engine) -> None:
     aid = seed_account(api_engine)
     record = seed_difference(
         api_engine, aid
@@ -57,7 +57,7 @@ def test_items_of_both_kinds_with_money_and_the_running_balance(anna: TestClient
     }
     assert source["kind"] == "source" and source["booked_on"] == "2026-02-10"
     assert source["amount"] == {"amount": -1000, "currency": "EUR"}
-    assert source["balance"] == {"amount": 9000, "currency": "EUR"}
+    assert "balance" not in source
     assert (source["authored"], source["duplicate_of"], source["run_id"] is not None) == (False, None, True)
     assert source["entry_id"] is not None
     assert "raw" not in source
@@ -80,9 +80,6 @@ def test_paging_and_the_amount_filter(anna: TestClient, api_engine: Engine) -> N
     hits = anna.get(url(aid, amount=-5)).json()
     assert hits["total"] == 2 and [i["id"] for i in hits["items"]] == [ids[2], ids[0]]
     assert all(i["kind"] == "source" and i["duplicate_of"] is None for i in hits["items"])
-    assert (
-        hits["items"][0]["balance"]["amount"] == 1000 - 5 - 7 - 5
-    )  # the whole account's balance, not the filter's
 
 
 @pytest.mark.parametrize("query", ["limit=0", "limit=501", "offset=-1", "amount=x"])

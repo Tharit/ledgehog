@@ -119,7 +119,8 @@ def test_the_queue_shape_sections_and_order(anna: TestClient, api_engine: Engine
     ]
     pending = body["sections"][0]
     assert (
-        set(pending) == {"kind", "total", "units", "next_cursor", "groups"} and pending["next_cursor"] is None
+        set(pending) == {"kind", "total", "units", "next_cursor", "groups", "account_groups"}
+        and pending["next_cursor"] is None
     )
     assert [u["anchor_entry_id"] for u in pending["units"]] == [early, late]
     assert pending["units"][0]["state"] == {"confirmed": False, "reasons": ["non_standing_keys"]}
@@ -169,6 +170,8 @@ def test_the_queue_sections_needs_account_and_waiting_with_groups(
     pending, needs, waiting = body["sections"]
     assert body["total"] == 3 and pending["groups"] == [] and waiting["groups"] == []
     assert needs["groups"] == [{"currency": "CHF", "count": 1}, {"currency": "USD", "count": 1}]
+    assert waiting["account_groups"] == [{"account_id": world.b, "synced_through": None, "count": 1}]
+    assert pending["account_groups"] == [] and needs["account_groups"] == []
     assert [u["anchor_entry_id"] for u in needs["units"]] == [need_usd, need_chf]
     assert [u["needs_account"] for u in needs["units"]] == [{"currency": "USD"}, {"currency": "CHF"}]
     assert all(u["waiting"] is None for u in needs["units"])

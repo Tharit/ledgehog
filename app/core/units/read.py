@@ -69,12 +69,20 @@ class CurrencyGroup:
 
 
 @dataclass(frozen=True)
+class AccountGroup:
+    account_id: int
+    synced_through: date | None  # how far that account has been fetched; None = never
+    count: int  # units in the section that wait for it
+
+
+@dataclass(frozen=True)
 class QueueSection:
     kind: SectionKind
     total: int  # units in the section, whatever the page
     units: tuple[UnitView, ...]
     next_cursor: str | None
     groups: tuple[CurrencyGroup, ...] = ()  # `needs_account` only: per currency, over the whole section
+    account_groups: tuple[AccountGroup, ...] = ()  # `waiting` only: per account waited for, whole section
 
 
 @dataclass(frozen=True)
@@ -183,6 +191,19 @@ _NEEDS_ACCOUNT_GROUPS = text(
     """
 )
 
+# the accounts' own order (as `list_accounts`): open first, then sort order, name, id
+_WAITING_GROUPS = text(
+    _SECTIONED_SQL
+    + """
+    SELECT q.wait_account AS account_id, cv.synced_through, count(*) AS n
+      FROM q JOIN account AS a ON a.id = q.wait_account
+      LEFT JOIN v_account_coverage AS cv ON cv.account_id = q.wait_account
+     WHERE q.section = 'waiting'
+     GROUP BY q.wait_account, cv.synced_through, a.closed_on, a.sort_order, a.name
+     ORDER BY (a.closed_on IS NOT NULL), a.sort_order, a.name, q.wait_account
+    """
+)
+
 _QUEUE_TOTAL = text(
     f"""
     WITH units AS ({units_sql()})
@@ -247,12 +268,20 @@ def _section(conn: Connection, kind: SectionKind, *, limit: int, cursor: str | N
     if kind == "needs_account":
         found = conn.execute(_NEEDS_ACCOUNT_GROUPS, units_binds(conn)).all()
         groups = tuple(CurrencyGroup(currency=str(r.currency), count=int(r.n)) for r in found)
+    account_groups: tuple[AccountGroup, ...] = ()
+    if kind == "waiting":
+        found = conn.execute(_WAITING_GROUPS, units_binds(conn)).all()
+        account_groups = tuple(
+            AccountGroup(account_id=int(r.account_id), synced_through=r.synced_through, count=int(r.n))
+            for r in found
+        )
     return QueueSection(
         kind=kind,
         total=total,
         units=units,
         next_cursor=encode_cursor(page[-1].booked_on, int(page[-1].anchor)) if more else None,
         groups=groups,
+        account_groups=account_groups,
     )
 
 

@@ -1,7 +1,7 @@
 """The account statement (architecture §4.1 'The account statement', spec §3.10).
 
 A read of the bank layer: the account's source transactions, duplicates included, and its counting
-balance records in one list, newest first, with the running balance and each record's gap. No lock,
+balance records in one list, newest first, with each record's gap. No lock,
 no write, no settle. Money travels as `{"amount", "currency"}` in the account's currency.
 """
 
@@ -45,7 +45,6 @@ class StatementSourceOut(BaseModel):
     duplicate_of: DuplicateOfOut | None
     entry_id: int | None  # opens the row's unit in the review panel; null for a duplicate
     run_id: int | None  # null for an authored row
-    balance: Money | None  # the running balance after it; null for a duplicate
 
 
 class StatementRecordOut(BaseModel):
@@ -111,7 +110,6 @@ def _item(item: SourceItem | RecordItem, currency: str) -> StatementSourceOut | 
         ),
         entry_id=item.entry_id,
         run_id=item.run_id,
-        balance=None if item.balance is None else money(item.balance),
     )
 
 

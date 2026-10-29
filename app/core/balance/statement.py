@@ -2,21 +2,19 @@
 'The account statement', spec §3.10).
 
 A read of the bank layer only. The gap of each record comes from `derived.record_gaps`, the function that
-derives the entries, so the two agree by construction; the running balance is the same rule applied to the
-movements one by one. Household scale: the account's rows are read thin (id, date, amount) to compute
-the balances, and only the requested page is read in full.
+derives the entries, so the two agree by construction. Household scale: the account's rows are read thin
+(id, date, amount) to compute the gaps, and only the requested page is read in full.
 """
 
 from __future__ import annotations
 
-from bisect import bisect_left
 from dataclasses import dataclass
 from datetime import date
 from typing import Literal
 
 from sqlalchemy import Connection, text
 
-from app.core.balance.derived import RecordGap, record_gaps
+from app.core.balance.derived import record_gaps
 from app.core.domain.source import BookingRef
 
 
@@ -41,7 +39,6 @@ class SourceItem:
     duplicate_of: DuplicateRef | None
     entry_id: int | None  # the lowest id among its entries; None for a duplicate
     run_id: int | None
-    balance: int | None  # the running balance after it; None for a duplicate
     kind: Literal["source"] = "source"
     origin: str = "import"  # `import`, `user` or `booking`
     booking: BookingRef | None = None  # a booking's source, for navigation
@@ -75,42 +72,6 @@ class StatementAccountMissing(LookupError):
         super().__init__(f"account {account_id} does not exist")
 
 
-def _running_balances(rows: list[tuple[int, date, int]], gaps: list[RecordGap]) -> dict[int, int]:
-    """Running balance after each movement `(id, booked_on, amount)` (duplicates excluded by the caller).
-
-    In an interval i > 1: B(i-1) plus the interval's movements up to and including it; in the anchor's
-    interval: B1 minus the interval's movements after it; after the last record: Bn plus the movements
-    after it up to and including it; with no record: the sum from zero. Movements are taken by
-    (booked_on, id).
-    """
-    ordered = sorted(rows, key=lambda r: (r[1], r[0]))
-    dates = [g.balance_on for g in gaps]
-    out: dict[int, int] = {}
-    # group by interval: the first record whose date is not before the movement's (None: after the last)
-    groups: dict[int | None, list[tuple[int, int]]] = {}
-    for rid, on, amount in ordered:
-        i = bisect_left(dates, on)
-        groups.setdefault(i if i < len(gaps) else None, []).append((rid, amount))
-    for index, members in groups.items():
-        if index is None:
-            base = gaps[-1].balance if gaps else 0
-            running = base
-            for rid, amount in members:
-                running += amount
-                out[rid] = running
-        elif index == 0:  # the anchor's interval: counted back from the anchor
-            running = gaps[0].balance - sum(a for _, a in members)
-            for rid, amount in members:
-                running += amount
-                out[rid] = running
-        else:
-            running = gaps[index - 1].balance
-            for rid, amount in members:
-                running += amount
-                out[rid] = running
-    return out
-
-
 def get_statement(
     conn: Connection, account_id: int, *, limit: int = 100, offset: int = 0, amount: int | None = None
 ) -> Statement:
@@ -140,16 +101,15 @@ def get_statement(
     gaps = record_gaps(
         [(r.id, r.balance_on, int(r.balance)) for r in records], [(d, a) for _, d, a in movements]
     )
-    balances = _running_balances(movements, gaps)
     kinds = {r.id: r.kind for r in records}
 
-    if amount is not None:  # the picker: balances stay what the whole account says
+    if amount is not None:  # the picker
         keep = sorted(
             ((r.booked_on, r.id) for r in thin if r.imported and not r.duplicate and r.amount == amount),
             reverse=True,
         )
         ids = [i for _, i in keep][offset : offset + limit]
-        found = _sources(conn, ids, balances)
+        found = _sources(conn, ids)
         return Statement(account_id, currency, tuple(found[i] for i in ids), len(keep), limit, offset)
 
     # newest first; a record stands above the rows of its own date (rank 1 over 0)
@@ -157,7 +117,7 @@ def get_statement(
     keys += [(g.balance_on, 1, g.record_id) for g in gaps]
     keys.sort(reverse=True)
     page = keys[offset : offset + limit]
-    sources = _sources(conn, [i for _, rank, i in page if rank == 0], balances)
+    sources = _sources(conn, [i for _, rank, i in page if rank == 0])
     by_record = {g.record_id: g for g in gaps}
     items: list[SourceItem | RecordItem] = []
     for _, rank, item_id in page:
@@ -179,8 +139,8 @@ def get_statement(
     return Statement(account_id, currency, tuple(items), len(keys), limit, offset)
 
 
-def _sources(conn: Connection, ids: list[int], balances: dict[int, int]) -> dict[int, SourceItem]:
-    """The full rows of one page, with their running balances (a duplicate has none)."""
+def _sources(conn: Connection, ids: list[int]) -> dict[int, SourceItem]:
+    """The full rows of one page."""
     if not ids:
         return {}
     rows = conn.execute(
@@ -213,7 +173,6 @@ def _sources(conn: Connection, ids: list[int], balances: dict[int, int]) -> dict
             duplicate_of=None if r.of_id is None else DuplicateRef(r.of_id, r.of_on, int(r.of_amount)),
             entry_id=r.entry_id,  # a duplicate has no entries
             run_id=r.run_id,
-            balance=balances.get(r.id),
             origin=r.origin,
             booking=None
             if r.origin != "booking"

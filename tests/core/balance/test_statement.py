@@ -1,5 +1,5 @@
-"""The account statement (architecture §4.1 'The account statement'): order, paging, the running balance
-and the gap of each record, which come from the rule that derives the entries."""
+"""The account statement (architecture §4.1 'The account statement'): order, paging and the gap of
+each record, which come from the rule that derives the entries."""
 
 from __future__ import annotations
 
@@ -30,12 +30,20 @@ def ledger_balance(conn: Connection, account: int) -> int:
 
 
 def assert_agrees_with_the_ledger(s: Scene) -> None:
-    """The newest balance is the account's; every record's difference is its derived entry's amount."""
+    """The newest counting record's balance plus the non-duplicate movements dated after it (all of them
+    with no record) is the account's balance; every record's difference is its derived entry's amount."""
     s.recompute()
     items = full(s.conn, s.account)
-    newest = next((i.balance for i in items if i.balance is not None), None)
-    assert newest is not None
-    assert newest == ledger_balance(s.conn, s.account)
+    records = [i for i in items if isinstance(i, RecordItem)]
+    newest = records[0] if records else None  # the statement is newest first
+    after = [
+        i.amount
+        for i in items
+        if isinstance(i, SourceItem)
+        and i.duplicate_of is None
+        and (newest is None or i.booked_on > newest.balance_on)
+    ]
+    assert (newest.balance if newest else 0) + sum(after) == ledger_balance(s.conn, s.account)
     for item in items:
         if isinstance(item, RecordItem) and not item.anchor:
             owned = s.derived_of(item.id)
@@ -43,7 +51,7 @@ def assert_agrees_with_the_ledger(s: Scene) -> None:
     s.check()
 
 
-# ---- the newest balance is the ledger balance ------------------------------------------------
+# ---- the newest record plus what follows it is the ledger balance ----------------
 
 
 def test_no_records_counts_from_zero(db_conn: Connection, make_account: Make) -> None:
@@ -51,10 +59,7 @@ def test_no_records_counts_from_zero(db_conn: Connection, make_account: Make) ->
     s.move(day(1, 1), 1000)
     s.move(day(1, 5), -300)
     items = full(db_conn, s.account)
-    assert [(i.booked_on, i.balance) for i in items if isinstance(i, SourceItem)] == [
-        (day(1, 5), 700),
-        (day(1, 1), 1000),
-    ]
+    assert [i.booked_on for i in items if isinstance(i, SourceItem)] == [day(1, 5), day(1, 1)]
     assert not any(isinstance(i, RecordItem) for i in items)
     assert_agrees_with_the_ledger(s)
 
@@ -74,10 +79,6 @@ def test_anchor_only_counts_what_precedes_the_anchor_back_from_it(
     s.manual(day(1, 2), 1000)  # the anchor ends its day: both rows are in its interval
     s.move(day(1, 3), 20)  # after it
     items = full(db_conn, s.account)
-    by_date = {i.booked_on: i for i in items if isinstance(i, SourceItem)}
-    assert by_date[day(1, 3)].balance == 1020
-    assert by_date[day(1, 2)].balance == 1000  # the anchor's interval: B1 minus the movements after it
-    assert by_date[day(1, 1)].balance == 1050
     (anchor,) = (i for i in items if isinstance(i, RecordItem))
     assert (anchor.anchor, anchor.rows_sum, anchor.difference, anchor.balance) == (True, None, None, 1000)
     assert_agrees_with_the_ledger(s)
@@ -95,8 +96,6 @@ def test_several_records_each_interval_counts_from_the_previous_record(
     s.manual(day(3, 31), 890)  # 900 - 10: explained
     s.move(day(4, 2), 5)  # after the last record
     items = full(db_conn, s.account)
-    balances = {i.booked_on: i.balance for i in items if isinstance(i, SourceItem)}
-    assert balances == {day(2, 3): 900, day(2, 10): 850, day(3, 5): 890, day(4, 2): 895}
     records = [i for i in items if isinstance(i, RecordItem)]
     assert [(r.balance_on, r.rows_sum, r.difference) for r in reversed(records)] == [
         (day(1, 31), None, None),
@@ -137,7 +136,7 @@ def test_a_reverted_runs_record_does_not_count_and_is_not_an_item(
     assert_agrees_with_the_ledger(s)
 
 
-def test_duplicates_are_listed_without_a_balance_and_move_nothing(
+def test_duplicates_are_listed_with_what_they_duplicate_and_move_nothing(
     db_conn: Connection, make_account: Make
 ) -> None:
     s = Scene(db_conn, make_account)
@@ -148,15 +147,13 @@ def test_duplicates_are_listed_without_a_balance_and_move_nothing(
     s.move(day(1, 6), -10)
     items = full(db_conn, s.account)
     (dup_item,) = (i for i in items if i.id == dup and isinstance(i, SourceItem))
-    assert dup_item.balance is None and dup_item.entry_id is None
+    assert dup_item.entry_id is None
     assert dup_item.duplicate_of is not None
     assert (dup_item.duplicate_of.id, dup_item.duplicate_of.booked_on, dup_item.duplicate_of.amount) == (
         original,
         day(1, 3),
         -40,
     )
-    balances = {i.booked_on: i.balance for i in items if isinstance(i, SourceItem) and i.id != dup}
-    assert balances == {day(1, 3): 960, day(1, 6): 950}
     assert get_statement(db_conn, s.account).total == 4
     assert_agrees_with_the_ledger(s)
 
@@ -181,7 +178,6 @@ def test_an_investment_account_has_valuations_as_differences(db_conn: Connection
     items = full(db_conn, s.account)
     records = [i for i in items if isinstance(i, RecordItem)]
     assert [r.difference for r in reversed(records)] == [None, 400_000]
-    assert [i.balance for i in items if isinstance(i, SourceItem)] == [5_399_000]
     assert_agrees_with_the_ledger(s)
     assert s.derived()[-1][0] == "valuation"
 
@@ -204,9 +200,11 @@ def test_backfill_before_the_anchor_counts_back_from_the_anchor(
     s.move(day(2, 1), -300)  # a backfilled row older than the anchor
     s.move(day(2, 10), 100)
     s.move(day(3, 5), -50)
-    items = full(db_conn, s.account)
-    balances = {i.booked_on: i.balance for i in items if isinstance(i, SourceItem)}
-    assert balances == {day(2, 1): 900, day(2, 10): 1000, day(3, 5): 950}
+    assert [i.booked_on for i in full(db_conn, s.account) if isinstance(i, SourceItem)] == [
+        day(3, 5),
+        day(2, 10),
+        day(2, 1),
+    ]
     assert_agrees_with_the_ledger(s)
 
 
@@ -239,9 +237,6 @@ def test_paging_slices_one_total_order_and_total_counts_everything(
         assert (page.total, page.limit, page.offset) == (7, 3, offset)
         seen += [(i.kind, i.id) for i in page.items]
     assert seen == [(i.kind, i.id) for i in everything]
-    # a later page still carries the balance the whole account says
-    last = get_statement(db_conn, s.account, limit=2, offset=0).items[0]
-    assert isinstance(last, SourceItem) and last.balance == -27
 
 
 def test_same_date_rows_are_ordered_by_id_descending(db_conn: Connection, make_account: Make) -> None:
@@ -252,7 +247,6 @@ def test_same_date_rows_are_ordered_by_id_descending(db_conn: Connection, make_a
     make_entry(db_conn, b)
     items = full(db_conn, s.account)
     assert [i.id for i in items] == [b, a]
-    assert [i.balance for i in items if isinstance(i, SourceItem)] == [-3, -1]  # a day's rows by source id
 
 
 def test_the_amount_filter_keeps_imported_non_duplicate_rows_of_that_amount_and_no_record(
@@ -272,7 +266,6 @@ def test_the_amount_filter_keeps_imported_non_duplicate_rows_of_that_amount_and_
     got = get_statement(db_conn, s.account, amount=-7)
     assert [i.id for i in got.items] == [later, hit] and got.total == 2
     assert all(isinstance(i, SourceItem) for i in got.items)
-    assert [i.balance for i in got.items if isinstance(i, SourceItem)] == [100 - 7 - 8 - 7 - 7, 100 - 7]
     page = get_statement(db_conn, s.account, amount=-7, limit=1, offset=1)
     assert [i.id for i in page.items] == [hit] and page.total == 2
 
