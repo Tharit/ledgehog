@@ -34,7 +34,7 @@ npx sv add tailwindcss
 
 ## Developing
 
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
+Install dependencies with `npm ci`: it installs exactly what `package-lock.json` records. Use `npm install` only to upgrade deliberately. `.npmrc` blocks install-time scripts (`ignore-scripts`) and refuses versions published less than 7 days ago (`min-release-age`). Then start a development server:
 
 ```sh
 npm run dev

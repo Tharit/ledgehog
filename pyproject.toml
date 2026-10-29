@@ -30,6 +30,20 @@ dev = [
     "ruff>=0.5",
 ]
 
+[tool.uv]
+no-build = true
+exclude-newer = "7 days"
+# The project's own editable install is the one build uv still runs (no-build exempts first-party
+# sources); pin its backend and the backend's dependencies so that build is repeatable.
+build-constraint-dependencies = [
+    "hatchling==1.32.4",
+    "packaging==26.3",
+    "pathspec==1.1.1",
+    "pluggy==1.7.0",
+    "tomlkit==0.15.2",
+    "trove-classifiers==2026.9.21.13",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
