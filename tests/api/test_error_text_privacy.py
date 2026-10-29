@@ -38,7 +38,7 @@ def test_a_database_error_stores_a_fixed_message_and_leaks_nothing(
         api.upload(inst, acct, giro_bytes())
     runs = api.client.get("/api/importers/runs")
     assert runs.status_code == 200
-    (run,) = runs.json()
+    (run,) = runs.json()["runs"]
     assert run["status"] == "failed"
     assert run["error_text"].startswith("DataError")
     assert MARKER not in runs.text

@@ -101,8 +101,8 @@ def test_the_run_views_and_revert_carry_the_currency(api: Api):
     assert api.upload(inst, acct, giro_bytes()).status_code == 200
     runs = api.client.get("/api/importers/runs")
     assert runs.status_code == 200 and bare_amounts(runs.json()) == []
-    run_id = runs.json()[0]["id"]
-    assert runs.json()[0]["stats"]["balance"]["currency"] == "EUR"
+    run_id = runs.json()["runs"][0]["id"]
+    assert runs.json()["runs"][0]["stats"]["balance"]["currency"] == "EUR"
     one = api.client.get(f"/api/importers/runs/{run_id}")
     assert bare_amounts(one.json()) == []
     preview = api.client.post(f"/api/importers/runs/{run_id}/revert", json={"dry_run": True})

@@ -35,7 +35,7 @@ def _two_accounts(api: Api) -> tuple[int, int, int, int]:
 
 def _ids(r) -> list[int]:
     assert r.status_code == 200, r.text
-    return [run["id"] for run in r.json()]
+    return [run["id"] for run in r.json()["runs"]]
 
 
 # ---- the list ------------------------------------------------------------------------------
@@ -46,7 +46,8 @@ def test_the_list_is_newest_first_with_the_shape_and_revertible(api: Api):
     assert api.upload(gi, ga, giro_bytes()).status_code == 200  # a second run on the giro account
     r = api.client.get(RUNS)
     assert r.status_code == 200
-    runs = r.json()
+    assert (r.json()["total"], r.json()["limit"], r.json()["offset"]) == (3, 100, 0)
+    runs = r.json()["runs"]
     assert [x["id"] for x in runs] == sorted((x["id"] for x in runs), reverse=True) and len(runs) == 3
     assert set(runs[0]) == RUN_KEYS
     by_id = {x["id"]: x for x in runs}
@@ -69,12 +70,12 @@ def test_the_list_filters(api: Api):
     assert len(_ids(api.client.get(RUNS, params={"account_id": ga}))) == 2
     assert len(_ids(api.client.get(RUNS, params={"account_id": ca}))) == 1
     assert len(_ids(api.client.get(RUNS, params={"instance_id": ci}))) == 1
-    failed = api.client.get(RUNS, params={"status": "failed"}).json()
+    failed = api.client.get(RUNS, params={"status": "failed"}).json()["runs"]
     assert len(failed) == 1 and failed[0]["status"] == "failed" and failed[0]["revertible"] is False
     assert failed[0]["error_text"] and PRIVATE not in failed[0]["error_text"]
     # a changed format cannot be helped by trying again; a run that did not fail has no answer
     assert failed[0]["retryable"] is False
-    assert all(x["retryable"] is None for x in api.client.get(RUNS, params={"status": "ok"}).json())
+    assert all(x["retryable"] is None for x in api.client.get(RUNS, params={"status": "ok"}).json()["runs"])
     one = api.client.get(f"{RUNS}/{failed[0]['id']}").json()
     assert one["retryable"] is False
     assert len(_ids(api.client.get(RUNS, params={"limit": 1}))) == 1
@@ -85,8 +86,8 @@ def test_the_list_filters(api: Api):
 
 @pytest.mark.parametrize(
     "params",
-    [{"limit": 0}, {"limit": 501}, {"status": "weird"}, {"account_id": "x"}],
-    ids=["limit-0", "limit-501", "status", "account-id"],
+    [{"limit": 0}, {"limit": 501}, {"offset": -1}, {"status": "weird"}, {"account_id": "x"}],
+    ids=["limit-0", "limit-501", "offset-negative", "status", "account-id"],
 )
 def test_bad_list_queries_are_validation_errors(api: Api, params):
     error_of(api.client.get(RUNS, params=params), 422, "validation_error")
@@ -94,6 +95,35 @@ def test_bad_list_queries_are_validation_errors(api: Api, params):
 
 def test_the_limit_may_be_500(api: Api):
     assert api.client.get(RUNS, params={"limit": 500}).status_code == 200
+
+
+def test_the_list_pages_by_offset(api: Api):
+    gi, ga, ci, ca = _two_accounts(api)
+    for _ in range(2):
+        assert api.upload(gi, ga, giro_bytes()).status_code == 200
+    everything = api.client.get(RUNS).json()
+    assert everything["total"] == 4 and len(everything["runs"]) == 4
+    first = api.client.get(RUNS, params={"limit": 3}).json()
+    second = api.client.get(RUNS, params={"limit": 3, "offset": 3}).json()
+    # the total is the filtered count whatever the page, and the pages tile the list without overlap
+    assert (first["total"], second["total"]) == (4, 4)
+    assert (second["limit"], second["offset"]) == (3, 3)
+    ids = [x["id"] for x in first["runs"]] + [x["id"] for x in second["runs"]]
+    assert ids == [x["id"] for x in everything["runs"]] and len(set(ids)) == 4
+    past = api.client.get(RUNS, params={"offset": 10}).json()
+    assert past["runs"] == [] and past["total"] == 4
+    giro = api.client.get(RUNS, params={"account_id": ga, "limit": 1, "offset": 1}).json()
+    assert giro["total"] == 3 and len(giro["runs"]) == 1
+
+
+def test_the_order_is_stable_on_equal_times(api: Api):
+    gi, ga, ci, ca = _two_accounts(api)
+    with api.engine.begin() as conn:
+        conn.execute(text("UPDATE import_run SET started_at = now(), finished_at = now()"))
+    ids = _ids(api.client.get(RUNS))
+    assert ids == sorted(ids, reverse=True)
+    paged = [_ids(api.client.get(RUNS, params={"limit": 1, "offset": i}))[0] for i in range(len(ids))]
+    assert paged == ids
 
 
 def test_one_run(api: Api):
@@ -240,7 +270,7 @@ def test_an_older_run_is_a_409_naming_the_newer_one(api: Api):
 def test_a_failed_or_reverted_run_is_not_revertible(api: Api):
     gi, ga, ci, ca = _two_accounts(api)
     api.upload(gi, ga, b"not a statement at all\n")
-    (failed,) = [x["id"] for x in api.client.get(RUNS, params={"status": "failed"}).json()]
+    (failed,) = [x["id"] for x in api.client.get(RUNS, params={"status": "failed"}).json()["runs"]]
     err = error_of(api.client.post(f"{RUNS}/{failed}/revert", json={}), 409, "not_revertible")
     assert isinstance(err["details"]["reason"], str) and err["details"]["reason"]
     done = _latest(api, ca)
@@ -286,13 +316,13 @@ def test_the_whole_flow_leaves_the_integrity_views_empty(api: Api):
     assert dry["summary"]["inserted"] == 3 and api.counts()["import_run"] == 0
     first = api.upload(inst, account, giro_bytes()).json()
     assert first["summary"]["inserted"] == 3
-    (listed,) = c.get(RUNS, params={"account_id": account}).json()
+    (listed,) = c.get(RUNS, params={"account_id": account}).json()["runs"]
     assert listed["id"] == first["run_id"] and listed["revertible"] is True
     assert c.get("/api/importers/instances").json()[0]["last_run_at"] is not None
 
     again = api.upload(inst, account, giro_bytes()).json()
     assert again["summary"]["inserted"] == 0 and again["summary"]["skipped_by_identity"] == 3
-    newer, older = (x["id"] for x in c.get(RUNS, params={"account_id": account}).json())
+    newer, older = (x["id"] for x in c.get(RUNS, params={"account_id": account}).json()["runs"])
     assert newer == again["run_id"] and older == first["run_id"]
     error_of(c.post(f"{RUNS}/{older}/revert", json={}), 409, "not_latest_run")
 
@@ -303,6 +333,6 @@ def test_the_whole_flow_leaves_the_integrity_views_empty(api: Api):
         done = c.post(f"{RUNS}/{run_id}/revert", json={"expected_versions": versions})
         assert done.status_code == 200, done.text
         assert done.json()["removed_entry_ids"] == preview["removed_entry_ids"]
-    assert [x["status"] for x in c.get(RUNS).json()] == ["reverted", "reverted"]
+    assert [x["status"] for x in c.get(RUNS).json()["runs"]] == ["reverted", "reverted"]
     assert api.counts()["source_transaction"] == 0 and api.counts()["ledger_entry"] == 0
     api.assert_checks_clean()

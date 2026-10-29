@@ -12,11 +12,11 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel, ConfigDict
 
 from app.api.errors import map_error
-from app.api.ids import EntityId, EntityVersion, PathId, QueryId
+from app.api.ids import MAX_ID, EntityId, EntityVersion, PathId, QueryId
 from app.api.routers.importers import account_currencies, to_json
 from app.api.session import CurrentUser, EngineDep
 from app.core.domain.errors import VersionConflict
-from app.core.importers.runs import get_run, list_runs
+from app.core.importers.runs import count_runs, get_run, list_runs
 from app.core.ingest.revert import NotLatestRun, NotRevertible, RunMissing, revert_run
 from app.utils.db.locks import WriteConflict
 
@@ -45,10 +45,15 @@ def list_import_runs(
     instance_id: QueryId | None = None,
     status: Literal["running", "ok", "failed", "reverted"] | None = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    offset: Annotated[int, Query(ge=0, le=MAX_ID)] = 0,
 ) -> Any:
     with engine.connect() as conn:
-        found = list_runs(conn, account_id=account_id, instance_id=instance_id, status=status, limit=limit)
-    return to_json(found, currencies=account_currencies(engine))
+        found = list_runs(
+            conn, account_id=account_id, instance_id=instance_id, status=status, limit=limit, offset=offset
+        )
+        total = count_runs(conn, account_id=account_id, instance_id=instance_id, status=status)
+    page = {"runs": found, "total": total, "limit": limit, "offset": offset}
+    return to_json(page, currencies=account_currencies(engine))
 
 
 @router.get("/{run_id}")

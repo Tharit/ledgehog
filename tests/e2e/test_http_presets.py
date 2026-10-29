@@ -298,7 +298,7 @@ def test_a_currency_mismatch_fails_the_run_and_writes_nothing_else(api: Api):
     counts = api.counts()
     assert counts["import_run"] == before["import_run"] + 1
     assert (counts["source_transaction"], counts["ledger_entry"], counts["balance_record"]) == (0, 0, 0)
-    failed = api.client.get(RUNS, params={"status": "failed"}).json()
+    failed = api.client.get(RUNS, params={"status": "failed"}).json()["runs"]
     assert len(failed) == 1 and failed[0]["account_id"] == account and failed[0]["revertible"] is False
     http.check()
 

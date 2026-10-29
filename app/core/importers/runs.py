@@ -68,6 +68,29 @@ def _views(conn: Connection, rows: list[Any]) -> list[RunView]:
     ]
 
 
+_FILTER = (
+    " WHERE (CAST(:account AS bigint) IS NULL OR account_id = :account)"
+    " AND (CAST(:inst AS bigint) IS NULL OR importer_instance_id = :inst)"
+    " AND (CAST(:status AS text) IS NULL OR status = :status)"
+)
+
+
+def count_runs(
+    conn: Connection,
+    *,
+    account_id: int | None = None,
+    instance_id: int | None = None,
+    status: str | None = None,
+) -> int:
+    """Every run the filters select, whatever the page."""
+    return int(
+        conn.execute(
+            text("SELECT count(*) FROM import_run" + _FILTER),
+            {"account": account_id, "inst": instance_id, "status": status},
+        ).scalar_one()
+    )
+
+
 def list_runs(
     conn: Connection,
     *,
@@ -75,17 +98,16 @@ def list_runs(
     instance_id: int | None = None,
     status: str | None = None,
     limit: int = 100,
+    offset: int = 0,
 ) -> list[RunView]:
-    """Runs, newest first (finish time, or start time while running; then id)."""
+    """Runs, newest first (finish time, or start time while running; then id, so the order is total)."""
     rows = conn.execute(
         text(
             f"SELECT {_COLUMNS} FROM import_run"  # noqa: S608
-            " WHERE (CAST(:account AS bigint) IS NULL OR account_id = :account)"
-            " AND (CAST(:inst AS bigint) IS NULL OR importer_instance_id = :inst)"
-            " AND (CAST(:status AS text) IS NULL OR status = :status)"
-            " ORDER BY COALESCE(finished_at, started_at) DESC, id DESC LIMIT :limit"
+            + _FILTER
+            + " ORDER BY COALESCE(finished_at, started_at) DESC, id DESC LIMIT :limit OFFSET :offset"
         ),
-        {"account": account_id, "inst": instance_id, "status": status, "limit": limit},
+        {"account": account_id, "inst": instance_id, "status": status, "limit": limit, "offset": offset},
     ).all()
     return _views(conn, list(rows))
 
