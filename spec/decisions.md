@@ -3939,3 +3939,9 @@ patterns §2; D235.
 - **Waiting is grouped by the account waited for** (user, 2026-10-29), one card per group as the needs-an-account section is by currency, the reason said once in the group's heading. Rejected: *the reason under every unit* (the same line repeated); *group rows inside one table* (a second way to draw a grouped list; to be revisited if one card per group does not read well).
 - **A row of figure cards is filled**: a figure keeps an Overview tile's width, the sources card takes the rest.
 - **The Review count is a count chip** (user, 2026-10-29): a tag chip's shape in `text-muted`, its numerals in `sidebar`, as if cut out — the familiar mark of something new, where a bare muted number read as part of the label. Rejected: *a tag chip in `stone`* and *one in `surface`* (neither stands out on the sidebar).
+
+## D238 CSV `raw` keeps only the row's cells
+
+`plugins/importers/csv.md` §3; `spec.md` §5.1.
+
+- **CSV `raw` keeps only the row's cells** (user, 2026-10-29). The header is the same on every row of a file, and the original line repeats the cells (for a spreadsheet it is the cells joined), so both are dropped; rows already stored keep their payload. Rejected: *the header on every row* (redundant); *name→value pairs* (a header may repeat a name).

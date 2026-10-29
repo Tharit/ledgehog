@@ -1055,9 +1055,9 @@ For each transaction record the importer delivers:
 - `source_format` — the statement format the record came from (`mt940`,
   `camt053`, a CSV profile), kept as provenance;
 - `raw` — the importer-typed payload, which **must include the original,
-  unparsed source data** (the MT940 field 86 text, the camt element, the CSV
-  line). Should normalisation ever have to change, a migration can then
-  re-derive the columns from it and rehash.
+  unparsed source data** (the MT940 field 86 text, the camt element, a CSV
+  row's cells as read). Should normalisation ever have to change, a migration
+  can then re-derive the columns from it and rehash.
 
 **Coverage.** Every successful run reports the date it covered *through* —
 the last day up to which its data is believed complete. That is the best the

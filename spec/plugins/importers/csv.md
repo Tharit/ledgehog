@@ -68,7 +68,7 @@ skipped", not as an empty import.
 | instructed amount and currency | two columns, optional; ignored on a row whose currency equals the account's; the *invert amounts* setting applies to the instructed amount too |
 | currency | a column, optional; where there is one it must equal the account's currency |
 | `source_format` | `csv:` and the instance's label at the time of the run; the profile has no name of its own |
-| `raw` | the row as read, unparsed (`spec.md` §5.1) |
+| `raw` | the row's cells as read — untrimmed, unparsed, in file order; the header is not repeated per row (`spec.md` §5.1) |
 
 **Sign.** The profile has an *invert amounts* setting and, separately, an
 *invert balance* setting (`spec.md` §5.1). A source that shows purchases as
