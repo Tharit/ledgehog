@@ -30,7 +30,13 @@ vi.mock('#lib/api/index.js', async (importOriginal) => ({
 	...(await importOriginal<typeof import('#lib/api/index.js')>()),
 	...api
 }));
+// the page is arrived at with the address in `arrival.search`; afterNavigate fires on mount like the real one
+const arrival = vi.hoisted(() => ({ search: '' }));
 vi.mock('$app/state', () => ({ page: { url: new URL('http://localhost/sync') } }));
+vi.mock('$app/navigation', () => ({
+	afterNavigate: (callback: (navigation: unknown) => void) =>
+		callback({ to: { url: new URL(`http://localhost/sync${arrival.search}`) } })
+}));
 
 const accounts = [account({ id: 7, name: 'Giro' }), account({ id: 8, name: 'Pocket' })];
 const plan = [
@@ -85,6 +91,7 @@ beforeEach(() => {
 			close() {}
 		}
 	);
+	arrival.search = '';
 	sync.dispose();
 	lookupsStore.reset();
 	lookupsStore.loaded = true;
@@ -358,5 +365,58 @@ describe('the sync page: progress and the report', () => {
 		expect(await screen.findByText('This sync was interrupted')).toBeInTheDocument();
 		await fireEvent.click(screen.getByRole('button', { name: 'Back to the plan' }));
 		expect(sync.status).toBe('idle');
+	});
+
+	describe('arriving at a narrowed plan', () => {
+		const endedView = () =>
+			foldAll(
+				[
+					ev(3, 'run_started', runStarted(1, 10, 7)),
+					ev(4, 'run_finished', runFinished(1, 10, 7)),
+					ev(5, 'task_ended', taskEnded({ ok: 1 }))
+				],
+				replayed()
+			);
+
+		it('discards an ended sync and shows the narrowed plan, not its report', async () => {
+			arrival.search = '?instance=1&account=8';
+			hold(endedView(), 'ended');
+			render(Page);
+
+			expect(await screen.findByRole('button', { name: 'Start sync' })).toBeInTheDocument();
+			expect(sync.status).toBe('idle');
+			expect(screen.queryByText('Finished: 1 run ok')).toBeNull();
+		});
+
+		it('discards an interrupted sync the same way', async () => {
+			arrival.search = '?instance=1';
+			sync.kind = 'sync';
+			sync.status = 'interrupted';
+			render(Page);
+
+			expect(await screen.findByRole('button', { name: 'Start sync' })).toBeInTheDocument();
+			expect(screen.queryByText('This sync was interrupted')).toBeNull();
+		});
+
+		it('keeps showing the ended report when /sync is opened without a narrowing', async () => {
+			hold(endedView(), 'ended');
+			render(Page);
+
+			expect(await screen.findByText('Finished: 1 run ok')).toBeInTheDocument();
+			expect(sync.status).toBe('ended');
+		});
+
+		it('keeps the report of a narrowed sync that ends while the page stays open', async () => {
+			arrival.search = '?instance=1&account=8';
+			hold(replayed());
+			render(Page);
+			await screen.findByRole('region', { name: 'Giro login' });
+
+			sync.view = endedView();
+			sync.status = 'ended';
+
+			expect(await screen.findByText('Finished: 1 run ok')).toBeInTheDocument();
+			expect(sync.status).toBe('ended');
+		});
 	});
 });

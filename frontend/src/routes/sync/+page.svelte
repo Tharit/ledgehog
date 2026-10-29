@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { afterNavigate } from '$app/navigation';
 	import { page } from '$app/state';
 	import { onDestroy, onMount, untrack } from 'svelte';
 	import ActionButton from '#lib/components/common/action-button.svelte';
@@ -34,6 +35,12 @@
 
 	$effect(() => {
 		plan.narrowing = narrowingOf(page.url.search);
+	});
+	// arriving at a plan narrowed to one item (a "Fetch" on an account without coverage) discards a
+	// task that has ended or was interrupted, so the narrowed plan shows instead of its report
+	// (ux/views/sync.md). Only the arrival counts: a narrowed sync that ends here keeps its report.
+	afterNavigate((navigation) => {
+		if (narrowingOf(navigation.to?.url.search ?? '').instanceId !== null) sync.reset();
 	});
 	// the plan is read when the page opens and again whenever the task moves between its states
 	$effect(() => {
