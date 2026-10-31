@@ -1,0 +1,14 @@
+{
+  "extends": "default",
+  "meta": { "name": "deps", "description": "npm ci (frontend/) and uv sync --locked: registry-only network, writes to dependency dirs" },
+  "groups": { "include": ["node_runtime", "python_runtime"] },
+  "workdir": { "access": "read" },
+  "filesystem": {
+    "allow": ["$WORKDIR/frontend/node_modules", "$WORKDIR/.venv", "$HOME/.npm", "$HOME/.cache/uv"],
+    "deny": ["$WORKDIR/**/.env", "$WORKDIR/test.env"]
+  },
+  "network": {
+    "allow_domain": ["registry.npmjs.org", "pypi.org", "files.pythonhosted.org"]
+  },
+  "environment": { "deny_vars": ["*PASSWORD*","*SECRET*","*TOKEN*","*KEY*","*CREDENTIAL*"], "case_insensitive_vars": true }
+}

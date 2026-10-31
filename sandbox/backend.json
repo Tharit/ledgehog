@@ -1,0 +1,15 @@
+{
+  "extends": "default",
+  "meta": { "name": "backend", "description": "uvicorn app, dev_db.py, dev_seed.py: no writes, egress via proxy to allow_domain only" },
+  "groups": { "include": ["python_runtime"] },
+  "workdir": { "access": "read" },
+  "filesystem": {
+    "deny": ["$WORKDIR/**/.env", "$WORKDIR/test.env"]
+  },
+  "network": {
+    "allow_domain": ["placeholder.invalid"],
+    "open_port": [5432],
+    "listen_port": [8000]
+  },
+  "environment": { "set_vars": { "PYTHONDONTWRITEBYTECODE": "1" } }
+}

@@ -1,0 +1,16 @@
+{
+  "extends": "default",
+  "meta": { "name": "frontend-dev", "description": "vite dev server: listens on 5173-5180, proxies to localhost:8000" },
+  "groups": { "include": ["node_runtime"] },
+  "workdir": { "access": "read" },
+  "filesystem": {
+    "allow": ["$WORKDIR/frontend/.svelte-kit", "$WORKDIR/frontend/node_modules/.vite", "$WORKDIR/frontend/node_modules/.vite-temp", "$WORKDIR/frontend/node_modules/$app"],
+    "deny": ["$WORKDIR/**/.env", "$WORKDIR/test.env"]
+  },
+  "network": {
+    "block": true,
+    "open_port": [8000],
+    "listen_port_range": [[5173, 5180]]
+  },
+  "environment": { "deny_vars": ["*PASSWORD*","*SECRET*","*TOKEN*","*KEY*","*CREDENTIAL*"], "case_insensitive_vars": true }
+}

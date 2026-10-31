@@ -1,0 +1,12 @@
+{
+  "extends": "default",
+  "meta": { "name": "frontend", "description": "svelte-check, eslint, vitest, vite build, fe_verify.sh: no network" },
+  "groups": { "include": ["node_runtime"] },
+  "workdir": { "access": "read" },
+  "filesystem": {
+    "allow": ["$WORKDIR/frontend/.svelte-kit", "$WORKDIR/frontend/build", "$WORKDIR/frontend/.verify", "$WORKDIR/frontend/node_modules/.vite", "$WORKDIR/frontend/node_modules/.vite-temp", "$WORKDIR/frontend/node_modules/$app"],
+    "deny": ["$WORKDIR/**/.env", "$WORKDIR/test.env"]
+  },
+  "network": { "block": true },
+  "environment": { "deny_vars": ["*PASSWORD*","*SECRET*","*TOKEN*","*KEY*","*CREDENTIAL*"], "case_insensitive_vars": true }
+}

@@ -1,0 +1,12 @@
+{
+  "extends": "default",
+  "meta": { "name": "backend-tests", "description": "pytest, smoke_http.sh, ruff, mypy: localhost only" },
+  "groups": { "include": ["python_runtime"] },
+  "workdir": { "access": "read" },
+  "filesystem": {
+    "allow": ["$WORKDIR/.pytest_cache", "$WORKDIR/.ruff_cache", "$WORKDIR/.mypy_cache", "$WORKDIR/.uv-cache"],
+    "deny": ["$WORKDIR/**/.env", "$WORKDIR/test.env"]
+  },
+  "network": { "block": true, "open_port": [0] },
+  "environment": { "set_vars": { "PYTHONDONTWRITEBYTECODE": "1" } }
+}
