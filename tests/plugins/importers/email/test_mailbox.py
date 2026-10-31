@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import base64
 import imaplib
+import socket
 import ssl
+import threading
+import time
 from datetime import date
 from typing import Any
 
@@ -14,6 +18,7 @@ from app.core.plugins.fetch import SecretText
 from app.plugins.importers.email import mailbox as mb
 from app.plugins.importers.email.mailbox import Connection, connect_imap, encode_mailbox_name, search_date
 
+REAL_IMAP4, REAL_IMAP4_SSL = imaplib.IMAP4, imaplib.IMAP4_SSL
 FORBIDDEN = {"STORE", "COPY", "MOVE", "EXPUNGE", "APPEND", "DELETE", "RENAME", "CREATE", "SELECT"}
 
 
@@ -83,6 +88,13 @@ def fake_imap(monkeypatch: pytest.MonkeyPatch):
         ("fetch_answers", {}),
     ):
         monkeypatch.setattr(FakeImap, name, default)
+    for name in (
+        "https_proxy",
+        "HTTPS_PROXY",
+        "no_proxy",
+        "NO_PROXY",
+    ):  # a proxy in the environment is not these tests' business
+        monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(mb.imaplib, "IMAP4", FakeImap)
     monkeypatch.setattr(mb.imaplib, "IMAP4_SSL", FakeImapSsl)
 
@@ -280,3 +292,151 @@ def test_mailbox_names_are_modified_utf7_and_quoted(name: str, encoded: str):
 
 def test_search_dates_use_english_month_names():
     assert search_date(date(2026, 3, 4)) == "04-Mar-2026" and search_date(date(2026, 12, 31)) == "31-Dec-2026"
+
+
+# --- the HTTP CONNECT tunnel (HTTPS_PROXY) -----------------------------------------------------
+
+
+class FakeProxy:
+    """A one-connection CONNECT proxy on 127.0.0.1; after its answer it relays to `backend` (or closes)."""
+
+    def __init__(self, answer: bytes, backend: tuple[str, int] | None = None) -> None:
+        self.answer = answer
+        self.backend = backend
+        self.request = b""
+        self.listener = socket.socket()
+        self.listener.bind(("127.0.0.1", 0))
+        self.listener.listen(1)
+        self.port: int = self.listener.getsockname()[1]
+        self.thread = threading.Thread(target=self._serve, daemon=True)
+        self.thread.start()
+
+    def _serve(self) -> None:
+        conn, _ = self.listener.accept()
+        with conn:
+            while not self.request.endswith(b"\r\n\r\n"):
+                chunk = conn.recv(1)
+                if not chunk:
+                    return
+                self.request += chunk
+            conn.sendall(self.answer)
+            if self.backend:
+                with socket.create_connection(self.backend) as upstream:
+                    conn.sendall(upstream.recv(100))
+
+    def close(self) -> None:
+        self.listener.close()
+
+
+class FakeBackend:
+    """A server that greets like IMAP and counts its connections."""
+
+    def __init__(self) -> None:
+        self.listener = socket.socket()
+        self.listener.bind(("127.0.0.1", 0))
+        self.listener.listen(2)
+        self.port: int = self.listener.getsockname()[1]
+        self.accepted = 0
+        threading.Thread(target=self._serve, daemon=True).start()
+
+    def _serve(self) -> None:
+        while True:
+            try:
+                conn, _ = self.listener.accept()
+            except OSError:
+                return
+            self.accepted += 1
+            conn.sendall(b"* OK hello\r\n")
+            conn.close()
+
+
+@pytest.fixture
+def proxy_env(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(mb.imaplib, "IMAP4", REAL_IMAP4)  # these tests go over real sockets
+    monkeypatch.setattr(mb.imaplib, "IMAP4_SSL", REAL_IMAP4_SSL)
+    for name in ("https_proxy", "HTTPS_PROXY", "no_proxy", "NO_PROXY", "http_proxy", "HTTP_PROXY"):
+        monkeypatch.delenv(name, raising=False)
+    return monkeypatch
+
+
+def test_tunnel_established_and_bytes_flow(proxy_env: pytest.MonkeyPatch) -> None:
+    backend = FakeBackend()
+    proxy = FakeProxy(b"HTTP/1.1 200 Connection established\r\n\r\n", ("127.0.0.1", backend.port))
+    sock = mb._open_tunnel(f"http://127.0.0.1:{proxy.port}", "imap.example.org", 993, 5)
+    with sock:
+        assert sock.recv(100) == b"* OK hello\r\n"
+    assert proxy.request.startswith(
+        b"CONNECT imap.example.org:993 HTTP/1.1\r\nHost: imap.example.org:993\r\n"
+    )
+    assert b"Proxy-Authorization" not in proxy.request
+
+
+def test_tunnel_sends_basic_credentials_from_the_url() -> None:
+    proxy = FakeProxy(b"HTTP/1.1 200 OK\r\n\r\n")
+    mb._open_tunnel(f"http://us%40er:p%3Aw@127.0.0.1:{proxy.port}", "h.example.org", 143, 5).close()
+    token = base64.b64encode(b"us@er:p:w").decode()
+    assert f"Proxy-Authorization: Basic {token}\r\n".encode() in proxy.request
+
+
+def test_refused_tunnel_is_source_unavailable_without_credentials() -> None:
+    proxy = FakeProxy(b"HTTP/1.1 403 Forbidden: host h.example.org is not in the allowlist\r\n\r\n")
+    with pytest.raises(SourceUnavailable) as caught:
+        mb._open_tunnel(f"http://user:hunter2@127.0.0.1:{proxy.port}", "h.example.org", 143, 5)
+    message = str(caught.value)
+    assert "refused" in message
+    assert "hunter2" not in message and "user" not in message
+
+
+def test_endless_or_closed_proxy_answers_are_source_unavailable() -> None:
+    proxy = FakeProxy(b"")
+    with pytest.raises(SourceUnavailable):
+        mb._open_tunnel(f"http://127.0.0.1:{proxy.port}", "h.example.org", 143, 5)
+    proxy = FakeProxy(b"HTTP/1.1 200 OK\r\nX: " + b"a" * 9000)
+    with pytest.raises(SourceUnavailable):
+        mb._open_tunnel(f"http://127.0.0.1:{proxy.port}", "h.example.org", 143, 5)
+
+
+def test_only_http_proxies_are_supported() -> None:
+    with pytest.raises(SourceUnavailable, match="http://"):
+        mb._open_tunnel("socks5://127.0.0.1:1080", "h.example.org", 143, 5)
+
+
+def test_connect_imap_uses_the_tunnel_for_starttls_level(proxy_env: pytest.MonkeyPatch) -> None:
+    backend = FakeBackend()
+    proxy = FakeProxy(b"HTTP/1.1 200 OK\r\n\r\n", ("127.0.0.1", backend.port))
+    proxy_env.setenv("HTTPS_PROXY", f"http://127.0.0.1:{proxy.port}")
+    with pytest.raises(SourceUnavailable):  # the fake backend hangs up after its greeting, before CAPABILITY
+        connect_imap(Connection("imap.example.org", 143, "starttls", "u"), SecretText("pw"))
+    assert proxy.request.startswith(b"CONNECT imap.example.org:143 HTTP/1.1")
+
+
+def test_connect_imap_through_a_refusing_proxy_is_source_unavailable(proxy_env: pytest.MonkeyPatch) -> None:
+    proxy = FakeProxy(b"HTTP/1.1 403 Forbidden\r\n\r\n")
+    proxy_env.setenv("HTTPS_PROXY", f"http://user:hunter2@127.0.0.1:{proxy.port}")
+    with pytest.raises(SourceUnavailable) as caught:
+        connect_imap(Connection("imap.example.org", 993, "tls", "u"), SecretText("pw"))
+    assert "hunter2" not in str(caught.value)
+    assert proxy.request.startswith(b"CONNECT imap.example.org:993 HTTP/1.1")
+
+
+def test_no_proxy_exempts_the_host_and_no_env_is_direct(proxy_env: pytest.MonkeyPatch) -> None:
+    assert mb._proxy_for("127.0.0.1") is None
+    proxy_env.setenv("HTTPS_PROXY", "http://127.0.0.1:9")
+    assert mb._proxy_for("imap.example.org") == "http://127.0.0.1:9"
+    proxy_env.setenv("NO_PROXY", "example.org")
+    assert mb._proxy_for("imap.example.org") is None
+    proxy_env.setenv("NO_PROXY", "127.0.0.1")
+    backend = FakeBackend()
+    with pytest.raises(
+        SourceUnavailable
+    ):  # direct to the backend, which hangs up; no proxy is contacted (port 9)
+        connect_imap(Connection("127.0.0.1", backend.port, "starttls", "u"), SecretText("pw"))
+    time.sleep(0.1)
+    assert backend.accepted == 1
+
+
+def test_a_proxy_known_only_outside_the_environment_is_ignored(proxy_env: pytest.MonkeyPatch) -> None:
+    proxy_env.setattr(
+        "urllib.request.getproxies", lambda: {"https": "http://127.0.0.1:9"}
+    )  # e.g. macOS settings
+    assert mb._proxy_for("imap.example.org") is None

@@ -4,6 +4,8 @@ The importer's logic is written against `Mailbox` and tested against a fake of i
 one: implicit TLS or STARTTLS with the system's trust store and host name checked, the mailbox opened
 read-only (`EXAMINE`), every message read with `BODY.PEEK[]`. Nothing is marked seen, moved or deleted.
 Failures of the connection are `SourceUnavailable`; their messages name the rule, never a setting.
+Where the platform's `HTTPS_PROXY` applies to the host (and `NO_PROXY` does not exempt it), the connection is
+opened as an HTTP `CONNECT` tunnel first; the TLS or STARTTLS that follows is unchanged, end to end.
 """
 
 from __future__ import annotations
@@ -13,12 +15,15 @@ import email
 import imaplib
 import logging
 import re
+import socket
 import ssl
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date
 from typing import Protocol
+from urllib.parse import unquote, urlsplit
+from urllib.request import getproxies_environment, proxy_bypass_environment  # type: ignore[attr-defined]  # stubs omit it
 
 from app.core.plugins.errors import AuthRejected, InvalidProfile, SourceUnavailable
 from app.core.plugins.fetch import SecretText
@@ -26,6 +31,7 @@ from app.core.plugins.fetch import SecretText
 log = logging.getLogger("ledgehog.email")
 
 COMMAND_TIMEOUT_S = 30.0
+MAX_PROXY_HEAD = 8192
 MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
 
@@ -217,6 +223,82 @@ class ImapMailbox:
         self._imap.logout()
 
 
+def _proxy_for(host: str) -> str | None:
+    """The `https` proxy URL that applies to `host`, from the environment alone, never the OS settings."""
+    proxies = getproxies_environment()
+    proxy = proxies.get("https")
+    if not proxy or proxy_bypass_environment(host, proxies):
+        return None
+    return proxy
+
+
+def _open_tunnel(proxy_url: str, host: str, port: int, timeout: float | None) -> socket.socket:
+    """A socket to `host:port` through the proxy's `CONNECT`; its credentials are never reported."""
+    parts = urlsplit(proxy_url if "://" in proxy_url else "http://" + proxy_url)
+    if parts.scheme != "http" or not parts.hostname:
+        raise SourceUnavailable("the proxy must be an http:// one")
+    try:
+        proxy_port = parts.port or 80
+    except ValueError:
+        raise SourceUnavailable("the proxy address is not valid") from None
+    target = f"[{host}]:{port}" if ":" in host else f"{host}:{port}"
+    lines = [f"CONNECT {target} HTTP/1.1", f"Host: {target}"]
+    if parts.username is not None:
+        login = f"{unquote(parts.username)}:{unquote(parts.password or '')}"
+        lines.append("Proxy-Authorization: Basic " + base64.b64encode(login.encode()).decode("ascii"))
+    request = ("\r\n".join(lines) + "\r\n\r\n").encode("ascii")
+    sock = socket.create_connection((parts.hostname, proxy_port), timeout)
+    try:
+        sock.sendall(request)
+        head = b""
+        while not head.endswith(b"\r\n\r\n"):  # one byte at a time: nothing of the tunnel is consumed
+            if len(head) >= MAX_PROXY_HEAD:
+                raise SourceUnavailable("the proxy's answer was not understood")
+            chunk = sock.recv(1)
+            if not chunk:
+                raise SourceUnavailable("the proxy closed the connection")
+            head += chunk
+        status_line = head.split(b"\r\n", 1)[0].decode("latin-1")
+        status = status_line.split(" ", 2)
+        if len(status) < 2 or not status[0].startswith("HTTP/") or not status[1].startswith("2"):
+            log.info("the proxy refused the tunnel: %s", status_line[:200])
+            raise SourceUnavailable("the proxy refused the connection")
+    except BaseException:
+        sock.close()
+        raise
+    return sock
+
+
+class _TunnelledImap(imaplib.IMAP4):
+    """Plain IMAP over a `CONNECT` tunnel (STARTTLS follows as usual)."""
+
+    def __init__(self, host: str, port: int, proxy: str, timeout: float | None) -> None:
+        self._proxy = proxy
+        super().__init__(host, port, timeout=timeout)
+
+    def _create_socket(self, timeout: float | None) -> socket.socket:
+        return _open_tunnel(self._proxy, self.host, self.port, timeout)
+
+
+class _TunnelledImapSsl(imaplib.IMAP4_SSL):
+    """Implicit-TLS IMAP over a `CONNECT` tunnel; the certificate is checked against the IMAP host."""
+
+    def __init__(
+        self, host: str, port: int, proxy: str, context: ssl.SSLContext, timeout: float | None
+    ) -> None:
+        self._proxy = proxy
+        super().__init__(host, port, ssl_context=context, timeout=timeout)
+
+    def _create_socket(self, timeout: float | None) -> socket.socket:
+        sock = _open_tunnel(self._proxy, self.host, self.port, timeout)
+        try:
+            wrapped: socket.socket = self.ssl_context.wrap_socket(sock, server_hostname=self.host)
+            return wrapped
+        except BaseException:
+            sock.close()
+            raise
+
+
 def connect_imap(connection: Connection, password: SecretText) -> Mailbox:
     """Connect, secure the connection and log in.
 
@@ -225,12 +307,21 @@ def connect_imap(connection: Connection, password: SecretText) -> Mailbox:
     """
     context = ssl.create_default_context()
     with _transport_errors():
+        proxy = _proxy_for(connection.host)
         if connection.security == "tls":
-            imap: imaplib.IMAP4 = imaplib.IMAP4_SSL(
-                connection.host, connection.port, ssl_context=context, timeout=COMMAND_TIMEOUT_S
-            )
+            if proxy:
+                imap: imaplib.IMAP4 = _TunnelledImapSsl(
+                    connection.host, connection.port, proxy, context, COMMAND_TIMEOUT_S
+                )
+            else:
+                imap = imaplib.IMAP4_SSL(
+                    connection.host, connection.port, ssl_context=context, timeout=COMMAND_TIMEOUT_S
+                )
         else:
-            imap = imaplib.IMAP4(connection.host, connection.port, timeout=COMMAND_TIMEOUT_S)
+            if proxy:
+                imap = _TunnelledImap(connection.host, connection.port, proxy, COMMAND_TIMEOUT_S)
+            else:
+                imap = imaplib.IMAP4(connection.host, connection.port, timeout=COMMAND_TIMEOUT_S)
             if "STARTTLS" not in imap.capabilities:
                 _drop(imap)
                 raise InvalidProfile("security: the server offers no STARTTLS")
