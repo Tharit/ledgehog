@@ -3,16 +3,16 @@
 #
 #   sandbox/run.sh <job> [extra nono flags...] -- <command...>
 #
-#   sandbox/run.sh frontend -- scripts/fe_verify.sh --build
-#   sandbox/run.sh backend --allow-domain api.example.com -- .venv/bin/uvicorn app.main:app --port 8000
+#   sandbox/run.sh frontend-verify -- scripts/fe_verify.sh --build
+#   sandbox/run.sh backend-serve --allow-domain api.example.com -- .venv/bin/uvicorn app.main:app --port 8000
 #
 # Before starting it
 #   - refuses to run while sandbox/ has uncommitted changes (SANDBOX_ALLOW_DIRTY=1 overrides);
 #   - refuses to run if the profile would let a canary host through (an open network);
 #   - creates the node_modules dirs the frontend jobs may write to (grants on missing dirs are skipped).
-#   - proxy-mode jobs (backend, deps) are chained to tinyproxy (nono --upstream-proxy), which only lets
+#   - proxy-mode jobs (backend-serve, install) are chained to tinyproxy (nono --upstream-proxy), which only lets
 #     CONNECT to ports 443 and 993 through; run.sh starts it on a free localhost port and stops it at exit.
-# While it runs (backend by default; SANDBOX_WATCH=1 / 0 forces it on / off) a watcher follows nono's proxy log
+# While it runs (backend-serve by default; SANDBOX_WATCH=1 / 0 forces it on / off) a watcher follows nono's proxy log
 # and tinyproxy's log and, on the first denied connection, prints a banner, stops the session and makes run.sh exit 1.
 # See sandbox/README.md.
 set -eu
@@ -57,7 +57,7 @@ if "${why[@]}" 2>&1 | grep -q '^ALLOWED'; then
   exit 1
 fi
 
-if { [ "$job" = frontend ] || [ "$job" = frontend-dev ]; } && [ -d frontend/node_modules ]; then
+if { [ "$job" = frontend-verify ] || [ "$job" = frontend-serve ]; } && [ -d frontend/node_modules ]; then
   mkdir -p frontend/node_modules/.vite frontend/node_modules/.vite-temp 'frontend/node_modules/$app'
 fi
 
@@ -68,10 +68,10 @@ nono=(nono run --profile "$profile" --workdir "$root" --allow-cwd)
 # filters by HOST only and ignores ports, so a listed mail host would also be reachable on its SMTP ports.
 # tinyproxy lets only CONNECT to ports 443 and 993 through (plain HTTP is refused outright).
 tinyproxy=0
-case "$job" in backend | deps) tinyproxy=1 ;; esac
+case "$job" in backend-serve | install) tinyproxy=1 ;; esac
 
 watch=0
-[ "$job" = backend ] && watch=1
+[ "$job" = backend-serve ] && watch=1
 [ -n "${SANDBOX_WATCH:-}" ] && watch=$SANDBOX_WATCH
 if [ "$watch" != 1 ] && [ "$tinyproxy" != 1 ]; then
   exec "${nono[@]}" "$@"

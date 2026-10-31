@@ -1,6 +1,6 @@
 {
   "extends": "default",
-  "meta": { "name": "deps", "description": "npm ci (frontend/) and uv sync --locked: registry-only network, writes to dependency dirs" },
+  "meta": { "name": "install", "description": "npm ci (frontend/) and uv sync --locked: registry-only network, writes to dependency dirs" },
   "groups": { "include": ["node_runtime", "python_runtime"] },
   "workdir": { "access": "read" },
   "filesystem": {

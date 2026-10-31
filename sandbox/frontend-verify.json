@@ -1,6 +1,6 @@
 {
   "extends": "default",
-  "meta": { "name": "frontend", "description": "svelte-check, eslint, vitest, vite build, fe_verify.sh: no network" },
+  "meta": { "name": "frontend-verify", "description": "svelte-check, eslint, vitest, vite build, fe_verify.sh: no network" },
   "groups": { "include": ["node_runtime"] },
   "workdir": { "access": "read" },
   "filesystem": {

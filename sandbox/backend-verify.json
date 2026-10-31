@@ -1,6 +1,6 @@
 {
   "extends": "default",
-  "meta": { "name": "backend-tests", "description": "pytest, smoke_http.sh, ruff, mypy: localhost only" },
+  "meta": { "name": "backend-verify", "description": "pytest, smoke_http.sh, ruff, mypy: localhost only" },
   "groups": { "include": ["python_runtime"] },
   "workdir": { "access": "read" },
   "filesystem": {

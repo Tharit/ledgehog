@@ -13,13 +13,17 @@ shell history and configs), mount the repo read-only, and deny `**/.env` and `te
 
 | Job | Runs | Network | Writes (beyond temp) | Env |
 |---|---|---|---|---|
-| `deps` | `npm ci` (in frontend/), `uv sync --locked` | proxy; only registry.npmjs.org, pypi.org, files.pythonhosted.org | frontend/node_modules, .venv, ~/.npm, ~/.cache/uv | secret-like vars stripped |
-| `frontend` | `npm run check/lint/test/build`, `scripts/fe_verify.sh` | none | frontend/.svelte-kit, build, .verify, node_modules/{.vite,.vite-temp,$app} | secret-like vars stripped |
-| `frontend-dev` | `vite dev` | blocked, except listen 5173-5180 and connect localhost:8000 | frontend/.svelte-kit, node_modules/{.vite,.vite-temp,$app} | secret-like vars stripped |
-| `backend` | uvicorn, `scripts/dev_db.py`, `dev_seed.py` | listen 8000; connect localhost:5432; other egress via proxy to `network.allow_domain` only | none | DB creds passed through; PYTHONDONTWRITEBYTECODE=1 |
-| `backend-tests` | pytest, ruff, mypy, `scripts/smoke_http.sh` | no external; localhost any port | .pytest_cache, .ruff_cache, .mypy_cache, .uv-cache | DB creds passed through; PYTHONDONTWRITEBYTECODE=1 |
+| `install` | `npm ci` (in frontend/), `uv sync --locked` | proxy; only registry.npmjs.org, pypi.org, files.pythonhosted.org | frontend/node_modules, .venv, ~/.npm, ~/.cache/uv | secret-like vars stripped |
+| `frontend-verify` | `npm run check/lint/test/build`, `scripts/fe_verify.sh` | none | frontend/.svelte-kit, build, .verify, node_modules/{.vite,.vite-temp,$app} | secret-like vars stripped |
+| `frontend-serve` | `vite dev` | blocked, except listen 5173-5180 and connect localhost:8000 | frontend/.svelte-kit, node_modules/{.vite,.vite-temp,$app} | secret-like vars stripped |
+| `backend-serve` | uvicorn, `scripts/dev_db.py`, `dev_seed.py` | listen 8000; connect localhost:5432; other egress via proxy to `network.allow_domain` only | none | DB creds passed through; PYTHONDONTWRITEBYTECODE=1 |
+| `backend-verify` | pytest, ruff, mypy, `scripts/smoke_http.sh` | no external; localhost any port | .pytest_cache, .ruff_cache, .mypy_cache, .uv-cache | DB creds passed through; PYTHONDONTWRITEBYTECODE=1 |
 
 "Secret-like" = `*PASSWORD* *SECRET* *TOKEN* *KEY* *CREDENTIAL*`, case-insensitive.
+
+Naming: `<area>-<activity>`. **verify** jobs finish on their own, run offline and write only caches and build
+output; **serve** jobs are long-running and listen on a port; **install** is the only job that fetches packages.
+`scripts/dev_db.py` and `dev_seed.py` run under `backend-serve` because they need the same access (DB, no writes).
 
 ## Usage
 
@@ -28,30 +32,30 @@ The command's cwd is the repo root. Source test.env in your shell first where a 
 
 nono blocks `npm`, `rm` and similar as the *directly started* command (children are not blocked), so wrap
 those in `sh -c`. For Python use `.venv/bin/<tool>`; `uv run` wants to write its cache (use `uv run --no-sync`
-only with `UV_CACHE_DIR=$PWD/.uv-cache` under backend-tests).
+only with `UV_CACHE_DIR=$PWD/.uv-cache` under backend-verify).
 
 ```sh
 # install
-sandbox/run.sh deps -- sh -c 'cd frontend && npm ci'
-sandbox/run.sh deps -- uv sync --locked
+sandbox/run.sh install -- sh -c 'cd frontend && npm ci'
+sandbox/run.sh install -- uv sync --locked
 
 # frontend
-sandbox/run.sh frontend -- scripts/fe_verify.sh --build
-sandbox/run.sh frontend -- sh -c 'cd frontend && npm run check'
-sandbox/run.sh frontend -- sh -c 'cd frontend && npx vitest --run src/lib/units/describe.spec.ts'
+sandbox/run.sh frontend-verify -- scripts/fe_verify.sh --build
+sandbox/run.sh frontend-verify -- sh -c 'cd frontend && npm run check'
+sandbox/run.sh frontend-verify -- sh -c 'cd frontend && npx vitest --run src/lib/units/describe.spec.ts'
 # --format / --gen write into frontend/src: grant that one directory for this run only
-sandbox/run.sh frontend --allow "$PWD/frontend/src" -- scripts/fe_verify.sh --format
-sandbox/run.sh frontend-dev -- sh -c 'cd frontend && npx vite dev'
+sandbox/run.sh frontend-verify --allow "$PWD/frontend/src" -- scripts/fe_verify.sh --format
+sandbox/run.sh frontend-serve -- sh -c 'cd frontend && npx vite dev'
 
 # backend (. ./test.env first)
 . ./test.env
-sandbox/run.sh backend -- .venv/bin/uvicorn app.main:app --port 8000
-sandbox/run.sh backend -- .venv/bin/python scripts/dev_seed.py
-sandbox/run.sh backend --allow-domain api.example.com -- ...   # one-off extra host
+sandbox/run.sh backend-serve -- .venv/bin/uvicorn app.main:app --port 8000
+sandbox/run.sh backend-serve -- .venv/bin/python scripts/dev_seed.py
+sandbox/run.sh backend-serve --allow-domain api.example.com -- ...   # one-off extra host
 # tests
-sandbox/run.sh backend-tests -- .venv/bin/pytest tests/core -q
-sandbox/run.sh backend-tests -- sh -c 'UV_CACHE_DIR="$PWD/.uv-cache" scripts/smoke_http.sh'
-sandbox/run.sh backend-tests -- .venv/bin/ruff check app
+sandbox/run.sh backend-verify -- .venv/bin/pytest tests/core -q
+sandbox/run.sh backend-verify -- sh -c 'UV_CACHE_DIR="$PWD/.uv-cache" scripts/smoke_http.sh'
+sandbox/run.sh backend-verify -- .venv/bin/ruff check app
 ```
 
 ## What run.sh does before and while running
@@ -64,17 +68,17 @@ sandbox/run.sh backend-tests -- .venv/bin/ruff check app
   (`--allow`, `--listen-port`, ...) are not, since `nono why` does not accept them.
 - Creates `frontend/node_modules/{.vite,.vite-temp,$app}` for the frontend jobs if node_modules exists (a write
   grant on a missing directory is silently skipped and the tool then fails with EPERM).
-- **Watcher** (default on for `backend`; `SANDBOX_WATCH=1` enables it for another job, `SANDBOX_WATCH=0` disables
+- **Watcher** (default on for `backend-serve`; `SANDBOX_WATCH=1` enables it for another job, `SANDBOX_WATCH=0` disables
   it): follows nono's live proxy log and tinyproxy's log (refused ports); on the first denied connection it prints a red banner (time, host:port,
   reason, fix), stops the session (`nono stop`) and run.sh exits 1. Limits: it only sees proxy-mode denials.
-  Jobs with `network.block` (frontend, frontend-dev, backend-tests) have no proxy and the kernel denies silently,
-  so a watcher there never fires (frontend-dev: the watcher is therefore off by default); file denials are never
+  Jobs with `network.block` (frontend-verify, frontend-serve, backend-verify) have no proxy and the kernel denies silently,
+  so a watcher there never fires (frontend-serve: the watcher is therefore off by default); file denials are never
   reported anywhere. `nono stop` ends the started command only: if that is `sh -c '... &'`, background children
-  survive, so start servers directly (`run.sh backend -- .venv/bin/uvicorn ...`). Detection lags up to ~0.5 s.
+  survive, so start servers directly (`run.sh backend-serve -- .venv/bin/uvicorn ...`). Detection lags up to ~0.5 s.
   A SIGTERM sent to run.sh itself is handled only after the command ends (bash defers traps); Ctrl-C reaches nono
   too, so it ends the job and run.sh cleans up the watcher and its temp dir.
 
-## Network chain (proxy-mode jobs: backend, deps)
+## Network chain (proxy-mode jobs: backend-serve, install)
 
 ```
 app -> nono proxy (host allowlist) -> tinyproxy 127.0.0.1:<free port> (CONNECT to ports 443 and 993 only) -> internet
@@ -94,23 +98,23 @@ too); tinyproxy additionally refuses any non-CONNECT request (filter whitelist).
 - Another port (e.g. 8443) means editing `ConnectPort` in run.sh.
 - Refusals: the connection fails (HTTP 502/403 at the client); with the watcher the job is stopped with the
   banner (reason `port not allowed (only 443 and 993)`), without it nono prints the denial at the end of the run.
-- `deps` has the watcher off by default (kept as before; a registry fetch failing is visible in the tool's
+- `install` has the watcher off by default (kept as before; a registry fetch failing is visible in the tool's
   own output); `SANDBOX_WATCH=1` turns it on.
 
 ## Configuring the backend's egress
 
-`backend.json` lists the outbound hosts in `network.allow_domain`. It ships with only `placeholder.invalid`:
+`backend-serve.json` lists the outbound hosts in `network.allow_domain`. It ships with only `placeholder.invalid`:
 an **empty list turns the proxy off and leaves the network fully open** (run.sh's canary check refuses that),
 so keep at least one entry.
 Add every host your setup uses, and keep the list in sync with your env and importer config:
 MODEL_ENDPOINT, VISION_MODEL_ENDPOINT, OIDC_ISSUER hosts, FinTS bank servers, IMAP servers.
 A missing host fails closed (HTTP 403 from the proxy) and is reported (see below).
 A `<VAR>_FILE` secret file needs a matching `"read_file": ["/path/to/file"]` under `filesystem` in
-backend.json (or `--read-file /path` on the command line).
+backend-serve.json (or `--read-file /path` on the command line).
 
 ## Seeing denials
 
-- With the watcher (backend) a denial stops the job immediately with a banner. Otherwise network denials are printed at the end of the run, with the fix:
+- With the watcher (backend-serve) a denial stops the job immediately with a banner. Otherwise network denials are printed at the end of the run, with the fix:
   `deny connect example.org:443 (host example.org:443 is not in the allowlist) ... --allow-domain example.org`
 - They are also recorded: `nono audit list`, then `nono audit show <session-id> [--json]` (see `network_events`).
 - File denials surface only as `Operation not permitted` in the command's own output; on macOS nono's
@@ -119,15 +123,15 @@ backend.json (or `--read-file /path` on the command line).
 
 ## Known limitations
 
-- Non-HTTP egress (IMAP, FinTS over non-HTTPS) cannot pass the HTTP(S) proxy: with `backend` it is blocked
+- Non-HTTP egress (IMAP, FinTS over non-HTTPS) cannot pass the HTTP(S) proxy: with `backend-serve` it is blocked
   by the kernel profile. Using the email importer needs a looser profile or a deliberate decision.
 - Ports are restricted only on the allowed hosts: 443 and 993 stay open for every listed host, and the
   restriction is the same for all of them (not per host).
 - Allowed hosts are trusted completely; a compromised package can send data to any listed host.
 - The sandbox does not cover the Postgres server (a hostile package can run any SQL with the creds in env
-  under `backend`/`backend-tests`), `playwright-cli`, or processes you start outside `run.sh`.
+  under `backend-serve`/`backend-verify`), `playwright-cli`, or processes you start outside `run.sh`.
 - Nested sandboxing: nono cannot start inside another Seatbelt sandbox (e.g. Claude Code's own); run it
   from a normal terminal.
-- Code can still tamper with what a job may write (e.g. node_modules under `deps`); jobs run later
+- Code can still tamper with what a job may write (e.g. node_modules under `install`); jobs run later
   outside the sandbox would execute it. Always use `run.sh`.
-- `scripts/smoke_http.sh` (backend-tests) creates and then **drops** the `dev_ledgehog` database; it is not a sandbox issue, but do not run it if that database holds data you want.
+- `scripts/smoke_http.sh` (backend-verify) creates and then **drops** the `dev_ledgehog` database; it is not a sandbox issue, but do not run it if that database holds data you want.

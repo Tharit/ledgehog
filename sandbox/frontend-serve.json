@@ -1,6 +1,6 @@
 {
   "extends": "default",
-  "meta": { "name": "frontend-dev", "description": "vite dev server: listens on 5173-5180, proxies to localhost:8000" },
+  "meta": { "name": "frontend-serve", "description": "vite dev server: listens on 5173-5180, proxies to localhost:8000" },
   "groups": { "include": ["node_runtime"] },
   "workdir": { "access": "read" },
   "filesystem": {
