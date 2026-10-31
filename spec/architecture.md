@@ -1945,6 +1945,13 @@ restarting. Each variable that holds a secret (`POSTGRES_PASSWORD`,
 naming a file (Docker and Compose secrets), and no secret is ever logged or
 returned by `GET /api/config`.
 
+Outbound connections honour the standard `HTTPS_PROXY` and `NO_PROXY` variables,
+as the platform's libraries read them: the HTTP clients by their default, the
+IMAP connection as an HTTP `CONNECT` tunnel before its TLS or STARTTLS. They are
+not configuration of the app's own and are not in the table. The deployment sets
+neither, since its relay needs nothing of the app; the development sandbox
+(nono) sets them.
+
 | Group | Variables |
 |---|---|
 | Database | `POSTGRES_HOST` (`localhost`), `POSTGRES_PORT` (`5432`), `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` (the last three required); no single database URL; the name stays a variable so each context has its own database (§9) |
