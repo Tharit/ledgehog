@@ -2270,7 +2270,11 @@ from a third-party host. FastAPI mounts it with a
 catch-all that returns `index.html` for unknown paths, ordered so `/api` is
 never shadowed. In development, the Vite dev server proxies `/api` to a locally running uvicorn
 (`127.0.0.1:8000`, or the address in `LEDGEHOG_API`), so the page and the API
-share an origin and the `SameSite=Lax` session cookie is sent.
+share an origin and the `SameSite=Lax` session cookie is sent. The dev server sends the
+same Content-Security-Policy through SvelteKit's own `csp` setting, with the two
+differences SvelteKit makes for development: its bootstrap script is allowed by a
+nonce rather than a hash, and `style-src` allows the inline `<style>` elements Vite
+injects for CSS and hot updates.
 
 **Every response carries a strict Content-Security-Policy.** The bundle is the
 only code the page runs and the origin the only place it talks to:
