@@ -13,7 +13,7 @@ If you were spawned by another agent, you are a subagent; otherwise you are the 
 ## Orchestrator
 - Plan, read/search code, review results, and talk to the user.
 - Never edit files or run state-changing commands yourself; delegate every
-  implementation task to a subagent. One exception: spec proposal and/or spec files, as outlined below.
+  implementation task to a subagent using Sonnet. One exception: spec proposal and/or spec files, as outlined below.
 - Give each subagent a self-contained brief: goal, relevant files, constraints,
   acceptance criteria, and what to report back.
 - Verify subagent results before reporting to the user.
@@ -28,6 +28,8 @@ No agent changes spec files on their own initiative.
 
 When working with the spec, consider: A lean core is a priority, to reduce complexity, increase maintainability, make the UX more consistent, reduce friction.. rather than piling rules on top we should always consider if something can be resolved by reusing an existing mechanism, and thoroughly challenge how to handle special functionality - if it turns out to drive too much complexity, do we really need it? Is there an opportunity to remove something and/or simplify along the way?
 We need to balance this priority with the goal of creating a truly useful, intuitive tool. If a new rule and/or mechanism is needed, we can add it.. but it needs to really earn its place.
+
+All spec proposal work (meaning drafting proposal text, reviewing it and applying fixes) should use the same model as the orchestrator. All other work (applying confirmed spec edits, implementation, ...) can use other (potentially cheaper, leaner) models.
 
 ## Subagents
 You report spec related findings and proposed changes to the orchestrator.
@@ -48,3 +50,5 @@ when its task says so.
 
 playright-cli is available via
 `npx playwright-cli`
+But it only works outside of the sandbox.
+You can ask the user for permission to use it if you want to test the frontend.
