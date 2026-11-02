@@ -154,7 +154,7 @@ tp_awk='
 watcher() {
   local line target host port reason hint sid
   while sleep 0.5; do
-    hint="if the host is expected, add it to network.allow_domain in $profile"$'\n'"  (or pass --allow-domain HOST for one run)"
+    hint="if the host is expected, add it to network.allow_domain in $profile"$'\r\n'"  (or pass --allow-domain HOST for one run)"
     if line=$(grep -m1 'proxy request denied' "$log" 2>/dev/null); then
       line=$(printf '%s' "$line" | sed $'s/\x1b\\[[0-9;]*m//g')
       host=$(printf '%s' "$line" | sed -n 's/.* host=\([^ ]*\).*/\1/p')
@@ -176,13 +176,15 @@ watcher() {
     else
       continue
     fi
+    # Every line ends in \r\n: nono holds the terminal in raw mode while the job runs (no LF -> CR LF
+    # translation), so a bare \n would stair-step the banner. CRLF is harmless in a cooked tty or a log.
     {
-      printf '\n\033[1;97;41m'
-      printf '%s\n' "################################################################################" \
+      printf '\r\n\033[1;97;41m'
+      printf '%s\r\n' "################################################################################" \
         "#  SANDBOX: BLOCKED OUTBOUND CONNECTION  -  stopping the job" \
         "################################################################################"
       printf '\033[0m'
-      printf '  time:    %s\n  target:  %s:%s\n  reason:  %s\n  %s\n\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$host" "$port" "$reason" "$hint"
+      printf '  time:    %s\r\n  target:  %s:%s\r\n  reason:  %s\r\n  %s\r\n\r\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$host" "$port" "$reason" "$hint"
     } >&2
     touch "$tmp/denied"
     sid=$(nono ps --json 2>/dev/null | python3 -c 'import json,sys; print(next((s["session_id"] for s in json.load(sys.stdin) if s.get("name")==sys.argv[1]), ""))' "$name") || sid=
