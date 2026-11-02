@@ -8,7 +8,7 @@ import json
 from collections.abc import Callable
 from typing import Any
 
-import httpx
+import httpx2
 import pytest
 
 from app.core.plugins.errors import SourceUnavailable
@@ -38,23 +38,23 @@ class Endpoint:
     status, or raises."""
 
     def __init__(self, reply: object = ANSWER, status: int = 200, finish: str = "stop") -> None:
-        self.requests: list[httpx.Request] = []
+        self.requests: list[httpx2.Request] = []
         self.reply = reply
         self.status = status
         self.finish = finish
         self.raises: Exception | None = None
         self.replies: list[object] = []  # one per request, before `reply` applies
 
-    def __call__(self, request: httpx.Request) -> httpx.Response:
+    def __call__(self, request: httpx2.Request) -> httpx2.Response:
         self.requests.append(request)
         if self.raises is not None:
             raise self.raises
         if self.status != 200:
-            return httpx.Response(self.status, text="nope: secret text")
+            return httpx2.Response(self.status, text="nope: secret text")
         reply = self.replies.pop(0) if self.replies else self.reply
         content = reply if isinstance(reply, str) else json.dumps(reply)
         body = {"choices": [{"message": {"content": content}, "finish_reason": self.finish}]}
-        return httpx.Response(200, json=body)
+        return httpx2.Response(200, json=body)
 
     def body(self, i: int = 0) -> dict[str, Any]:
         return json.loads(self.requests[i].content)
@@ -74,8 +74,8 @@ def extractor(
     return ModelExtractor(
         ModelSpec("http://text.test/v1/", "text-1", "tkey", effort),
         ModelSpec("http://vision.test/v1", "vision-1", "vkey") if vision else None,
-        transport=httpx.MockTransport(text),
-        vision_transport=httpx.MockTransport(vision) if vision else None,
+        transport=httpx2.MockTransport(text),
+        vision_transport=httpx2.MockTransport(vision) if vision else None,
         render=render,
     )
 
@@ -160,8 +160,8 @@ def test_the_vision_model_without_its_own_key_sends_no_authorization():
     ModelExtractor(
         ModelSpec("http://t/v1", "t"),
         ModelSpec("http://v/v1", "v"),
-        transport=httpx.MockTransport(Endpoint()),
-        vision_transport=httpx.MockTransport(vision),
+        transport=httpx2.MockTransport(Endpoint()),
+        vision_transport=httpx2.MockTransport(vision),
         render=fake_render,
     ).extract(None, PDFS[:1])
     assert "authorization" not in vision.requests[0].headers
@@ -212,10 +212,10 @@ def test_a_reply_cut_off_at_max_tokens_is_unreadable_even_where_it_parses():
 
 
 def test_a_body_without_content_or_not_json_is_unreadable():
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, text="<html>")
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(200, text="<html>")
 
-    model = ModelExtractor(ModelSpec("http://t/v1", "t"), transport=httpx.MockTransport(handler))
+    model = ModelExtractor(ModelSpec("http://t/v1", "t"), transport=httpx2.MockTransport(handler))
     assert model.extract("x", ()) == Skipped("unreadable")
     assert parse_reply({"choices": []}) is None
     assert parse_reply({"choices": [{"message": {"content": None}}]}) is None
@@ -254,7 +254,7 @@ def test_a_model_that_refuses_us_fails_the_run_and_counts_no_attempt(status: int
     assert "secret" not in str(caught.value) and "tkey" not in str(caught.value)
 
 
-@pytest.mark.parametrize("error", [httpx.ConnectError("refused"), httpx.ConnectTimeout("slow")])
+@pytest.mark.parametrize("error", [httpx2.ConnectError("refused"), httpx2.ConnectTimeout("slow")])
 def test_a_model_that_cannot_be_reached_fails_the_run_and_counts_no_attempt(error: Exception):
     endpoint = Endpoint()
     endpoint.raises = error
@@ -272,10 +272,10 @@ def test_a_5xx_after_the_request_was_sent_is_an_attempt_that_failed(status: int)
 @pytest.mark.parametrize(
     "error",
     [
-        httpx.ReadTimeout("t"),
-        httpx.WriteTimeout("t"),
-        httpx.RemoteProtocolError("dropped"),
-        httpx.ReadError("r"),
+        httpx2.ReadTimeout("t"),
+        httpx2.WriteTimeout("t"),
+        httpx2.RemoteProtocolError("dropped"),
+        httpx2.ReadError("r"),
     ],
 )
 def test_a_time_out_or_a_dropped_connection_after_sending_is_an_attempt_that_failed(error: Exception):

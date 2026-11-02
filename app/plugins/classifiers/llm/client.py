@@ -19,7 +19,7 @@ import logging
 from collections.abc import Sequence
 from typing import Any
 
-import httpx
+import httpx2
 
 from app.core.plugins.classifier import EntryInput
 from app.core.plugins.model import CategoryPath, ModelAnswer, ModelUnavailable, NoAnswer
@@ -108,13 +108,13 @@ class OpenAIModelClient:
         api_key: str | None = None,
         *,
         reasoning_effort: str | None = None,
-        transport: httpx.AsyncBaseTransport | None = None,
+        transport: httpx2.AsyncBaseTransport | None = None,
         timeout: float = TIMEOUT_SECONDS,
     ) -> None:
         self._url = chat_url(endpoint)
         self.name = model
         self._effort = reasoning_effort
-        self._http = httpx.AsyncClient(timeout=timeout, headers=auth_headers(api_key), transport=transport)
+        self._http = httpx2.AsyncClient(timeout=timeout, headers=auth_headers(api_key), transport=transport)
 
     def fingerprint(self, subject: EntryInput) -> str | None:
         return payload_fingerprint(subject)
@@ -143,9 +143,9 @@ class OpenAIModelClient:
             response = await self._http.post(self._url, json=self.request_body(payload, categories))
             response.raise_for_status()
             body = response.json()
-        except httpx.HTTPStatusError as exc:
+        except httpx2.HTTPStatusError as exc:
             raise ModelUnavailable(f"HTTP {exc.response.status_code}") from None
-        except httpx.HTTPError as exc:
+        except httpx2.HTTPError as exc:
             raise ModelUnavailable(type(exc).__name__) from None
         except ValueError:
             return NoAnswer("not_json")  # a reply that is not JSON at all

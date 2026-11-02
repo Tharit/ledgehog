@@ -6,7 +6,7 @@ import json
 from datetime import date
 from typing import Any
 
-import httpx
+import httpx2
 import pytest
 
 from app.core.plugins.errors import SourceUnavailable
@@ -49,8 +49,8 @@ class Rig:
         extractor = ModelExtractor(
             ModelSpec("http://t/v1", "text-1"),
             ModelSpec("http://v/v1", "vision-1") if vision else None,
-            transport=httpx.MockTransport(text),
-            vision_transport=httpx.MockTransport(vision) if vision else None,
+            transport=httpx2.MockTransport(text),
+            vision_transport=httpx2.MockTransport(vision) if vision else None,
             render=lambda data: [PNG],
         )
         self.importer = EmailImporter(extractor, EmailDocumentBuilder(), connect=lambda c, p: self.mailbox)

@@ -7,7 +7,7 @@ from dataclasses import replace
 from datetime import timedelta
 from urllib.parse import parse_qs, urlsplit
 
-import httpx
+import httpx2
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
@@ -276,7 +276,7 @@ def test_the_allowed_group_is_needed_at_every_sign_in(make_oidc, provider, api_e
 
 
 def _log_text(caplog) -> str:
-    return "\n".join(r.getMessage() for r in caplog.records if r.name != "httpx")
+    return "\n".join(r.getMessage() for r in caplog.records if r.name != "httpx2")
 
 
 def test_the_group_refusal_log_tells_an_absent_claim_from_a_missing_group(make_oidc, provider, caplog):
@@ -445,7 +445,7 @@ def _oidc_lines(caplog) -> list[str]:
 
 
 def _assert_no_values(caplog, *values: str) -> None:
-    text = "\n".join(r.getMessage() for r in caplog.records if r.name != "httpx")
+    text = "\n".join(r.getMessage() for r in caplog.records if r.name != "httpx2")
     for value in (ACCESS_TOKEN, CODE, CLIENT_SECRET, *values):
         assert value not in text
 
@@ -699,8 +699,8 @@ def test_no_secret_reaches_a_log_or_a_response(make_oidc, provider, caplog):
         r = client.get("/api/session/oidc", follow_redirects=False)
         seen += [r.text, str(r.headers.get("location"))]
         seen.append(client.get("/api/config").text)
-    # the application's own logs: the test client's httpx logs its own request URLs, which is not the app
-    app_logs = "\n".join(r.getMessage() for r in caplog.records if r.name != "httpx")
+    # the application's own logs: the test client's httpx2 logs its own request URLs, which is not the app
+    app_logs = "\n".join(r.getMessage() for r in caplog.records if r.name != "httpx2")
     out = app_logs + "".join(seen)
     for secret in (
         CLIENT_SECRET,
@@ -721,5 +721,5 @@ def test_the_oidc_config_does_not_render_the_secret():
 
 
 def test_httpx_is_the_transport_in_use(provider):
-    # the mock provider answers through httpx.MockTransport, so no test can reach a real host
-    assert isinstance(provider.transport(), httpx.MockTransport)
+    # the mock provider answers through httpx2.MockTransport, so no test can reach a real host
+    assert isinstance(provider.transport(), httpx2.MockTransport)

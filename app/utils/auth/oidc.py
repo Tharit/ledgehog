@@ -1,7 +1,7 @@
 """OIDC sign-in, the protocol half (architecture §5.6).
 
 The authorization code flow with PKCE, state and nonce, against the issuer's discovery document, by
-Authlib over httpx. The ID token is verified (signature, issuer, audience, expiry, nonce); a claim it
+Authlib over httpx2. The ID token is verified (signature, issuer, audience, expiry, nonce); a claim it
 lacks (login, name, groups) is taken from the userinfo endpoint, whose subject must match. What a
 verified identity may do in the application is `oidc_users`.
 
@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, cast
 
-import httpx
+import httpx2
 from authlib.integrations.httpx_client import OAuth2Client
 from joserfc import jwt
 from joserfc.errors import JoseError
@@ -130,7 +130,7 @@ class _PendingSignIns:
 class OidcFlow:
     """The provider, as the routes use it: `start` to send the browser off, `finish` when it returns."""
 
-    def __init__(self, cfg: OidcConfig, transport: httpx.BaseTransport | None = None) -> None:
+    def __init__(self, cfg: OidcConfig, transport: httpx2.BaseTransport | None = None) -> None:
         self.cfg = cfg
         self._transport = transport
         self._pending = _PendingSignIns()
@@ -142,8 +142,8 @@ class OidcFlow:
 
     # -- HTTP ---------------------------------------------------------------------------------
 
-    def _client(self) -> httpx.Client:
-        return httpx.Client(transport=self._transport, timeout=_TIMEOUT, follow_redirects=False)
+    def _client(self) -> httpx2.Client:
+        return httpx2.Client(transport=self._transport, timeout=_TIMEOUT, follow_redirects=False)
 
     def _get_json(self, url: str, *, bearer: str | None = None) -> dict[str, Any]:
         headers = {"Accept": "application/json"}
@@ -154,7 +154,7 @@ class OidcFlow:
                 response = http.get(url, headers=headers)
             response.raise_for_status()
             body = response.json()
-        except httpx.HTTPError as exc:
+        except httpx2.HTTPError as exc:
             raise OidcError(UNAVAILABLE, f"{type(exc).__name__} fetching {_where(url)}") from None
         except ValueError:
             raise OidcError(FAILED, f"{_where(url)} did not answer JSON") from None
@@ -252,7 +252,7 @@ class OidcFlow:
                     code=code,
                     code_verifier=pending.verifier,
                 )
-        except Exception as exc:  # authlib raises its own errors and httpx's; neither is shown on
+        except Exception as exc:  # authlib raises its own errors and httpx2's; neither is shown on
             raise OidcError(FAILED, f"the code exchange failed ({type(exc).__name__})") from None
         id_token = token.get("id_token")
         if not isinstance(id_token, str) or not id_token:

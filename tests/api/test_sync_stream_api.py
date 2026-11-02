@@ -10,7 +10,7 @@ import threading
 import time
 from collections.abc import Iterator
 
-import httpx
+import httpx2
 import pytest
 import uvicorn
 from pydantic import TypeAdapter
@@ -196,7 +196,7 @@ def test_live_streaming_a_prompt_arrives_mid_stream_and_is_answered_through_inpu
 ):
     base, registry = live
     sync.world({"open": [PIN]})  # the data is in the shared database; the task runs in the served app
-    with httpx.Client(base_url=base, timeout=WAIT) as http:
+    with httpx2.Client(base_url=base, timeout=WAIT) as http:
         r = http.post("/api/login", json={"login": "anna", "password": PASSWORDS["anna"]})
         assert r.status_code == 200
         started = http.post("/api/sync")

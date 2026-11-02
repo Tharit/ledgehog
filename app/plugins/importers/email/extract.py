@@ -17,7 +17,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-import httpx
+import httpx2
 
 from app.core.plugins.errors import SourceUnavailable
 from app.plugins.chat_completions import auth_headers, chat_url, reasoning_field
@@ -198,11 +198,11 @@ def parse_reply(body: object) -> dict[str, Any] | None:
 
 
 class _Endpoint:
-    def __init__(self, spec: ModelSpec, timeout_s: float, transport: httpx.BaseTransport | None) -> None:
+    def __init__(self, spec: ModelSpec, timeout_s: float, transport: httpx2.BaseTransport | None) -> None:
         self.spec = spec
         self.url = chat_url(spec.endpoint)
-        self.timeout = httpx.Timeout(timeout_s, connect=CONNECT_TIMEOUT_S)
-        self.http = httpx.Client(headers=auth_headers(spec.api_key), transport=transport)
+        self.timeout = httpx2.Timeout(timeout_s, connect=CONNECT_TIMEOUT_S)
+        self.http = httpx2.Client(headers=auth_headers(spec.api_key), transport=transport)
 
 
 class ModelExtractor:
@@ -213,8 +213,8 @@ class ModelExtractor:
         text_model: ModelSpec,
         vision_model: ModelSpec | None = None,
         *,
-        transport: httpx.BaseTransport | None = None,
-        vision_transport: httpx.BaseTransport | None = None,
+        transport: httpx2.BaseTransport | None = None,
+        vision_transport: httpx2.BaseTransport | None = None,
         render: Callable[[bytes], list[bytes]] = render_pdf,
     ) -> None:
         self._text = _Endpoint(text_model, TEXT_TIMEOUT_S, transport)
@@ -272,9 +272,9 @@ class ModelExtractor:
         """One request, never retried. Errors are mapped per §8; nothing of the request or reply is logged."""
         try:
             response = endpoint.http.post(endpoint.url, json=request, timeout=endpoint.timeout)
-        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:  # nothing was sent
+        except (httpx2.ConnectError, httpx2.ConnectTimeout) as exc:  # nothing was sent
             raise SourceUnavailable("the model could not be reached") from exc
-        except httpx.TransportError as exc:  # sent, and no reply: a time-out, a dropped connection
+        except httpx2.TransportError as exc:  # sent, and no reply: a time-out, a dropped connection
             raise AttemptFailed(f"the model did not answer ({type(exc).__name__})") from None
         status = response.status_code
         if status in UNAVAILABLE_STATUSES:

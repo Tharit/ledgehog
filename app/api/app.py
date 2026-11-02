@@ -15,7 +15,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-import httpx
+import httpx2
 from fastapi import FastAPI, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import Engine
@@ -50,7 +50,7 @@ def create_app(
     importers: Mapping[str, FileImporter | FetchImporter] | None = None,
     tasks: TaskRegistry | None = None,
     changes: ChangeRegister | None = None,
-    oidc_transport: httpx.BaseTransport | None = None,
+    oidc_transport: httpx2.BaseTransport | None = None,
     frontend: Path | None = None,
 ) -> FastAPI:
     """Build the API. Time comes from `app.utils.clock` only (tests freeze it with `clock.frozen`).

@@ -6,7 +6,7 @@ import json
 from datetime import date
 from typing import Any
 
-import httpx
+import httpx2
 import pytest
 
 from app.core.plugins.classifier import ClassifierContext, EntryInput
@@ -46,16 +46,16 @@ class Endpoint:
     """A fake chat-completions server: records requests, answers with `reply` (content) or `status`."""
 
     def __init__(self, reply: object = None, status: int = 200) -> None:
-        self.requests: list[httpx.Request] = []
+        self.requests: list[httpx2.Request] = []
         self.reply = reply if reply is not None else {"category_id": 3, "rationale": "motorway toll"}
         self.status = status
 
-    def __call__(self, request: httpx.Request) -> httpx.Response:
+    def __call__(self, request: httpx2.Request) -> httpx2.Response:
         self.requests.append(request)
         if self.status != 200:
-            return httpx.Response(self.status, text="nope")
+            return httpx2.Response(self.status, text="nope")
         content = self.reply if isinstance(self.reply, str) else json.dumps(self.reply)
-        return httpx.Response(200, json={"choices": [{"message": {"content": content}}]})
+        return httpx2.Response(200, json={"choices": [{"message": {"content": content}}]})
 
     def body(self, i: int = 0) -> dict[str, Any]:
         return json.loads(self.requests[i].content)
@@ -63,7 +63,7 @@ class Endpoint:
 
 def _client(endpoint: Endpoint, key: str | None = None) -> OpenAIModelClient:
     return OpenAIModelClient(
-        "http://model.test/v1/", "m-1", key, transport=httpx.MockTransport(endpoint), timeout=5
+        "http://model.test/v1/", "m-1", key, transport=httpx2.MockTransport(endpoint), timeout=5
     )
 
 
@@ -97,7 +97,7 @@ async def test_the_request_has_a_stable_system_message_and_the_schema() -> None:
 async def test_no_authorization_header_without_a_key_and_a_full_url_is_kept() -> None:
     endpoint = Endpoint()
     client = OpenAIModelClient(
-        "http://model.test/v1/chat/completions", "m", None, transport=httpx.MockTransport(endpoint)
+        "http://model.test/v1/chat/completions", "m", None, transport=httpx2.MockTransport(endpoint)
     )
     await client.ask(_entry(counterparty_name="x"), CATEGORIES)
     assert "authorization" not in endpoint.requests[0].headers
@@ -156,14 +156,14 @@ async def test_an_invalid_reply_is_no_answer_with_its_reason(reply: object, reas
     ],
 )
 async def test_a_reply_without_content_or_cut_off_is_no_answer(body: dict[str, Any], reason: str) -> None:
-    transport = httpx.MockTransport(lambda request: httpx.Response(200, json=body))
+    transport = httpx2.MockTransport(lambda request: httpx2.Response(200, json=body))
     client = OpenAIModelClient("http://model.test/v1", "m", None, transport=transport)
     assert await client.ask(_entry(counterparty_name="x"), CATEGORIES) == NoAnswer(reason)
     await client.aclose()
 
 
 async def test_a_body_that_is_not_json_is_no_answer() -> None:
-    transport = httpx.MockTransport(lambda request: httpx.Response(200, text="<html>"))
+    transport = httpx2.MockTransport(lambda request: httpx2.Response(200, text="<html>"))
     client = OpenAIModelClient("http://model.test/v1", "m", None, transport=transport)
     assert await client.ask(_entry(counterparty_name="x"), CATEGORIES) == NoAnswer("not_json")
     await client.aclose()
@@ -198,10 +198,10 @@ async def test_an_http_error_is_unavailable(status: int) -> None:
 
 
 async def test_a_timeout_or_refused_connection_is_unavailable() -> None:
-    def boom(request: httpx.Request) -> httpx.Response:
-        raise httpx.ConnectTimeout("slow", request=request)
+    def boom(request: httpx2.Request) -> httpx2.Response:
+        raise httpx2.ConnectTimeout("slow", request=request)
 
-    client = OpenAIModelClient("http://model.test/v1", "m", None, transport=httpx.MockTransport(boom))
+    client = OpenAIModelClient("http://model.test/v1", "m", None, transport=httpx2.MockTransport(boom))
     with pytest.raises(ModelUnavailable):
         await client.ask(_entry(counterparty_name="x"), CATEGORIES)
     await client.aclose()

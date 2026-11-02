@@ -7,7 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-import httpx
+import httpx2
 from sqlalchemy import Engine, text
 
 from app.core.model.queue import ModelQueue, configure_model_queue
@@ -20,7 +20,7 @@ class Endpoint:
     the request, as the user acting while the model thinks."""
 
     def __init__(self) -> None:
-        self.requests: list[httpx.Request] = []
+        self.requests: list[httpx2.Request] = []
         self.category_id: int | None = None
         self.rationale = "a short reason"
         self.status = 200
@@ -29,12 +29,12 @@ class Endpoint:
         self.completion_tokens: int | None = None
         self.during: Callable[[], None] | None = None
 
-    def __call__(self, request: httpx.Request) -> httpx.Response:
+    def __call__(self, request: httpx2.Request) -> httpx2.Response:
         self.requests.append(request)
         if self.during is not None:
             self.during()
         if self.status != 200:
-            return httpx.Response(self.status, text="down")
+            return httpx2.Response(self.status, text="down")
         content = self.raw
         if content is None:
             content = json.dumps({"category_id": self.category_id, "rationale": self.rationale})
@@ -44,7 +44,7 @@ class Endpoint:
         reply: dict[str, Any] = {"choices": [choice]}
         if self.completion_tokens is not None:
             reply["usage"] = {"completion_tokens": self.completion_tokens}
-        return httpx.Response(200, json=reply)
+        return httpx2.Response(200, json=reply)
 
 
 @dataclass
@@ -58,7 +58,7 @@ class Rig:
 
 def make_rig(engine: Engine, retry_after: float = 600.0) -> Rig:
     endpoint = Endpoint()
-    client = OpenAIModelClient("http://model.test/v1", "m-1", None, transport=httpx.MockTransport(endpoint))
+    client = OpenAIModelClient("http://model.test/v1", "m-1", None, transport=httpx2.MockTransport(endpoint))
     queue = ModelQueue(client.fingerprint)
     configure_model_queue(queue)
     return Rig(endpoint, queue, ModelWorker(queue, client, engine, retry_after=retry_after), engine, client)
