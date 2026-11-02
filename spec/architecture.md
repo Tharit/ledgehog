@@ -37,13 +37,13 @@ architecture.
 | Migrations | Alembic, explicit SQL only, autogenerate never used |
 | Bank access | python-fints, in process |
 | Spreadsheets | python-calamine, read only, for the CSV importer |
-| Sign-in | argon2-cffi for passwords; Authlib over httpx for OIDC |
+| Sign-in | argon2-cffi for passwords; Authlib over httpx2 for OIDC |
 | Frontend | Svelte 5 + SvelteKit **in SPA mode** — no SSR, no prerendering |
 | UI components | shadcn-svelte, **copied into the repository**, on Bits UI primitives; Tailwind CSS, compiled at build time |
 | Charts | LayerChart, through shadcn-svelte's chart component |
 | Database | PostgreSQL, external to the container |
 | Packaging | One container; local development in a venv against a separate external development database |
-| Tooling | uv with a hash-pinned lockfile, npm with a committed lockfile for the frontend; pytest and hypothesis; ruff; mypy in strict mode; import-linter for the module boundaries (§5.1); httpx for API tests |
+| Tooling | uv with a hash-pinned lockfile, npm with a committed lockfile for the frontend; pytest and hypothesis; ruff; mypy in strict mode; import-linter for the module boundaries (§5.1); httpx2 for API tests |
 
 ### Why pure Python
 
