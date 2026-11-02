@@ -16,7 +16,7 @@ shell history and configs), mount the repo read-only, and deny `**/.env` and `te
 | `install` | `npm ci`, `npm install --package-lock-only` (in frontend/), `uv sync --locked`, `uv lock` | proxy; only registry.npmjs.org, pypi.org, files.pythonhosted.org | frontend/node_modules, .venv, ~/.npm, ~/.cache/uv, and the two lockfiles uv.lock and frontend/package-lock.json (as single files; the manifests pyproject.toml / package.json and the directories stay read-only) | secret-like vars stripped; UV_SYSTEM_CERTS=1 set |
 | `frontend-verify` | `npm run check/lint/test/build`, `scripts/fe_verify.sh` | none | frontend/.svelte-kit, build, .verify, node_modules/{.vite,.vite-temp,$app} | secret-like vars stripped |
 | `frontend-serve` | `vite dev` | blocked, except listen 5173-5180 and connect localhost:8000 | frontend/.svelte-kit, node_modules/{.vite,.vite-temp,$app} | secret-like vars stripped |
-| `backend-serve` | uvicorn, `scripts/dev_db.py`, `dev_seed.py` | listen 8000; connect localhost:5432; other egress via proxy to `network.allow_domain` only (443/993; a `host:port` entry adds that port for that host) | none | DB creds passed through; PYTHONDONTWRITEBYTECODE=1 |
+| `backend-serve` | uvicorn, `scripts/dev_db.py`, `dev_seed.py` | listen 8000; connect localhost:5432; other egress via proxy to `network.allow_domain` only (443; a `host:port` entry adds that port for that host, e.g. `imap.example.org:993`) | none | DB creds passed through; PYTHONDONTWRITEBYTECODE=1 |
 | `backend-verify` | pytest, ruff, mypy, `scripts/smoke_http.sh` | no external; localhost any port | .pytest_cache, .ruff_cache, .mypy_cache, .uv-cache | DB creds passed through; PYTHONDONTWRITEBYTECODE=1 |
 
 "Secret-like" = `*PASSWORD* *SECRET* *TOKEN* *KEY* *CREDENTIAL*`, case-insensitive.
@@ -81,7 +81,7 @@ optional wasm entries to package-lock.json (an npm quirk): review the lockfile d
   grant on a missing directory is silently skipped and the tool then fails with EPERM).
 - **Watcher** (default on for `backend-serve`; `SANDBOX_WATCH=1` enables it for another job, `SANDBOX_WATCH=0` disables
   it): follows nono's live proxy log and tinyproxy's log (refused ports). On the first **policy refusal** (host not in
-  the allowlist, or a port other than 443/993 or a listed host:port refused by tinyproxy, status 403) it prints a red banner (time, host:port,
+  the allowlist, or a port other than 443 or a listed host:port refused by tinyproxy, status 403) it prints a red banner (time, host:port,
   reason, fix), stops the session (`nono stop`) and run.sh exits 1. An allowed host:port that the upstream merely
   cannot reach (tinyproxy answers 500/502/503/504: DNS failure, connection refused, timeout) is not a security event:
   the job keeps running and the watcher prints one line, `sandbox: upstream could not reach HOST:PORT (status NNN: ...)`,
@@ -96,13 +96,13 @@ optional wasm entries to package-lock.json (an npm quirk): review the lockfile d
 ## Network chain (proxy-mode jobs: backend-serve, install)
 
 ```
-app -> nono proxy (host allowlist) -> tinyproxy 127.0.0.1:<free port> (CONNECT to 443/993, plus host:port entries) -> internet
+app -> nono proxy (host allowlist) -> tinyproxy 127.0.0.1:<free port> (CONNECT to 443, plus host:port entries) -> internet
 ```
 
 nono's proxy filters by **host only** and ignores ports (`--allow-domain imap.gmail.com:993` is accepted, the
 port is dropped). With a mail host on the allowlist, a malicious dependency holding the mailbox password could
 also CONNECT to it on 587/465/25 and send mail. So `run.sh` starts tinyproxy per run (config and log in the
-run's temp dir, listening on 127.0.0.1 only, `ConnectPort 443` and `993`) and passes
+run's temp dir, listening on 127.0.0.1 only, `ConnectPort 443` only) and passes
 `--upstream-proxy 127.0.0.1:<port>` to nono; nono still applies its host allowlist first, tinyproxy then
 restricts the port. The sandboxed process cannot reach tinyproxy directly (the kernel profile only allows
 nono's proxy port). Plain HTTP is turned by nono into a CONNECT to host:port (so port 80/587 are refused
@@ -112,7 +112,9 @@ too); tinyproxy additionally refuses any non-CONNECT request (filter whitelist).
   start within ~5 s. It is stopped and its temp files removed on every exit.
 - **Extra port for one host:** write it into the entry: `"llm.example.org:8080"` in `network.allow_domain` (or
   `--allow-domain llm.example.org:8080`). run.sh opens exactly that host:port in tinyproxy in addition to the global
-  443/993; every other host stays on 443/993, and entries without a port keep 443/993 only. A leading wildcard works
+  443 (a host listed with a port is reachable on 443 and on that port); every other host stays on 443, and entries
+  without a port get 443 only. IMAP therefore needs `"imap.example.org:993"` (or `--allow-domain imap.example.org:993`);
+  there is no implied 993. A leading wildcard works
   too (`*.example.org:8443`); other wildcards with a port and malformed ports (not 1-65535) make run.sh refuse to start.
   Readability caveat: the `:port` part looks like nono's but nono ignores it (it prints a warning and checks the host
   only); the port is enforced by tinyproxy, which gets the pairs from run.sh reading the profile and the CLI flags.
@@ -126,7 +128,7 @@ too); tinyproxy additionally refuses any non-CONNECT request (filter whitelist).
 `backend-serve.json` lists the outbound hosts in `network.allow_domain`. It ships with only `placeholder.invalid`:
 an **empty list turns the proxy off and leaves the network fully open** (run.sh's canary check refuses that),
 so keep at least one entry.
-Add every host your setup uses (`host:port` where it listens on a port other than 443/993, see the network chain), and keep the list in sync with your env and importer config:
+Add every host your setup uses (`host:port` where it listens on a port other than 443, e.g. `"imap.example.org:993"` for IMAP, see the network chain), and keep the list in sync with your env and importer config:
 MODEL_ENDPOINT, VISION_MODEL_ENDPOINT, OIDC_ISSUER hosts, FinTS bank servers, IMAP servers.
 A missing host fails closed (HTTP 403 from the proxy) and is reported (see below).
 A `<VAR>_FILE` secret file needs a matching `"read_file": ["/path/to/file"]` under `filesystem` in
@@ -145,8 +147,8 @@ backend-serve.json (or `--read-file /path` on the command line).
 
 - Non-HTTP egress (IMAP, FinTS over non-HTTPS) cannot pass the HTTP(S) proxy: with `backend-serve` it is blocked
   by the kernel profile. Using the email importer needs a looser profile or a deliberate decision.
-- Ports are restricted only on the allowed hosts: 443 and 993 stay open for every listed host; any further port
-  is per host, via a `host:port` entry.
+- Ports are restricted only on the allowed hosts: 443 stays open for every listed host; any further port,
+  993 included, is per host, via a `host:port` entry.
 - Allowed hosts are trusted completely; a compromised package can send data to any listed host.
 - The sandbox does not cover the Postgres server (a hostile package can run any SQL with the creds in env
   under `backend-serve`/`backend-verify`), `playwright-cli`, or processes you start outside `run.sh`.

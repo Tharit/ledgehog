@@ -11,8 +11,8 @@
 #   - refuses to run if the profile would let a canary host through (an open network);
 #   - creates the node_modules dirs the frontend jobs may write to (grants on missing dirs are skipped).
 #   - proxy-mode jobs (backend-serve, install) are chained to tinyproxy (nono --upstream-proxy), which only lets
-#     CONNECT to ports 443 and 993 through (plus HOST:PORT of any allow_domain entry / --allow-domain flag that
-#     carries an explicit port: nono checks the host and ignores the port, tinyproxy enforces host:port);
+#     CONNECT to port 443 through (plus HOST:PORT of any allow_domain entry / --allow-domain flag that
+#     carries an explicit port, 993 included: nono checks the host and ignores the port, tinyproxy enforces host:port);
 #     run.sh starts it on a free localhost port and stops it at exit.
 # While it runs (backend-serve by default; SANDBOX_WATCH=1 / 0 forces it on / off) a watcher follows nono's proxy log
 # and tinyproxy's log and, on the first policy refusal (not in the allowlist, port refused), prints a banner, stops the session and makes
@@ -70,8 +70,8 @@ nono=(nono run --profile "$profile" --workdir "$root" --allow-cwd)
 
 # Proxy-mode jobs (network.allow_domain) are chained to tinyproxy as nono's upstream proxy: nono's proxy
 # filters by HOST only and ignores ports, so a listed mail host would also be reachable on its SMTP ports.
-# tinyproxy lets only CONNECT to ports 443 and 993 through (plain HTTP is refused outright), plus the extra
-# ports a host opts into by writing "host:port" in its allow_domain entry (profile or --allow-domain): nono
+# tinyproxy lets only CONNECT to port 443 through (plain HTTP is refused outright), plus the extra
+# ports (993 for IMAP, ...) a host opts into by writing "host:port" in its allow_domain entry (profile or --allow-domain): nono
 # ignores the port part and checks the host, tinyproxy enforces the exact host:port (see below).
 tinyproxy=0
 case "$job" in backend-serve | install) tinyproxy=1 ;; esac
@@ -99,13 +99,13 @@ if [ "$tinyproxy" = 1 ]; then
   tp_bin=$(command -v tinyproxy || true)
   [ -z "$tp_bin" ] && [ -x /opt/homebrew/opt/tinyproxy/bin/tinyproxy ] && tp_bin=/opt/homebrew/opt/tinyproxy/bin/tinyproxy
   if [ -z "$tp_bin" ]; then
-    echo "refusing to run: tinyproxy is not installed (it restricts the allowed hosts to ports 443/993): brew install tinyproxy" >&2
+    echo "refusing to run: tinyproxy is not installed (it restricts the allowed hosts to port 443 plus host:port entries): brew install tinyproxy" >&2
     exit 1
   fi
   tp_port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
   # Extra per-host ports: allow_domain entries "host:port" (profile + CLI). nono matches the host and ignores
   # the port, so tinyproxy is the one enforcing host:port: ConnectPort is global (one line per distinct extra
-  # port), the filter is what ties each extra port to its host.
+  # port), the filter is what ties each extra port to its host. No port means 443 only.
   extra=$(python3 - "$profile" ${cli_domains[@]+"${cli_domains[@]}"} <<'PYEOF'
 import json, re, sys
 profile, cli = sys.argv[1], sys.argv[2:]
@@ -132,15 +132,14 @@ sys.exit(1 if bad else 0)
 PYEOF
   ) || { echo "refusing to run: invalid host:port in network.allow_domain / --allow-domain (see above)" >&2; exit 1; }
   # The filter is a whitelist over "host:port" (CONNECT) and full URLs (plain HTTP): only the former matches.
-  { echo '^[^/]+:(443|993)$'; [ -n "$extra" ] && printf '%s\n' "$extra" | cut -f2; } >"$tmp/tinyproxy.filter"
+  { echo '^[^/]+:443$'; [ -n "$extra" ] && printf '%s\n' "$extra" | cut -f2; } >"$tmp/tinyproxy.filter"
   extra_ports=
-  [ -n "$extra" ] && extra_ports=$(printf '%s\n' "$extra" | cut -f1 | sort -un | grep -vx -e 443 -e 993 | sed 's/^/ConnectPort /' || true)
+  [ -n "$extra" ] && extra_ports=$(printf '%s\n' "$extra" | cut -f1 | sort -un | grep -vx -e 443 | sed 's/^/ConnectPort /' || true)
   cat >"$tmp/tinyproxy.conf" <<EOF
 Listen 127.0.0.1
 Port $tp_port
 Allow 127.0.0.1
 ConnectPort 443
-ConnectPort 993
 ${extra_ports}
 Filter "$tmp/tinyproxy.filter"
 FilterType ere
@@ -184,9 +183,9 @@ tp_awk='
   if (a[1] == "CONNECT") { last = a[2]; next }
   u = a[2]; sub(/^[A-Za-z]+:\/\//, "", u); sub(/\/.*/, "", u)
   if (u !~ /:[0-9]+$/) u = u ":80"
-  print u "\tplain HTTP not allowed (only CONNECT to 443 and 993, plus host:port entries in allow_domain)"; exit
+  print u "\tplain HTTP not allowed (only CONNECT to 443, plus host:port entries in allow_domain)"; exit
 }
-/Refused CONNECT method on port/ { t = last; sub(/:[0-9]+$/, "", t); print t ":" $NF "\tport not allowed for this host (443 and 993, plus host:port entries in allow_domain)"; exit }'
+/Refused CONNECT method on port/ { t = last; sub(/:[0-9]+$/, "", t); print t ":" $NF "\tport not allowed for this host (443, plus host:port entries in allow_domain)"; exit }'
 
 # Prints the banner, stops the session and marks the run as denied. Args: host port reason hint
 deny() {
@@ -229,7 +228,7 @@ watcher() {
             target=$(printf '%s' "$reason" | sed -n 's/.*rejected CONNECT to \([^ ]*\).*/\1/p')
             if [ "$status" = 403 ]; then
               port_hint="add \"$host:$port\" to network.allow_domain in $profile (the port is enforced by tinyproxy)"
-              deny "$host" "$port" "port not allowed for this host (443 and 993, plus host:port entries in allow_domain)" "$port_hint"
+              deny "$host" "$port" "port not allowed for this host (443, plus host:port entries in allow_domain)" "$port_hint"
               return
             fi
             case "$seen" in *$'\n'"$target $status"$'\n'*) ;; *)
