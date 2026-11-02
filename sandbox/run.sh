@@ -13,7 +13,8 @@
 #   - proxy-mode jobs (backend-serve, install) are chained to tinyproxy (nono --upstream-proxy), which only lets
 #     CONNECT to ports 443 and 993 through; run.sh starts it on a free localhost port and stops it at exit.
 # While it runs (backend-serve by default; SANDBOX_WATCH=1 / 0 forces it on / off) a watcher follows nono's proxy log
-# and tinyproxy's log and, on the first denied connection, prints a banner, stops the session and makes run.sh exit 1.
+# and tinyproxy's log and, on the first policy refusal (not in the allowlist, port refused), prints a banner, stops the session and makes
+# run.sh exit 1; an upstream that merely cannot be reached (5xx) only prints a one-line notice.
 # See sandbox/README.md.
 set -eu
 
@@ -151,45 +152,65 @@ tp_awk='
 }
 /Refused CONNECT method on port/ { t = last; sub(/:[0-9]+$/, "", t); print t ":" $NF "\tport not allowed (only 443 and 993)"; exit }'
 
+# Prints the banner, stops the session and marks the run as denied. Args: host port reason hint
+deny() {
+  local sid
+  # Every line ends in \r\n: nono holds the terminal in raw mode while the job runs (no LF -> CR LF
+  # translation), so a bare \n would stair-step the banner. CRLF is harmless in a cooked tty or a log.
+  {
+    printf '\r\n\033[1;97;41m'
+    printf '%s\r\n' "################################################################################" \
+      "#  SANDBOX: BLOCKED OUTBOUND CONNECTION  -  stopping the job" \
+      "################################################################################"
+    printf '\033[0m'
+    printf '  time:    %s\r\n  target:  %s:%s\r\n  reason:  %s\r\n  %s\r\n\r\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" "$2" "$3" "$4"
+  } >&2
+  touch "$tmp/denied"
+  sid=$(nono ps --json 2>/dev/null | python3 -c 'import json,sys; print(next((s["session_id"] for s in json.load(sys.stdin) if s.get("name")==sys.argv[1]), ""))' "$name") || sid=
+  [ -n "$sid" ] && nono stop "$sid" >/dev/null 2>&1
+  return 0
+}
+
+# Only policy refusals stop the job: nono's own allowlist denial, and tinyproxy's refusals (status 403 / its log).
+# Any other upstream status (500 DNS failure, 502, 503, 504 ...) is a connectivity problem, not a security
+# event: one notice line per distinct host:port+status, and the watcher keeps scanning.
 watcher() {
-  local line target host port reason hint sid
+  local line host port reason hint target status seen=$'\n' nl=0 total
+  local port_hint="the allowed ports are fixed in run.sh (tinyproxy ConnectPort / filter)"
   while sleep 0.5; do
-    hint="if the host is expected, add it to network.allow_domain in $profile"$'\r\n'"  (or pass --allow-domain HOST for one run)"
-    if line=$(grep -m1 'proxy request denied' "$log" 2>/dev/null); then
-      line=$(printf '%s' "$line" | sed $'s/\x1b\\[[0-9;]*m//g')
-      host=$(printf '%s' "$line" | sed -n 's/.* host=\([^ ]*\).*/\1/p')
-      port=$(printf '%s' "$line" | sed -n 's/.* port=\([^ ]*\).*/\1/p')
-      reason=$(printf '%s' "$line" | sed -n 's/.* reason=\(.*\) denial_category=.*/\1/p')
-      hint=${hint//HOST/$host}
-      # nono reports tinyproxy's refusal (a port other than 443/993) as a denial of its own
-      case "$reason" in
-        *"enterprise proxy rejected CONNECT"*)
-          reason="port not allowed (only 443 and 993)"
-          hint="the allowed ports are fixed in run.sh (tinyproxy ConnectPort / filter)" ;;
-      esac
-    elif [ -s "$tp_log" ] && line=$(awk "$tp_awk" "$tp_log") && [ -n "$line" ]; then
-      target=${line%%$'\t'*}
-      reason=${line#*$'\t'}
-      host=${target%:*}
-      port=${target##*:}
-      hint="the allowed ports are fixed in run.sh (tinyproxy ConnectPort / filter)"
-    else
-      continue
+    total=$(wc -l <"$log" 2>/dev/null || echo 0)
+    if [ "$total" -gt "$nl" ]; then
+      while IFS= read -r line; do
+        case $line in *"proxy request denied"*) ;; *) continue ;; esac
+        line=$(printf '%s' "$line" | sed $'s/\x1b\\[[0-9;]*m//g')
+        host=$(printf '%s' "$line" | sed -n 's/.* host=\([^ ]*\).*/\1/p')
+        port=$(printf '%s' "$line" | sed -n 's/.* port=\([^ ]*\).*/\1/p')
+        reason=$(printf '%s' "$line" | sed -n 's/.* reason=\(.*\) denial_category=.*/\1/p')
+        case "$reason" in
+          *"enterprise proxy rejected CONNECT"*)
+            # nono reports tinyproxy's answer as its own denial: 403 = tinyproxy refused (port), else upstream failure
+            status=$(printf '%s' "$reason" | sed -n 's/.*with status \([0-9]*\).*/\1/p')
+            target=$(printf '%s' "$reason" | sed -n 's/.*rejected CONNECT to \([^ ]*\).*/\1/p')
+            if [ "$status" = 403 ]; then
+              deny "$host" "$port" "port not allowed (only 443 and 993)" "$port_hint"
+              return
+            fi
+            case "$seen" in *$'\n'"$target $status"$'\n'*) ;; *)
+              seen+="$target $status"$'\n'
+              printf 'sandbox: upstream could not reach %s (status %s: DNS or network, not a sandbox refusal)\r\n' "${target:-$host:$port}" "${status:-?}" >&2 ;;
+            esac ;;
+          *)
+            deny "$host" "$port" "$reason" "if the host is expected, add it to network.allow_domain in $profile"$'\r\n'"  (or pass --allow-domain $host for one run)"
+            return ;;
+        esac
+      done < <(sed -n "$((nl + 1)),${total}p" "$log")
+      nl=$total
     fi
-    # Every line ends in \r\n: nono holds the terminal in raw mode while the job runs (no LF -> CR LF
-    # translation), so a bare \n would stair-step the banner. CRLF is harmless in a cooked tty or a log.
-    {
-      printf '\r\n\033[1;97;41m'
-      printf '%s\r\n' "################################################################################" \
-        "#  SANDBOX: BLOCKED OUTBOUND CONNECTION  -  stopping the job" \
-        "################################################################################"
-      printf '\033[0m'
-      printf '  time:    %s\r\n  target:  %s:%s\r\n  reason:  %s\r\n  %s\r\n\r\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$host" "$port" "$reason" "$hint"
-    } >&2
-    touch "$tmp/denied"
-    sid=$(nono ps --json 2>/dev/null | python3 -c 'import json,sys; print(next((s["session_id"] for s in json.load(sys.stdin) if s.get("name")==sys.argv[1]), ""))' "$name") || sid=
-    [ -n "$sid" ] && nono stop "$sid" >/dev/null 2>&1
-    return
+    if [ -s "$tp_log" ] && line=$(awk "$tp_awk" "$tp_log") && [ -n "$line" ]; then
+      target=${line%%$'\t'*}
+      deny "${target%:*}" "${target##*:}" "${line#*$'\t'}" "$port_hint"
+      return
+    fi
   done
 }
 

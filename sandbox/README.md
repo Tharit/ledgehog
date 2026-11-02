@@ -80,8 +80,12 @@ optional wasm entries to package-lock.json (an npm quirk): review the lockfile d
 - Creates `frontend/node_modules/{.vite,.vite-temp,$app}` for the frontend jobs if node_modules exists (a write
   grant on a missing directory is silently skipped and the tool then fails with EPERM).
 - **Watcher** (default on for `backend-serve`; `SANDBOX_WATCH=1` enables it for another job, `SANDBOX_WATCH=0` disables
-  it): follows nono's live proxy log and tinyproxy's log (refused ports); on the first denied connection it prints a red banner (time, host:port,
-  reason, fix), stops the session (`nono stop`) and run.sh exits 1. Limits: it only sees proxy-mode denials.
+  it): follows nono's live proxy log and tinyproxy's log (refused ports). On the first **policy refusal** (host not in
+  the allowlist, or a port other than 443/993 refused by tinyproxy, status 403) it prints a red banner (time, host:port,
+  reason, fix), stops the session (`nono stop`) and run.sh exits 1. An allowed host:port that the upstream merely
+  cannot reach (tinyproxy answers 500/502/503/504: DNS failure, connection refused, timeout) is not a security event:
+  the job keeps running and the watcher prints one line, `sandbox: upstream could not reach HOST:PORT (status NNN: ...)`,
+  once per distinct host:port and status. Limits: it only sees proxy-mode denials.
   Jobs with `network.block` (frontend-verify, frontend-serve, backend-verify) have no proxy and the kernel denies silently,
   so a watcher there never fires (frontend-serve: the watcher is therefore off by default); file denials are never
   reported anywhere. `nono stop` ends the started command only: if that is `sh -c '... &'`, background children
