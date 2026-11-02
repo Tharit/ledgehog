@@ -13,7 +13,7 @@ shell history and configs), mount the repo read-only, and deny `**/.env` and `te
 
 | Job | Runs | Network | Writes (beyond temp) | Env |
 |---|---|---|---|---|
-| `install` | `npm ci` (in frontend/), `uv sync --locked` | proxy; only registry.npmjs.org, pypi.org, files.pythonhosted.org | frontend/node_modules, .venv, ~/.npm, ~/.cache/uv | secret-like vars stripped |
+| `install` | `npm ci`, `npm install --package-lock-only` (in frontend/), `uv sync --locked`, `uv lock` | proxy; only registry.npmjs.org, pypi.org, files.pythonhosted.org | frontend/node_modules, .venv, ~/.npm, ~/.cache/uv, and the two lockfiles uv.lock and frontend/package-lock.json (as single files; the manifests pyproject.toml / package.json and the directories stay read-only) | secret-like vars stripped; UV_SYSTEM_CERTS=1 set |
 | `frontend-verify` | `npm run check/lint/test/build`, `scripts/fe_verify.sh` | none | frontend/.svelte-kit, build, .verify, node_modules/{.vite,.vite-temp,$app} | secret-like vars stripped |
 | `frontend-serve` | `vite dev` | blocked, except listen 5173-5180 and connect localhost:8000 | frontend/.svelte-kit, node_modules/{.vite,.vite-temp,$app} | secret-like vars stripped |
 | `backend-serve` | uvicorn, `scripts/dev_db.py`, `dev_seed.py` | listen 8000; connect localhost:5432; other egress via proxy to `network.allow_domain` only | none | DB creds passed through; PYTHONDONTWRITEBYTECODE=1 |
@@ -38,6 +38,12 @@ only with `UV_CACHE_DIR=$PWD/.uv-cache` under backend-verify).
 # install
 sandbox/run.sh install -- sh -c 'cd frontend && npm ci'
 sandbox/run.sh install -- uv sync --locked
+# changing dependencies: edit the manifest (pyproject.toml / frontend/package.json) with your editor, outside
+# the sandbox (they are read-only inside), then relock inside it, then install from the lockfile
+sandbox/run.sh install -- uv lock
+sandbox/run.sh install -- sh -c 'cd frontend && npm install --package-lock-only'
+sandbox/run.sh install -- uv sync --locked
+sandbox/run.sh install -- sh -c 'cd frontend && npm ci'
 
 # frontend
 sandbox/run.sh frontend-verify -- scripts/fe_verify.sh --build
@@ -57,6 +63,11 @@ sandbox/run.sh backend-verify -- .venv/bin/pytest tests/core -q
 sandbox/run.sh backend-verify -- sh -c 'UV_CACHE_DIR="$PWD/.uv-cache" scripts/smoke_http.sh'
 sandbox/run.sh backend-verify -- .venv/bin/ruff check app
 ```
+
+`install` sets `UV_SYSTEM_CERTS=1`: uv then verifies TLS against the OS trust store (needed behind a TLS-intercepting
+network, otherwise "invalid peer certificate: UnknownIssuer"). Verification stays on; it works under the profile
+without any keychain grant (the keychains stay denied). Note `npm install --package-lock-only` may add bundled
+optional wasm entries to package-lock.json (an npm quirk): review the lockfile diff before committing.
 
 ## What run.sh does before and while running
 

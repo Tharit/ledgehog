@@ -5,10 +5,11 @@
   "workdir": { "access": "read" },
   "filesystem": {
     "allow": ["$WORKDIR/frontend/node_modules", "$WORKDIR/.venv", "$HOME/.npm", "$HOME/.cache/uv"],
+    "allow_file": ["$WORKDIR/uv.lock", "$WORKDIR/frontend/package-lock.json"],
     "deny": ["$WORKDIR/**/.env", "$WORKDIR/test.env"]
   },
   "network": {
     "allow_domain": ["registry.npmjs.org", "pypi.org", "files.pythonhosted.org"]
   },
-  "environment": { "deny_vars": ["*PASSWORD*","*SECRET*","*TOKEN*","*KEY*","*CREDENTIAL*"], "case_insensitive_vars": true }
+  "environment": { "set_vars": { "UV_SYSTEM_CERTS": "1" }, "deny_vars": ["*PASSWORD*","*SECRET*","*TOKEN*","*KEY*","*CREDENTIAL*"], "case_insensitive_vars": true }
 }
