@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import re
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.api import create_app
-from app.api.frontend import FrontendError
+from app.api.frontend import _POLICY, FrontendError
 from app.main import FRONTEND
 
 SCRIPT = "\n\t\t\t\t{ const boot = 1; }\n\t\t\t"
@@ -103,3 +104,15 @@ def test_the_real_bundle_holds_exactly_one_inline_script():
     from app.api.frontend import script_hash
 
     script_hash(index.read_text(encoding="utf-8"))
+
+
+def test_the_dev_server_policy_mirrors_the_served_one():
+    quoted = {"self", "none", "unsafe-inline", "script"}
+    source = (Path(__file__).parents[2] / "frontend" / "csp.ts").read_text()
+    dev = {
+        name: [f"'{v}'" if v in quoted else v for v in re.findall(r"'([^']+)'", values)]
+        for name, values in re.findall(r"^\t'([a-z-]+)': \[(.*)\],?$", source, re.MULTILINE)
+    }
+    parts = (d.strip().partition(" ") for d in _POLICY.format(script_src="'self'").split(";"))
+    served = {name: values.split() for name, _, values in parts}
+    assert dev == served, "frontend/csp.ts and _POLICY in app/api/frontend.py (architecture §6.7) differ"

@@ -2,8 +2,9 @@ import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vitest/config';
 import adapter from '@sveltejs/adapter-static';
 import { sveltekit } from '@sveltejs/kit/vite';
+import { directives } from './csp.ts';
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
 	plugins: [
 		tailwindcss(),
 		sveltekit({
@@ -14,7 +15,12 @@ export default defineConfig({
 			},
 
 			// SPA: one index.html answers every route (architecture §6.1)
-			adapter: adapter({ fallback: 'index.html' })
+			adapter: adapter({ fallback: 'index.html' }),
+
+			// Dev server only: send the production Content-Security-Policy (csp.ts, architecture §6.7) so a violation
+			// shows up while developing. SvelteKit adds what dev needs: a nonce on its bootstrap script and 'unsafe-inline'
+			// on style-src for Vite's <style> elements. Not set for the build: its output must stay unchanged.
+			csp: command === 'serve' ? { mode: 'nonce', directives } : undefined
 		})
 	],
 	server: {
@@ -47,4 +53,4 @@ export default defineConfig({
 			}
 		]
 	}
-});
+}));
