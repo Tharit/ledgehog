@@ -307,7 +307,8 @@ describe('AddEntryDialog: Add and add another', () => {
 		vi.mocked(api.createSource).mockResolvedValue(written());
 		const { dialog, onclose } = await open({ options: { filtered: [1] } });
 		await waitFor(() => expect(account(dialog)).toHaveTextContent('Cash'));
-		await chooseDay(dialog, '2026-10-01');
+		const day = today.slice(0, 8) + '01';
+		await chooseDay(dialog, day);
 		await fill(dialog, '+12.50', 'refund');
 
 		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add and add another' }));
@@ -316,12 +317,12 @@ describe('AddEntryDialog: Add and add another', () => {
 		expect(field(dialog, 'Amount').value).toBe('+');
 		expect(field(dialog, 'Purpose').value).toBe('');
 		expect(account(dialog)).toHaveTextContent('Cash');
-		expect(date(dialog)).toHaveTextContent(formatDate('2026-10-01'));
+		expect(date(dialog)).toHaveTextContent(formatDate(day));
 		await waitFor(() => expect(field(dialog, 'Amount')).toHaveFocus());
 		expect(field(dialog, 'Amount').selectionStart).toBe(1);
 		expect(onclose).not.toHaveBeenCalled();
 		expect(panel.open).not.toHaveBeenCalled();
-		expect(body()).toMatchObject({ amount: 1250, booked_on: '2026-10-01' });
+		expect(body()).toMatchObject({ amount: 1250, booked_on: day });
 	});
 
 	it('enters the next one with a new id', async () => {
