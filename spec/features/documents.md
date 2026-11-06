@@ -32,7 +32,7 @@ these reasons that applies:
 
 | Reason | When |
 |---|---|
-| total 0 | its total is 0 — an order paid entirely with vouchers: nothing to clear, and an entry of 0 cannot exist |
+| total 0 | its total is 0 — an order paid entirely with vouchers or store credit, or a refund made entirely to store credit: nothing to clear, and an entry of 0 cannot exist |
 | no account | no clearance account takes its provider in its currency: none takes the provider, or only in another currency |
 | no start | the account that takes it has no balance record |
 | before the start | it is dated on or before the account's start |

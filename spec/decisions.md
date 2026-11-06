@@ -3718,7 +3718,7 @@ states.
 - Rejected: *dropping the user's empty payee key* (an incomplete unit could be pulled back into review by a payee
   the user had removed); *keeping a key only for a cleared payee* (two empty states the user cannot tell apart).
 
-## D230 Clearance accounts replace document matching — *partly superseded by D235*
+## D230 Clearance accounts replace document matching — *partly superseded by D235 and D240*
 
 Spec I1, I2, I3, I7, I20, I21, I35, I41, §2, §3.3, §3.6, §3.8, §3.9, §4, §5 to §5.9, §6, §8, §9;
 `features/documents.md`; `rules.md`; `history.md`; schema; architecture §4.1, §5.1, §5.2, §5.4, §5.5, §5.7, §6.3,
@@ -3801,8 +3801,8 @@ partly supersedes D63, D97, D131, D142, D152, D166, D168, D172, D177, D178, D181
 - **No balance signal yet.** A clearance account is shown like any unsynced account (user, 2026-10-26); a balance
   that is not 0 is normal while charges lag behind orders.
 - Deferred: editing documents by hand (the booking follows; the document `version` detects conflicts); "create a
-  clearance account" from a document not booked; the email importer mapping sender domains to providers; refunds as
-  documents of their own; a status or signal for clearance accounts.
+  clearance account" from a document not booked; the email importer mapping sender domains to providers; a status
+  or signal for clearance accounts.
 
 ## D231 Content on cards, structure on the background
 
@@ -3824,7 +3824,7 @@ Design §5; `ux/views/account.md`.
   controls on cards read heavier and blur what is content; *"Set balance" in the Balance card as well* — one
   action in two places.
 
-## D232 The email importer
+## D232 The email importer — *partly superseded by D240*
 
 email.md; spec §5.5, §5.8, §5.9, §7; architecture §5.5, §5.7.
 
@@ -3848,11 +3848,9 @@ email.md; spec §5.5, §5.8, §5.9, §7; architecture §5.5, §5.7.
   exactly* (Amazon's mails list items before a discount the total already has). The one exception is `refund`,
   a fact the document states, without which a refund would arrive as a charge.
 - **A later mail never changes an order**: the importer declares the re-delivery mode `keep`, so the first complete
-  mail of an order wins and a shipping notice, invoice or cancellation is kept out. Rejected: *importer-side memory
-  of delivered order ids* (work the importer should not carry); *`replace`* (a partial mail would degrade a complete
-  order, and its booking with it). Given up: cancellations by mail, corrected by an entry on the clearance account.
-- **Refunds are not delivered yet.** Keyed by the order id, a refund would collide with its order's document. Parked:
-  refunds as positive documents with a key of their own, once real refund mails are seen.
+  mail of an order wins and a shipping notice or invoice is kept out. Rejected: *importer-side memory of delivered
+  order ids* (work the importer should not carry); *`replace`* (a partial mail would degrade a complete order, and
+  its booking with it).
 - **The position advances only with a written run.** A UID position with UIDVALIDITY, an overlap by arrival date
   and a short memory of Message-IDs; kept in `state`, but applied only when the run's documents are written, since
   `state` is otherwise written back whatever the outcome. Rejected: *re-reading from the start date every run*
@@ -3954,3 +3952,12 @@ architecture §6.7.
 - **The server hashes SvelteKit's one inline bootstrap from `index.html` at start**, so the hash cannot drift from the build, and refuses to start on anything else. Rejected: *SvelteKit's `kit.csp`* (a `<meta>` policy cannot carry `frame-ancestors`, and the policy would live in two places); *moving the bootstrap into a separate file after the build* (breaks when SvelteKit changes its output); *`'strict-dynamic'`* (not needed with one origin, and it blocks the `modulepreload` links); *re-hashing when the file changes* (it only helps development, where the server is restarted after a rebuild, user 2026-10-29).
 - **Style attributes are allowed** (user, 2026-10-29): SvelteKit's route announcer and Bits UI write fixed ones, which a browser showed blocked. With scripts locked and `img-src 'self'`, a style attribute can neither run code nor reach another host. `<style>` elements stay `'self'`. Rejected: *`'unsafe-hashes'` with each library string's hash* (a scan of minified code for almost no gain); *CSS overriding the blocked styles* (the console fills with violations that hide real ones).
 - **Trusted Types are required**: free today, because Svelte already routes its template HTML through a policy. Any raw HTML sink added later, in our code or a dependency's, fails at once.
+
+## D240 Refunds by mail; store credit is not money
+
+email.md §5, §6, §8, §10; `features/documents.md` §1; spec §5.8.
+
+- **A refund is a positive document keyed by its mail** (user, 2026-11-06): `message:<identity>`, with the order id as its reference, so it never collides with its order or with another refund of it. Accepted: a refund told in two mails books twice, which the clearance balance shows and an entry on the account corrects. Rejected: *the order id with the refund's amount* (two returns of equally priced items from one order collide, and the second is lost).
+- **The total is the money that changes hands.** Order mails state what was charged after store credit and never itemise it, so credit cannot be followed on the clearance account: a refund credited there would never be debited. Credit is therefore kept out both ways: a refund to store credit has total 0 and is not booked; credit spent shows as lines exceeding the total, spread like any unitemised discount. Accepted: a refunded article's category does not net; the credit lowers the categories of what it is spent on. Rejected: *credit as a balance on the clearance account* (nothing debits it); *a field for the part refunded to credit* (the total carries it; one tested Amazon mail read 0 correctly).
+- **Lines need not add up to the total, and none is added to make them.** A voucher or credit the mail lists is a line like a discount, an entry of its own; one it does not list is the unitemised amount, spread over the lines. Either way the clearance account settles, because the total is the money.
+- **Cancellations now arrive as refunds.** For an order not yet charged that nets the order, as is correct; a shop that also mails a refund would count twice, which the clearance balance shows. No rule until it is seen.

@@ -2,8 +2,9 @@
 
 Deterministic and free of the model: the same extraction gives the same document. A complete document only:
 a total of at least 0, a line of non-zero amount, whole minor units, and what the lines leave of the total no
-larger than the lines themselves. The check guards against misreads; what the lines leave is the core's to
-spread (spec §5.8), so no line is added for it.
+larger than the lines themselves. A refund is the same with the opposite signs, keyed by its message. The
+check guards against misreads; what the lines leave is the core's to spread (spec §5.8), so no line is added
+for it.
 """
 
 from __future__ import annotations
@@ -19,7 +20,6 @@ from app.core.plugins.importer import IncomingDocument, IncomingDocumentLine
 from app.plugins.importers.email.extractor import (
     INCOMPLETE,
     NO_MERCHANT,
-    REFUND,
     UNKNOWN_CURRENCY,
     Extraction,
     MessageContext,
@@ -192,8 +192,7 @@ class EmailDocumentBuilder:
         self, extraction: Extraction, context: MessageContext, *, minor_units_of: Callable[[str], int]
     ) -> IncomingDocument | Skipped:
         answer = extraction.answer
-        if answer.get("refund") is True:
-            return Skipped(REFUND)
+        refund = answer.get("refund") is True
         currency = answer.get("currency")
         code = currency.strip().upper() if isinstance(currency, str) else ""
         if not code:
@@ -220,15 +219,15 @@ class EmailDocumentBuilder:
         subject = strip_subject_markers(collapse(context.subject)) if context.subject else ""
         return IncomingDocument(
             provider=provider,
-            source_id=order or f"message:{context.identity}",
+            source_id=f"message:{context.identity}" if refund or not order else order,
             reference=order or None,
             occurred_on=context.date,
-            total_minor=-total,
+            total_minor=total if refund else -total,
             currency=code,
             merchant_name=collapse(merchant)[:MERCHANT_NAME_MAX] or None,
             title=subject[:TITLE_MAX] or None,
             lines=tuple(
-                IncomingDocumentLine(name, -amount, _as_quantity(quantity))
+                IncomingDocumentLine(name, amount if refund else -amount, _as_quantity(quantity))
                 for (name, _, quantity), amount in zip(lines, amounts, strict=True)
                 if amount != 0
             ),

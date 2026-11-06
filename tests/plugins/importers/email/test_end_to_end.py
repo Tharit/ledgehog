@@ -106,7 +106,6 @@ def test_each_outcome_is_counted_once():
             "total": 30.0,
             "items": [{"name": "Thing", "quantity": 1, "amount": 30.0}],
         },  # a document
-        2: {**ANSWER, "order_id": "A-2", "refund": True},
         3: {**ANSWER, "order_id": "A-3", "currency": "XXX"},
         4: {**ANSWER, "order_id": "A-4", "items": None},
         5: {
@@ -134,13 +133,27 @@ def test_each_outcome_is_counted_once():
     assert {k: v for k, v in stats.items() if v} == {
         "documents": 1,
         "same_order": 1,
-        "refund": 1,
         "unknown_currency": 1,
         "incomplete": 1,
         "no_merchant": 1,
         "unreadable": 1,
         "not_accepted": 1,
     }
+
+
+def test_an_order_and_its_refund_in_one_delivery_are_both_delivered():
+    one = [{"name": "Thing", "quantity": 1, "amount": 30.0}]
+    endpoint = Endpoint()
+    endpoint.replies = [
+        {**ANSWER, "total": 30.0, "items": one},
+        {**ANSWER, "total": 30.0, "items": one, "refund": True},
+    ]
+    rig = Rig(endpoint)
+    rig.mailbox.add(1, message(1), ARRIVED)
+    rig.mailbox.add(2, message(2), ARRIVED)
+    delivery = rig.run()
+    assert sorted(d.total_minor for d in delivery.documents) == [-3000, 3000]
+    assert delivery.importer_stats["documents"] == 2 and delivery.importer_stats["same_order"] == 0
 
 
 def test_a_pdf_is_read_by_the_vision_model_where_the_text_yields_no_document():

@@ -61,7 +61,6 @@ export const DOCUMENT_COUNTS: readonly (readonly [key: string, label: string])[]
 	['incomplete', 'incomplete (no total, or too few items)'],
 	['no_merchant', 'without a merchant'],
 	['unknown_currency', 'in an unknown currency'],
-	['refund', 'refunds skipped'],
 	['not_accepted', 'not from an allowed sender'],
 	['not_authenticated', 'not authenticated'],
 	['already_seen', 'already seen'],

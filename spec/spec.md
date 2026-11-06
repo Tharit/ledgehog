@@ -1916,13 +1916,13 @@ the same for both:
   its provider in its currency (§3.3), when it is dated after that account's
   start. A booking never converts: a converted amount would never balance
   against the bank's charge, made at the bank's own rate.
-- **Not booked.** A document is not booked when its total is zero — paid
-  with vouchers, nothing to clear; when no clearance account takes its
-  provider in its currency ("no Amazon account in USD"); when the account that
-  takes it has no balance record, and so no start; or when it is dated on or
-  before the account's start. It stays in the documents list, marked not
-  booked, with the first of these reasons that applies, derived when read
-  (`features/documents.md` §1).
+- **Not booked.** A document is not booked when its total is zero — paid with
+  vouchers or store credit, or refunded to store credit: nothing to clear;
+  when no clearance account takes its provider in its currency ("no Amazon
+  account in USD"); when the account that takes it has no balance record, and
+  so no start; or when it is dated on or before the account's start. It stays
+  in the documents list, marked not booked, with the first of these reasons
+  that applies, derived when read (`features/documents.md` §1).
 - **The mapping decides only where a document not yet booked goes.** Adding a
   provider to an account books that provider's documents dated after the
   account's start. Removing a provider or moving it to another account leaves

@@ -1208,3 +1208,13 @@ Document ingest re-resolves only unconfirmed transactions.
 ## D230 Clearance accounts replace document matching, in part — *superseded by D235*
 
 - **A booking writes its own source fields; lists render only data** (user, 2026-10-26). [...] Its row therefore reads like any row: the ledger list and an account's statement hold nothing specific to an account kind or an author, and every row with a source shows its origin as a small tag — "Imported", "Entered", "Booked" — in place of the statement's "entered by hand".
+
+## D230 Clearance accounts replace document matching, in part — *superseded by D240*
+
+- Deferred: [...] refunds as documents of their own [...]
+
+## D232 The email importer, in part — *superseded by D240*
+
+- **Refunds are not delivered yet.** Keyed by the order id, a refund would collide with its order's document. Parked:
+  refunds as positive documents with a key of their own, once real refund mails are seen.
+- **A later mail never changes an order**: [...] a shipping notice, invoice or cancellation is kept out. [...] Given up: cancellations by mail, corrected by an entry on the clearance account.

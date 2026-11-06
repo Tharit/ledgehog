@@ -30,14 +30,13 @@ PDF_NOT_READ = "pdf_not_read"
 UNREADABLE = "unreadable"
 MODEL_REFUSED = "model_refused"
 GAVE_UP = "gave_up"
-REFUND = "refund"
 UNKNOWN_CURRENCY = "unknown_currency"
 INCOMPLETE = "incomplete"
 NO_MERCHANT = "no_merchant"
 
 STAT_KEYS: tuple[str, ...] = (
     DOCUMENTS, SAME_ORDER, NOT_ACCEPTED, NOT_AUTHENTICATED, ALREADY_SEEN, BEFORE_START, TOO_LARGE, NO_CONTENT,
-    PDF_NOT_READ, UNREADABLE, MODEL_REFUSED, GAVE_UP, REFUND, UNKNOWN_CURRENCY, INCOMPLETE, NO_MERCHANT,
+    PDF_NOT_READ, UNREADABLE, MODEL_REFUSED, GAVE_UP, UNKNOWN_CURRENCY, INCOMPLETE, NO_MERCHANT,
 )  # fmt: skip
 # what an extractor or a builder may give as a reason: everything but the delivered and the same-order
 SKIP_REASONS: frozenset[str] = frozenset(STAT_KEYS) - {DOCUMENTS, SAME_ORDER}
@@ -108,6 +107,6 @@ class DocumentBuilder(Protocol):
     def build(
         self, extraction: Extraction, context: MessageContext, *, minor_units_of: Callable[[str], int]
     ) -> IncomingDocument | Skipped:
-        """Completeness, provider and signs (§6): the document, or `refund`, `unknown_currency`, `incomplete`
+        """Completeness, provider and signs (§6): the document, or `unknown_currency`, `incomplete`
         or `no_merchant`. `minor_units_of` raises `KeyError` for a currency it does not know."""
         ...

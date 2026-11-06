@@ -328,8 +328,37 @@ def test_a_currency_the_lookup_does_not_know_is_skipped(code: str):
     assert build(answer(currency=code)) == Skipped("unknown_currency")
 
 
-def test_a_refund_is_skipped_before_anything_else_is_checked():
-    assert build(answer(refund=True, currency="XXX", total=None, items=None)) == Skipped("refund")
+def test_a_refund_entirely_to_store_credit_is_a_document_of_total_zero():
+    d = doc(
+        answer(
+            refund=True,
+            total=0,
+            order_id="305-8171480-9164354",
+            items=[{"name": "Thing", "quantity": 1, "amount": 15.47}],
+        )
+    )
+    assert d.total_minor == 0 and amounts(d) == [1547]
+    assert d.source_id == "message:inner@shop" and d.reference == "305-8171480-9164354"
+
+
+def test_a_refund_to_the_payment_method_has_positive_signs():
+    d = doc(answer(refund=True, total=15.47, items=[{"name": "Thing", "quantity": 1, "amount": 15.47}]))
+    assert d.total_minor == 1547 and amounts(d) == [1547]
+    assert d.source_id == "message:inner@shop" and d.reference == "A-1"
+
+
+def test_a_refund_keeps_a_listed_discount_negative():
+    items = [
+        {"name": "a", "quantity": 1, "amount": 50.0},
+        {"name": "voucher", "quantity": 1, "amount": -10.0},
+    ]
+    d = doc(answer(refund=True, total=40.0, items=items))
+    assert d.total_minor == 4000 and amounts(d) == [5000, -1000]
+
+
+def test_an_order_whose_lines_exceed_the_total_is_delivered():
+    d = doc(answer(total=24.53, items=[{"name": "a", "quantity": 1, "amount": 40.0}]))
+    assert d.total_minor == -2453 and amounts(d) == [-4000] and d.source_id == "A-1"
 
 
 def test_the_checks_run_in_the_order_of_the_spec():
