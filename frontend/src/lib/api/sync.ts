@@ -70,6 +70,7 @@ export const SYNC_EVENT_NAMES = [
 	'task_started',
 	'instance_started',
 	'run_started',
+	'run_progress',
 	'prompt',
 	'prompt_resolved',
 	'run_finished',

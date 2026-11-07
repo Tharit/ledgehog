@@ -15,6 +15,8 @@ export type TaskItem = {
 	runId: number | null;
 	/** the start the run began from, once it began */
 	since: string | null;
+	/** how far the run has got, where its importer says; null until it does */
+	progress: { done: number; total: number } | null;
 	/** the stored statistics of a finished run, as the event carries them */
 	stats: Record<string, unknown> | null;
 	failure: Failure | null;
@@ -114,6 +116,7 @@ export function foldEvent(view: TaskView, event: SyncEvent): TaskView {
 						state: 'queued',
 						runId: null,
 						since: null,
+						progress: null,
 						stats: null,
 						failure: null
 					}))
@@ -134,6 +137,26 @@ export function foldEvent(view: TaskView, event: SyncEvent): TaskView {
 						{ runId: d.run_id, accountId: d.account_id, kind: d.kind },
 						(item) => ({ ...item, state: 'fetching', runId: d.run_id, since: d.since })
 					)
+				)
+			});
+		}
+
+		case 'run_progress': {
+			const d = event.data;
+			const progress = { done: d.done, total: d.total };
+			// the event names a run, not its login: find the item that began it
+			return next({
+				instances: view.instances.map((instance) =>
+					instance.items.some((i) => i.runId === d.run_id)
+						? {
+								...instance,
+								items: instance.items.map((item) =>
+									item.runId === d.run_id && item.state === 'fetching'
+										? { ...item, progress }
+										: item
+								)
+							}
+						: instance
 				)
 			});
 		}

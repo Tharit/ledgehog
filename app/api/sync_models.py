@@ -119,6 +119,12 @@ class RunStartedEvent(BaseModel):
     since: date
 
 
+class RunProgressEvent(BaseModel):
+    run_id: int
+    done: int
+    total: int
+
+
 class PromptResolvedEvent(BaseModel):
     prompt_id: str
     outcome: PromptOutcome
@@ -207,6 +213,7 @@ class SyncEventPayloads(BaseModel):
     task_started: TaskStartedEvent
     instance_started: InstanceStartedEvent
     run_started: RunStartedEvent
+    run_progress: RunProgressEvent
     prompt: PromptEvent
     prompt_resolved: PromptResolvedEvent
     run_finished: RunFinishedEvent

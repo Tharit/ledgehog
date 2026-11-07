@@ -254,6 +254,7 @@ class Rig:
         self.prompter = Scripted()
         self.importer = EmailImporter(self.extractor, self.builder, connect=self._connect)
         self.state: dict[str, Any] = {}
+        self.progress: list[tuple[int, int]] = []
 
     def _connect(self, connection: Connection, password: SecretText) -> FakeMailbox:
         self.connections.append((connection, password))
@@ -262,7 +263,12 @@ class Rig:
     def run(self, settings: Mapping[str, Any] | None = None, *, today: date = TODAY, since: date = SINCE):  # type: ignore[no-untyped-def]
         session = self.importer.open(settings or base_settings(), self.state, self.prompter, today=today)
         try:
-            return session.fetch_documents(since=since, today=today, minor_units_of=lambda c: 2)
+            return session.fetch_documents(
+                since=since,
+                today=today,
+                minor_units_of=lambda c: 2,
+                progress=lambda d, t: self.progress.append((d, t)),
+            )
         finally:
             session.close()
 

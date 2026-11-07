@@ -180,10 +180,15 @@ class Task:
             except Exception as exc:  # a subscriber's problem never reaches the importer's thread
                 log.warning("a task subscriber failed: %s", type(exc).__name__)
 
-    def events_after(self, last_id: int = 0) -> list[Event]:
-        """The events with an id above `last_id`: the replay (0 is the whole task)."""
+    def events_after(self, last_id: int = 0, *, replay: bool = False) -> list[Event]:
+        """The events with an id above `last_id` (0 is the whole task). A `replay` leaves out every
+        `run_progress` that a later one of the same run supersedes; ids stay as assigned."""
         with self._cond:
-            return self._events[max(last_id, 0) :]
+            events = self._events[max(last_id, 0) :]
+        if not replay:
+            return events
+        latest = {e.data["run_id"]: e.id for e in events if e.name == "run_progress"}
+        return [e for e in events if e.name != "run_progress" or latest[e.data["run_id"]] == e.id]
 
     def wait_for_events(self, last_id: int, timeout_s: float) -> list[Event]:
         """Block until an event above `last_id` exists, the task has ended or the timeout passes."""

@@ -67,7 +67,9 @@ def session(
 
 
 def fetch(sess: Any, ref: str = "A", *, since: date = date(2026, 6, 1), today: date = TODAY) -> Any:
-    return sess.fetch_account(ref, since=since, today=today, currency="EUR", minor_units_of=lambda c: 2)
+    return sess.fetch_account(
+        ref, since=since, today=today, currency="EUR", minor_units_of=lambda c: 2, progress=lambda d, t: None
+    )
 
 
 def acct(**kw: Any) -> dict[str, Any]:
@@ -174,7 +176,9 @@ def test_documents_are_testdocs_behaviour() -> None:
     }
     old = {**doc, "source_id": "D0", "occurred_on": "2026-05-01"}
     sess = session({"start_date": "2026-05-01", "documents": [doc, old]})
-    got = sess.fetch_documents(since=date(2026, 6, 1), today=TODAY, minor_units_of=lambda c: 2)
+    got = sess.fetch_documents(
+        since=date(2026, 6, 1), today=TODAY, minor_units_of=lambda c: 2, progress=lambda d, t: None
+    )
     assert [d.source_id for d in got.documents] == ["D1"]
     assert got.covered_through == date(2026, 6, 14) and got.covered_from == date(2026, 5, 1)
 
@@ -269,7 +273,7 @@ def test_every_failure_class_can_be_raised_at_open_and_at_a_data_call(
         session({"discover": [{"raise": code}]}).accounts()
     with pytest.raises(error):
         session({"documents_fetch": [{"raise": code}]}).fetch_documents(
-            since=TODAY, today=TODAY, minor_units_of=lambda c: 2
+            since=TODAY, today=TODAY, minor_units_of=lambda c: 2, progress=lambda d, t: None
         )
 
 

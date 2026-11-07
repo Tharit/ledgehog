@@ -16,6 +16,7 @@ Settings (`importer_instance.settings`):
     documents       list of documents, `start_date` and `covered_through`: as `testdocs`
     documents_fetch steps run before the documents are fetched
     documents_position  object: the delivery's `position` (applied to `state` once ingested)
+    documents_progress  integer N: the fetch reports progress 0/N, 1/N, ... N/N before it delivers
     documents_stats object of integers: the delivery's `importer_stats`
     documents_exponents list of currency codes: each adds `exponent_<code>` to the delivery's
                     `importer_stats`, the exponent `minor_units_of` answered (what the caller passed)
@@ -241,6 +242,7 @@ class _Session(FetchSessionBase):
         today: date,
         currency: str,
         minor_units_of: Callable[[str], int],
+        progress: Callable[[int, int], None],
     ) -> FetchedTransactions:
         account = next((a for a in self._settings.get("accounts", ()) if a["ref"] == external_ref), None)
         capabilities = set(account.get("capabilities", _CAPABILITIES)) if account else set()
@@ -263,9 +265,17 @@ class _Session(FetchSessionBase):
         )
 
     def fetch_documents(
-        self, *, since: date, today: date, minor_units_of: Callable[[str], int]
+        self,
+        *,
+        since: date,
+        today: date,
+        minor_units_of: Callable[[str], int],
+        progress: Callable[[int, int], None],
     ) -> DocumentDelivery:
         self.run_steps(self._settings.get("documents_fetch", ()))
+        total = int(self._settings.get("documents_progress", 0))
+        for done in range(total + 1 if total else 0):
+            progress(done, total)
         settings = {
             "start_date": self._settings.get("start_date", since.isoformat()),
             "covered_through": self._settings.get("covered_through", (today - timedelta(days=1)).isoformat()),

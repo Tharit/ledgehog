@@ -60,7 +60,10 @@ class Rig:
         session = self.importer.open(base_settings(), self.state, Scripted(), today=TODAY)
         try:
             return session.fetch_documents(
-                since=SINCE, today=TODAY, minor_units_of=lambda c: {"EUR": 2, "JPY": 0}[c]
+                since=SINCE,
+                today=TODAY,
+                minor_units_of=lambda c: {"EUR": 2, "JPY": 0}[c],
+                progress=lambda d, t: None,
             )
         finally:
             session.close()
@@ -90,7 +93,9 @@ def test_coverage_is_today_minus_two_and_data_starts_at_the_start_date_or_the_co
     assert delivery.covered_through == date(2026, 1, 18) and delivery.covered_from == SINCE
     assert delivery.documents == ()
     session = rig.importer.open(base_settings(), {}, Scripted(), today=TODAY)
-    later = session.fetch_documents(since=date(2026, 3, 1), today=TODAY, minor_units_of=lambda c: 2)
+    later = session.fetch_documents(
+        since=date(2026, 3, 1), today=TODAY, minor_units_of=lambda c: 2, progress=lambda d, t: None
+    )
     assert later.covered_from == later.covered_through == date(2026, 1, 18)
 
 

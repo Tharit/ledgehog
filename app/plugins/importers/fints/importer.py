@@ -261,6 +261,7 @@ class _Session(FetchSessionBase):
         today: date,
         currency: str,
         minor_units_of: Callable[[str], int],
+        progress: Callable[[int, int], None],
     ) -> FetchedTransactions:
         until = today - timedelta(days=1)
         start = min(since, until)  # a request is never empty-ranged

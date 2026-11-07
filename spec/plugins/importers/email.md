@@ -77,7 +77,8 @@ with `BODY.PEEK[]`: nothing is marked seen, moved, flagged or deleted.
   messages that arrived since the day before the start date, or, where a
   position exists with another UIDVALIDITY, since the day before `fetched_on`.
 
-They are handled in ascending UID order. A message whose own Message-ID is in
+They are handled in ascending UID order. After each, the run reports its
+progress: the messages handled, of those found (`architecture.md` §5.5). A message whose own Message-ID is in
 `seen` is skipped once its headers are read, its body never fetched, and
 an inner message (§3) whose Message-ID is in `seen` is skipped before the model
 is asked; both count as `already_seen`. Every message and inner message that a

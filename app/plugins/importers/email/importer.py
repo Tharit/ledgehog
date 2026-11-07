@@ -84,9 +84,14 @@ class _Session(FetchSessionBase):
             log.info("closing the mail connection failed: %s", type(exc).__name__)
 
     def fetch_documents(
-        self, *, since: date, today: date, minor_units_of: Callable[[str], int]
+        self,
+        *,
+        since: date,
+        today: date,
+        minor_units_of: Callable[[str], int],
+        progress: Callable[[int, int], None],
     ) -> DocumentDelivery:
-        run = _Run(self, since, today, minor_units_of)
+        run = _Run(self, since, today, minor_units_of, progress)
         return run.deliver()
 
 
@@ -94,7 +99,12 @@ class _Run:
     """One `fetch_documents`: the candidates, each handled once, the delivery with its counts and position."""
 
     def __init__(
-        self, session: _Session, since: date, today: date, minor_units_of: Callable[[str], int]
+        self,
+        session: _Session,
+        since: date,
+        today: date,
+        minor_units_of: Callable[[str], int],
+        progress: Callable[[int, int], None],
     ) -> None:
         self.session = session
         self.mailbox = session._mailbox
@@ -106,6 +116,7 @@ class _Run:
         self.since = since
         self.run_day = today
         self.minor_units_of = minor_units_of
+        self.progress = progress
         self.stats: dict[str, int] = dict.fromkeys(STAT_KEYS, 0)
         self.documents: dict[tuple[str, str], IncomingDocument] = {}
         self.seen_before: Mapping[str, date] = {}
@@ -135,9 +146,12 @@ class _Run:
             # a first read, or the mailbox was renumbered: mail before the start date is never read, so the
             # next run begins at what is there now, not at the first message handled
             last_uid = max(self.mailbox.uidnext() - 1, 0)
-        for uid in self.candidates(position):
+        uids = self.candidates(position)
+        self.progress(0, len(uids))
+        for done, uid in enumerate(uids, start=1):
             self.handle(uid)
             last_uid = max(last_uid, uid)
+            self.progress(done, len(uids))
         self.state.pop("stuck", None)  # the run got past every message
         self.stats[DOCUMENTS] = len(self.documents)
         log.info("run: %s", ", ".join(f"{k}={v}" for k, v in self.stats.items() if v))

@@ -106,6 +106,23 @@ def test_closing_logs_out_and_drops_an_error():
     assert rig.mailbox.logged_out == 1
 
 
+# ---- progress ------------------------------------------------------------------------------------------
+
+
+def test_the_run_reports_zero_of_the_found_then_each_message_handled():
+    rig = rig_with(4, 5, 6)
+    rig.run()
+    assert rig.progress == [(0, 3), (1, 3), (2, 3), (3, 3)]
+    again = rig.run()  # every message is now seen: skipped ones count too
+    assert again is not None and rig.progress[4:] == [(0, 3), (1, 3), (2, 3), (3, 3)]
+
+
+def test_a_run_that_finds_nothing_reports_zero_of_zero():
+    rig = rig_with()
+    rig.run()
+    assert rig.progress == [(0, 0)]
+
+
 # ---- the position -------------------------------------------------------------------------------------
 
 

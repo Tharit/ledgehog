@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import copy
 import logging
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date
 from typing import Any
@@ -157,6 +157,7 @@ def _run_item(
     task.track_run(run_id)
     ctx.run_id = run_id
     task.emit("run_started", {"run_id": run_id, **base, "since": since.isoformat()})
+    progress = _progress_reporter(task, run_id)
     try:
         if item.kind == "transactions":
             assert external_ref is not None
@@ -166,6 +167,7 @@ def _run_item(
                 today=env.fetch_day,
                 currency=currency,
                 minor_units_of=inst.minor_units.__getitem__,
+                progress=progress,
             )
             if task.aborting:  # a delivery that arrives after the abort is discarded
                 raise ChallengeAbandoned(ABORTED)
@@ -181,7 +183,10 @@ def _run_item(
             ).settle
         else:
             delivery = session.fetch_documents(
-                since=since, today=env.fetch_day, minor_units_of=inst.minor_units.__getitem__
+                since=since,
+                today=env.fetch_day,
+                minor_units_of=inst.minor_units.__getitem__,
+                progress=progress,
             )
             if task.aborting:
                 raise ChallengeAbandoned(ABORTED)
@@ -211,6 +216,19 @@ def _run_item(
         out.settle_failed = True
     task.emit("run_finished", {"run_id": run_id, **base, "stats": stats})
     return None
+
+
+def _progress_reporter(task: Task, run_id: int) -> Callable[[int, int], None]:
+    """The `progress` an importer is given: emits `run_progress` for this run (the emit is thread-safe).
+    Never blocks and never raises into the importer: an error is logged by type and dropped."""
+
+    def progress(done: int, total: int) -> None:
+        try:
+            task.emit("run_progress", {"run_id": run_id, "done": int(done), "total": int(total)})
+        except Exception as exc:
+            log.warning("run %s: progress dropped: %s", run_id, type(exc).__name__)
+
+    return progress
 
 
 def _item_facts(

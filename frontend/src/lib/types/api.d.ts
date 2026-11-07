@@ -2795,6 +2795,15 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** RunProgressEvent */
+        RunProgressEvent: {
+            /** Done */
+            done: number;
+            /** Run Id */
+            run_id: number;
+            /** Total */
+            total: number;
+        };
         /** RunRefOut */
         RunRefOut: {
             /** Finished At */
@@ -3141,6 +3150,7 @@ export interface components {
             prompt_resolved: components["schemas"]["PromptResolvedEvent"];
             run_failed: components["schemas"]["RunFailedEvent"];
             run_finished: components["schemas"]["RunFinishedEvent"];
+            run_progress: components["schemas"]["RunProgressEvent"];
             run_started: components["schemas"]["RunStartedEvent"];
             task_ended: components["schemas"]["TaskEndedEvent"];
             task_started: components["schemas"]["TaskStartedEvent"];

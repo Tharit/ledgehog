@@ -19,7 +19,12 @@ class _FakeSession(FetchSessionBase):
         self._importer = importer
 
     def fetch_documents(
-        self, *, since: date, today: date, minor_units_of: Callable[[str], int]
+        self,
+        *,
+        since: date,
+        today: date,
+        minor_units_of: Callable[[str], int],
+        progress: Callable[[int, int], None],
     ) -> DocumentDelivery:
         return self._importer.fetch({}, since=since, today=today)
 

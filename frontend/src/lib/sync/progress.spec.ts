@@ -8,6 +8,7 @@ const item = (stats: Record<string, unknown> | null): TaskItem => ({
 	state: 'done',
 	runId: 10,
 	since: '2026-10-08',
+	progress: null,
 	stats,
 	failure: null
 });

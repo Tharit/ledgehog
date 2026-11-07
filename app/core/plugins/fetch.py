@@ -215,14 +215,20 @@ class FetchSession(Protocol):
         today: date,
         currency: str,
         minor_units_of: Callable[[str], int],
+        progress: Callable[[int, int], None],
     ) -> FetchedTransactions:
         """Booked transactions of one account dated `since` (<= today) or later, with the coverage
         and, where the source reports one, the closing balance. `minor_units_of` is passed as to a
-        file importer."""
+        file importer. `progress(done, total)` may be called after each item of a known count (spec §5.5)."""
         ...
 
     def fetch_documents(
-        self, *, since: date, today: date, minor_units_of: Callable[[str], int]
+        self,
+        *,
+        since: date,
+        today: date,
+        minor_units_of: Callable[[str], int],
+        progress: Callable[[int, int], None],
     ) -> DocumentDelivery:
         """Documents dated `since` or later (the instance's `start_date`, spec §5.5). `minor_units_of` is
         passed as to `fetch_account`: it raises `KeyError` for a currency it does not know."""
@@ -248,11 +254,17 @@ class FetchSessionBase:
         today: date,
         currency: str,
         minor_units_of: Callable[[str], int],
+        progress: Callable[[int, int], None],
     ) -> FetchedTransactions:
         raise AccountUnsupported("the importer fetches no transactions")
 
     def fetch_documents(
-        self, *, since: date, today: date, minor_units_of: Callable[[str], int]
+        self,
+        *,
+        since: date,
+        today: date,
+        minor_units_of: Callable[[str], int],
+        progress: Callable[[int, int], None],
     ) -> DocumentDelivery:
         raise AccountUnsupported("the importer fetches no documents")
 

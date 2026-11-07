@@ -5186,6 +5186,29 @@
         "title": "RunFinishedEvent",
         "type": "object"
       },
+      "RunProgressEvent": {
+        "properties": {
+          "done": {
+            "title": "Done",
+            "type": "integer"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "run_id",
+          "done",
+          "total"
+        ],
+        "title": "RunProgressEvent",
+        "type": "object"
+      },
       "RunRefOut": {
         "properties": {
           "finished_at": {
@@ -6313,6 +6336,9 @@
           "run_finished": {
             "$ref": "#/components/schemas/RunFinishedEvent"
           },
+          "run_progress": {
+            "$ref": "#/components/schemas/RunProgressEvent"
+          },
           "run_started": {
             "$ref": "#/components/schemas/RunStartedEvent"
           },
@@ -6327,6 +6353,7 @@
           "task_started",
           "instance_started",
           "run_started",
+          "run_progress",
           "prompt",
           "prompt_resolved",
           "run_finished",

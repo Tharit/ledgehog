@@ -1069,7 +1069,7 @@ input, so the TAN would need a second endpoint anyway; and the connection is
 held open for minutes through whatever proxy is in front, which is the problem
 SSE exists to solve properly.
 
-**Event design.** The set is nine events, and its shape is fixed:
+**Event design.** The set is ten events, and its shape is fixed:
 
 - Every event is a **named type**, and the client routes on the name. No
   untyped payloads discriminated by inspecting their contents.
@@ -1092,8 +1092,9 @@ SSE exists to solve properly.
 - **The stream is resumable, and reattaching is replaying.** Event ids are
   1, 2, 3, … per task. Without `Last-Event-ID` the stream replays the whole
   task from id 1 and then goes live; with it, what follows. A task's events
-  number tens, so there is no cap and no snapshot, and a reloaded tab recovers
-  a prompt that is still open. A `prompt` event whose prompt has been
+  number tens — a replay sends only the latest `run_progress` of each run — so
+  there is no cap and no snapshot, and a reloaded tab recovers a prompt that
+  is still open. A `prompt` event whose prompt has been
   resolved is replayed without its prompt body (§5.6). The first bytes are
   `retry: 3000`, a comment line `: keepalive` follows every 15 s, and the
   server closes the stream after `task_ended`.
@@ -1103,6 +1104,7 @@ SSE exists to solve properly.
 | progress | `task_started` | `kind` (`sync` or `discovery`); the instances, each with its items |
 | progress | `instance_started` | `instance_id` |
 | progress | `run_started` | `run_id`, `instance_id`, `account_id` (null for documents), `kind`, `since` |
+| progress | `run_progress` | `run_id`, `done`, `total`: how far a run has got, where its importer says (§5.5) |
 | progress | `prompt_resolved` | `prompt_id`, `outcome`: `answered`, `confirmed` (a decoupled challenge), `cancelled`, `expired`, `aborted` |
 | input | `prompt` | `prompt_id`, `instance_id`, `run_id` (null while signing in), `expires_at`, the prompt (§5.5) |
 | terminal | `run_finished` | the run's ids and `kind`, its stored statistics |
@@ -1755,6 +1757,13 @@ A bank may demand a challenge, and a fresh dialog, per data call, so the
 importer may ask for input from any call, not only from `open`: the user types
 the PIN once per sync and meets challenges as the bank demands them. Every call
 blocks and is made from a worker thread (§3, §5.3).
+
+**Progress.** `fetch_account` and `fetch_documents` take a keyword parameter
+`progress: Callable[[int, int], None]`, called as `progress(done, total)`. An
+importer whose run works through a number of items it knows — the email
+importer, its messages — calls it after each; one that does not know the number
+never calls it. It carries counts only, never blocks, and core forwards it as
+`run_progress` (§4.2).
 
 Beyond the records, the protocol has an importer report:
 

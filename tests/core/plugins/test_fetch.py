@@ -71,10 +71,20 @@ def test_the_session_base_offers_nothing_and_raises_account_unsupported() -> Non
     base.close()
     with pytest.raises(AccountUnsupported):
         base.fetch_account(
-            "x", since=date(2026, 1, 1), today=date(2026, 1, 2), currency="EUR", minor_units_of=len
+            "x",
+            since=date(2026, 1, 1),
+            today=date(2026, 1, 2),
+            currency="EUR",
+            minor_units_of=len,
+            progress=lambda d, t: None,
         )
     with pytest.raises(AccountUnsupported):
-        base.fetch_documents(since=date(2026, 1, 1), today=date(2026, 1, 2), minor_units_of=lambda c: 2)
+        base.fetch_documents(
+            since=date(2026, 1, 1),
+            today=date(2026, 1, 2),
+            minor_units_of=lambda c: 2,
+            progress=lambda d, t: None,
+        )
 
 
 def test_the_catalog_reads_a_fetch_importers_declared_kinds() -> None:

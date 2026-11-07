@@ -14,6 +14,7 @@ import {
 	promptEvent,
 	runFailed,
 	runFinished,
+	runProgress,
 	runStarted,
 	taskEnded,
 	taskStarted
@@ -63,6 +64,20 @@ describe('foldEvent', () => {
 		});
 		expect(view.end).toEqual({ outcome: 'completed', ok: 4, failed: 0, notStarted: [] });
 		expect(view.lastId).toBe(12);
+	});
+
+	it("records a run's progress on its item, replaced by the next, and ignores one for no run", () => {
+		const view = foldAll([
+			start,
+			ev(2, 'instance_started', { instance_id: 1 }),
+			ev(3, 'run_started', runStarted(1, 10, 7)),
+			ev(4, 'run_progress', runProgress(10, 0, 45)),
+			ev(5, 'run_progress', runProgress(10, 2, 45)),
+			ev(6, 'run_progress', runProgress(99, 1, 3))
+		]);
+		expect(view.instances[0].items[0].progress).toEqual({ done: 2, total: 45 });
+		expect(view.instances[0].items[1].progress).toBeNull();
+		expect(view.lastId).toBe(6);
 	});
 
 	it('shows a login as signing in, then at work, while a run is fetching', () => {

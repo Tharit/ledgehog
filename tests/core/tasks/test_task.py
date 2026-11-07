@@ -249,6 +249,17 @@ def test_event_ids_run_from_one_and_a_replay_returns_the_rest() -> None:
     assert task.events_after(5) == [] and task.status().last_event_id == 5
 
 
+def test_a_replay_keeps_only_the_latest_progress_of_each_run() -> None:
+    task, _ = make_task()
+    for run_id, done in [(1, 0), (2, 0), (1, 1), (1, 2), (2, 1)]:
+        task.emit("run_progress", {"run_id": run_id, "done": done, "total": 2})
+    task.emit("run_finished", {"run_id": 1})
+    assert [e.id for e in task.events_after(0)] == [1, 2, 3, 4, 5, 6]  # live: every event
+    assert [e.id for e in task.events_after(0, replay=True)] == [4, 5, 6]  # ids as assigned
+    assert [e.id for e in task.events_after(2, replay=True)] == [4, 5, 6]
+    assert [e.id for e in task.events_after(4, replay=True)] == [5, 6]
+
+
 def test_subscribers_are_woken_by_every_change_and_counted() -> None:
     task, prompter = make_task()
     woken: list[int] = []

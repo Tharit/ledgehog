@@ -38,11 +38,11 @@
 			case 'queued':
 				return 'Waiting';
 			case 'fetching':
-				return waiting
-					? 'Waiting for your input'
-					: item.since
-						? `Fetching from ${formatDate(item.since, locale)}…`
-						: 'Fetching…';
+				if (waiting) return 'Waiting for your input';
+				if (!item.since) return 'Fetching…';
+				return item.progress
+					? `Fetching from ${formatDate(item.since, locale)} · ${item.progress.done} / ${item.progress.total}`
+					: `Fetching from ${formatDate(item.since, locale)}…`;
 			case 'done':
 				return `Done · ${itemSummary(item)}`;
 			case 'failed':

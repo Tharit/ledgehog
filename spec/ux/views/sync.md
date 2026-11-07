@@ -46,7 +46,8 @@ because its start is the one thing the user is asked.
 ## Progress and report
 
 One card per login in the order the sync takes them, one row per item inside:
-the account, or "Documents". A row is *waiting*, *fetching from* a date,
+the account, or "Documents". A row is *waiting*, *fetching from* a date — with how far it has
+got where the importer says, "Fetching from Oct 1, 2026 · 2 / 45" —,
 *waiting for your input*, *done* — "12 inserted · 31 skipped", and "· 2 as
 duplicates" where there are — or *failed*. A done row opens the run summary
 (`ux/views/importers.md`), a report, not an alarm (`ux/patterns.md` §8): it

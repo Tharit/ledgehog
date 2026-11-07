@@ -304,9 +304,11 @@ async def sync_task_events(
         try:
             yield b"retry: 3000\n\n"
             last = start
+            replaying = True  # the first read is the replay; what follows is live, every event sent
             while True:
                 woken.clear()  # before reading, so a wake-up between the read and the wait is kept
-                events = task.events_after(last)
+                events = task.events_after(last, replay=replaying)
+                replaying = False
                 for event in events:
                     data: Any = event.data
                     if event.name == "run_finished" and event.data.get("account_id") is not None:

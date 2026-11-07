@@ -97,7 +97,12 @@ def test_the_device_list_is_asked_without_a_tan_request_and_its_name_goes_with_e
     assert asker.kinds() == ["pin", "tan_medium"] and state["tan_medium"] == "iPad"
 
     result = session.fetch_account(
-        f"{CARD}/01", since=date(2026, 10, 1), today=TODAY, currency="EUR", minor_units_of=lambda c: 2
+        f"{CARD}/01",
+        since=date(2026, 10, 1),
+        today=TODAY,
+        currency="EUR",
+        minor_units_of=lambda c: 2,
+        progress=lambda d, t: None,
     )
     assert [r.amount_minor for r in result.rows] == [-1250]
 

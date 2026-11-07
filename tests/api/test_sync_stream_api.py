@@ -71,6 +71,19 @@ def test_last_event_id_resumes_after_it(sync: Sync):
     assert r.status_code == 200 and r.text == "retry: 3000\n\n"  # nothing more will come: closed at once
 
 
+def test_a_replay_sends_only_the_latest_progress_of_a_run(sync: Sync):
+    sync.world({"documents_progress": 3, "start_date": "2026-08-10"}, refs=(), emits=("documents",))
+    task = sync.started()
+    sync.wait_ended(task)
+    live = [f for f in sync.events_so_far(task) if f.event == "run_progress"]
+    assert [(f.data["done"], f.data["total"]) for f in live] == [(0, 3), (1, 3), (2, 3), (3, 3)]
+    replayed = [f for f in sync.events(task) if f.event == "run_progress"]
+    assert [f.data["done"] for f in replayed] == [3]
+    assert replayed[0].id == live[-1].id  # the id is the one it was assigned
+    resumed = [f for f in sync.events(task, last_id=live[0].id) if f.event == "run_progress"]
+    assert [f.data["done"] for f in resumed] == [3]
+
+
 def test_a_last_event_id_that_is_not_a_number_replays_everything(sync: Sync):
     task = finished_task(sync)
     everything = sync.events(task)
@@ -113,7 +126,7 @@ def test_run_finished_carries_the_stored_statistics_with_their_currency(sync: Sy
 
 
 def test_every_event_name_validates_against_its_declared_model(sync: Sync):
-    """One task that emits all nine events, each checked against the model the schema publishes."""
+    """One task that emits every event, each checked against the model the schema publishes."""
     steps = [
         PIN,
         {"ask": "tan", "medium": "text", "expect": "111"},
@@ -131,6 +144,10 @@ def test_every_event_name_validates_against_its_declared_model(sync: Sync):
     sync.link(down, sync.account("C1"), "C1")
     full = sync.instance({"accounts": [acct("A1")], "open": steps}, label="Prompts")
     sync.link(full, sync.account("A1"), "A1")
+    docs = sync.instance(
+        {"documents_progress": 1, "start_date": "2026-08-10"}, label="Progress", emits=("documents",)
+    )
+    assert docs
     task = sync.started()
     answers = {"secret": "1234", "choice": "a", "text": "Push"}
     seen_kinds = []
@@ -149,7 +166,7 @@ def test_every_event_name_validates_against_its_declared_model(sync: Sync):
         ("text", None),
     ]
     frames = sync.events(task)
-    assert {f.event for f in frames} == set(SyncEventPayloads.model_fields)  # all nine
+    assert {f.event for f in frames} == set(SyncEventPayloads.model_fields)  # all ten
     for f in frames:
         model = SyncEventPayloads.model_fields[f.event].annotation
         TypeAdapter(model).validate_python(f.data, strict=False)

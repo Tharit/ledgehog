@@ -39,6 +39,12 @@ export const runStarted = (
 	since
 });
 
+export const runProgress = (run: number, done: number, total: number): Payload<'run_progress'> => ({
+	run_id: run,
+	done,
+	total
+});
+
 export const runFinished = (
 	instance: number,
 	run: number,

@@ -13,7 +13,7 @@ from sqlalchemy import Engine
 from app.core.accounts import close_account
 from app.core.importers.instances import reset_instance, update_instance
 from app.core.importers.plan import ItemRequest, JobPlan
-from app.core.tasks import DiscoveryResult
+from app.core.tasks import DiscoveryResult, Task
 from app.core.tasks import runner as runner_module
 from tests.core.tasks.helpers import open_prompt
 from tests.core.tasks.rig import DOC, Handle, Rig, acct
@@ -512,3 +512,38 @@ def test_a_documents_run_stores_the_importers_counts_and_gets_the_currency_expon
 def test_a_documents_run_without_counts_stores_an_empty_importer_entry(rig: Rig) -> None:
     rig.instance(doc_settings(), emits=("documents",))
     assert rig.run().of("run_finished")[0]["stats"]["importer"] == {}
+
+
+# ---- progress ----------------------------------------------------------------------------------
+
+
+def test_the_importers_progress_is_forwarded_as_run_progress_for_its_run(rig: Rig) -> None:
+    rig.instance(doc_settings(documents_progress=2), emits=("documents",))
+    handle = rig.run()
+    [run] = rig.runs()
+    names = handle.names()
+    assert names[names.index("run_started") :][:5] == [
+        "run_started",
+        "run_progress",
+        "run_progress",
+        "run_progress",
+        "run_finished",
+    ]
+    assert list(handle.of("run_progress")) == [{"run_id": run.id, "done": d, "total": 2} for d in (0, 1, 2)]
+
+
+def test_a_progress_that_cannot_be_emitted_does_not_fail_the_run(
+    rig: Rig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real_emit = Task.emit
+
+    def emit(self: Task, name: str, data: Any) -> Any:
+        if name == "run_progress":
+            raise RuntimeError("no")
+        return real_emit(self, name, data)
+
+    monkeypatch.setattr(Task, "emit", emit)
+    rig.instance(doc_settings(documents_progress=2), emits=("documents",))
+    handle = rig.run()
+    assert [r.status for r in rig.runs()] == ["ok"]
+    assert handle.of("run_progress") == []

@@ -71,7 +71,12 @@ class _Session(FetchSessionBase):
         self._settings = settings
 
     def fetch_documents(
-        self, *, since: date, today: date, minor_units_of: Callable[[str], int]
+        self,
+        *,
+        since: date,
+        today: date,
+        minor_units_of: Callable[[str], int],
+        progress: Callable[[int, int], None],
     ) -> DocumentDelivery:
         return self._importer.fetch(self._settings, since=since, today=today)
 

@@ -11,6 +11,7 @@ import {
 	planInstance,
 	promptEvent,
 	runFinished,
+	runProgress,
 	runStarted,
 	taskEnded,
 	taskStarted
@@ -279,6 +280,25 @@ describe('the sync page: progress and the report', () => {
 		expect(row.querySelector('[data-slot="account-dot"]')).toBeNull();
 		await fireEvent.click(within(card).getByRole('button', { name: /Giro, Done/ }));
 		expect(within(card).getByText('12 rows')).toBeInTheDocument();
+	});
+
+	it('shows how far a fetching run has got, where its importer says', async () => {
+		hold(
+			foldAll(
+				[
+					ev(3, 'run_started', runStarted(1, 10, 7, '2026-10-01')),
+					ev(4, 'run_progress', runProgress(10, 0, 45)),
+					ev(5, 'run_progress', runProgress(10, 2, 45)),
+					ev(6, 'run_started', runStarted(1, 11, 8, '2026-01-01'))
+				],
+				replayed()
+			)
+		);
+		render(Page);
+
+		const card = await screen.findByRole('region', { name: 'Giro login' });
+		expect(within(card).getByText('Fetching from Oct 1, 2026 · 2 / 45')).toBeInTheDocument();
+		expect(within(card).getByText('Fetching from Jan 1, 2026…')).toBeInTheDocument();
 	});
 
 	it('shows how a sync ended and goes back to the plan', async () => {
