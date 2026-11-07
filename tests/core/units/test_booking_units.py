@@ -477,7 +477,7 @@ def test_a_transfer_bookings_unit_is_marked_transfer(scene: Scene) -> None:
 # ---- locks --------------------------------------------------------------------------------------------
 
 
-def test_the_commit_locks_no_clearance_account_it_does_not_write_and_settling_locks_only_those(
+def test_the_commit_locks_no_clearance_account_it_does_not_write_and_settling_locks_what_it_writes(
     scene: Scene, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from app.core.bookings import write
@@ -499,7 +499,9 @@ def test_the_commit_locks_no_clearance_account_it_does_not_write_and_settling_lo
     monkeypatch.setattr(write, "lock_accounts", recording("step"))
     scene.commit(e, DraftEntry(e, counter_account=fixed(account)))
     assert seen["commit"] == [[scene.checking]]  # the commit writes the charge's account only
-    assert seen["step"] == [[account]]  # settling writes, and locks, the clearance account only
+    # settling writes, and locks, the clearance account and the charge's account
+    # (the pair is written on both legs)
+    assert seen["step"] == [sorted([scene.checking, account])]
     assert booking_of(scene, e) is not None
 
 

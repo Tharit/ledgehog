@@ -1454,12 +1454,13 @@ Transaction boundaries:
   locked (a counter-leg's), the commit runs again with them, at most three
   rounds, and then answers with the "try again" conflict. **Settling takes no
   account lock but in its booking step**, the one place it creates rows and
-  recomputes derived entries: the step takes the locks of the clearance
-  accounts it writes on, in ascending id order, after the documents in the
-  order above (it reads documents under the exclusive settle lock and locks
-  none). This is a contained exception — only clearance accounts, only
-  bookings; every other row and derived entry is written by the writes, in
-  their own transaction. `settle(engine)` opens its own transaction after the write it
+  recomputes derived entries: the step takes the locks of the accounts it
+  writes on — the clearance accounts, and the accounts of the charges whose
+  pairs it makes, follows or releases — in ascending id order, after the
+  documents in the order above (it reads documents under the exclusive
+  settle lock and locks none). This is a contained exception — only
+  bookings and their pairs; every other row and derived entry is written by
+  the writes, in their own transaction. `settle(engine)` opens its own transaction after the write it
   follows, and sets the transaction-local `ledger.settling` so that its
   rewrites do not bump versions (§4.1). Should PostgreSQL still abort a write on a deadlock, the server
   retries it once, holding its whole payload; if the retry fails too, the
