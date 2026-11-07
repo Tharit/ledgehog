@@ -416,7 +416,10 @@
 							data-ghost={group.ghost ? '' : undefined}
 						>
 							{#if multi}
-								{@const account = lookups.accounts.get(group.header.accountId)}
+								{@const account =
+									group.header.accountId === null
+										? undefined
+										: lookups.accounts.get(group.header.accountId)}
 								<!-- a divider band: it starts the section of one source -->
 								<div
 									class={cn(
@@ -428,7 +431,7 @@
 									<span class="flex flex-wrap items-center gap-x-2">
 										{#if account}
 											<AccountDot name={account.name} color={resolveAccount(account).color} />
-										{:else}
+										{:else if group.header.accountId !== null}
 											Account {group.header.accountId}
 										{/if}
 										{#if group.ghost}

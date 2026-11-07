@@ -8,7 +8,7 @@ import type { Entry, Money } from '#lib/types/domain.js';
 import type { EntryView } from './view.js';
 
 export type GroupHeader = {
-	accountId: number;
+	accountId: number | null;
 	/** the booked date of the group's entry; null when it has none yet */
 	bookedOn: string | null;
 	/** what the source transaction said */

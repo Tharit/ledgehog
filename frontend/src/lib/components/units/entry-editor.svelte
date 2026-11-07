@@ -47,7 +47,9 @@
 		locale?: string;
 	} = $props();
 
-	const account = $derived(lookups.accounts.get(view.accountId));
+	const account = $derived(
+		view.accountId === null ? undefined : lookups.accounts.get(view.accountId)
+	);
 	const partner = $derived(view.stored?.partner ?? null);
 	const partnerAccount = $derived(partner ? lookups.accounts.get(partner.account_id) : undefined);
 	const isTransfer = $derived(view.type === 'transfer');

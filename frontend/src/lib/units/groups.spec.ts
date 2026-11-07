@@ -51,6 +51,39 @@ describe('groupsOf', () => {
 		expect(groups.map((g) => g.splitEntryId)).toEqual([2, 1]);
 	});
 
+	it('puts a split of a picked partner (in the preview only) into the partner’s group', () => {
+		const alone = unit({ anchor_entry_id: 1, entries: [leg(1, 1, 5, '2026-10-10')] });
+		const partner = leg(2, 2, 6, '2026-10-09', { amount: { amount: 5000, currency: 'USD' } });
+		const answer = preview(alone);
+		answer.rows.push(previewRowOf(partner, { original: true }));
+		const draft = Draft.of(alone).addSplit(2);
+		const views = entryViews({ unit: alone, draft, preview: answer, rules, locale: 'en' });
+
+		const split = views.find((v) => v.id === -1)!;
+		expect(split.accountId).toBe(2);
+		expect(split.sourceId).toBe(6);
+
+		const groups = groupsOf(views, alone.entries);
+		expect(groups).toHaveLength(2);
+		expect(groups.find((g) => g.sourceId === 6)!.views.map((v) => v.id)).toEqual([2, -1]);
+		expect(groups.every((g) => g.header.accountId !== null)).toBe(true);
+	});
+
+	it('takes a split’s currency from a preview-only source entry', () => {
+		const alone = unit({ anchor_entry_id: 1, entries: [leg(1, 1, 5, '2026-10-10')] });
+		const partner = leg(2, 2, 6, '2026-10-09', { amount: { amount: 5000, currency: 'USD' } });
+		const answer = preview(alone);
+		answer.rows.push(previewRowOf(partner, { original: true }));
+		const views = entryViews({
+			unit: alone,
+			draft: Draft.of(alone).addSplit(2).setSplitAmount(-1, 100),
+			preview: answer,
+			rules,
+			locale: 'en'
+		});
+		expect(views.find((v) => v.id === -1)!.amount).toEqual({ amount: 100, currency: 'USD' });
+	});
+
 	it('orders groups by the earlier booked date, ties by entry id; the anchor is not special', () => {
 		expect(groupsOf(viewsOf(pair), pair.entries).map((g) => g.sourceId)).toEqual([6, 5]);
 		const tie = unit({

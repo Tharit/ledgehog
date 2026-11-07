@@ -71,7 +71,7 @@ export type EntryView = {
 	inSplit: boolean;
 	stored: Entry | null;
 	row: PreviewRow | null;
-	accountId: number;
+	accountId: number | null;
 	/** null: a new split whose amount has not been entered */
 	amount: Money | null;
 	/** the amount the source transaction had: what the split divides */
@@ -280,7 +280,12 @@ export function entryViews(args: {
 		accountName = () => undefined
 	} = args;
 	const stored = new Map(unit.entries.map((e) => [e.id, e]));
-	const sourceOf = (entryId: number) => stored.get(entryId)?.source_transaction_id ?? null;
+	const previewRows = new Map((preview?.rows ?? []).map((r) => [r.id, r]));
+	// a source entry is known as stored, else by its own preview row (a picked partner is the latter)
+	const sourceOf = (entryId: number) =>
+		stored.get(entryId)?.source_transaction_id ??
+		previewRows.get(entryId)?.source_transaction_id ??
+		null;
 
 	// the rows in the server's order, or the entries as stored (an untouched first look)
 	type Base = { id: number; row: PreviewRow | null };
@@ -327,7 +332,11 @@ export function entryViews(args: {
 		const inSplit = sourceId !== null && (counts.get(sourceId) ?? 0) > 1;
 		const edit = draft.edit(b.id);
 		const sourceEntry = split ? (stored.get(split.sourceEntryId) ?? null) : entry;
-		const currency = b.row?.amount.currency ?? sourceEntry?.amount.currency ?? 'EUR';
+		const sourceRow = split ? (previewRows.get(split.sourceEntryId) ?? null) : null;
+		const accountId: number | null =
+			b.row?.account_id ?? sourceEntry?.account_id ?? sourceRow?.account_id ?? null;
+		const currency =
+			b.row?.amount.currency ?? sourceEntry?.amount.currency ?? sourceRow?.amount.currency ?? 'EUR';
 		const splitOut = preview?.splits.find(
 			(s) => s.residual_entry_id === b.id || s.entry_ids.includes(b.id)
 		);
@@ -361,7 +370,7 @@ export function entryViews(args: {
 			inSplit,
 			stored: entry,
 			row: b.row,
-			accountId: b.row?.account_id ?? sourceEntry?.account_id ?? 0,
+			accountId,
 			amount,
 			sourceAmount: splitOut?.source_amount ?? null,
 			sourceText: b.row?.source_text ?? entry?.source_text ?? null,
