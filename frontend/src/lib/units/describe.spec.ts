@@ -39,10 +39,50 @@ describe('unitShape and title', () => {
 		expect(unitTitle({ anchor_entry_id: 1, entries: [flow] }, lookups)).toBe('REWE Markt');
 	});
 
-	it('a split says how many entries', () => {
-		const entries = [flow, entry({ id: 2, source_transaction_id: 5 })];
+	it('a split is titled by its source, not by an entry', () => {
+		const src = source({ counterparty_name: 'REWE Markt' });
+		const entries = [
+			entry({ id: 1, display_text: 'Bio Banane', source: src, source_transaction_id: 5 }),
+			entry({ id: 2, source: src, source_transaction_id: 5 })
+		];
 		expect(unitShape(entries)).toBe('split');
 		expect(unitTitle({ anchor_entry_id: 1, entries }, lookups)).toBe('REWE Markt (split in 2)');
+	});
+
+	it('a split falls back to the purpose, then hand-entered, then the entry id', () => {
+		const title = (over: Parameters<typeof entry>[0], src: ReturnType<typeof source> | null) =>
+			unitTitle(
+				{
+					anchor_entry_id: 1,
+					entries: [
+						entry({ id: 1, source: src, source_transaction_id: src ? 5 : null, ...over }),
+						entry({ id: 2, source: src, source_transaction_id: src ? 5 : null })
+					]
+				},
+				lookups
+			);
+		expect(title({}, source({ counterparty_name: '  ', purpose: 'Rent Oct' }))).toBe(
+			'Rent Oct (split in 2)'
+		);
+		expect(title({ authored: true }, null)).toBe('Entered by hand (split in 2)');
+		expect(title({}, null)).toBe('Entry 1 (split in 2)');
+	});
+
+	it("a booking's split is titled by its document", () => {
+		const split = (booking: { provider: string | null; reference: string | null }) => {
+			const src = source({
+				booking: { kind: 'document', id: 3, account_id: null, ...booking }
+			});
+			const entries = [
+				entry({ id: 1, display_text: 'Bio Banane, 1 Stk', source: src, source_transaction_id: 5 }),
+				entry({ id: 2, source: src, source_transaction_id: 5 }),
+				entry({ id: 3, source: src, source_transaction_id: 5 })
+			];
+			return unitTitle({ anchor_entry_id: 1, entries }, lookups);
+		};
+		expect(split({ provider: 'rewe', reference: '304-1' })).toBe('rewe order 304-1 · 3 items');
+		expect(split({ provider: 'rewe', reference: null })).toBe('rewe order · 3 items');
+		expect(split({ provider: null, reference: '304-1' })).toBe('Document · 3 items');
 	});
 
 	it('a pair names its accounts, outgoing first', () => {

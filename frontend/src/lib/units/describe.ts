@@ -1,6 +1,7 @@
 // The unit as words: its shape, its title, its state in plain language, where its sources are.
 // Pure and DOM-free so the panel and the queue say the same things. Nothing here decides
 // anything about a unit: state and entries are the server's.
+import { documentLabel } from '#lib/accounts/booking.js';
 import type { Lookups } from '#lib/ledger/lookups.js';
 import type { Entry, SourceTransaction } from '#lib/types/domain.js';
 import type { Unit, UnitReason, UnitState } from './types.js';
@@ -56,7 +57,11 @@ export function entryLabel(entry: Entry): string {
 	);
 }
 
-/** The panel's title: the text of the anchor; a pair names its accounts; a split says how many. */
+/**
+ * The panel's title. A unit is titled by its source, never by one of its entries: a single entry
+ * by its own text; a pair by its accounts; a booking's split by its document; any other split by
+ * its source's counterparty, else its purpose, and how many entries.
+ */
 export function unitTitle(
 	unit: Pick<Unit, 'anchor_entry_id' | 'entries'>,
 	lookups: Lookups
@@ -71,7 +76,16 @@ export function unitTitle(
 			lookups.accounts.get(e.account_id)?.name ?? `Account ${e.account_id}`;
 		return `Transfer ${name(out)} → ${name(into)}`;
 	}
-	if (shape === 'split') return `${entryLabel(anchor)} (split in ${unit.entries.length})`;
+	if (shape === 'split') {
+		const n = unit.entries.length;
+		const booking = anchor.source?.booking;
+		if (booking?.kind === 'document') return `${documentLabel(booking)} · ${n} items`;
+		const text =
+			anchor.source?.counterparty_name?.trim() ||
+			anchor.source?.purpose?.trim() ||
+			(anchor.authored ? 'Entered by hand' : `Entry ${anchor.id}`);
+		return `${text} (split in ${n})`;
+	}
 	return entryLabel(anchor);
 }
 

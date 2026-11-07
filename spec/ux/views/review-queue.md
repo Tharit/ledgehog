@@ -96,6 +96,11 @@ changes a value a rule set — a category, say — the panel offers "Create rule
 from this transaction", with the entry's account and source text available in
 the editor (`spec.md` §5.9).
 
+**A unit is titled by its source, never by one of its entries.** A single
+entry by its own text (`ux/patterns.md` §4); a split by its source's
+counterparty, else its purpose — "REWE Markt (split in 2)"; a booking by its
+document — "rewe order 304-1 · 26 items"; a transfer pair by its accounts.
+
 **A booking's unit is leaner** (`spec.md` §5.8). Its group says where it came
 from — "Booked from *provider* order *reference*", or "Booked from *provider* order" where it has none, opening the document's
 detail (`ux/views/documents.md`) — and each row shows its source text. The
