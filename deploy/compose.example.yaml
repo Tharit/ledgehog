@@ -1,0 +1,180 @@
+# Household ledger stack (spec/deployment.md). Copy, adapt every line marked "replace", deploy.
+# Compose 2.23.1 or later (inline `configs.content`); Docker Engine with network gateway modes.
+#
+# Variables are read from the stack's environment (Portainer: "Environment variables";
+# otherwise a .env file next to this one): see stack.env.example.
+# Secrets are Compose secrets sourced from that same environment (`environment:`): Compose
+# mounts each value as a file under /run/secrets and the app reads it through its *_FILE
+# variable, so the container's environment holds none. Not supported by `docker stack deploy`
+# (Swarm).
+
+services:
+  app:
+    image: ledgehog:0.1.0            # replace: the tag you built; pin by digest if pushed to a registry
+    restart: unless-stopped
+    depends_on: [relay]
+    networks: [internal]             # its only peer is the relay; publishes no port
+    extra_hosts:                     # every listed host, at the relay (also in the relay's maps below)
+      - "fints.example-bank.de=172.30.0.2"   # replace: one line per FinTS bank
+      - "imap.example-mail.com=172.30.0.2"   # replace: one line per mailbox
+      - "auth.example.org=172.30.0.2"        # replace: the OIDC issuer (and token/JWKS hosts, if different)
+      # - "llm.home.lan=172.30.0.2"          # a model server behind a fixed forward (relay, port 11434)
+    sysctls:
+      net.ipv6.conf.all.disable_ipv6: 1
+    environment:
+      # the database, through its fixed forward on the relay
+      POSTGRES_HOST: relay
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-ledgehog}
+      POSTGRES_USER: ${POSTGRES_USER:-ledgehog}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+
+      BASE_CURRENCY: ${BASE_CURRENCY:?}
+      TIMEZONE: ${TIMEZONE:?}
+      LOCALE: ${LOCALE:-en}
+      MAX_RATE_AGE_DAYS: ${MAX_RATE_AGE_DAYS:-7}
+      MATCHING_WINDOW_DAYS: ${MATCHING_WINDOW_DAYS:-7}
+
+      # users: numbered from 1 without gaps; add a group (and its secret below) per user
+      USER_1_LOGIN: ${USER_1_LOGIN:?}
+      USER_1_NAME: ${USER_1_NAME:?}
+      USER_1_PASSWORD_FILE: /run/secrets/user_1_password
+      USER_2_LOGIN: ${USER_2_LOGIN:?}
+      USER_2_NAME: ${USER_2_NAME:?}
+      USER_2_PASSWORD_FILE: /run/secrets/user_2_password
+
+      # the app's external address (the reverse proxy's), required with OIDC
+      # BASE_URL: ${BASE_URL:?}
+
+      # OIDC sign-in: all three or none. Uncomment together with the secret below.
+      # OIDC_ISSUER: ${OIDC_ISSUER:?}
+      # OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:?}
+      # OIDC_CLIENT_SECRET_FILE: /run/secrets/oidc_client_secret
+      # OIDC_SCOPES: openid email profile
+      # OIDC_LOGIN_ATTRIBUTE: email
+      # OIDC_DISPLAYNAME_ATTRIBUTE: name
+      # OIDC_ALLOWED_GROUP: ${OIDC_ALLOWED_GROUP}      # needs the `groups` scope
+      # OIDC_ENFORCED: "true"          # password sign-in off; then USER_<n>_PASSWORD may be dropped
+
+      # model for pass 3 and the email importer: endpoint and name both or neither
+      # MODEL_ENDPOINT: ${MODEL_ENDPOINT:?}            # a host listed above, or a fixed forward
+      # MODEL_NAME: ${MODEL_NAME:?}
+      # MODEL_API_KEY_FILE: /run/secrets/model_api_key # optional
+      # MODEL_REASONING_EFFORT: low
+
+      # vision model for PDF attachments: endpoint and name both or neither
+      # VISION_MODEL_ENDPOINT: ${VISION_MODEL_ENDPOINT:?}
+      # VISION_MODEL_NAME: ${VISION_MODEL_NAME:?}
+      # VISION_MODEL_API_KEY_FILE: /run/secrets/vision_model_api_key   # optional
+
+      # FinTS product registration id (spec.md §7.1); not a secret
+      # FINTS_PRODUCT_ID: ${FINTS_PRODUCT_ID:?}
+
+      # ENABLE_TEST_IMPORTERS and EXPOSE_OPENAPI stay unset: both are development only.
+      # HTTPS_PROXY / NO_PROXY stay unset too: the relay needs nothing of the app.
+    secrets:
+      - postgres_password
+      - user_1_password
+      - user_2_password
+      # - oidc_client_secret
+      # - model_api_key
+      # - vision_model_api_key
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 1g
+    pids_limit: 256
+    # health check: the Dockerfile's (GET / on 127.0.0.1:8000, no session needed)
+
+  relay:
+    image: nginxinc/nginx-unprivileged:stable-alpine   # replace: pin by digest, e.g. @sha256:…
+    restart: unless-stopped
+    configs:
+      - source: relay
+        target: /etc/nginx/nginx.conf
+    networks:
+      internal:
+        ipv4_address: 172.30.0.2
+      outside: {}
+    ports:
+      - "8000:8000"                  # the way in, from the reverse proxy; 443 and 993 are not published
+      # On a host that also has a public address, bind the LAN address alone
+      # (Docker's published ports are not filtered by the host's firewall):
+      # - "192.168.1.10:8000:8000"   # replace
+    sysctls:
+      net.ipv6.conf.all.disable_ipv6: 1
+      net.ipv4.ip_unprivileged_port_start: 0   # binds 443 and 993 without root
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    pids_limit: 64
+
+networks:
+  internal:
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.gateway_mode_ipv4: isolated
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24      # replace if it collides with a network the host already routes
+  outside:
+    enable_ipv6: false
+
+secrets:
+  # each takes the value of the stack's environment variable of that name
+  postgres_password:
+    environment: POSTGRES_PASSWORD
+  user_1_password:
+    environment: USER_1_PASSWORD
+  user_2_password:
+    environment: USER_2_PASSWORD
+  # oidc_client_secret:
+  #   environment: OIDC_CLIENT_SECRET
+  # model_api_key:
+  #   environment: MODEL_API_KEY
+  # vision_model_api_key:
+  #   environment: VISION_MODEL_API_KEY
+
+configs:
+  relay:
+    # nginx variables are written $$ (Compose substitutes $ in `content`)
+    content: |
+      pid /tmp/nginx.pid;
+      events {}
+      stream {
+        resolver 127.0.0.11 valid=30s ipv6=off;    # Docker's DNS, IPv4 answers only
+        log_format relay '$$remote_addr :$$server_port sni=$$ssl_preread_server_name '
+                         'to=$$upstream_addr status=$$status';
+        access_log /dev/stdout relay;     # every connection, the refused ones with status 502
+
+        # reached on 443: web hosts. One entry per name; the value is where the relay connects.
+        # replace: the entries below, matching the app's extra_hosts
+        map $$ssl_preread_server_name $$to_https {
+          fints.example-bank.de  fints.example-bank.de;
+          auth.example.org       auth.example.org;
+          # a listed name may point at a service the household runs:
+          # auth.example.org     caddy.home.lan;
+          default                blocked.invalid;
+        }
+        # reached on 993: mailboxes (implicit TLS)
+        map $$ssl_preread_server_name $$to_imaps {
+          imap.example-mail.com  imap.example-mail.com;
+          default                blocked.invalid;
+        }
+        server { listen 443; ssl_preread on; proxy_pass $$to_https:443; }
+        server { listen 993; ssl_preread on; proxy_pass $$to_imaps:993; }
+
+        # fixed forwards: nothing to route by, one destination each
+        server { listen 5432; set $$db  db.home.lan; proxy_pass $$db:5432;  }    # replace: the database
+        # a model server spoken to in plain HTTP; also needs an extra_hosts line for its name
+        # server { listen 11434; set $$llm llm.home.lan; proxy_pass $$llm:11434; }  # replace
+
+        # the way in, from the reverse proxy
+        server { listen 8000; set $$app app; proxy_pass $$app:8000; }
+      }

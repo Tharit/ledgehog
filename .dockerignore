@@ -1,0 +1,33 @@
+# everything is excluded unless the Dockerfile needs it
+.git
+.gitignore
+.claude
+.venv
+.uv-cache
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.playwright-cli
+**/__pycache__
+**/*.pyc
+**/node_modules
+frontend/build
+frontend/.svelte-kit
+frontend/.verify
+tests/
+docs/
+spec/
+sandbox/
+scripts/
+deploy/
+# may hold real bank data: never in an image
+samples/
+# credentials
+.env
+.env.*
+test.env
+**/.env
+**/.env.*
+conftest.py
+start_*.sh
+*.md
