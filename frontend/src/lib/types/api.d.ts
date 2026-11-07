@@ -3755,6 +3755,8 @@ export interface components {
         UnitPreviewOut: {
             /** Consequences */
             consequences: components["schemas"]["UnitConsequenceOut"][];
+            /** Entries */
+            entries: components["schemas"]["EntryOut"][];
             /** Problems */
             problems: components["schemas"]["UnitProblemOut"][];
             /** Rows */

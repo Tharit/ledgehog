@@ -665,6 +665,10 @@ class UnitPreviewOut(BaseModel):
     problems: list[UnitProblemOut]  # empty: a commit is not refused for an invariant
     consequences: list[UnitConsequenceOut]
     versions: dict[int, int]  # every entry a commit writes, with its version: send them back
+    # every stored entry of the unit as the preview holds it (the loaded unit, partners the draft picked,
+    # partners a proposal or settling joined), as `GET /api/units/{id}` gives them: the client knows an
+    # entry it did not load by these
+    entries: list[EntryOut]
 
     @staticmethod
     def of(plan: Plan) -> UnitPreviewOut:
@@ -677,6 +681,7 @@ class UnitPreviewOut(BaseModel):
             problems=[UnitProblemOut.of(p, _problem_currency(p, plan)) for p in plan.problems],
             consequences=[UnitConsequenceOut.of(c, plan) for c in plan.consequences],
             versions=dict(plan.versions),
+            entries=[EntryOut.of(e) for e in plan.entries],
         )
 
 

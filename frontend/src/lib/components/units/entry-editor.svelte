@@ -53,6 +53,9 @@
 	const partner = $derived(view.stored?.partner ?? null);
 	const partnerAccount = $derived(partner ? lookups.accounts.get(partner.account_id) : undefined);
 	const isTransfer = $derived(view.type === 'transfer');
+	// the partner's side: a leg the draft joined (picked, proposed, settling's pair). It is re-paired
+	// from the side the panel was opened on; its type and counter-account are the pair's
+	const pairSide = $derived(view.joined && isTransfer && view.booking === null);
 	const badgeSubject = $derived({
 		type: view.type,
 		counterpart_entry_id: view.row
@@ -60,7 +63,9 @@
 			: (view.stored?.counterpart_entry_id ?? null)
 	});
 	// converting is for the entry that keeps the source: a split row is a flow (spec §5.9)
-	const canConvert = $derived(!view.isNew && view.original && view.booking === null);
+	const canConvert = $derived(
+		!view.isNew && view.original && view.booking === null && !view.joined
+	);
 	// a booking's type is its source's (spec §5.8): said, not chosen
 	const typeName = $derived(view.type === 'transfer' ? 'Transfer' : 'Flow');
 	const counterAccount = $derived.by(() => {
@@ -266,6 +271,8 @@
 			<dd class="min-w-0">
 				{#if view.booking}
 					<span class="inline-block pt-1.5" data-slot="booking-type">{typeName}</span>
+				{:else if pairSide}
+					<span class="inline-block pt-1.5" data-slot="pair-type">{typeName}</span>
 				{:else}
 					<Segmented
 						label="Type"
@@ -304,6 +311,28 @@
 				</span>
 				<EvidenceLine evidence={view.pairEvidence} />
 			</dd>
+		{:else if pairSide}
+			<!-- the partner's side: its counter-account is the pair's, shown as such -->
+			<dt class="text-muted-foreground">Counter account</dt>
+			<dd class="min-w-0" data-slot="pair-counter-account">
+				{#if counterAccount}
+					<AccountDot name={counterAccount.name} color={resolveAccount(counterAccount).color} />
+				{/if}
+				<EvidenceLine evidence={view.fields.counter_account.evidence} />
+			</dd>
+			{#if view.transfer}
+				<PartnerField
+					{view}
+					{flow}
+					{lookups}
+					{locale}
+					direction={partnerDirection}
+					counterAccountId={typeof view.fields.counter_account.value === 'number'
+						? view.fields.counter_account.value
+						: null}
+					onaddaccount={addAccount}
+				/>
+			{/if}
 		{:else if isTransfer}
 			<dt class="pt-1.5 text-muted-foreground">Counter account</dt>
 			<dd class="min-w-0">

@@ -56,14 +56,14 @@ describe('groupsOf', () => {
 		const partner = leg(2, 2, 6, '2026-10-09', { amount: { amount: 5000, currency: 'USD' } });
 		const answer = preview(alone);
 		answer.rows.push(previewRowOf(partner, { original: true }));
-		const draft = Draft.of(alone).addSplit(2);
+		const draft = Draft.of(alone).know([partner]).pickPartner(1, 2).addSplit(2);
 		const views = entryViews({ unit: alone, draft, preview: answer, rules, locale: 'en' });
 
 		const split = views.find((v) => v.id === -1)!;
 		expect(split.accountId).toBe(2);
 		expect(split.sourceId).toBe(6);
 
-		const groups = groupsOf(views, alone.entries);
+		const groups = groupsOf(views, [...draft.knownEntries.values()]);
 		expect(groups).toHaveLength(2);
 		expect(groups.find((g) => g.sourceId === 6)!.views.map((v) => v.id)).toEqual([2, -1]);
 		expect(groups.every((g) => g.header.accountId !== null)).toBe(true);
@@ -76,7 +76,7 @@ describe('groupsOf', () => {
 		answer.rows.push(previewRowOf(partner, { original: true }));
 		const views = entryViews({
 			unit: alone,
-			draft: Draft.of(alone).addSplit(2).setSplitAmount(-1, 100),
+			draft: Draft.of(alone).know([partner]).pickPartner(1, 2).addSplit(2).setSplitAmount(-1, 100),
 			preview: answer,
 			rules,
 			locale: 'en'

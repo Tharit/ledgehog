@@ -26,6 +26,22 @@ export type ProblemContext = {
 export const BOOKING_FIXED =
 	'A booking’s type, amount and split are its source’s: they cannot be changed here.';
 
+/**
+ * What a draft the server refuses on its own (never one the panel offers; a client that went wrong) is
+ * told, by the code of the 422: a partner's side is not re-paired, and its type and counter-account are
+ * the pair's.
+ */
+export function draftErrorText(code: string | undefined): string | null {
+	switch (code) {
+		case 'pairing_outside_unit':
+			return 'A partner is changed from the side this unit was opened on: pick another partner there.';
+		case 'pair_fixed':
+			return 'The type and the counter account of a partner are the pair’s: they cannot be changed here.';
+		default:
+			return null;
+	}
+}
+
 const NUMBER_DETAIL = (detail: UnitProblem['detail'], key: string): number | null => {
 	const value = detail[key];
 	return typeof value === 'number' ? value : null;

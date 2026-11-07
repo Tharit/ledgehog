@@ -43,7 +43,16 @@ def test_preview_shape(anna: TestClient, scene: Scene) -> None:
     r = anna.post(PREVIEW, json={"anchor_entry_id": e})
     assert r.status_code == 200, r.text
     body = r.json()
-    assert set(body) == {"state", "units", "rows", "splits", "problems", "consequences", "versions"}
+    assert set(body) == {
+        "state",
+        "units",
+        "rows",
+        "splits",
+        "problems",
+        "consequences",
+        "versions",
+        "entries",
+    }
     assert body["state"] == {"confirmed": True, "reasons": []}
     assert body["problems"] == [] and body["consequences"] == []
     assert body["versions"] == {str(e): 1}
@@ -732,3 +741,37 @@ def test_removing_a_booking_by_re_typing_its_charge_shows_it_as_a_deleted_conseq
     r = anna.post(COMMIT, json={**draft, "versions": body["versions"]})
     assert r.status_code == 200, r.text
     assert scene.q("SELECT id FROM ledger_entry WHERE id = :i", i=leg) == []
+
+
+def test_preview_entries_hold_every_stored_row_of_the_unit_a_proposal_joined(
+    anna: TestClient, scene: Scene
+) -> None:
+    from tests.core.units.test_picks import leg
+
+    e = leg(scene, -1000, scene.checking)
+    x = leg(scene, 1000, scene.savings)
+    body = anna.post(PREVIEW, json={"anchor_entry_id": e}).json()
+    assert {r["id"] for r in body["rows"] if r["in_unit"]} == {e, x}
+    assert [en["id"] for en in body["entries"]] == sorted(int(i) for i in body["versions"]) == [e, x]
+    joined = body["entries"][1]
+    stored = anna.get(f"/api/units/{e}").json()["entries"][0]
+    assert set(joined) == set(stored)  # the shape of GET /api/units entries
+    assert joined["version"] == body["versions"][str(x)] and joined["account_id"] == scene.savings
+
+
+def test_commit_of_a_pairing_edit_on_a_joined_partner_is_422(anna: TestClient, scene: Scene) -> None:
+    from tests.core.units.test_picks import leg
+
+    e = leg(scene, -1000, scene.checking)
+    x = leg(scene, 1000, scene.savings)
+    other = leg(scene, -1000, scene.cash)
+    draft = {
+        "anchor_entry_id": e,
+        "entries": [
+            {"id": e, "pairing": {"mode": "pick", "partner_entry_id": x}},
+            {"id": x, "pairing": {"mode": "pick", "partner_entry_id": other}},
+        ],
+    }
+    for url in (PREVIEW, COMMIT):
+        r = anna.post(url, json=draft)
+        assert r.status_code == 422 and r.json()["error"]["details"]["code"] == "pairing_outside_unit", r.text

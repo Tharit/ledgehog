@@ -7,6 +7,7 @@ import {
 	Draft,
 	FIELD_NAMES,
 	type PairingEdit,
+	type Pinned,
 	type FieldEdit,
 	type FieldName,
 	type FieldValue,
@@ -23,6 +24,7 @@ import {
 	type KeyContext,
 	type RuleNames
 } from './evidence.js';
+import { proposalEvidence, shownPartner } from './transfer.js';
 import type {
 	ConsequenceKind,
 	PreviewRow,
@@ -91,6 +93,17 @@ export type EntryView = {
 	pairEvidence: Evidence | null;
 	/** the user has picked a partner for this leg, or the creation of its other side */
 	picked: boolean;
+	/**
+	 * The user edited the partner this leg is paired with by a proposal (or by settling): the pair is
+	 * pinned as a pick, which keeps the proposal's styling. Null: not pinned.
+	 */
+	pinned: Pinned | null;
+	/**
+	 * The entry is part of the unit on the partner's side: not of the unit as loaded (a partner the
+	 * draft picked, or a proposal or settling joined). Its pair, type and counter-account are the
+	 * pair's: shown, not edited.
+	 */
+	joined: boolean;
 	/** the draft's pairing edit of this leg, if any */
 	pairing: PairingEdit | null;
 	/**
@@ -279,37 +292,39 @@ export function entryViews(args: {
 		stale = false,
 		accountName = () => undefined
 	} = args;
-	const stored = new Map(unit.entries.map((e) => [e.id, e]));
-	const previewRows = new Map((preview?.rows ?? []).map((r) => [r.id, r]));
-	// a source entry is known as stored, else by its own preview row (a picked partner is the latter)
-	const sourceOf = (entryId: number) =>
-		stored.get(entryId)?.source_transaction_id ??
-		previewRows.get(entryId)?.source_transaction_id ??
-		null;
+	// what is stored: every entry the draft knows (the unit as loaded, and the partners previews told of)
+	const stored = draft.knownEntries;
+	const sourceOf = (entryId: number) => stored.get(entryId)?.source_transaction_id ?? null;
 
 	// the rows in the server's order, or the entries as stored (an untouched first look)
 	type Base = { id: number; row: PreviewRow | null };
 	let base: Base[];
 	if (preview) {
-		base = preview.rows.filter((r) => r.in_unit).map((r) => ({ id: r.id, row: r }));
+		const hidden = stale ? staleJoined(preview, draft, stored) : new Set<number>();
+		base = preview.rows
+			.filter((r) => r.in_unit && !hidden.has(r.id))
+			.map((r) => ({ id: r.id, row: r }));
 	} else {
 		base = unit.entries.map((e) => ({ id: e.id, row: null }));
 	}
 	base = base.filter((b) => !draft.isRemoved(b.id));
+	// a split row the preview has no row for at all is the draft's alone; one whose row left the unit
+	// (its source's entry went with a partner) is not shown
+	const known = new Set(preview?.rows.map((r) => r.id) ?? []);
 	const shown = new Set(base.map((b) => b.id));
 	for (const split of draft.splits)
-		if (!shown.has(split.id)) base.push({ id: split.id, row: null });
+		if (!shown.has(split.id) && !known.has(split.id)) base.push({ id: split.id, row: null });
 
 	// the original of a source: the preview says, else the lowest stored id of the source
 	const lowest = new Map<number, number>();
-	for (const e of unit.entries) {
+	for (const e of stored.values()) {
 		if (e.source_transaction_id === null) continue;
 		lowest.set(
 			e.source_transaction_id,
 			Math.min(lowest.get(e.source_transaction_id) ?? e.id, e.id)
 		);
 	}
-	const sourceIds = base.map((b) => {
+	const sourceIds: (number | null)[] = base.map((b) => {
 		const split = draft.splits.find((s) => s.id === b.id);
 		// the counter-leg a commit creates belongs to no source of the unit
 		if (b.id < 0 && !split && b.row) return null;
@@ -318,7 +333,7 @@ export function entryViews(args: {
 	const counts = new Map<number, number>();
 	for (const s of sourceIds) if (s !== null) counts.set(s, (counts.get(s) ?? 0) + 1);
 
-	return base.map((b, i) => {
+	const views = base.map((b, i) => {
 		const entry = stored.get(b.id) ?? null;
 		const split = draft.splits.find((s) => s.id === b.id) ?? null;
 		const counterLeg = b.id < 0 && split === null && b.row !== null;
@@ -332,11 +347,8 @@ export function entryViews(args: {
 		const inSplit = sourceId !== null && (counts.get(sourceId) ?? 0) > 1;
 		const edit = draft.edit(b.id);
 		const sourceEntry = split ? (stored.get(split.sourceEntryId) ?? null) : entry;
-		const sourceRow = split ? (previewRows.get(split.sourceEntryId) ?? null) : null;
-		const accountId: number | null =
-			b.row?.account_id ?? sourceEntry?.account_id ?? sourceRow?.account_id ?? null;
-		const currency =
-			b.row?.amount.currency ?? sourceEntry?.amount.currency ?? sourceRow?.amount.currency ?? 'EUR';
+		const accountId: number | null = b.row?.account_id ?? sourceEntry?.account_id ?? null;
+		const currency = b.row?.amount.currency ?? sourceEntry?.amount.currency ?? 'EUR';
 		const splitOut = preview?.splits.find(
 			(s) => s.residual_entry_id === b.id || s.entry_ids.includes(b.id)
 		);
@@ -361,6 +373,7 @@ export function entryViews(args: {
 			])
 		) as Record<FieldName, FieldView>;
 		const booking = bookingSource ? { kind: bookingSource.kind, id: bookingSource.id } : null;
+		const pinned = edit.pairing?.mode === 'pick' ? (edit.pairing.pinned ?? null) : null;
 		const view: EntryView = {
 			id: b.id,
 			isNew,
@@ -384,21 +397,21 @@ export function entryViews(args: {
 			tagIds: b.row && !stale ? b.row.tag_ids : draft.effectiveTagIds(b.id),
 			flags: b.row?.review_flags ?? entry?.review_flags ?? [],
 			transfer: b.row?.transfer ?? null,
-			pairEvidence: describeKey(
-				keyOf(b.row?.derivation ?? entry?.derivation, 'counterpart'),
-				rules,
-				locale,
-				{
-					...bookingContext,
-					field: 'counterpart',
-					// the partner's account words only a booking's pair key (the charge's: "counter-leg booked on")
-					partnerAccount:
-						partnerAccountId === undefined || pairKeyPass !== 'booking'
-							? undefined
-							: accountName(partnerAccountId)
-				}
-			),
-			picked: edit.pairing?.mode === 'pick' || edit.pairing?.mode === 'counter_leg',
+			pairEvidence: pinned
+				? pinnedEvidence(pinned)
+				: describeKey(keyOf(b.row?.derivation ?? entry?.derivation, 'counterpart'), rules, locale, {
+						...bookingContext,
+						field: 'counterpart',
+						// the partner's account words only a booking's pair key (the charge's: "counter-leg booked on")
+						partnerAccount:
+							partnerAccountId === undefined || pairKeyPass !== 'booking'
+								? undefined
+								: accountName(partnerAccountId)
+					}),
+			picked:
+				(edit.pairing?.mode === 'pick' && pinned === null) || edit.pairing?.mode === 'counter_leg',
+			pinned,
+			joined: !isNew && !counterLeg && draft.isJoined(b.id),
 			pairing: edit.pairing ?? null,
 			counterLeg,
 			booking,
@@ -408,6 +421,70 @@ export function entryViews(args: {
 		};
 		return view;
 	});
+	// the partner's side shows the pair as the leg it is paired with shows it
+	return views.map((v) => {
+		const leg =
+			v.joined && v.transfer?.partner
+				? views.find((l) => l.id === v.transfer?.partner?.entry_id)
+				: undefined;
+		return leg ? { ...v, pairEvidence: pairBasis(leg) } : v;
+	});
+}
+
+/** How a pinned pair is worded: as the proposal (or settling's pair) it was when it was pinned. */
+function pinnedEvidence(pinned: Pinned): Evidence {
+	return pinned.proposal
+		? {
+				text: pinned.exact ? 'proposed: exact match' : 'proposed: closest candidate',
+				proposal: true
+			}
+		: { text: 'matched automatically', proposal: false };
+}
+
+/** How the pair of a leg came about, in words: what the leg and its partner both say. */
+function pairBasis(leg: EntryView): Evidence | null {
+	if (leg.pinned) return pinnedEvidence(leg.pinned);
+	if (leg.picked) return { text: 'picked by you', proposal: false };
+	const partner = leg.transfer ? shownPartner(leg.transfer) : null;
+	if (partner?.proposal) return { text: proposalEvidence(partner), proposal: true };
+	return leg.pairEvidence;
+}
+
+/**
+ * While the preview shown is not the draft's own: the entries of a partner's side whose pair the
+ * draft has meanwhile changed (the loaded leg that joined them was given another partner). They are
+ * not shown, nor the split rows of their source, until the preview that follows says what is left.
+ */
+function staleJoined(
+	preview: UnitPreview,
+	draft: Draft,
+	stored: ReadonlyMap<number, Entry>
+): Set<number> {
+	const rows = preview.rows;
+	const joinedBy = new Map<number, number>(); // the source of a partner's side -> the loaded leg joining it
+	for (const r of rows) {
+		if (!r.in_unit || !draft.isLoaded(r.id) || r.counterpart_entry_id === null) continue;
+		const partner = rows.find((p) => p.id === r.counterpart_entry_id);
+		if (partner?.in_unit && partner.id > 0 && !draft.isLoaded(partner.id)) {
+			joinedBy.set(partner.source_transaction_id, r.id);
+		}
+	}
+	const gone = new Set<number>();
+	for (const [source, leg] of joinedBy) {
+		const pairing = draft.edit(leg).pairing;
+		if (pairing === undefined) continue;
+		// the leg's pick (the user's, or its pin) still pairs with this very source: it stays
+		if (
+			pairing.mode === 'pick' &&
+			stored.get(pairing.partnerEntryId)?.source_transaction_id === source
+		) {
+			continue;
+		}
+		gone.add(source);
+	}
+	return new Set(
+		rows.filter((r) => gone.has(r.source_transaction_id) && !draft.isLoaded(r.id)).map((r) => r.id)
+	);
 }
 
 /** The words for the state a commit leads to (patterns §6: "confirmed", "waits for its partner"…). */

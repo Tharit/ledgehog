@@ -2,7 +2,7 @@
 	import ActionButton from '#lib/components/common/action-button.svelte';
 	import EntryRow from '#lib/components/ledger/entry-row.svelte';
 	import type { Lookups } from '#lib/ledger/lookups.js';
-	import { BOOKING_FIXED, differenceOf } from '#lib/units/problems.js';
+	import { BOOKING_FIXED, differenceOf, draftErrorText } from '#lib/units/problems.js';
 	import type { UnitDraftFlow } from '#lib/units/unit-draft-flow.svelte.js';
 	import { consequenceGroups, previewRowEntry, resultText } from '#lib/units/view.js';
 	import { cn } from '#lib/utils.js';
@@ -31,13 +31,15 @@
 	const checking = $derived(flow.previewStatus === 'loading' || flow.stale);
 	const statusText = $derived(
 		flow.previewStatus === 'error'
-			? (flow.previewError?.details as { code?: string } | null)?.code === 'booking_fixed'
-				? BOOKING_FIXED
-				: 'The preview could not be loaded.'
+			? previewErrorText((flow.previewError?.details as { code?: string } | null)?.code)
 			: checking
 				? 'Checking what would change…'
 				: ''
 	);
+	function previewErrorText(code: string | undefined): string {
+		if (code === 'booking_fixed') return BOOKING_FIXED;
+		return draftErrorText(code) ?? 'The preview could not be loaded.';
+	}
 	const groups = $derived(consequenceGroups(preview));
 	const problems = $derived(flow.problemTexts);
 	const showCurrency = $derived(
@@ -45,7 +47,7 @@
 	);
 
 	function baseOf(id: number) {
-		return flow.unit?.entries.find((e) => e.id === id) ?? null;
+		return flow.draft?.knownEntry(id) ?? flow.unit?.entries.find((e) => e.id === id) ?? null;
 	}
 </script>
 

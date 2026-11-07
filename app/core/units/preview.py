@@ -20,8 +20,9 @@ from dataclasses import dataclass
 
 from sqlalchemy import Connection, Engine, text
 
+from app.core.ledger.entries import entries_by_ids
 from app.core.stale import StaleReference
-from app.core.units.draft import UnitDraft
+from app.core.units.draft import DraftError, UnitDraft
 from app.core.units.overlay import plan_unit
 from app.core.units.plan import Plan, StoredUnit, TransferView, World
 from app.core.units.stored import (
@@ -81,6 +82,14 @@ def resolve_draft(conn: Connection, draft: UnitDraft, *, seen: Mapping[int, int]
         if loaded is None:
             raise UnitNotFound(draft.anchor_entry_id)
         stored, base_ids = loaded
+        for d in draft.entries:  # a leg is re-paired from the side the panel was opened on (spec §6)
+            if d.pairing.mode != "keep" and d.id not in base_ids:
+                raise DraftError(
+                    "pairing_outside_unit",
+                    "only a leg of the unit as opened is re-paired: a partner the draft joined is not",
+                    entry_id=d.id,
+                    field="pairing",
+                )
         world = load_world(conn, stored, draft, ledger_wide=True)
         stored, plan = _plan_pulling(conn, draft, stored, world)
         legs = [r.leg for r in plan.rows if r.leg is not None and r.leg.type == "transfer"]
@@ -121,6 +130,7 @@ def preview_unit(engine: Engine, draft: UnitDraft, *, window_days: int | None = 
         conn.execute(text("SET TRANSACTION READ ONLY"))
         resolved = resolve_draft(conn, draft)
         missing = missing_tag(conn, resolved.draft)
+        entries = entries_by_ids(conn, sorted(resolved.plan.versions))
     if missing is not None:  # after the plan: a draft that makes no sense is the 422 first
         raise StaleReference(f"entries[{missing[0]}].tags.add", "tag", missing[1])
-    return dataclasses.replace(resolved.plan, transfers=dict(resolved.views))
+    return dataclasses.replace(resolved.plan, transfers=dict(resolved.views), entries=entries)

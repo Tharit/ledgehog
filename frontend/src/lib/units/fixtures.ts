@@ -1,6 +1,7 @@
 // Test fixtures for units and the review queue.
 import { ApiError } from '#lib/api/index.js';
 import { entry } from '#lib/ledger/fixtures.js';
+import { source } from '#lib/rules/fixtures.js';
 import type { Entry } from '#lib/types/domain.js';
 import { isProposalPass } from './evidence.js';
 import type {
@@ -157,6 +158,7 @@ export function preview(u: Unit, over: Partial<UnitPreview> = {}): UnitPreview {
 		problems: [],
 		consequences: [],
 		versions: Object.fromEntries(u.entries.map((e) => [e.id, e.version])),
+		entries: u.entries,
 		...over
 	};
 }
@@ -249,4 +251,104 @@ export function transferOut(over: Partial<UnitTransfer> = {}): UnitTransfer {
 		has_more: false,
 		...over
 	};
+}
+
+const EUR = (amount: number) => ({ amount, currency: 'EUR' });
+
+/**
+ * A leg (1) of the unit as loaded, and a partner (2, with a split sibling 3 of its source 6) that the
+ * preview joins to it: by the proposal of the server (`proposal`), or by settling's pair. Another
+ * candidate (4, source 8) is there to be picked instead.
+ */
+export function joinedScene(proposal = true) {
+	const leg = entry({
+		id: 1,
+		version: 3,
+		unit_key: 1,
+		type: 'transfer',
+		account_id: 1,
+		counter_account_id: 2,
+		amount: EUR(-4900),
+		booked_on: '2026-10-10',
+		source_transaction_id: 5,
+		source: source({ amount: EUR(-4900) }),
+		review_flags: ['unconfirmed'],
+		display_text: 'The leg',
+		derivation: {}
+	});
+	const partner = entry({
+		id: 2,
+		version: 7,
+		unit_key: 2,
+		type: 'transfer',
+		account_id: 2,
+		counter_account_id: 1,
+		amount: EUR(4900),
+		booked_on: '2026-10-09',
+		source_transaction_id: 6,
+		source: source({ amount: EUR(5000) }),
+		description: 'Incoming',
+		display_text: 'The partner',
+		tag_ids: [7],
+		derivation: { payee: { pass: 'rule', basis: { rule_id: 3 } } }
+	});
+	const sibling = entry({
+		id: 3,
+		version: 8,
+		unit_key: 2,
+		type: 'flow',
+		account_id: 2,
+		amount: EUR(100),
+		booked_on: '2026-10-09',
+		source_transaction_id: 6,
+		source: source({ amount: EUR(5000) }),
+		display_text: 'The sibling',
+		derivation: {}
+	});
+	const other = entry({
+		id: 4,
+		version: 2,
+		unit_key: 4,
+		type: 'transfer',
+		account_id: 2,
+		amount: EUR(4900),
+		booked_on: '2026-10-08',
+		source_transaction_id: 8,
+		display_text: 'The other',
+		derivation: {}
+	});
+	const loaded = unit({ anchor_entry_id: 1, entries: [leg] });
+	const view = (e: Entry) => ({
+		entry_id: e.id,
+		account_id: e.account_id,
+		booked_on: e.booked_on,
+		amount: e.amount,
+		description: e.description
+	});
+	/** The preview of the loaded unit with the partner joined (rows 1, 2, 3; entries and versions of all). */
+	const joinedPreview = (over: Partial<UnitPreview> = {}): UnitPreview => {
+		const answer = preview(loaded, over);
+		answer.rows[0].counterpart_entry_id = 2;
+		answer.rows[0].transfer = transferOut({
+			state: 'paired',
+			partner: view(partner),
+			proposed_pick: proposal ? { entry_id: 2 } : null,
+			offers: [
+				offerOut({ entry_id: 2, exact: true, proposed: proposal }),
+				offerOut({ entry_id: 4, exact: true })
+			]
+		});
+		answer.rows.push(
+			previewRowOf(partner, {
+				original: true,
+				counterpart_entry_id: 1,
+				transfer: transferOut({ state: 'paired', partner: view(leg) })
+			}),
+			previewRowOf(sibling, { original: false })
+		);
+		answer.versions = { 1: 3, 2: 7, 3: 8 };
+		answer.entries = [leg, partner, sibling];
+		return { ...answer, ...over };
+	};
+	return { leg, partner, sibling, other, loaded, joinedPreview };
 }

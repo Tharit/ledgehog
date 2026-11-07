@@ -4,6 +4,7 @@
 // user chose and turns it into the request. A field is `keep` (untouched), `fixed` (the user's
 // value) or `reresolve` (the passes decide again); a split row has a temporary (negative) id.
 import { formatMoney, parseMoneyInput, type MoneyParseError } from '#lib/format/index.js';
+import type { Entry } from '#lib/types/domain.js';
 import { keyOf } from './evidence.js';
 import type { DraftEntryRequest, FieldDraftRequest, Unit, UnitDraftRequest } from './types.js';
 
@@ -14,9 +15,21 @@ export type FieldValue = number | string | null;
 /** The key of the proposal the user was shown when they chose the value it equals. */
 export type ShownBasis = { pass: string; basis: Record<string, unknown> };
 
+/**
+ * A pick the client makes itself: the user edited a partner that only a proposal (or settling)
+ * joins to the unit, so the pair is pinned as a pick, which a commit writes as it would write the
+ * proposal accepted. It keeps the proposal's styling: what the preview showed when it was pinned.
+ */
+export type Pinned = {
+	/** the pair was a proposal of the server's (else settling would have made it) */
+	proposal: boolean;
+	/** the proposal was an exact match */
+	exact: boolean;
+};
+
 /** The partner of a transfer leg: the user's pick, or "pair it by the rules again". Absent: as it stands. */
 export type PairingEdit =
-	| { mode: 'pick'; partnerEntryId: number }
+	| { mode: 'pick'; partnerEntryId: number; pinned?: Pinned }
 	| { mode: 'reresolve' }
 	/**
 	 * The other side is created by the commit (an unsynced counter-account): `tempId` is the
@@ -56,7 +69,9 @@ export type NewSplit = {
 	tags: readonly number[];
 };
 
-type Base = {
+export type Base = {
+	/** the source transaction the entry belongs to */
+	sourceId: number | null;
 	description: string | null;
 	note: string | null;
 	amount: number;
@@ -68,10 +83,18 @@ type Base = {
 	tags: readonly number[];
 };
 
+/** An entry the draft knows: as stored (what the unit loaded, or a preview told of its unit). */
+type Known = { entry: Entry; base: Base };
+
 type State = {
 	anchorId: number;
 	versions: Readonly<Record<number, number>>;
-	base: ReadonlyMap<number, Base>;
+	/** the entries of the unit as loaded: the side the panel was opened on */
+	loaded: ReadonlySet<number>;
+	/** every entry known so far (the loaded ones, then those previews told of), by id */
+	known: ReadonlyMap<number, Known>;
+	/** the ids of the entries the last operation dropped from the draft (they left the unit) */
+	dropped: readonly number[];
 	edits: ReadonlyMap<number, EntryEdit>;
 	splits: readonly NewSplit[];
 	removed: readonly number[];
@@ -80,25 +103,26 @@ type State = {
 
 const EMPTY: EntryEdit = { fields: {} };
 
-function baseOf(unit: Pick<Unit, 'entries'>): Map<number, Base> {
-	return new Map(
-		unit.entries.map((e) => [
-			e.id,
-			{
-				description: e.description,
-				note: e.note,
-				amount: e.amount.amount,
-				fields: {
-					type: e.type,
-					payee: e.payee_id,
-					category: e.category_id,
-					counter_account: e.counter_account_id
-				},
-				noPayee: e.payee_id === null && keyOf(e.derivation, 'payee')?.pass === 'user',
-				tags: [...e.tag_ids]
-			}
-		])
-	);
+/** What the draft compares an edit with: the entry as stored, normalised. One place for every source. */
+function baseOf(e: Entry): Base {
+	return {
+		sourceId: e.source_transaction_id ?? null,
+		description: e.description,
+		note: e.note,
+		amount: e.amount.amount,
+		fields: {
+			type: e.type,
+			payee: e.payee_id,
+			category: e.category_id,
+			counter_account: e.counter_account_id
+		},
+		noPayee: e.payee_id === null && keyOf(e.derivation, 'payee')?.pass === 'user',
+		tags: [...e.tag_ids]
+	};
+}
+
+function knownOf(e: Entry): Known {
+	return { entry: e, base: baseOf(e) };
 }
 
 function versionsOf(unit: Pick<Unit, 'entries'>): Record<number, number> {
@@ -126,6 +150,22 @@ function isEmpty(edit: EntryEdit): boolean {
 		edit.tags === undefined &&
 		edit.pairing === undefined
 	);
+}
+
+/** The pick the client made itself (pinned) is no choice of the user's. */
+function isPinned(edit: EntryEdit): boolean {
+	return edit.pairing?.mode === 'pick' && edit.pairing.pinned !== undefined;
+}
+
+/** What the user chose on an entry: its edit without the pick the client pinned. */
+function chosen(edit: EntryEdit): EntryEdit {
+	return isPinned(edit) ? without(edit, 'pairing') : edit;
+}
+
+function samePairing(a: PairingEdit | undefined, b: PairingEdit | undefined): boolean {
+	if (a === undefined || b === undefined) return a === b;
+	if (a.mode !== b.mode) return false;
+	return a.mode === 'pick' ? a.partnerEntryId === (b as typeof a).partnerEntryId : true;
 }
 
 /** A change of the type or the counter-account is the user's word over a pick: the pick goes. */
@@ -165,6 +205,41 @@ function withField(
 	return { ...fields, [field]: { mode: 'fixed', value, shown } };
 }
 
+/**
+ * An edit measured against what the entry stores (now): a tag someone else has put on or taken off
+ * meanwhile, a value someone else has stored meanwhile, is no longer a change. `start` is what the
+ * entry's tags start from (a split row: what it inherits).
+ */
+function normalisedEdit(
+	edit: EntryEdit,
+	was: Base | undefined,
+	start: readonly number[] | undefined
+): EntryEdit {
+	const next = { ...edit };
+	if (start && next.tags) {
+		const tags = tagEdit(
+			next.tags.add.filter((t) => !start.includes(t)),
+			next.tags.remove.filter((t) => start.includes(t))
+		);
+		if (tags) next.tags = tags;
+		else delete next.tags;
+	}
+	if (was) {
+		if (next.description !== undefined && normaliseText(next.description) === was.description) {
+			delete next.description;
+		}
+		if (next.note !== undefined && normaliseText(next.note) === was.note) delete next.note;
+		if (next.amount === was.amount) delete next.amount;
+		next.fields = Object.fromEntries(
+			Object.entries(next.fields).filter(
+				([name, f]) =>
+					!(f.mode === 'fixed' && f.shown === null && isStored(was, name as FieldName, f.value))
+			)
+		) as EntryEdit['fields'];
+	}
+	return next;
+}
+
 export class Draft {
 	readonly #s: State;
 
@@ -177,7 +252,9 @@ export class Draft {
 		return new Draft({
 			anchorId: unit.anchor_entry_id,
 			versions: versionsOf(unit),
-			base: baseOf(unit),
+			loaded: new Set(unit.entries.map((e) => e.id)),
+			known: new Map(unit.entries.map((e) => [e.id, knownOf(e)])),
+			dropped: [],
 			edits: new Map(),
 			splits: [],
 			removed: [],
@@ -186,7 +263,170 @@ export class Draft {
 	}
 
 	#with(change: Partial<State>): Draft {
-		return new Draft({ ...this.#s, ...change });
+		return new Draft({ ...this.#s, dropped: [], ...change });
+	}
+
+	// ---- what the draft knows, and what is part of its unit ------------------------------------
+
+	/**
+	 * Tell the draft of entries a preview named (the partners a proposal or settling joined, the
+	 * ones a pick brought in). Only ids not yet known are added, so what is known is stable while
+	 * previews are in flight; `replace` re-reads those that are not loaded (the unit was read
+	 * again), and an edit that has become the stored value is no edit.
+	 */
+	know(entries: readonly Entry[], replace = false): Draft {
+		const known = new Map(this.#s.known);
+		let changed = false;
+		for (const e of entries) {
+			if (!known.has(e.id) || (replace && !this.#s.loaded.has(e.id))) {
+				known.set(e.id, knownOf(e));
+				changed = true;
+			}
+		}
+		if (!changed) return this;
+		return this.#renormalised({ ...this.#s, known });
+	}
+
+	/** The entry as stored, when the draft knows it (loaded, or told by a preview). */
+	knownEntry(id: number): Entry | null {
+		return this.#s.known.get(id)?.entry ?? null;
+	}
+
+	/** Every entry the draft knows. */
+	get knownEntries(): ReadonlyMap<number, Entry> {
+		return new Map([...this.#s.known].map(([id, k]) => [id, k.entry]));
+	}
+
+	/** Is the entry of the unit as loaded: the side the panel was opened on? */
+	isLoaded(id: number): boolean {
+		return this.#s.loaded.has(id);
+	}
+
+	/**
+	 * The entries the draft can say anything about: the unit as loaded, and every entry of each
+	 * source transaction a pick pairs with (the partner's side). The server loads exactly these.
+	 */
+	get members(): ReadonlySet<number> {
+		const partnerSources = new Set<number>();
+		for (const edit of this.#s.edits.values()) {
+			if (edit.pairing?.mode !== 'pick') continue;
+			const source = this.#s.known.get(edit.pairing.partnerEntryId)?.base.sourceId;
+			if (source !== undefined && source !== null) partnerSources.add(source);
+		}
+		const members = new Set(this.#s.loaded);
+		for (const [id, k] of this.#s.known) {
+			if (k.base.sourceId !== null && partnerSources.has(k.base.sourceId)) members.add(id);
+		}
+		return members;
+	}
+
+	/** Can the draft hold a change of this entry (or split row)? */
+	isMember(id: number): boolean {
+		return id < 0 ? this.isNew(id) : this.members.has(id);
+	}
+
+	/** The ids of the entries (stored ones: a split row counts as the entry it splits) the last operation dropped. */
+	get dropped(): readonly number[] {
+		return this.#s.dropped;
+	}
+
+	/** Is this entry on the partner's side: part of the unit, but not of the unit as loaded? */
+	isJoined(id: number): boolean {
+		return id > 0 && !this.#s.loaded.has(id);
+	}
+
+	/** The tags the original of the source of `entryId` stores: what a split row inherits. */
+	#originalTags(entryId: number): readonly number[] {
+		return this.#s.known.get(this.#originalOf(entryId))?.base.tags ?? [];
+	}
+
+	/**
+	 * What no longer belongs to the unit goes: the edits, splits and removals of entries that left it
+	 * (a partner a pick replaced). The ids of the stored entries concerned are `dropped`. An entry of
+	 * the unit as loaded stays whatever its pair does: it is committed with its drafts.
+	 */
+	#pruned(): Draft {
+		const members = this.members;
+		const edits = new Map<number, EntryEdit>();
+		const dropped = new Set<number>();
+		const splitIds = new Set(this.#s.splits.map((s) => s.id));
+		const staying = this.#s.splits.filter((s) => members.has(s.sourceEntryId));
+		const stays = new Set(staying.map((s) => s.id));
+		for (const split of this.#s.splits) if (!stays.has(split.id)) dropped.add(split.sourceEntryId);
+		for (const [id, edit] of this.#s.edits) {
+			if (id < 0 ? splitIds.has(id) && !stays.has(id) : !members.has(id)) {
+				if (id > 0 && !isEmpty(chosen(edit))) dropped.add(id);
+				continue;
+			}
+			edits.set(id, edit);
+		}
+		const removed = this.#s.removed.filter((id) => members.has(id));
+		for (const id of this.#s.removed) if (!members.has(id)) dropped.add(id);
+		const changed = dropped.size > 0 || staying.length !== this.#s.splits.length;
+		const next = changed
+			? new Draft({ ...this.#s, edits, splits: staying, removed, dropped: [...dropped] })
+			: this;
+		return next.#unpinned();
+	}
+
+	/**
+	 * A pinned pick whose partner has nothing drafted on it any more is no longer needed: the
+	 * proposal does the same, as the commit accepts it.
+	 */
+	#unpinned(): Draft {
+		let edits: Map<number, EntryEdit> | null = null;
+		for (const [id, edit] of this.#s.edits) {
+			if (!isPinned(edit) || edit.pairing?.mode !== 'pick') continue;
+			const source = this.#s.known.get(edit.pairing.partnerEntryId)?.base.sourceId;
+			if (source === undefined || source === null || this.#hasDraftOn(source)) continue;
+			edits ??= new Map(this.#s.edits);
+			const rest = without(edit, 'pairing');
+			if (isEmpty(rest)) edits.delete(id);
+			else edits.set(id, rest);
+		}
+		return edits ? new Draft({ ...this.#s, edits }) : this;
+	}
+
+	/** Is anything drafted on the entries of this source (an edit, a split, a removal)? */
+	#hasDraftOn(sourceId: number): boolean {
+		const inSource = (id: number) => this.#s.known.get(id)?.base.sourceId === sourceId;
+		return (
+			this.#s.removed.some(inSource) ||
+			this.#s.splits.some((s) => inSource(s.sourceEntryId)) ||
+			[...this.#s.edits].some(([id, edit]) => id > 0 && inSource(id) && !isEmpty(chosen(edit)))
+		);
+	}
+
+	/**
+	 * Pin the pick of a proposal (or of settling's pair) so that its partner can be edited: the
+	 * leg `legId` of the unit as loaded pairs with `partnerEntryId`, which only the preview joins.
+	 * Only while the leg has no pairing edit of its own.
+	 */
+	pinPick(legId: number, partnerEntryId: number, how: Pinned): Draft {
+		if (!this.#s.loaded.has(legId) || this.edit(legId).pairing !== undefined) return this;
+		if (!this.#s.known.has(partnerEntryId)) return this;
+		const edits = new Map(this.#s.edits);
+		edits.set(legId, {
+			...this.edit(legId),
+			pairing: { mode: 'pick', partnerEntryId, pinned: how }
+		});
+		return this.#with({ edits });
+	}
+
+	/** The edits and splits of `state`, with each edit measured against what is stored now. */
+	#renormalised(state: State): Draft {
+		const edits = new Map<number, EntryEdit>();
+		const splits = state.splits.map((s) => ({
+			...s,
+			tags: new Draft(state).#originalTags(s.sourceEntryId)
+		}));
+		for (const [id, edit] of state.edits) {
+			const start =
+				state.known.get(id)?.base.tags ?? splits.find((s) => s.id === id)?.tags ?? undefined;
+			const next = normalisedEdit(edit, state.known.get(id)?.base, start);
+			if (!isEmpty(next)) edits.set(id, next);
+		}
+		return new Draft({ ...state, edits, splits, dropped: [] }).#unpinned();
 	}
 
 	get anchorId(): number {
@@ -207,7 +447,9 @@ export class Draft {
 
 	/** Has the user edited anything? A draft that has not is still committable (it accepts). */
 	get isDirty(): boolean {
-		return this.hasOtherChanges || this.#s.edits.size > 0;
+		return (
+			this.hasOtherChanges || [...this.#s.edits.values()].some((edit) => !isEmpty(chosen(edit)))
+		);
 	}
 
 	/**
@@ -224,7 +466,7 @@ export class Draft {
 				edit.note !== undefined ||
 				edit.amount !== undefined ||
 				edit.tags !== undefined ||
-				edit.pairing !== undefined
+				(edit.pairing !== undefined && !isPinned(edit))
 			) {
 				return true;
 			}
@@ -271,13 +513,25 @@ export class Draft {
 		return Math.min(0, ...this.#s.splits.map((s) => s.id), ...legs) - 1;
 	}
 
+	/**
+	 * A change of one entry's edit. Only an entry of the unit can be changed (`members`); a change of
+	 * its pick takes with it what was drafted on a partner that leaves.
+	 */
 	#edited(id: number, change: (edit: EntryEdit) => EntryEdit): Draft {
-		const next = change(this.edit(id));
+		if (!this.isMember(id)) return this;
+		const before = this.edit(id);
+		const next = change(before);
 		if (isEmpty(next) && !this.#s.edits.has(id)) return this;
 		const edits = new Map(this.#s.edits);
 		if (isEmpty(next)) edits.delete(id);
 		else edits.set(id, next);
-		return this.#with({ edits });
+		const out = this.#with({ edits });
+		return samePairing(before.pairing, next.pairing) ? out.#unpinned() : out.#pruned();
+	}
+
+	/** The pair's type and counter-account are the pair's: not edited on the partner's side. */
+	#pairFixed(id: number, field: FieldName): boolean {
+		return (field === 'type' || field === 'counter_account') && this.isJoined(id);
 	}
 
 	/**
@@ -290,7 +544,8 @@ export class Draft {
 		value: FieldValue,
 		shown: ShownBasis | null = null
 	): Draft {
-		const stored = this.#s.base.get(id);
+		if (this.#pairFixed(id, field)) return this;
+		const stored = this.#s.known.get(id)?.base;
 		return this.#edited(id, (e) => ({
 			...unpaired(e, field),
 			fields: withField(e.fields, stored, field, value, shown)
@@ -299,6 +554,7 @@ export class Draft {
 
 	/** "Reset to proposal": the passes decide this field again, a decided value included. */
 	resetField(id: number, field: FieldName): Draft {
+		if (this.#pairFixed(id, field)) return this;
 		return this.#edited(id, (e) => ({
 			...unpaired(e, field),
 			fields: { ...e.fields, [field]: { mode: 'reresolve' } }
@@ -307,7 +563,7 @@ export class Draft {
 
 	/** The partner the user chose for a transfer leg (the offers list, spec §5.7). */
 	pickPartner(id: number, partnerEntryId: number): Draft {
-		if (!this.#s.base.has(id)) return this;
+		if (!this.#s.loaded.has(id)) return this;
 		return this.#edited(id, (e) => ({ ...e, pairing: { mode: 'pick', partnerEntryId } }));
 	}
 
@@ -316,7 +572,7 @@ export class Draft {
 	 * and kept while the pick stands; picking again keeps it (and the amount received, unless one is given).
 	 */
 	pickCounterLeg(id: number, options: { receivedAmount?: number | null } = {}): Draft {
-		if (!this.#s.base.has(id)) return this;
+		if (!this.#s.loaded.has(id)) return this;
 		const held = this.edit(id).pairing;
 		const kept = held?.mode === 'counter_leg' ? held : null;
 		const tempId = kept?.tempId ?? this.nextTempId;
@@ -339,12 +595,13 @@ export class Draft {
 
 	/** Pair the leg by the rules again, a standing pair included. */
 	reresolvePairing(id: number): Draft {
-		if (!this.#s.base.has(id)) return this;
+		if (!this.#s.loaded.has(id)) return this;
 		return this.#edited(id, (e) => ({ ...e, pairing: { mode: 'reresolve' } }));
 	}
 
 	/** Take a pairing edit back: the leg is as it stands. */
 	clearPairing(id: number): Draft {
+		if (!this.#s.loaded.has(id)) return this;
 		return this.#edited(id, (e) => without(e, 'pairing'));
 	}
 
@@ -357,9 +614,9 @@ export class Draft {
 		return [...this.#s.edits.values()].some((e) => e.pairing?.mode === 'counter_leg');
 	}
 
-	/** Does any leg hold a picked partner? */
+	/** Does any leg hold a partner the user picked? (not one the client pinned) */
 	get hasPick(): boolean {
-		return [...this.#s.edits.values()].some((e) => e.pairing?.mode === 'pick');
+		return [...this.#s.edits.values()].some((e) => e.pairing?.mode === 'pick' && !isPinned(e));
 	}
 
 	/**
@@ -371,7 +628,7 @@ export class Draft {
 	 */
 	clearField(id: number, field: FieldName): Draft {
 		if (field !== 'payee') return this.resetField(id, field);
-		const stored = this.#s.base.get(id);
+		const stored = this.#s.known.get(id)?.base;
 		if (stored?.noPayee) return this.revertField(id, field);
 		return this.#edited(id, (e) => ({
 			...e,
@@ -385,7 +642,7 @@ export class Draft {
 	}
 
 	#setText(id: number, key: 'description' | 'note', text: string | null): Draft {
-		const base = this.#s.base.get(id);
+		const base = this.#s.known.get(id)?.base;
 		// the very text that is stored is no edit; text that only differs by space is, so that a
 		// space typed at the end is not eaten while the user goes on typing
 		const same = base !== undefined && (text ?? '') === (base[key] ?? '');
@@ -405,7 +662,7 @@ export class Draft {
 
 	/** The allocation of a split row or of a stored entry of a split (never its residual). */
 	setSplitAmount(id: number, minor: number | null): Draft {
-		const base = this.#s.base.get(id);
+		const base = this.#s.known.get(id)?.base;
 		if (base !== undefined && minor === base.amount) {
 			return this.#edited(id, (e) => without(e, 'amount'));
 		}
@@ -414,11 +671,14 @@ export class Draft {
 
 	/** A new row splitting the source of `sourceEntryId` (a stored entry); its amount is entered next. */
 	addSplit(sourceEntryId: number): Draft {
+		if (!this.isMember(sourceEntryId)) return this;
 		const id = this.nextTempId;
-		const tags = this.#s.base.get(sourceEntryId)?.tags ?? [];
+		// a new row starts with the tags the ORIGINAL of the source stores (what the server copies)
+		const tags = this.#originalTags(sourceEntryId);
 		// the row shows what the original shows now (its draft tags); the server copies the stored
 		// ones, so the difference goes into the row's own change. After this the row is independent.
-		const shown = this.effectiveTagIds(sourceEntryId);
+		const original = this.#originalOf(sourceEntryId);
+		const shown = this.effectiveTagIds(original);
 		const change = tagEdit(
 			shown.filter((t) => !tags.includes(t)),
 			tags.filter((t) => !shown.includes(t))
@@ -433,9 +693,18 @@ export class Draft {
 		});
 	}
 
+	/** The original of a source: its lowest stored id among the entries known. */
+	#originalOf(entryId: number): number {
+		const source = this.#s.known.get(entryId)?.base.sourceId ?? null;
+		if (source === null) return entryId;
+		let lowest = entryId;
+		for (const [id, k] of this.#s.known) if (k.base.sourceId === source && id < lowest) lowest = id;
+		return lowest;
+	}
+
 	/** The tags an entry starts from: what it stores, or for a split row what it inherits. */
 	#startTags(id: number): readonly number[] {
-		return this.#s.base.get(id)?.tags ?? this.#s.splits.find((s) => s.id === id)?.tags ?? [];
+		return this.#s.known.get(id)?.base.tags ?? this.#s.splits.find((s) => s.id === id)?.tags ?? [];
 	}
 
 	/** The tag edit of an entry (undefined: untouched). */
@@ -457,7 +726,7 @@ export class Draft {
 	 */
 	toggleTag(id: number, tagId: number): Draft {
 		// an entry that is gone (a split row removed meanwhile) takes no change
-		if (!this.#s.base.has(id) && !this.isNew(id)) return this;
+		if (!this.isMember(id)) return this;
 		const start = this.#startTags(id);
 		const has = this.effectiveTagIds(id).includes(tagId);
 		const stored = start.includes(tagId);
@@ -492,15 +761,16 @@ export class Draft {
 			const copy = next ? { ...edit, tags: next } : without(edit, 'tags');
 			if (!isEmpty(copy)) edits.set(id, copy);
 		}
-		return changed ? this.#with({ edits }) : this;
+		return changed ? this.#with({ edits }).#unpinned() : this;
 	}
 
 	/** Remove a split row (its amount returns to the residual) or a stored entry of a split. */
 	removeSplit(id: number): Draft {
+		if (!this.isMember(id)) return this;
 		const edits = new Map(this.#s.edits);
 		edits.delete(id);
 		if (id < 0) {
-			return this.#with({ splits: this.#s.splits.filter((s) => s.id !== id), edits });
+			return this.#with({ splits: this.#s.splits.filter((s) => s.id !== id), edits }).#unpinned();
 		}
 		if (id === this.#s.anchorId || this.#s.removed.includes(id)) return this;
 		return this.#with({ removed: [...this.#s.removed, id], edits });
@@ -508,12 +778,13 @@ export class Draft {
 
 	/** Keep a stored entry that was marked for removal. */
 	restoreSplit(id: number): Draft {
-		return this.#with({ removed: this.#s.removed.filter((r) => r !== id) });
+		return this.#with({ removed: this.#s.removed.filter((r) => r !== id) }).#unpinned();
 	}
 
 	/** Turn a flow into a transfer; `counterAccountId` null leaves the destination to be chosen. */
 	convertToTransfer(id: number, counterAccountId: number | null): Draft {
-		const stored = this.#s.base.get(id);
+		if (this.#pairFixed(id, 'type')) return this;
+		const stored = this.#s.known.get(id)?.base;
 		return this.#edited(id, (e) => {
 			let fields = withField(
 				without(without(e.fields, 'payee'), 'category'),
@@ -531,7 +802,8 @@ export class Draft {
 
 	/** Turn a transfer into a flow; the category and payee are proposed afresh. */
 	convertToFlow(id: number): Draft {
-		const stored = this.#s.base.get(id);
+		if (this.#pairFixed(id, 'type')) return this;
+		const stored = this.#s.known.get(id)?.base;
 		return this.#edited(id, (e) => ({
 			...unpaired(e, 'type'),
 			fields: withField(without(e.fields, 'counter_account'), stored, 'type', 'flow', null)
@@ -554,7 +826,7 @@ export class Draft {
 			const next = without({ ...edit, fields: {} }, 'pairing');
 			if (!isEmpty(next)) edits.set(id, next);
 		}
-		return changed ? this.#with({ reresolveAll: true, edits }) : this;
+		return changed ? this.#with({ reresolveAll: true, edits }).#pruned() : this;
 	}
 
 	/** Forget a pick whose category, payee or account no longer exists. */
@@ -569,56 +841,28 @@ export class Draft {
 
 	/**
 	 * The same choices over the unit as it is now: what no longer applies (an entry that is gone,
-	 * a split of a source that left) is dropped; the versions are the ones just read.
+	 * a split of a source that left) is dropped; the versions are the ones just read. What is
+	 * drafted on a partner the draft joined stays while the partner is still part of the unit.
 	 */
 	rebase(unit: Pick<Unit, 'anchor_entry_id' | 'entries'>): Draft {
 		const ids = new Set(unit.entries.map((e) => e.id));
-		const base = baseOf(unit);
-		// a new row inherits what its source stores now
-		const splits = this.#s.splits
-			.filter((s) => ids.has(s.sourceEntryId))
-			.map((s) => ({ ...s, tags: base.get(s.sourceEntryId)?.tags ?? s.tags }));
-		const keep = new Set([...ids, ...splits.map((s) => s.id)]);
-		const edits = new Map<number, EntryEdit>();
-		for (const [id, edit] of this.#s.edits) {
-			if (!keep.has(id)) continue;
-			const next = { ...edit };
-			const was = base.get(id);
-			const start = was?.tags ?? splits.find((s) => s.id === id)?.tags;
-			if (start && next.tags) {
-				// a tag someone else has put on or taken off meanwhile is no longer a change
-				const tags = tagEdit(
-					next.tags.add.filter((t) => !start.includes(t)),
-					next.tags.remove.filter((t) => start.includes(t))
-				);
-				if (tags) next.tags = tags;
-				else delete next.tags;
-			}
-			if (was) {
-				if (next.description !== undefined && normaliseText(next.description) === was.description) {
-					delete next.description;
-				}
-				if (next.note !== undefined && normaliseText(next.note) === was.note) delete next.note;
-				if (next.amount === was.amount) delete next.amount;
-				// a value someone else has stored meanwhile is no longer a change
-				next.fields = Object.fromEntries(
-					Object.entries(next.fields).filter(
-						([name, f]) =>
-							!(f.mode === 'fixed' && f.shown === null && isStored(was, name as FieldName, f.value))
-					)
-				) as EntryEdit['fields'];
-			}
-			if (!isEmpty(next)) edits.set(id, next);
-		}
-		return new Draft({
+		const known = new Map(this.#s.known);
+		for (const e of unit.entries) known.set(e.id, knownOf(e));
+		// an entry that was part of the unit as loaded and is not any more is no longer known by this unit
+		for (const id of this.#s.loaded) if (!ids.has(id)) known.delete(id);
+		const edits = new Map([...this.#s.edits].filter(([id]) => id < 0 || known.has(id)));
+		const draft = this.#renormalised({
+			...this.#s,
 			anchorId: ids.has(this.#s.anchorId) ? this.#s.anchorId : unit.anchor_entry_id,
 			versions: versionsOf(unit),
-			base,
+			loaded: ids,
+			known,
 			edits,
-			splits,
-			removed: this.#s.removed.filter((id) => ids.has(id) && id !== unit.anchor_entry_id),
-			reresolveAll: this.#s.reresolveAll
+			splits: this.#s.splits.filter((s) => known.has(s.sourceEntryId)),
+			removed: this.#s.removed.filter((id) => known.has(id) && id !== unit.anchor_entry_id)
 		});
+		// the unit's membership is measured now: what left it takes its drafts along
+		return draft.#pruned();
 	}
 
 	/**

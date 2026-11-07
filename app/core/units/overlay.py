@@ -921,6 +921,7 @@ def _apply_pairing(
             problems.append(refused)
             continue
         assert partner is not None and partner.stored is not None
+        _refuse_fixed_pair(draft, partner, r)
         former = {x for x in (s.counterpart_entry_id, partner.stored.counterpart_entry_id) if x is not None}
         for x in former:
             if x in links:
@@ -945,6 +946,27 @@ def _apply_pairing(
                     )
                 )
     return out
+
+
+def _refuse_fixed_pair(draft: UnitDraft, partner: _Row, leg: _Row) -> None:
+    """A picked partner's type and counter-account are the pair's (spec §5.7, §6): a draft that fixes either
+    to something else on it is `pair_fixed`, not silently overridden by the pick."""
+    d = draft.entry(partner.id)
+    if d is None:
+        return
+    if d.type.mode == "fixed" and d.type.value != "transfer":
+        raise DraftError("pair_fixed", "a picked partner's type is the pair's", entry_id=d.id, field="type")
+    if (
+        d.counter_account.mode == "fixed"
+        and d.counter_account.value is not None
+        and d.counter_account.value != leg.account_id
+    ):
+        raise DraftError(
+            "pair_fixed",
+            "a picked partner's counter-account is the pair's",
+            entry_id=d.id,
+            field="counter_account",
+        )
 
 
 def _counter_leg_row(

@@ -57,9 +57,15 @@ from app.core.units.draft import UnitDraft
 from app.core.units.lookup import unit_ids_of
 from app.core.units.overlay import plan_unit
 from app.core.units.plan import Consequence, Plan, PlannedRow, Problem
-from app.core.units.preview import UnitNotFound, resolve_draft
+from app.core.units.preview import Resolved, UnitNotFound, resolve_draft
 from app.core.units.state import UnitState, leg_states_of_flags, unit_state
-from app.core.units.stored import drafted_closure, load_stored_entries, load_world, missing_tag
+from app.core.units.stored import (
+    drafted_closure,
+    load_closure_of,
+    load_stored_entries,
+    load_world,
+    missing_tag,
+)
 from app.utils.db.errors import constraint_name
 from app.utils.db.locks import WriteConflict, lock_accounts, lock_rows, lock_settle_shared, retry_on_deadlock
 
@@ -132,13 +138,27 @@ _VERSIONS = text("SELECT id, version FROM ledger_entry WHERE id = ANY(:ids)")
 def _members_moved(
     conn: Connection, draft: UnitDraft, anchor_entry_id: int, closure: Collection[int]
 ) -> None:
-    """The unit's members changed since the preview (409 `unit_moved`): an entry the client carries a
-    version for has left the closure and is gone or has moved (a partner unpaired or removed)."""
+    """Under the locks: an entry the client carries a version for that is not in the drafted closure (a
+    partner a proposal or settling joined that the draft does not pick, or one that has left) is gone or
+    has moved: 409 `unit_moved`. Which entries the unit holds at all is `_membership_moved`'s."""
     left = sorted(i for i in draft.versions if i not in set(closure))
     if left:
         current = {int(r.id): int(r.version) for r in conn.execute(_VERSIONS, {"ids": left})}
         if any(current.get(i) != draft.versions[i] for i in left):
             raise UnitMoved(anchor_entry_id)
+
+
+def _membership_moved(conn: Connection, resolved: Resolved, draft: UnitDraft) -> None:
+    """The unit's structure changed since the preview (spec §6), 409 `unit_moved`: it LOST a member the
+    client carries a version for (a proposal that vanished, a partner settling no longer pulls in), or GAINED
+    one settling now pulls in that the client carries none for. An entry of the drafted closure the client
+    carries no version for is a `VersionConflict` (the check under the locks)."""
+    held = {e.id for e in resolved.stored.entries}
+    carried = set(draft.versions)
+    drafted = drafted_closure(conn, resolved.draft, load_closure_of(conn, [draft.anchor_entry_id]))
+    gained = held - carried - drafted
+    if carried - held or gained:
+        raise UnitMoved(draft.anchor_entry_id)
 
 
 def _accounts_of(conn: Connection, entry_ids: tuple[int, ...]) -> set[int]:
@@ -411,6 +431,7 @@ def commit_unit(engine: Engine, draft: UnitDraft) -> CommitResult:
     with engine.connect() as conn:
         conn.execute(text("SET TRANSACTION READ ONLY"))
         resolved = resolve_draft(conn, draft, seen=draft.versions)
+        _membership_moved(conn, resolved, draft)
     effective = resolved.draft
     resolved_plan = resolved.plan
     # a pick is checked against the widest window (the cap): the user chose the partner, and every other

@@ -2744,8 +2744,12 @@ is the anchor's closure under the draft — picking a partner adds its whole
 source transaction, breaking a pair removes the partner's — and an
 entry that leaves it is shown as a consequence ("returns to review", "is
 deleted", "is unpaired"), not
-as part of the unit. A split made on a partner's side leaves with it, and is
-committed with it.
+as part of the unit. The partner shown is part of the unit whether the user
+picked it or the preview pairs it by a proposal or by settling, and is edited
+here like any entry of it: editing a proposed partner keeps it, as the commit
+would accept it. What is drafted on an entry of the unit as opened leaves with
+it and is committed with it; what is drafted on a partner the draft joined is
+dropped when it leaves, and the panel says so.
 
 **A commit writes the full state the user saw**, in one transaction — the
 split, the values, a counter-leg where §5.7 creates one —

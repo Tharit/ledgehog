@@ -113,7 +113,10 @@ is open (§10). The API's derived `display_text` is not used by the column.
 The entries of one unit (spec §6) are shown together wherever a unit is shown:
 a split's entries under their source. In the work panel that is one group per
 source transaction, by date; a leg's partner is a one-line pointer to the group
-above or below, and a counter-leg the commit would create is a dashed,
+above or below; a leg is re-paired from the side the panel was opened on —
+the partner's side offers no other partner, since re-pairing it would take
+it out of the unit, and shows its type and counter-account as the pair's,
+not to be edited; and a counter-leg the commit would create is a dashed,
 read-only ghost group after the others.
 
 **In the ledger list, every entry is a row, and a unit is never a row of its

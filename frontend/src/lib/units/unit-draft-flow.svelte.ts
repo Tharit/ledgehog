@@ -21,11 +21,13 @@ import {
 import {
 	BOOKING_FIXED,
 	describeProblem,
+	draftErrorText,
 	differenceOf,
 	problemSentence,
 	suggestedSplitOf,
 	type ProblemText
 } from './problems.js';
+import { proposedOffer } from './transfer.js';
 import { effectiveChanged } from './view.js';
 import type {
 	Affected,
@@ -66,7 +68,7 @@ export type PreviewStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 /** A line the panel shows about what just happened, with the action that goes with it. */
 export type FlowNotice = {
-	kind: 'conflict' | 'error';
+	kind: 'conflict' | 'error' | 'info';
 	text: string;
 	action?: { label: string; run: () => void };
 };
@@ -158,6 +160,8 @@ export class UnitDraftFlow {
 	#window: number | null = null;
 	/** the pick just made: its preview may suggest the fee split (applied once, never again) */
 	#feePending = false;
+	/** the unit was read again: the next preview's entries replace what is known of the partners */
+	#reread = false;
 
 	constructor(host: FlowHost) {
 		this.#host = host;
@@ -175,7 +179,7 @@ export class UnitDraftFlow {
 		const preview = !this.stale ? this.preview : null;
 		return draft.fieldEdits().some(({ id, field }) => {
 			const row = preview?.rows.find((r) => r.id === id && r.in_unit) ?? null;
-			const stored = this.unit?.entries.find((e) => e.id === id) ?? null;
+			const stored = draft.knownEntry(id);
 			return effectiveChanged(field, row, stored) !== false;
 		});
 	}
@@ -233,6 +237,7 @@ export class UnitDraftFlow {
 		this.committing = false;
 		this.#window = null;
 		this.#feePending = false;
+		this.#reread = false;
 		this.previewWindow = null;
 		this.#request();
 	}
@@ -285,30 +290,76 @@ export class UnitDraftFlow {
 		this.draft = next;
 		this.#pruneReceived(next);
 		this.notice = this.notice?.kind === 'conflict' ? this.notice : null;
+		if (next.dropped.length > 0) this.notice = this.#droppedNotice(next);
 		this.commitProblems = [];
 		this.#schedule(immediate);
 	}
 
+	/**
+	 * Change what is drafted on the entry `id`. A partner that only a proposal (or settling) joins
+	 * to the unit is first pinned as a pick, so that the draft may hold the change and the commit
+	 * writes the pair as it would write the proposal accepted. A change the draft refuses pins nothing.
+	 */
+	#editEntry(id: number, change: (draft: Draft) => Draft, immediate = true): void {
+		this.edit((draft) => {
+			const pinned = this.#pinned(draft, id);
+			const next = change(pinned);
+			return next === pinned ? draft : next;
+		}, immediate);
+	}
+
+	#pinned(draft: Draft, id: number): Draft {
+		const preview = this.preview;
+		if (!preview || id < 0 || draft.isMember(id)) return draft;
+		const row = preview.rows.find((r) => r.id === id && r.in_unit);
+		if (!row) return draft;
+		// the leg of this source that a leg of the unit as loaded is paired with
+		const partner = preview.rows.find(
+			(r) =>
+				r.in_unit &&
+				r.source_transaction_id === row.source_transaction_id &&
+				r.counterpart_entry_id !== null &&
+				draft.isLoaded(r.counterpart_entry_id)
+		);
+		const legId = partner?.counterpart_entry_id;
+		if (!partner || legId === null || legId === undefined) return draft;
+		const leg = preview.rows.find((r) => r.id === legId);
+		const proposal = leg?.transfer?.proposed_pick?.entry_id === partner.id;
+		const exact = leg?.transfer ? (proposedOffer(leg.transfer)?.exact ?? false) : false;
+		return draft.pinPick(legId, partner.id, { proposal, exact });
+	}
+
+	/** "Your changes to … were dropped": entries that left the unit take what was drafted on them along. */
+	#droppedNotice(draft: Draft): FlowNotice {
+		const labels = draft.dropped.map((id) => draft.knownEntry(id)?.display_text ?? `Entry ${id}`);
+		const one = labels.length === 1;
+		return {
+			kind: 'info',
+			text: `Your changes to ${labels.join(', ')} were dropped: ${one ? 'it is' : 'they are'} no longer part of this unit.`
+		};
+	}
+
 	setField(id: number, field: FieldName, value: FieldValue, shown: ShownBasis | null = null): void {
-		this.edit((d) => d.setField(id, field, value, shown));
+		this.#editEntry(id, (d) => d.setField(id, field, value, shown));
 	}
 
 	/** The X of a field: no payee (the user's decision), or the passes propose again. */
 	clearField(id: number, field: FieldName): void {
-		this.edit((d) => d.clearField(id, field));
+		this.#editEntry(id, (d) => d.clearField(id, field));
 	}
 
 	resetField(id: number, field: FieldName): void {
-		this.edit((d) => d.resetField(id, field));
+		this.#editEntry(id, (d) => d.resetField(id, field));
 	}
 
 	/** "Reset to proposal": the user's value is dropped, the stored one is shown again. */
 	revertField(id: number, field: FieldName): void {
-		this.edit((d) => d.revertField(id, field));
+		this.#editEntry(id, (d) => d.revertField(id, field));
 	}
 
 	setText(id: number, key: 'description' | 'note', text: string): void {
-		this.edit(
+		this.#editEntry(
+			id,
 			(d) => (key === 'description' ? d.setDescription(id, text) : d.setNote(id, text)),
 			false
 		);
@@ -316,7 +367,9 @@ export class UnitDraftFlow {
 
 	/** The type buttons: the entry becomes what was clicked (a transfer's destination is chosen next). */
 	setType(id: number, type: 'flow' | 'transfer'): void {
-		this.edit((d) => (type === 'flow' ? d.convertToFlow(id) : d.convertToTransfer(id, null)));
+		this.#editEntry(id, (d) =>
+			type === 'flow' ? d.convertToFlow(id) : d.convertToTransfer(id, null)
+		);
 	}
 
 	/** `x`: a transfer becomes a flow, anything else (a flow, an entry with no type yet) a transfer. */
@@ -326,7 +379,7 @@ export class UnitDraftFlow {
 
 	/** Put a tag on the entry or take it off (applied with the commit, like every other choice). */
 	toggleTag(id: number, tagId: number): void {
-		this.edit((d) => d.toggleTag(id, tagId));
+		this.#editEntry(id, (d) => d.toggleTag(id, tagId));
 	}
 
 	/**
@@ -453,14 +506,16 @@ export class UnitDraftFlow {
 		const draft = this.draft;
 		if (!draft || this.committing) return null;
 		const id = draft.nextTempId;
-		this.edit((d) => d.addSplit(sourceEntryId), false);
+		this.#editEntry(sourceEntryId, (d) => d.addSplit(sourceEntryId), false);
+		// refused (the entry is not part of the unit): nothing was added
+		if (!this.draft?.isNew(id)) return null;
 		this.lastAddedSplit = id;
 		return id;
 	}
 
 	removeSplit(id: number): void {
 		this.#forgetAmount(id);
-		this.edit((d) => d.removeSplit(id));
+		this.#editEntry(id, (d) => d.removeSplit(id));
 	}
 
 	restoreSplit(id: number): void {
@@ -499,15 +554,17 @@ export class UnitDraftFlow {
 	/** A split of `amount` (its magnitude) off a stored entry; it takes the sign of that entry. */
 	#applySplit(split: SuggestedSplit): void {
 		const row = this.preview?.rows.find((r) => r.id === split.source_entry_id);
-		const stored = this.unit?.entries.find((e) => e.id === split.source_entry_id);
+		const stored = this.draft?.knownEntry(split.source_entry_id);
 		const negative = (row?.amount.amount ?? stored?.amount.amount ?? split.amount) < 0;
 		const id = this.addSplit(split.source_entry_id);
 		if (id === null) return;
-		this.edit((d) => d.setSplitAmount(id, Math.abs(split.amount) * (negative ? -1 : 1)));
+		this.#editEntry(id, (d) => d.setSplitAmount(id, Math.abs(split.amount) * (negative ? -1 : 1)));
 	}
 
 	#storedOfSource(sourceId: number): Entry | undefined {
-		return this.unit?.entries.find((e) => e.source_transaction_id === sourceId);
+		return [...(this.draft?.knownEntries.values() ?? [])].find(
+			(e) => e.source_transaction_id === sourceId
+		);
 	}
 
 	/**
@@ -541,15 +598,14 @@ export class UnitDraftFlow {
 		if (text === undefined || this.committing) return;
 		const parsed = this.#parseAmount(id, text);
 		if (!parsed?.ok || this.draft?.edit(id).amount === parsed.minor) return;
-		this.edit((d) => d.setSplitAmount(id, parsed.minor));
+		this.#editEntry(id, (d) => d.setSplitAmount(id, parsed.minor));
 	}
 
 	#parseAmount(id: number, text: string): ReturnType<typeof parseAllocation> | null {
-		const unit = this.unit;
 		const draft = this.draft;
-		if (!unit || !draft) return null;
+		if (!this.unit || !draft) return null;
 		const split = draft.splits.find((s) => s.id === id);
-		const source = unit.entries.find((e) => e.id === (split ? split.sourceEntryId : id));
+		const source = draft.knownEntry(split ? split.sourceEntryId : id);
 		if (!source) return null;
 		return parseAllocation(text, source.amount.currency, this.#host.locale(), source.amount.amount);
 	}
@@ -590,6 +646,9 @@ export class UnitDraftFlow {
 		previewUnit(draft.toRequest(), controller.signal, windowDays).then(
 			(preview) => {
 				if (generation !== this.#generation) return; // a newer request owns the screen
+				// the entries of the unit the preview holds: the draft knows them from now on
+				if (this.draft) this.draft = this.draft.know(preview.entries, this.#reread);
+				this.#reread = false;
 				this.preview = preview;
 				this.previewWindow = windowDays;
 				this.previewStatus = 'ready';
@@ -707,13 +766,14 @@ export class UnitDraftFlow {
 				this.notice = {
 					kind: 'error',
 					text:
-						code === 'pairing_not_transfer'
+						draftErrorText(code) ??
+						(code === 'pairing_not_transfer'
 							? 'Only a transfer leg has a partner. Take the partner pick back, or make the entry a transfer.'
 							: code === 'invalid_pairing'
 								? 'The partner you picked cannot be used. Pick another partner.'
 								: code === 'booking_fixed'
 									? BOOKING_FIXED
-									: 'This change cannot be committed as it stands. Review the amounts and values.'
+									: 'This change cannot be committed as it stands. Review the amounts and values.')
 				};
 				return;
 			}
@@ -742,6 +802,7 @@ export class UnitDraftFlow {
 			if (this.draft !== draft) return;
 			this.unit = unit;
 			this.draft = draft.rebase(unit);
+			this.#reread = true;
 			this.#host.unitChanged(unit);
 			this.#host.patch({ entries: unit.entries });
 			this.notice = {
@@ -812,6 +873,7 @@ export class UnitDraftFlow {
 		const row = this.preview?.rows.find((r) => r.id === entryId);
 		return (
 			row?.amount.currency ??
+			(entryId === null ? undefined : this.draft?.knownEntry(entryId))?.amount.currency ??
 			this.unit?.entries.find((e) => e.id === entryId)?.amount.currency ??
 			this.unit?.entries[0]?.amount.currency ??
 			'EUR'

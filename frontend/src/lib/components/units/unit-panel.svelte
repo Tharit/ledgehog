@@ -131,7 +131,9 @@
 	const problemTexts = $derived(flow.problemTexts);
 	// one group per source transaction: its blocks, with "Split entry" at its foot. A unit of one
 	// source keeps the plain layout (the strip on top, no header)
-	const panelGroups = $derived(unit ? groupsOf(views, unit.entries) : []);
+	const panelGroups = $derived(
+		unit && flow.draft ? groupsOf(views, [...flow.draft.knownEntries.values()]) : []
+	);
 	const multi = $derived(panelGroups.length > 1);
 	// where each leg's partner is shown, for the hint in its partner row
 	const directions = $derived(partnerDirections(panelGroups));
@@ -172,7 +174,7 @@
 
 	async function convert(editor: HTMLElement | null) {
 		const view = viewOf(editor);
-		if (!view || view.isNew || !view.original || view.booking) return;
+		if (!view || view.isNew || !view.original || view.booking || view.joined) return;
 		const toTransfer = view.type !== 'transfer';
 		flow.convert(view.id, view.type);
 		// its destination is what is chosen next

@@ -254,6 +254,6 @@ def test_a_commit_of_a_draft_without_a_pull_is_unchanged(scene: Scene) -> None:
     """The commit's world holds no ledger legs: settling follows the commit, as before."""
     e = leg(scene, -1000, scene.checking, counter=scene.savings)
     x = leg(scene, 1000, scene.savings)
-    result = scene.commit(e)
+    result = scene.commit(e, versions={**scene.versions(e), **scene.versions(x)})  # x seen in the preview
     assert x in {r.id for r in result.entries}
     assert scene.row(e).counterpart_entry_id == x  # settled right after the commit

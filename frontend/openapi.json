@@ -8059,6 +8059,13 @@
             "title": "Consequences",
             "type": "array"
           },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/EntryOut"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
           "problems": {
             "items": {
               "$ref": "#/components/schemas/UnitProblemOut"
@@ -8105,7 +8112,8 @@
           "splits",
           "problems",
           "consequences",
-          "versions"
+          "versions",
+          "entries"
         ],
         "title": "UnitPreviewOut",
         "type": "object"

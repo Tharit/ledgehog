@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any, Literal
 
+from app.core.ledger.entries import EntryRow
 from app.core.matching import Leg, Offer, PoolEntry, Proposal
 from app.core.plugins.classifier import AccountFact, Classifier, Field
 from app.core.resolution.snapshot import HistorySnapshot
@@ -323,6 +324,9 @@ class Plan:
     # counter-leg bookings the plan's choices make settling remove (spec §6): stored, not in `rows`, and not
     # removed by the commit: settling removes them
     booking_dropped: tuple[DroppedBooking, ...] = ()
+    # every stored entry of the closure as the list shows it (the preview only; empty from a plan alone):
+    # the client knows an entry it did not load (a partner a proposal or settling joined) by these
+    entries: tuple[EntryRow, ...] = ()
 
     def row(self, entry_id: int) -> PlannedRow:
         for r in self.rows:

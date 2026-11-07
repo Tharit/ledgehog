@@ -351,9 +351,15 @@ export class UnitPanel {
 	 * and the list's cursor on the last unit.
 	 */
 	async #advance(out: UnitCommit, anchorId: number): Promise<void> {
+		// the unit as the preview showed it: a partner that settling pairs right after the commit is
+		// part of it, though the commit itself did not write it
+		const shown = (this.flow.preview?.rows ?? [])
+			.filter((r) => r.in_unit && r.id > 0)
+			.map((r) => r.id);
 		const committed = [
 			...out.units.flatMap((u) => u.entry_ids),
 			...Object.values(out.created),
+			...shown,
 			anchorId
 		];
 		this.#handled = withIds(this.#handled, committed);
