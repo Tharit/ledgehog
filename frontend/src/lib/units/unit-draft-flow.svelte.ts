@@ -707,7 +707,10 @@ export class UnitDraftFlow {
 		this.#feePending = false;
 		const suggested = preview.problems.map(suggestedSplitOf).find((s) => s !== null);
 		if (!suggested || this.committing) return;
+		// the split is the app's own follow-up of the pick: a notice the pick raised stays
+		const notice = this.notice;
 		this.#applySplit(suggested);
+		if (notice) this.notice = notice;
 		// the amount is what the server suggested: nothing to type next
 		this.lastAddedSplit = null;
 	}

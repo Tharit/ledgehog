@@ -210,6 +210,52 @@ describe('what leaves the unit', () => {
 		expect(flow.notice).toBeNull();
 	});
 
+	it('stays after the fee split a pick brings, and goes with the next edit of the user', async () => {
+		const flow = await setup();
+		flow.setText(2, 'note', 'x');
+		await previewed();
+		vi.mocked(previewUnit).mockImplementation(async (request) => {
+			const out = answer(request);
+			if (
+				request.entries?.some((e) => e.pairing?.mode === 'pick' && e.pairing.partner_entry_id === 4)
+			) {
+				out.problems = [
+					{
+						code: 'pair_unequal',
+						entry_id: 1,
+						field: null,
+						detail: { partner: 4, difference: 65 },
+						suggested_split: { source_entry_id: 1, amount: { amount: -6500, currency: 'EUR' } }
+					} as never
+				];
+			}
+			return out;
+		});
+		flow.pickPartner(1, 4);
+		const dropped = {
+			kind: 'info',
+			text: 'Your changes to The partner were dropped: it is no longer part of this unit.'
+		};
+		expect(flow.notice).toEqual(dropped);
+		await previewed(); // the preview arrives: the fee split is applied
+		expect(flow.draft!.splits.length).toBe(1);
+		expect(flow.notice).toEqual(dropped);
+		await previewed(); // and the preview after the split
+		expect(flow.notice).toEqual(dropped);
+		flow.setText(1, 'note', 'y');
+		expect(flow.notice).toBeNull();
+	});
+
+	it('stays after an exact pick as well', async () => {
+		const flow = await setup();
+		flow.setText(2, 'note', 'x');
+		await previewed();
+		flow.pickPartner(1, 4);
+		await previewed();
+		await previewed();
+		expect(flow.notice?.text).toContain('were dropped');
+	});
+
 	it('names several entries', async () => {
 		const flow = await setup();
 		flow.setText(2, 'note', 'x');
