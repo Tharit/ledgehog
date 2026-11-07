@@ -74,27 +74,188 @@ def test_key3_payee_for_category_only() -> None:
     assert run("payee", e, votes, payee=7) is None
 
 
-def test_key4_tokens() -> None:
-    v = vote(counterparty_name="PayPal Europe", purpose="Seeed 123", payee_id=3, category_id=2)
-    p = run("payee", entry(counterparty_name="PAYPAL *SEEED", purpose="Seeed"), [v])
-    # tokens {paypal, europe, seeed} vs {paypal, seeed}: 2/3
-    assert p == Proposal("payee", 3, {"matched_on": "tokens", "agree": 1, "of": 1, "since": "2026-03-01"})
+def test_no_key_on_words_alone() -> None:
+    # key 4 is gone: an entry shares no key with a vote of another counterparty, whatever the words
+    v = vote(counterparty_name="MediaMarkt", purpose="Kartenzahlung girocard", payee_id=3, category_id=2)
+    e = entry(counterparty_name="Shell", purpose="Kartenzahlung girocard")
+    for field in ("type", "payee", "category"):
+        assert run(field, e, [v]) is None  # type: ignore[arg-type]
 
 
-def test_key4_jaccard_boundary() -> None:
-    e = entry(purpose="alpha beta")
-    at = vote(purpose="alpha gamma", category_id=1)  # 1/3? no: {alpha,beta} vs {alpha,gamma} = 1/3
-    assert run("category", e, [at]) is None
-    exact = vote(purpose="alpha beta gamma beta", category_id=1)  # 2/3
-    assert run("category", e, [exact]) is not None
-    half = vote(purpose="alpha", category_id=1)  # 1/2
-    assert run("category", e, [half]) is not None
-    below = vote(purpose="alpha beta gamma delta zzz", category_id=1)  # 2/5
-    assert run("category", e, [below]) is None
+# ---- the purpose refines every key ----
 
 
-def test_key4_skipped_without_tokens() -> None:
-    assert run("category", entry(purpose="12 34"), flows(2, purpose="12 34", category_id=1)) is None
+def _friend(purpose: str, category_id: int, n: int = 1) -> list[Vote]:
+    return [vote(counterparty_ref="DE99FRIEND", purpose=purpose, category_id=category_id) for _ in range(n)]
+
+
+FRIEND = _friend("Miete Juni", 1, 3) + _friend("Pizza Essen Freitag", 2, 2)
+
+
+def test_similar_purpose_decides_unanimously() -> None:
+    e = entry(counterparty_ref="DE99FRIEND", purpose="Pizza Essen Samstag")
+    p = run("category", e, FRIEND)
+    assert p is not None and p.value == 2 and not p.gives_way
+    assert p.basis["matched_on"] == "counterparty_ref+purpose"
+    assert (p.basis["agree"], p.basis["of"]) == (2, 2)
+
+
+def test_no_similar_purpose_falls_back_to_all_matches_and_gives_way() -> None:
+    e = entry(counterparty_ref="DE99FRIEND", purpose="Konzertkarten")
+    p = run("category", e, FRIEND)
+    assert p is not None and p.value == 1 and p.gives_way  # 3 of 5: mixed
+    assert p.basis["matched_on"] == "counterparty_ref"
+    assert (p.basis["agree"], p.basis["of"]) == (3, 5)
+
+
+def test_unanimous_all_matches_does_not_give_way() -> None:
+    e = entry(counterparty_ref="DE99FRIEND", purpose="Konzertkarten")
+    p = run("category", e, _friend("Miete Juni", 1, 3))
+    assert p is not None and p.value == 1 and not p.gives_way
+
+
+def test_similar_set_without_majority_falls_back_to_all_matches() -> None:
+    votes = (
+        _friend("Pizza Essen Freitag", 2) + _friend("Pizza Essen Samstag", 3) + _friend("Miete Juni", 1, 4)
+    )
+    p = run("category", entry(counterparty_ref="DE99FRIEND", purpose="Pizza Essen Sonntag"), votes)
+    # the two similar votes split 1:1; all six: category 1 holds 4 of 6
+    assert p is not None and p.value == 1 and p.basis["matched_on"] == "counterparty_ref"
+    assert (p.basis["agree"], p.basis["of"]) == (4, 6)
+
+
+def test_similar_set_with_a_majority_that_is_not_unanimous_gives_way_without_falling_back() -> None:
+    votes = (
+        _friend("Pizza Essen Freitag", 2, 2) + _friend("Pizza Essen Samstag", 3) + _friend("Miete Juni", 1, 9)
+    )
+    p = run("category", entry(counterparty_ref="DE99FRIEND", purpose="Pizza Essen Sonntag"), votes)
+    assert p is not None and p.value == 2 and p.gives_way
+    assert p.basis["matched_on"] == "counterparty_ref+purpose"
+    assert (p.basis["agree"], p.basis["of"]) == (2, 3)
+
+
+def test_purpose_without_tokens_skips_the_narrowing() -> None:
+    votes = _friend("Reinigung 48213", 4, 2) + _friend("Reinigung 77", 4)
+    p = run("category", entry(counterparty_ref="DE99FRIEND", purpose="48213"), votes)
+    assert p is not None and p.value == 4 and not p.gives_way
+    assert p.basis["matched_on"] == "counterparty_ref"  # no "+purpose": nothing narrowed
+
+
+def test_a_vote_without_purpose_tokens_is_not_similar() -> None:
+    votes = _friend("123", 1, 2) + _friend("Pizza Essen Freitag", 2)
+    p = run("category", entry(counterparty_ref="DE99FRIEND", purpose="Pizza Essen Samstag"), votes)
+    assert p is not None and p.value == 2 and p.basis["matched_on"] == "counterparty_ref+purpose"
+    assert (p.basis["agree"], p.basis["of"]) == (1, 1)
+
+
+def test_purpose_similarity_is_jaccard_at_half_on_the_purpose_alone() -> None:
+    mk = lambda purpose: [vote(counterparty_ref="CR", purpose=purpose, category_id=1)]  # noqa: E731
+    e = entry(counterparty_ref="CR", counterparty_name="alpha beta", purpose="alpha beta")
+    narrowed = lambda votes: run("category", e, votes).basis["matched_on"]  # type: ignore[union-attr]  # noqa: E731
+    assert narrowed(mk("alpha beta gamma beta")) == "counterparty_ref+purpose"  # 2/3
+    assert narrowed(mk("alpha")) == "counterparty_ref+purpose"  # 1/2
+    assert narrowed(mk("alpha gamma")) == "counterparty_ref"  # 1/3: all matches decide
+    assert narrowed(mk("alpha beta gamma delta zzz")) == "counterparty_ref"  # 2/5
+    # the name's words do not count: a purpose of the name alone is no purpose in common
+    other = [vote(counterparty_ref="CR", purpose="beta", category_id=1)]
+    assert run("category", entry(counterparty_ref="CR", counterparty_name="alpha", purpose="alpha"), other)
+    assert (
+        run("category", entry(counterparty_ref="CR", counterparty_name="beta", purpose="alpha"), other).basis[
+            "matched_on"
+        ]  # type: ignore[union-attr]
+        == "counterparty_ref"
+    )
+
+
+def test_every_key_and_field_is_refined_by_the_purpose() -> None:
+    by_name = [
+        vote(counterparty_name="Shop", purpose="Abo Magazin", payee_id=5, category_id=1),
+        vote(counterparty_name="Shop", purpose="Abo Magazin", payee_id=5, category_id=1),
+        vote(counterparty_name="Shop", purpose="Einkauf Haus", payee_id=6, category_id=2),
+        vote(counterparty_name="Shop", purpose="Einkauf Haus", payee_id=6, category_id=2),
+        vote(counterparty_name="Shop", purpose="Einkauf Haus", payee_id=6, category_id=2),
+    ]
+    e = entry(counterparty_name="Shop", purpose="Abo Zeitung Magazin")
+    p = run("payee", e, by_name)
+    assert (
+        p is not None and p.value == 5 and p.basis["matched_on"] == "counterparty_name+booking_text+purpose"
+    )
+    by_payee = [
+        vote(payee_id=7, purpose="Rate Auto", category_id=8),
+        vote(payee_id=7, purpose="Sonst", category_id=9),
+    ]
+    p = run("category", entry(purpose="Rate Auto"), by_payee, payee=7)
+    assert p is not None and p.value == 8 and p.basis["matched_on"] == "payee+purpose"
+    kinds = [
+        vote(counterparty_ref="CR", purpose="Umbuchung Sparen", type="transfer"),
+        vote(counterparty_ref="CR", purpose="Pizza", type="flow", category_id=1),
+        vote(counterparty_ref="CR", purpose="Pizza", type="flow", category_id=1),
+    ]
+    p = run("type", entry(counterparty_ref="CR", purpose="Umbuchung Sparen"), kinds)
+    assert p is not None and p.value == "transfer" and p.basis["matched_on"] == "counterparty_ref+purpose"
+
+
+def test_only_a_category_gives_way() -> None:
+    votes = flows(2, counterparty_ref="CR", payee_id=3, category_id=1) + flows(
+        1, counterparty_ref="CR", payee_id=4, category_id=2
+    )
+    e = entry(counterparty_ref="CR")
+    assert run("category", e, votes).gives_way  # type: ignore[union-attr]
+    p = run("payee", e, votes)
+    assert p is not None and p.value == 3 and not p.gives_way
+
+
+# ---- the categories the model is told ----
+
+
+def _seen(
+    e: EntryInput, votes: list[Vote], paths: dict[int, str] | None = None, payee: int | None = None
+) -> tuple[int, ...]:
+    resolved = {"payee": Proposal("payee", payee, {})} if payee is not None else {}
+    ctx = ClassifierContext(resolved=resolved, history=ListHistory(votes, paths))  # type: ignore[arg-type]
+    return H.categories_seen(e, ctx)
+
+
+def test_categories_seen_are_the_top_three_by_count_then_path_in_path_order() -> None:
+    paths = {1: "Expense > Food", 2: "Expense > Housing", 3: "Expense > Leisure", 4: "Expense > Auto"}
+    votes = (
+        _friend("a", 2, 5)  # most frequent
+        + _friend("b", 3, 2)  # tied with Food and Auto: Auto, Food rank before Leisure by path
+        + _friend("c", 1, 2)
+        + _friend("d", 4, 2)
+    )
+    seen = _seen(entry(counterparty_ref="DE99FRIEND", purpose="zzz"), votes, paths)
+    assert seen == (4, 1, 2)  # Auto, Food, Housing: 5, then the ties by path (Auto, Food); Leisure is out
+
+
+def test_categories_seen_take_all_matches_not_only_the_similar_ones() -> None:
+    seen = _seen(
+        entry(counterparty_ref="DE99FRIEND", purpose="Pizza Essen Samstag"), FRIEND, {1: "A", 2: "B"}
+    )
+    assert seen == (1, 2)
+
+
+def test_categories_seen_come_from_the_first_key_that_has_any() -> None:
+    votes = [
+        vote(counterparty_ref="CR", type="transfer"),  # key 1 counts no category
+        vote(counterparty_name="Shop", category_id=7),
+    ]
+    e = entry(counterparty_ref="CR", counterparty_name="Shop")
+    assert _seen(e, votes) == (7,)
+    assert _seen(entry(counterparty_ref="CR"), votes) == ()
+
+
+def test_categories_seen_by_payee_and_none_for_a_booking_or_without_history() -> None:
+    votes = flows(2, payee_id=7, category_id=9)
+    assert _seen(entry(), votes, payee=7) == (9,)
+    assert _seen(entry(), votes) == ()
+    assert (
+        _seen(
+            entry(booking="document", counterparty_ref="CR"), flows(1, counterparty_ref="CR", category_id=1)
+        )
+        == ()
+    )
+    assert H.categories_seen(entry(counterparty_ref="CR"), ClassifierContext()) == ()
 
 
 def test_missing_input_skips_key() -> None:
@@ -317,7 +478,7 @@ def test_booking_text_alone_is_never_a_key() -> None:
         assert run(field, e, [savings, other]) is None  # type: ignore[arg-type]
 
 
-def test_paypal_key4_proposes_payee_not_category() -> None:
+def test_paypal_payee_follows_the_counterparty_category_follows_the_purpose() -> None:
     past = [
         vote(
             counterparty_name="PayPal Europe S.a.r.l.",
@@ -329,13 +490,17 @@ def test_paypal_key4_proposes_payee_not_category() -> None:
         vote(counterparty_name="PayPal Europe S.a.r.l.", purpose="PAYPAL Steam", payee_id=3, category_id=3),
     ]
     e = entry(counterparty_name="PayPal Europe S.a.r.l.", purpose="PAYPAL Kindle")
-    # key 2 sees all three: payee 3 agrees 3 of 3, but categories split
+    # all three match: payee 3 agrees 3 of 3, but the categories split
     assert run("payee", e, past) is not None
     assert run("category", e, past) is None
-    e5 = entry(counterparty_name="PayPal (Europe)", purpose="PAYPAL Kindle")
-    p = run("payee", e5, past)
-    assert p is not None and p.value == 3 and p.basis["matched_on"] == "tokens"
-    assert run("category", e5, past) is None
+    # the merchant behind the intermediary is in the purpose
+    again = entry(counterparty_name="PayPal Europe S.a.r.l.", purpose="PAYPAL Netflix")
+    p = run("category", again, past)
+    assert (
+        p is not None and p.value == 2 and p.basis["matched_on"] == "counterparty_name+booking_text+purpose"
+    )
+    # another descriptor shares no key: nothing, whatever the words
+    assert run("payee", entry(counterparty_name="PayPal (Europe)", purpose="PAYPAL Kindle"), past) is None
 
 
 # ---- properties ----

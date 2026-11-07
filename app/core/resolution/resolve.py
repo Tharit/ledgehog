@@ -19,6 +19,7 @@ from app.core.plugins.classifier import (
     EMPTY,
     MAY_BE_EMPTY,
     AccountFact,
+    CategoryEvidence,
     Classifier,
     ClassifierContext,
     EntryInput,
@@ -53,6 +54,16 @@ class _Run:
     # the explained absences (a proposal with no value) met while looking for a type, by field: when no
     # pass decides a type, nothing proposes a value either, but an absence still stands
     explained: dict[Field, Decided] = dataclass_field(default_factory=dict)
+    # what the evidence counted for the category, by the payee resolved when asked (it is key 3's input)
+    _seen: dict[int | None, tuple[int, ...]] = dataclass_field(default_factory=dict)
+
+    def seen_categories(self) -> tuple[int, ...]:
+        """The categories history counted for this entry's category, given what is decided so far."""
+        payee = self.decided.get("payee")
+        key = payee.value if payee is not None and isinstance(payee.value, int) else None
+        if key not in self._seen:
+            self._seen[key] = categories_for_model(self.entry, self.ctx(), self.classifiers)
+        return self._seen[key]
 
     def ctx(self) -> ClassifierContext:
         return ClassifierContext(
@@ -61,6 +72,7 @@ class _Run:
             account_ok=self.account_ok,
             history=self.history,
             exclude_entry_ids=self.exclude_entry_ids,
+            model_categories=self.seen_categories,
         )
 
     def account_ok(self, account_id: int) -> bool:
@@ -165,14 +177,18 @@ class _Run:
     def first_proposal(self, field: Literal["payee", "category"]) -> Decided | None:
         if (d := self.fixed.get(field)) is not None:
             return d
+        held: tuple[Classifier, Proposal] | None = None
         for c in self.classifiers:
             p = self.ask(c, field)
             if p is None:
                 continue
+            if p.gives_way:  # a later pass's proposal wins over this one; without one it stands
+                held = held or (c, p)
+                continue
             if p.value == EMPTY:  # an empty result wins like a value, ends the search, stores nothing
                 return None
             return self.decision(c, p)
-        return None
+        return self.decision(*held) if held is not None else None
 
     def run(self) -> Resolved:
         kind = self.type_()
@@ -187,6 +203,18 @@ class _Run:
                 if (d := self.first_proposal(field)) is not None:
                     self.decided[field] = d
         return Resolved(self.decided)
+
+
+def categories_for_model(
+    entry: EntryInput, ctx: ClassifierContext, classifiers: Sequence[Classifier]
+) -> tuple[int, ...]:
+    """The categories the evidence counted for the entry's category (what the model is told, spec §5.9
+    pass 3): the first classifier that keeps such evidence says. `ctx` carries what is decided so far (the
+    payee)."""
+    for c in classifiers:
+        if isinstance(c, CategoryEvidence):
+            return c.categories_seen(entry, ctx)
+    return ()
 
 
 def resolve(

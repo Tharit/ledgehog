@@ -29,8 +29,10 @@ from app.core.plugins.classifier import (
     STANDING_PASSES,
     AccountFact,
     Classifier,
+    ClassifierContext,
     Field,
     HistorySource,
+    Proposal,
 )
 from app.core.resolution import Decided, Resolved, diff, rederive, resolve_afresh
 from app.core.resolution.load import (
@@ -41,8 +43,9 @@ from app.core.resolution.load import (
     load_units_of,
 )
 from app.core.resolution.registry import classifiers_for
+from app.core.resolution.resolve import categories_for_model
 from app.core.resolution.snapshot import load_snapshot, load_votes_of, touches
-from app.core.resolution.types import column_of, is_decided_empty
+from app.core.resolution.types import column_of, gives_way_key, is_decided_empty
 from app.core.settle.run import ResolutionContext, SettleRun, StepOutcome, current_run
 
 _COLUMN: dict[Field, str] = {
@@ -115,7 +118,7 @@ def resolve_afresh_step(conn: Connection, entry_ids: Sequence[int]) -> StepOutco
         # step 1 listed this round's entries before these booking entries existed (or had their text) and a
         # list is replaced as a whole: list them again with the booking entries resolved, as stored now, even
         # when resolving wrote nothing (a new entry is already as resolution leaves it)
-        _list_for_model(load_unconfirmed(conn), {})
+        _list_for_model(load_unconfirmed(conn), {}, ctx)
     return outcome
 
 
@@ -353,31 +356,54 @@ def resolve_step(conn: Connection) -> StepOutcome:
         history=ctx.snapshot,
     )
     outcome = write_rewrites(conn, rewrites)
-    _list_for_model(rows, rewrites)
+    _list_for_model(rows, rewrites, ctx)
     return outcome
 
 
-def _list_for_model(rows: Sequence[UnconfirmedEntry], rewrites: Mapping[int, Rewrite]) -> None:
+def _list_for_model(
+    rows: Sequence[UnconfirmedEntry], rewrites: Mapping[int, Rewrite], ctx: ResolutionContext
+) -> None:
     """Hand the model's list what falls to pass 3 (spec §5.9, architecture §5.4): the entries whose category
     falls to it (a flow, or an entry without a type yet, that no pass proposed a category for: no value, no
-    explained absence, such a key says the field is answered) and whose payload is not empty. Settling never
-    waits for the model: this only fills an in-memory list. No model configured: nothing is listed."""
+    explained absence, such a key says the field is answered; or whose category is history's proposal where
+    its votes are not unanimous, which the model's answer replaces) and whose payload is not empty. Each
+    is listed with the categories history counted for it, which its payload carries. Settling never waits
+    for the model: this only fills an in-memory list. No model configured: nothing is listed."""
     queue = current_model_queue()
     if queue is None:
         return
     wanted: list[Item] = []
+    seen_of: dict[Item, tuple[int, ...]] = {}
     for row in rows:
         if row.paired:
             continue
         rewrite = rewrites.get(row.input.entry_id)
         kind, category = (rewrite.type, rewrite.category_id) if rewrite else (row.type, row.category_id)
+        payee = rewrite.payee_id if rewrite else row.payee_id
         derivation = rewrite.derivation if rewrite else row.derivation
-        if kind not in (None, "flow") or category is not None or "category" in derivation:
-            continue  # a key on the empty category is a proposal's explained absence (an entry settling
-            # does not rewrite carries only keys resolution produced)
-        if (fingerprint := queue.fingerprint(row.input)) is not None:
-            wanted.append((row.input.entry_id, fingerprint))
-    queue.sync(wanted)
+        key = derivation.get("category")
+        if kind not in (None, "flow"):
+            continue
+        if category is None:
+            if "category" in derivation:
+                continue  # a key on the empty category is a proposal's explained absence (an entry
+                # settling does not rewrite carries only keys resolution produced)
+        elif not (isinstance(key, Mapping) and gives_way_key(key)):
+            continue  # decided, or a proposal that stands
+        seen = categories_for_model(
+            row.input,
+            ClassifierContext(
+                resolved={"payee": Proposal("payee", payee, {})} if payee is not None else {},
+                history=ctx.snapshot,
+                exclude_entry_ids=frozenset({row.input.entry_id}),
+            ),
+            ctx.classifiers,
+        )
+        if (fingerprint := queue.fingerprint(row.input, seen)) is not None:
+            item = (row.input.entry_id, fingerprint)
+            wanted.append(item)
+            seen_of[item] = seen
+    queue.sync(wanted, seen_of)
 
 
 def write_rewrites(conn: Connection, rewrites: Mapping[int, Rewrite]) -> StepOutcome:

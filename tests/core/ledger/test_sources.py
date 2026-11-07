@@ -235,14 +235,17 @@ def test_an_unclassified_entry_waits_in_the_queue(isolated_engine: Engine, acct:
     assert [u.anchor_entry_id for u in pending.units] == [view.anchor_entry_id]
 
 
-def test_history_proposes_from_the_purpose(isolated_engine: Engine, acct: int, world: dict[str, int]):
+def test_history_does_not_propose_from_the_purpose_alone(
+    isolated_engine: Engine, acct: int, world: dict[str, int]
+):
+    # a user-authored row has no counterparty, so no key applies: words alone are no evidence (D241)
     first = enter(isolated_engine, acct, purpose="Bakery Mueller")
     (e,) = entries_of(isolated_engine, first.source_id)
     confirm(isolated_engine, e.id, world["food"])
     second = enter(isolated_engine, acct, purpose="Bakery Mueller")
     (e2,) = entries_of(isolated_engine, second.source_id)
-    assert (e2.type, e2.category_id) == ("flow", world["food"])
-    assert e2.derivation["category"]["pass"] == "history"
+    assert (e2.type, e2.category_id) == (None, None)
+    assert "category" not in e2.derivation
 
 
 def test_a_repeated_id_returns_the_row_and_writes_nothing(isolated_engine: Engine, acct: int):

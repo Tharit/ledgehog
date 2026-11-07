@@ -5,7 +5,9 @@ background and stores the answer as the category's `llm` key with the payload's 
 proposes that answer again while the entry's payload still has the fingerprint, and nothing otherwise (a
 changed payload, a stale answer: the worker asks anew). The answer is a category, or the explained absence of
 one: "no category fits" (`basis.none`), proposed with no value. Category only, never a payee. It asks nothing,
-so it is registered with or without a model configured: answers stored earlier stand either way.
+so it is registered with or without a model configured: answers stored earlier stand either way. The
+fingerprint covers the categories history counted (`ctx.model_categories`): when they change, the answer
+no longer stands and the model is asked again.
 """
 
 from __future__ import annotations
@@ -27,7 +29,7 @@ class LlmClassifier:
             return None
         if stored.value is not None and not isinstance(stored.value, int):
             return None
-        fingerprint = payload_fingerprint(entry)
+        fingerprint = payload_fingerprint(entry, ctx.model_categories())
         if fingerprint is None or stored.basis.get("fingerprint") != fingerprint:
             return None
         return Proposal("category", stored.value, dict(stored.basis))

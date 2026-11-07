@@ -41,6 +41,8 @@ INSTRUCTION = (
     "then the rationale says what it is and what kind of category would fit it, "
     'for example "a Catalan motorway toll; there is no category for tolls". '
     "Never invent an id. "
+    "Where the entry lists categories this household chose before for this counterparty, "
+    "prefer one of them when the text fits it; the text decides. "
     "Answer with a JSON object: category_id (the id, or null) and rationale "
     f"(one short line, at most {RATIONALE_MAX} characters, saying why)."
 )
@@ -116,10 +118,14 @@ class OpenAIModelClient:
         self._effort = reasoning_effort
         self._http = httpx2.AsyncClient(timeout=timeout, headers=auth_headers(api_key), transport=transport)
 
-    def fingerprint(self, subject: EntryInput) -> str | None:
-        return payload_fingerprint(subject)
+    def fingerprint(self, subject: EntryInput, seen: Sequence[int] = ()) -> str | None:
+        return payload_fingerprint(subject, seen)
 
-    def request_body(self, payload: dict[str, str], categories: Sequence[CategoryPath]) -> dict[str, Any]:
+    def request_body(
+        self, payload: dict[str, str], categories: Sequence[CategoryPath], seen: Sequence[int] = ()
+    ) -> dict[str, Any]:
+        by_id = {c.id: c.path for c in categories}
+        seen_paths = sorted(by_id[i] for i in set(seen) if i in by_id)
         return {
             "model": self.name,
             "temperature": 0,
@@ -127,20 +133,22 @@ class OpenAIModelClient:
             "stream": False,
             "messages": [
                 {"role": "system", "content": system_message(categories)},
-                {"role": "user", "content": user_message(payload)},
+                {"role": "user", "content": user_message(payload, seen_paths)},
             ],
             "response_format": response_format(categories),
             **reasoning_field(self._effort),
         }
 
-    async def ask(self, subject: EntryInput, categories: Sequence[CategoryPath]) -> ModelAnswer | NoAnswer:
+    async def ask(
+        self, subject: EntryInput, categories: Sequence[CategoryPath], seen: Sequence[int] = ()
+    ) -> ModelAnswer | NoAnswer:
         payload = payload_of(subject)
         if payload is None:
             return NoAnswer("empty_payload")
         if not categories:
             return NoAnswer("no_categories")
         try:
-            response = await self._http.post(self._url, json=self.request_body(payload, categories))
+            response = await self._http.post(self._url, json=self.request_body(payload, categories, seen))
             response.raise_for_status()
             body = response.json()
         except httpx2.HTTPStatusError as exc:

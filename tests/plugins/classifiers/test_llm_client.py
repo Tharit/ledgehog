@@ -13,8 +13,14 @@ from app.core.plugins.classifier import ClassifierContext, EntryInput
 from app.core.plugins.model import CategoryPath, ModelUnavailable, NoAnswer
 from app.core.resolution import Decided
 from app.plugins.classifiers.llm import LlmClassifier, OpenAIModelClient
-from app.plugins.classifiers.llm.client import RATIONALE_MAX, RATIONALE_MIN, parse_reply, system_message
-from app.plugins.classifiers.llm.payload import fingerprint_of, payload_of
+from app.plugins.classifiers.llm.client import (
+    INSTRUCTION,
+    RATIONALE_MAX,
+    RATIONALE_MIN,
+    parse_reply,
+    system_message,
+)
+from app.plugins.classifiers.llm.payload import fingerprint_of, payload_fingerprint, payload_of
 
 pytestmark = pytest.mark.anyio
 
@@ -252,3 +258,49 @@ def test_the_classifier_proposes_nothing_otherwise() -> None:
     assert clf.propose("category", changed, ctx) is None  # the payload changed
     other = ClassifierContext(stored={"category": Decided(3, "history", dict(stored.basis))})
     assert clf.propose("category", entry, other) is None  # not the model's key
+
+
+async def test_the_categories_history_counted_are_sent_as_paths_in_path_order() -> None:
+    endpoint = Endpoint()
+    client = _client(endpoint)
+    await client.ask(_entry(1, counterparty_name="Friend Max"), CATEGORIES, seen=[3, 1, 99])  # 99: unknown
+    user = endpoint.body()["messages"][1]["content"]
+    assert user == (
+        "counterparty: Friend Max\n"
+        "categories this household chose before for this counterparty:\n"
+        "- Expense > Food\n"
+        "- Expense > Travel > Tolls"
+    )
+    await client.ask(_entry(2, counterparty_name="Friend Max"), CATEGORIES)
+    assert endpoint.body(1)["messages"][1]["content"] == "counterparty: Friend Max"
+    await client.aclose()
+
+
+def test_the_client_fingerprint_follows_the_payload_and_the_category_ids() -> None:
+    client = OpenAIModelClient("http://model.test/v1", "m")
+    e = _entry(counterparty_name="X")
+    assert client.fingerprint(e) == payload_fingerprint(e) and client.fingerprint(
+        e, [1, 2]
+    ) != client.fingerprint(e)
+    assert client.fingerprint(e, [2, 1]) == client.fingerprint(e, [1, 2])
+
+
+def test_the_instruction_explains_the_categories_chosen_before() -> None:
+    assert "chose before for this counterparty" in INSTRUCTION and "the text decides" in INSTRUCTION
+
+
+def test_the_classifier_stands_only_for_the_categories_it_was_asked_with() -> None:
+    entry = _entry(counterparty_name="AUCAT")
+    payload = payload_of(entry)
+    assert payload is not None
+    stored = Decided(
+        3, "llm", {"model": "m", "rationale": "r", "fingerprint": fingerprint_of(payload, [1, 2])}
+    )
+    clf = LlmClassifier()
+
+    def ctx(seen: tuple[int, ...]) -> ClassifierContext:
+        return ClassifierContext(stored={"category": stored}, model_categories=lambda: seen)
+
+    assert clf.propose("category", entry, ctx((2, 1))) is not None
+    assert clf.propose("category", entry, ctx((1, 2, 5))) is None  # a category entered the top three
+    assert clf.propose("category", entry, ctx(())) is None

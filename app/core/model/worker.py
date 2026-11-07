@@ -35,7 +35,8 @@ from app.core.plugins.model import (
     ModelUnavailable,
     NoAnswer,
 )
-from app.core.resolution.load import UnconfirmedEntry, load_units_of
+from app.core.resolution.load import UnconfirmedEntry, load_category_paths, load_units_of
+from app.core.resolution.types import gives_way_key
 from app.core.settle import settle
 
 log = logging.getLogger("ledgehog.model")
@@ -55,33 +56,16 @@ _STORE = text(
     """
 )
 
-# the "none" answer (no category fits): the key alone, the category left empty and the type as it is
+# the "none" answer (no category fits): the key alone, the category emptied (it may hold history's proposal,
+# which the answer replaces) and the type as it is
 _STORE_NONE = text(
     """
     UPDATE ledger_entry
-       SET derivation = (derivation - 'category') || jsonb_build_object('category', CAST(:key AS jsonb))
+       SET category_id = NULL,
+           derivation = (derivation - 'category') || jsonb_build_object('category', CAST(:key AS jsonb))
      WHERE id = :id
     """
 )
-
-
-def load_category_paths(conn: Connection) -> list[CategoryPath]:
-    """The whole category tree as paths (`Expense > Food > Groceries`; the roots are the kinds)."""
-    rows = {
-        int(r.id): (str(r.name), str(r.kind), int(r.parent_id) if r.parent_id is not None else None)
-        for r in conn.execute(text("SELECT id, name, kind, parent_id FROM category"))
-    }
-
-    def path(category_id: int) -> str:
-        name, kind, parent = rows[category_id]
-        names = [name]
-        while parent is not None:
-            name, _, parent = rows[parent]
-            names.append(name)
-        names.append(kind.capitalize())
-        return " > ".join(reversed(names))
-
-    return sorted((CategoryPath(i, path(i)) for i in rows), key=lambda c: (c.path, c.id))
 
 
 def _row_of(conn: Connection, entry_id: int) -> UnconfirmedEntry | None:
@@ -92,13 +76,14 @@ def _row_of(conn: Connection, entry_id: int) -> UnconfirmedEntry | None:
 
 
 def _may_take_answer(row: UnconfirmedEntry) -> bool:
-    """The category is still the model's to fill: empty, or held by an earlier answer of its own."""
+    """The category is still the model's to fill: empty, held by an earlier answer of its own, or held by
+    history's proposal where it gives way (its votes are not unanimous, spec §5.9)."""
     if row.type not in (None, "flow"):
         return False
     if row.category_id is None:
         return True
     key = row.derivation.get("category")
-    return isinstance(key, Mapping) and key.get("pass") == "llm"
+    return isinstance(key, Mapping) and (key.get("pass") == "llm" or gives_way_key(key))
 
 
 class ModelWorker:
@@ -167,12 +152,13 @@ class ModelWorker:
         """Ask the model about one listed entry and store what it answers (the loop's one step)."""
         started = loop_time()
         try:
-            loaded = await asyncio.to_thread(self._load, item)
+            seen = self.queue.categories_of(item)
+            loaded = await asyncio.to_thread(self._load, item, seen)
             if loaded is None:  # gone, confirmed or its payload changed: settling lists what is left
                 self.queue.finish(item, answered=True)
                 return
             subject, categories = loaded
-            answer = await self.client.ask(subject, categories)
+            answer = await self.client.ask(subject, categories, seen)
         except ModelUnavailable as exc:
             if self.queue.mark_unavailable():
                 log.warning(
@@ -189,7 +175,7 @@ class ModelWorker:
             spent = f" after {answer.tokens} tokens" if answer.tokens is not None else ""
             outcome, stored = f"no answer ({answer.reason}{spent})", False
         else:
-            outcome = await asyncio.to_thread(self._store, item, answer)
+            outcome = await asyncio.to_thread(self._store, item, answer, seen)
             stored = outcome.startswith("stored")
         self.queue.finish(item, answered=stored)
         # the outcome and its reason only: never the payload, the reply or the key
@@ -197,15 +183,19 @@ class ModelWorker:
 
     # ---- reading and writing (threads) ----------------------------------------------------------
 
-    def _load(self, item: Item) -> tuple[EntryInput, list[CategoryPath]] | None:
+    def _load(self, item: Item, seen: tuple[int, ...]) -> tuple[EntryInput, list[CategoryPath]] | None:
         entry_id, fingerprint = item
         with self.engine.connect() as conn:
             row = _row_of(conn, entry_id)
-            if row is None or not _may_take_answer(row) or self.client.fingerprint(row.input) != fingerprint:
+            if (
+                row is None
+                or not _may_take_answer(row)
+                or self.client.fingerprint(row.input, seen) != fingerprint
+            ):
                 return None
             return row.input, load_category_paths(conn)
 
-    def _store(self, item: Item, answer: ModelAnswer) -> str:
+    def _store(self, item: Item, answer: ModelAnswer, seen: tuple[int, ...]) -> str:
         """Write the answer inside a settle. The outcome for the log: `stored`, `stored, no fitting
         category`, or `dropped (why)` when nothing is written."""
         entry_id, fingerprint = item
@@ -230,7 +220,7 @@ class ModelWorker:
             if not _may_take_answer(row):
                 outcome = "dropped (category decided meanwhile)"
                 return None
-            if self.client.fingerprint(row.input) != fingerprint:
+            if self.client.fingerprint(row.input, seen) != fingerprint:
                 outcome = "dropped (payload changed)"
                 return None
             if (

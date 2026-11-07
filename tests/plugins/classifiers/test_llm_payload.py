@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date
 
 from app.core.plugins.classifier import EntryInput
-from app.plugins.classifiers.llm.payload import fingerprint_of, payload_of, user_message
+from app.plugins.classifiers.llm.payload import fingerprint_of, payload_fingerprint, payload_of, user_message
 
 SECRETS = ("DE89370400440532013000", "COBADEFFXXX", "E2E-REF-77", "MANDATE-55", "1234567", "2026-02-10")
 
@@ -84,3 +84,35 @@ def test_a_source_text_alone_is_a_payload_and_a_blank_one_is_none() -> None:
         "account": "A",
     }
     assert payload_of(_entry(source_text="  ", account_name="A")) is None
+
+
+# ---- the categories history counted ----------------------------------------------------------------
+
+
+def test_the_categories_are_paths_in_the_message_and_never_counts_or_past_text() -> None:
+    payload = payload_of(_entry(counterparty_name="Friend Max", purpose="Konzert"))
+    assert payload is not None
+    sent = user_message(payload, ["Expense > Dining", "Expense > Rent"])
+    assert sent.splitlines()[-3:] == [
+        "categories this household chose before for this counterparty:",
+        "- Expense > Dining",
+        "- Expense > Rent",
+    ]
+    assert sent.startswith("counterparty: Friend Max\npurpose: Konzert\n")
+    for secret in SECRETS:
+        assert secret not in sent
+    assert not any(ch.isdigit() for ch in sent)  # no counts, ids or dates
+    assert user_message(payload) == "counterparty: Friend Max\npurpose: Konzert"  # none counted: as before
+
+
+def test_the_fingerprint_covers_the_category_ids_as_a_set_never_their_counts_or_paths() -> None:
+    payload = payload_of(_entry(counterparty_name="Friend Max"))
+    assert payload is not None
+    plain = fingerprint_of(payload)
+    assert fingerprint_of(payload, []) == plain  # nothing counted: the fingerprint of the text alone
+    with_cats = fingerprint_of(payload, [4, 9])
+    assert with_cats != plain
+    assert fingerprint_of(payload, [9, 4]) == fingerprint_of(payload, [4, 4, 9]) == with_cats
+    assert fingerprint_of(payload, [4, 10]) != with_cats  # a category entered the set
+    assert payload_fingerprint(_entry(counterparty_name="Friend Max"), [4, 9]) == with_cats
+    assert payload_fingerprint(_entry(), [4, 9]) is None  # no text, no pass

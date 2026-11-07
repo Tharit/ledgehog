@@ -13,14 +13,12 @@ from app.core.plugins.classifier import HISTORY_KEYS, EntryInput
 from app.core.resolution.confirmed import load_confirmed_ids
 from app.core.resolution.snapshot import (
     LOOKBACK_DAYS,
-    TOKEN_REACH,
     HistorySnapshot,
     load_snapshot,
     load_votes,
     load_votes_of,
     touches,
 )
-from app.plugins.classifiers.history import JACCARD_MIN
 from tests.core.units.helpers import Bench, keys
 from tests.invariants.helpers import make_category, make_entry, make_source
 from tests.plugins.classifiers.fakes import ListHistory, entry, vote
@@ -97,23 +95,17 @@ def test_lookback_is_a_year_either_side() -> None:
     snap = HistorySnapshot(near + far)
     e = entry(counterparty_ref="X", counterparty_name="X", booked_on=day)
     assert _ids(snap.candidates("counterparty_ref", e)) == _ids(near)
-    snap_t = HistorySnapshot([vote(counterparty_name="alpha", booked_on=v.booked_on) for v in near + far])
-    assert len(snap_t.candidates("tokens", entry(counterparty_name="alpha", booked_on=day))) == 2
 
 
-def test_token_reach_is_the_classifiers_threshold() -> None:
-    assert TOKEN_REACH == JACCARD_MIN
-
-
-def test_touches_is_exact_for_equality_keys_and_similarity_for_tokens() -> None:
+def test_touches_is_exact_for_the_keys() -> None:
     grown = HistorySnapshot().add(
         [vote(counterparty_ref="R1", counterparty_name="Alpha Shop", purpose="Einkauf", payee_id=5)]
     )
     assert touches(grown, entry(counterparty_ref="r-1"), None)
     assert touches(grown, entry(counterparty_name="ALPHA SHOP"), None)
     assert touches(grown, entry(counterparty_name="zzz"), 5)
-    assert touches(grown, entry(counterparty_name="alpha", purpose="einkauf shop"), None)
-    assert not touches(grown, entry(counterparty_name="alpha beta gamma delta"), None)  # 1 of 5 tokens
+    # the purpose only refines what a key finds: wording alone reaches nothing
+    assert not touches(grown, entry(counterparty_name="alpha", purpose="einkauf shop"), None)
     assert not touches(grown, entry(counterparty_name="Other"), 6)
     assert not touches(grown, entry(), None)  # an empty value is never a key
 

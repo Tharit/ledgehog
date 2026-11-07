@@ -6,7 +6,7 @@ from datetime import timedelta
 
 import pytest
 
-from app.core.plugins.classifier import EMPTY
+from app.core.plugins.classifier import EMPTY, Proposal
 from app.core.resolution import Decided, resolve
 from tests.core.resolution.helpers import DAY, Boom, Script, account, entry
 
@@ -229,3 +229,80 @@ def test_resolved_is_immutable_and_ordered() -> None:
     assert list(r) == ["type", "payee", "category"]
     with pytest.raises(TypeError):
         r["payee"] = Decided(1, "x", {})  # type: ignore[index]
+
+
+# ---- a proposal that gives way (history's category where its votes are mixed, spec §5.9) ----
+
+
+class _Evidence(Script):
+    """A scripted classifier that also says which categories its evidence counted."""
+
+    def __init__(self, pass_name: str, answers, seen: tuple[int, ...]) -> None:  # type: ignore[no-untyped-def]
+        super().__init__(pass_name, answers)
+        self.seen = seen
+
+    def categories_seen(self, entry, ctx):  # type: ignore[no-untyped-def]
+        return self.seen
+
+
+def _gives_way(value: int) -> Proposal:
+    return Proposal("category", value, {"by": "history"}, gives_way=True)
+
+
+class _Gives:
+    pass_name = "history"
+
+    def __init__(self, value: int) -> None:
+        self.value = value
+
+    def propose(self, field, entry, ctx):  # type: ignore[no-untyped-def]
+        return _gives_way(self.value) if field == "category" else None
+
+
+class _Seen(_Gives):
+    def categories_seen(self, entry, ctx):  # type: ignore[no-untyped-def]
+        return (5, 6)
+
+
+def test_a_proposal_that_gives_way_stands_when_no_later_pass_proposes() -> None:
+    r = run([_Gives(7), Script("llm", {})])
+    assert r["category"].value == 7 and r["category"].pass_name == "history" and r["type"].value == "flow"
+
+
+def test_a_later_proposal_wins_over_one_that_gives_way() -> None:
+    r = run([_Gives(7), Script("llm", {"category": 8})])
+    assert r["category"].value == 8 and r["category"].pass_name == "llm"
+    assert r["type"].pass_name == "history"  # the type was decided by the first proposal for a flow
+
+
+def test_an_explained_absence_of_a_later_pass_wins_over_one_that_gives_way() -> None:
+    class Absent:
+        pass_name = "llm"
+
+        def propose(self, field, entry, ctx):  # type: ignore[no-untyped-def]
+            return Proposal("category", None, {"why": "none fits"}) if field == "category" else None
+
+    r = run([_Gives(7), Absent()])
+    # decided as a flow by history; the absence is the key of the empty category, the later pass's
+    assert r["type"].value == "flow"
+    assert r["category"].value is None and r["category"].pass_name == "llm" and r["category"].basis["none"]
+
+
+def test_a_pass_after_a_proposal_that_stands_is_not_asked() -> None:
+    later = Script("llm", {"category": 8})
+    r = run([Script("rule", {"category": 4}), _Gives(7), later])
+    assert r["category"].value == 4
+    assert all(f != "category" for f, _ in later.calls)
+
+
+def test_the_context_tells_a_later_pass_what_the_evidence_counted() -> None:
+    got: list[tuple[int, ...]] = []
+
+    def spy(ctx) -> None:  # type: ignore[no-untyped-def]
+        got.append(ctx.model_categories())
+
+    run([_Seen(7), Script("llm", {"category": spy})])
+    assert got and set(got) == {(5, 6)}
+    got.clear()
+    run([Script("rule", {}), Script("llm", {"category": spy})])  # no classifier keeps evidence
+    assert set(got) == {()}

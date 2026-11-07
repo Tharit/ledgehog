@@ -3,8 +3,8 @@
 Status: **written ahead, in v1; expected to churn.** A tuning document: the
 starting definitions below are guesses to be adjusted against a month of real
 data. `spec.md` §5.9 owns what history learns from (I19), its keys and their
-order, the strict-majority rule and the hard filters on counter-account
-evidence; `architecture.md` §5.4 the protocol and the read-only history source
+order, the purpose refinement, the strict-majority rule and when history
+gives way to the model, and the hard filters on counter-account evidence; `architecture.md` §5.4 the protocol and the read-only history source
 core provides. This document covers what counts as a match for each key, what
 is counted, and the parameters.
 
@@ -35,18 +35,25 @@ only) unless said otherwise.
    a booking text, votes with a different one are left out; votes without one
    still count.
 3. **`payee_id`** — equal; for the category only (`spec.md` §5.9).
-4. **tokens** — the tokens of `counterparty_name` and `purpose` together: NFKC,
-   casefolded, split on anything not alphanumeric, keeping tokens of at least
-   **3 characters with no digit**. A vote matches when the Jaccard similarity of
-   the two token sets is at least **0.5**. An entry without tokens skips the
-   key.
+
 A key whose input the entry lacks — no `counterparty_ref`, no name — is
 skipped. All keys read the raw source fields on both sides.
 
+**Similar purpose.** A key's matches are first narrowed to those whose purpose
+resembles the entry's: the tokens of each purpose — NFKC, casefolded, split on
+anything not alphanumeric, keeping tokens of at least **3 characters with no
+digit** — have a Jaccard similarity of at least **0.5**. An entry whose purpose
+has no tokens skips the narrowing; a vote whose purpose has none is not
+similar. The counterparty name is left out: the key has already matched the
+counterparty, and its words would make every match look similar.
+
 ## 3. What is counted, per field
 
-For each field, keys are tried in order; the first key whose votes produce a
-strict majority wins (`spec.md` §5.9).
+For each field, keys are tried in order, each first on its similar-purpose
+matches and then on all its matches; the first set of matches that produces a
+strict majority wins (`spec.md` §5.9). On the category, the proposal is
+history's only when that set is unanimous; otherwise it gives way to the model
+(`spec.md` §5.9, pass 3).
 
 - **Type** — every matching vote counts, by its type.
 - **Counter-account** — only for a transfer; only paired votes count, and only
@@ -59,8 +66,15 @@ strict majority wins (`spec.md` §5.9).
   none is evidence. Confirmed flows always carry a category.
   Key 3 applies to the category only, and only once the payee is resolved.
 
-*Of how many* is the number of votes counted for that field under that key,
+*Of how many* is the number of votes counted for that field in that set,
 after the filters above — the matches of `spec.md` §5.9.
+
+**What the model is told.** Where history counted votes for the category, the
+model's payload carries their categories: all the matches of the first key that
+has any, not only the similar ones; the three most frequent, ties broken by
+path, sent in path order. Neither counts nor the text of past entries are sent:
+counts change with each confirmation, and every change would ask the model
+again for each unconfirmed entry of the counterparty.
 
 ## 4. Basis
 
@@ -70,7 +84,8 @@ after the filters above — the matches of `spec.md` §5.9.
 ```
 
 `matched_on` is one of `counterparty_ref`, `counterparty_name+booking_text`,
-`payee`, `tokens`; `since` is the earliest booking date among
+`payee`, each with `+purpose` appended where the similar-purpose matches
+decided; `since` is the earliest booking date among
 the votes counted. A counter-account basis adds the proposed `account_id`, as
 in `spec.md` §4.
 
@@ -79,12 +94,9 @@ in `spec.md` §4.
 | Parameter | Start | Watch for |
 |---|---|---|
 | lookback | 365 days, both sides | merchants whose category drifts; seasonal counterparties |
-| key 4 similarity | Jaccard ≥ 0.5 | PayPal and card descriptors matching too broadly or not at all |
-| key 4 token length | ≥ 3, no digits | reference numbers and dates leaking into tokens |
-| strict majority | fixed for now | mixed payees and counterparties (Amazon, a supermarket selling household goods) proposing one category systematically |
-
-A stop list for key 4 (`gmbh`, `sagt`, `danke`, city names) is the expected
-first refinement once real purpose lines are seen.
+| purpose similarity | Jaccard ≥ 0.5 | one counterparty's purposes told apart too finely, or not at all (an intermediary's boilerplate) |
+| purpose token length | ≥ 3, no digits | reference numbers and dates leaking into tokens; stable numbers (customer, contract) lost where they are the only thing telling a counterparty's purposes apart |
+| strict majority; unanimity on the category | fixed for now | model calls for counterparties mixed only by one old outlier |
 
 **No key on item texts.** Booking entries — an order's items — stay out of
 history (§1): item titles rarely repeat exactly, and tokens over them are

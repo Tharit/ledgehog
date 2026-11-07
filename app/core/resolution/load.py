@@ -14,6 +14,7 @@ from sqlalchemy.sql.elements import TextClause
 
 from app.core.domain.source import BookingRef, SourceFields
 from app.core.plugins.classifier import AccountFact, Condition, EntryInput, RuleSpec
+from app.core.plugins.model import CategoryPath
 from app.core.resolution.confirmed import units_binds, units_sql
 
 
@@ -36,6 +37,25 @@ def load_accounts(conn: Connection) -> list[AccountFact]:
             )
         )
     ]
+
+
+def load_category_paths(conn: Connection) -> list[CategoryPath]:
+    """The whole category tree as paths (`Expense > Food > Groceries`; the roots are the kinds)."""
+    rows = {
+        int(r.id): (str(r.name), str(r.kind), int(r.parent_id) if r.parent_id is not None else None)
+        for r in conn.execute(text("SELECT id, name, kind, parent_id FROM category"))
+    }
+
+    def path(category_id: int) -> str:
+        name, kind, parent = rows[category_id]
+        names = [name]
+        while parent is not None:
+            name, _, parent = rows[parent]
+            names.append(name)
+        names.append(kind.capitalize())
+        return " > ".join(reversed(names))
+
+    return sorted((CategoryPath(i, path(i)) for i in rows), key=lambda c: (c.path, c.id))
 
 
 def conditions_of(stored: Any) -> tuple[Condition, ...]:

@@ -30,6 +30,18 @@ def is_decided_empty(d: Decided | None) -> bool:
     return d is not None and d.value is None and d.pass_name == "user"
 
 
+def gives_way_key(key: Mapping[str, Any]) -> bool:
+    """A stored category key that is history's proposal where its votes were not unanimous (spec §5.9):
+    the model's answer replaces it. Read from the basis the proposal stored: `agree` of `of`."""
+    basis = key.get("basis")
+    return (
+        key.get("pass") == "history"
+        and isinstance(basis, Mapping)
+        and isinstance(basis.get("agree"), int)
+        and basis.get("agree") != basis.get("of")
+    )
+
+
 def is_explained_absence(d: Decided | None) -> bool:
     """A pass's proposal that the field stays empty (its basis says why)."""
     return d is not None and d.value is None and d.pass_name != "user"

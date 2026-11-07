@@ -11,7 +11,7 @@ from app.core.ingest.identity import canonical_text
 from app.core.matching import MAX_WINDOW, Leg, PoolEntry, Summary
 from app.core.resolution.load import load_accounts, load_rules
 from app.core.resolution.registry import classifiers_for
-from app.core.resolution.snapshot import HistorySnapshot, load_votes
+from app.core.resolution.snapshot import HistorySnapshot, category_paths_of, load_votes
 from app.core.settle.pairing import load_unpaired_legs
 from app.core.settle.window import matching_window_days
 from app.core.units.draft import UnitDraft
@@ -124,7 +124,9 @@ def load_world(conn: Connection, stored: StoredUnit, draft: UnitDraft, *, ledger
     `ledger_wide` (the preview) also loads every unpaired transfer leg of the ledger, so that the simulation
     of settling can pair the unit's legs with legs outside it. A commit leaves it off: settling follows."""
     closure = {e.id for e in stored.entries}
-    history = HistorySnapshot(v for v in load_votes(conn) if v.entry_id not in closure)
+    history = HistorySnapshot(
+        (v for v in load_votes(conn) if v.entry_id not in closure), category_paths_of(conn)
+    )
     categories, payees = _named(draft)
     found_categories = (
         frozenset(

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from bisect import bisect_left, bisect_right
 from collections import defaultdict
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from typing import Any, Literal, cast
@@ -24,25 +24,19 @@ from sqlalchemy import Connection, Row, TextClause, text
 
 from app.core.ingest.identity import canonical_text
 from app.core.plugins.classifier import EntryInput, HistoryKey, Vote
-from app.core.plugins.text import jaccard, tokens
 from app.core.resolution.confirmed import units_binds, units_sql
+from app.core.resolution.load import load_category_paths
 
 LOOKBACK_DAYS = 365
-
-# How similar two token sets must be for new votes to be able to move an entry's proposal. This is the
-# history classifier's threshold (classifiers/history.md §2, `JACCARD_MIN`); a test pins them together.
-# Only the rounds after the first use it, to leave alone entries the new votes cannot reach.
-TOKEN_REACH = 0.5
 
 _SortKey = tuple[int, int]  # (booked_on ordinal, entry id)
 
 
 @dataclass(frozen=True, slots=True)
 class Grown:
-    """What a batch of new votes added: the (key, value) buckets, and the distinct token sets."""
+    """What a batch of new votes added: the (key, value) buckets."""
 
     buckets: frozenset[tuple[str, str | int]] = frozenset()
-    token_sets: frozenset[frozenset[str]] = frozenset()
 
 
 class _Bucket:
@@ -70,12 +64,13 @@ def _sort_key(v: Vote) -> _SortKey:
 class HistorySnapshot:
     """A `HistorySource` over the confirmed entries loaded once; see the module docstring."""
 
-    def __init__(self, votes: Iterable[Vote] = ()) -> None:
+    def __init__(self, votes: Iterable[Vote] = (), category_paths: Mapping[int, str] | None = None) -> None:
+        # the category tree as paths, loaded with the votes: the classifier orders by it (`HistorySource`)
+        self.category_paths: Mapping[int, str] = category_paths if category_paths is not None else {}
         self._by: dict[str, dict[str | int, _Bucket]] = {
             "counterparty_ref": defaultdict(_Bucket),
             "counterparty_name": defaultdict(_Bucket),
             "payee": defaultdict(_Bucket),
-            "tokens": defaultdict(_Bucket),
         }
         self._ids: set[int] = set()
         self.add(votes)
@@ -90,7 +85,6 @@ class HistorySnapshot:
         cannot have a different proposal because of these votes (see `touches`).
         """
         grown: set[tuple[str, str | int]] = set()
-        token_sets: set[frozenset[str]] = set()
 
         def put(key: str, value: str | int, k: _SortKey, v: Vote) -> None:
             self._by[key][value].add(k, v)
@@ -105,11 +99,7 @@ class HistorySnapshot:
             put("counterparty_name", canonical_text(v.counterparty_name), k, v)
             if v.payee_id is not None:
                 put("payee", v.payee_id, k, v)
-            vote_tokens = tokens(v.counterparty_name, v.purpose)
-            token_sets.add(vote_tokens)
-            for tok in vote_tokens:
-                put("tokens", tok, k, v)
-        return Grown(frozenset(grown), frozenset(token_sets))
+        return Grown(frozenset(grown))
 
     def candidates(
         self,
@@ -123,24 +113,14 @@ class HistorySnapshot:
         lo: _SortKey = (day - LOOKBACK_DAYS, -1)
         hi: _SortKey = (day + LOOKBACK_DAYS, 1 << 62)
         buckets = self._by[key]
-        found: list[Vote]
-        if key == "tokens":
-            seen: dict[int, Vote] = {}
-            for tok in tokens(entry.counterparty_name, entry.purpose):
-                bucket = buckets.get(tok)
-                if bucket is not None:
-                    for v in bucket.window(lo, hi):
-                        seen[v.entry_id] = v
-            found = sorted(seen.values(), key=_sort_key)
+        if key == "payee":
+            value: str | int | None = payee_id
+        elif key == "counterparty_ref":
+            value = canonical_text(entry.counterparty_ref)
         else:
-            if key == "payee":
-                value: str | int | None = payee_id
-            elif key == "counterparty_ref":
-                value = canonical_text(entry.counterparty_ref)
-            else:
-                value = canonical_text(entry.counterparty_name)
-            bucket = buckets.get(value) if value is not None else None
-            found = bucket.window(lo, hi) if bucket is not None else []
+            value = canonical_text(entry.counterparty_name)
+        bucket = buckets.get(value) if value is not None else None
+        found = bucket.window(lo, hi) if bucket is not None else []
         if exclude_entry_ids:
             return [v for v in found if v.entry_id not in exclude_entry_ids]
         return found
@@ -154,7 +134,7 @@ class LayeredHistory(HistorySnapshot):
     """
 
     def __init__(self, base: HistorySnapshot) -> None:
-        super().__init__()
+        super().__init__(category_paths=base.category_paths)
         self._base = base
 
     def __len__(self) -> int:
@@ -182,8 +162,8 @@ def touches(grown: Grown, entry: EntryInput, payee_id: int | None) -> bool:
     """Whether votes that added `grown` can change the history proposals for `entry`.
 
     The entry's own values are what the keys look up; `payee_id` is the payee stored on it (key 3
-    reads the payee resolved so far, which is stored or changes only through the other keys). For
-    the token key only a vote similar enough to the entry (`TOKEN_REACH`) can matter.
+    reads the payee resolved so far, which is stored or changes only through the other keys). The purpose
+    only refines the votes a key finds, it never finds any, so the buckets are all that matters.
     """
     b = grown.buckets
     # a key whose value the entry lacks is never asked (history.md §2), so an empty value reaches nothing
@@ -194,10 +174,7 @@ def touches(grown: Grown, entry: EntryInput, payee_id: int | None) -> bool:
         value = canonical_text(raw)
         if value and (key, value) in b:
             return True
-    if payee_id is not None and ("payee", payee_id) in b:
-        return True
-    mine = tokens(entry.counterparty_name, entry.purpose)
-    return bool(mine) and any(mine & ts and jaccard(mine, ts) >= TOKEN_REACH for ts in grown.token_sets)
+    return payee_id is not None and ("payee", payee_id) in b
 
 
 _VOTES = """
@@ -265,4 +242,9 @@ def load_votes_of(conn: Connection, entry_ids: Sequence[int]) -> list[Vote]:
 
 
 def load_snapshot(conn: Connection) -> HistorySnapshot:
-    return HistorySnapshot(load_votes(conn))
+    return HistorySnapshot(load_votes(conn), category_paths_of(conn))
+
+
+def category_paths_of(conn: Connection) -> dict[int, str]:
+    """The category tree as {id: path}, for the snapshot."""
+    return {c.id: c.path for c in load_category_paths(conn)}

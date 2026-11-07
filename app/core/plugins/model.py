@@ -48,12 +48,16 @@ class NoAnswer:
 class ModelClient(Protocol):
     name: str
 
-    def fingerprint(self, subject: EntryInput) -> str | None:
-        """A fingerprint of the payload the model would be given, or None when the payload is empty."""
+    def fingerprint(self, subject: EntryInput, seen: Sequence[int] = ()) -> str | None:
+        """A fingerprint of the payload the model would be given, or None when the payload is empty. `seen`
+        are the ids of the categories history counted for the entry (spec §5.9 pass 3)."""
         ...
 
-    async def ask(self, subject: EntryInput, categories: Sequence[CategoryPath]) -> ModelAnswer | NoAnswer:
+    async def ask(
+        self, subject: EntryInput, categories: Sequence[CategoryPath], seen: Sequence[int] = ()
+    ) -> ModelAnswer | NoAnswer:
         """The model's answer, or `NoAnswer` with the reason when it has none (the reply was not valid).
+        `categories` is the whole tree it chooses from, `seen` the ids history counted for the entry.
         Raises `ModelUnavailable` when the model cannot be reached."""
         ...
 

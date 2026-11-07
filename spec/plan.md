@@ -249,11 +249,11 @@ cases they leave rough are rare. A month of real use should confirm it:
   import ever overlap counter-legs committed while its account was unsynced
   (`spec.md` §5.4)? If it does more than once, an explicit "kept by hand"
   flag on the account is the upgrade.
-- **Mixed payees and history's majority.** Does a payee or counterparty that
-  spans categories — a supermarket's household goods, a department store —
-  get one category proposed systematically, and confirmed at queue speed?
-  History stays at a strict majority until this is seen (`spec.md` §5.9).
-- **History's starting parameters.** Lookback, key 4 similarity and token
+- **Mixed counterparties and the model.** How often a counterparty's history
+  is mixed enough to ask the model, whether the model's answers beat history's
+  majority there, and whether unanimity should tolerate one old outlier
+  (`spec.md` §5.9).
+- **History's starting parameters.** Lookback, purpose similarity and token
   rules against a year of real purpose lines.
 - **Rules carrying the recurring load.** How many units still reach the queue
   per month once rules exist for rent, salary, card payoffs and withdrawals,

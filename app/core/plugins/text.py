@@ -24,21 +24,17 @@ def normalise_name(s: str | None) -> str:
 
 
 @lru_cache(maxsize=1 << 16)
-def tokens(name: str | None, purpose: str | None) -> frozenset[str]:
-    """History key 4 tokens of counterparty name and purpose together (history.md §2).
-
-    NFKC, casefolded, split on anything not alphanumeric, tokens of at least 3 characters
-    with no digit kept.
-    """
-    found: set[str] = set()
-    for text in (name, purpose):
-        if not text:
-            continue
-        folded = unicodedata.normalize("NFKC", text).casefold()
-        for tok in _NON_ALNUM.split(folded):
-            if len(tok) >= TOKEN_MIN_LENGTH and not any(ch.isdigit() for ch in tok):
-                found.add(tok)
-    return frozenset(found)
+def purpose_tokens(purpose: str | None) -> frozenset[str]:
+    """The tokens of a purpose (history.md §2): NFKC, casefolded, split on anything not alphanumeric,
+    tokens of at least 3 characters with no digit kept. The counterparty name is not part of it."""
+    if not purpose:
+        return frozenset()
+    folded = unicodedata.normalize("NFKC", purpose).casefold()
+    return frozenset(
+        tok
+        for tok in _NON_ALNUM.split(folded)
+        if len(tok) >= TOKEN_MIN_LENGTH and not any(ch.isdigit() for ch in tok)
+    )
 
 
 def jaccard(a: Collection[str], b: Collection[str]) -> float:

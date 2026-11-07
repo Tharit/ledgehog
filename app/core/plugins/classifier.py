@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, runtime_checkable
 
 # The fields resolution decides, in the order of spec §5.9 "Field order".
 Field = Literal["type", "payee", "category", "counter_account"]
@@ -30,13 +30,12 @@ EMPTY = "none"
 STANDING_PASSES = frozenset({"own_account", "rule", "matcher_decision", "booking", "user"})
 
 # the history keys of spec §5.9 / classifiers/history.md, in order. The booking text is never a key on its
-# own; it only refines key 2.
-HistoryKey = Literal["counterparty_ref", "counterparty_name", "payee", "tokens"]
+# own; it only refines key 2, and the purpose refines every key.
+HistoryKey = Literal["counterparty_ref", "counterparty_name", "payee"]
 HISTORY_KEYS: tuple[HistoryKey, ...] = (
     "counterparty_ref",
     "counterparty_name",
     "payee",
-    "tokens",
 )
 
 
@@ -164,11 +163,15 @@ class Proposal:
     No value (`None`) is an explained absence: the field stays empty and the basis says why (a payee or
     a category; the type and a counter-account always have a value). It is a proposal like any other:
     the first one for a field ends the search, a human never accepts it, and it stands exactly as long as
-    its classifier proposes it."""
+    its classifier proposes it.
+
+    `gives_way`: a later pass's proposal for the field, if it has one, wins over this one (history's
+    category where its votes are not unanimous, spec §5.9); without one this stands."""
 
     field: Field
     value: int | str | None
     basis: Mapping[str, Any]
+    gives_way: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -199,11 +202,13 @@ class HistorySource(Protocol):
     """Read-only candidates for one history key (architecture §5.4).
 
     Returns the votes within the lookback (365 days either side of `entry.booked_on`), left out:
-    `exclude_entry_ids` (the entry's own unit). For an equality key the candidates equal the entry
-    on that key's canonical value; for
-    `tokens`, they share at least one token. Scoring and
-    counting are the classifier's. `payee_id` is the payee resolved so far (key `payee`).
+    `exclude_entry_ids` (the entry's own unit). The candidates equal the entry on that key's canonical
+    value; refining and counting are the classifier's. `payee_id` is the payee resolved so far (key
+    `payee`). `category_paths` maps a category id to its path (`Expense > Food`): the classifier orders
+    and breaks ties by it; an id it does not know sorts by id.
     """
+
+    category_paths: Mapping[int, str]
 
     def candidates(
         self,
@@ -231,6 +236,9 @@ class ClassifierContext:
     # what is stored on the entry now (value and key per field, an explained absence included): how the
     # model's answer, its `llm` key, is read as an input (architecture §5.4)
     stored: Mapping[Field, Any] = field(default_factory=dict)
+    # the ids of the categories history counted for the entry's category (at most three), computed when
+    # asked: what the model is told besides the entry's text (spec §5.9, pass 3). Empty where none counted.
+    model_categories: Callable[[], tuple[int, ...]] = lambda: ()
 
 
 class Classifier(Protocol):
@@ -241,4 +249,15 @@ class Classifier(Protocol):
 
     def propose(self, field: Field, entry: EntryInput, ctx: ClassifierContext) -> Proposal | None:
         """The proposal for `field`, or None when this pass has none (no evidence, no majority)."""
+        ...
+
+
+@runtime_checkable
+class CategoryEvidence(Protocol):
+    """A classifier that can say which categories its evidence counted for an entry's category (history):
+    core asks it for what the model is told (spec §5.9 pass 3), the model's classifier reads it from the
+    context. Optional: a classifier without it counted nothing."""
+
+    def categories_seen(self, entry: EntryInput, ctx: ClassifierContext) -> tuple[int, ...]:
+        """The ids of the (at most three) categories counted for `entry`, in path order."""
         ...

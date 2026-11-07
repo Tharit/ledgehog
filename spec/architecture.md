@@ -1542,7 +1542,7 @@ Transaction boundaries:
     of its start: the booking step over the clearance accounts concerned, and
     the units of the entries it creates or changes.
 
-  Key 4 of history (tokens) makes the first case broad, so the **baseline is a
+  The **baseline is a
   pass over every unconfirmed unit**, with the booking step over every
   clearance account, and narrowing to the dirty set is an
   optimisation taken only where the budget is missed. The budget is set from
@@ -1649,19 +1649,16 @@ read-only history source. For a key and an entry it returns the candidate
 votes — confirmed entries within the lookback, excluding the given unit —
 with the facts the classifier's filters need: each vote's values, booking
 date and, for a counter-account, that account's currency and closing date.
-For an entry with a source text, the key is that text, canonicalised as in
-`spec.md` §5.2, and the votes are the entries with the same canonical text;
-such an entry is neither asked nor counted on the source keys 1, 2 and 4
-(`spec.md` §5.9).
-Core retrieves candidates by indexed lookups, for equality keys by value and
-for a token key by shared tokens; the classifier scores them — a similarity
-threshold, say — and counts. What counts as a match is the classifier's to
+Core retrieves candidates by indexed lookups on each key's value; the
+classifier refines them — by mandate, booking text and purpose similarity —
+and counts. What counts as a match is the classifier's to
 define; how candidates are found fast enough for settling's budget is core's.
 
 The orchestration is fixed in `core/resolution`, not in the plugins: fields are
 resolved in the order of `spec.md` §5.9 — type first, then the fields the type
-allows — passes run in order of authority, the first proposal per field wins,
-and only pass 0 and rules write standing keys (`spec.md` §5.9); nothing history
+allows — passes run in order of authority, the first proposal per field wins —
+save history's category where its votes are not unanimous, which gives way to
+a stored model answer (`spec.md` §5.9) — and only pass 0 and rules write standing keys (`spec.md` §5.9); nothing history
 or the model returns is ever confirmed without a human. A classifier without
 the evidence it requires returns nothing for that field: history proposes only
 what a strict majority of its matches share (`spec.md` §5.9). Pass 0 (own
@@ -1714,17 +1711,22 @@ Three properties the implementation must have:
 
 **One worker asks, in the background.** Settling puts an entry whose category
 falls to the model, with no answer standing for its payload, on an in-memory
-list. One worker takes them in order, one request at a time, and
-stores each answer with a write that settles like any other. An answer for a category a
-user or a pass of higher authority decided meanwhile is dropped, so nothing
-changes under the user. A restart loses the list and the start's settling
+list. An entry is listed for the model where its category falls to pass 3 —
+no proposal, or history's where it gives way — with the categories history
+counted for it; the worker asks with those, and an answer given on categories
+history has since changed is no longer proposed, so the entry is listed again.
+One worker takes them in order, one request at a time, and stores each answer
+with a write that settles like any other. An answer for a category a user or
+a pass of higher authority decided meanwhile is dropped, so nothing changes
+under the user. A restart loses the list and the start's settling
 refills it. The request asks for structured output — the category as one of
 the listed ids or none, and a one-line rationale — and the category list is
 the same system message on every request, the whole tree in a fixed order,
 so a server that caches a prompt prefix processes only the entry's text.
 Timeouts are short and failure is non-fatal: an unreachable model leaves its
-entries unclassified, exactly as an unconfigured one would; the worker tries
-again after ten minutes, or when settling hands it new work.
+entries as the earlier passes left them — history's proposal where it gave
+way, otherwise unclassified — exactly as an unconfigured one would; the
+worker tries again after ten minutes, or when settling hands it new work.
 
 ### 5.5 Importer interface and error taxonomy
 
@@ -2450,8 +2452,9 @@ Layers:
   reviewed one; a settle whose confirmations change other proposals settling
   them in a further round until none confirms anything new, and a second settle
   changing nothing; an entry-form edit resolving its entries afresh in its own
-  write; history proposing only with a strict majority, and on the canonical
-  source text for an entry that has one; re-resolving a
+  write; history proposing only with a strict majority, its similar-purpose
+  matches first, and its category giving way to the model unless unanimous;
+  re-resolving a
   confirmed unit without its own votes.
 - **Invariant tests** — assert the database *rejects* what it should. A
   three-leg transfer, a non-mutual pair, a split that does not sum, entries on

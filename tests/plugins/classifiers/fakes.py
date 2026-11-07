@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import date
 
 from app.core.ingest.identity import canonical_text
 from app.core.plugins.classifier import EntryInput, HistoryKey, Vote
-from app.core.plugins.text import tokens
 
 
 class ListHistory:
     """HistorySource over a list of votes, scanning with canonical equality. No lookback."""
 
-    def __init__(self, votes: Sequence[Vote]) -> None:
+    def __init__(self, votes: Sequence[Vote], category_paths: Mapping[int, str] | None = None) -> None:
         self.votes = list(votes)
+        self.category_paths: Mapping[int, str] = category_paths or {}
         self.calls: list[HistoryKey] = []
 
     def candidates(
@@ -34,12 +34,8 @@ class ListHistory:
                 ok = canonical_text(v.counterparty_ref) == canonical_text(entry.counterparty_ref)
             elif key == "counterparty_name":
                 ok = canonical_text(v.counterparty_name) == canonical_text(entry.counterparty_name)
-            elif key == "payee":
-                ok = payee_id is not None and v.payee_id == payee_id
             else:
-                ok = bool(
-                    tokens(v.counterparty_name, v.purpose) & tokens(entry.counterparty_name, entry.purpose)
-                )
+                ok = payee_id is not None and v.payee_id == payee_id
             if ok:
                 out.append(v)
         return out

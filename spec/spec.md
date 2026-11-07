@@ -2080,8 +2080,9 @@ requires produces nothing, and the next pass is tried. An empty result stores
 no key: a field that may be empty needs no review when it is empty, so it
 never keeps a unit unconfirmed — a stored proposal would hold back units whose
 category a rule already decided. Pass 0 and
-rules are certain when they match, history needs a majority (below), and the
-model always answers as a guess. Whatever wins carries its basis, shown in
+rules are certain when they match, history needs a majority (below) and on the
+category gives way to the model unless its votes are unanimous, and the model
+always answers as a guess. Whatever wins carries its basis, shown in
 review (§6). What pass 0 and rules decide is **standing**: a fact or a
 declaration needs no review (below). What history and the model propose is
 confirmed only by a human. **A single unanimous precedent is a majority**: the
@@ -2223,9 +2224,9 @@ Rules and the model classify booking entries. History keys on source
 signals, raw on both sides. **It learns only from confirmed entries with
 a source transaction** (I19) — confirmed by a human, or standing — because no
 other entry carries the source signals it keys on. A user-authored row brings
-only its purpose among the bank's fields, so of the keys on source fields only
-key 4 applies to it, beside key 3 on the payee once that is decided — which is
-what lets a typed "coffee at Starbucks" find its category the next time. A value still awaiting review never
+only its purpose among the bank's fields, so no key on source fields applies
+to it; key 3 does once its payee is decided — which is what lets a typed
+"coffee at Starbucks" find its category the next time its payee is picked. A value still awaiting review never
 teaches, so one wrong guess cannot become history that the next similar
 transaction repeats with more weight. **Each ledger entry is one vote**; the
 entries of a split source transaction vote separately. When the review panel
@@ -2243,22 +2244,40 @@ outputs. Keys, most specific first:
    `booking_text`;
 3. `payee_id`, where one has resolved — for the category only, since the type
    and counter-account are resolved before the payee; it pools evidence across
-   a curated merchant's varying descriptors;
-4. normalised tokens of `counterparty_name` and `purpose`.
+   a curated merchant's varying descriptors.
+
+**Every key is refined by the purpose.** A key's matches whose purpose
+resembles the entry's are counted first, and all its matches only where those
+give no majority: what one counterparty is paid for is often in the purpose —
+rent and a shared pizza sent to the same friend, the merchant behind a payment
+intermediary's direct debit. History never compares an entry with entries it
+shares no key with: wording alone — the bank's "Kartenzahlung girocard" on two
+unrelated card payments — is no evidence.
 
 The booking text is never a key on its own: a bank's booking texts are
 categories of payment ("Lastschrift", "Dauerauftrag"), shared by unrelated
 counterparties, and a majority among them proposes for one counterparty what
 others were. It only refines key 2.
 
-For each key it counts the matches within a lookback period and proposes the
-value a strict majority of them share; the basis records how many agree, of
-how many, and since when — "3 of 4 since March". A key without a majority
-proposes nothing, and the next key is tried. A
+For each key — its similar-purpose matches first, then all of them — it counts
+the matches within a lookback period and proposes the value a strict majority
+of them share; the basis records how many agree, of how many, and since when
+— "3 of 4 since March". A set of matches without a majority proposes nothing,
+and the next is tried. A
 majority for empty, on a field that may be empty such as the payee, is a
 result like any other (field order): the field stays empty, with no key, and
 neither a later key nor a later pass is tried. The length of the lookback period
 is a tuning parameter of the history pass, not a rule of the ledger.
+
+**On the category, history proposes over the model only when its votes are
+unanimous.** Where the matches that produced the majority disagree — 3 of 5 —
+the counterparty is mixed, and the entry's own text may tell this case apart:
+the proposal gives way to the model (pass 3), which is asked with the
+categories history saw. Until the model's answer is stored, and where there is
+no model at all, history proposes as before, so a deployment without one keeps
+history's majority. A single precedent is unanimous. The type, payee and
+counter-account have no such reviewer — the model proposes none of them — and
+keep the strict majority.
 
 **Hard constraints filter history's evidence; they never transform its
 result.** For a counter-account, history considers only past cases whose
@@ -2277,17 +2296,22 @@ This is what handles recurring merchants and recurring transfers after one
 classification each. An ATM operator is recognised by key 2 once one of its
 withdrawals is confirmed — which also separates the bank's own withdrawals
 from its fees; an operator seen for the first time is left to the model, which
-may propose it, and otherwise to the user, or to a rule. Key 4 recognises the
-token `PAYPAL` across
-PayPal merchants and proposes the curated PayPal payee, while proposing no
-category — the token says nothing about what was bought, so agreement there is
-low.
+may propose it, and otherwise to the user, or to a rule. A payment
+intermediary collecting for many merchants under one IBAN — PayPal's direct
+debits — is one counterparty to key 1: its payee follows from the IBAN, and
+its category from the purpose, which names the merchant; where the purpose
+does not tell, the votes disagree and the model decides. PayPal's card
+descriptors (`PAYPAL *SPOTIFY`) differ per merchant and are learnt one by one
+by key 2; a rule on the name's prefix gives them all the PayPal payee (pass
+1).
 
 #### Pass 3 — AI model
 
-Runs for the category whenever passes 0 to 2 produce none, whether or not the
-counterparty has been seen before — mixed history is often
-exactly where the purpose text tells cases apart. It is not asked for a payee.
+Runs for the category whenever passes 0 to 2 produce none, and where history's
+proposal is not unanimous (pass 2), whether or not the counterparty has been
+seen before — mixed history is often exactly where the purpose text tells
+cases apart. Its answer then replaces history's proposal, a "no category fits"
+included. It is not asked for a payee.
 It answers what kind of
 spending an entry is: it exists because no rule and no history can know that
 `AUCAT BAR CUBELLES N BA` is a Catalan motorway toll, knowledge that matters
@@ -2304,7 +2328,8 @@ Constraints on pass 3:
   may be costly: its answer is the `llm` key of the field it answers, kept
   with a fingerprint of the payload it was given, and reused whenever the
   entry is resolved again with the same payload. It gives way to a pass of
-  higher authority or a user's value, and the answer goes with the key it
+  higher authority — to history only where history's votes are unanimous — or
+  a user's value, and the answer goes with the key it
   replaces: the core keeps nothing else of it. It is asked anew when the
   payload changes — a booking entry's source text, say — or when the field
   falls to pass 3 again.
@@ -2315,11 +2340,16 @@ Constraints on pass 3:
   and stores each answer as it arrives. While an entry is on that list
   the review queue and the panel say the model is still looking at it; this
   is not a review flag, and nothing of it is stored. When the model is
-  unreachable the list empties and its entries are unclassified, as with no
-  model; they are asked when it answers again.
+  unreachable the list empties and its entries keep what the earlier passes
+  proposed, as with no model — history's proposal where it gave way, otherwise
+  nothing; they are asked when it answers again.
 - **Limited payload.** The counterparty name, booking text and purpose, and
-  for an entry with a source text, its source text and its account's name.
-  Never the counterparty IBAN, BIC, end-to-end id
+  for an entry with a source text, its source text and its account's name;
+  and where history counted votes for the category, the categories they
+  hold — at most three, the most frequent, given by path in path order,
+  without counts and without the text of past entries. These are the
+  household's own category names, already in the list the model chooses
+  from. Never the counterparty IBAN, BIC, end-to-end id
   or other reference fields, and never amounts, dates or balances, nor an
   account but the one an entry with a source text is on.
   Where the payload would be empty, the pass does not run. Limited is not
@@ -3004,24 +3034,6 @@ filter bar replaces most reports.
   first key naming a user, which `derivation` otherwise does not record (§5.9).
   Deferred until the tool has been used: whether committing what one knows and
   leaving the rest in review (§6) is handoff enough.
-- **The model as the reviewer of weak history.** Today history proposes on a
-  single unanimous precedent, and whatever it proposes keeps the model from
-  being asked (§5.9, pass 3). Once the model runs, that is often the wrong way
-  round: a shop bought from once proposes the same category next time, while
-  the model, which has the purpose and an entry's source text, would do better. A
-  sketch: rules decide first and are never reviewed by the model; history
-  proposes on its own only where its evidence is strong (a minimum number of
-  votes, all agreeing); below that it proposes nothing and hands its votes to
-  the model as context — per key, the values the user chose and how often
-  ("merchant CloudNotes: Software ×3"), never the text of past entries —
-  together with the categories and payees to choose from. The model answers as
-  a proposal, its basis naming the evidence it was given. Questions to settle
-  with the model: the threshold for history alone, and whether it depends on a
-  model being configured (without one, history must stand alone as today);
-  what of the evidence enters the payload's fingerprint, so a new confirmation
-  does not re-ask the model for every similar entry; and whether the counts
-  are within the limited payload. Decided with pass 3: it is the reason
-  history's threshold is left as it is in v1.
 - **Asking the model again.** An answer stands while its payload is
   unchanged (§5.9, pass 3), so a category added after the model found none
   fitting, or another model configured, does not reach it; the user sets the

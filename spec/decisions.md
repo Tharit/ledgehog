@@ -748,7 +748,7 @@ splits not counting, which loses learning where splits are systematic; and one
 vote per source from the largest child, which is a special case for little
 gain now that pass 0 types own-account transfers.
 
-## D68 The model runs whenever earlier passes miss — *partly superseded by D106*
+## D68 The model runs whenever earlier passes miss — *partly superseded by D106 and D241*
 
 "Only for a counterparty never seen before" and "only after rules and history
 miss" disagreed for counterparties with mixed history. The model runs whenever
@@ -1444,7 +1444,7 @@ paired, its counter-account lacks the movement, which is the transfers (net)
 line (spec §6, §8). D110 had accepted the effect; this makes it visible where
 readers look.
 
-## D129 History proposes by majority and shows its evidence as counts
+## D129 History proposes by majority and shows its evidence as counts — *partly superseded by D241*
 
 Partly supersedes D99 and D106 (the proposal threshold). Confidence was a
 number from count, agreement and recency whose formula was never fixed, yet
@@ -3961,3 +3961,11 @@ email.md §5, §6, §8, §10; `features/documents.md` §1; spec §5.8.
 - **The total is the money that changes hands.** Order mails state what was charged after store credit and never itemise it, so credit cannot be followed on the clearance account: a refund credited there would never be debited. Credit is therefore kept out both ways: a refund to store credit has total 0 and is not booked; credit spent shows as lines exceeding the total, spread like any unitemised discount. Accepted: a refunded article's category does not net; the credit lowers the categories of what it is spent on. Rejected: *credit as a balance on the clearance account* (nothing debits it); *a field for the part refunded to credit* (the total carries it; one tested Amazon mail read 0 correctly).
 - **Lines need not add up to the total, and none is added to make them.** A voucher or credit the mail lists is a line like a discount, an entry of its own; one it does not list is the unitemised amount, spread over the lines. Either way the clearance account settles, because the total is the money.
 - **Cancellations now arrive as refunds.** For an order not yet charged that nets the order, as is correct; a shop that also mails a refund would count twice, which the clearance balance shows. No rule until it is seen.
+
+## D241 History counts only its own counterparty; the model reviews mixed history
+
+Partly supersedes D129 and D68, and settles the deferred "model as the reviewer of weak history". Spec §5.9 (pass 2, pass 3); history.md §2–5; architecture §5.4; plan.
+
+- **Key 4 is gone; the purpose refines every key** (user, 2026-11-06). Key 4 compared an entry with any entry sharing its words, and on card payments the words are mostly the bank's ("Kartenzahlung girocard"): a first visit to a petrol station got an electronics store's category, 1 of 1, and the model — there for unfamiliar merchants — was never asked. Within one counterparty the purpose is real evidence (rent and a pizza sent to the same friend), so it narrows a key's matches instead of finding them. Accepted: PayPal's card descriptors no longer share a payee through their token; each is learnt by key 2 after its first pick, or a prefix rule covers them all; a user-authored row is classified by key 3 once its payee is picked, or by the model. Rejected: *a stop list for key 4* (treats the symptom; boilerplate differs per bank); *dropping the token comparison altogether* (loses the purpose within a counterparty).
+- **History proposes a category over the model only when unanimous** (user, 2026-11-06). A strict majority kept the model away from exactly the mixed counterparties where the purpose tells cases apart — a Kindle book among Amazon's household goods, a merchant behind PayPal's IBAN. Until the model answers, and without a model at all, history proposes as before, so the rule does not depend on configuration. The model is told the categories history counted, not their counts or past text: counts change with each confirmation and would re-ask the model for every entry of the counterparty. A "no category fits" answer replaces history's proposal too: the answer is kept as the field's key, and cannot sit beside history's. Rejected: *the model for every category, history as its input* (no-model deployments still need history alone; every entry waits on the model; it can overrule a 20-of-20 convention); *a minimum number of votes* (a first precedent from the same counterparty is the household's convention, and is reviewed anyway); *history's and the model's proposals side by side* (a second proposal per field through keys, panel and commit).
+- **Not changed:** key 2's name normalisation. Removing store numbers was considered and parked: branches are also named by place ("Rewe Freising Nord").
