@@ -148,8 +148,8 @@ configs:
         }
         server { listen 443; ssl_preread on; proxy_pass $$to_https:443; }
         server { listen 993; ssl_preread on; proxy_pass $$to_imaps:993; }
-        server { listen 5432; proxy_pass db.home.lan:5432; }    # the database, fixed
-        server { listen 8000; proxy_pass app:8000; }    # the way in, from the reverse proxy
+        server { listen 5432; set $$db  db.home.lan; proxy_pass $$db:5432;  }    # the database
+        server { listen 8000; set $$app app;         proxy_pass $$app:8000; }    # the way in, from the reverse proxy
       }
 ```
 
@@ -176,12 +176,15 @@ configs:
   (`auth.example.org caddy.home.lan;`).
 - **Fixed forwards** carry what has no server name to route by: the database,
   and a model server spoken to in plain HTTP, each on its own port to one
-  destination set here (`server { listen 11434; proxy_pass llm.home.lan:11434; }`,
+  destination set here
+  (`server { listen 11434; set $$llm llm.home.lan; proxy_pass $$llm:11434; }`,
   with an `extra_hosts` line for the name the endpoint uses). The app cannot
-  change where a fixed forward goes. Its name is resolved when the relay
-  starts, so a destination that changes address needs a restart of the
-  relay. A model server has no way out of its own
-  (§4).
+  change where a fixed forward goes. Each names its destination through a
+  variable (`set`), so, like the maps, it is resolved on every connection and
+  cached for 30 s: nothing is resolved when the relay starts, a destination
+  that is down then does not keep the relay from starting, and a changed
+  address, the app's after its container is recreated included, is followed
+  within 30 s. A model server has no way out of its own (§4).
 - **A refused connection** fails like a host that cannot be reached
   (`architecture.md` §5.5, `SourceUnavailable`), and the relay's access log
   shows its server name and port with nothing reached.
