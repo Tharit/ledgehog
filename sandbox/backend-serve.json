@@ -7,7 +7,7 @@
     "deny": ["$WORKDIR/**/.env", "$WORKDIR/test.env"]
   },
   "network": {
-    "allow_domain": ["placeholder.invalid", "giristation.local.muc.mkleinhans.de", "symcon.muc.mkleinhans.de:8080", "mxf914.netcup.net:993"],
+    "allow_domain": ["placeholder.invalid", "giristation.local.muc.mkleinhans.de", "llamacpp.muc.mkleinhans.de", "mxf914.netcup.net:993"],
     "open_port": [5432],
     "listen_port": [8000]
   },
