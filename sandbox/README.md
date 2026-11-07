@@ -145,8 +145,9 @@ backend-serve.json (or `--read-file /path` on the command line).
 
 ## Known limitations
 
-- Non-HTTP egress (IMAP, FinTS over non-HTTPS) cannot pass the HTTP(S) proxy: with `backend-serve` it is blocked
-  by the kernel profile. Using the email importer needs a looser profile or a deliberate decision.
+- IMAP passes the proxy as a `CONNECT` tunnel (the app's IMAP connection honours `HTTPS_PROXY`), on the port its
+  `host:port` entry opens (`imap.example.org:993`). Other egress that does not go through the proxy is blocked by
+  the kernel profile.
 - Ports are restricted only on the allowed hosts: 443 stays open for every listed host; any further port,
   993 included, is per host, via a `host:port` entry.
 - Allowed hosts are trusted completely; a compromised package can send data to any listed host.
