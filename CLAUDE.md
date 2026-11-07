@@ -6,6 +6,13 @@ The spec/ folder houses a detailed specification that the implementation is base
 Implementation must always be consistent with the spec.
 You CAN propose changes to the spec, to adress shortcomings, extend/improve it - see the next section.
 
+# The sandbox
+
+We are using nono to run all code in a custom sandbox, the restricts outbound connections, to make sure that no credentials and/or data can ever be exfiltrated by a compromised dependency.
+Please make sure to use the sandbox as per sandbox/README.md when installing dependencies, running tests, builds, and/or starting the front- or backend.
+You need to disable claude codes sandbox to use nono
+If a legitimate external endpoint needed by you is not allowed by the sandbox, raise it to the user.
+
 # Agent roles
 
 If you were spawned by another agent, you are a subagent; otherwise you are the orchestrator.

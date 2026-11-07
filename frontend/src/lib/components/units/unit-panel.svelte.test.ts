@@ -477,7 +477,7 @@ describe('UnitPanel: states', () => {
 		panel.open(1);
 		const dialog = await screen.findByRole('dialog');
 
-		const notice = await within(dialog).findByText(/Derived from a balance record/);
+		const notice = await within(dialog).findByText(/Computed from a balance record/);
 		expect(notice).toBeInTheDocument();
 		expect(dialog).toHaveAccessibleName('This entry has no review');
 		const close = within(dialog.querySelector('[data-slot="no-review"]') as HTMLElement).getByRole(

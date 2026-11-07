@@ -7,12 +7,13 @@ import type { Entry, SourceTransaction } from '#lib/types/domain.js';
 import type { Unit, UnitReason, UnitState } from './types.js';
 
 /** Shown when a derived entry (opening, valuation, reconciliation) is opened: it has no review. */
-export const DERIVED_NOTICE = 'Derived from a balance record — correct the record.';
+export const DERIVED_NOTICE =
+	"Computed from a balance record and the entries up to it — fix the entries, or the record if it's wrong.";
 
 /** What the panel says when the unit does not exist: derived entries, or one that went away. */
 export const NO_REVIEW_TITLE = 'This entry has no review';
-export const NO_REVIEW_TEXT =
-	'It is derived from a balance record, so there is nothing to review: correct the record instead. Or it no longer exists.';
+/** Follows DERIVED_NOTICE in the panel, so it only adds the other possibility. */
+export const NO_REVIEW_TEXT = 'Or it no longer exists.';
 
 export const REASON_TEXT: Readonly<Record<UnitReason, string>> = {
 	incomplete: 'Incomplete',

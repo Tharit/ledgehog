@@ -220,7 +220,7 @@ A starting set, to be revisited after real use:
 | Key | Action |
 |---|---|
 | `↑` / `↓` (also `k` / `j`) | move the cursor in a list; `↓` in the filter bar's text box moves it to the first row |
-| `Enter` | open the row: the unit panel for an entry; on a derived entry a quiet notice, "Derived from a balance record — correct the record", with a link to the record |
+| `Enter` | open the row: the unit panel for an entry; on a derived entry a quiet notice, "Computed from a balance record and the entries up to it — fix the entries, or the record if it's wrong" |
 | `Enter` in a form | submits a form dialog or an in-place edit; never submits a draft editor or confirms a decision dialog (§11.2) |
 | `Esc` | closes the innermost open surface (popover, dialog, panel), discarding its draft; a panel whose draft has changes asks first |
 | `Ctrl/⌘ + Enter` | commit the panel as previewed |
