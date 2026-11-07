@@ -14,6 +14,7 @@ with correction, shared accounts, net worth tracking. Start with `spec.md`.
 | `plan.md` | What gets built, in what order, what is out of v1. | Churns constantly; mostly deleted once v1 ships. |
 | `plugins/<type>/<name>.md` | One per plugin. See below. | Varies by type. |
 | `features/*.md` | One per subsystem large enough to distort `spec.md` if absorbed. Rare. | Written before implementing that subsystem. |
+| `deployment.md` | How it is run: the Compose stack, the relay that is the app's only way out, container hardening. | Stable once deployed; revised when the stack changes. |
 | `ux/patterns.md` | Conventions applying across every view: provenance widget, amount and date rendering, keyboard model, how flags and errors surface. | Written early, then stable. |
 | `ux/design.md` | Design specification | Written early, iterated, then stable. |
 | `ux/views/*.md` | Individual screens: ledger list, review queue and unit panel, documents, accounts and the account page, importers, the file upload and the refresh of an importer's accounts, sync, the Overview (`overview.md`) and the reports. | Written *during* implementation. Expected to churn. |
