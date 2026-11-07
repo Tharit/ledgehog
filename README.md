@@ -149,8 +149,8 @@ docker exec $APP python -c "print(open('/proc/net/if_inet6').read() or 'no ipv6'
 docker exec $APP python -c "import socket,ssl; h='<bank-host>'; s=ssl.create_default_context().wrap_socket(socket.create_connection((h,443),5), server_hostname=h); print(s.getpeercert()['subject'])"
 # must FAIL: an unlisted server name, a listed host on the other port, port 587
 docker exec $APP python -c "import socket,ssl; s=ssl.create_default_context().wrap_socket(socket.create_connection(('172.30.0.2',443),5), server_hostname='example.com')"
-docker exec $APP python -c "import socket; socket.create_connection(('<imap-host>',443),5).recv(1)"
-docker exec $APP python -c "import socket; socket.create_connection(('<bank-host>',993),5).recv(1)"
+docker exec $APP python -c "import socket,ssl; h='<imap-host>'; ssl.create_default_context().wrap_socket(socket.create_connection((h,443),5), server_hostname=h)"   # the mailbox on 443
+docker exec $APP python -c "import socket,ssl; h='<bank-host>'; ssl.create_default_context().wrap_socket(socket.create_connection((h,993),5), server_hostname=h)"   # a web host on 993
 docker exec $APP python -c "import socket; socket.create_connection(('<imap-host>',587),5)"
 docker logs $RELAY        # one line per connection: sni, port, upstream; the refusals with status 502
 ```
