@@ -81,6 +81,19 @@ describe('entryViews: before a preview', () => {
 	});
 });
 
+describe('entryViews: source text', () => {
+	it('is the entry’s source text, and none for a new split row', () => {
+		const withText = unit({
+			anchor_entry_id: 1,
+			entries: [entry({ id: 1, unit_key: 1, source_transaction_id: 5, source_text: 'USB cable' })]
+		});
+		const rows = views(Draft.of(withText).addSplit(1), null, withText);
+
+		expect(rows[0].sourceText).toBe('USB cable');
+		expect(rows.at(-1)!.sourceText).toBeNull();
+	});
+});
+
 describe('entryViews: with a preview', () => {
 	it('takes the values and their proposals from the preview’s rows', () => {
 		const answer = preview(split);

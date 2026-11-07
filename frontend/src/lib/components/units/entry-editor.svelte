@@ -180,6 +180,14 @@
 	data-entry-id={view.id}
 	data-new={view.isNew || undefined}
 >
+	<!-- the source text is what the entry is, muted; the description stays the user's -->
+	{#if view.sourceText}
+		<span
+			class="min-w-0 truncate text-muted-foreground"
+			title={view.sourceText}
+			data-slot="source-text">{view.sourceText}</span
+		>
+	{/if}
 	{#if view.removable}
 		<IconButton
 			verb="Remove split"

@@ -76,6 +76,8 @@ export type EntryView = {
 	amount: Money | null;
 	/** the amount the source transaction had: what the split divides */
 	sourceAmount: Money | null;
+	/** what the entry is, from its source (a booking's line text); never the user's to edit */
+	sourceText: string | null;
 	description: string | null;
 	note: string | null;
 	type: string | null;
@@ -362,6 +364,7 @@ export function entryViews(args: {
 			accountId: b.row?.account_id ?? sourceEntry?.account_id ?? 0,
 			amount,
 			sourceAmount: splitOut?.source_amount ?? null,
+			sourceText: b.row?.source_text ?? entry?.source_text ?? null,
 			description:
 				edit.description !== undefined
 					? edit.description

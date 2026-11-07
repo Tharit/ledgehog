@@ -121,6 +121,18 @@ describe('the panel on a document booking (spec §5.8)', () => {
 		expect(link).toHaveAttribute('target', '_blank');
 	});
 
+	it('shows each entry’s source text, muted, within its own editor', async () => {
+		const { dialog } = await open(booked());
+
+		const editors = dialog.querySelectorAll('[data-slot="entry-editor"]');
+		expect(editors).toHaveLength(2);
+		for (const [i, text] of ['USB cable', 'Book'].entries()) {
+			const shown = editors[i].querySelector('[data-slot="source-text"]');
+			expect(shown).toHaveTextContent(text);
+			expect(shown).toHaveAttribute('title', text);
+		}
+	});
+
 	it('offers no partner, no conversion and no split, and no amount to change', async () => {
 		const { dialog } = await open(booked());
 
