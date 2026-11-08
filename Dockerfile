@@ -9,6 +9,9 @@
 # ---------------------------------------------------------------- frontend bundle
 FROM node:22-slim@sha256:5ec23b7c622b00547753bc6ffd78085dd868a68aeb41c8e0a1418f033e13d96d AS frontend
 WORKDIR /build/frontend
+# The lock file is written by npm 11; npm 10 (node:22-slim) resolves the optional SvelteKit peer of the
+# nested `runed` copies differently and `npm ci` then fails. Done before any .npmrc is copied.
+RUN npm install -g npm@11.11.0
 # .npmrc comes with it: install scripts stay off (ignore-scripts=true)
 COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./
 RUN npm ci

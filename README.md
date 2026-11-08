@@ -37,7 +37,8 @@ docker build -t ledgehog:0.1.0 .
 
 The Dockerfile names its three base images by tag (`node:22-slim`, `python:3.12-slim` twice) with a
 `# pin: …@sha256:…` comment on each. The stack's images are meant to be pinned by digest: resolve
-each and write it into the `FROM` line.
+each and write it into the `FROM` line. The frontend stage also pins npm to the version that writes
+`frontend/package-lock.json` (11.11.0), to be raised together with the local npm.
 
 ```sh
 docker buildx imagetools inspect python:3.12-slim    # "Digest: sha256:…"
