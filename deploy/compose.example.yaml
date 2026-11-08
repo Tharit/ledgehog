@@ -89,7 +89,7 @@ services:
     # health check: the Dockerfile's (GET / on 127.0.0.1:8000, no session needed)
 
   relay:
-    image: nginxinc/nginx-unprivileged:stable-alpine   # replace: pin by digest, e.g. @sha256:…
+    image: nginxinc/nginx-unprivileged:stable-alpine@sha256:09b0d3eda2aa592d2487f284519419015cab010d7df16cd0fe224b585fc60eb6
     restart: unless-stopped
     configs:
       - source: relay
