@@ -202,9 +202,11 @@ networks:
 - images pinned by digest, renewed on purpose;
 - no Docker socket, no host path mounted.
 
-**The app also:** secrets only as Compose secrets, through the `_FILE`
-variants of `architecture.md` §5.7, so the environment holds none;
-`PYTHONDONTWRITEBYTECODE=1`; a health check.
+**The app also:** secrets as environment variables, from the stack's
+environment like every other setting: Compose cannot create a secret in a
+read-only container, and reading one takes the access that reads the
+container's environment (`architecture.md` §5.7 keeps the `_FILE` variants
+for other setups); `PYTHONDONTWRITEBYTECODE=1`; a health check.
 
 **The database cannot act for the app.** Postgres can reach out itself
 (`COPY … TO PROGRAM`, `dblink`, `postgres_fdw`), and its own networks are its

@@ -21,8 +21,8 @@ The stack is two containers, the app and an nginx relay that is the app's only w
   documentation for the first release that lists it; the first check in step 8 confirms it works).
 - Docker Compose v2. In Portainer, that is the Compose
   version of its standalone agent/host: check with `docker compose version` on the host, and
-  Portainer's release notes for the version it embeds. Secrets sourced from the environment need
-  Compose, not Swarm (`docker stack deploy` is not supported).
+  Portainer's release notes for the version it embeds. Swarm (`docker stack deploy`) is not
+  supported.
 - PostgreSQL 14 or later, reachable from the Docker host, with `pg_trgm` available (a trusted
   extension since PostgreSQL 13, part of the standard contrib package).
 - A reverse proxy for TLS (Caddy below) and a DNS name for the app.
@@ -80,8 +80,7 @@ passwords: keep it out of git and readable by you alone). Fill in the required v
 optional groups commented unless you use them.
 
 Differences from the development `.env.example`: `POSTGRES_HOST` is fixed to `relay` in the compose
-file (the database is reached through the relay's forward), and secrets are Compose secrets
-(`*_FILE` variables) rather than plain variables. `BASE_URL` is the address users type, the
+file (the database is reached through the relay's forward). `BASE_URL` is the address users type, the
 reverse proxy's `https://…`; it is required with OIDC. Leave `ENABLE_TEST_IMPORTERS` and
 `EXPOSE_OPENAPI` unset.
 

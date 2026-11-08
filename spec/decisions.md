@@ -4003,3 +4003,9 @@ The vision request sent no reasoning effort and capped `max_tokens` at 2,048 so 
 deployment.md §3; deploy/compose.example.yaml.
 
 Compose creates a `content` config by copying it into the container, which a read-only container refuses ("`file` is the sole supported option"), and a `file` config mounts a host path. The configuration is an environment variable the relay writes to its `/tmp` and starts nginx on: read-only, no host path, one stack file. It is not secret. Rejected: *the relay writable* (the container that guards every connection out); *a file next to the stack* (a host path, and a second file to deploy).
+
+## D247 Secrets reach the app as environment variables
+
+deployment.md §4; deploy/compose.example.yaml.
+
+Compose creates a secret sourced from the environment by copying it into the container, which a read-only container refuses, as it does for a `content` config (D246). The app takes its secrets as environment variables from the stack's environment; the read-only root filesystem is kept, and a secret in the environment is readable by the same access that reads a mounted one. Rejected: *the app writable* (the container that holds bank credentials); *secret files on the host* (a host path, and files beside the stack).

@@ -3,10 +3,8 @@
 #
 # Variables are read from the stack's environment (Portainer: "Environment variables";
 # otherwise a .env file next to this one): see stack.env.example.
-# Secrets are Compose secrets sourced from that same environment (`environment:`): Compose
-# mounts each value as a file under /run/secrets and the app reads it through its *_FILE
-# variable, so the container's environment holds none. Not supported by `docker stack deploy`
-# (Swarm).
+# Secrets are set in the same environment and passed as variables (Compose cannot mount them
+# into a read-only container).
 
 services:
   app:
@@ -27,7 +25,7 @@ services:
       POSTGRES_PORT: "5432"
       POSTGRES_DB: ${POSTGRES_DB:-ledgehog}
       POSTGRES_USER: ${POSTGRES_USER:-ledgehog}
-      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
 
       BASE_CURRENCY: ${BASE_CURRENCY:?}
       TIMEZONE: ${TIMEZONE:?}
@@ -35,21 +33,21 @@ services:
       MAX_RATE_AGE_DAYS: ${MAX_RATE_AGE_DAYS:-7}
       MATCHING_WINDOW_DAYS: ${MATCHING_WINDOW_DAYS:-7}
 
-      # users: numbered from 1 without gaps; add a group (and its secret below) per user
+      # users: numbered from 1 without gaps; add a group per user
       USER_1_LOGIN: ${USER_1_LOGIN:?}
       USER_1_NAME: ${USER_1_NAME:?}
-      USER_1_PASSWORD_FILE: /run/secrets/user_1_password
+      USER_1_PASSWORD: ${USER_1_PASSWORD:?required}
       USER_2_LOGIN: ${USER_2_LOGIN:?}
       USER_2_NAME: ${USER_2_NAME:?}
-      USER_2_PASSWORD_FILE: /run/secrets/user_2_password
+      USER_2_PASSWORD: ${USER_2_PASSWORD:?required}
 
       # the app's external address (the reverse proxy's), required with OIDC
       # BASE_URL: ${BASE_URL:?}
 
-      # OIDC sign-in: all three or none. Uncomment together with the secret below.
+      # OIDC sign-in: all three or none.
       # OIDC_ISSUER: ${OIDC_ISSUER:?}
       # OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:?}
-      # OIDC_CLIENT_SECRET_FILE: /run/secrets/oidc_client_secret
+      # OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
       # OIDC_SCOPES: openid email profile
       # OIDC_LOGIN_ATTRIBUTE: email
       # OIDC_DISPLAYNAME_ATTRIBUTE: name
@@ -59,13 +57,13 @@ services:
       # model for pass 3 and the email importer: endpoint and name both or neither
       # MODEL_ENDPOINT: ${MODEL_ENDPOINT:?}            # a host listed above, or a fixed forward
       # MODEL_NAME: ${MODEL_NAME:?}
-      # MODEL_API_KEY_FILE: /run/secrets/model_api_key # optional
+      # MODEL_API_KEY: ${MODEL_API_KEY}                # optional
       # MODEL_REASONING_EFFORT: low
 
       # vision model for PDF attachments: endpoint and name both or neither
       # VISION_MODEL_ENDPOINT: ${VISION_MODEL_ENDPOINT:?}
       # VISION_MODEL_NAME: ${VISION_MODEL_NAME:?}
-      # VISION_MODEL_API_KEY_FILE: /run/secrets/vision_model_api_key   # optional
+      # VISION_MODEL_API_KEY: ${VISION_MODEL_API_KEY}  # optional
       # VISION_MODEL_REASONING_EFFORT: low
 
       # FinTS product registration id (spec.md §7.1); not a secret
@@ -73,13 +71,6 @@ services:
 
       # ENABLE_TEST_IMPORTERS and EXPOSE_OPENAPI stay unset: both are development only.
       # HTTPS_PROXY / NO_PROXY stay unset too: the relay needs nothing of the app.
-    secrets:
-      - postgres_password
-      - user_1_password
-      - user_2_password
-      # - oidc_client_secret
-      # - model_api_key
-      # - vision_model_api_key
     read_only: true
     tmpfs:
       - /tmp:size=64m,mode=1777
@@ -161,18 +152,3 @@ networks:
         - subnet: 172.30.0.0/24      # replace if it collides with a network the host already routes
   outside:
     enable_ipv6: false
-
-secrets:
-  # each takes the value of the stack's environment variable of that name
-  postgres_password:
-    environment: POSTGRES_PASSWORD
-  user_1_password:
-    environment: USER_1_PASSWORD
-  user_2_password:
-    environment: USER_2_PASSWORD
-  # oidc_client_secret:
-  #   environment: OIDC_CLIENT_SECRET
-  # model_api_key:
-  #   environment: MODEL_API_KEY
-  # vision_model_api_key:
-  #   environment: VISION_MODEL_API_KEY
