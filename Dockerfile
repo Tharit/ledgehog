@@ -7,8 +7,7 @@
 # `image:tag@sha256:<digest>` (`docker buildx imagetools inspect <image>:<tag>`), see README.md.
 
 # ---------------------------------------------------------------- frontend bundle
-# pin: node:22-slim@sha256:…
-FROM node:22-slim AS frontend
+FROM node:22-slim@sha256:5ec23b7c622b00547753bc6ffd78085dd868a68aeb41c8e0a1418f033e13d96d AS frontend
 WORKDIR /build/frontend
 # .npmrc comes with it: install scripts stay off (ignore-scripts=true)
 COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./
@@ -18,8 +17,7 @@ COPY frontend/ ./
 RUN npx svelte-kit sync && npm run build
 
 # ---------------------------------------------------------------- python dependencies
-# pin: python:3.12-slim@sha256:…
-FROM python:3.12-slim AS python
+FROM python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS python
 COPY --from=ghcr.io/astral-sh/uv:0.13.0 /uv /bin/uv
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
@@ -35,8 +33,7 @@ COPY app/ ./app/
 RUN uv sync --locked --no-dev
 
 # ---------------------------------------------------------------- final image
-# pin: python:3.12-slim@sha256:…
-FROM python:3.12-slim
+FROM python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/app/.venv/bin:$PATH" \
