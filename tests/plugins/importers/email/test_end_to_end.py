@@ -232,12 +232,14 @@ def test_no_log_record_carries_an_address_a_subject_a_reply_or_a_key(caplog: pyt
 def test_the_factory_unwraps_the_configured_endpoints_and_keys():
     importer = email_importer(
         ModelConfig("http://t/v1", "text-1", Secret("tk"), "medium"),
-        VisionModelConfig("http://v/v1", "vision-1", None),
+        VisionModelConfig("http://v/v1", "vision-1", None, "high"),
     )
     extractor = importer.extractor
     assert isinstance(extractor, ModelExtractor)
     assert extractor._text.spec == ModelSpec("http://t/v1", "text-1", "tk", "medium")
-    assert extractor._vision is not None and extractor._vision.spec == ModelSpec("http://v/v1", "vision-1")
+    assert extractor._vision is not None and extractor._vision.spec == ModelSpec(
+        "http://v/v1", "vision-1", None, "high"
+    )
     assert email_importer(ModelConfig("http://t/v1", "t", None)).extractor._vision is None  # type: ignore[attr-defined]
 
 

@@ -92,12 +92,12 @@ class ModelConfig:
 
 @dataclass(frozen=True, slots=True)
 class VisionModelConfig:
-    """A model that reads images (architecture §5.7), used by a document importer for page images.
-    No reasoning effort is sent."""
+    """A model that reads images (architecture §5.7), used by a document importer for page images."""
 
     endpoint: str
     name: str
     api_key: Secret | None
+    reasoning_effort: str | None = None  # `low`, `medium` or `high`; None: not sent
 
 
 @dataclass(frozen=True, slots=True)
@@ -264,13 +264,17 @@ class _Reader:
             users.append(UserConfig(login, name, password))
         return tuple(users)
 
+    def reasoning_effort(self, key: str) -> str | None:
+        effort = self.optional_text(key)
+        if effort is not None and effort not in ("low", "medium", "high"):
+            raise ConfigError(key, "must be low, medium or high")
+        return effort
+
     def model(self) -> ModelConfig | None:
         endpoint, name = self.env.get("MODEL_ENDPOINT"), self.env.get("MODEL_NAME")
         if endpoint is None and name is None:
             return None
-        effort = self.optional_text("MODEL_REASONING_EFFORT")
-        if effort is not None and effort not in ("low", "medium", "high"):
-            raise ConfigError("MODEL_REASONING_EFFORT", "must be low, medium or high")
+        effort = self.reasoning_effort("MODEL_REASONING_EFFORT")
         return ModelConfig(
             self.text("MODEL_ENDPOINT"),
             self.text("MODEL_NAME"),
@@ -286,6 +290,7 @@ class _Reader:
             self.text("VISION_MODEL_ENDPOINT"),
             self.text("VISION_MODEL_NAME"),
             self.secret("VISION_MODEL_API_KEY", required=False),
+            self.reasoning_effort("VISION_MODEL_REASONING_EFFORT"),
         )
 
     def read(self) -> Config:

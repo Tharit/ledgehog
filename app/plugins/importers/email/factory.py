@@ -21,6 +21,7 @@ def email_importer(model: ModelConfig, vision_model: VisionModelConfig | None = 
             vision_model.endpoint,
             vision_model.name,
             vision_model.api_key.reveal() if vision_model.api_key else None,
+            vision_model.reasoning_effort,
         )
         if vision_model
         else None

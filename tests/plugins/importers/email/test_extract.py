@@ -70,10 +70,11 @@ def extractor(
     *,
     render: Callable[[bytes], list[bytes]] = fake_render,
     effort: str | None = "low",
+    vision_effort: str | None = None,
 ) -> ModelExtractor:
     return ModelExtractor(
         ModelSpec("http://text.test/v1/", "text-1", "tkey", effort),
-        ModelSpec("http://vision.test/v1", "vision-1", "vkey") if vision else None,
+        ModelSpec("http://vision.test/v1", "vision-1", "vkey", vision_effort) if vision else None,
         transport=httpx2.MockTransport(text),
         vision_transport=httpx2.MockTransport(vision) if vision else None,
         render=render,
@@ -123,6 +124,12 @@ def test_no_effort_is_not_sent():
     assert "reasoning_effort" not in endpoint.body()
 
 
+def test_the_vision_request_sends_its_own_effort_only_when_set():
+    vision = Endpoint()
+    extractor(Endpoint(), vision, effort="high", vision_effort="medium").extract(None, PDFS[:1])
+    assert vision.body()["reasoning_effort"] == "medium"
+
+
 def test_the_schema_holds_exactly_the_fields_of_the_spec_and_no_date_or_receipt_flag():
     props = ANSWER_SCHEMA["properties"]
     assert set(props) == {"merchant", "order_id", "total", "currency", "refund", "items"}
@@ -130,7 +137,7 @@ def test_the_schema_holds_exactly_the_fields_of_the_spec_and_no_date_or_receipt_
     assert set(props["items"]["items"]["properties"]) == {"name", "quantity", "amount"}
 
 
-def test_the_vision_request_has_images_and_no_schema_no_effort_and_a_small_budget():
+def test_the_vision_request_has_images_and_no_schema_no_effort_and_room_to_think():
     text, vision = Endpoint(), Endpoint()
     result = extractor(text, vision).extract(None, PDFS[:1])
     assert isinstance(result, Extraction) and (result.source, result.pdf, result.model) == (
@@ -144,7 +151,7 @@ def test_the_vision_request_has_images_and_no_schema_no_effort_and_a_small_budge
     assert request.headers["authorization"] == "Bearer vkey"
     body = vision.body()
     assert "response_format" not in body and "reasoning_effort" not in body
-    assert (body["model"], body["temperature"], body["max_tokens"]) == ("vision-1", 0, 2048)
+    assert (body["model"], body["temperature"], body["max_tokens"]) == ("vision-1", 0, 8192)
     system, user = body["messages"]
     for key in ("merchant", "order_id", "total", "currency", "refund", "items", "quantity", "amount"):
         assert key in system["content"]

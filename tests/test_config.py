@@ -180,6 +180,16 @@ def test_model_reasoning_effort_is_optional_and_strict():
             load(**base, MODEL_REASONING_EFFORT=bad)
 
 
+def test_vision_model_reasoning_effort_is_optional_and_strict():
+    base = {"VISION_MODEL_ENDPOINT": "http://vlm", "VISION_MODEL_NAME": "v"}
+    assert load(**base).vision_model.reasoning_effort is None  # type: ignore[union-attr]
+    for effort in ("low", "medium", "high"):
+        assert load(**base, VISION_MODEL_REASONING_EFFORT=effort).vision_model.reasoning_effort == effort  # type: ignore[union-attr]
+    for bad in ("max", "High", ""):
+        with pytest.raises(ConfigError, match="VISION_MODEL_REASONING_EFFORT"):
+            load(**base, VISION_MODEL_REASONING_EFFORT=bad)
+
+
 def test_vision_model_is_optional_and_needs_endpoint_and_name_together():
     assert load().vision_model is None
     c = load(VISION_MODEL_ENDPOINT="http://vlm", VISION_MODEL_NAME="v")

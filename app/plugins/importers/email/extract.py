@@ -35,8 +35,7 @@ from app.plugins.importers.email.pdf import render_pdf
 
 log = logging.getLogger("ledgehog.email")
 
-TEXT_MAX_TOKENS = 8192  # room for a reasoning model's thinking, besides the answer
-VISION_MAX_TOKENS = 2048  # an answer is a few hundred tokens: a model that loops fails fast
+MAX_TOKENS = 8192  # room for a reasoning model's thinking, besides the answer
 CONNECT_TIMEOUT_S = 10.0
 TEXT_TIMEOUT_S = 120.0
 VISION_TIMEOUT_S = 300.0
@@ -239,7 +238,7 @@ class ModelExtractor:
         return {
             "model": self._text.spec.name,
             "temperature": 0,
-            "max_tokens": TEXT_MAX_TOKENS,
+            "max_tokens": MAX_TOKENS,
             "stream": False,
             "messages": [
                 {"role": "system", "content": TEXT_INSTRUCTION},
@@ -260,15 +259,16 @@ class ModelExtractor:
         for image in images:
             url = f"data:image/png;base64,{base64.b64encode(image).decode('ascii')}"
             parts.append({"type": "image_url", "image_url": {"url": url}})
-        return {  # no schema, and no reasoning effort
+        return {  # no schema: constrained decoding made a vision model loop
             "model": self._vision.spec.name,
             "temperature": 0,
-            "max_tokens": VISION_MAX_TOKENS,
+            "max_tokens": MAX_TOKENS,
             "stream": False,
             "messages": [
                 {"role": "system", "content": VISION_INSTRUCTION},
                 {"role": "user", "content": parts},
             ],
+            **reasoning_field(self._vision.spec.reasoning_effort),
         }
 
     # -- asking -------------------------------------------------------------------------------------

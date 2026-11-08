@@ -66,6 +66,7 @@ services:
       # VISION_MODEL_ENDPOINT: ${VISION_MODEL_ENDPOINT:?}
       # VISION_MODEL_NAME: ${VISION_MODEL_NAME:?}
       # VISION_MODEL_API_KEY_FILE: /run/secrets/vision_model_api_key   # optional
+      # VISION_MODEL_REASONING_EFFORT: low
 
       # FinTS product registration id (spec.md §7.1); not a secret
       # FINTS_PRODUCT_ID: ${FINTS_PRODUCT_ID:?}

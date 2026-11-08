@@ -201,7 +201,7 @@ over (logged).
 images by the vision model (`VISION_MODEL_*`, `architecture.md` §5.7), both
 over the chat-completions protocol of `architecture.md` §5.4: `temperature` 0,
 no streaming, the reasoning effort the configuration names for the text model
-and none for the vision model.
+and for the vision model, each where one is named.
 
 **One document per inner message at most, text first.** The text is asked
 first. Where it yields no document (§6), each PDF is asked in turn, if the
@@ -235,7 +235,8 @@ cells are tab-separated, "never invent values") and the text, and asks for
 carries the same instruction, the keys and types spelled out, "answer with the
 JSON object only, no code fences", and the page images as data URLs, **without
 a schema** — constrained decoding made a vision model loop until its context was
-full (spike finding 7) — and with `max_tokens` 2,048, so a loop fails fast. A
+full (spike finding 7) — and with `max_tokens` 8,192, as the text request, room for a reasoning model's
+thinking. A
 reply is parsed tolerantly — a surrounding code fence is removed, else the text
 from the first `{` to the last `}` is read — and validated in code against the
 object above, whichever path it came from. A reply cut off at `max_tokens`, not
