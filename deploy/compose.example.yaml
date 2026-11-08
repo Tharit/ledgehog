@@ -1,5 +1,5 @@
 # Household ledger stack (spec/deployment.md). Copy, adapt every line marked "replace", deploy.
-# Compose 2.23.1 or later (inline `configs.content`); Docker Engine with network gateway modes.
+# Compose v2; Docker Engine with network gateway modes.
 #
 # Variables are read from the stack's environment (Portainer: "Environment variables";
 # otherwise a .env file next to this one): see stack.env.example.
@@ -92,9 +92,44 @@ services:
   relay:
     image: nginxinc/nginx-unprivileged:stable-alpine@sha256:09b0d3eda2aa592d2487f284519419015cab010d7df16cd0fe224b585fc60eb6
     restart: unless-stopped
-    configs:
-      - source: relay
-        target: /etc/nginx/nginx.conf
+    entrypoint: ["/bin/sh", "-c"]
+    command: ['printf "%s\n" "$$RELAY_CONF" > /tmp/nginx.conf && exec nginx -c /tmp/nginx.conf -g "daemon off;"']
+    environment:
+      # nginx variables are written $$ (Compose substitutes $ in values)
+      RELAY_CONF: |
+        pid /tmp/nginx.pid;
+        events {}
+        stream {
+          resolver 127.0.0.11 valid=30s ipv6=off;    # Docker's DNS, IPv4 answers only
+          log_format relay '$$remote_addr :$$server_port sni=$$ssl_preread_server_name '
+                           'to=$$upstream_addr status=$$status';
+          access_log /dev/stdout relay;     # every connection, the refused ones with status 502
+
+          # reached on 443: web hosts. One entry per name; the value is where the relay connects.
+          # replace: the entries below, matching the app's extra_hosts
+          map $$ssl_preread_server_name $$to_https {
+            fints.example-bank.de  fints.example-bank.de;
+            auth.example.org       auth.example.org;
+            # a listed name may point at a service the household runs:
+            # auth.example.org     caddy.home.lan;
+            default                blocked.invalid;
+          }
+          # reached on 993: mailboxes (implicit TLS)
+          map $$ssl_preread_server_name $$to_imaps {
+            imap.example-mail.com  imap.example-mail.com;
+            default                blocked.invalid;
+          }
+          server { listen 443; ssl_preread on; proxy_pass $$to_https:443; }
+          server { listen 993; ssl_preread on; proxy_pass $$to_imaps:993; }
+
+          # fixed forwards: nothing to route by, one destination each
+          server { listen 5432; set $$db  db.home.lan; proxy_pass $$db:5432;  }    # replace: the database
+          # a model server spoken to in plain HTTP; also needs an extra_hosts line for its name
+          # server { listen 11434; set $$llm llm.home.lan; proxy_pass $$llm:11434; }  # replace
+
+          # the way in, from the reverse proxy
+          server { listen 8000; set $$app app; proxy_pass $$app:8000; }
+        }
     networks:
       internal:
         ipv4_address: 172.30.0.2
@@ -141,41 +176,3 @@ secrets:
   #   environment: MODEL_API_KEY
   # vision_model_api_key:
   #   environment: VISION_MODEL_API_KEY
-
-configs:
-  relay:
-    # nginx variables are written $$ (Compose substitutes $ in `content`)
-    content: |
-      pid /tmp/nginx.pid;
-      events {}
-      stream {
-        resolver 127.0.0.11 valid=30s ipv6=off;    # Docker's DNS, IPv4 answers only
-        log_format relay '$$remote_addr :$$server_port sni=$$ssl_preread_server_name '
-                         'to=$$upstream_addr status=$$status';
-        access_log /dev/stdout relay;     # every connection, the refused ones with status 502
-
-        # reached on 443: web hosts. One entry per name; the value is where the relay connects.
-        # replace: the entries below, matching the app's extra_hosts
-        map $$ssl_preread_server_name $$to_https {
-          fints.example-bank.de  fints.example-bank.de;
-          auth.example.org       auth.example.org;
-          # a listed name may point at a service the household runs:
-          # auth.example.org     caddy.home.lan;
-          default                blocked.invalid;
-        }
-        # reached on 993: mailboxes (implicit TLS)
-        map $$ssl_preread_server_name $$to_imaps {
-          imap.example-mail.com  imap.example-mail.com;
-          default                blocked.invalid;
-        }
-        server { listen 443; ssl_preread on; proxy_pass $$to_https:443; }
-        server { listen 993; ssl_preread on; proxy_pass $$to_imaps:993; }
-
-        # fixed forwards: nothing to route by, one destination each
-        server { listen 5432; set $$db  db.home.lan; proxy_pass $$db:5432;  }    # replace: the database
-        # a model server spoken to in plain HTTP; also needs an extra_hosts line for its name
-        # server { listen 11434; set $$llm llm.home.lan; proxy_pass $$llm:11434; }  # replace
-
-        # the way in, from the reverse proxy
-        server { listen 8000; set $$app app; proxy_pass $$app:8000; }
-      }

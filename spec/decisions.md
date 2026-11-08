@@ -3997,3 +3997,9 @@ deployment §2, §3.
 architecture §5.7; email.md §5.
 
 The vision request sent no reasoning effort and capped `max_tokens` at 2,048 so a looping model failed fast (spike finding 7); a vision model that reasons thought within that cap at its own effort. An optional `VISION_MODEL_REASONING_EFFORT` is sent like the text model's, and the cap is the text request's 8,192: the loop was a model-side problem since fixed, and a reasoning model needs the room. Rejected: *one effort for both models* (different models, often different servers); *a larger cap only where an effort is named* (a model may reason without one).
+
+## D246 The relay's configuration is an environment variable
+
+deployment.md §3; deploy/compose.example.yaml.
+
+Compose creates a `content` config by copying it into the container, which a read-only container refuses ("`file` is the sole supported option"), and a `file` config mounts a host path. The configuration is an environment variable the relay writes to its `/tmp` and starts nginx on: read-only, no host path, one stack file. It is not secret. Rejected: *the relay writable* (the container that guards every connection out); *a file next to the stack* (a host path, and a second file to deploy).

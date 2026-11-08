@@ -92,8 +92,9 @@ forwards no lookups out.
 ## 3. The relay
 
 nginx's `stream` module with `ssl_preread`, its configuration inline in the
-stack (`configs` with `content`, Compose 2.23.1 or later), so the whole
-deployment, list included, is the one stack file.
+stack — an environment variable the relay writes to its `/tmp` at start, since
+Compose cannot create a `content` config in a read-only container — so the
+whole deployment, list included, is the one stack file.
 
 ```yaml
 services:
@@ -109,7 +110,31 @@ services:
 
   relay:
     image: nginxinc/nginx-unprivileged@sha256:…
-    configs: [{ source: relay, target: /etc/nginx/nginx.conf }]
+    entrypoint: ["/bin/sh", "-c"]
+    command: ['printf "%s\n" "$$RELAY_CONF" > /tmp/nginx.conf && exec nginx -c /tmp/nginx.conf -g "daemon off;"']
+    environment:
+      RELAY_CONF: |
+        pid /tmp/nginx.pid;
+        events {}
+        stream {
+          resolver 127.0.0.11 valid=30s ipv6=off;    # Docker's DNS, IPv4 answers only
+          log_format relay '$$remote_addr :$$server_port sni=$$ssl_preread_server_name '
+                           'to=$$upstream_addr status=$$status';
+          access_log /dev/stdout relay;     # every connection, the refused ones with status 502
+          map $$ssl_preread_server_name $$to_https {    # reached on 443
+            fints.example-bank.de  fints.example-bank.de;
+            auth.example.org       auth.example.org;
+            default                blocked.invalid;
+          }
+          map $$ssl_preread_server_name $$to_imaps {    # reached on 993
+            imap.gmail.com         imap.gmail.com;
+            default                blocked.invalid;
+          }
+          server { listen 443; ssl_preread on; proxy_pass $$to_https:443; }
+          server { listen 993; ssl_preread on; proxy_pass $$to_imaps:993; }
+          server { listen 5432; set $$db  db.home.lan; proxy_pass $$db:5432;  }    # the database
+          server { listen 8000; set $$app app;         proxy_pass $$app:8000; }    # the way in, from the reverse proxy
+        }
     networks:
       internal: { ipv4_address: 172.30.0.2 }
       outside: {}
@@ -126,31 +151,6 @@ networks:
     ipam: { config: [{ subnet: 172.30.0.0/24 }] }
   outside:
     enable_ipv6: false
-
-configs:
-  relay:
-    content: |
-      pid /tmp/nginx.pid;
-      events {}
-      stream {
-        resolver 127.0.0.11 valid=30s ipv6=off;    # Docker's DNS, IPv4 answers only
-        log_format relay '$$remote_addr :$$server_port sni=$$ssl_preread_server_name '
-                         'to=$$upstream_addr status=$$status';
-        access_log /dev/stdout relay;     # every connection, the refused ones with status 502
-        map $$ssl_preread_server_name $$to_https {    # reached on 443
-          fints.example-bank.de  fints.example-bank.de;
-          auth.example.org       auth.example.org;
-          default                blocked.invalid;
-        }
-        map $$ssl_preread_server_name $$to_imaps {    # reached on 993
-          imap.gmail.com         imap.gmail.com;
-          default                blocked.invalid;
-        }
-        server { listen 443; ssl_preread on; proxy_pass $$to_https:443; }
-        server { listen 993; ssl_preread on; proxy_pass $$to_imaps:993; }
-        server { listen 5432; set $$db  db.home.lan; proxy_pass $$db:5432;  }    # the database
-        server { listen 8000; set $$app app;         proxy_pass $$app:8000; }    # the way in, from the reverse proxy
-      }
 ```
 
 - **No IPv6, stated rather than assumed.** The stack needs none. Docker
@@ -158,7 +158,7 @@ configs:
   `enable_ipv6: false`, the app and the relay turn it off in their own kernel
   namespace (`sysctls`), and the relay asks its resolver for IPv4 addresses
   alone. A path that does not exist needs no rules.
-- **`$$`, not `$`.** Compose substitutes variables in `content`, so every
+- **`$$`, not `$`.** Compose substitutes variables in values, so every
   nginx variable is written with a doubled dollar.
 - **A host is named twice**: an `extra_hosts` line and an entry in the map of
   the port it is reached on. Adding a bank or a mailbox is those two lines

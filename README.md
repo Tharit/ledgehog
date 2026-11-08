@@ -19,7 +19,7 @@ The stack is two containers, the app and an nginx relay that is the app's only w
 
 - Docker Engine with network gateway modes (`gateway_mode_ipv4: isolated`, see Docker's
   documentation for the first release that lists it; the first check in step 8 confirms it works).
-- Docker Compose 2.23.1 or later (inline `configs.content`). In Portainer, that is the Compose
+- Docker Compose v2. In Portainer, that is the Compose
   version of its standalone agent/host: check with `docker compose version` on the host, and
   Portainer's release notes for the version it embeds. Secrets sourced from the environment need
   Compose, not Swarm (`docker stack deploy` is not supported).
@@ -88,7 +88,7 @@ reverse proxy's `https://…`; it is required with OIDC. Leave `ENABLE_TEST_IMPO
 ### 5. Configure the relay's list
 
 Every host the app may reach is named twice in the compose file, in `extra_hosts` of `app` and in a
-map of `configs.relay.content`; both lines together are all there is to adding one. Replace the
+map of `RELAY_CONF` (the relay service's `environment`); both lines together are all there is to adding one. Replace the
 example hosts:
 
 | What | `extra_hosts` | relay map |
