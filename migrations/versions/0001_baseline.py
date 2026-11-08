@@ -939,7 +939,10 @@ CREATE TABLE external_document (
     -- any name the importer delivers (spec §5.5); with the currency, it
     -- finds the clearance account that books the document (clearance_provider)
     provider             text NOT NULL,
-    external_id          text NOT NULL,     -- order id, invoice no
+    -- the document's key with `provider`: the id its source gives it, as on
+    -- source_transaction; the importer's own key, never null, synthesised where
+    -- the source names nothing usable (spec §5.5)
+    source_id            text NOT NULL,
     importer_instance_id bigint REFERENCES importer_instance(id) ON DELETE SET NULL,
     -- nullable, unlike source_transaction: a receipt may one day be added by
     -- hand rather than fetched.
@@ -955,11 +958,15 @@ CREATE TABLE external_document (
     title                text,
     raw                  jsonb NOT NULL,
     -- incremented whenever its content changes — date, total, currency,
-    -- merchant, title, lines — so that an edit by hand made on an older
+    -- merchant, title, reference, lines — so that an edit by hand made on an older
     -- version is refused once documents can be edited (spec §5.5). Not bumped
     -- by a re-delivery that changes none of it; `raw` alone is no content.
     version              integer NOT NULL DEFAULT 1,
-    UNIQUE (provider, external_id)
+    -- the provider's own order, invoice or booking number, as a person quotes
+    -- it; NULL where the provider names none. Shown and searched; nothing
+    -- resolves on it, and it is never the key (spec §5.5).
+    reference            text,
+    UNIQUE (provider, source_id)
 );
 
 CREATE INDEX ix_document_date ON external_document (occurred_on DESC);
