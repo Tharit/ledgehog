@@ -228,13 +228,14 @@ wrench  hammer  leaf  sparkles  repeat  shapes  circle-ellipsis
 | cash | `wallet` |
 | digital_wallet | `wallet-cards` |
 | depot | `chart-line` |
-| loan | `hand-coins` |
+| debt | `hand-coins` |
+| receivable | `hourglass` |
 | asset | `gem` |
 | clearance | `scale` |
 
 ```
 landmark  building-2  piggy-bank  vault  credit-card  wallet  wallet-cards  scale
-banknote  coins  hand-coins  chart-line  trending-up  gem
+banknote  coins  hand-coins  chart-line  trending-up  gem  hourglass
 house  car  briefcase  baby  gift  plane  shield
 ```
 

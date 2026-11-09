@@ -82,7 +82,18 @@ map_error(
 )
 map_error(AccountError, 409, "conflict", details=lambda e: {"reason": "account_refused"})
 
-Kind = Literal["checking", "savings", "card", "cash", "digital_wallet", "depot", "loan", "asset", "clearance"]
+Kind = Literal[
+    "checking",
+    "savings",
+    "card",
+    "cash",
+    "digital_wallet",
+    "depot",
+    "debt",
+    "receivable",
+    "asset",
+    "clearance",
+]
 CurrencyCode = Annotated[str, Field(pattern=r"^[A-Z]{3}$")]
 
 

@@ -22,7 +22,7 @@ from app.core.reporting.periods import TooManyPeriods, add_months, month_end
 MAX_POINTS = 120
 
 # the account kinds in the order of the schema's check constraint (spec §3.3), which the API's `Kind` follows
-KIND_ORDER = ("checking", "savings", "card", "cash", "digital_wallet", "depot", "loan", "asset")
+KIND_ORDER = ("checking", "savings", "card", "cash", "digital_wallet", "depot", "debt", "receivable", "asset")
 
 _BALANCES = text(
     """

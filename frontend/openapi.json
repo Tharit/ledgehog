@@ -1362,7 +1362,8 @@
               "cash",
               "digital_wallet",
               "depot",
-              "loan",
+              "debt",
+              "receivable",
               "asset",
               "clearance"
             ],
@@ -2656,7 +2657,8 @@
               "cash",
               "digital_wallet",
               "depot",
-              "loan",
+              "debt",
+              "receivable",
               "asset",
               "clearance"
             ],

@@ -1647,7 +1647,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "checking" | "savings" | "card" | "cash" | "digital_wallet" | "depot" | "loan" | "asset" | "clearance";
+            kind: "checking" | "savings" | "card" | "cash" | "digital_wallet" | "depot" | "debt" | "receivable" | "asset" | "clearance";
             /** Name */
             name: string;
             /** Note */
@@ -2034,7 +2034,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "checking" | "savings" | "card" | "cash" | "digital_wallet" | "depot" | "loan" | "asset" | "clearance";
+            kind: "checking" | "savings" | "card" | "cash" | "digital_wallet" | "depot" | "debt" | "receivable" | "asset" | "clearance";
             /** Net Worth */
             net_worth: components["schemas"]["PointNetWorthOut"][];
         };

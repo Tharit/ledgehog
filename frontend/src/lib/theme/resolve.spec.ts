@@ -98,7 +98,8 @@ describe('resolveAccount', () => {
 			cash: 'wallet',
 			digital_wallet: 'wallet-cards',
 			depot: 'chart-line',
-			loan: 'hand-coins',
+			debt: 'hand-coins',
+			receivable: 'hourglass',
 			asset: 'gem',
 			clearance: 'scale'
 		};

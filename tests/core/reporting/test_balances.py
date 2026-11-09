@@ -130,21 +130,21 @@ def test_a_kind_with_unvalued_and_valued_accounts_behaves_as_net_worth_does(ledg
     seed.entry(ledger, eur, amount=-300, on=D(2026, 1, 5))
     usd = seed.account(ledger, "Card USD", currency="USD", kind="card")
     seed.entry(ledger, usd, amount=-500, on=D(2026, 1, 6), currency="USD")
-    only_usd = seed.account(ledger, "Loan USD", currency="USD", kind="loan")
+    only_usd = seed.account(ledger, "Loan USD", currency="USD", kind="debt")
     seed.entry(ledger, only_usd, amount=-9_000, on=D(2026, 1, 6), currency="USD")
     got = balances_report(ledger, D(2026, 1, 1), D(2026, 1, 31), D(2026, 10, 20))
     by_kind = {k.kind: k.net_worth[0] for k in got.kinds}
     assert by_kind["card"].total == -300  # the valued one; the other is a remainder, never zero
     assert by_kind["card"].unvalued == (UnvaluedAccounts("USD", -500, 1),)
-    assert by_kind["loan"].total is None  # balances exist and none could be valued
-    assert by_kind["loan"].unvalued == (UnvaluedAccounts("USD", -9_000, 1),)
+    assert by_kind["debt"].total is None  # balances exist and none could be valued
+    assert by_kind["debt"].unvalued == (UnvaluedAccounts("USD", -9_000, 1),)
 
 
 def test_a_closed_account_is_in_its_kind_only_when_it_is_listed(ledger: Connection):
     old = seed.account(ledger, "Old", kind="savings")
     seed.entry(ledger, old, amount=700, on=D(2026, 2, 10))
     ledger.execute(text("UPDATE account SET closed_on = DATE '2026-03-10' WHERE id = :i"), {"i": old})
-    never = seed.account(ledger, "Never used", kind="loan")
+    never = seed.account(ledger, "Never used", kind="debt")
     ledger.execute(text("UPDATE account SET closed_on = DATE '2026-01-01' WHERE id = :i"), {"i": never})
     got = balances_report(ledger, D(2026, 1, 1), D(2026, 2, 28), D(2026, 10, 20))
     assert [k.kind for k in got.kinds] == ["savings"]  # a kind of closed, empty accounts only is absent

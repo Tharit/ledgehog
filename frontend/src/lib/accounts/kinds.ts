@@ -8,7 +8,8 @@ export const ACCOUNT_KINDS: readonly { kind: AccountKind; label: string }[] = [
 	{ kind: 'cash', label: 'Cash' },
 	{ kind: 'digital_wallet', label: 'Digital wallet' },
 	{ kind: 'depot', label: 'Depot' },
-	{ kind: 'loan', label: 'Loan' },
+	{ kind: 'debt', label: 'Debt' },
+	{ kind: 'receivable', label: 'Receivable' },
 	{ kind: 'asset', label: 'Asset' },
 	{ kind: 'clearance', label: 'Clearance' }
 ];

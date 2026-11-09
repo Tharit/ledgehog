@@ -188,8 +188,10 @@ timestamp. If that is ever needed, it is an audit log, not columns.
 ### 3.3 Accounts
 
 Accounts hold balances: checking, savings, card, cash, digital wallet (a balance
-held with a provider outside a bank, such as PayPal or Wise), depot, loan,
-other assets valued by hand, and clearance accounts (below). Each holds exactly one currency, permanently
+held with a provider outside a bank, such as PayPal or Wise), depot, debt (what
+the household owes, such as a loan or a mortgage), receivable (what is owed to
+it, such as money lent or a deposit to be returned), other assets valued by
+hand, and clearance accounts (below). Each holds exactly one currency, permanently
 (§3.8). An entry and a source transaction are denominated in their account's
 currency, so a balance is always a sum in one currency. **A balance is always
 `SUM(ledger_entry.amount)` for the account** — one column, no special case per
@@ -198,7 +200,7 @@ aggregate.
 
 **Sign convention.** Every amount and every balance in the ledger is signed
 by the direction of money for that account: positive increases the account's
-balance — more assets, or less debt. A card or loan account therefore carries
+balance — more assets, or less debt. A card or debt account therefore carries
 a negative balance. Importers deliver amounts, reported balances and document
 totals in this convention (§5.1).
 

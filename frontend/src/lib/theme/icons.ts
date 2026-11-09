@@ -38,6 +38,7 @@ import GraduationCapIcon from '@lucide/svelte/icons/graduation-cap';
 import HammerIcon from '@lucide/svelte/icons/hammer';
 import HandCoinsIcon from '@lucide/svelte/icons/hand-coins';
 import HeartPulseIcon from '@lucide/svelte/icons/heart-pulse';
+import HourglassIcon from '@lucide/svelte/icons/hourglass';
 import HouseIcon from '@lucide/svelte/icons/house';
 import InboxIcon from '@lucide/svelte/icons/inbox';
 import LampIcon from '@lucide/svelte/icons/lamp';
@@ -129,6 +130,7 @@ const ICONS: Record<string, IconComponent> = {
 	hammer: HammerIcon,
 	'hand-coins': HandCoinsIcon,
 	'heart-pulse': HeartPulseIcon,
+	hourglass: HourglassIcon,
 	house: HouseIcon,
 	inbox: InboxIcon,
 	lamp: LampIcon,

@@ -4,7 +4,7 @@ import { defaultAccountId, entryAccounts, readLastAccount, writeLastAccount } fr
 
 const cash = account({ id: 1, name: 'Cash', kind: 'cash', synced: false, sort_order: 2 });
 const wallet = account({ id: 2, name: 'Wallet', kind: 'cash', synced: false, sort_order: 1 });
-const loan = account({ id: 3, name: 'Loan', kind: 'loan', synced: false, sort_order: 3 });
+const loan = account({ id: 3, name: 'Loan', kind: 'debt', synced: false, sort_order: 3 });
 const giro = account({ id: 4, name: 'Giro', synced: true, sort_order: 0 });
 
 afterEach(() => {

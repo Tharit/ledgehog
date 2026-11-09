@@ -15,7 +15,7 @@ export const cash = account({ id: 1, name: 'Cash', kind: 'cash', synced: false, 
 export const loan = account({
 	id: 3,
 	name: 'Hand loan',
-	kind: 'loan',
+	kind: 'debt',
 	synced: false,
 	sort_order: 2
 });

@@ -158,7 +158,7 @@ def test_investment_status_is_fixed(
     [
         ("checking", "savings"),
         ("card", "cash"),
-        ("loan", "digital_wallet"),
+        ("debt", "digital_wallet"),
         ("depot", "asset"),
         ("asset", "depot"),
     ],

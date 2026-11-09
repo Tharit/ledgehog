@@ -25,5 +25,5 @@ export const PAYEE_ICONS: readonly string[] = [
 // prettier-ignore
 export const ACCOUNT_ICONS: readonly string[] = [
 	'landmark', 'piggy-bank', 'credit-card', 'wallet', 'wallet-cards', 'scale', 'banknote', 'hand-coins',
-	'chart-line', 'trending-up', 'gem', 'house', 'briefcase', 'shield', 'building-2'
+	'chart-line', 'trending-up', 'gem', 'hourglass', 'house', 'briefcase', 'shield', 'building-2'
 ];

@@ -24,7 +24,8 @@ export const ACCOUNT_KIND_ICONS: Readonly<Record<string, string>> = {
 	cash: 'wallet',
 	digital_wallet: 'wallet-cards',
 	depot: 'chart-line',
-	loan: 'hand-coins',
+	debt: 'hand-coins',
+	receivable: 'hourglass',
 	asset: 'gem',
 	clearance: 'scale'
 };
