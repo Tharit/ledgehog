@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { describeFacts } from '#lib/accounts/facts.js';
+	import { describeFacts, describePerformance } from '#lib/accounts/facts.js';
 	import MoneyDisplay from '#lib/components/common/money-display.svelte';
 	import type { Account } from '#lib/types/domain.js';
 	import { cn } from '#lib/utils.js';
@@ -23,6 +23,7 @@
 	} = $props();
 
 	const facts = $derived(describeFacts(account, { locale, today }));
+	const performance = $derived(describePerformance(account, { locale }));
 </script>
 
 <div
@@ -37,6 +38,13 @@
 		showPlus={false}
 		class="text-base font-semibold"
 	/>
+	{#if performance}
+		<p class="text-xs text-muted-foreground" data-slot="performance-line">
+			{performance.hasReturn
+				? `gain ${performance.gain} · ${performance.return}`
+				: `gain ${performance.gain}`}
+		</p>
+	{/if}
 	<p
 		class={cn(
 			'flex flex-wrap gap-x-2 text-xs text-muted-foreground',

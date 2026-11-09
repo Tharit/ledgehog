@@ -22,13 +22,14 @@ def records_since_zero(conn: Connection, account_id: int) -> list[int]:
     """
     records = conn.execute(
         text(
-            "SELECT b.id, b.kind, COALESCE(e.amount, 0) AS rec FROM v_balance_record b "
+            "SELECT b.id, b.import_run_id IS NOT NULL AS reported, COALESCE(e.amount, 0) AS rec "
+            "FROM v_balance_record b "
             "LEFT JOIN ledger_entry e ON e.balance_record_id = b.id AND e.type = 'reconciliation' "
             "WHERE b.account_id = :a ORDER BY b.balance_on, b.id"
         ),
         {"a": account_id},
     ).all()
-    reported = [i for i, r in enumerate(records) if r.kind == "reported"]
+    reported = [i for i, r in enumerate(records) if r.reported]
     if not reported:
         return []
     total = 0

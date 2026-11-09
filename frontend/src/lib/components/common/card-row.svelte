@@ -7,10 +7,13 @@
 	let {
 		label,
 		href,
+		title,
 		children
 	}: {
 		label: string;
 		href?: string;
+		/** the label's help text */
+		title?: string;
 		children: Snippet;
 	} = $props();
 </script>
@@ -24,6 +27,6 @@
 	)}
 	data-slot="card-row"
 >
-	<span class="text-muted-foreground">{label}</span>
+	<span class="text-muted-foreground" {title}>{label}</span>
 	<span class="text-right font-medium">{@render children()}</span>
 </svelte:element>

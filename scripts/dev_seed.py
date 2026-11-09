@@ -30,6 +30,11 @@ three accounts: "Testbank Giro" (EUR, checking, bookings and a balance, ninety d
 Dollars" (a USD pocket whose fetch asks for the text TAN **123456**) and "Testbank Depot" (nothing to fetch).
 `--reset` removes the instance and the accounts that were linked to it.
 
+Two hand-kept investment accounts (`depot_cases`; D249): "ETF Depot" with records at each quarter-end and
+"Crypto Wallet", young enough to show no return. The giro's savings-plan, distribution and fee rows are
+committed as transfers to and from the depot through the real `commit_unit`, so the depot's net deposits,
+gain and return are the ones the ledger derives; the seed summary prints them.
+
 Named rules (`dev_seed_data.RULES`: a counter-account rule against the cash account, a payee rule, a
 category rule by counterparty reference, a regex rule, a category rule with a payee condition) are
 written through the real `create_rule`, previewed first, after the classification they name.
@@ -53,7 +58,7 @@ from typing import Any
 
 from sqlalchemy import Engine, text
 
-from app.core.accounts import create_account
+from app.core.accounts import create_account, list_accounts
 from app.core.balance.derived import recompute_derived
 from app.core.balance.records import set_manual_record
 from app.core.importers.instances import create_instance, link_account
@@ -66,6 +71,8 @@ from app.core.ledger.rules import RuleDraft, create_rule
 from app.core.plugins.classifier import Condition
 from app.core.resolution.registry import configure_classifiers, configure_rule_tools
 from app.core.settle.settle import settle
+from app.core.units.commit import commit_unit
+from app.core.units.draft import CounterLegDraft, DraftEntry, FieldDraft, PairingDraft, UnitDraft
 from app.plugins.classifiers import default_classifiers, default_rule_tools
 from app.plugins.importers.csv import CsvImporter, load_presets
 from app.plugins.importers.testdocs import TestDocumentImporter
@@ -450,6 +457,71 @@ def transfer_cases(engine: Engine, out: list[str]) -> None:
     out.append(f"PROTOTYPE-ONLY dev data (direct SQL): {len(_TRANSFERS)} transfer legs for the review queue")
 
 
+def depot_cases(engine: Engine, plan: data.SeedPlan, out: list[str]) -> None:
+    """Hand-kept investment accounts (spec §3.4, §8, D249): "ETF Depot" (an anchor two and a half years
+    back, a record per quarter-end) and "Crypto Wallet" (an anchor four months back and one later record,
+    so it shows no return yet). Neither is linked to an importer; their records are `set_manual_record`.
+
+    The depot's movements are the giro's rows of `DEPOT_PURPOSES` (a monthly savings plan, distributions,
+    a fee), imported with the giro's export; each is typed as a transfer to the depot and committed through
+    the real `commit_unit`, whose counter-leg creates the depot's side, so no leg waits for a partner.
+    Rows dated before the depot's anchor do not exist (the plan leaves them out): the anchor absorbs them.
+    """
+    made: dict[str, int] = {}
+    for h in plan.holdings:
+        account = create_account(engine, name=h.name + data.SUFFIX, kind=h.kind, currency="EUR")
+        made[h.name] = account
+        for on, balance in h.records:
+            set_manual_record(engine, account, on, balance)
+    depot = made[data.DEPOT_NAME]
+    with engine.connect() as conn:
+        legs = conn.execute(
+            text(
+                "SELECT e.id, e.version FROM ledger_entry e"
+                " JOIN source_transaction s ON s.id = e.source_transaction_id"
+                " JOIN account a ON a.id = e.account_id"
+                " WHERE a.name = :giro AND s.purpose = ANY(:purposes) ORDER BY s.booked_on, e.id"
+            ),
+            {"giro": "Girokonto" + data.SUFFIX, "purposes": list(data.DEPOT_PURPOSES)},
+        ).all()
+    for entry_id, version in legs:
+        commit_unit(
+            engine,
+            UnitDraft(
+                entry_id,
+                [
+                    DraftEntry(
+                        entry_id,
+                        type=FieldDraft("fixed", "transfer"),
+                        counter_account=FieldDraft("fixed", depot),
+                        pairing=PairingDraft("counter_leg", counter_leg=CounterLegDraft(-1)),
+                    )
+                ],
+                versions={entry_id: version},
+            ),
+        )
+    out.append(
+        f"{len(plan.holdings)} hand-kept investment accounts; {len(legs)} giro rows committed as transfers "
+        "to/from the depot (counter-legs created by the commit)"
+    )
+
+
+def performance_lines(engine: Engine) -> list[str]:
+    """The figures of each seeded investment account (spec §8): net deposits, gain and return."""
+    lines: list[str] = []
+    with engine.connect() as conn:
+        for v in list_accounts(conn):
+            if v.net_deposits is None or not v.name.endswith(data.SUFFIX):
+                continue
+            bp = v.return_rate_bp
+            rate = "no return yet" if bp is None else f"return {bp / 100:+.2f} % p.a."
+            lines.append(
+                f"{v.name}: balance {v.balance / 100:.2f}, net deposits {v.net_deposits / 100:.2f}, "
+                f"gain {(v.gain or 0) / 100:+.2f}, {rate} as of {v.return_as_of}"
+            )
+    return lines
+
+
 def document_cases(engine: Engine, today: date, out: list[str]) -> None:
     """Documents for the document list (spec §5.5, §5.8, documents.md): a document importer instance
     (`TestDocumentImporter`, which delivers what its settings list) run through the real `start_run` +
@@ -699,6 +771,7 @@ def seed(
         make_rules(engine, out)
         transfer_cases(engine, out)
         document_cases(engine, today, out)
+    depot_cases(engine, plan, out)
     if test_importers:
         testbank_instance(engine, today, out)
     settle(engine)  # review flags recomputed once, at the end
@@ -709,6 +782,7 @@ def seed(
         raise SystemExit(f"integrity check failed after seeding: {bad}")
     out.append("integrity check: clean")
     out.extend(summary(engine))
+    out.extend(performance_lines(engine))
     return out
 
 

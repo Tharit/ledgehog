@@ -283,8 +283,11 @@ entries.
   reporting line rather than being blended into income. A depot's balance is
   therefore the transfers into and out of it plus its valuations: a gain
   realised by selling appears as valuation like an unrealised one, because the
-  sale itself is a transfer out; dividends and fees paid to the cash account
-  are ordinary flows.
+  sale itself is a transfer out. **What an investment earns or costs passes
+  through it**: a distribution paid to a cash account is a transfer out of
+  the depot, and a fee or a tax on it charged to a cash account is a transfer
+  into it, so that its return holds them as an accumulating fund's holds its
+  own (§8). Neither is income or expense.
 - `reconciliation` — the entry derived from a later balance record on any
   other account: the part of the change since the previous record that the
   entries in between do not explain. After a wallet count it is unrecorded
@@ -544,8 +547,9 @@ reviewed.
 
 A **balance record** states that an account held balance *B* at the end of
 date *D*, in the account's currency and the ledger sign convention: every
-entry dated on *D* counts towards it. There are two kinds, and the kind only
-says where the number came from:
+entry dated on *D* counts towards it. A record is **reported** when an import
+run wrote it and **manual** otherwise. That is read from the record's run, not
+stored beside it, and it only says where the number came from:
 
 | Kind | Written by |
 |---|---|
@@ -2940,6 +2944,9 @@ Every figure is in the base currency (§3.8). Periods bucket entries by
 | Savings rate | savings ÷ income |
 | Starting balances | openings, at their `booked_on` rate |
 | Valuation | valuations, grouped by account, at their `booked_on` rate |
+| Net deposits | per investment account, in its currency: its anchor's balance plus its movements dated after the anchor |
+| Gain | per investment account, in its currency: its balance minus its net deposits, which is the sum of its valuations |
+| Return | per investment account: its money-weighted annual return as of its latest balance record (below) |
 | Reconciliation | reconciliations, grouped by account, at their `booked_on` rate |
 | Transfers (net) | transfer legs, at their `booked_on` rate (§3.8) |
 | FX translation | per account, as defined in §3.8 |
@@ -2965,6 +2972,19 @@ Every figure is in the base currency (§3.8). Periods bucket entries by
   and a valuation is not money arriving or leaving. The reconciliation line
   doubles as a measure of a report's accuracy: it is what the ledger does not
   explain, from unrecorded cash to a difference against the bank.
+- **An investment account's return** is the annual rate at which its money
+  flows, each discounted to its date, sum to zero: the anchor's balance paid
+  in on the anchor date; each movement dated after it, up to the latest
+  record, as money paid in or taken out; and the latest record's balance
+  taken out on its date. It is computed in the account's currency, from the
+  anchor on, and stands as of the latest record: a movement after it waits for
+  the next valuation. It is shown once the latest record is at least a year
+  after the anchor, since a rate annualised from a shorter span misleads, and
+  not at all where no rate solves it. Net deposits and gain need no such span.
+  Neither is a cost basis (§1.2): a sale lowers net deposits by what it
+  brought, so a depot sold at a profit can hold negative net deposits, and the
+  gain is realised and unrealised together. An account without a record has
+  none of the three figures.
 - **Refunds net.** A category's spend can be negative in a period where its
   refunds exceed its purchases; reports show it as it is.
 - **A period's spend** is the *Spend by category* row summed over the period,

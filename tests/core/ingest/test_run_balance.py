@@ -52,7 +52,7 @@ def test_first_record_anchors_with_an_opening_before_the_first_movement(env: Env
     # opening = B - movements = 1000 - (-500 + 200), dated the day before the earliest movement
     assert _derived(env) == [("opening", 1300, d(9))]
     rec = env.q("SELECT * FROM balance_record")[0]
-    assert (rec.kind, rec.import_run_id, rec.balance, rec.balance_on) == ("reported", res.run_id, 1000, d(14))
+    assert (rec.import_run_id, rec.balance, rec.balance_on) == (res.run_id, 1000, d(14))  # reported: a run
     assert res.balance_record_id == rec.id
     stats = env.run_row(res.run_id).stats
     assert stats["balance"] == {"balance_on": "2026-03-14", "balance": 1000}

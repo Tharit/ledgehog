@@ -175,10 +175,10 @@ def test_a_full_run_fills_every_account_through_the_real_pipeline(seeded: str, d
         }
     # the unsynced GBP cash account stays empty on purpose: the cross-currency legs offer to fill it
     empty = {name for name, n in per_account.items() if n == 0}
-    assert len(per_account) == 7 and empty == {"Bargeld GBP [seed]"}, per_account
+    assert len(per_account) == 9 and empty == {"Bargeld GBP [seed]"}, per_account
     assert all(name.endswith("[seed]") for name in per_account)
-    assert _one(dev_engine, "SELECT count(*) FROM balance_record WHERE kind = 'reported'") >= 3
-    assert _one(dev_engine, "SELECT count(*) FROM balance_record WHERE kind = 'manual'") >= 2
+    assert _one(dev_engine, "SELECT count(*) FROM balance_record WHERE import_run_id IS NOT NULL") >= 3
+    assert _one(dev_engine, "SELECT count(*) FROM balance_record WHERE import_run_id IS NULL") >= 2
     assert _one(dev_engine, "SELECT count(*) FROM ledger_entry WHERE type = 'opening'") >= 3
     assert _one(dev_engine, "SELECT count(*) FROM account WHERE external_ref IS NOT NULL") >= 1
     # the second, overlapping upload skipped what was already there
@@ -193,7 +193,12 @@ def test_classification_gives_rows_something_to_render(seeded: str, dev_engine: 
     assert _one(dev_engine, "SELECT count(*) FROM category WHERE icon IS NOT NULL AND color IS NOT NULL") >= 5
     assert _one(dev_engine, "SELECT count(*) FROM category WHERE parent_id IS NOT NULL") >= 6
     assert _one(dev_engine, "SELECT count(*) FROM payee") >= 15
-    movements = _one(dev_engine, "SELECT count(*) FROM ledger_entry WHERE balance_record_id IS NULL")
+    # transfers (the review-queue cases, the depot's savings plan) are not for a category: not a candidate
+    movements = _one(
+        dev_engine,
+        "SELECT count(*) FROM ledger_entry"
+        " WHERE balance_record_id IS NULL AND type IS DISTINCT FROM 'transfer'",
+    )
     classified = _one(dev_engine, "SELECT count(*) FROM ledger_entry WHERE category_id IS NOT NULL")
     assert 0.5 <= classified / movements <= 0.9
     assert _one(dev_engine, "SELECT count(*) FROM ledger_entry WHERE 'unclassified' = ANY(review_flags)") > 0
@@ -455,3 +460,22 @@ def test_the_seeds_direct_sql_leaves_every_accounts_derived_entries_current(seed
                 ).scalar_one()
                 == 0
             )
+
+
+def test_the_hand_kept_investment_accounts_show_a_return_and_a_young_one_does_not(
+    seeded: str, dev_engine: Engine
+):
+    from app.core.accounts import list_accounts
+
+    with dev_engine.connect() as conn:
+        by_name = {v.name: v for v in list_accounts(conn)}
+        depot, young = by_name["ETF Depot [seed]"], by_name["Crypto Wallet [seed]"]
+        assert depot.return_rate_bp is not None and depot.net_deposits is not None
+        assert depot.gain == depot.balance - depot.net_deposits
+        assert (young.net_deposits, young.return_rate_bp) == (150_000, None) and young.gain
+        # every leg on the depot was created by the commit, paired with its giro row: none waits
+        waiting = conn.execute(
+            text("SELECT count(*) FROM v_open_transfer_legs WHERE account_id = :a"), {"a": depot.id}
+        ).scalar_one()
+        assert waiting == 0
+    assert "ETF Depot [seed]: balance" in seeded and "no return yet" in seeded

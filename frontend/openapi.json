@@ -136,6 +136,18 @@
           "balance": {
             "$ref": "#/components/schemas/Money"
           },
+          "balance_as_of": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Balance As Of"
+          },
           "closed_on": {
             "anyOf": [
               {
@@ -174,6 +186,16 @@
             ],
             "title": "External Ref"
           },
+          "gain": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "icon": {
             "anyOf": [
               {
@@ -209,6 +231,16 @@
             "title": "Name",
             "type": "string"
           },
+          "net_deposits": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "note": {
             "anyOf": [
               {
@@ -240,6 +272,29 @@
               }
             ],
             "title": "Records Since Zero"
+          },
+          "return_as_of": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return As Of"
+          },
+          "return_rate": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return Rate"
           },
           "sort_order": {
             "title": "Sort Order",
@@ -290,7 +345,12 @@
           "unexplained_difference",
           "anchored",
           "balance",
-          "records_since_zero"
+          "balance_as_of",
+          "records_since_zero",
+          "net_deposits",
+          "gain",
+          "return_rate",
+          "return_as_of"
         ],
         "title": "AccountOut",
         "type": "object"
@@ -3188,6 +3248,18 @@
           "balance": {
             "$ref": "#/components/schemas/Money"
           },
+          "balance_as_of": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Balance As Of"
+          },
           "closed_on": {
             "anyOf": [
               {
@@ -3237,6 +3309,16 @@
             ],
             "title": "External Ref"
           },
+          "gain": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "icon": {
             "anyOf": [
               {
@@ -3272,6 +3354,16 @@
             "title": "Name",
             "type": "string"
           },
+          "net_deposits": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "note": {
             "anyOf": [
               {
@@ -3303,6 +3395,29 @@
               }
             ],
             "title": "Records Since Zero"
+          },
+          "return_as_of": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return As Of"
+          },
+          "return_rate": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return Rate"
           },
           "sort_order": {
             "title": "Sort Order",
@@ -3353,7 +3468,12 @@
           "unexplained_difference",
           "anchored",
           "balance",
+          "balance_as_of",
           "records_since_zero",
+          "net_deposits",
+          "gain",
+          "return_rate",
+          "return_as_of",
           "data_age_days"
         ],
         "title": "OverviewAccountOut",

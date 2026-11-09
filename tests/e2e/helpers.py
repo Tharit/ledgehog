@@ -173,7 +173,8 @@ class Http:
         with self.api.engine.connect() as conn:
             rows = conn.execute(
                 text(
-                    "SELECT b.kind, b.balance, b.balance_on FROM balance_record b"
+                    "SELECT CASE WHEN b.import_run_id IS NULL THEN 'manual' ELSE 'reported' END AS kind,"
+                    " b.balance, b.balance_on FROM balance_record b"
                     " LEFT JOIN import_run r ON r.id = b.import_run_id"
                     " WHERE b.account_id = :a AND (r.status IS NULL OR r.status <> 'reverted')"
                     " ORDER BY b.balance_on, b.id"

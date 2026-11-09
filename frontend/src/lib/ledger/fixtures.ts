@@ -50,7 +50,12 @@ export function account(over: Partial<Account> = {}): Account {
 		unexplained_difference: null,
 		anchored: true,
 		balance: { amount: 0, currency: 'EUR' },
+		balance_as_of: null,
 		records_since_zero: null,
+		net_deposits: null,
+		gain: null,
+		return_rate: null,
+		return_as_of: null,
 		...over
 	};
 }

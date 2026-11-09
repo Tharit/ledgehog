@@ -58,7 +58,7 @@ class Scene:
     def reported(self, on: date, balance: int, *, run_id: int | None = None) -> int:
         run = run_id or make_run(self.conn, self.account, covered_through=max(on, FAR))
         return make_balance_record(
-            self.conn, self.account, balance_on=on, balance=balance, kind="reported", run_id=run
+            self.conn, self.account, balance_on=on, balance=balance, run_id=run
         )
 
     def recompute(self) -> None:

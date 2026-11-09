@@ -9,7 +9,7 @@ result, never raised into the committed write. Reads take a connection.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from types import EllipsisType
 
@@ -17,6 +17,7 @@ from sqlalchemy import Connection, Engine, text
 from sqlalchemy.exc import DBAPIError
 
 from app.core.balance.derived import recompute_derived
+from app.core.balance.performance import performance
 from app.core.ingest.identity import canonical_text
 from app.core.settle.settle import SettleResult, settle
 from app.utils.db.errors import constraint_name
@@ -112,7 +113,15 @@ class AccountView:
     unexplained_difference: int | None
     anchored: bool  # False: it has entries but no counting balance record
     balance: int  # the sum of its entries (`v_account_balance`), minor units of its currency
+    # the latest day the balance is known for: synced_through if synced, else the later of the latest
+    # movement and the latest counting record; None with neither
+    balance_as_of: date | None = None
     providers: tuple[str, ...] = ()  # a clearance account's providers, sorted; empty for any other kind
+    # an investment account with a counting record (spec §8, D249); all None otherwise
+    net_deposits: int | None = None
+    gain: int | None = None
+    return_rate_bp: int | None = None  # the annual return in basis points; None: no return shown
+    return_as_of: date | None = None  # the latest record's date
 
 
 def _canonical_ref(external_ref: str | None) -> str | None:
@@ -344,8 +353,8 @@ def _write_opening(conn: Connection, account_id: int, currency: str, start_date:
     """The clearance account's start: a manual balance record of zero at the end of the start date."""
     conn.execute(
         text(
-            "INSERT INTO balance_record (account_id, kind, balance, currency, balance_on)"
-            " VALUES (:a, 'manual', 0, :c, :on)"
+            "INSERT INTO balance_record (account_id, balance, currency, balance_on)"
+            " VALUES (:a, 0, :c, :on)"
         ),
         {"a": account_id, "c": currency, "on": start_date},
     )
@@ -449,6 +458,11 @@ def reopen_account(engine: Engine, account_id: int) -> SettleResult:
 _LIST_SQL = """
 SELECT a.id, a.name, a.kind, a.currency, a.external_ref, a.closed_on, a.sort_order, a.note,
        a.icon, a.color, s.synced, c.synced_through, d.last_data_on, u.difference, bal.balance,
+       CASE WHEN s.synced THEN c.synced_through ELSE GREATEST(
+         (SELECT max(t.booked_on) FROM source_transaction t
+           WHERE t.account_id = a.id AND t.duplicate_of IS NULL),
+         (SELECT max(b.balance_on) FROM v_balance_record b WHERE b.account_id = a.id)) END
+         AS balance_as_of,
        COALESCE((SELECT array_agg(p.provider ORDER BY p.provider) FROM clearance_provider p
                   WHERE p.account_id = a.id), '{}') AS providers,
        NOT (EXISTS (SELECT 1 FROM ledger_entry e WHERE e.account_id = a.id)
@@ -466,7 +480,9 @@ SELECT a.id, a.name, a.kind, a.currency, a.external_ref, a.closed_on, a.sort_ord
 def list_accounts(conn: Connection) -> list[AccountView]:
     """Every account, open ones first, with the facts the views derive."""
     return [
-        AccountView(
+        _with_performance(
+            conn,
+            AccountView(
             id=r.id,
             name=r.name,
             kind=r.kind,
@@ -483,7 +499,23 @@ def list_accounts(conn: Connection) -> list[AccountView]:
             unexplained_difference=None if r.difference is None else int(r.difference),
             anchored=r.anchored,
             balance=int(r.balance),
+            balance_as_of=r.balance_as_of,
             providers=tuple(r.providers),
+            ),
         )
         for r in conn.execute(text(_LIST_SQL))
     ]
+
+
+def _with_performance(conn: Connection, view: AccountView) -> AccountView:
+    """An investment account's net deposits, gain and return, from its records and source rows."""
+    perf = performance(conn, view.id, view.kind, view.balance)
+    if perf is None:
+        return view
+    return replace(
+        view,
+        net_deposits=perf.net_deposits,
+        gain=perf.gain,
+        return_rate_bp=perf.return_rate_bp,
+        return_as_of=perf.return_as_of,
+    )

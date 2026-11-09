@@ -41,9 +41,9 @@ def providers(db: Db, account_id: int) -> list[str]:
 def test_create_writes_the_opening_record_of_zero_at_the_end_of_the_start(db: Db) -> None:
     aid = clearance(db, providers=["Amazon"])
     records = db.q(
-        "SELECT kind, balance, balance_on, currency FROM balance_record WHERE account_id = :a", a=aid
+        "SELECT import_run_id, balance, balance_on, currency FROM balance_record WHERE account_id = :a", a=aid
     )
-    assert [tuple(r) for r in records] == [("manual", 0, START, "EUR")]
+    assert [tuple(r) for r in records] == [(None, 0, START, "EUR")]  # manual: no run
     assert db.q("SELECT 1 FROM ledger_entry WHERE account_id = :a", a=aid) == []  # zero derives no entry
     assert providers(db, aid) == ["Amazon"]
     assert db.one("SELECT kind FROM account WHERE id = :a", a=aid).kind == "clearance"

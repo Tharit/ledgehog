@@ -457,7 +457,7 @@ valuation and a stale one misstates net worth. Cash is not: its balance is kept
 current by its entries, and a wallet count is an occasional check that would
 otherwise be permanently overdue.
 
-## D37 Depots and assets are valued by hand
+## D37 Depots and assets are valued by hand — *partly superseded by D249*
 
 Position-level holdings are a non-goal, so nothing reports a depot's value
 (spec §1.1, §3.4). A depot's balance is the transfers into and out of it plus
@@ -4009,3 +4009,18 @@ Compose creates a `content` config by copying it into the container, which a rea
 deployment.md §4; deploy/compose.example.yaml.
 
 Compose creates a secret sourced from the environment by copying it into the container, which a read-only container refuses, as it does for a `content` config (D246). The app takes its secrets as environment variables from the stack's environment; the read-only root filesystem is kept, and a secret in the environment is readable by the same access that reads a mounted one. Rejected: *the app writable* (the container that holds bank credentials); *secret files on the host* (a host path, and files beside the stack).
+
+## D248 Whether a balance record is reported is read from its run
+
+spec §3.10; schema `balance_record`; architecture §4.1 (*The account statement*).
+
+`balance_record.kind` held `reported` or `manual`, and a check made it equal to whether `import_run_id` is set: one fact stored twice, as D105 declined for an `adjustment` type. The column goes; the run says it. The statement still answers `record_kind`, derived. Rejected: *keeping the column for a new distinction* (D249 rejects the distinction it was considered for, and a column whose meaning changes from provenance to semantics invites misreading).
+
+## D249 An investment account's net deposits, gain and return
+
+Partly supersedes D37 (distributions and fees as flows on the cash account). spec §3.4, §8; architecture §4.1; ux/views/account.md.
+
+- **Net deposits and gain, from what the ledger already holds** (user, 2026-11-09). Net deposits are the anchor's balance plus the movements after it; gain is the balance less them, which is the sum of the valuations. It is a broker statement's decomposition (deposits and withdrawals, change in value) and hledger's (`roi`: flows and unrealised gains). It is not cost basis: that needs lots, a non-goal (§1.2). Rejected: *a second kind of balance record stating capital, reconciled against the movements*. A broker's capital figure is cost basis, which falls by the cost of what is sold while the movements fall by what it brought, so every profitable sale would leave its realised gain as a reconciliation. That would bring market gains into savings, which D37 keeps out; leave a lasting unexplained difference; and look exactly like a missing row. Net deposits, the figure that does reconcile, is the one nobody reports, and the ledger already sums it. It would also have given an account two chains of records, each explaining what the other had not.
+- **What an investment earns or costs passes through it** (user, 2026-11-09). A distribution paid to a cash account is a transfer out of the depot, and a fee or tax charged to a cash account a transfer into it. An accumulating fund already keeps its return inside valuation; this makes a distributing one agree, so the savings rate counts neither, and the depot's return includes both. Nothing new: a rule types the cash row as a transfer, and the commit creates the depot's leg. Accepted: distributions no longer show as income, and charges for a depot no longer as spending. Rejected: *income booked on the depot, then a transfer out* (a hand entry per distribution, and distributing and accumulating funds still disagree); *distributions as income on the cash account* (a depot's return would miss them).
+- **Money-weighted, as of the latest record** (user, 2026-11-09). The return is the rate that discounts the depot's flows and its latest value to zero, which is what a household's money earned, timing included; it is Vanguard's personal performance and Portfolio Performance's IZF. Rejected: *time-weighted* (it needs a value on every flow's date, which sparse manual valuations do not give, so it would be an approximation shown as exact); *a period picker on the account page* (since the anchor answers "how has this done"; per-period figures belong to reports if ever needed).
+- **Shown from a year's span** (user, 2026-11-09). A few months' return, annualised, misreads (+3 % in two months is about +19 % a year). Rejected: *the return over the span, unannualised, below a year* (a second figure with a different meaning in the same place); *always annualised*.

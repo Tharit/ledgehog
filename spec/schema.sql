@@ -519,8 +519,8 @@ CREATE TABLE fx_rate (
 -- currency and ledger sign convention. A fact about a balance, never part of
 -- a sum. Every record RECONCILES: each record owns at most one derived entry
 -- explaining its interval — the anchor's is the opening, a later record's a
--- valuation (investment account) or a reconciliation. The kind only says where the
--- number came from:
+-- valuation (investment account) or a reconciliation. Whether it is reported
+-- or manual is read from import_run_id, and only says where the number came from:
 --   reported = an importer's booked closing balance of the last day before
 --              the fetch, at most one per run, on the run's account, never
 --              dated after the run's coverage (spec §5.1, I36)
@@ -538,24 +538,22 @@ CREATE TABLE fx_rate (
 CREATE TABLE balance_record (
     id            bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     account_id    bigint  NOT NULL REFERENCES account(id) ON DELETE RESTRICT,
-    kind          text    NOT NULL CHECK (kind IN ('reported','manual')),
+    -- set: reported by that run; NULL: manual (D248)
     import_run_id bigint  REFERENCES import_run(id) ON DELETE RESTRICT,
     balance       bigint  NOT NULL,
     currency      char(3) NOT NULL,
     balance_on    date    NOT NULL,
     CONSTRAINT fk_balance_record_account_currency
         FOREIGN KEY (account_id, currency) REFERENCES account (id, currency),
-    CONSTRAINT ck_balance_record_run
-        CHECK ((kind = 'manual') = (import_run_id IS NULL)),
     -- a reported record is on its run's account (NULL run: manual, unchecked)
     CONSTRAINT fk_balance_record_run_account
         FOREIGN KEY (import_run_id, account_id) REFERENCES import_run (id, account_id)
 );
 
 CREATE UNIQUE INDEX ux_balance_record_reported
-    ON balance_record (import_run_id) WHERE kind = 'reported';
+    ON balance_record (import_run_id) WHERE import_run_id IS NOT NULL;
 CREATE UNIQUE INDEX ux_balance_record_manual_date
-    ON balance_record (account_id, balance_on) WHERE kind = 'manual';
+    ON balance_record (account_id, balance_on) WHERE import_run_id IS NULL;
 CREATE INDEX ix_balance_record_account_date
     ON balance_record (account_id, balance_on);
 
@@ -1452,8 +1450,7 @@ SELECT b.id AS balance_record_id, b.balance_on, r.id AS import_run_id,
        r.covered_through
   FROM balance_record b
   JOIN import_run r ON r.id = b.import_run_id
- WHERE b.kind = 'reported'
-   AND (r.covered_through IS NULL OR b.balance_on > r.covered_through);
+ WHERE (r.covered_through IS NULL OR b.balance_on > r.covered_through);
 
 -- the derived entry's type follows the account: a later record on an
 -- investment account derives a valuation, on any other a reconciliation
@@ -1515,7 +1512,7 @@ SELECT e.id AS entry_id, e.account_id, e.type
 -- the running sum was last zero localise it.
 CREATE VIEW v_unexplained_difference AS
 WITH reported AS (
-    SELECT account_id, balance_on, id FROM v_balance_record WHERE kind = 'reported'
+    SELECT account_id, balance_on, id FROM v_balance_record WHERE import_run_id IS NOT NULL
 ), first_reported AS (
     SELECT DISTINCT ON (account_id) account_id, balance_on, id
       FROM reported ORDER BY account_id, balance_on, id

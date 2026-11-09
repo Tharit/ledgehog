@@ -65,8 +65,8 @@ def insert_reported_record(
     return int(
         conn.execute(
             text(
-                "INSERT INTO balance_record (account_id, kind, import_run_id, balance, currency, balance_on) "
-                "SELECT id, 'reported', :run, :bal, currency, :on FROM account WHERE id = :a RETURNING id"
+                "INSERT INTO balance_record (account_id, import_run_id, balance, currency, balance_on) "
+                "SELECT id, :run, :bal, currency, :on FROM account WHERE id = :a RETURNING id"
             ),
             {"a": account_id, "run": import_run_id, "bal": balance, "on": balance_on},
         ).scalar_one()
@@ -120,9 +120,9 @@ def _set(engine: Engine, account_id: int, balance_on: date, balance: int) -> tup
         # xmax is 0 on a row this statement inserted, not on one it updated
         row = conn.execute(
             text(
-                "INSERT INTO balance_record (account_id, kind, balance, currency, balance_on) "
-                "SELECT id, 'manual', :bal, currency, :on FROM account WHERE id = :a "
-                "ON CONFLICT (account_id, balance_on) WHERE kind = 'manual' "
+                "INSERT INTO balance_record (account_id, balance, currency, balance_on) "
+                "SELECT id, :bal, currency, :on FROM account WHERE id = :a "
+                "ON CONFLICT (account_id, balance_on) WHERE import_run_id IS NULL "
                 "DO UPDATE SET balance = EXCLUDED.balance RETURNING id, (xmax = 0) AS created"
             ),
             {"a": account_id, "bal": balance, "on": balance_on},
@@ -135,16 +135,16 @@ def _update(engine: Engine, record_id: int, balance: int, balance_on: date | Non
     with engine.begin() as conn:
         account = _locked_record_account(conn, record_id)
         row = conn.execute(
-            text("SELECT kind, balance_on FROM balance_record WHERE id = :i"), {"i": record_id}
+            text("SELECT import_run_id, balance_on FROM balance_record WHERE id = :i"), {"i": record_id}
         ).one_or_none()
         if row is None:
             raise RecordNotFound(record_id)
-        if row.kind != "manual":
+        if row.import_run_id is not None:
             raise ReportedRecordNotEditable(record_id)
         new_date = row.balance_on if balance_on is None else balance_on
         clash = conn.execute(
             text(
-                "SELECT 1 FROM balance_record WHERE account_id = :a AND kind = 'manual' "
+                "SELECT 1 FROM balance_record WHERE account_id = :a AND import_run_id IS NULL "
                 "AND balance_on = :on AND id <> :i"
             ),
             {"a": account, "on": new_date, "i": record_id},

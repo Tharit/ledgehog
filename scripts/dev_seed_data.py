@@ -318,6 +318,81 @@ class SeedFile:
     last: date
 
 
+@dataclass(frozen=True)
+class Holding:
+    """A hand-kept investment account: never linked to an importer, valued by manual balance records (the
+    first is its anchor). `funded` says whether the giro's rows below feed it (as transfers)."""
+
+    name: str
+    kind: str
+    records: tuple[tuple[date, int], ...]  # (balance_on, balance in minor units), the anchor first
+    funded: bool = False
+
+
+# the giro rows that move money to and from the depot (spec §3.4, §8, D249): the savings plan in, the fund's
+# distributions out of it (a transfer from the depot), its fee into it (a transfer to the depot)
+DEPOT_NAME = "ETF Depot"
+YOUNG_NAME = "Crypto Wallet"
+DEPOT_PURPOSES = ("Sparplan ETF Depot", "Ertragsausschüttung ETF Welt", "Depotgebühr ETF Depot")
+_DEPOT_ANCHOR_DAYS = 912  # about two and a half years before the export
+_DEPOT_OPENING = 1_200_000
+_DEPOT_SAVINGS_PLAN = -25_000
+_DEPOT_DISTRIBUTION = 4_120
+_DEPOT_FEE = -990
+_YOUNG_ANCHOR_DAYS, _YOUNG_LATER_DAYS = 120, 21
+
+
+def _depot_rows(starts: list[date], last_day: date, anchor: date) -> list[Txn]:
+    """The giro's side of the depot: a monthly savings plan, distributions in the second and fifth month of
+    the window, a fee in its second. Only rows after the depot's anchor: before it they are absorbed by it."""
+    rows: list[Txn] = []
+
+    def add(on: date, name: str, purpose: str, amount: int, text: str) -> None:
+        if anchor < on <= last_day:
+            rows.append(Txn(on, name, purpose, amount, text, _iban(80)))
+
+    for first in starts:
+        add(first.replace(day=3), "ETF Sparplan", DEPOT_PURPOSES[0], _DEPOT_SAVINGS_PLAN, "Dauerauftrag")
+    for i in (1, 4):
+        if i < len(starts):
+            on = starts[i].replace(day=17)
+            add(on, "Fondsgesellschaft Welt", DEPOT_PURPOSES[1], _DEPOT_DISTRIBUTION, "Gutschrift")
+    fee_on = starts[min(1, len(starts) - 1)].replace(day=1)
+    add(fee_on, "Depotbank", DEPOT_PURPOSES[2], _DEPOT_FEE, "Lastschrift")
+    return rows
+
+
+def _quarter_ends(after: date, through: date) -> list[date]:
+    out: list[date] = []
+    for year in range(after.year, through.year + 1):
+        for month in (3, 6, 9, 12):
+            q = date(year, month, calendar.monthrange(year, month)[1])
+            if after < q <= through:
+                out.append(q)
+    return out
+
+
+def _holdings(seed: int, last_day: date, giro: list[Txn], anchor: date) -> tuple[Holding, ...]:
+    """The depot: the anchor, then a record at each quarter-end up to the latest, growing about 6.5 % a year
+    with noise and one down quarter, on top of what the savings plan, distributions and fee moved in; and a
+    young account whose first record is four months old, so no return shows yet."""
+    rng = random.Random(f"{seed}:depot")
+    flows = [(t.booked_on, -t.amount) for t in giro if t.purpose in DEPOT_PURPOSES]  # the depot's view
+    records = [(anchor, _DEPOT_OPENING)]
+    previous_on, balance = anchor, _DEPOT_OPENING
+    for n, on in enumerate(_quarter_ends(anchor, last_day)):
+        moved = sum(a for d, a in flows if previous_on < d <= on)
+        rate = -0.031 if n == 2 else rng.gauss(0.016, 0.014)
+        balance = round((balance + moved) * (1 + rate * (on - previous_on).days / 91))
+        records.append((on, balance))
+        previous_on = on
+    young = (
+        (last_day - timedelta(days=_YOUNG_ANCHOR_DAYS), 150_000),
+        (last_day - timedelta(days=_YOUNG_LATER_DAYS), 171_500),
+    )
+    return (Holding(DEPOT_NAME, "depot", tuple(records), funded=True), Holding(YOUNG_NAME, "asset", young))
+
+
 @dataclass
 class SeedPlan:
     seed: int
@@ -326,6 +401,7 @@ class SeedPlan:
     txns: dict[str, list[Txn]]
     trip: tuple[date, date]
     cash_records: tuple[tuple[date, int], ...]
+    holdings: tuple[Holding, ...] = ()
     _files: list[SeedFile] = field(default_factory=list, repr=False)
 
     def files(self) -> list[SeedFile]:
@@ -558,11 +634,19 @@ def build_plan(*, seed: int, end: date, months: int) -> SeedPlan:
             )
         )
 
+    depot_anchor = last_day - timedelta(days=_DEPOT_ANCHOR_DAYS)
+    txns["giro"].extend(_depot_rows(starts, last_day, depot_anchor))
     for rows in txns.values():
         rows.sort(key=lambda t: (t.booked_on, t.name, t.amount))
     cash = ((start, 25_000), (max(start, last_day - timedelta(days=9)), 18_000))
     return SeedPlan(
-        seed=seed, end=end, start=start, txns=txns, trip=(trip_start, trip_end), cash_records=cash
+        seed=seed,
+        end=end,
+        start=start,
+        txns=txns,
+        trip=(trip_start, trip_end),
+        cash_records=cash,
+        holdings=_holdings(seed, last_day, txns["giro"], depot_anchor),
     )
 
 

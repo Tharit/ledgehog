@@ -1,8 +1,15 @@
 <script lang="ts">
-	import { describeFacts } from '#lib/accounts/facts.js';
+	import {
+		describeFacts,
+		describePerformance,
+		NET_DEPOSITS_HELP,
+		NO_RETURN_HELP
+	} from '#lib/accounts/facts.js';
 	import { uploadHref, type SourceLine } from '#lib/accounts/sources.js';
+	import { formatDate } from '#lib/format/index.js';
 	import { otherLoginText } from '#lib/importers/list.js';
 	import ActionButton from '#lib/components/common/action-button.svelte';
+	import CardRow from '#lib/components/common/card-row.svelte';
 	import Card from '#lib/components/common/card.svelte';
 	import FigureCard from '#lib/components/common/figure-card.svelte';
 	import MoneyDisplay from '#lib/components/common/money-display.svelte';
@@ -32,10 +39,17 @@
 	} = $props();
 
 	const facts = $derived(describeFacts(account, { locale, today }));
+	const performance = $derived(describePerformance(account, { locale }));
+	// the cards' subtitle slot keeps its line (a no-break space) where there is no date, so the two
+	// figures stay level
+	const NO_DATE = '\u00a0';
+	const balanceCaption = $derived(
+		account.balance_as_of === null ? NO_DATE : `as of ${formatDate(account.balance_as_of, locale)}`
+	);
 </script>
 
 <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" data-slot="account-summary">
-	<FigureCard title="Balance">
+	<FigureCard title="Balance" caption={balanceCaption}>
 		{#snippet figure()}
 			<MoneyDisplay
 				minor={account.balance.amount}
@@ -53,7 +67,47 @@
 		{/snippet}
 	</FigureCard>
 
-	<Card element="section" class="flex min-w-0 flex-col gap-3 xl:col-span-3" aria-label="Sources">
+	{#if performance}
+		<FigureCard
+			title="Performance"
+			caption={performance.asOf ? `as of ${performance.asOf}` : NO_DATE}
+		>
+			{#snippet figure()}
+				<span data-slot="gain">
+					<MoneyDisplay
+						minor={performance.gainMoney.amount}
+						currency={performance.gainMoney.currency}
+						{locale}
+						showCurrency
+					/>
+				</span>
+			{/snippet}
+			{#snippet rows()}
+				<div data-slot="net-deposits" class="contents">
+					<CardRow label="Net deposits" title={NET_DEPOSITS_HELP}>
+						<MoneyDisplay
+							minor={performance.netDepositsMoney.amount}
+							currency={performance.netDepositsMoney.currency}
+							{locale}
+							showCurrency
+							showPlus={false}
+						/>
+					</CardRow>
+				</div>
+				<div data-slot="return" class="contents">
+					<CardRow label="Return p.a." title={performance.hasReturn ? undefined : NO_RETURN_HELP}>
+						{performance.return}
+					</CardRow>
+				</div>
+			{/snippet}
+		</FigureCard>
+	{/if}
+
+	<Card
+		element="section"
+		class={`flex min-w-0 flex-col gap-3 ${performance ? 'xl:col-span-2' : 'xl:col-span-3'}`}
+		aria-label="Sources"
+	>
 		<h2 class="text-sm font-semibold">Sources</h2>
 		<div class="flex flex-col gap-1 text-sm" data-slot="sources">
 			{#if account.kind === 'clearance'}

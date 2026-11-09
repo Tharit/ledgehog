@@ -167,8 +167,8 @@ def _with_run(db: Db, aid: int) -> None:
 
 def _with_record(db: Db, aid: int) -> None:
     db.run(
-        "INSERT INTO balance_record (account_id, kind, balance, currency, balance_on)"
-        " VALUES (:a, 'manual', 100, 'EUR', '2026-03-01')",
+        "INSERT INTO balance_record (account_id, balance, currency, balance_on)"
+        " VALUES (:a, 100, 'EUR', '2026-03-01')",
         a=aid,
     )
 
@@ -293,6 +293,45 @@ def test_list_accounts_anchored_and_data_age_of_an_unsynced_account(db: Db) -> N
     assert v.anchored is True and v.synced is False and v.last_data_on == date(2026, 3, 1)
 
 
+def _as_of(db: Db, aid: int) -> date | None:
+    with db.engine.connect() as conn:
+        (v,) = [v for v in list_accounts(conn) if v.id == aid]
+    return v.balance_as_of
+
+
+def _record_on(db: Db, aid: int, on: str) -> None:
+    db.run(
+        "INSERT INTO balance_record (account_id, balance, currency, balance_on)"
+        " VALUES (:a, 100, 'EUR', :d)",
+        a=aid,
+        d=on,
+    )
+
+
+def test_balance_as_of_of_a_synced_account_is_its_synced_through(db: Db) -> None:
+    aid = _acct(db)
+    with db.engine.begin() as c:
+        run = make_run(c, aid, covered_through=date(2026, 3, 5))
+        make_entry(c, make_source(c, aid, run_id=run, booked_on=date(2026, 3, 1)))
+    _with_link(db, aid)
+    _record_on(db, aid, "2026-03-20")  # a later record does not move it
+    assert _as_of(db, aid) == date(2026, 3, 5)
+
+
+def test_balance_as_of_of_an_unsynced_account_is_the_later_of_movement_and_record(db: Db) -> None:
+    movement_last = _acct(db, name="A")
+    record_last = _acct(db, name="B")
+    neither = _acct(db, name="C")
+    with db.engine.begin() as c:
+        make_entry(c, make_source(c, movement_last, importer=None, booked_on=date(2026, 3, 10)))
+        make_entry(c, make_source(c, record_last, importer=None, booked_on=date(2026, 2, 1)))
+    _record_on(db, movement_last, "2026-03-01")
+    _record_on(db, record_last, "2026-03-01")
+    assert _as_of(db, movement_last) == date(2026, 3, 10)
+    assert _as_of(db, record_last) == date(2026, 3, 1)
+    assert _as_of(db, neither) is None
+
+
 def test_list_accounts_unexplained_difference(db: Db) -> None:
     aid = _acct(db)
     with db.engine.begin() as c:
@@ -303,8 +342,8 @@ def test_list_accounts_unexplained_difference(db: Db) -> None:
             rec = c.execute(
                 text(
                     "INSERT INTO balance_record"
-                    " (account_id, kind, import_run_id, balance, currency, balance_on)"
-                    " VALUES (:a, 'reported', :r, :b, 'EUR', :o) RETURNING id"
+                    " (account_id, import_run_id, balance, currency, balance_on)"
+                    " VALUES (:a, :r, :b, 'EUR', :o) RETURNING id"
                 ),
                 {"a": aid, "r": run, "b": bal, "o": on},
             ).scalar_one()

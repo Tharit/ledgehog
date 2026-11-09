@@ -89,8 +89,7 @@ def test_insert_reported_record_writes_the_run_record_in_the_account_currency(
             conn, account_id=env.account, import_run_id=run, balance_on=day(3, 1), balance=1234
         )
     (row,) = env.q("SELECT * FROM balance_record WHERE id = :i", i=rid)
-    assert (row.kind, row.import_run_id, row.balance, row.currency, row.balance_on) == (
-        "reported",
+    assert (row.import_run_id, row.balance, row.currency, row.balance_on) == (
         run,
         1234,
         "EUR",
@@ -126,8 +125,7 @@ def test_set_manual_record_reports_whether_it_created_or_edited(env: Env) -> Non
 def test_set_manual_record_creates_the_record_and_its_opening_then_settles(env: Env) -> None:
     result = set_manual_record(env.engine, env.account, day(1, 1), 10_000, user_id=USER)
     (row,) = env.q("SELECT * FROM balance_record WHERE id = :i", i=result.record_id)
-    assert (row.kind, row.import_run_id, row.balance, row.balance_on, row.currency) == (
-        "manual",
+    assert (row.import_run_id, row.balance, row.balance_on, row.currency) == (
         None,
         10_000,
         day(1, 1),

@@ -35,7 +35,10 @@ account, open accounts first in their sort order, then the closed ones, muted.
 A row shows the account's icon and name, its kind, its balance with the
 currency code (accounts of several currencies stand together,
 `ux/patterns.md` §2) and the facts line of `ux/patterns.md` §4.4: data age,
-"balance not anchored", the unexplained difference. A row opens the account.
+"balance not anchored", the unexplained difference. An investment account's
+row adds, quietly beneath its balance, its gain and return: "gain +4 000.00
+EUR · +6.2 % p.a.", the gain alone where there is no return yet
+(`spec.md` §8). A row opens the account.
 An empty list says that accounts are added here and then fed by a file, a
 sync, or by hand (`ux/patterns.md` §9). Sorting by data age and the
 net-worth figure are the Overview's (`ux/views/overview.md`), not this list's.
@@ -57,10 +60,19 @@ destructive. The server refuses to delete an account that holds anything; the
 decision dialog then shows what it holds and offers "Close…" instead. Under
 the header:
 
-- **the balance and the facts line** (`ux/patterns.md` §4.4): data age,
-  "balance not anchored", the unexplained difference as an amount. The
-  reported records that localise a difference (`spec.md` §5.10) are marked in
-  the statement rather than listed a second time;
+- **the balance, "as of *date*"**, and the facts line (`ux/patterns.md`
+  §4.4): data age, "balance not anchored", the unexplained difference as an
+  amount. The reported records that localise a difference (`spec.md` §5.10)
+  are marked in the statement rather than listed a second time. The date is
+  the latest day the balance is known for: a synced account's
+  `synced_through`, else the later of its latest movement and its latest
+  record; an account with neither shows none;
+- **on an investment account, its performance** (`spec.md` §8): net
+  deposits, gain and return p.a., "as of *date*", the latest record's. Net
+  deposits carries a help text: the balance at the first record, plus what
+  was paid in since, less what was taken out; not the cost of what is held.
+  The return shows "—" where there is none yet, with the reason as its help:
+  less than a year of records, or no rate fits;
 - **the sources**: each instance the account is linked to, one line each —
   its label, its importer and its action, "Upload file" for a file importer
   (`ux/views/importers.md`) and "Fetch" for one that fetches

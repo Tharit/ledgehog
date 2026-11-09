@@ -92,7 +92,7 @@ class World:
                 out.entries.append(make_entry(c, src))
             if balance is not None:
                 out.record = make_balance_record(
-                    c, acct, balance_on=balance[0], balance=balance[1], kind="reported", run_id=run_id
+                    c, acct, balance_on=balance[0], balance=balance[1], run_id=run_id
                 )
             recompute_derived(c, acct)
             return out

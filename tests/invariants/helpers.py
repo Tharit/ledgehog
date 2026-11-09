@@ -254,7 +254,6 @@ def make_balance_record(
     *,
     balance_on: date,
     balance: int = 0,
-    kind: str = "manual",
     run_id: int | None = None,
     currency: str = "EUR",
 ) -> int:
@@ -263,7 +262,6 @@ def make_balance_record(
         "balance_record",
         {
             "account_id": account_id,
-            "kind": kind,
             "import_run_id": run_id,
             "balance": balance,
             "currency": currency,
@@ -356,7 +354,7 @@ def seed_clean(conn: Connection, make_account: Any) -> Clean:
     anchor = make_balance_record(conn, checking, balance_on=date(2026, 1, 1), balance=5000)
     opening = make_derived_entry(conn, checking, anchor, type="opening", booked_on=date(2026, 1, 1))
     reported = make_balance_record(
-        conn, checking, balance_on=date(2026, 3, 1), balance=3000, kind="reported", run_id=run
+        conn, checking, balance_on=date(2026, 3, 1), balance=3000, run_id=run
     )
     reconciliation = make_derived_entry(
         conn, checking, reported, type="reconciliation", booked_on=date(2026, 3, 1), amount=1

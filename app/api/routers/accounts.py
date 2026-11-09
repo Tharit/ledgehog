@@ -123,7 +123,13 @@ class AccountOut(BaseModel):
     unexplained_difference: Money | None
     anchored: bool
     balance: Money  # the sum of the account's entries
+    balance_as_of: date | None  # the latest day the balance is known for
     records_since_zero: list[int] | None  # the reported records to look at; null without a difference
+    # an investment account's performance (spec §8, D249); null on any other account and without a record
+    net_deposits: Money | None
+    gain: Money | None
+    return_rate: int | None  # the annual return in basis points, as the savings `rate_bp`; null: none yet
+    return_as_of: date | None  # the latest record's date
 
 
 class AccountsOut(BaseModel):
@@ -155,7 +161,14 @@ def facts(conn: Connection, view: AccountView) -> AccountOut:
         unexplained_difference=None if diff is None else Money(amount=diff, currency=view.currency),
         anchored=view.anchored,
         balance=Money(amount=view.balance, currency=view.currency),
+        balance_as_of=view.balance_as_of,
         records_since_zero=None if diff is None else records_since_zero(conn, view.id),
+        net_deposits=None
+        if view.net_deposits is None
+        else Money(amount=view.net_deposits, currency=view.currency),
+        gain=None if view.gain is None else Money(amount=view.gain, currency=view.currency),
+        return_rate=view.return_rate_bp,
+        return_as_of=view.return_as_of,
     )
 
 

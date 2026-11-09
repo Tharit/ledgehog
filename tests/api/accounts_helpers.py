@@ -42,8 +42,8 @@ def seed_difference(engine: Engine, account_id: int) -> int:
             conn.execute(
                 text(
                     "INSERT INTO balance_record"
-                    " (account_id, kind, import_run_id, balance, currency, balance_on)"
-                    " VALUES (:a, 'reported', :r, 8_000, 'EUR', DATE '2026-03-01') RETURNING id"
+                    " (account_id, import_run_id, balance, currency, balance_on)"
+                    " VALUES (:a, :r, 8_000, 'EUR', DATE '2026-03-01') RETURNING id"
                 ),
                 {"a": account_id, "r": run},
             ).scalar_one()

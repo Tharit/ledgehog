@@ -200,11 +200,12 @@ def test_real_upload_end_to_end(db: Db, p: Preset) -> None:
     assert set(run.stats["importer"]) == {"filtered", "synthetic_skipped"}
     assert result.settle is not None and result.settle.error is None
     assert result.report.rows_read > 0 and result.report.failure is None
-    records = db.q("SELECT balance, balance_on, kind FROM balance_record")
+    records = db.q("SELECT balance, balance_on, import_run_id FROM balance_record")
     if p.balance is None:
         assert records == [] and "balance" not in result.summary and w.derived() == []
     else:
-        assert [(r.balance, r.balance_on, r.kind) for r in records] == [(*p.balance, "reported")]
+        reported = [(r.balance, r.balance_on, r.import_run_id is not None) for r in records]
+        assert reported == [(*p.balance, True)]
         assert result.summary["balance"] == {"balance_on": p.balance[1].isoformat(), "balance": p.balance[0]}
         assert len(w.derived()) == p.derived
     db.assert_checks_clean()

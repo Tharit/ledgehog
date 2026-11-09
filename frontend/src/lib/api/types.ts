@@ -40,7 +40,15 @@ export type Account = {
 	anchored: boolean;
 	/** the sum of the account's entries, in its currency */
 	balance: Money;
+	/** the latest day the balance is known for; null with no data at all */
+	balance_as_of: IsoDate | null;
 	records_since_zero: number[] | null;
+	/** an investment account's performance (spec §8); all null elsewhere and without a record */
+	net_deposits: Money | null;
+	gain: Money | null;
+	/** the annual return in basis points; null under a year of records or where no rate fits */
+	return_rate: number | null;
+	return_as_of: IsoDate | null;
 };
 
 // Generated from OpenAPI (src/lib/types/api.d.ts): the entries list.

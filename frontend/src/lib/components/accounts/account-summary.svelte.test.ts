@@ -21,11 +21,11 @@ const fetcher: SourceLine = {
 	otherLogin: null
 };
 
-function summary(sources: SourceLine[]) {
+function summary(sources: SourceLine[], over: Parameters<typeof account>[0] = {}) {
 	const onfetch = vi.fn();
 	render(AccountSummary, {
 		props: {
-			account: account({ id: 7 }),
+			account: account({ id: 7, ...over }),
 			sources,
 			today: '2026-10-18',
 			onfetch
@@ -44,6 +44,22 @@ describe('AccountSummary: the balance card', () => {
 		const card = screen.getByRole('region', { name: 'Balance' });
 		expect(within(card).getByRole('heading', { name: 'Balance' })).toBeInTheDocument();
 		expect(card.querySelector('[data-fact="age"]')).not.toBeNull();
+	});
+
+	it('says the date the balance is known for, "as of <date>"', () => {
+		summary([], { balance_as_of: '2026-10-14' });
+
+		const card = screen.getByRole('region', { name: 'Balance' });
+		expect(card).toHaveTextContent('as of Oct 14, 2026');
+		expect(within(card).queryByText('Today')).toBeNull();
+	});
+
+	it('shows no date where the balance is known for none, and keeps the subtitle line', () => {
+		summary([], { balance_as_of: null });
+
+		const card = screen.getByRole('region', { name: 'Balance' });
+		expect(card).not.toHaveTextContent('as of');
+		expect(card.querySelector('header p')).not.toBeNull();
 	});
 
 	it('has no account actions: they are the page header’s', () => {
@@ -107,5 +123,46 @@ describe('AccountSummary: a clearance account', () => {
 		);
 		expect(screen.getByText(/charges decided as transfers to it/)).toBeInTheDocument();
 		expect(screen.queryByText(/Entered by hand/)).toBeNull();
+	});
+});
+
+describe('AccountSummary: the performance card', () => {
+	const invest = {
+		kind: 'investment' as const,
+		net_deposits: { amount: 6_500_000, currency: 'EUR' },
+		gain: { amount: 400_000, currency: 'EUR' },
+		return_as_of: '2026-10-14'
+	};
+	const show = (over: Parameters<typeof account>[0]) =>
+		render(AccountSummary, { props: { account: account(over), sources: [], today: '2026-10-18' } });
+
+	it('shows net deposits, gain and return p.a. as of the latest record', () => {
+		show({ ...invest, return_rate: 623 });
+
+		const card = screen.getByRole('region', { name: 'Performance' });
+		expect(card).toHaveTextContent('as of Oct 14, 2026');
+		expect(card.querySelector('[data-slot="gain"]')).toHaveTextContent('+4,000.00');
+		expect(card.querySelector('[data-slot="net-deposits"]')).toHaveTextContent('65,000.00');
+		expect(card.querySelector('[data-slot="net-deposits"] [title]')?.getAttribute('title')).toMatch(
+			/not the cost of what is held/
+		);
+		expect(card).toHaveTextContent('Return p.a.');
+		expect(card.querySelector('[data-slot="return"]')).toHaveTextContent('+6.2');
+		expect(card.querySelector('[data-slot="return"]')).toHaveTextContent('p.a.');
+	});
+
+	it('shows a dash with the reason as help where there is no return', () => {
+		show({ ...invest, return_rate: null });
+
+		const ret = screen
+			.getByRole('region', { name: 'Performance' })
+			.querySelector('[data-slot="return"]');
+		expect(ret).toHaveTextContent('—');
+		expect(ret?.querySelector('[title]')?.getAttribute('title')).toMatch(/span a year/);
+	});
+
+	it('is absent on an account without the facts', () => {
+		show({});
+		expect(screen.queryByRole('region', { name: 'Performance' })).toBeNull();
 	});
 });

@@ -889,8 +889,9 @@ over the whole account.
   `entry_id` (the lowest id among its entries, which opens its unit in the
   review panel; null for a duplicate), and `run_id` (null for a row not imported). It never carries `raw`: provenance is
   `GET /api/ledger/sources/{id}`.
-- `record` — the record's id, `balance_on`, `record_kind` (`reported` or
-  `manual`), `balance`, `anchor` (true for the account's earliest record),
+- `record` — the record's id, `balance_on`, `record_kind` (`reported` where the
+  record has a run, else `manual`), `balance`, `anchor` (true for the account's
+  earliest record),
   `rows_sum` and `difference`, both null for the anchor.
 
 **The gap** is the formula of `spec.md`
@@ -924,9 +925,17 @@ formula.
   unchanged. No counting record means *balance not anchored*: there are no
   `record` items.
 
-**The account's facts gain `balance`**, the sum of its entries as money, next to
+**The account's facts gain `balance`**, the sum of its entries as money, and
+`balance_as_of`, the latest day it is known for (`ux/views/account.md`), next to
 `synced_through`, `last_data_on`, `unexplained_difference`, `anchored` and
-`records_since_zero`, on every response that carries them: the list, and the
+`records_since_zero`, and on an investment account its performance
+(`spec.md` §8): `net_deposits` and `gain` as money, `return_rate` as the
+savings rate is carried, and `return_as_of`, the latest record's date. They are
+computed as the gap is, from source transactions and records alone: net
+deposits are B₁ plus the movements dated after D₁, and gain is the balance
+less them. All four are null on any other account and on one without a
+record, and `return_rate` also where `spec.md` §8 shows no return. They are on
+every response that carries the facts: the list, and the
 `account` of every write. The list and the page need it (`ux/patterns.md` §4.4
 shows the facts wherever the account is shown with its balance), and the
 Overview reads the same figure.

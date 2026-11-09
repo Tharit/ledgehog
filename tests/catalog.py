@@ -15,8 +15,12 @@ QUERIES: dict[str, str] = {
         JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE n.nspname = 'public' AND c.relname NOT LIKE '{_SKIP}%'
           AND c.relkind IN ('r','v','m','S','p') ORDER BY 1, 2""",
+    # `position` is the rank among the table's live columns: a dropped column leaves a gap in
+    # information_schema's ordinal_position, which the same schema built from scratch has not
     "columns": f"""
-        SELECT table_name, column_name, ordinal_position, data_type, udt_name,
+        SELECT table_name, column_name,
+               row_number() OVER (PARTITION BY table_name ORDER BY ordinal_position) AS position,
+               data_type, udt_name,
                character_maximum_length, numeric_precision, numeric_scale, is_nullable,
                column_default, is_identity, identity_generation, is_generated,
                generation_expression

@@ -92,7 +92,8 @@ def get_statement(
     ).all()
     records = conn.execute(
         text(
-            "SELECT id, balance_on, balance, kind FROM v_balance_record WHERE account_id = :a"
+            "SELECT id, balance_on, balance, import_run_id IS NOT NULL AS reported"
+            " FROM v_balance_record WHERE account_id = :a"
             " ORDER BY balance_on, id"
         ),
         {"a": account_id},
@@ -101,7 +102,7 @@ def get_statement(
     gaps = record_gaps(
         [(r.id, r.balance_on, int(r.balance)) for r in records], [(d, a) for _, d, a in movements]
     )
-    kinds = {r.id: r.kind for r in records}
+    kinds = {r.id: "reported" if r.reported else "manual" for r in records}
 
     if amount is not None:  # the picker
         keep = sorted(

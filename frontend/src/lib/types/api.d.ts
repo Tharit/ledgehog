@@ -1285,6 +1285,8 @@ export interface components {
             /** Anchored */
             anchored: boolean;
             balance: components["schemas"]["Money"];
+            /** Balance As Of */
+            balance_as_of: string | null;
             /** Closed On */
             closed_on: string | null;
             /** Color */
@@ -1293,6 +1295,7 @@ export interface components {
             currency: string;
             /** External Ref */
             external_ref: string | null;
+            gain: components["schemas"]["Money"] | null;
             /** Icon */
             icon: string | null;
             /** Id */
@@ -1303,12 +1306,17 @@ export interface components {
             last_data_on: string | null;
             /** Name */
             name: string;
+            net_deposits: components["schemas"]["Money"] | null;
             /** Note */
             note: string | null;
             /** Providers */
             providers: string[];
             /** Records Since Zero */
             records_since_zero: number[] | null;
+            /** Return As Of */
+            return_as_of: string | null;
+            /** Return Rate */
+            return_rate: number | null;
             /** Sort Order */
             sort_order: number;
             /** Synced */
@@ -2210,6 +2218,8 @@ export interface components {
             /** Anchored */
             anchored: boolean;
             balance: components["schemas"]["Money"];
+            /** Balance As Of */
+            balance_as_of: string | null;
             /** Closed On */
             closed_on: string | null;
             /** Color */
@@ -2220,6 +2230,7 @@ export interface components {
             data_age_days: number | null;
             /** External Ref */
             external_ref: string | null;
+            gain: components["schemas"]["Money"] | null;
             /** Icon */
             icon: string | null;
             /** Id */
@@ -2230,12 +2241,17 @@ export interface components {
             last_data_on: string | null;
             /** Name */
             name: string;
+            net_deposits: components["schemas"]["Money"] | null;
             /** Note */
             note: string | null;
             /** Providers */
             providers: string[];
             /** Records Since Zero */
             records_since_zero: number[] | null;
+            /** Return As Of */
+            return_as_of: string | null;
+            /** Return Rate */
+            return_rate: number | null;
             /** Sort Order */
             sort_order: number;
             /** Synced */
