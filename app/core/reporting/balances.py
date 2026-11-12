@@ -22,7 +22,18 @@ from app.core.reporting.periods import TooManyPeriods, add_months, month_end
 MAX_POINTS = 120
 
 # the account kinds in the order of the schema's check constraint (spec §3.3), which the API's `Kind` follows
-KIND_ORDER = ("checking", "savings", "card", "cash", "digital_wallet", "depot", "debt", "receivable", "asset")
+KIND_ORDER = (
+    "checking",
+    "savings",
+    "card",
+    "cash",
+    "digital_wallet",
+    "depot",
+    "debt",
+    "receivable",
+    "asset",
+    "clearance",
+)
 
 _BALANCES = text(
     """
@@ -186,3 +197,52 @@ def balances_report(conn: Connection, start: date, end: date, today: date) -> Ba
         if any(kind_of[a] == kind for a in listed)
     )
     return BalancesReport(tuple(dates), net_worth, kinds, series)
+
+
+@dataclass(frozen=True)
+class GroupWorth:
+    """What a group of accounts is worth at today's rate: the account list's group row."""
+
+    kind: str | None  # None = the closed accounts
+    accounts: int
+    net_worth: NetWorth
+
+
+def _account_kinds(conn: Connection) -> dict[int, tuple[str, bool]]:
+    return {
+        int(r.id): (str(r.kind), r.closed)
+        for r in conn.execute(text("SELECT id, kind, closed_on IS NOT NULL AS closed FROM account"))
+    }
+
+
+def group_worths(conn: Connection, today: date) -> tuple[GroupWorth, ...]:
+    """The account list's groups: a kind per kind with open accounts, in KIND_ORDER, each the net worth
+    of its open accounts; then the closed accounts, if any. Every entry counts, whatever its date, as in
+    the list's balances; unvalued amounts are handled as in the net worth."""
+    rows = balances_on(conn, [today], through_all=True)
+    meta = _account_kinds(conn)
+    groups = [
+        GroupWorth(
+            kind,
+            len(mine),
+            net_worth_of(mine),
+        )
+        for kind in KIND_ORDER
+        if (mine := [r for r in rows if meta[r.account_id] == (kind, False)])
+    ]
+    closed = [r for r in rows if meta[r.account_id][1]]
+    if closed:
+        groups.append(GroupWorth(None, len(closed), net_worth_of(closed)))
+    return tuple(groups)
+
+
+def kind_held(conn: Connection, today: date, kind: str) -> GroupWorth | None:
+    """What the accounts of one kind, open or closed, hold at today's rate, and how many hold anything;
+    None when none does."""
+    meta = _account_kinds(conn)
+    held = [
+        r
+        for r in balances_on(conn, [today], through_all=True)
+        if meta[r.account_id][0] == kind and r.balance != 0
+    ]
+    return GroupWorth(kind, len(held), net_worth_of(held)) if held else None

@@ -4,7 +4,7 @@ import type { Balances, Kind, OverTime, Step } from '#lib/reports/shapes.js';
 import type { ByCategory, Overview } from '#lib/reports/types.js';
 import { request } from './http.js';
 
-/** Net worth, savings, this month's spend and the accounts by data age, at the household's today. */
+/** Net worth, savings, this month's spend and the stalest accounts by data age, at the household's today. */
 export function getOverview(signal?: AbortSignal): Promise<Overview> {
 	return request('GET', '/api/reports/overview', { signal });
 }

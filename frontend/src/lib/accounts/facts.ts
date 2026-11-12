@@ -1,6 +1,7 @@
 // The account's facts line (patterns §4.4, spec §3.11): data age, "balance not anchored" and the
 // unexplained difference, as the quiet words under a balance. Nothing is computed here but words.
 import {
+	daysBetween,
 	formatDate,
 	formatMoney,
 	formatReturn,
@@ -14,8 +15,8 @@ export type Fact = { id: 'age' | 'anchor' | 'difference'; text: string; title?: 
 
 /**
  * The date the account's data age counts from: the server's `last_data_on`, which is the sync
- * coverage of a synced account and the latest balance record of an unsynced one (spec §3.11);
- * null is "never".
+ * coverage of a synced account, the latest balance record of an unsynced one and, on a clearance
+ * account, the last day its balance was settled or of the other sign (spec §3.11); null is "never".
  */
 export function dataDate(account: Pick<Account, 'last_data_on'>): string | null {
 	return account.last_data_on;
@@ -24,7 +25,7 @@ export function dataDate(account: Pick<Account, 'last_data_on'>): string | null 
 export function describeFacts(
 	account: Pick<
 		Account,
-		'last_data_on' | 'anchored' | 'unexplained_difference' | 'synced' | 'kind'
+		'last_data_on' | 'anchored' | 'unexplained_difference' | 'synced' | 'kind' | 'balance'
 	>,
 	{ locale, today }: { locale: string; today: IsoDate }
 ): Fact[] {
@@ -32,6 +33,13 @@ export function describeFacts(
 	const date = dataDate(account);
 	if (date === null) {
 		facts.push({ id: 'age', text: 'Data: never' });
+	} else if (account.kind === 'clearance') {
+		// a clearance account has no records to age: what goes stale is its settling (spec §3.11)
+		facts.push({
+			id: 'age',
+			text: account.balance.amount === 0 ? 'settled' : `open ${daysBetween(date, today)} d`,
+			title: account.balance.amount === 0 ? undefined : `Open since ${formatDate(date, locale)}`
+		});
 	} else {
 		const age = relativeDay(date, today, locale);
 		// a synced account's data comes from the sync; an unsynced one is valued (investment) or its

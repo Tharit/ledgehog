@@ -85,9 +85,10 @@ charts**:
 4. **To review** — "14" with the `inbox` icon; beneath a primary-coloured
    link "Open the review queue →".
 
-**Accounts card** (left, wider) titled "Accounts", a short table sorted by data
-age, oldest first. Each row: account icon on its tint, name, a secondary line
-with its data age, balance right-aligned with sign:
+**Data age card** (left, wider) titled "Data age", two short tables, *Synced*
+and *By hand*, each sorted by data age, oldest first. Each row: account icon on
+its tint, name, a secondary line with its data age, balance right-aligned with
+sign:
 
 | Icon (colour) | Name | Data age | Balance |
 |---|---|---|---|

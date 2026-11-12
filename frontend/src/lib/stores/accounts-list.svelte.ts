@@ -1,14 +1,15 @@
-// The accounts list page (`/accounts`): every account with its balance and facts, fetched afresh
-// on every visit (the facts move with every write, elsewhere too) and handed to the shared lookups.
-import { ApiError, listAccounts } from '#lib/api/index.js';
-import { orderAccounts } from '#lib/accounts/list.js';
+// The accounts list page (`/accounts`): every account with its balance and facts, grouped by kind
+// with each group's total, fetched afresh on every visit (the facts move with every write,
+// elsewhere too) and handed to the shared lookups.
+import { ApiError, listAccountGroups } from '#lib/api/index.js';
+import { groupAccounts, type ListGroup } from '#lib/accounts/list.js';
 import { todayIso } from '#lib/format/index.js';
-import type { Account } from '#lib/types/domain.js';
 import { lookupsStore } from './lookups.svelte.js';
 import { session } from './session.svelte.js';
 
 export class AccountsListStore {
-	accounts = $state.raw<Account[]>([]);
+	/** the accounts, grouped by kind with the closed ones last */
+	groups = $state.raw<ListGroup[]>([]);
 	status = $state<'loading' | 'ready' | 'error'>('loading');
 	error = $state.raw<ApiError | null>(null);
 
@@ -23,10 +24,10 @@ export class AccountsListStore {
 		if (this.status === 'error') this.status = 'loading';
 		this.error = null;
 		try {
-			const all = await listAccounts();
+			const list = await listAccountGroups();
 			if (generation !== this.#generation) return;
-			lookupsStore.setAccounts(all);
-			this.accounts = orderAccounts(all);
+			lookupsStore.setAccounts(list.accounts);
+			this.groups = groupAccounts(list.accounts, list.groups, list.base_currency);
 			this.status = 'ready';
 		} catch (error) {
 			if (generation !== this.#generation) return;

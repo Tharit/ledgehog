@@ -614,17 +614,20 @@ account or currency, not to any entry.
 
 | Fact | Applies to | Shown as |
 |---|---|---|
-| **data age** | every account | days since its `synced_through` (§5.4) for a synced account, since its latest balance record for an unsynced one; "never" where it has none |
+| **data age** | every account | days since its `synced_through` (§5.4) for a synced account, since its latest balance record for an unsynced one; on a clearance account, days since its balance was last zero or of the other sign, shown as "open *n* d", and "settled" at zero; "never" where it has none |
 | **unexplained difference** | any account with reported records | the sum of the reconciliations of every record from its first reported record through its latest, in record order, where non-zero: how far the ledger and the bank disagree as of the latest reported balance. Shown with the reported records since that running sum was last zero, which localise it (§5.10) |
 | **balance not anchored** | any account | it holds entries but no balance record: its balance rests on no stated balance and starts from zero (§5.10) |
 | **rate age** | currencies | days since its latest rate; a value whose rate is older than the maximum rate age is unvalued (§3.8) |
 
-Data age is what makes a lapse visible: the Overview lists accounts sorted by
-it, so a stalled importer rises to the top. No threshold decides when an age
-is too old; a Giro synced weekly, a card fed by a monthly file and a depot
-valued quarterly differ, and the reader knows which is which. The **maximum
-rate age** is the single ledger-wide setting here, and it belongs to valuation
-(§3.8), not to status.
+Data age is what makes a lapse visible: the Overview's *Data age* card lists
+the stalest accounts by it, so a stalled importer rises to the top. No
+threshold decides when an age is too old; a Giro synced weekly, a card fed by
+a monthly file and a depot valued quarterly differ, and the reader knows which
+is which. A clearance account has no records to age, only its opening; what
+goes stale there is its settling: while orders and their charges both arrive,
+its balance returns to zero or crosses it, and when either side stops, it
+does not. The **maximum rate age** is the single ledger-wide setting here, and
+it belongs to valuation (§3.8), not to status.
 
 ---
 
@@ -3076,9 +3079,5 @@ filter bar replaces most reports.
   forward — to a provider in its settings, so that no model reading decides a
   provider. Later, a document's provider edited by hand, which books it anew
   like a change of the mapping (§5.8). Planned.
-- **A clearance account's balance signal.** A clearance account is shown like
-  any other (§3.3). A balance away from zero is normal while charges lag
-  behind orders, so how the account view makes it meaningful — what is older
-  than the matching window and not offset, a record date with nothing in
-  flight, a condition on the Overview — is decided once the accounts are in
-  use. So is creating a clearance account from a document that is not booked.
+- **A clearance account from a document.** Creating a clearance account from
+  a document that is not booked is decided once the accounts are in use.

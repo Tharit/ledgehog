@@ -33,6 +33,53 @@ describe('the Net worth card', () => {
 		expect(row('Since Sep 30, 2026').getByText('+1,200.00 EUR')).toBeInTheDocument();
 	});
 
+	it('says what is owed to the household and what it owes, with the accounts, each linking to Accounts and above the change', () => {
+		const group = (kind: 'receivable' | 'debt', accounts: number, amount: number) => ({
+			kind,
+			accounts,
+			net_worth: { total: { amount, currency: 'EUR' }, unvalued: [] }
+		});
+		render(NetWorthCard, {
+			props: {
+				netWorth: {
+					...overview().net_worth,
+					owed_to_you: group('receivable', 1, 20000),
+					you_owe: group('debt', 2, -12000000)
+				}
+			}
+		});
+
+		const { region, row, queryRows } = card('Net worth');
+		expect(queryRows()).toHaveLength(3);
+		expect(row('Owed to you, 1 account').getByText('200.00 EUR')).toBeInTheDocument();
+		expect(row('You owe, 2 accounts').getByText('−120,000.00 EUR')).toBeInTheDocument();
+		const rows = [...queryRows()];
+		expect(rows[0]).toHaveAttribute('href', '/accounts');
+		expect(rows[1]).toHaveAttribute('href', '/accounts');
+		expect(rows[2].textContent).toContain('Since');
+		expect(region).toBeInTheDocument();
+	});
+
+	it('says "unvalued" for a debt that could not be valued', () => {
+		render(NetWorthCard, {
+			props: {
+				netWorth: {
+					...overview().net_worth,
+					you_owe: {
+						kind: 'debt',
+						accounts: 1,
+						net_worth: {
+							total: null,
+							unvalued: [{ amount: { amount: -900, currency: 'USD' }, accounts: 1 }]
+						}
+					}
+				}
+			}
+		});
+
+		expect(card('Net worth').row('You owe, 1 account').getByText('unvalued')).toBeInTheDocument();
+	});
+
 	it('has no row for a change that does not exist (nothing was there at that date)', () => {
 		render(NetWorthCard, {
 			props: { netWorth: { ...overview().net_worth, since: null } }

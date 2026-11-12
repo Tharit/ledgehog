@@ -13,7 +13,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Annotated, Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StrictInt
 from sqlalchemy import Connection, Engine
 
@@ -21,6 +21,7 @@ from app.api.errors import map_error
 from app.api.ids import PathId
 from app.api.routers.maintenance import SettleOut
 from app.api.session import CurrentUser, EngineDep
+from app.core import reporting as rp
 from app.core.accounts import (
     AccountError,
     AccountMissing,
@@ -41,6 +42,7 @@ from app.core.accounts import (
 )
 from app.core.balance.difference import records_since_zero
 from app.core.settle.settle import SettleResult
+from app.utils import clock
 
 router = APIRouter(prefix="/api/ledger/accounts", tags=["accounts"])
 
@@ -143,8 +145,45 @@ class AccountOut(BaseModel):
     return_as_of: date | None  # the latest record's date
 
 
+class NetWorthUnvaluedOut(BaseModel):
+    amount: Money  # the accounts' native balances, summed
+    accounts: int
+
+
+class PointNetWorthOut(BaseModel):
+    total: Money | None  # null when balances exist and none could be valued
+    unvalued: list[NetWorthUnvaluedOut]
+
+
+def worth_out(n: rp.NetWorth, base: str) -> PointNetWorthOut:
+    return PointNetWorthOut(
+        total=None if n.total is None else Money(amount=n.total, currency=base),
+        unvalued=[
+            NetWorthUnvaluedOut(amount=Money(amount=u.amount, currency=u.currency), accounts=u.accounts)
+            for u in n.unvalued
+        ],
+    )
+
+
+class GroupWorthOut(BaseModel):
+    kind: Kind | None  # null = the closed accounts
+    accounts: int
+    net_worth: PointNetWorthOut  # at today's rate
+
+    @staticmethod
+    def of(g: rp.GroupWorth, base: str) -> GroupWorthOut:
+        return GroupWorthOut(
+            kind=g.kind,  # type: ignore[arg-type]
+            accounts=g.accounts,
+            net_worth=worth_out(g.net_worth, base),
+        )
+
+
 class AccountsOut(BaseModel):
+    base_currency: str
     accounts: list[AccountOut]
+    # the list's groups: a kind per kind with open accounts, in the kinds' usual order, then the closed
+    groups: list[GroupWorthOut]
 
 
 class AccountWriteOut(BaseModel):
@@ -241,9 +280,16 @@ class CloseBody(BaseModel):
 
 
 @router.get("")
-def list_ledger_accounts(user: CurrentUser, engine: EngineDep) -> AccountsOut:
+def list_ledger_accounts(user: CurrentUser, engine: EngineDep, request: Request) -> AccountsOut:
+    """The accounts, and each group's total at today's rate (every entry counts, as in the balances)."""
+    config = request.app.state.config
+    base: str = config.base_currency
     with engine.connect() as conn:
-        return AccountsOut(accounts=[facts(conn, v) for v in list_accounts(conn)])
+        return AccountsOut(
+            base_currency=base,
+            accounts=[facts(conn, v) for v in list_accounts(conn)],
+            groups=[GroupWorthOut.of(g, base) for g in rp.group_worths(conn, clock.today(config.timezone))],
+        )
 
 
 @router.post("", status_code=201)

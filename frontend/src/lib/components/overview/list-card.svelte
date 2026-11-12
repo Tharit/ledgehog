@@ -2,15 +2,17 @@
 	import type { Snippet } from 'svelte';
 	import Card from '#lib/components/common/card.svelte';
 
-	// A half-width card of the Overview: a section heading, optionally with a link at the right of
-	// it ("All accounts →"), and a body of rows (design §6 comfortable).
+	// A half-width card of the Overview: a section heading, optionally with a quiet caption under it
+	// and a link at the right ("By category →"), and a body of rows (design §6 comfortable).
 	let {
 		title,
+		caption,
 		linkLabel,
 		href,
 		children
 	}: {
 		title: string;
+		caption?: string;
 		/** the header link's words, without the arrow */
 		linkLabel?: string;
 		href?: string;
@@ -25,7 +27,10 @@
 	aria-label={title}
 >
 	<header class="flex items-baseline justify-between gap-3">
-		<h2 class="text-base font-semibold">{title}</h2>
+		<div class="flex flex-col">
+			<h2 class="text-base font-semibold">{title}</h2>
+			{#if caption}<p class="text-xs text-muted-foreground">{caption}</p>{/if}
+		</div>
 		{#if href && linkLabel}
 			<a
 				{href}

@@ -379,10 +379,23 @@
             },
             "title": "Accounts",
             "type": "array"
+          },
+          "base_currency": {
+            "title": "Base Currency",
+            "type": "string"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/GroupWorthOut"
+            },
+            "title": "Groups",
+            "type": "array"
           }
         },
         "required": [
-          "accounts"
+          "base_currency",
+          "accounts",
+          "groups"
         ],
         "title": "AccountsOut",
         "type": "object"
@@ -1481,6 +1494,35 @@
         "title": "CurrencyGroupOut",
         "type": "object"
       },
+      "DataAgeOut": {
+        "properties": {
+          "accounts": {
+            "title": "Accounts",
+            "type": "integer"
+          },
+          "by_hand": {
+            "items": {
+              "$ref": "#/components/schemas/OverviewAccountOut"
+            },
+            "title": "By Hand",
+            "type": "array"
+          },
+          "synced": {
+            "items": {
+              "$ref": "#/components/schemas/OverviewAccountOut"
+            },
+            "title": "Synced",
+            "type": "array"
+          }
+        },
+        "required": [
+          "synced",
+          "by_hand",
+          "accounts"
+        ],
+        "title": "DataAgeOut",
+        "type": "object"
+      },
       "DeleteCountsOut": {
         "properties": {
           "confirmed_entries": {
@@ -2575,6 +2617,47 @@
         "title": "ErrorEnvelope",
         "type": "object"
       },
+      "GroupWorthOut": {
+        "properties": {
+          "accounts": {
+            "title": "Accounts",
+            "type": "integer"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "checking",
+                  "savings",
+                  "card",
+                  "cash",
+                  "digital_wallet",
+                  "depot",
+                  "debt",
+                  "receivable",
+                  "asset",
+                  "clearance"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "net_worth": {
+            "$ref": "#/components/schemas/PointNetWorthOut"
+          }
+        },
+        "required": [
+          "kind",
+          "accounts",
+          "net_worth"
+        ],
+        "title": "GroupWorthOut",
+        "type": "object"
+      },
       "HeldOut": {
         "properties": {
           "children": {
@@ -2978,6 +3061,16 @@
       },
       "NetWorthOut": {
         "properties": {
+          "owed_to_you": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GroupWorthOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "since": {
             "anyOf": [
               {
@@ -3007,13 +3100,25 @@
             },
             "title": "Unvalued",
             "type": "array"
+          },
+          "you_owe": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GroupWorthOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
           "total",
           "unvalued",
           "unpaired_transfers",
-          "since"
+          "since",
+          "owed_to_you",
+          "you_owe"
         ],
         "title": "NetWorthOut",
         "type": "object"
@@ -3483,13 +3588,6 @@
       },
       "OverviewOut": {
         "properties": {
-          "accounts": {
-            "items": {
-              "$ref": "#/components/schemas/OverviewAccountOut"
-            },
-            "title": "Accounts",
-            "type": "array"
-          },
           "as_of": {
             "format": "date",
             "title": "As Of",
@@ -3498,6 +3596,9 @@
           "base_currency": {
             "title": "Base Currency",
             "type": "string"
+          },
+          "data_age": {
+            "$ref": "#/components/schemas/DataAgeOut"
           },
           "net_worth": {
             "$ref": "#/components/schemas/NetWorthOut"
@@ -3515,7 +3616,7 @@
           "net_worth",
           "savings",
           "spend",
-          "accounts"
+          "data_age"
         ],
         "title": "OverviewOut",
         "type": "object"
@@ -9126,7 +9227,7 @@
   },
   "info": {
     "title": "Ledgehog",
-    "version": "0.3.0"
+    "version": "0.1.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -10497,6 +10598,7 @@
     },
     "/api/ledger/accounts": {
       "get": {
+        "description": "The accounts, and each group's total at today's rate (every entry counts, as in the balances).",
         "operationId": "list_ledger_accounts",
         "responses": {
           "200": {
@@ -14544,7 +14646,7 @@
     },
     "/api/reports/overview": {
       "get": {
-        "description": "Net worth, savings of the last 12 months, last month and this month, this month's spend against\nlast month's, and the accounts by data age; the day is the household's today.",
+        "description": "Net worth, savings of the last 12 months, last month and this month, this month's spend against\nlast month's, and the stalest accounts by data age; the day is the household's today.",
         "operationId": "get_overview",
         "responses": {
           "200": {

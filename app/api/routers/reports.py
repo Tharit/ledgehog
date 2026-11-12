@@ -16,7 +16,15 @@ from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel, Field
 
 from app.api.errors import map_error
-from app.api.routers.accounts import AccountOut, Money, facts
+from app.api.routers.accounts import (
+    AccountOut,
+    GroupWorthOut,
+    Money,
+    NetWorthUnvaluedOut,
+    PointNetWorthOut,
+    facts,
+    worth_out,
+)
 from app.api.routers.accounts import Kind as AccountKind
 from app.api.routers.entries import Ids
 from app.api.session import CurrentUser, EngineDep
@@ -93,11 +101,6 @@ class SavingsSpanOut(Span, SavingsOut):
         return SavingsSpanOut(from_=span.start, to=span.end, **SavingsOut.of(span.savings, base).model_dump())
 
 
-class NetWorthUnvaluedOut(BaseModel):
-    amount: Money  # the accounts' native balances, summed
-    accounts: int
-
-
 class NetWorthSinceOut(BaseModel):
     on: date  # the end of last month
     change: Money  # base currency: today's net worth minus the one at `on`
@@ -108,6 +111,8 @@ class NetWorthOut(BaseModel):
     unvalued: list[NetWorthUnvaluedOut]
     unpaired_transfers: LineOut  # every unpaired leg, all dates, each at its own rate
     since: NetWorthSinceOut | None  # null when nothing existed at that date
+    owed_to_you: GroupWorthOut | None  # the receivable accounts, null when none holds anything
+    you_owe: GroupWorthOut | None  # the debt accounts, signed
 
 
 class OverviewSavingsOut(BaseModel):
@@ -135,35 +140,44 @@ class OverviewAccountOut(AccountOut):
     data_age_days: int | None  # null = never fed
 
 
+class DataAgeOut(BaseModel):
+    # each the stalest few, never fed first, a settled clearance account last; a closed account only
+    # while it holds a balance
+    synced: list[OverviewAccountOut]
+    by_hand: list[OverviewAccountOut]  # the unsynced accounts, clearance accounts included
+    accounts: int  # how many open accounts there are
+
+
 class OverviewOut(BaseModel):
     as_of: date
     base_currency: str
     net_worth: NetWorthOut
     savings: OverviewSavingsOut
     spend: OverviewSpendOut
-    accounts: list[OverviewAccountOut]  # stalest first, never first; closed ones only with a balance
-
-
-def _worth_unvalued(items: tuple[rp.UnvaluedAccounts, ...]) -> list[NetWorthUnvaluedOut]:
-    return [
-        NetWorthUnvaluedOut(amount=Money(amount=u.amount, currency=u.currency), accounts=u.accounts)
-        for u in items
-    ]
+    data_age: DataAgeOut
 
 
 @router.get("/overview")
 def get_overview(user: CurrentUser, engine: EngineDep, request: Request) -> OverviewOut:
     """Net worth, savings of the last 12 months, last month and this month, this month's spend against
-    last month's, and the accounts by data age; the day is the household's today."""
+    last month's, and the stalest accounts by data age; the day is the household's today."""
     config = request.app.state.config
     base: str = config.base_currency
     today = clock.today(config.timezone)
     with engine.connect() as conn:
         ov = rp.overview(conn, today)
-        accounts = [
-            OverviewAccountOut(**facts(conn, a.view).model_dump(), data_age_days=a.data_age_days)
-            for a in ov.accounts
-        ]
+
+        def listed(items: tuple[rp.OverviewAccount, ...]) -> list[OverviewAccountOut]:
+            return [
+                OverviewAccountOut(**facts(conn, a.view).model_dump(), data_age_days=a.data_age_days)
+                for a in items
+            ]
+
+        data_age = DataAgeOut(
+            synced=listed(ov.data_age.synced),
+            by_hand=listed(ov.data_age.by_hand),
+            accounts=ov.data_age.accounts,
+        )
     worth = ov.net_worth
     spend = ov.spend_this_month
     since = (
@@ -176,9 +190,11 @@ def get_overview(user: CurrentUser, engine: EngineDep, request: Request) -> Over
         base_currency=base,
         net_worth=NetWorthOut(
             total=None if worth.total is None else Money(amount=worth.total, currency=base),
-            unvalued=_worth_unvalued(worth.unvalued),
+            unvalued=worth_out(rp.NetWorth(worth.total, worth.unvalued), base).unvalued,
             unpaired_transfers=LineOut.of(worth.unpaired_transfers, base),
             since=since,
+            owed_to_you=None if worth.owed_to_you is None else GroupWorthOut.of(worth.owed_to_you, base),
+            you_owe=None if worth.you_owe is None else GroupWorthOut.of(worth.you_owe, base),
         ),
         savings=OverviewSavingsOut(
             last_12=SavingsSpanOut.span(ov.last_12, base),
@@ -204,7 +220,7 @@ def get_overview(user: CurrentUser, engine: EngineDep, request: Request) -> Over
                 spend=LineOut.of(ov.spend_last_month_to_date.spend, base),
             ),
         ),
-        accounts=accounts,
+        data_age=data_age,
     )
 
 
@@ -380,18 +396,6 @@ def get_over_time(
 # ---- Balances
 
 
-class PointNetWorthOut(BaseModel):
-    total: Money | None  # null when balances exist and none could be valued
-    unvalued: list[NetWorthUnvaluedOut]
-
-
-def _point_worth(n: rp.NetWorth, base: str) -> PointNetWorthOut:
-    return PointNetWorthOut(
-        total=None if n.total is None else Money(amount=n.total, currency=base),
-        unvalued=_worth_unvalued(n.unvalued),
-    )
-
-
 class AccountBalancesOut(BaseModel):
     account_id: int
     # the base-currency value at each point; null where the account has no balance yet or it is unvalued
@@ -432,11 +436,11 @@ def get_balances(
     return BalancesOut(
         base_currency=base,
         points=list(got.points),
-        net_worth=[_point_worth(n, base) for n in got.net_worth],
+        net_worth=[worth_out(n, base) for n in got.net_worth],
         kinds=[
             KindNetWorthOut(
                 kind=k.kind,  # type: ignore[arg-type]
-                net_worth=[_point_worth(n, base) for n in k.net_worth],
+                net_worth=[worth_out(n, base) for n in k.net_worth],
             )
             for k in got.kinds
         ],

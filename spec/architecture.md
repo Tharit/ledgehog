@@ -385,7 +385,8 @@ PUT    /api/ledger/rules/{id}                  change name, target value,
                                                `sets`); no existing value
                                                changes
 DELETE /api/ledger/rules/{id}                  likewise
-GET    /api/ledger/accounts
+GET    /api/ledger/accounts                    the accounts; also each kind's
+                                               total, valued at today's rate
 POST   /api/ledger/accounts                    create an account; creates
                                                nothing else (spec §5.7), but
                                                for a clearance account, which
@@ -555,7 +556,11 @@ GET    /api/reports/overview                   the Overview's figures and
                                                of the last 12 months, last
                                                month and this month, this
                                                month's spend against last,
-                                               account data age and status
+                                               account data age and status;
+                                               also the receivable and debt
+                                               totals, and a clearance
+                                               account's "open" age (its data
+                                               age, spec §3.11)
 GET    /api/reports/by-category                a date range, as a category
                                                tree, with the unclassified and
                                                reconciliation lines beside it;

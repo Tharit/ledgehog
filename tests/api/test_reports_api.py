@@ -75,12 +75,14 @@ def test_every_report_requires_a_session(client: TestClient, url: str):
 def test_the_overview_of_an_empty_ledger(anna: TestClient, today: None):
     body = get(anna, OVERVIEW)
     assert body["as_of"] == "2026-10-20" and body["base_currency"] == "EUR"
-    assert body["accounts"] == []
+    assert body["data_age"] == {"synced": [], "by_hand": [], "accounts": 0}
     assert body["net_worth"] == {
         "total": eur(0),
         "unvalued": [],
         "unpaired_transfers": line(0, 0),
         "since": None,
+        "owed_to_you": None,
+        "you_owe": None,
     }
     last_12 = body["savings"]["last_12"]
     assert (last_12["from"], last_12["to"]) == ("2025-10-01", "2026-09-30")
@@ -117,21 +119,44 @@ def test_the_overview_of_a_household(anna: TestClient, seeded: Household, today:
     assert body["savings"]["last_month"]["rate_bp"] == 8300
 
 
-def test_the_overviews_accounts_by_data_age_with_the_account_facts(
+def test_the_overviews_data_age_lists_with_the_account_facts(
     anna: TestClient, api_engine: Engine, seeded: Household, today: None
 ):
     with api_engine.begin() as conn:
         closed = seed.account(conn, "Closed and empty")
         conn.execute(text("UPDATE account SET closed_on = DATE '2026-01-01' WHERE id = :i"), {"i": closed})
         fresh = seed.account(conn, "Never fed")
-    accounts = get(anna, OVERVIEW)["accounts"]
+    data_age = get(anna, OVERVIEW)["data_age"]
+    accounts = data_age["by_hand"]  # nothing here is synced
+    assert data_age["synced"] == [] and data_age["accounts"] == 4  # the open accounts
     assert closed not in {a["id"] for a in accounts}  # closed with nothing in it
     # never fed first; then the stalest (the openings' records of 1 Aug, ties by id); the Giro's is 12 Oct
-    assert [a["id"] for a in accounts] == [fresh, seeded.cash, seeded.usd, seeded.giro]
-    assert [a["data_age_days"] for a in accounts] == [None, 80, 80, 8]
+    assert [a["id"] for a in accounts] == [fresh, seeded.cash, seeded.usd]
+    assert [a["data_age_days"] for a in accounts] == [None, 80, 80]  # capped at three: the Giro is out
     listed = {a["id"]: a for a in get(anna, "/api/ledger/accounts")["accounts"]}
     for a in accounts:  # AccountOut, plus the data age
         assert {k: v for k, v in a.items() if k != "data_age_days"} == listed[a["id"]]
+
+
+def test_the_overview_carries_what_is_owed_and_what_is_owing(
+    anna: TestClient, api_engine: Engine, today: None
+):
+    with api_engine.begin() as conn:
+        loan = seed.account(conn, "Mortgage", kind="debt")
+        deposit = seed.account(conn, "Deposit", kind="receivable")
+        seed.entry(conn, loan, amount=-90_000, on=date(2026, 9, 1))
+        seed.entry(conn, deposit, amount=2_000, on=date(2026, 9, 1))
+    worth = get(anna, OVERVIEW)["net_worth"]
+    assert worth["you_owe"] == {
+        "kind": "debt",
+        "accounts": 1,
+        "net_worth": {"total": eur(-90_000), "unvalued": []},
+    }
+    assert worth["owed_to_you"] == {
+        "kind": "receivable",
+        "accounts": 1,
+        "net_worth": {"total": eur(2_000), "unvalued": []},
+    }
 
 
 def _app_in(api_config: Config, api_engine: Engine, zone: str) -> TestClient:

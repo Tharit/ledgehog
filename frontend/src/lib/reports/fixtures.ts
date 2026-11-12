@@ -39,7 +39,9 @@ export function overview(over: Partial<Overview> = {}): Overview {
 			total: { amount: 12845000, currency: 'EUR' },
 			unvalued: [],
 			unpaired_transfers: line(0),
-			since: { on: '2026-09-30', change: { amount: 120000, currency: 'EUR' } }
+			since: { on: '2026-09-30', change: { amount: 120000, currency: 'EUR' } },
+			owed_to_you: null,
+			you_owe: null
 		},
 		savings: {
 			last_12: span({ from: '2025-10-01', to: '2026-09-30', rate_bp: 4200 }),
@@ -57,7 +59,11 @@ export function overview(over: Partial<Overview> = {}): Overview {
 			last_month: month('2026-09-01', '2026-09-30', line(-261500)),
 			last_month_to_date: month('2026-09-01', '2026-09-20', line(-180000))
 		},
-		accounts: [{ ...account({ id: 1, name: 'Giro' }), data_age_days: 1 }],
+		data_age: {
+			synced: [{ ...account({ id: 1, name: 'Giro' }), data_age_days: 1 }],
+			by_hand: [],
+			accounts: 1
+		},
 		...over
 	};
 }

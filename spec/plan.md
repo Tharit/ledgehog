@@ -18,7 +18,7 @@ deliverables v1 needs that no section of it describes.
 
 - **Overview.** The landing page: four figure cards — net worth, the savings
   rate of the last 12 months, this month's spend, the review count — then the
-  accounts by data age and this month's top expense categories. This month is
+  stalest accounts by data age and this month's top expense categories. This month is
   always the least reviewed, so its spend shows the unclassified amount beside
   it ("€1,240 + €310 unclassified") rather than understating it, and the
   period's reconciliations, where cash spent unrecorded ends up (`spec.md` §8);

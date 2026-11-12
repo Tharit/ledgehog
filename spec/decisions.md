@@ -3718,7 +3718,7 @@ states.
 - Rejected: *dropping the user's empty payee key* (an incomplete unit could be pulled back into review by a payee
   the user had removed); *keeping a key only for a cleared payee* (two empty states the user cannot tell apart).
 
-## D230 Clearance accounts replace document matching — *partly superseded by D235 and D240*
+## D230 Clearance accounts replace document matching — *partly superseded by D235, D240 and D251*
 
 Spec I1, I2, I3, I7, I20, I21, I35, I41, §2, §3.3, §3.6, §3.8, §3.9, §4, §5 to §5.9, §6, §8, §9;
 `features/documents.md`; `rules.md`; `history.md`; schema; architecture §4.1, §5.1, §5.2, §5.4, §5.5, §5.7, §6.3,
@@ -4031,3 +4031,12 @@ spec §3.3; schema `account.kind`; ux/design.md.
 
 - **`loan` becomes `debt`** (user, 2026-11-09). The kind covers whatever the household owes and keeps by hand — a mortgage, a car loan, money borrowed from family — not only a bank loan. A migration renames the kind of existing accounts.
 - **`receivable`, its mirror** (user, 2026-11-09). What is owed to the household: money lent, a deposit to be returned, an expense to be reimbursed. Like debt it carries no rule of its own: it is not an investment account, so its balance records reconcile (§3.10). Rejected: *a debt account with a positive balance* (the name contradicts the balance, and balances by kind would net what is owed against what is owed to us); *an asset account* (an asset is an investment account, so a repayment that fell short would be reported as a loss of value rather than shown as an unexplained difference).
+
+## D251 Accounts grouped by kind; the Overview's stalest, split; clearance settling as its data age
+
+spec §3.11; ux/views/account.md; ux/views/overview.md; architecture §4.
+
+- **The list groups by kind** as the Balances report does, collapsed (user, 2026-11-12). Rejected: *a mapping of kinds to coarser groups* (a second grouping beside the report's), *one row per kind linking to a filtered list* (a click more to any account, and on the Overview it hides which account is stale).
+- **The Overview's *Data age* card shows the three stalest synced and three stalest hand-kept accounts.** Rejected: *the six stalest* (hand-kept accounts age by design and would crowd out a lapsed sync), *age relative to each account's own rhythm* (needs history, opaque).
+- **A clearance account's data age is how long its balance has been open**, taking up D230's deferred signal. Rejected: *days since its latest booking* (not every clearance account is fed by documents), *matching charges to orders* (D230).
+- **Debt and receivable totals are rows of the Net worth card**; a receivable is not ranked by being open, since a deposit stays open for years.

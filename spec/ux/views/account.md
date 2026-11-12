@@ -30,8 +30,14 @@ on this account, as the documents name them.", picked like tags,
 `ux/patterns.md` §6) and *Start*, a required date ("Orders dated after this
 day are booked here. Choose a day with nothing in flight: no order placed
 and not yet charged."). Saving writes the account's opening balance record,
-0 at the end of that day (`spec.md` §3.3, §3.10). One row per
-account, open accounts first in their sort order, then the closed ones, muted.
+0 at the end of that day (`spec.md` §3.3, §3.10). The accounts are
+grouped by kind, a group per kind that has open accounts, in the order
+`spec.md` §3.3 names the kinds, as the Balances report groups them
+(`ux/views/reports.md`): a group row shows the kind, its number of accounts
+and its accounts' total in the base currency at today's rate
+(`ux/patterns.md` §2), and opens collapsed; it expands as a report's group row
+does. Beneath it, one row per account in its sort order. The closed accounts
+are a last group, "Closed", muted.
 A row shows the account's icon and name, its kind, its balance with the
 currency code (accounts of several currencies stand together,
 `ux/patterns.md` §2) and the facts line of `ux/patterns.md` §4.4: data age,

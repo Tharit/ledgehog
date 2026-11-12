@@ -309,7 +309,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Ledger Accounts */
+        /**
+         * List Ledger Accounts
+         * @description The accounts, and each group's total at today's rate (every entry counts, as in the balances).
+         */
         get: operations["list_ledger_accounts"];
         put?: never;
         /** Create Ledger Account */
@@ -953,7 +956,7 @@ export interface paths {
         /**
          * Get Overview
          * @description Net worth, savings of the last 12 months, last month and this month, this month's spend against
-         *     last month's, and the accounts by data age; the day is the household's today.
+         *     last month's, and the stalest accounts by data age; the day is the household's today.
          */
         get: operations["get_overview"];
         put?: never;
@@ -1334,6 +1337,10 @@ export interface components {
         AccountsOut: {
             /** Accounts */
             accounts: components["schemas"]["AccountOut"][];
+            /** Base Currency */
+            base_currency: string;
+            /** Groups */
+            groups: components["schemas"]["GroupWorthOut"][];
         };
         /** BalancesOut */
         BalancesOut: {
@@ -1685,6 +1692,15 @@ export interface components {
             /** Currency */
             currency: string;
         };
+        /** DataAgeOut */
+        DataAgeOut: {
+            /** Accounts */
+            accounts: number;
+            /** By Hand */
+            by_hand: components["schemas"]["OverviewAccountOut"][];
+            /** Synced */
+            synced: components["schemas"]["OverviewAccountOut"][];
+        };
         /** DeleteCountsOut */
         DeleteCountsOut: {
             /** Confirmed Entries */
@@ -2001,6 +2017,14 @@ export interface components {
         ErrorEnvelope: {
             error: components["schemas"]["ErrorBody"];
         };
+        /** GroupWorthOut */
+        GroupWorthOut: {
+            /** Accounts */
+            accounts: number;
+            /** Kind */
+            kind: ("checking" | "savings" | "card" | "cash" | "digital_wallet" | "depot" | "debt" | "receivable" | "asset" | "clearance") | null;
+            net_worth: components["schemas"]["PointNetWorthOut"];
+        };
         /** HeldOut */
         HeldOut: {
             /** Children */
@@ -2143,11 +2167,13 @@ export interface components {
         };
         /** NetWorthOut */
         NetWorthOut: {
+            owed_to_you: components["schemas"]["GroupWorthOut"] | null;
             since: components["schemas"]["NetWorthSinceOut"] | null;
             total: components["schemas"]["Money"] | null;
             unpaired_transfers: components["schemas"]["LineOut"];
             /** Unvalued */
             unvalued: components["schemas"]["NetWorthUnvaluedOut"][];
+            you_owe: components["schemas"]["GroupWorthOut"] | null;
         };
         /** NetWorthSinceOut */
         NetWorthSinceOut: {
@@ -2262,8 +2288,6 @@ export interface components {
         };
         /** OverviewOut */
         OverviewOut: {
-            /** Accounts */
-            accounts: components["schemas"]["OverviewAccountOut"][];
             /**
              * As Of
              * Format: date
@@ -2271,6 +2295,7 @@ export interface components {
             as_of: string;
             /** Base Currency */
             base_currency: string;
+            data_age: components["schemas"]["DataAgeOut"];
             net_worth: components["schemas"]["NetWorthOut"];
             savings: components["schemas"]["OverviewSavingsOut"];
             spend: components["schemas"]["OverviewSpendOut"];

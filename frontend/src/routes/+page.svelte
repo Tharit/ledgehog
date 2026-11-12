@@ -1,10 +1,9 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
-	import AccountList from '#lib/components/accounts/account-list.svelte';
 	import EmptyState from '#lib/components/common/empty-state.svelte';
 	import ErrorState from '#lib/components/common/error-state.svelte';
 	import PageHeader from '#lib/components/common/page-header.svelte';
-	import ListCard from '#lib/components/overview/list-card.svelte';
+	import DataAgeCard from '#lib/components/overview/data-age-card.svelte';
 	import NetWorthCard from '#lib/components/overview/net-worth-card.svelte';
 	import ReviewCard from '#lib/components/overview/review-card.svelte';
 	import SavingsCard from '#lib/components/overview/savings-card.svelte';
@@ -57,7 +56,7 @@
 			onretry={failure.retryable ? () => store.retry() : undefined}
 			class="max-w-none items-center p-8 text-center"
 		/>
-	{:else if overview && overview.accounts.length === 0}
+	{:else if overview && overview.data_age.synced.length + overview.data_age.by_hand.length === 0}
 		<EmptyState title="No accounts yet" actionLabel="Open Accounts" actionHref="/accounts">
 			Add an account to see its balance, and what comes in and goes out, here.
 		</EmptyState>
@@ -69,13 +68,7 @@
 			<ReviewCard {counts} {locale} />
 		</div>
 		<div class="grid grid-cols-1 gap-4 lg:grid-cols-2" data-slot="half-cards">
-			<ListCard title="Accounts" linkLabel="All accounts" href="/accounts">
-				{#if overview}
-					<AccountList accounts={overview.accounts} {locale} today={overview.as_of} />
-				{:else}
-					<div class="h-32 animate-pulse rounded-md bg-muted" data-slot="accounts-skeleton"></div>
-				{/if}
-			</ListCard>
+			<DataAgeCard dataAge={overview?.data_age ?? null} today={overview?.as_of ?? ''} {locale} />
 			<TopCategoriesCard
 				report={store.byCategory}
 				status={store.categoriesStatus}

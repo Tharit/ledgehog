@@ -93,7 +93,7 @@ describe('the Overview page', () => {
 		expect(figures).toHaveClass('sm:grid-cols-2', 'xl:grid-cols-4');
 		const half = document.querySelector('[data-slot="half-cards"]')!;
 		expect(half.children).toHaveLength(2);
-		for (const name of ['Net worth', 'Savings rate', 'Spend', 'To review', 'Accounts']) {
+		for (const name of ['Net worth', 'Savings rate', 'Spend', 'To review', 'Data age']) {
 			expect(screen.getByRole('region', { name })).toBeInTheDocument();
 		}
 		expect(
@@ -101,22 +101,82 @@ describe('the Overview page', () => {
 		).toBeInTheDocument();
 	});
 
-	it('lists the accounts in the order the server sent, each linking to its page', async () => {
+	it('lists the synced and the hand-kept accounts apart, in the order the server sent, with a link to all', async () => {
 		api.getOverview.mockResolvedValue(
 			overview({
-				accounts: [
-					{ ...account({ id: 7, name: 'Cash' }), data_age_days: null },
-					{ ...account({ id: 3, name: 'Giro' }), data_age_days: 2 }
-				]
+				data_age: {
+					synced: [
+						{ ...account({ id: 7, name: 'Giro' }), data_age_days: 9 },
+						{ ...account({ id: 3, name: 'Card' }), data_age_days: 2 }
+					],
+					by_hand: [{ ...account({ id: 5, name: 'Cash', synced: false }), data_age_days: null }],
+					accounts: 12
+				}
 			})
 		);
 		render(Page);
 
-		const list = await screen.findByRole('list', { name: 'Accounts' });
-		const links = within(list).getAllByRole('link');
-		expect(links.map((a) => a.getAttribute('href'))).toEqual(['/accounts/7', '/accounts/3']);
-		expect(links[0]).toHaveTextContent('Cash');
-		expect(screen.getByRole('link', { name: /All accounts/ })).toHaveAttribute('href', '/accounts');
+		const card = await screen.findByRole('region', { name: 'Data age' });
+		expect(card).toHaveTextContent('Stalest first');
+		const synced = within(await screen.findByRole('list', { name: 'Synced' }));
+		expect(synced.getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual([
+			'/accounts/7',
+			'/accounts/3'
+		]);
+		const byHand = within(screen.getByRole('list', { name: 'By hand' }));
+		expect(byHand.getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual(['/accounts/5']);
+		expect(screen.getByRole('link', { name: /All 12 accounts/ })).toHaveAttribute(
+			'href',
+			'/accounts'
+		);
+	});
+
+	it('leaves out a list with no accounts', async () => {
+		render(Page);
+
+		await screen.findByRole('list', { name: 'Synced' });
+		expect(screen.queryByRole('list', { name: 'By hand' })).toBeNull();
+		expect(screen.getByRole('link', { name: /All 1 account\b/ })).toBeInTheDocument();
+	});
+
+	it('says "open n d" of an open clearance account and "settled" of a settled one', async () => {
+		api.getOverview.mockResolvedValue(
+			overview({
+				data_age: {
+					synced: [],
+					by_hand: [
+						{
+							...account({
+								id: 8,
+								name: 'Amazon',
+								kind: 'clearance',
+								synced: false,
+								last_data_on: '2026-10-10',
+								balance: { amount: -4000, currency: 'EUR' }
+							}),
+							data_age_days: 10
+						},
+						{
+							...account({
+								id: 9,
+								name: 'Zalando',
+								kind: 'clearance',
+								synced: false,
+								last_data_on: '2026-09-01',
+								balance: { amount: 0, currency: 'EUR' }
+							}),
+							data_age_days: 49
+						}
+					],
+					accounts: 2
+				}
+			})
+		);
+		render(Page);
+
+		const list = within(await screen.findByRole('list', { name: 'By hand' }));
+		expect(list.getByText('open 10 d')).toBeInTheDocument();
+		expect(list.getByText('settled')).toBeInTheDocument();
 	});
 
 	it('shows the To review card from the Review item count', async () => {
@@ -147,7 +207,9 @@ describe('the Overview page', () => {
 	});
 
 	it('says "No accounts yet" with a way to Accounts when there are none', async () => {
-		api.getOverview.mockResolvedValue(overview({ accounts: [] }));
+		api.getOverview.mockResolvedValue(
+			overview({ data_age: { synced: [], by_hand: [], accounts: 0 } })
+		);
 		render(Page);
 
 		expect(await screen.findByText('No accounts yet')).toBeInTheDocument();

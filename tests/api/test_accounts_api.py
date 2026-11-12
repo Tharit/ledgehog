@@ -6,7 +6,7 @@ from datetime import date
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine
+from sqlalchemy import Engine, text
 
 from app.core import accounts as core_accounts
 from app.core.balance.records import set_manual_record
@@ -20,6 +20,7 @@ from tests.api.accounts_helpers import (
     seed_manual,
 )
 from tests.api.conftest import login
+from tests.fixtures import ledger_seed as seed
 from tests.invariants.helpers import make_entry, make_instance, make_run, make_source
 
 NEW = {"name": "Giro", "kind": "checking", "currency": "EUR"}
@@ -35,7 +36,7 @@ def anna(client: TestClient) -> TestClient:
 
 
 def test_list_is_empty_then_carries_the_facts_of_each_account(anna: TestClient, api_engine: Engine) -> None:
-    assert anna.get("/api/ledger/accounts").json() == {"accounts": []}
+    assert anna.get("/api/ledger/accounts").json() == {"base_currency": "EUR", "accounts": [], "groups": []}
     aid = seed_account(api_engine, external_ref="DE00 1", sort_order=2, note="main")
     body = anna.get("/api/ledger/accounts").json()
     assert body["accounts"] == [
@@ -64,6 +65,40 @@ def test_list_is_empty_then_carries_the_facts_of_each_account(anna: TestClient, 
             "return_rate": None,
             "return_as_of": None,
         }
+    ]
+
+
+def test_the_list_carries_each_groups_total_at_todays_rate_and_the_closed_group_last(
+    anna: TestClient, api_engine: Engine
+) -> None:
+    giro = seed_account(api_engine, "Giro")
+    cash = seed_account(api_engine, "Cash", kind="cash")
+    usd = seed_account(api_engine, "Dollars", kind="cash", currency="USD")
+    old = seed_account(api_engine, "Old", kind="savings")
+    seed_account(api_engine, "Empty depot", kind="depot")
+    with api_engine.begin() as conn:
+        for acct, amount in ((giro, 10_000), (cash, 500), (usd, 700), (old, 3_000)):
+            seed.entry(conn, acct, amount=amount, on=date(2026, 3, 1))
+        conn.execute(text("UPDATE account SET closed_on = DATE '2026-04-01' WHERE id = :i"), {"i": old})
+    groups = anna.get("/api/ledger/accounts").json()["groups"]
+    eur = {"currency": "EUR"}
+    # the kinds with open accounts in the usual order, then the closed accounts; USD has no rate
+    assert groups == [
+        {
+            "kind": "checking",
+            "accounts": 1,
+            "net_worth": {"total": {"amount": 10_000, **eur}, "unvalued": []},
+        },
+        {
+            "kind": "cash",
+            "accounts": 2,
+            "net_worth": {
+                "total": {"amount": 500, **eur},
+                "unvalued": [{"amount": {"amount": 700, "currency": "USD"}, "accounts": 1}],
+            },
+        },
+        {"kind": "depot", "accounts": 1, "net_worth": {"total": {"amount": 0, **eur}, "unvalued": []}},
+        {"kind": None, "accounts": 1, "net_worth": {"total": {"amount": 3_000, **eur}, "unvalued": []}},
     ]
 
 

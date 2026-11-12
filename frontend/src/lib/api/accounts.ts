@@ -1,6 +1,7 @@
 import { request } from './http.js';
 import type {
 	Account,
+	AccountList,
 	AccountCreateBody,
 	AccountUpdateBody,
 	AccountWriteOut,
@@ -10,11 +11,13 @@ import type {
 	SettleOut
 } from './types.js';
 
+/** The accounts, and each group's total at today's rate (the accounts list's group rows). */
+export function listAccountGroups(signal?: AbortSignal): Promise<AccountList> {
+	return request<AccountList>('GET', '/api/ledger/accounts', { signal });
+}
+
 export async function listAccounts(signal?: AbortSignal): Promise<Account[]> {
-	const { accounts } = await request<{ accounts: Account[] }>('GET', '/api/ledger/accounts', {
-		signal
-	});
-	return accounts;
+	return (await listAccountGroups(signal)).accounts;
 }
 
 /**

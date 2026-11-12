@@ -22,8 +22,10 @@ four cards' rows begin on the same line.
 - **Net worth**, "All accounts, today". Every account's balance at today's
   rate (`spec.md` §8). Rows: what could not be valued, per currency with the
   number of accounts; the transfers still unpaired, with their count, linking
-  to the ledger filtered to unpaired legs (`spec.md` §6); the change since the
-  end of last month.
+  to the ledger filtered to unpaired legs (`spec.md` §6); what is owed to the
+  household and what it owes — "Owed to you", the receivable accounts' total,
+  and "You owe", the debt accounts', each with its number of accounts and
+  linking to Accounts; the change since the end of last month.
 - **Savings rate**, the 12 complete months it covers. Savings over income,
   "—" when income is not positive, with the marker when the period has
   unclassified entries, reconciliations or unvalued amounts (`spec.md` §8).
@@ -42,9 +44,14 @@ four cards' rows begin on the same line.
 
 **Two half-width cards.**
 
-- **Accounts.** The accounts list's rows (`ux/views/account.md`) by data age,
-  stalest first, accounts never fed at the top. A closed account is listed
-  only while it holds a balance. No threshold colours (`spec.md` §3.11).
+- **Data age**, "Stalest first". Two short lists of the accounts list's rows
+  (`ux/views/account.md`), each its three stalest by data age, accounts never
+  fed first, a settled clearance account last: **Synced**, and **By hand**
+  (`spec.md` §3.3), and beneath them "All *n* accounts", linking to Accounts.
+  A synced account's age is a lapse, an unsynced one's a chore, so they are
+  not ranked against each other. A list with no accounts is left out. A closed
+  account is listed only while it holds a balance. No threshold colours
+  (`spec.md` §3.11).
 - **Top expense categories**, this month so far: the five largest top-level
   categories as bars in their colours, then "Other", then the unclassified
   amount out beneath. A row opens the ledger filtered by the category and the

@@ -65,6 +65,11 @@ export function todayIso(timeZone: string, now: Date = new Date()): IsoDate {
 	return `${part('year')}-${part('month')}-${part('day')}`;
 }
 
+/** Whole days from a calendar date to `today` (the household's day); negative before it. */
+export function daysBetween(isoDate: IsoDate, today: IsoDate): number {
+	return Math.round((utcDate(today).getTime() - utcDate(isoDate).getTime()) / MS_PER_DAY);
+}
+
 /**
  * "3 days ago", "yesterday" for a calendar date, counted from `today` (the household's day).
  * The absolute date goes in `title`, for a tooltip (patterns §3).

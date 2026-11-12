@@ -12,10 +12,13 @@
 
 	// Every account's balance at today's rate (spec §8). The rows say what the figure leaves out or
 	// holds back: what could not be valued (per currency, with the accounts), the transfers still
-	// unpaired, and the change since the end of last month.
+	// unpaired, what is owed to the household and what it owes (each opens Accounts), and the change
+	// since the end of last month.
 	let { netWorth, locale = 'en' }: { netWorth: NetWorth | null; locale?: string } = $props();
 
 	const accountsText = (count: number) => (count === 1 ? '1 account' : `${count} accounts`);
+	const ownedText = (label: string, group: NonNullable<NetWorth['owed_to_you']>) =>
+		`${label}, ${accountsText(group.accounts)}`;
 	const transfersText = (count: number) =>
 		count === 1 ? '1 transfer still unpaired' : `${count} transfers still unpaired`;
 </script>
@@ -63,6 +66,26 @@
 					<LineFigure line={netWorth.unpaired_transfers} {locale} />
 				</CardRow>
 			{/if}
+			{#each [{ label: 'Owed to you', group: netWorth.owed_to_you }, { label: 'You owe', group: netWorth.you_owe }] as item (item.label)}
+				{#if item.group}
+					<CardRow label={ownedText(item.label, item.group)} href="/accounts">
+						{#if item.group.net_worth.total}
+							<MoneyDisplay
+								minor={item.group.net_worth.total.amount}
+								currency={item.group.net_worth.total.currency}
+								{locale}
+								showPlus={false}
+								showCurrency
+							/>
+						{:else}
+							<AbsentValue
+								label="unvalued"
+								explanation="No balance could be valued: no usable exchange rate."
+							/>
+						{/if}
+					</CardRow>
+				{/if}
+			{/each}
 			{#if netWorth.since}
 				<CardRow label={`Since ${formatDate(netWorth.since.on, locale)}`}>
 					<MoneyDisplay

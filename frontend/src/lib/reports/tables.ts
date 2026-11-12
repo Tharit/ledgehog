@@ -360,8 +360,8 @@ export type BalanceGroup = {
 };
 
 /** A net worth at a point, as the table shows it: the figure, or what it leaves out. */
-function netWorthCells(points: Balances['net_worth'], currency: string): BalanceCell[] {
-	return points.map((p) => ({
+export function netWorthCell(p: Balances['net_worth'][number], currency: string): BalanceCell {
+	return {
 		minor: p.total?.amount ?? null,
 		currency,
 		note:
@@ -370,7 +370,11 @@ function netWorthCells(points: Balances['net_worth'], currency: string): Balance
 				: p.unvalued.length > 0
 					? `${p.unvalued.reduce((n, u) => n + u.accounts, 0)} account(s) could not be valued and are not in it.`
 					: undefined
-	}));
+	};
+}
+
+function netWorthCells(points: Balances['net_worth'], currency: string): BalanceCell[] {
+	return points.map((p) => netWorthCell(p, currency));
 }
 
 /**

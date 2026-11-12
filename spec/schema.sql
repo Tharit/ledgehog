@@ -1553,16 +1553,36 @@ SELECT a.id AS account_id,
 
 -- data age: synced_through for a synced account, the latest counting
 -- balance record for an unsynced one; NULL = "never". A manual record on a
--- synced account does not reset it. The UI turns it into days against today
--- (spec §3.11).
+-- synced account does not reset it. On a clearance account, the last day
+-- its balance ended at zero or of the other sign than its balance now — the
+-- latest such day while it is settled — and never before its anchor
+-- (spec §3.11). The UI turns it into days against today.
 CREATE VIEW v_account_data_age AS
+WITH clearance_day AS (
+  SELECT e.account_id, e.booked_on AS day,
+         sum(sum(e.amount)) OVER (PARTITION BY e.account_id
+                                  ORDER BY e.booked_on) AS balance
+    FROM ledger_entry e
+    JOIN account k ON k.id = e.account_id AND k.kind = 'clearance'
+   GROUP BY e.account_id, e.booked_on
+)
 SELECT a.account_id,
-       CASE WHEN a.synced THEN c.synced_through
+       CASE WHEN k.kind = 'clearance' THEN GREATEST(
+              (SELECT min(b.balance_on) FROM v_balance_record b
+                WHERE b.account_id = a.account_id),
+              (SELECT max(d.day) FROM clearance_day d
+                WHERE d.account_id = a.account_id
+                  AND (n.balance = 0 OR sign(d.balance) <> sign(n.balance))))
+            WHEN a.synced THEN c.synced_through
             ELSE (SELECT max(b.balance_on) FROM v_balance_record b
                    WHERE b.account_id = a.account_id)
        END AS last_data_on
   FROM v_account_synced a
-  JOIN v_account_coverage c ON c.account_id = a.account_id;
+  JOIN account k ON k.id = a.account_id
+  JOIN v_account_coverage c ON c.account_id = a.account_id
+  CROSS JOIN LATERAL (SELECT COALESCE(sum(e.amount), 0) AS balance
+                        FROM ledger_entry e
+                       WHERE e.account_id = a.account_id) n;
 
 -- when each credential last ran, read from its runs (spec §5.4)
 CREATE VIEW v_importer_last_run AS

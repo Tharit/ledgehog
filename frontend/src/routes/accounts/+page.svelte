@@ -2,7 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { onDestroy, onMount } from 'svelte';
 	import { accounts as accountDialog } from '#lib/accounts/controller.svelte.js';
-	import AccountList from '#lib/components/accounts/account-list.svelte';
+	import AccountGroups from '#lib/components/accounts/account-groups.svelte';
 	import ErrorState from '#lib/components/common/error-state.svelte';
 	import PageHeader from '#lib/components/common/page-header.svelte';
 	import { describeLoadError } from '#lib/ledger/errors.js';
@@ -47,12 +47,6 @@
 	{:else if list.status === 'loading'}
 		<p class="text-sm text-muted-foreground">Loading the accounts…</p>
 	{:else}
-		<AccountList
-			accounts={list.accounts}
-			locale={list.locale}
-			today={list.today}
-			flush
-			onadd={add}
-		/>
+		<AccountGroups groups={list.groups} locale={list.locale} today={list.today} onadd={add} />
 	{/if}
 </div>

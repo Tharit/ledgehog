@@ -24,6 +24,19 @@ describe('describeFacts', () => {
 		).toBe('Data from 3 days ago');
 	});
 
+	it('says "open n d" of a clearance account with a balance and "settled" at zero', () => {
+		const at = { kind: 'clearance', synced: false, last_data_on: '2026-10-07' };
+		const open = describeFacts(
+			account({ ...at, balance: { amount: -4000, currency: 'EUR' } }),
+			ctx
+		);
+		expect(open[0]).toMatchObject({ id: 'age', text: 'open 10 d' });
+		expect(open[0].title).toBe('Open since Oct 7, 2026');
+		const settled = describeFacts(account({ ...at, balance: { amount: 0, currency: 'EUR' } }), ctx);
+		expect(settled[0]).toMatchObject({ id: 'age', text: 'settled' });
+		expect(describeFacts(account({ ...at, last_data_on: null }), ctx)[0].text).toBe('Data: never');
+	});
+
 	it('says never where there is no data', () => {
 		expect(describeFacts(account({ last_data_on: null }), ctx)[0].text).toBe('Data: never');
 	});
