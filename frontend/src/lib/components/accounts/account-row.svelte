@@ -71,7 +71,7 @@
 		{:else if column.id === 'notices'}
 			<div
 				role="cell"
-				class="flex min-w-0 flex-wrap gap-x-3 text-xs text-muted-foreground"
+				class="flex min-w-0 flex-wrap gap-x-3 text-sm text-muted-foreground"
 				data-slot="notices"
 			>
 				{#each notices as fact (fact.id)}

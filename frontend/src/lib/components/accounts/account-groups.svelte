@@ -98,7 +98,7 @@
 								<div role="cell" class="min-w-0">Total</div>
 								<div
 									role="cell"
-									class="[grid-column:2/-1] col-span-full flex min-w-0 items-center justify-end gap-3"
+									class="[grid-column:2/-1] flex min-w-0 items-center justify-end gap-3"
 									data-slot="total-sums"
 								>
 									{#each group.sums as sum (sum.currency)}
