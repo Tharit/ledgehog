@@ -14,9 +14,9 @@ from typing import Any
 
 from app.core.plugins.errors import InvalidProfile, ParseFailed
 from app.core.plugins.importer import ParsedFile
+from app.core.plugins.report import ReportBuilder
 from app.plugins.importers.camt.core import run
 from app.plugins.importers.camt.detect import read_statement
-from app.plugins.importers.csv.report import ReportBuilder
 
 
 class CamtImporter:

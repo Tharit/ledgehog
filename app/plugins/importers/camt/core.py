@@ -13,8 +13,8 @@ from decimal import Decimal
 
 from app.core.plugins.errors import ParseFailed
 from app.core.plugins.importer import BalanceReport, IncomingRow, ParsedFile, SampleRow
+from app.core.plugins.report import ReportBuilder
 from app.plugins.importers.camt.model import Balance, Detail, Entry, Report, Statement
-from app.plugins.importers.csv.report import ReportBuilder  # the dry run's collector, not CSV logic
 
 CELL_DISPLAY = 40
 

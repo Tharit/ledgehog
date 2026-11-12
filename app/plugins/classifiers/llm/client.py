@@ -21,9 +21,9 @@ from typing import Any
 
 import httpx2
 
+from app.core.plugins.chat_completions import auth_headers, chat_url, reasoning_field
 from app.core.plugins.classifier import EntryInput
 from app.core.plugins.model import CategoryPath, ModelAnswer, ModelUnavailable, NoAnswer
-from app.plugins.chat_completions import auth_headers, chat_url, reasoning_field
 from app.plugins.classifiers.llm.payload import payload_fingerprint, payload_of, user_message
 
 log = logging.getLogger("ledgehog.model")

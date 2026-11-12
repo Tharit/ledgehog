@@ -3,6 +3,8 @@
 #   api  ──►  core  ──►  utils
 #                ▲
 #   plugins ─────┘   (plugins implement the protocols in core/plugins)
+#
+# Plugins are also independent of one another: what two share lives in core/plugins.
 
 [importlinter]
 root_packages =
@@ -70,6 +72,13 @@ source_modules =
 forbidden_modules =
     app.api
     app.utils.db
+
+[importlinter:contract:plugins-independent]
+name = Plugins never import one another
+type = independence
+modules =
+    app.plugins.importers.*
+    app.plugins.classifiers.*
 
 [importlinter:contract:frameworks-only-in-api]
 name = Web frameworks are imported by api and the composition root only

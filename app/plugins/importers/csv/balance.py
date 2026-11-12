@@ -14,11 +14,12 @@ from datetime import date, timedelta
 
 from app.core.plugins.errors import ParseFailed
 from app.core.plugins.importer import BalanceReport
+from app.core.plugins.report import ReportBuilder
 from app.plugins.importers.csv.amounts import parse_amount
 from app.plugins.importers.csv.dates import parse_date
 from app.plugins.importers.csv.profile import LocatedDate, Profile
 from app.plugins.importers.csv.reader import ReadFile, Record, resolve_column
-from app.plugins.importers.csv.report import Kept, ReportBuilder
+from app.plugins.importers.csv.report import Kept
 
 Position = tuple[int, int]  # (record index, cell index)
 

@@ -14,13 +14,14 @@ from typing import Any
 
 from app.core.plugins.errors import ParseFailed
 from app.core.plugins.importer import IncomingRow, MappedColumn, ParsedFile, SampleRow
+from app.core.plugins.report import ReportBuilder
 from app.plugins.importers.csv.amounts import parse_amount
 from app.plugins.importers.csv.balance import read_date, reported_balance
 from app.plugins.importers.csv.dates import parse_date
 from app.plugins.importers.csv.filters import CompiledFilter, compile_filter, first_hit
 from app.plugins.importers.csv.profile import ColRef, Profile
 from app.plugins.importers.csv.reader import ReadFile, read_file, resolve_column
-from app.plugins.importers.csv.report import Kept, ReportBuilder
+from app.plugins.importers.csv.report import Kept
 from app.plugins.importers.csv.statement_payment import statement_payment
 
 CELL_DISPLAY = 24

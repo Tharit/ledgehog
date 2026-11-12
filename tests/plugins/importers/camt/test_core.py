@@ -9,9 +9,9 @@ import pytest
 
 from app.core.plugins.errors import ParseFailed
 from app.core.plugins.importer import ParsedFile
+from app.core.plugins.report import ReportBuilder
 from app.plugins.importers.camt import core
 from app.plugins.importers.camt.model import Balance, Detail, Entry, Report, Statement
-from app.plugins.importers.csv.report import ReportBuilder
 from tests.plugins.importers.camt.builders import TODAY, exponent_of
 
 D = date

@@ -6,9 +6,9 @@ import pytest
 
 from app.core.plugins.errors import InvalidProfile, ParseFailed
 from app.core.plugins.importer import IncomingRow
+from app.core.plugins.report import ReportBuilder
 from app.plugins.importers.csv import CsvImporter
 from app.plugins.importers.csv.profile import Profile
-from app.plugins.importers.csv.report import ReportBuilder
 from app.plugins.importers.csv.statement_payment import statement_payment
 from tests.plugins.importers.csv.helpers import CARD, card_profile, run
 

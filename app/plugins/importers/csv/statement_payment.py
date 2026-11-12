@@ -12,8 +12,8 @@ from datetime import date, timedelta
 
 from app.core.plugins.errors import ParseFailed
 from app.core.plugins.importer import IncomingRow, SyntheticReport
+from app.core.plugins.report import ReportBuilder
 from app.plugins.importers.csv.profile import Profile
-from app.plugins.importers.csv.report import ReportBuilder
 
 SYNTHETIC_FORMAT = "csv:synthetic"
 

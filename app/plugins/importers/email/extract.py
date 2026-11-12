@@ -19,8 +19,8 @@ from typing import Any
 
 import httpx2
 
+from app.core.plugins.chat_completions import auth_headers, chat_url, reasoning_field
 from app.core.plugins.errors import SourceUnavailable
-from app.plugins.chat_completions import auth_headers, chat_url, reasoning_field
 from app.plugins.importers.email.extractor import (
     MODEL_REFUSED,
     NO_CONTENT,
