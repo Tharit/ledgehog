@@ -179,11 +179,25 @@ class GroupWorthOut(BaseModel):
         )
 
 
+class ListGroupOut(BaseModel):
+    kind: Kind | None  # null = the closed accounts
+    accounts: int
+    sums: list[Money]  # the balances summed per currency, ordered by code; nothing is converted
+
+    @staticmethod
+    def of(g: rp.GroupSums) -> ListGroupOut:
+        return ListGroupOut(
+            kind=g.kind,  # type: ignore[arg-type]
+            accounts=g.accounts,
+            sums=[Money(amount=a, currency=c) for c, a in g.sums],
+        )
+
+
 class AccountsOut(BaseModel):
     base_currency: str
     accounts: list[AccountOut]
     # the list's groups: a kind per kind with open accounts, in the kinds' usual order, then the closed
-    groups: list[GroupWorthOut]
+    groups: list[ListGroupOut]
 
 
 class AccountWriteOut(BaseModel):
@@ -281,14 +295,14 @@ class CloseBody(BaseModel):
 
 @router.get("")
 def list_ledger_accounts(user: CurrentUser, engine: EngineDep, request: Request) -> AccountsOut:
-    """The accounts, and each group's total at today's rate (every entry counts, as in the balances)."""
+    """The accounts, and each group's count and balances summed per currency (every entry counts)."""
     config = request.app.state.config
     base: str = config.base_currency
     with engine.connect() as conn:
         return AccountsOut(
             base_currency=base,
             accounts=[facts(conn, v) for v in list_accounts(conn)],
-            groups=[GroupWorthOut.of(g, base) for g in rp.group_worths(conn, clock.today(config.timezone))],
+            groups=[ListGroupOut.of(g) for g in rp.group_sums(conn, clock.today(config.timezone))],
         )
 
 

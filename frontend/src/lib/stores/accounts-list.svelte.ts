@@ -1,5 +1,5 @@
 // The accounts list page (`/accounts`): every account with its balance and facts, grouped by kind
-// with each group's total, fetched afresh on every visit (the facts move with every write,
+// with each group's sums, fetched afresh on every visit (the facts move with every write,
 // elsewhere too) and handed to the shared lookups.
 import { ApiError, listAccountGroups } from '#lib/api/index.js';
 import { groupAccounts, type ListGroup } from '#lib/accounts/list.js';
@@ -27,7 +27,7 @@ export class AccountsListStore {
 			const list = await listAccountGroups();
 			if (generation !== this.#generation) return;
 			lookupsStore.setAccounts(list.accounts);
-			this.groups = groupAccounts(list.accounts, list.groups, list.base_currency);
+			this.groups = groupAccounts(list.accounts, list.groups);
 			this.status = 'ready';
 		} catch (error) {
 			if (generation !== this.#generation) return;

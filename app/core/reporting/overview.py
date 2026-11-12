@@ -82,7 +82,6 @@ STALEST = 3  # per list on the Data age card
 class DataAge:
     synced: tuple[OverviewAccount, ...]  # the stalest few of the synced accounts
     by_hand: tuple[OverviewAccount, ...]  # of the unsynced ones, clearance accounts included
-    accounts: int  # how many open accounts there are
 
 
 @dataclass(frozen=True)
@@ -157,7 +156,6 @@ def data_age(views: list[AccountView], today: date) -> DataAge:
     return DataAge(
         synced=_stalest([v for v in shown if v.synced], today),
         by_hand=_stalest([v for v in shown if not v.synced], today),
-        accounts=sum(1 for v in views if v.closed_on is None),
     )
 
 

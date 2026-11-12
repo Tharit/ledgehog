@@ -101,7 +101,7 @@ describe('the Overview page', () => {
 		).toBeInTheDocument();
 	});
 
-	it('lists the synced and the hand-kept accounts apart, in the order the server sent, with a link to all', async () => {
+	it('lists the synced and the hand-kept accounts apart, in the order the server sent', async () => {
 		api.getOverview.mockResolvedValue(
 			overview({
 				data_age: {
@@ -109,8 +109,7 @@ describe('the Overview page', () => {
 						{ ...account({ id: 7, name: 'Giro' }), data_age_days: 9 },
 						{ ...account({ id: 3, name: 'Card' }), data_age_days: 2 }
 					],
-					by_hand: [{ ...account({ id: 5, name: 'Cash', synced: false }), data_age_days: null }],
-					accounts: 12
+					by_hand: [{ ...account({ id: 5, name: 'Cash', synced: false }), data_age_days: null }]
 				}
 			})
 		);
@@ -125,10 +124,41 @@ describe('the Overview page', () => {
 		]);
 		const byHand = within(screen.getByRole('list', { name: 'By hand' }));
 		expect(byHand.getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual(['/accounts/5']);
-		expect(screen.getByRole('link', { name: /All 12 accounts/ })).toHaveAttribute(
+	});
+
+	it('has the header open Accounts, and rows with the icon, name and data age but no balance', async () => {
+		api.getOverview.mockResolvedValue(
+			overview({
+				data_age: {
+					synced: [
+						{
+							...account({
+								id: 7,
+								name: 'Giro',
+								last_data_on: '2026-10-19',
+								balance: { amount: 123456, currency: 'EUR' }
+							}),
+							data_age_days: 1
+						}
+					],
+					by_hand: []
+				}
+			})
+		);
+		render(Page);
+
+		const card = await screen.findByRole('region', { name: 'Data age' });
+		await within(card).findByRole('list', { name: 'Synced' });
+		expect(within(card).getByRole('link', { name: /Accounts/ })).toHaveAttribute(
 			'href',
 			'/accounts'
 		);
+		expect(within(card).queryByRole('link', { name: /All \d+ accounts?/ })).toBeNull();
+		const row = card.querySelector<HTMLElement>('[data-account-id="7"]')!;
+		expect(row).toHaveTextContent('Giro');
+		expect(row.querySelector('[data-fact="age"]')).toHaveTextContent('Data from');
+		expect(row).not.toHaveTextContent('1,234.56'); // no balance
+		expect(row).not.toHaveTextContent('EUR');
 	});
 
 	it('leaves out a list with no accounts', async () => {
@@ -136,7 +166,6 @@ describe('the Overview page', () => {
 
 		await screen.findByRole('list', { name: 'Synced' });
 		expect(screen.queryByRole('list', { name: 'By hand' })).toBeNull();
-		expect(screen.getByRole('link', { name: /All 1 account\b/ })).toBeInTheDocument();
 	});
 
 	it('says "open n d" of an open clearance account and "settled" of a settled one', async () => {
@@ -167,8 +196,7 @@ describe('the Overview page', () => {
 							}),
 							data_age_days: 49
 						}
-					],
-					accounts: 2
+					]
 				}
 			})
 		);
@@ -207,9 +235,7 @@ describe('the Overview page', () => {
 	});
 
 	it('says "No accounts yet" with a way to Accounts when there are none', async () => {
-		api.getOverview.mockResolvedValue(
-			overview({ data_age: { synced: [], by_hand: [], accounts: 0 } })
-		);
+		api.getOverview.mockResolvedValue(overview({ data_age: { synced: [], by_hand: [] } }));
 		render(Page);
 
 		expect(await screen.findByText('No accounts yet')).toBeInTheDocument();

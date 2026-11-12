@@ -311,7 +311,7 @@ export interface paths {
         };
         /**
          * List Ledger Accounts
-         * @description The accounts, and each group's total at today's rate (every entry counts, as in the balances).
+         * @description The accounts, and each group's count and balances summed per currency (every entry counts).
          */
         get: operations["list_ledger_accounts"];
         put?: never;
@@ -1340,7 +1340,7 @@ export interface components {
             /** Base Currency */
             base_currency: string;
             /** Groups */
-            groups: components["schemas"]["GroupWorthOut"][];
+            groups: components["schemas"]["ListGroupOut"][];
         };
         /** BalancesOut */
         BalancesOut: {
@@ -1694,8 +1694,6 @@ export interface components {
         };
         /** DataAgeOut */
         DataAgeOut: {
-            /** Accounts */
-            accounts: number;
             /** By Hand */
             by_hand: components["schemas"]["OverviewAccountOut"][];
             /** Synced */
@@ -2081,6 +2079,15 @@ export interface components {
             dry_run: boolean;
             /** External Ref */
             external_ref?: string | null;
+        };
+        /** ListGroupOut */
+        ListGroupOut: {
+            /** Accounts */
+            accounts: number;
+            /** Kind */
+            kind: ("checking" | "savings" | "card" | "cash" | "digital_wallet" | "depot" | "debt" | "receivable" | "asset" | "clearance") | null;
+            /** Sums */
+            sums: components["schemas"]["Money"][];
         };
         /** LoginBody */
         LoginBody: {

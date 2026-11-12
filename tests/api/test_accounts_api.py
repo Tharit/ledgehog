@@ -68,37 +68,28 @@ def test_list_is_empty_then_carries_the_facts_of_each_account(anna: TestClient, 
     ]
 
 
-def test_the_list_carries_each_groups_total_at_todays_rate_and_the_closed_group_last(
+def test_the_list_carries_each_groups_count_and_sums_per_currency_and_the_closed_group_last(
     anna: TestClient, api_engine: Engine
 ) -> None:
     giro = seed_account(api_engine, "Giro")
     cash = seed_account(api_engine, "Cash", kind="cash")
     usd = seed_account(api_engine, "Dollars", kind="cash", currency="USD")
+    cash2 = seed_account(api_engine, "Wallet", kind="cash")
     old = seed_account(api_engine, "Old", kind="savings")
     seed_account(api_engine, "Empty depot", kind="depot")
     with api_engine.begin() as conn:
-        for acct, amount in ((giro, 10_000), (cash, 500), (usd, 700), (old, 3_000)):
+        for acct, amount in ((giro, 10_000), (cash, 500), (usd, 700), (cash2, 250), (old, 3_000)):
             seed.entry(conn, acct, amount=amount, on=date(2026, 3, 1))
         conn.execute(text("UPDATE account SET closed_on = DATE '2026-04-01' WHERE id = :i"), {"i": old})
     groups = anna.get("/api/ledger/accounts").json()["groups"]
-    eur = {"currency": "EUR"}
-    # the kinds with open accounts in the usual order, then the closed accounts; USD has no rate
+    eur, usd_ = {"currency": "EUR"}, {"currency": "USD"}
+    # the kinds with open accounts in the usual order, then the closed accounts; sums per currency by
+    # code, never converted
     assert groups == [
-        {
-            "kind": "checking",
-            "accounts": 1,
-            "net_worth": {"total": {"amount": 10_000, **eur}, "unvalued": []},
-        },
-        {
-            "kind": "cash",
-            "accounts": 2,
-            "net_worth": {
-                "total": {"amount": 500, **eur},
-                "unvalued": [{"amount": {"amount": 700, "currency": "USD"}, "accounts": 1}],
-            },
-        },
-        {"kind": "depot", "accounts": 1, "net_worth": {"total": {"amount": 0, **eur}, "unvalued": []}},
-        {"kind": None, "accounts": 1, "net_worth": {"total": {"amount": 3_000, **eur}, "unvalued": []}},
+        {"kind": "checking", "accounts": 1, "sums": [{"amount": 10_000, **eur}]},
+        {"kind": "cash", "accounts": 3, "sums": [{"amount": 750, **eur}, {"amount": 700, **usd_}]},
+        {"kind": "depot", "accounts": 1, "sums": [{"amount": 0, **eur}]},
+        {"kind": None, "accounts": 1, "sums": [{"amount": 3_000, **eur}]},
     ]
 
 

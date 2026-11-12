@@ -197,10 +197,11 @@ proposal" is offered only when the value shown differs from the value stored.
 ### 4.4 Account facts
 
 Data age, unexplained difference and "balance not anchored" (spec §3.11) render
-on the account wherever the account is shown with its balance: a quiet line
-under the balance, with the unexplained difference as an amount and the
-records that localise it on demand. They are notices, never prompts or review
-items (spec §5.10).
+on the account wherever the account is shown with its balance: in the
+accounts list, columns of their own (`ux/views/account.md`); elsewhere, a
+quiet line under the balance. The unexplained difference is an amount, and
+the records that localise it are on demand. They are notices, never prompts or
+review items (spec §5.10).
 
 ### 4.5 Provenance widget
 

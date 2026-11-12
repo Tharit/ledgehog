@@ -73,7 +73,7 @@ export type AccountCreateBody = Schemas['CreateBody'];
 export type AccountKind = AccountCreateBody['kind'];
 export type AccountWriteOut = Schemas['AccountWriteOut'];
 /** A group of the accounts list: a kind (null: the closed accounts) and what its accounts are worth today. */
-export type AccountGroup = Schemas['GroupWorthOut'];
+export type AccountGroup = Schemas['ListGroupOut'];
 export type AccountList = { base_currency: string; accounts: Account[]; groups: AccountGroup[] };
 export type TagApplyBody = Schemas['TagApplyBody'];
 export type TagApplyOut = Schemas['TagApplyOut'];

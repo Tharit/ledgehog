@@ -32,19 +32,22 @@ day are booked here. Choose a day with nothing in flight: no order placed
 and not yet charged."). Saving writes the account's opening balance record,
 0 at the end of that day (`spec.md` §3.3, §3.10). The accounts are
 grouped by kind, a group per kind that has open accounts, in the order
-`spec.md` §3.3 names the kinds, as the Balances report groups them
-(`ux/views/reports.md`): a group row shows the kind, its number of accounts
-and its accounts' total in the base currency at today's rate
-(`ux/patterns.md` §2), and opens collapsed; it expands as a report's group row
-does. Beneath it, one row per account in its sort order. The closed accounts
-are a last group, "Closed", muted.
-A row shows the account's icon and name, its kind, its balance with the
-currency code (accounts of several currencies stand together,
-`ux/patterns.md` §2) and the facts line of `ux/patterns.md` §4.4: data age,
-"balance not anchored", the unexplained difference. An investment account's
-row adds, quietly beneath its balance, its gain and return: "gain +4 000.00
-EUR · +6.2 % p.a.", the gain alone where there is no return yet
-(`spec.md` §8). A row opens the account.
+`spec.md` §3.3 names the kinds, and the closed accounts are a last group,
+"Closed". A group is laid out as the review queue's sections are: its
+heading on the background — the kind's default icon in the heading slot
+(`ux/design.md` §6), its name and the number of its accounts — over a flush
+card of its own. The cards share their columns, so that they line up as one
+list: the account's icon and name, with its kind beneath in the Closed group,
+where kinds mix; its data age; its notices — "balance not anchored", the
+unexplained difference as an amount — the column taking the remaining width;
+and its balance, the header naming the currency where the group's accounts
+share one (`ux/patterns.md` §2). The cards of depots and assets add two
+columns before the balance, the gain and the return (`spec.md` §8), the
+return "—" where there is none yet. Rows stand in their sort order, and a row
+opens the account. A group of more than one account ends in a total row, as
+the ledger list does (`ux/patterns.md` §4.1), without its count or its
+sticking: "Total" and the sum of the balances, one per currency, never
+converted (`spec.md` I27).
 An empty list says that accounts are added here and then fed by a file, a
 sync, or by hand (`ux/patterns.md` §9). Sorting by data age and the
 net-worth figure are the Overview's (`ux/views/overview.md`), not this list's.

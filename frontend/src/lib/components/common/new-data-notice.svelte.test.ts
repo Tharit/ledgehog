@@ -6,11 +6,18 @@ import AccountsPage from '../../../routes/accounts/+page.svelte';
 import NewDataNotice from './new-data-notice.svelte';
 
 // components never import the API, not even in tests: the mocks come from here
-const api = vi.hoisted(() => ({ listAccounts: vi.fn(), readChanges: vi.fn() }));
+const api = vi.hoisted(() => ({ listAccountGroups: vi.fn(), readChanges: vi.fn() }));
 vi.mock('#lib/api/index.js', async (importOriginal) => ({
 	...(await importOriginal<typeof import('#lib/api/index.js')>()),
 	...api
 }));
+
+/** the accounts list's answer: the accounts, all in one open cash group */
+const list = (...accounts: ReturnType<typeof account>[]) => ({
+	base_currency: 'EUR',
+	accounts,
+	groups: [{ kind: 'cash', accounts: accounts.length, sums: [] }]
+});
 
 const values = { ledger: 'b:1', documents: 'b:1', accounts: { '1': 'b:1' }, active_task: null };
 
@@ -59,21 +66,23 @@ describe('NewDataNotice', () => {
 
 describe('the accounts list, which is not a snapshot', () => {
 	it('fetches again when the ledger moves, in place, and not when only the documents or an account did', async () => {
-		api.listAccounts.mockResolvedValue([account({ id: 1, name: 'Giro' })]);
+		api.listAccountGroups.mockResolvedValue(list(account({ id: 1, name: 'Giro', kind: 'cash' })));
 		render(AccountsPage);
 		await screen.findByText('Giro');
-		expect(api.listAccounts).toHaveBeenCalledTimes(1);
+		expect(api.listAccountGroups).toHaveBeenCalledTimes(1);
 
-		api.listAccounts.mockResolvedValue([
-			account({ id: 1, name: 'Giro' }),
-			account({ id: 2, name: 'Pocket' })
-		]);
+		api.listAccountGroups.mockResolvedValue(
+			list(
+				account({ id: 1, name: 'Giro', kind: 'cash' }),
+				account({ id: 2, name: 'Pocket', kind: 'cash' })
+			)
+		);
 		await poll({ documents: 'b:2', accounts: { '1': 'b:2' } });
 		await Promise.resolve();
-		expect(api.listAccounts).toHaveBeenCalledTimes(1);
+		expect(api.listAccountGroups).toHaveBeenCalledTimes(1);
 
 		await poll({ ledger: 'b:2' });
-		await waitFor(() => expect(api.listAccounts).toHaveBeenCalledTimes(2));
+		await waitFor(() => expect(api.listAccountGroups).toHaveBeenCalledTimes(2));
 		expect(await screen.findByText('Pocket')).toBeInTheDocument();
 	});
 });

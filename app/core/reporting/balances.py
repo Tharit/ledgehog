@@ -215,24 +215,36 @@ def _account_kinds(conn: Connection) -> dict[int, tuple[str, bool]]:
     }
 
 
-def group_worths(conn: Connection, today: date) -> tuple[GroupWorth, ...]:
-    """The account list's groups: a kind per kind with open accounts, in KIND_ORDER, each the net worth
-    of its open accounts; then the closed accounts, if any. Every entry counts, whatever its date, as in
-    the list's balances; unvalued amounts are handled as in the net worth."""
+@dataclass(frozen=True)
+class GroupSums:
+    """One group of the account list: how many accounts, and their balances summed per currency."""
+
+    kind: str | None  # None = the closed accounts
+    accounts: int
+    sums: tuple[tuple[str, int], ...]  # (currency, minor-unit sum), by code; never converted (I27)
+
+
+def _sums_of(rows: Sequence[AccountBalance]) -> tuple[tuple[str, int], ...]:
+    sums: dict[str, int] = {}
+    for r in rows:
+        sums[r.currency] = sums.get(r.currency, 0) + r.balance
+    return tuple(sorted(sums.items()))
+
+
+def group_sums(conn: Connection, today: date) -> tuple[GroupSums, ...]:
+    """The account list's groups: a kind per kind with open accounts, in KIND_ORDER; then the closed
+    accounts, if any. Each has its account count and the sum of its balances per currency, as the
+    ledger list sums its entries: nothing is converted. Every entry counts, whatever its date."""
     rows = balances_on(conn, [today], through_all=True)
     meta = _account_kinds(conn)
     groups = [
-        GroupWorth(
-            kind,
-            len(mine),
-            net_worth_of(mine),
-        )
+        GroupSums(kind, len(mine), _sums_of(mine))
         for kind in KIND_ORDER
         if (mine := [r for r in rows if meta[r.account_id] == (kind, False)])
     ]
     closed = [r for r in rows if meta[r.account_id][1]]
     if closed:
-        groups.append(GroupWorth(None, len(closed), net_worth_of(closed)))
+        groups.append(GroupSums(None, len(closed), _sums_of(closed)))
     return tuple(groups)
 
 

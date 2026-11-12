@@ -386,7 +386,7 @@
           },
           "groups": {
             "items": {
-              "$ref": "#/components/schemas/GroupWorthOut"
+              "$ref": "#/components/schemas/ListGroupOut"
             },
             "title": "Groups",
             "type": "array"
@@ -1496,10 +1496,6 @@
       },
       "DataAgeOut": {
         "properties": {
-          "accounts": {
-            "title": "Accounts",
-            "type": "integer"
-          },
           "by_hand": {
             "items": {
               "$ref": "#/components/schemas/OverviewAccountOut"
@@ -1517,8 +1513,7 @@
         },
         "required": [
           "synced",
-          "by_hand",
-          "accounts"
+          "by_hand"
         ],
         "title": "DataAgeOut",
         "type": "object"
@@ -2825,6 +2820,51 @@
           "account_id"
         ],
         "title": "LinkAccount",
+        "type": "object"
+      },
+      "ListGroupOut": {
+        "properties": {
+          "accounts": {
+            "title": "Accounts",
+            "type": "integer"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "checking",
+                  "savings",
+                  "card",
+                  "cash",
+                  "digital_wallet",
+                  "depot",
+                  "debt",
+                  "receivable",
+                  "asset",
+                  "clearance"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "sums": {
+            "items": {
+              "$ref": "#/components/schemas/Money"
+            },
+            "title": "Sums",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "accounts",
+          "sums"
+        ],
+        "title": "ListGroupOut",
         "type": "object"
       },
       "LoginBody": {
@@ -10598,7 +10638,7 @@
     },
     "/api/ledger/accounts": {
       "get": {
-        "description": "The accounts, and each group's total at today's rate (every entry counts, as in the balances).",
+        "description": "The accounts, and each group's count and balances summed per currency (every entry counts).",
         "operationId": "list_ledger_accounts",
         "responses": {
           "200": {

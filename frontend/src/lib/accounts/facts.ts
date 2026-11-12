@@ -22,6 +22,14 @@ export function dataDate(account: Pick<Account, 'last_data_on'>): string | null 
 	return account.last_data_on;
 }
 
+/** The data age's words, which the Overview's card and the list's column show alone. */
+export function describeDataAge(
+	account: Parameters<typeof describeFacts>[0],
+	context: { locale: string; today: IsoDate }
+): Fact {
+	return describeFacts(account, context)[0];
+}
+
 export function describeFacts(
 	account: Pick<
 		Account,

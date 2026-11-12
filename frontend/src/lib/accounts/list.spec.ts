@@ -15,10 +15,7 @@ describe('orderAccounts', () => {
 });
 
 describe('groupAccounts', () => {
-	const worth = (amount: number | null) => ({
-		total: amount === null ? null : { amount, currency: 'EUR' },
-		unvalued: amount === null ? [{ amount: { amount: 5, currency: 'USD' }, accounts: 1 }] : []
-	});
+	const eur = (amount: number) => ({ amount, currency: 'EUR' });
 
 	it('draws the server groups in its order, each with its open accounts in sort order, the closed last', () => {
 		const groups = groupAccounts(
@@ -29,18 +26,39 @@ describe('groupAccounts', () => {
 				account({ id: 4, kind: 'checking', closed_on: '2026-01-01' })
 			],
 			[
-				{ kind: 'checking', accounts: 1, net_worth: worth(1000) },
-				{ kind: 'cash', accounts: 2, net_worth: worth(null) },
-				{ kind: null, accounts: 1, net_worth: worth(0) }
-			],
-			'EUR'
+				{ kind: 'checking', accounts: 1, sums: [eur(1000)] },
+				{ kind: 'cash', accounts: 2, sums: [eur(5), { amount: 7, currency: 'USD' }] },
+				{ kind: null, accounts: 1, sums: [eur(0)] }
+			]
 		);
 		expect(groups.map((g) => [g.key, g.label, g.accounts.map((a) => a.id)])).toEqual([
 			['checking', 'Checking', [2]],
 			['cash', 'Cash', [3, 1]],
 			['closed', 'Closed', [4]]
 		]);
-		expect(groups[0].total).toMatchObject({ minor: 1000, currency: 'EUR' });
-		expect(groups[1].total.minor).toBeNull(); // unvalued, not zero
+		// the sums are the server's, one per currency, never converted
+		expect(groups[0].sums).toEqual([eur(1000)]);
+		expect(groups[1].sums).toHaveLength(2);
+	});
+
+	it('names the currency a group shares, none where mixed, and marks the investment groups', () => {
+		const groups = groupAccounts(
+			[
+				account({ id: 1, kind: 'cash', balance: eur(1) }),
+				account({ id: 2, kind: 'cash', balance: { amount: 2, currency: 'USD' } }),
+				account({ id: 3, kind: 'depot', balance: eur(3) }),
+				account({ id: 4, kind: 'asset', balance: eur(4) })
+			],
+			[
+				{ kind: 'cash', accounts: 2, sums: [] },
+				{ kind: 'depot', accounts: 1, sums: [] },
+				{ kind: 'asset', accounts: 1, sums: [] }
+			]
+		);
+		expect(groups.map((g) => [g.currency, g.investment])).toEqual([
+			[null, false],
+			['EUR', true],
+			['EUR', true]
+		]);
 	});
 });

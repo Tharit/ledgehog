@@ -75,7 +75,6 @@ def test_data_age_is_the_three_stalest_per_list_never_first_ties_by_sort_order_t
     assert [a.data_age_days for a in got.synced] == [None, None, 49]
     assert _ids(got.by_hand) == [7]  # the lists are not ranked against each other
     assert got.by_hand[0].data_age_days == (TODAY - D(2026, 1, 1)).days
-    assert got.accounts == 7
 
 
 def test_a_list_is_capped_at_three_and_one_without_accounts_is_empty():
@@ -84,7 +83,7 @@ def test_a_list_is_capped_at_three_and_one_without_accounts_is_empty():
     assert _ids(got.by_hand) == [1, 2, 3] and got.synced == ()
 
 
-def test_a_closed_account_is_listed_only_while_it_holds_a_balance_and_is_not_counted():
+def test_a_closed_account_is_listed_only_while_it_holds_a_balance():
     views = [
         _view(1, D(2026, 10, 1), closed=D(2026, 10, 2), balance=0),
         _view(2, D(2026, 10, 1), closed=D(2026, 10, 2), balance=-50, synced=False),
@@ -92,7 +91,6 @@ def test_a_closed_account_is_listed_only_while_it_holds_a_balance_and_is_not_cou
     ]
     got = data_age(views, TODAY)
     assert _ids(got.synced) == [3] and _ids(got.by_hand) == [2]
-    assert got.accounts == 1  # the open accounts
 
 
 def test_a_settled_clearance_account_comes_last_of_the_hand_kept():
@@ -253,7 +251,7 @@ def test_the_first_of_the_month_has_nothing_this_month_so_far(ledger: Connection
 
 def test_an_empty_ledger_has_an_overview(ledger: Connection):
     ov = overview(ledger, TODAY)
-    assert ov.data_age.synced == () and ov.data_age.by_hand == () and ov.data_age.accounts == 0
+    assert ov.data_age.synced == () and ov.data_age.by_hand == ()
     assert ov.net_worth.owed_to_you is None and ov.net_worth.you_owe is None
     assert ov.net_worth.total == 0 and ov.net_worth.since is None
     assert ov.last_12.savings.rate_bp is None

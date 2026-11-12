@@ -75,7 +75,7 @@ def test_every_report_requires_a_session(client: TestClient, url: str):
 def test_the_overview_of_an_empty_ledger(anna: TestClient, today: None):
     body = get(anna, OVERVIEW)
     assert body["as_of"] == "2026-10-20" and body["base_currency"] == "EUR"
-    assert body["data_age"] == {"synced": [], "by_hand": [], "accounts": 0}
+    assert body["data_age"] == {"synced": [], "by_hand": []}
     assert body["net_worth"] == {
         "total": eur(0),
         "unvalued": [],
@@ -128,7 +128,7 @@ def test_the_overviews_data_age_lists_with_the_account_facts(
         fresh = seed.account(conn, "Never fed")
     data_age = get(anna, OVERVIEW)["data_age"]
     accounts = data_age["by_hand"]  # nothing here is synced
-    assert data_age["synced"] == [] and data_age["accounts"] == 4  # the open accounts
+    assert data_age["synced"] == []
     assert closed not in {a["id"] for a in accounts}  # closed with nothing in it
     # never fed first; then the stalest (the openings' records of 1 Aug, ties by id); the Giro's is 12 Oct
     assert [a["id"] for a in accounts] == [fresh, seeded.cash, seeded.usd]

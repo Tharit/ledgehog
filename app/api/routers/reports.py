@@ -145,7 +145,6 @@ class DataAgeOut(BaseModel):
     # while it holds a balance
     synced: list[OverviewAccountOut]
     by_hand: list[OverviewAccountOut]  # the unsynced accounts, clearance accounts included
-    accounts: int  # how many open accounts there are
 
 
 class OverviewOut(BaseModel):
@@ -176,7 +175,6 @@ def get_overview(user: CurrentUser, engine: EngineDep, request: Request) -> Over
         data_age = DataAgeOut(
             synced=listed(ov.data_age.synced),
             by_hand=listed(ov.data_age.by_hand),
-            accounts=ov.data_age.accounts,
         )
     worth = ov.net_worth
     spend = ov.spend_this_month

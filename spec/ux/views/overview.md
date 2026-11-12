@@ -44,14 +44,15 @@ four cards' rows begin on the same line.
 
 **Two half-width cards.**
 
-- **Data age**, "Stalest first". Two short lists of the accounts list's rows
-  (`ux/views/account.md`), each its three stalest by data age, accounts never
-  fed first, a settled clearance account last: **Synced**, and **By hand**
-  (`spec.md` §3.3), and beneath them "All *n* accounts", linking to Accounts.
-  A synced account's age is a lapse, an unsynced one's a chore, so they are
-  not ranked against each other. A list with no accounts is left out. A closed
-  account is listed only while it holds a balance. No threshold colours
-  (`spec.md` §3.11).
+- **Data age**, "Stalest first", its header opening Accounts as *Top expense
+  categories* opens its report. Two short lists, **Synced** and **By hand**
+  (`spec.md` §3.3), each its three stalest accounts by data age, accounts never
+  fed first, a settled clearance account last. A row shows the account's icon,
+  its name and its data age, and opens the account; the balance is the list's,
+  not this card's. A synced account's age is a lapse, an unsynced one's a
+  chore, so they are not ranked against each other. A list with no accounts is
+  left out. A closed account is listed only while it holds a balance. No
+  threshold colours (`spec.md` §3.11).
 - **Top expense categories**, this month so far: the five largest top-level
   categories as bars in their colours, then "Other", then the unclassified
   amount out beneath. A row opens the ledger filtered by the category and the

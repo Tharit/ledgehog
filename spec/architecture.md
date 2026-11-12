@@ -385,8 +385,10 @@ PUT    /api/ledger/rules/{id}                  change name, target value,
                                                `sets`); no existing value
                                                changes
 DELETE /api/ledger/rules/{id}                  likewise
-GET    /api/ledger/accounts                    the accounts; also each kind's
-                                               total, valued at today's rate
+GET    /api/ledger/accounts                    the accounts; also, per kind
+                                               and for the closed ones, the
+                                               count and the sum of balances
+                                               per currency, never converted
 POST   /api/ledger/accounts                    create an account; creates
                                                nothing else (spec §5.7), but
                                                for a clearance account, which

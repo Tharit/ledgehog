@@ -61,8 +61,7 @@ export function overview(over: Partial<Overview> = {}): Overview {
 		},
 		data_age: {
 			synced: [{ ...account({ id: 1, name: 'Giro' }), data_age_days: 1 }],
-			by_hand: [],
-			accounts: 1
+			by_hand: []
 		},
 		...over
 	};
