@@ -209,10 +209,12 @@ bank is a new file, not code. The shipped presets are the importer's tests:
 figure; `deutschebank_card`, a card with a footer balance, two `Betrag`
 columns and no payments; `amex_card`, a card with inverted signs, multi-line
 cells and no balance; `caixabank_giro`, a spreadsheet, newest first, with a
-running balance. Their fixtures are written for the purpose: real exports
-carry names and account numbers and are not committed. The presets are JSON
-files shipped as package data, loaded as package resources, and named after
-the bank and account whose export they read (`consorsbank_giro`).
+running balance; `olb_debt`, a loan account with no balance, whose columns
+with umlauts are addressed by position. Their fixtures are written for the
+purpose: real exports carry names and account numbers and are not
+committed. The presets are JSON files shipped as package data, loaded as
+package resources, and named after the bank and account whose export they
+read (`consorsbank_giro`).
 
 ## 9. Not in this importer
 
@@ -230,21 +232,21 @@ It is never part of an import.
 
 ## Appendix: the shipped presets
 
-| | `consorsbank_giro` | `deutschebank_card` | `amex_card` | `caixabank_giro` |
-|---|---|---|---|---|
-| header marker | `Buchung`, `Valuta`, `Betrag` | `Belegdatum`, `Eingangstag`, `Verwendungszweck` | `Datum`, `Beschreibung`, `Betrag` | `Fecha`, `Fecha valor`, `Importe` |
-| `booked_on` | `Buchung` | `Eingangstag` | `Datum` | `Fecha` |
-| `value_on` | `Valuta` | `Belegdatum` | — | `Fecha valor` |
-| date format | `dd.MM.yyyy` | `d.M.yyyy` | `dd/MM/yyyy` | `dd.MM.yyyy` (text cells only; the sheet's dates are typed) |
-| amount | `Betrag`, `.` thousands, `,` decimal | `Betrag#2` | `Betrag`, inverted | `Importe`, `.` thousands, `,` decimal |
-| purpose | `Verwendungszweck` | `Verwendungszweck` | `Beschreibung` | `Movimiento`, `Más datos` |
-| booking text | `Buchungstext` | — | — | `Movimiento` |
-| counterparty | `Sender / Empfänger`, `IBAN` | — | — | — |
-| instructed | — | `Fremdwährung`, `Betrag#1` | — | — |
-| currency | a currency column | a currency column | — (the account's) | — (the account's) |
-| filter | skip `Valuta = vorgemerkt` | — | — | — |
-| placeholders | `n/a` | — | — | — |
-| export date | a date-time in the preamble, by label and offset | — (the upload date) | — (the upload date) | — (the upload date) |
-| balance | labelled figure `Saldo`, value below, date below, rolled back from the export date | labelled figure `Saldo:`, value six cells right, statement date by pattern from `Abrechnungsdatum:` | none | running column `Saldo` |
-| coverage | last booking date | the statement date | last booking date | last booking date |
-| statement payment | off | on | off | off |
+| | `consorsbank_giro` | `deutschebank_card` | `amex_card` | `caixabank_giro` | `olb_debt` |
+|---|---|---|---|---|---|
+| header marker | `Buchung`, `Valuta`, `Betrag` | `Belegdatum`, `Eingangstag`, `Verwendungszweck` | `Datum`, `Beschreibung`, `Betrag` | `Fecha`, `Fecha valor`, `Importe` | `Buchungsdatum`, `Valuta`, `Betrag` |
+| `booked_on` | `Buchung` | `Eingangstag` | `Datum` | `Fecha` | `Buchungsdatum` |
+| `value_on` | `Valuta` | `Belegdatum` | — | `Fecha valor` | `Valuta` |
+| date format | `dd.MM.yyyy` | `d.M.yyyy` | `dd/MM/yyyy` | `dd.MM.yyyy` (text cells only; the sheet's dates are typed) | `dd.MM.yyyy` |
+| amount | `Betrag`, `.` thousands, `,` decimal | `Betrag#2` | `Betrag`, inverted | `Importe`, `.` thousands, `,` decimal | `Betrag`, `.` thousands, `,` decimal |
+| purpose | `Verwendungszweck` | `Verwendungszweck` | `Beschreibung` | `Movimiento`, `Más datos` | `Verwendungszweck` |
+| booking text | `Buchungstext` | — | — | `Movimiento` | `Transaktions-Beschreibung` |
+| counterparty | `Sender / Empfänger`, `IBAN` | — | — | — | column 4, `IBAN` |
+| instructed | — | `Fremdwährung`, `Betrag#1` | — | — | — |
+| currency | a currency column | a currency column | — (the account's) | — (the account's) | column 9 |
+| filter | skip `Valuta = vorgemerkt` | — | — | — | — |
+| placeholders | `n/a` | — | — | — | `NOTPROVIDED` |
+| export date | a date-time in the preamble, by label and offset | — (the upload date) | — (the upload date) | — (the upload date) | — (the upload date) |
+| balance | labelled figure `Saldo`, value below, date below, rolled back from the export date | labelled figure `Saldo:`, value six cells right, statement date by pattern from `Abrechnungsdatum:` | none | running column `Saldo` | none |
+| coverage | last booking date | the statement date | last booking date | last booking date | last booking date |
+| statement payment | off | on | off | off | off |
