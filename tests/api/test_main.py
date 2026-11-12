@@ -90,10 +90,10 @@ def test_the_test_importer_registers_only_behind_the_flag_and_fills_the_provider
     )
     reset_document_providers()
     try:
-        assert set(register_importers(base)) == {"csv", "fints"}
+        assert set(register_importers(base)) == {"csv", "camt", "fints"}
         assert document_providers() == {} and importer_names() == []
         on = register_importers(replace(base, enable_test_importers=True))
-        assert set(on) == {"csv", "fints", "testdocs", "testfetch"}
+        assert set(on) == {"csv", "camt", "fints", "testdocs", "testfetch"}
         assert isinstance(on["testdocs"], TestDocumentImporter)
         assert dict(document_providers()) == {
             "testdocs": TestDocumentImporter.providers,

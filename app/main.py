@@ -28,6 +28,7 @@ from app.core.plugins.fetch import FetchImporter
 from app.core.plugins.importer import FileImporter
 from app.core.resolution.registry import configure_classifiers, configure_rule_tools
 from app.plugins.classifiers import default_classifiers, default_rule_tools
+from app.plugins.importers.camt import CamtImporter
 from app.plugins.importers.csv import CsvImporter
 from app.plugins.importers.email.factory import email_importer
 from app.plugins.importers.fints import FintsImporter
@@ -75,6 +76,7 @@ def register_importers(config: Config) -> dict[str, FileImporter | FetchImporter
     behind `ENABLE_TEST_IMPORTERS`."""
     importers: dict[str, FileImporter | FetchImporter] = {
         "csv": CsvImporter(),
+        "camt": CamtImporter(),
         # always registered, so the catalog and the setup form exist; without the DK product
         # registration id `open` raises `NotRegistered` before it asks for anything (spec §7.1)
         "fints": FintsImporter(config.fints_product_id, app_version()),
