@@ -6,6 +6,7 @@ import type { Component } from 'svelte';
 import type { IsoDate } from '#lib/format/index.js';
 import CsvProfileForm from '#lib/components/importers/csv-profile-form.svelte';
 import EmailForm from '#lib/components/importers/email-form.svelte';
+import CamtForm from '#lib/components/importers/camt-form.svelte';
 import FintsForm from '#lib/components/importers/fints-form.svelte';
 import * as csv from './csv-profile.js';
 import * as email from './email-profile.js';
@@ -61,10 +62,20 @@ const emailForm: SettingsForm<email.EmailDraft> = {
 	problems: email.problemsOf
 };
 
+// the camt importer has no settings (plugins/importers/camt.md §1): its "form" is one line of text
+const camtForm: SettingsForm<Record<string, never>> = {
+	component: CamtForm,
+	emptyDraft: () => ({}),
+	draftFromSettings: () => ({}),
+	settingsFromDraft: () => ({}),
+	fieldOfRefusal: () => null
+};
+
 export const SETTINGS_FORMS: Readonly<Record<string, SettingsForm<AnyDraft>>> = {
 	csv: csvForm,
 	fints: fintsForm,
-	email: emailForm
+	email: emailForm,
+	camt: camtForm
 };
 
 export function settingsFormOf(importer: string): SettingsForm<AnyDraft> | null {

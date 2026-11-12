@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { catalogEntry } from './fixtures.js';
-import { deliversDocumentsOnly, kindText } from './list.js';
+import { deliversDocumentsOnly, importerTitle, kindText } from './list.js';
 
 describe('kindText', () => {
 	it('says a file importer takes a file, whatever it delivers', () => {
@@ -25,5 +25,13 @@ describe('deliversDocumentsOnly', () => {
 		expect(deliversDocumentsOnly({ emits: ['documents', 'transactions'] })).toBe(false);
 		expect(deliversDocumentsOnly({ emits: ['transactions'] })).toBe(false);
 		expect(deliversDocumentsOnly({ emits: ['rates'] })).toBe(false);
+	});
+});
+
+describe('importerTitle', () => {
+	it('names the importers as a person reads them, and any other as it is called', () => {
+		expect(importerTitle('csv')).toBe('CSV or spreadsheet');
+		expect(importerTitle('camt')).toBe('camt (XML statement)');
+		expect(importerTitle('fints')).toBe('fints');
 	});
 });

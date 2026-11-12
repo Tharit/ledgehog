@@ -12,13 +12,16 @@
 		report,
 		currency,
 		locale = 'en',
-		failed = false
+		failed = false,
+		statement = false
 	}: {
 		report: DryRunReport;
 		currency: string;
 		locale?: string;
 		/** the run would end in a failure: it takes the place of the counts, the dates and the balance */
 		failed?: boolean;
+		/** a statement format (camt): entries rather than lines, pending entries rather than filtered rows */
+		statement?: boolean;
 	} = $props();
 
 	const count = (n: number) => formatCount(n, locale);
@@ -30,7 +33,11 @@
 	const counts = $derived(
 		[
 			{ key: 'skipped', label: 'Skipped as not transactions', category: report.skipped },
-			{ key: 'filtered', label: 'Filtered by a row filter', category: report.filtered },
+			{
+				key: 'filtered',
+				label: statement ? 'Pending, not imported' : 'Filtered by a row filter',
+				category: report.filtered
+			},
 			{ key: 'zero', label: 'Dropped as zero bookings', category: report.zero_dropped },
 			{
 				key: 'currency',
@@ -39,50 +46,56 @@
 			}
 		].filter((row) => row.category.count > 0)
 	);
-	const read = $derived(report.header_line !== null);
+	const unit = $derived(statement ? 'entry' : 'line');
+	// a CSV file is read at a header row; a statement has none, and its section is the first rows
+	const read = $derived(report.header_line !== null || report.sample.length > 0);
 </script>
 
 <div class="flex flex-col gap-4 text-sm" data-slot="upload-report">
 	{#if read}
 		<section class="flex flex-col gap-2" aria-label="The file as read">
 			<h3 class="text-base font-semibold">The file as read</h3>
-			<dl class="grid grid-cols-[minmax(0,11rem)_minmax(0,1fr)] gap-x-4 gap-y-1">
-				{#if report.encoding}
-					<dt class="text-muted-foreground">Encoding</dt>
-					<dd>{report.encoding}</dd>
-				{/if}
-				{#if report.delimiter}
-					<dt class="text-muted-foreground">Delimiter</dt>
-					<dd><code>{report.delimiter}</code></dd>
-				{/if}
-				<dt class="text-muted-foreground">Header row</dt>
-				<dd>line {report.header_line}</dd>
-				<dt class="text-muted-foreground">Columns mapped</dt>
-				<dd>
-					{#if report.columns.length === 0}
-						none
-					{:else}
-						<ul class="flex flex-col gap-0.5" data-slot="mapped-columns">
-							{#each report.columns as column (column.field + column.index)}
-								<li>
-									<span class="font-medium">{column.field}</span>
-									from <span>“{column.name}”</span>
-									<span class="text-muted-foreground">(column {column.index})</span>
-								</li>
-							{/each}
-						</ul>
+			{#if report.header_line !== null}
+				<dl class="grid grid-cols-[minmax(0,11rem)_minmax(0,1fr)] gap-x-4 gap-y-1">
+					{#if report.encoding}
+						<dt class="text-muted-foreground">Encoding</dt>
+						<dd>{report.encoding}</dd>
 					{/if}
-				</dd>
-			</dl>
+					{#if report.delimiter}
+						<dt class="text-muted-foreground">Delimiter</dt>
+						<dd><code>{report.delimiter}</code></dd>
+					{/if}
+					<dt class="text-muted-foreground">Header row</dt>
+					<dd>line {report.header_line}</dd>
+					<dt class="text-muted-foreground">Columns mapped</dt>
+					<dd>
+						{#if report.columns.length === 0}
+							none
+						{:else}
+							<ul class="flex flex-col gap-0.5" data-slot="mapped-columns">
+								{#each report.columns as column (column.field + column.index)}
+									<li>
+										<span class="font-medium">{column.field}</span>
+										from <span>“{column.name}”</span>
+										<span class="text-muted-foreground">(column {column.index})</span>
+									</li>
+								{/each}
+							</ul>
+						{/if}
+					</dd>
+				</dl>
+			{/if}
 			{#if report.sample.length > 0}
 				<div class="overflow-x-auto rounded-lg border" data-slot="sample-rows">
 					<table class="w-full text-left text-xs">
 						<thead class="text-muted-foreground">
 							<tr>
-								<th class="px-2 py-1 font-medium">Line</th>
+								<th class="px-2 py-1 font-medium">{statement ? 'Entry' : 'Line'}</th>
 								<th class="px-2 py-1 font-medium">Booking date</th>
 								<th class="px-2 py-1 text-right font-medium">{amountHeader('Amount', currency)}</th>
-								<th class="px-2 py-1 font-medium">Cells</th>
+								<th class="px-2 py-1 font-medium"
+									>{statement ? 'Counterparty | purpose' : 'Cells'}</th
+								>
 							</tr>
 						</thead>
 						<tbody>
@@ -120,7 +133,7 @@
 						{#if row.category.examples.length > 0}
 							<ul class="flex flex-col text-xs text-muted-foreground">
 								{#each row.category.examples as example (example.row)}
-									<li>line {example.row}: {example.reason}</li>
+									<li>{unit} {example.row}: {example.reason}</li>
 								{/each}
 							</ul>
 						{/if}

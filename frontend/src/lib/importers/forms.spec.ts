@@ -11,6 +11,13 @@ describe('the settings form registry', () => {
 		expect(settingsFormOf('nope')).toBeNull();
 	});
 
+	it('has a form for camt that holds no settings', () => {
+		const form = settingsFormOf('camt')!;
+		expect(form.emptyDraft()).toEqual({});
+		expect(form.settingsFromDraft(form.draftFromSettings({}))).toEqual({});
+		expect(form.fieldOfRefusal('anything')).toBeNull();
+	});
+
 	it('is the csv adapter for csv, unchanged: the profile round-trips', () => {
 		const form = settingsFormOf('csv')!;
 		expect(form.emptyDraft()).toEqual(csvEmpty());

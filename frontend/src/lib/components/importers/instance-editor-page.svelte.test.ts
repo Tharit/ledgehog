@@ -462,3 +462,27 @@ describe('the instance page, adding an email importer', () => {
 		expect(screen.getByLabelText('Port')).toHaveAttribute('aria-invalid', 'true');
 	});
 });
+
+describe('the instance page of a camt importer', () => {
+	it('shows the label and one line, no settings form, and saves empty settings', async () => {
+		api.listImporters.mockResolvedValue([catalogEntry({ name: 'camt', presets: {} })]);
+		api.createInstance.mockResolvedValue(
+			instance({ id: 5, importer: 'camt', label: 'Loan', settings: {} })
+		);
+		const onleave = vi.fn();
+		render(InstanceEditorPage, { props: { importer: 'camt', onleave } });
+		await screen.findByRole('form', { name: 'Importer' });
+
+		expect(screen.getByLabelText('Label')).toBeInTheDocument();
+		expect(screen.getByText(/Reads the bank’s XML statement export/)).toBeInTheDocument();
+		expect(screen.queryByText('Start from a preset')).toBeNull();
+		expect(screen.queryByLabelText('Booking date column')).toBeNull();
+
+		await fireEvent.input(screen.getByLabelText('Label'), { target: { value: 'Loan' } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Save importer' }));
+
+		await waitFor(() =>
+			expect(api.createInstance).toHaveBeenCalledWith('camt', { label: 'Loan', settings: {} })
+		);
+	});
+});

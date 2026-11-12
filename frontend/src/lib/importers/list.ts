@@ -48,7 +48,8 @@ export function loginText(
 
 /** An importer as the user reads it: the CSV importer also reads spreadsheets (csv.md §2). */
 export function importerTitle(name: string): string {
-	return name === 'csv' ? 'CSV or spreadsheet' : name;
+	if (name === 'csv') return 'CSV or spreadsheet';
+	return name === 'camt' ? 'camt (XML statement)' : name;
 }
 
 /**

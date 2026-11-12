@@ -127,3 +127,56 @@ describe('UploadPage', () => {
 		expect(screen.getByLabelText('File')).toBeDisabled();
 	});
 });
+
+describe('UploadPage for a camt importer', () => {
+	const XML = new File(['<AccountMovementCamt/>'], 'export.xml', { type: 'text/xml' });
+
+	async function openedCamt() {
+		vi.mocked(listInstances).mockResolvedValue([
+			instance({
+				id: 1,
+				importer: 'camt',
+				label: 'Loan',
+				accounts: [{ account_id: 7, external_ref: 'acct-7' }]
+			})
+		]);
+		render(UploadPage, { props: { accountId: 7, instanceId: 1 } });
+		await screen.findByText('Main giro · Loan');
+	}
+
+	it('offers neither Edit profile nor Check again, and reads the report without the CSV fields', async () => {
+		vi.mocked(uploadFile).mockResolvedValue(
+			upload({
+				report: report({
+					header_line: null,
+					encoding: null,
+					delimiter: null,
+					columns: [],
+					rows_read: 3,
+					emitted: 1,
+					filtered: { count: 1, examples: [{ row: 3, reason: 'pending entry: never imported' }] },
+					sample: [
+						{ row: 1, booked_on: '2026-03-28', amount_minor: -1000, cells: ['Acme', 'Rent'] }
+					],
+					warnings: ['read as OLB XML, message type camt.052']
+				})
+			})
+		);
+		await openedCamt();
+
+		expect(screen.getByLabelText('File')).toHaveAttribute(
+			'accept',
+			'.xml,text/xml,application/xml'
+		);
+		await fireEvent.change(screen.getByLabelText('File'), { target: { files: [XML] } });
+
+		expect(await screen.findByText('Rows read')).toBeInTheDocument();
+		expect(screen.getByText('Pending, not imported')).toBeInTheDocument();
+		expect(screen.getByText('entry 3: pending entry: never imported')).toBeInTheDocument();
+		expect(screen.getByText('Acme | Rent')).toBeInTheDocument();
+		expect(screen.getByText('read as OLB XML, message type camt.052')).toBeInTheDocument();
+		expect(screen.queryByText('Header row')).toBeNull();
+		expect(screen.queryByRole('link', { name: 'Edit profile' })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Check again' })).toBeNull();
+	});
+});

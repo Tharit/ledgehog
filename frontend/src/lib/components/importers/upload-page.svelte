@@ -36,6 +36,13 @@
 	const description = $derived(
 		account && store.instance ? `${account.name} · ${store.instance.label}` : undefined
 	);
+	// a statement format has no profile to adjust: no "Edit profile", no "Check again"
+	const statement = $derived(store.instance?.importer === 'camt');
+	const accept = $derived(
+		statement
+			? '.xml,text/xml,application/xml'
+			: '.csv,.txt,.xls,.xlsx,.ods,text/csv,text/plain,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.oasis.opendocument.spreadsheet'
+	);
 	const checking = $derived(store.phase === 'checking');
 	const uploading = $derived(store.phase === 'uploading');
 	const notice = $derived(store.notice ? { text: store.notice, error: false } : null);
@@ -90,7 +97,7 @@
 					<Input
 						{...control}
 						type="file"
-						accept=".csv,.txt,.xls,.xlsx,.ods,text/csv,text/plain,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.oasis.opendocument.spreadsheet"
+						{accept}
 						disabled={store.blocked !== null || uploading}
 						onchange={onfile}
 					/>
@@ -117,6 +124,7 @@
 						{currency}
 						locale={store.locale}
 						failed={dry.failure !== null}
+						{statement}
 					/>
 					{#if !dry.failure}
 						<div class="flex flex-col gap-2">
@@ -129,25 +137,27 @@
 							/>
 						</div>
 					{/if}
-					<div class="flex flex-wrap gap-2">
-						<ActionButton
-							variant="outline"
-							href={instanceUrl(instanceId)}
-							target="_blank"
-							rel="noopener"
-						>
-							Edit profile
-						</ActionButton>
-						<ActionButton
-							variant="outline"
-							busy={checking}
-							busyLabel="Checking…"
-							disabled={uploading}
-							onclick={() => void store.check()}
-						>
-							Check again
-						</ActionButton>
-					</div>
+					{#if !statement}
+						<div class="flex flex-wrap gap-2">
+							<ActionButton
+								variant="outline"
+								href={instanceUrl(instanceId)}
+								target="_blank"
+								rel="noopener"
+							>
+								Edit profile
+							</ActionButton>
+							<ActionButton
+								variant="outline"
+								busy={checking}
+								busyLabel="Checking…"
+								disabled={uploading}
+								onclick={() => void store.check()}
+							>
+								Check again
+							</ActionButton>
+						</div>
+					{/if}
 				</section>
 			{/if}
 
