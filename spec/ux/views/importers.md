@@ -150,6 +150,15 @@ connection test: *Refresh accounts* is one, and every extra login spends an
 attempt. The page's CSV-specific parts — the preset select, the hints about the
 file and about `source_format` — are shown for a CSV profile only.
 
+## The camt importer
+
+The camt importer has no settings (`plugins/importers/camt.md` §1): its page
+holds the label and the linked accounts, with one line under the label: "Reads
+the bank's XML statement export. The file says which format it is; there is
+nothing to set up." In the catalog it is "camt (XML statement)". On the upload
+page its report shows what `plugins/importers/camt.md` §6 lists, and neither
+"Edit profile" nor "Check again", since there is no profile to adjust.
+
 ## The email form
 
 The email importer's settings (`plugins/importers/email.md` §1), each with a
