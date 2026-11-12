@@ -76,7 +76,7 @@ def run(
     exponent: Callable[[str], int],
     today: date,
 ) -> ParsedFile:
-    rep.warnings.append(f"read as {statement.reader.upper()} XML, message type {statement.message_type}")
+    rep.format = f"{statement.reader.upper()} XML, {statement.message_type}"
     if not statement.reports:
         raise ParseFailed("no coverage: the file has no booked report")
     checked = [(r, *check(r)) for r in statement.reports]

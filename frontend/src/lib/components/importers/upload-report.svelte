@@ -48,13 +48,18 @@
 	);
 	const unit = $derived(statement ? 'entry' : 'line');
 	// a CSV file is read at a header row; a statement has none, and its section is the first rows
-	const read = $derived(report.header_line !== null || report.sample.length > 0);
+	const read = $derived(
+		report.header_line !== null || report.sample.length > 0 || report.format !== null
+	);
 </script>
 
 <div class="flex flex-col gap-4 text-sm" data-slot="upload-report">
 	{#if read}
 		<section class="flex flex-col gap-2" aria-label="The file as read">
 			<h3 class="text-base font-semibold">The file as read</h3>
+			{#if report.format}
+				<p data-slot="report-format">Read as {report.format}</p>
+			{/if}
 			{#if report.header_line !== null}
 				<dl class="grid grid-cols-[minmax(0,11rem)_minmax(0,1fr)] gap-x-4 gap-y-1">
 					{#if report.encoding}

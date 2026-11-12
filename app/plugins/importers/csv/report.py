@@ -47,6 +47,7 @@ class ReportBuilder:
     balance: Any = None
     synthetic: Any = None
     warnings: list[str] = field(default_factory=list)
+    format: str | None = None
 
     def build(self, failure: str | None = None) -> DryRunReport:
         return DryRunReport(
@@ -69,6 +70,7 @@ class ReportBuilder:
             synthetic=self.synthetic,
             warnings=tuple(self.warnings),
             failure=failure,
+            format=self.format,
         )
 
 

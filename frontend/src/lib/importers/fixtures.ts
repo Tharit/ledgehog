@@ -105,6 +105,7 @@ export function report(over: Partial<DryRunReport> = {}): DryRunReport {
 		synthetic: null,
 		warnings: [],
 		failure: null,
+		format: null,
 		...over
 	};
 }

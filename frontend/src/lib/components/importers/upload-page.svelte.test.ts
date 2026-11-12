@@ -158,7 +158,7 @@ describe('UploadPage for a camt importer', () => {
 					sample: [
 						{ row: 1, booked_on: '2026-03-28', amount_minor: -1000, cells: ['Acme', 'Rent'] }
 					],
-					warnings: ['read as OLB XML, message type camt.052']
+					format: 'OLB XML, camt.052'
 				})
 			})
 		);
@@ -174,7 +174,8 @@ describe('UploadPage for a camt importer', () => {
 		expect(screen.getByText('Pending, not imported')).toBeInTheDocument();
 		expect(screen.getByText('entry 3: pending entry: never imported')).toBeInTheDocument();
 		expect(screen.getByText('Acme | Rent')).toBeInTheDocument();
-		expect(screen.getByText('read as OLB XML, message type camt.052')).toBeInTheDocument();
+		expect(screen.getByText('Read as OLB XML, camt.052')).toBeInTheDocument();
+		expect(screen.queryByLabelText('Warnings')).toBeNull();
 		expect(screen.queryByText('Header row')).toBeNull();
 		expect(screen.queryByRole('link', { name: 'Edit profile' })).toBeNull();
 		expect(screen.queryByRole('button', { name: 'Check again' })).toBeNull();

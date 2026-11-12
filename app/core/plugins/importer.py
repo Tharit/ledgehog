@@ -118,6 +118,7 @@ class DryRunReport:
     synthetic: SyntheticReport | None = None
     warnings: tuple[str, ...] = ()
     failure: str | None = None
+    format: str | None = None  # a statement file's reader and message type, in words; CSV leaves it None
 
     @classmethod
     def empty(cls) -> DryRunReport:

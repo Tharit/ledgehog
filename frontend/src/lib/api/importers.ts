@@ -109,6 +109,8 @@ export type DryRunReport = {
 	synthetic: ReportSynthetic | null;
 	warnings: string[];
 	failure: string | null;
+	/** a statement file's reader and message type, in words (CSV: null) */
+	format: string | null;
 };
 
 // ---- runs (app/core/ingest/run.py stats, app/core/importers/runs.py) --------------------------

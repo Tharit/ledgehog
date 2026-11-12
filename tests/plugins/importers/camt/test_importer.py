@@ -93,7 +93,7 @@ def test_a_file_end_to_end() -> None:
     assert (r.rows_read, r.emitted, r.zero_dropped.count, r.filtered.count) == (4, 2, 1, 1)
     assert (r.header_line, r.encoding, r.delimiter, r.columns) == (None, None, None, ())
     assert r.export_date == D(2026, 8, 20) and r.coverage == D(2026, 8, 12)
-    assert any("camt.052" in w for w in r.warnings)
+    assert r.format == "OLB XML, camt.052" and not r.warnings
     assert [s.row for s in r.sample] == [1, 2]
 
 
@@ -103,7 +103,7 @@ def test_a_failure_carries_the_report_with_what_was_counted() -> None:
         run(bad)
     rep = err.value.report
     assert rep is not None and rep.failure == str(err.value) and "MSG1" in rep.failure
-    assert any("camt.052" in w for w in rep.warnings)
+    assert rep.format == "OLB XML, camt.052"
 
 
 def test_a_reader_failure_carries_a_report_too() -> None:
