@@ -4056,3 +4056,10 @@ plugins/importers/camt.md; spec §5.1, §5.2.
 - **One core over the statement model; a reader per format, chosen by the file's root element** (user, 2026-11-12). The OLB file is not ISO 20022: a Java serialisation of a camt report under the library's field names, which no camt parser reads. The meaning is camt's, the encoding is not, so only the reading differs. The model holds only the fields a record, the check or the balance needs, and grows when a reader brings one. Rejected: *a reader chosen in the settings* (the root element already says it, and a wrong choice could only fail); *a native ISO 20022 reader now* (no export to test it against).
 - **No settings.** camt states every sign with a credit or debit mark, balances included, so nothing is left to configure. Rejected: *the CSV importer's inversion settings*; *checking the file's IBAN against the account's* (the CSV importer never relies on the file's account number either, and an export may mask it).
 - **The bank transaction codes stay in `raw`, `booking_text` stays empty.** They are codes, not a posting text, and mixing them with banks' texts in one column would make history's key (§5.9) compare unlike things. Rejected: *the ISO code as `booking_text`*.
+
+## D254 Plugins share code only through core/plugins
+
+architecture §5.1.
+
+- **A plugin never imports another plugin, enforced by an independence contract** (user, 2026-11-12). The camt importer reached into the CSV package for its dry-run collector, which pulled in the CSV reader; nothing stopped it. Rejected: *a shared module under `plugins/`* (a second place for shared code, which the contract would have to exempt); *the rule unenforced*.
+- **`core/plugins` holds the protocols and the helpers plugins share.** It already held `text.py`. Rejected: *copying the helper into each plugin*.

@@ -1280,10 +1280,11 @@ app/
                          filtered by the ledger list's own predicate
     tasks/               registry and claims, the task with its events, the
                          prompter, the per-instance job; the change values
-    plugins/             PROTOCOLS ONLY: the importer (file and fetch) and
-                         classifier interfaces, the prompt kinds and
-                         `SecretText`, the error taxonomy, the history source
-                         classifiers read, the registry plugins register into
+    plugins/             what plugins depend on: the importer (file and
+                         fetch) and classifier interfaces, the prompt kinds
+                         and `SecretText`, the error taxonomy, the history
+                         source classifiers read, the registry plugins
+                         register into, and the helpers plugins share
   plugins/               Concrete plugin implementations, one package each.
     importers/
       fints/
@@ -1312,12 +1313,12 @@ plugins ─────┘        (plugins implement core/plugins protocols)
 ```
 
 This direction is enforced mechanically: import-linter contracts in
-`.importlinter` cover the layering, both rules below, `core/domain` importing
+`.importlinter` cover the layering, the three rules below, `core/domain` importing
 nothing, `core` never importing `utils/config.py`, and web frameworks being
 imported by `api` and the composition root only. The one rule it cannot
 express — only `utils/clock.py` touches the system clock — is an AST test.
 
-Two rules carry the weight:
+Three rules carry the weight:
 
 **`core` never imports `plugins`.** The protocol lives in `core/plugins/`; the
 implementations live outside and register themselves at startup, wired in
@@ -1331,6 +1332,11 @@ identities, deduplication, ledger entries or database transactions. This is what
 makes `spec.md` §5.2's guarantee structural rather than aspirational: two
 importers cannot deduplicate the same account inconsistently, because neither of
 them deduplicates at all.
+
+**A plugin never imports another plugin.** Each is one package that can be
+added or removed alone. What two of them share — a dry-run report builder,
+text normalisation, the chat-completions conventions — lives in
+`core/plugins/`, beside the protocols they implement.
 
 **Invariant ownership.** Each invariant of `spec.md` §2.1 has exactly one
 enforcement point:
