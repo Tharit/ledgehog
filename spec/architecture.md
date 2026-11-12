@@ -209,7 +209,9 @@ exhaustive, and deliberately without field detail:
   ledger entries — the interpretation layer (spec §3.1), read here and
   changed through the units group below (spec §5.9, I21). Tags also have
   direct writes, and are part of the unit draft.
-GET    /api/ledger/entries                     filtered, paged list
+GET    /api/ledger/entries                     filtered, paged list; each
+                                               entry says whether the model is
+                                               still looking at it
 GET    /api/ledger/entries/{id}                one entry, in the row shape of
                                                the list (200; 404 when missing)
 GET    /api/ledger/sources/{id}                provenance: one source transaction
@@ -271,9 +273,7 @@ GET    /api/units/queue                        the units not confirmed, in
                                                synced_through | null}`; a
                                                booking's unit says so
                                                (`booking`, with its source
-                                               kind); each unit says whether
-                                               the model is still looking at
-                                               it
+                                               kind)
 GET    /api/units/queue/count                  how many units can be acted on
                                                now: `count`, the sum of
                                                `pending_review` and

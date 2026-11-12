@@ -158,6 +158,12 @@ the third column; the `waiting` tooltip names the partner's account. Account
 and currency status (spec §3.11) is never shown as an
 entry badge; it belongs to the account (§4.4).
 
+An entry the model is still looking at (spec §5.9, pass 3) carries a sparkle
+after its badges, on its own row in the ledger and the review queue alike,
+with the tooltip "The model is still looking at this". It is not a review
+flag: it shows beside a confirmed entry's check too, and goes when the answer
+arrives.
+
 ### 4.3 Derivation and evidence
 
 Every derived value can show its basis, rendered from the derivation key

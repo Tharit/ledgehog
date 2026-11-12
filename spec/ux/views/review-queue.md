@@ -27,10 +27,10 @@ looking at entries, a small activity mark beside the count says so, and its
 tooltip how many.
 
 **What the model has not yet answered says so.** A unit the model is still
-looking at is marked in its row, one quiet line above the list says how many
-there are, and the panel says the model's guess is still coming; a unit can
-be decided meanwhile, and the guess then gives way. Its answers arrive as new
-data.
+looking at is marked on each row the model has not yet answered, one quiet
+line above the list says how many there are, and the panel says the model's
+guess is still coming; a unit can be decided meanwhile, and the guess then
+gives way. Its answers arrive as new data.
 
 **Evidence is shown, not confidence.** Each derived value shows its basis as
 the pass recorded it: "1 of 1 since March" for history, the rule for a rule,

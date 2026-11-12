@@ -2347,11 +2347,11 @@ Constraints on pass 3:
 - **Asked in the background.** An entry whose category falls to the model
   waits on a list in memory for one worker, which asks the model one at a time
   and stores each answer as it arrives. While an entry is on that list
-  the review queue and the panel say the model is still looking at it; this
-  is not a review flag, and nothing of it is stored. When the model is
-  unreachable the list empties and its entries keep what the earlier passes
-  proposed, as with no model — history's proposal where it gave way, otherwise
-  nothing; they are asked when it answers again.
+  its row, in the ledger and the review queue, and the panel say the model is
+  still looking at it; this is not a review flag, and nothing of it is
+  stored. When the model is unreachable the list empties and its entries keep
+  what the earlier passes proposed, as with no model — history's proposal where
+  it gave way, otherwise nothing; they are asked when it answers again.
 - **Limited payload.** The counterparty name, booking text and purpose, and
   for an entry with a source text, its source text and its account's name;
   and where history counted votes for the category, the categories they
