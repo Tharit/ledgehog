@@ -372,6 +372,7 @@
 									{lookups}
 									{locale}
 									{showCurrency}
+									modelPending={entry.model_pending}
 									cursor={entry.id === cursorId}
 									{joined}
 									unitCursor={joined &&

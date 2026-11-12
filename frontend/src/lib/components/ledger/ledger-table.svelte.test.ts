@@ -41,6 +41,22 @@ function cursorTexts(): string[] {
 		.map((row) => row.textContent ?? '');
 }
 
+describe('LedgerTable: the model', () => {
+	it('marks the row of each entry the model is still looking at, and no other', () => {
+		table({
+			entries: [
+				entry({ id: 2, description: 'Second', display_text: 'Second', model_pending: true }),
+				entry({ id: 1, description: 'First', display_text: 'First' })
+			],
+			total: 2
+		});
+
+		const marks = screen.getAllByRole('img', { name: 'The model is still looking at this' });
+		expect(marks).toHaveLength(1);
+		expect(marks[0].closest('[role="row"]')).toHaveTextContent('Second');
+	});
+});
+
 describe('LedgerTable: states', () => {
 	it('shows 32px skeleton rows and no entries while loading', () => {
 		table({ entries: [], total: 0, status: 'loading' });

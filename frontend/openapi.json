@@ -2302,6 +2302,11 @@
             "title": "Id",
             "type": "integer"
           },
+          "model_pending": {
+            "default": false,
+            "title": "Model Pending",
+            "type": "boolean"
+          },
           "note": {
             "anyOf": [
               {
@@ -8156,11 +8161,6 @@
             },
             "title": "Entries",
             "type": "array"
-          },
-          "model_pending": {
-            "default": false,
-            "title": "Model Pending",
-            "type": "boolean"
           },
           "needs_account": {
             "anyOf": [

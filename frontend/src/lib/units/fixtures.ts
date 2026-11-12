@@ -39,7 +39,6 @@ export function unit(over: Partial<Unit> & { entries?: Entry[] } = {}): Unit {
 		anchor_entry_id: anchor,
 		unit_key: over.unit_key ?? anchor,
 		state: { confirmed: false, reasons: ['non_standing_keys'] },
-		model_pending: false,
 		...over,
 		entries
 	};

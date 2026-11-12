@@ -25,6 +25,7 @@ export function entry(over: Partial<Entry> = {}): Entry {
 		partner: null,
 		origin: null,
 		review_flags: [],
+		model_pending: false,
 		source_text: null,
 		tag_ids: [],
 		...over

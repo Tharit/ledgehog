@@ -1,4 +1,4 @@
-"""What the API says of the model's list (architecture §4.1): `model_pending`, on units and on changes."""
+"""What the API says of the model's list (architecture §4.1): `model_pending`, on entries and on changes."""
 
 from __future__ import annotations
 
@@ -33,7 +33,11 @@ def _two_flows(api_engine: Engine, world: Bench) -> tuple[int, int]:
         return world.flow(world.source(), done=False), world.flow(world.source(), done=False)
 
 
-def test_the_queue_marks_the_units_the_model_is_looking_at(
+def _any_pending(queue_body: dict[str, Any]) -> bool:
+    return any(e["model_pending"] for s in queue_body["sections"] for u in s["units"] for e in u["entries"])
+
+
+def test_the_queue_marks_the_entries_the_model_is_looking_at(
     anna: TestClient, api_engine: Engine, world: Bench
 ) -> None:
     looked_at, other = _two_flows(api_engine, world)
@@ -42,14 +46,21 @@ def test_the_queue_marks_the_units_the_model_is_looking_at(
     queue.sync([(looked_at, "f1")])
 
     body = anna.get("/api/units/queue").json()
-    pending = {u["anchor_entry_id"]: u["model_pending"] for s in body["sections"] for u in s["units"]}
+    pending = {
+        e["id"]: e["model_pending"] for s in body["sections"] for u in s["units"] for e in u["entries"]
+    }
     assert pending == {looked_at: True, other: False}
-    assert anna.get(f"/api/units/{looked_at}").json()["model_pending"] is True
-    assert anna.get(f"/api/units/{other}").json()["model_pending"] is False
+    for entry_id, flag in ((looked_at, True), (other, False)):
+        (entry,) = anna.get(f"/api/units/{entry_id}").json()["entries"]
+        assert entry["model_pending"] is flag
+        assert anna.get(f"/api/ledger/entries/{entry_id}").json()["model_pending"] is flag
+    listed = anna.get("/api/ledger/entries").json()["entries"]
+    assert {e["id"]: e["model_pending"] for e in listed} == {looked_at: True, other: False}
 
     queue.finish((looked_at, "f1"), answered=True)  # read at request time: it follows the list
     body = anna.get("/api/units/queue").json()
-    assert not any(u["model_pending"] for s in body["sections"] for u in s["units"])
+    assert not _any_pending(body)
+    assert not any(e["model_pending"] for e in anna.get("/api/ledger/entries").json()["entries"])
 
 
 def test_the_unit_and_the_queue_carry_the_models_none_key(
@@ -82,10 +93,11 @@ def test_an_explained_absence_reads_as_a_proposal_on_an_empty_value() -> None:
     assert out.commit_key is not None and out.commit_key.basis == basis
 
 
-def test_without_a_model_no_unit_is_pending(anna: TestClient, api_engine: Engine, world: Bench) -> None:
+def test_without_a_model_no_entry_is_pending(anna: TestClient, api_engine: Engine, world: Bench) -> None:
     _two_flows(api_engine, world)
     body = anna.get("/api/units/queue").json()
-    assert not any(u["model_pending"] for s in body["sections"] for u in s["units"])
+    assert not _any_pending(body)
+    assert not any(e["model_pending"] for e in anna.get("/api/ledger/entries").json()["entries"])
 
 
 def test_the_change_poll_carries_how_many_entries_are_left(anna: TestClient) -> None:

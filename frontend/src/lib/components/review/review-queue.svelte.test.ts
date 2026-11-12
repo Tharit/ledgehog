@@ -66,15 +66,28 @@ beforeEach(() => {
 });
 
 describe('ReviewQueue: what the model has not yet answered', () => {
-	it('marks a unit the model is still looking at, and no other', async () => {
+	it('marks each entry the model is still looking at, and no other', async () => {
 		await shown({
-			pending_review: [{ ...flow(1, 'REWE'), model_pending: true }, flow(2, 'Edeka')]
+			pending_review: [
+				flow(1, 'REWE', { model_pending: true }),
+				unit({
+					anchor_entry_id: 2,
+					entries: [
+						entry({ id: 2, unit_key: 2 }),
+						entry({ id: 3, unit_key: 2, model_pending: true })
+					]
+				}),
+				flow(4, 'Edeka')
+			]
 		});
 
 		const marks = screen.getAllByRole('img', { name: 'The model is still looking at this' });
-		expect(marks).toHaveLength(1);
+		expect(marks).toHaveLength(2);
 		expect(marks[0]).toHaveAttribute('title', 'The model is still looking at this');
 		expect(marks[0].closest('[data-unit]')).toHaveAttribute('data-unit', '1');
+		// the second entry of a unit, not its first
+		expect(marks[1].closest('[data-unit]')).toHaveAttribute('data-unit', '2');
+		expect(marks[1].closest('[role="row"]')).toHaveAttribute('data-entry-id', '3');
 	});
 
 	it('says how many entries the model is looking at, from the change poll, only while there are some', async () => {
@@ -90,7 +103,7 @@ describe('ReviewQueue: what the model has not yet answered', () => {
 	});
 
 	it('stays a snapshot: the poll count does not reload the queue', async () => {
-		await shown({ pending_review: [{ ...flow(1, 'REWE'), model_pending: true }] });
+		await shown({ pending_review: [flow(1, 'REWE', { model_pending: true })] });
 		changes.modelPending = 3;
 		await screen.findByText('The model is looking at 3 entries.');
 		expect(getQueue).toHaveBeenCalledTimes(1);

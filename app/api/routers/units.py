@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from app.api.errors import ApiError, map_error
 from app.api.ids import PathId
-from app.api.routers.changes import model_queue_of
+from app.api.routers.changes import model_pending_of
 from app.api.routers.entries import EntryOut
 from app.api.routers.unit_drafts import (
     UnitCommitOut,
@@ -94,8 +94,6 @@ class UnitOut(BaseModel):
     needs_account: NeedsAccountOut | None = None
     # ... and for a unit in `waiting`
     waiting: WaitingOut | None = None
-    # the model is still looking at one of its entries (read from its list when the response is built)
-    model_pending: bool = False
     # the unit holds a booking: a booking's structure is its source's, so the panel offers no partner,
     # convert or split control on its entries
     booking: UnitBookingOut | None = None
@@ -103,11 +101,10 @@ class UnitOut(BaseModel):
     @staticmethod
     def of(view: UnitView, model_pending: frozenset[int] = frozenset()) -> UnitOut:
         return UnitOut(
-            model_pending=any(e.id in model_pending for e in view.entries),
             anchor_entry_id=view.anchor_entry_id,
             unit_key=view.unit_key,
             state=UnitStateOut.of(view.state),
-            entries=[EntryOut.of(e) for e in view.entries],
+            entries=[EntryOut.of(e, model_pending) for e in view.entries],
             booking=None
             if view.booking is None
             else UnitBookingOut(kind=cast(Literal["document", "transfer"], view.booking)),
@@ -155,12 +152,6 @@ class QueueCountOut(BaseModel):
     needs_account: int
 
 
-def _model_pending(request: Request) -> frozenset[int]:
-    """The entries the model is still looking at, now (empty without a model): the entries on its list."""
-    queue = model_queue_of(request)
-    return frozenset() if queue is None else queue.entry_ids()
-
-
 @router.get("/queue")
 def get_review_queue(
     request: Request,
@@ -180,7 +171,7 @@ def get_review_queue(
         )
     with engine.connect() as conn:
         queue = review_queue(conn, limit=limit, section=section, cursor=cursor)
-    pending = _model_pending(request)
+    pending = model_pending_of(request)
     return ReviewQueueOut(
         sections=[QueueSectionOut.of(s, pending) for s in queue.sections], total=queue.total
     )
@@ -212,7 +203,7 @@ def get_unit(request: Request, entry_id: PathId, user: CurrentUser, engine: Engi
         view = read_unit(conn, entry_id)
     if view is None:
         raise UnitMissing(entry_id)
-    return UnitOut.of(view, _model_pending(request))
+    return UnitOut.of(view, model_pending_of(request))
 
 
 # a draft that makes no sense against the stored unit: one 422 with the machine code in `details.code`

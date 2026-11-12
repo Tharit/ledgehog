@@ -400,7 +400,7 @@
 					{#if !multi}
 						<SourceStrip {groups} {locale} {accountName} />
 					{/if}
-					{#if unit.model_pending}
+					{#if unit.entries.some((e) => e.model_pending)}
 						<p class="text-sm text-muted-foreground" data-slot="model-pending">
 							{MODEL_GUESS_COMING}
 						</p>

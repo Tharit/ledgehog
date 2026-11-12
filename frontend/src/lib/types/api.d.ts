@@ -1937,6 +1937,11 @@ export interface components {
             display_text: string | null;
             /** Id */
             id: number;
+            /**
+             * Model Pending
+             * @default false
+             */
+            model_pending: boolean;
             /** Note */
             note: string | null;
             /** Origin */
@@ -3735,11 +3740,6 @@ export interface components {
             booking?: components["schemas"]["UnitBookingOut"] | null;
             /** Entries */
             entries: components["schemas"]["EntryOut"][];
-            /**
-             * Model Pending
-             * @default false
-             */
-            model_pending: boolean;
             needs_account?: components["schemas"]["NeedsAccountOut"] | null;
             state: components["schemas"]["UnitStateOut"];
             /** Unit Key */

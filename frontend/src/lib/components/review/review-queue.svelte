@@ -345,7 +345,7 @@
 											<EntryRow
 												joined={unit.entries.length > 1}
 												unitTotal={total}
-												modelPending={unit.model_pending && entry.id === unit.entries[0].id}
+												modelPending={entry.model_pending}
 												{entry}
 												{lookups}
 												{locale}

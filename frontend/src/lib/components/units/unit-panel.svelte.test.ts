@@ -70,7 +70,9 @@ beforeEach(() => {
 
 describe('UnitPanel: what the model has not yet answered', () => {
 	it("says the model's guess is still coming, while the unit stays editable", async () => {
-		const { dialog } = await openPanel(unit({ model_pending: true }));
+		const { dialog } = await openPanel(
+			unit({ entries: [entry({ id: 1, unit_key: 1, model_pending: true })] })
+		);
 
 		expect(
 			within(dialog).getByText("The model's guess for the category is still coming.")

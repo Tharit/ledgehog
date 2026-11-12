@@ -18,6 +18,7 @@ from pydantic import BaseModel, StringConstraints
 from app.api.errors import map_error
 from app.api.ids import MAX_ID, EntityId, PathId
 from app.api.routers.accounts import CurrencyCode, Money
+from app.api.routers.changes import model_pending_of
 from app.api.session import CurrentUser, EngineDep
 from app.core.domain.source import SourceFields
 from app.core.ledger import EntryRow, InvalidFilter, LedgerFilter, export_csv, get_entry, list_entries
@@ -135,9 +136,11 @@ class EntryOut(BaseModel):
     authored: bool  # entered by the user (the entry form); its `source` is the authored row
     origin: Literal["import", "user", "booking"] | None  # the source's origin; null for a derived entry
     partner: PartnerOut | None  # the other leg of a paired transfer, null otherwise
+    # the model is still looking at this entry (read from its list when the response is built)
+    model_pending: bool = False
 
     @staticmethod
-    def of(row: EntryRow) -> EntryOut:
+    def of(row: EntryRow, model_pending: frozenset[int] = frozenset()) -> EntryOut:
         return EntryOut(
             id=row.id,
             version=row.version,
@@ -170,6 +173,7 @@ class EntryOut(BaseModel):
                 booked_on=row.partner.booked_on,
                 amount=Money(amount=row.partner.amount, currency=row.partner.currency),
             ),
+            model_pending=row.id in model_pending,
         )
 
 
@@ -223,6 +227,7 @@ FilterQuery = Annotated[LedgerFilter, Depends(ledger_filter)]
 
 @router.get("")
 def list_entries_view(
+    request: Request,
     user: CurrentUser,
     engine: EngineDep,
     flt: FilterQuery,
@@ -231,8 +236,9 @@ def list_entries_view(
 ) -> EntryPageOut:
     with engine.connect() as conn:
         page = list_entries(conn, flt, limit=limit, offset=offset)
+    pending = model_pending_of(request)
     return EntryPageOut(
-        entries=[EntryOut.of(e) for e in page.entries],
+        entries=[EntryOut.of(e, pending) for e in page.entries],
         total=page.total,
         sums=[Money(amount=a, currency=c) for c, a in page.sums],
         limit=page.limit,
@@ -275,10 +281,10 @@ map_error(EntryMissing, 404, "not_found")
 
 
 @router.get("/{entry_id}")
-def get_ledger_entry(entry_id: PathId, user: CurrentUser, engine: EngineDep) -> EntryOut:
+def get_ledger_entry(request: Request, entry_id: PathId, user: CurrentUser, engine: EngineDep) -> EntryOut:
     """One entry in the row shape of the list, its `source` included."""
     with engine.connect() as conn:
         row = get_entry(conn, entry_id)
     if row is None:
         raise EntryMissing(entry_id)
-    return EntryOut.of(row)
+    return EntryOut.of(row, model_pending_of(request))

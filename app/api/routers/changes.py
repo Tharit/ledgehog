@@ -41,6 +41,12 @@ def model_queue_of(request: Request) -> ModelQueue | None:
     return queue
 
 
+def model_pending_of(request: Request) -> frozenset[int]:
+    """The entries the model is still looking at, now (empty without a model): the entries on its list."""
+    queue = model_queue_of(request)
+    return frozenset() if queue is None else queue.entry_ids()
+
+
 def register_of(request: Request) -> ChangeRegister:
     register: ChangeRegister = request.app.state.changes
     return register

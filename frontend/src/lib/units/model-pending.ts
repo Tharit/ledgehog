@@ -16,7 +16,7 @@ export function modelQueueLine(pending: number): string | null {
 	return pending > 0 ? `The model is looking at ${entries(pending)}.` : null;
 }
 
-/** A unit row's marker. */
+/** An entry row's marker. */
 export const MODEL_STILL_LOOKING = 'The model is still looking at this';
 
 /** The panel's line for a unit whose guess is still coming. */

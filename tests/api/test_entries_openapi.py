@@ -81,6 +81,7 @@ def test_a_sample_row_validates_against_the_model():
             "booked_on": "2026-03-10",
             "amount": {"amount": 5, "currency": "EUR"},
         },
+        "model_pending": False,
     }
     page = EntryPageOut.model_validate(
         {

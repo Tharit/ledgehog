@@ -121,6 +121,7 @@ def test_row_json_shape_and_money(anna: TestClient, api_engine: Engine, acct: in
             "authored": False,
             "origin": "import",
             "partner": None,
+            "model_pending": False,
         }
     ]
     # the one-entry read answers with the same row, nothing more and nothing less

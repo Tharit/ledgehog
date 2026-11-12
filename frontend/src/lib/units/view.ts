@@ -566,6 +566,7 @@ export function previewRowEntry(row: PreviewRow, base: Entry | null = null): Ent
 		partner: base?.partner ?? null,
 		origin: base?.origin ?? (row.booking ? 'booking' : null),
 		review_flags: row.review_flags as Entry['review_flags'],
+		model_pending: base?.model_pending ?? false,
 		source_text: row.source_text ?? null,
 		tag_ids: row.tag_ids
 	};
