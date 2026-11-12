@@ -67,3 +67,28 @@ def card_b_bytes() -> bytes:
         '07/08/2026,BEISPIEL ABO,"1.234,56",Jahresabo,ABO*2,,,,,',
     ]
     return "\n".join(lines).encode("utf-8")
+
+
+OLB_HEADER = (
+    "Inhaberkonto;Buchungsdatum;Valuta;Empfänger/Auftraggeber;IBAN;BIC;Verwendungszweck;Betrag;Währung;"
+    "Kundenreferenz;Bankreferenz;Primatnota;Transaktions-Code;Transaktions-Text;Transaktions-Beschreibung"
+)
+
+
+def olb_debt_bytes(*, mangled: bool = False) -> bytes:
+    """A loan export: newest first, interest charge plus the instalment by direct debit, no balance."""
+    lines = [
+        OLB_HEADER,
+        "DE00 0000 0000 0000 0000 00;30.09.2026;30.09.2026;;;;;-35,50;EUR;NOTPROVIDED;B2;0;NDDT;ZINSEN;"
+        "Kredit- und/oder Zinszahlung",
+        "DE00 0000 0000 0000 0000 00;30.09.2026;01.10.2026;Erika Beispiel;"
+        "DE00 6666 6666 6666 6666 66;BICXXXX5;"
+        "DARL-ABR 09/2026 ZINS 35 ,50- TILG 1502,63-;1.538,13;EUR;NOTPROVIDED;B1;0;NDDT;LASTSCHRIFT;"
+        "Lastschrifteingang",
+        "DE00 0000 0000 0000 0000 00;31.08.2026;31.08.2026;;;;;-36,09;EUR;NOTPROVIDED;B0;0;NDDT;ZINSEN;"
+        "Kredit- und/oder Zinszahlung",
+    ]
+    text = "\r\n".join(lines) + "\r\n"
+    if mangled:
+        return text.replace("ä", "\ufffd").encode("utf-8")
+    return text.encode("cp1252")

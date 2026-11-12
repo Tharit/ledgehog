@@ -6,11 +6,18 @@ from datetime import date
 import pytest
 
 from app.plugins.importers.csv import CsvImporter, load_presets
-from tests.plugins.importers.csv.fixtures import LONG_PURPOSE, PRIVATE, card_a_bytes, card_b_bytes, giro_bytes
+from tests.plugins.importers.csv.fixtures import (
+    LONG_PURPOSE,
+    PRIVATE,
+    card_a_bytes,
+    card_b_bytes,
+    giro_bytes,
+    olb_debt_bytes,
+)
 from tests.plugins.importers.csv.helpers import run
 from tests.plugins.importers.csv.sheets import Cell, xlsx_bytes
 
-NAMES = ["consorsbank_giro", "deutschebank_card", "amex_card", "caixabank_giro"]
+NAMES = ["consorsbank_giro", "deutschebank_card", "amex_card", "caixabank_giro", "olb_debt"]
 
 
 def test_presets_are_loaded_by_name_and_validate() -> None:
@@ -157,3 +164,25 @@ def test_caixabank_balance_is_the_newest_row_of_the_last_day() -> None:
     pf = run(xlsx_bytes(CAIXA_ROWS), profile=load_presets()["caixabank_giro"], today=date(2026, 8, 20))
     # two rows share the 18th, newest first: the running balance after the day is the first one
     assert (pf.reported_balance, pf.balance_on) == (195450, date(2026, 8, 18))
+
+
+# -- olb_debt: a loan account, newest first, no balance, umlaut columns addressed by position ------
+
+
+@pytest.mark.parametrize("mangled", [False, True], ids=["cp1252", "replacement-chars"])
+def test_olb_debt_rows_and_no_balance(mangled: bool) -> None:
+    pf = run(olb_debt_bytes(mangled=mangled), profile=load_presets()["olb_debt"], today=date(2026, 10, 5))
+    assert [r.amount_minor for r in pf.rows] == [-3550, 153813, -3609]
+    interest, instalment = pf.rows[0], pf.rows[1]
+    assert interest.booked_on == date(2026, 9, 30) and interest.value_on == date(2026, 9, 30)
+    assert interest.counterparty_name is None and interest.counterparty_ref is None
+    assert interest.booking_text == "Kredit- und/oder Zinszahlung" and interest.purpose is None
+    assert instalment.value_on == date(2026, 10, 1)
+    assert instalment.counterparty_name == "Erika Beispiel"
+    assert instalment.counterparty_ref == "DE00 6666 6666 6666 6666 66"
+    assert instalment.counterparty_bic == "BICXXXX5"
+    assert instalment.end_to_end_id is None  # NOTPROVIDED placeholder
+    assert instalment.booking_text == "Lastschrifteingang"
+    assert instalment.purpose == "DARL-ABR 09/2026 ZINS 35 ,50- TILG 1502,63-"
+    assert pf.covered_through == date(2026, 9, 30)
+    assert pf.reported_balance is None and pf.balance_on is None
