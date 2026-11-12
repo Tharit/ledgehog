@@ -85,21 +85,18 @@ charts**:
 4. **To review** — "14" with the `inbox` icon; beneath a primary-coloured
    link "Open the review queue →".
 
-**Data age card** (left, wider) titled "Data age", two short tables, *Synced*
-and *By hand*, each sorted by data age, oldest first. Each row: account icon on
-its tint, name, a secondary line with its data age, balance right-aligned with
-sign:
+**Data age card** (left, wider) titled "Data age", its header linking to
+Accounts, two short tables, *Synced* and *By hand*, each sorted by data age,
+oldest first. Each row: account icon on its tint, name, data age right-aligned;
+no balance:
 
-| Icon (colour) | Name | Data age | Balance |
-|---|---|---|---|
-| `wallet` (ochre) | Cash | "entered by hand · 9 days ago" | +€184.20 |
-| `chart-line` (teal) | Depot | "valued 23 Sep" | +€38,450.00 |
-| `credit-card` (plum) | Visa | "synced yesterday" | −€640.12 |
-| `piggy-bank` (sage) | Tagesgeld | "synced today" | +€25,000.00 |
-| `landmark` (forest) | Giro | "synced today" | +€5,420.00 |
-
-Under the Visa row, one quiet line in secondary text with a small `info` icon:
-"unexplained difference −€12.40 since 30 Sep". No warning colour, no banner.
+| Icon (colour) | Name | Data age |
+|---|---|---|
+| `wallet` (ochre) | Cash | "entered by hand · 9 days ago" |
+| `chart-line` (teal) | Depot | "valued 23 Sep" |
+| `credit-card` (plum) | Visa | "synced yesterday" |
+| `piggy-bank` (sage) | Tagesgeld | "synced today" |
+| `landmark` (forest) | Giro | "synced today" |
 
 **Recent entries card** (right) titled "Latest entries", with a "Ledger →"
 link: four compact rows, each with date, category icon on tint, description,
