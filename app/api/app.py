@@ -36,6 +36,7 @@ from app.utils import clock
 from app.utils.auth import OidcFlow
 from app.utils.config import Config
 from app.utils.db.changes import install_change_hooks
+from app.utils.version import app_version
 
 log = logging.getLogger(__name__)
 
@@ -78,6 +79,7 @@ def create_app(
     # CDN, which architecture §6.7 forbids, so they never exist
     app = FastAPI(
         title="Ledgehog",
+        version=app_version(),
         lifespan=lifespan,
         docs_url=None,
         redoc_url=None,

@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Callable, MutableMapping
-from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +34,7 @@ from app.plugins.importers.fints import FintsImporter
 from app.plugins.importers.testing import TestDocumentImporter, TestFetchImporter
 from app.startup import start
 from app.utils.config import Config
+from app.utils.version import app_version
 
 log = logging.getLogger("ledgehog")
 
@@ -58,14 +58,6 @@ def configure_logging() -> None:
 Scope = MutableMapping[str, Any]
 Receive = Callable[[], Awaitable[MutableMapping[str, Any]]]
 Send = Callable[[MutableMapping[str, Any]], Awaitable[None]]
-
-
-def app_version() -> str:
-    """The application's own version, which FinTS sends as the product version."""
-    try:
-        return version("ledgehog")
-    except PackageNotFoundError:
-        return "0.0.0"
 
 
 def register_importers(config: Config) -> dict[str, FileImporter | FetchImporter]:

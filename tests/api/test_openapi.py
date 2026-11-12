@@ -12,6 +12,7 @@ from app.api import create_app
 from app.api.openapi import api_routes, build_openapi
 from app.utils.config import Config
 from app.utils.db.engine import make_engine
+from app.utils.version import app_version
 
 ENV = {
     "POSTGRES_HOST": "127.0.0.1",
@@ -141,3 +142,7 @@ def test_upload_route_is_documented_as_multipart(schema):
 def test_build_openapi_is_cached_and_identical_to_the_served_document(app):
     assert build_openapi(app) is build_openapi(app)
     assert TestClient(app).get("/api/openapi.json").json() == json.loads(json.dumps(build_openapi(app)))
+
+
+def test_the_schema_states_the_package_version(schema):
+    assert schema["info"]["version"] == app_version()
