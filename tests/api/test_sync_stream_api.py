@@ -19,7 +19,7 @@ from app.api import create_app
 from app.api.sync_models import SyncEventPayloads
 from app.core.tasks import TaskRegistry
 from app.plugins.importers.csv import CsvImporter
-from app.plugins.importers.testfetch import TestFetchImporter
+from app.plugins.importers.testing import TestFetchImporter
 from tests.api import sync_helpers as h
 from tests.api.conftest import PASSWORDS
 from tests.api.sync_helpers import PIN, TUNING, WAIT, Sync, acct, error_of

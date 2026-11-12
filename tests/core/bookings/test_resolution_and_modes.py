@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from app.core.resolution import Decided, diff, rederive, resolve
 from app.plugins.importers.email.importer import EmailImporter
-from app.plugins.importers.testdocs import TestDocumentImporter
+from app.plugins.importers.testing import TestDocumentImporter
 from tests.core.resolution.helpers import Script, account, entry
 
 ACCOUNTS = [account(1), account(2)]

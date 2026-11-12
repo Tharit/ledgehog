@@ -25,7 +25,7 @@ from app.core.importers.instances import link_account
 from app.core.importers.providers import reset_document_providers
 from app.core.integrity import check_integrity
 from app.plugins.importers.csv import load_presets
-from app.plugins.importers.testfetch import TestFetchImporter
+from app.plugins.importers.testing import TestFetchImporter
 from app.utils.config import Config
 from app.utils.db import admin
 from app.utils.db.engine import make_engine

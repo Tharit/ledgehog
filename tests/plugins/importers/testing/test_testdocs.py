@@ -9,7 +9,7 @@ import pytest
 
 from app.core.plugins.errors import InvalidProfile
 from app.core.plugins.fetch import FetchImporter
-from app.plugins.importers.testdocs import TestDocumentImporter
+from app.plugins.importers.testing import TestDocumentImporter
 
 DOC: dict[str, Any] = {
     "provider": "paypal",

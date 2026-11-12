@@ -16,8 +16,7 @@ from app.core.accounts import create_account
 from app.core.importers.instances import create_instance, link_account
 from app.core.importers.plan import JobPlan, plan_start
 from app.core.tasks import Event, JobEnv, Task, TaskRegistry, run_task
-from app.plugins.importers.testdocs import TestDocumentImporter
-from app.plugins.importers.testfetch import TestFetchImporter
+from app.plugins.importers.testing import TestDocumentImporter, TestFetchImporter
 from tests.core.tasks.helpers import FAST, WAIT, open_prompt
 
 TODAY = date(2026, 6, 15)

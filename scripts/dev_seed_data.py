@@ -850,7 +850,7 @@ TESTBANK_HISTORY_DAYS = 90  # how far back the scripted bank's bookings reach, f
 
 
 def testbank_settings(today: date) -> dict[str, object]:
-    """The settings of the Testbank login (`app/plugins/importers/testfetch`): sign in with the PIN,
+    """The settings of the Testbank login (`importers/testing/testfetch.py`): sign in with the PIN,
     three accounts, none of them linked by the seed — Giro (EUR, bookings and a balance), Dollars
     (a USD pocket whose fetch asks for a TAN) and Depot (nothing to fetch)."""
     start = (today - timedelta(days=TESTBANK_HISTORY_DAYS)).isoformat()

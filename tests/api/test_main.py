@@ -76,7 +76,7 @@ def test_the_test_importer_registers_only_behind_the_flag_and_fills_the_provider
         reset_document_providers,
     )
     from app.main import register_importers
-    from app.plugins.importers.testdocs import TestDocumentImporter
+    from app.plugins.importers.testing import TestDocumentImporter
     from app.utils.config import Config
 
     base = Config.from_env(

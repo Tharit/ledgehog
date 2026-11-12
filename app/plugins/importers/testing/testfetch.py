@@ -79,7 +79,7 @@ from app.core.plugins.fetch import (
     TextPrompt,
 )
 from app.core.plugins.importer import DocumentDelivery, IncomingRow
-from app.plugins.importers.testdocs import PROVIDERS, TestDocumentImporter
+from app.plugins.importers.testing.testdocs import PROVIDERS, TestDocumentImporter
 from app.utils import clock
 
 # a one-pixel PNG: the photoTAN of every image step

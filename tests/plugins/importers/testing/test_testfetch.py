@@ -30,8 +30,7 @@ from app.core.plugins.fetch import (
     TanPrompt,
     TextPrompt,
 )
-from app.plugins.importers.testdocs import PROVIDERS
-from app.plugins.importers.testfetch import PIXEL_PNG, TestFetchImporter
+from app.plugins.importers.testing import PIXEL_PNG, PROVIDERS, TestFetchImporter
 from app.utils import clock
 
 TODAY = date(2026, 6, 15)

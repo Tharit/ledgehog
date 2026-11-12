@@ -17,7 +17,7 @@ transaction. That part, and the SQL cleanup in `reset`, is dev data plumbing, no
 application code; it goes when step 6 lands (use its operations then). `--no-classify` skips it.
 
 Documents (`dev_seed_data.DOC_SCENARIOS`; with classification, `--no-classify` skips them): a `testdocs`
-importer instance (`app/plugins/importers/testdocs`, which delivers what its settings list) run through the
+importer instance (`importers/testing/testdocs.py`, which delivers what its settings list) run through the
 real `start_run` + `ingest_documents`: orders of one and of several lines, a refund and one in another
 currency, from two providers. Documents are stored only: what they mean for the ledger is a clearance
 account's booking. The script's composition root configures the document importers of its process
@@ -75,8 +75,7 @@ from app.core.units.commit import commit_unit
 from app.core.units.draft import CounterLegDraft, DraftEntry, FieldDraft, PairingDraft, UnitDraft
 from app.plugins.classifiers import default_classifiers, default_rule_tools
 from app.plugins.importers.csv import CsvImporter, load_presets
-from app.plugins.importers.testdocs import TestDocumentImporter
-from app.plugins.importers.testfetch import TestFetchImporter
+from app.plugins.importers.testing import TestDocumentImporter, TestFetchImporter
 from app.utils import clock
 from app.utils.config import Config
 from app.utils.db.engine import make_engine

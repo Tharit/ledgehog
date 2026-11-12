@@ -32,8 +32,7 @@ from app.plugins.importers.camt import CamtImporter
 from app.plugins.importers.csv import CsvImporter
 from app.plugins.importers.email.factory import email_importer
 from app.plugins.importers.fints import FintsImporter
-from app.plugins.importers.testdocs import TestDocumentImporter
-from app.plugins.importers.testfetch import TestFetchImporter
+from app.plugins.importers.testing import TestDocumentImporter, TestFetchImporter
 from app.startup import start
 from app.utils.config import Config
 

@@ -23,7 +23,7 @@ from app.core.accounts import create_account
 from app.core.importers.instances import create_instance, link_account
 from app.core.tasks import TaskRegistry, TaskTuning
 from app.plugins.importers.csv import CsvImporter
-from app.plugins.importers.testfetch import TestFetchImporter
+from app.plugins.importers.testing import TestFetchImporter
 from app.utils.config import Config
 from tests.api.conftest import login
 from tests.conftest import CLOCK_START
