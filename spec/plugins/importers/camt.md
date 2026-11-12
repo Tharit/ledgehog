@@ -47,7 +47,7 @@ modelled.
   its date.
 - **An entry:** a decimal amount, its currency, a credit or debit mark, its
   booking and value dates, and its transaction details in order; with the
-  original text of its element, for `raw`.
+  its element serialised as read, for `raw`.
 - **A transaction detail:** counterparty name, account (IBAN) and agent (BIC),
   end-to-end id, mandate id, the remittance lines, and the bank transaction
   codes as the format gives them (ISO domain–family–subfamily, the German
@@ -121,10 +121,10 @@ the report's message id and no amounts.
 | `purpose` | the remittance lines of all its details, joined with a space, whitespace runs collapsed to one space |
 | `source_id` | none (the OLB reader carries no entry reference) |
 | `source_format` | the message type without its dot and the reader's name: `camt052:olb` |
-| `raw` | `{"report": <message id>, "entry": <the entry element's original XML text>}` |
+| `raw` | `{"report": <message id>, "entry": <the entry element, serialised as read>}` |
 
 **Several details** on one entry (a batch booking) still make one row: the
-entry is the movement of the balance. The counterparty columns are filled only
+entry is the movement of the balance. The detail columns — counterparty name, account and agent, end-to-end id, mandate id — are filled only
 from an entry with exactly one detail; the bank transaction codes stay in
 `raw`.
 
