@@ -31,7 +31,7 @@ const headers = (key: string) =>
 		.map((h) => h.textContent?.trim());
 
 describe('the grouped accounts list', () => {
-	it('is a heading and a card per kind, the closed accounts last, every account in its group', () => {
+	it('is a card per kind, its title row inside,, the closed accounts last, every account in its group', () => {
 		render(AccountGroups, { props: { groups: groups(), ...props } });
 
 		const sections = [...document.querySelectorAll<HTMLElement>('[data-group]')];
@@ -43,6 +43,11 @@ describe('the grouped accounts list', () => {
 		expect(links.map((a) => a.getAttribute('href'))).toEqual(['/accounts/2', '/accounts/3']);
 		// the kind icon stands in the heading, the Closed one has none
 		expect(group('cash').querySelector('h2 svg')).not.toBeNull();
+		// the title is the card's first row, over the header row in one band, not on the background
+		const title = group('cash').querySelector('[data-slot="card-title"]')!;
+		expect(title).toHaveClass('bg-muted');
+		expect(title.parentElement).toHaveClass('rounded-xl');
+		expect(title.nextElementSibling).toHaveAttribute('role', 'table');
 		expect(group('closed').querySelector('h2 svg')).toBeNull();
 	});
 

@@ -139,17 +139,24 @@ An 8px grid, with 4px steps inside compact elements.
 **Surfaces.** A page's content sits on cards (`surface`, 1px `border`, 12px
 radius, the card shadow); its structure sits on the background. On the
 background: the page header with its title, description and actions; section
-tabs; a filter bar or a report's controls; notices; the heading of a list or
-a group; an action that follows a stack of cards. On a card: figures, forms,
-charts, lists and tables. A card is one of two kinds:
+tabs; a filter bar or a report's controls; notices; an action that follows a
+stack of cards. On a card: figures, forms, charts, lists and tables. A card is
+one of two kinds:
 
 - **padded** (20px) — a self-contained block: a figure, a form, a chart, a
   short summary list. Its title, if any, is inside, at the top.
 - **flush** — a page's list or table: no padding, rows edge to edge divided by
-  hairlines, a header row tinted `surface-muted` along its top; the ledger list's total row
-  (`patterns.md` §4.1) takes the same tint along its bottom. Its heading,
-  if any, sits above it on the background; a list in groups is one card per
-  group.
+  hairlines. From the top: its title row, where it has one — the heading glyph
+  (§6), the title and its count, its actions at the right — and its header
+  row, the two tinted `surface-muted` as one band, the title in the section
+  heading's size (§4) with space above it; then the rows; then, where it has
+  one, the total row (`patterns.md` §4.1) in the same tint along its bottom. A
+  list in groups is one card per group, its title the group's; a group is a
+  card where it has columns or a total of its own. A cut within one list that
+  keeps its columns — a currency, an account waited for, a month — is a
+  **subgroup row** among the rows: untinted, a hairline above, its label in the
+  labels' size and weight (§4) in `text-muted`, an action or a figure at the
+  right.
 
 Facts about the page's subject (an account's balance, a document's total) are
 a row of figure cards under the header, as on the Overview. The row is
@@ -334,7 +341,7 @@ tooltip:
 
 A review state is a marker wherever it appears, never a tile: the bare glyph
 in a row, in the review-state filter's options, and in the heading slot of a
-queue section — *Pending review* `circle-dashed`, *Needs an account* `unlink`,
+queue section's title — *Pending review* `circle-dashed`, *Needs an account* `unlink`,
 *Waiting* `clock` (`views/review-queue.md`).
 
 ## 7. States

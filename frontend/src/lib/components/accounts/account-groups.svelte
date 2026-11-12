@@ -2,6 +2,7 @@
 	import { columnHeader, columnsOf, gridTemplate } from '#lib/accounts/columns.js';
 	import { CLOSED_GROUP, type ListGroup } from '#lib/accounts/list.js';
 	import Card from '#lib/components/common/card.svelte';
+	import CardTitle from '#lib/components/common/card-title.svelte';
 	import EmptyState from '#lib/components/common/empty-state.svelte';
 	import MoneyDisplay from '#lib/components/common/money-display.svelte';
 	import { formatCount } from '#lib/format/index.js';
@@ -10,9 +11,8 @@
 	import { cn } from '#lib/utils.js';
 	import AccountRow from './account-row.svelte';
 
-	// The Accounts page's list (ux/views/account.md): a group per kind laid out as the review queue's
-	// sections are, a heading on the background (the kind's default icon, its name, its number of
-	// accounts) over a flush card of its own. The cards share their columns so they line up as one
+	// The Accounts page's list (ux/views/account.md): a flush card per kind, its title row (the
+	// kind's default icon, its name, its number of accounts) over the header row in one band. The cards share their columns so they line up as one
 	// list; a group of more than one account ends in a total row: the sum per currency, never
 	// converted. The closed accounts are a last group, "Closed", with no kind icon.
 	let {
@@ -36,7 +36,7 @@
 		Accounts are added here and then fed by a file, a sync, or by hand.
 	</EmptyState>
 {:else}
-	<div class="flex flex-col gap-6" data-slot="account-groups">
+	<div class="flex flex-col gap-4" data-slot="account-groups">
 		{#each groups as group (group.key)}
 			{@const closed = group.key === CLOSED_GROUP}
 			{@const KindIcon = closed ? null : iconFor(resolveAccountKind(group.key).icon)}
@@ -48,25 +48,17 @@
 				data-group={group.key}
 				data-closed={closed || undefined}
 			>
-				<h2 id={`group-${group.key}`} class="mb-2 flex items-center gap-2 text-base font-semibold">
-					{#if KindIcon}
-						<KindIcon
-							size={16}
-							strokeWidth={1.75}
-							class="shrink-0 text-muted-foreground"
-							aria-hidden="true"
-						/>
-					{/if}
-					<span>{group.label}</span>
-					<span class="font-normal text-muted-foreground" data-slot="group-count">
-						({formatCount(group.accounts.length, locale)})
-					</span>
-				</h2>
 				<Card variant="flush">
+					<CardTitle
+						id={`group-${group.key}`}
+						title={group.label}
+						count={formatCount(group.accounts.length, locale)}
+						icon={KindIcon}
+					/>
 					<div role="table" aria-label={group.label} class={LAST_ROW}>
 						<div
 							role="row"
-							class="grid h-8 items-center gap-x-3 rounded-t-[11px] border-b border-border bg-muted px-3 text-xs font-medium text-muted-foreground"
+							class="grid h-8 items-center gap-x-3 border-b border-border bg-muted px-3 text-xs font-medium text-muted-foreground"
 							style:grid-template-columns={template}
 						>
 							{#each columns as column (column.id)}

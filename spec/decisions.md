@@ -4040,3 +4040,10 @@ spec §3.11; ux/patterns.md; ux/views/account.md; ux/views/overview.md; architec
 - **The Overview's *Data age* card shows the three stalest synced and three stalest hand-kept accounts, with their age and no balance**: the card is about staleness, and a balance draws the eye from it. Rejected: *the six stalest* (hand-kept accounts age by design and would crowd out a lapsed sync); *age relative to each account's own rhythm* (needs history, opaque); *the list's rows on the card* (ties two views to one row and puts the balance where it distracts).
 - **A clearance account's data age is how long its balance has been open**, taking up D230's deferred signal. Rejected: *days since its latest booking* (not every clearance account is fed by documents), *matching charges to orders* (D230).
 - **Debt and receivable totals are rows of the Net worth card**; a receivable is not ranked by being open, since a deposit stays open for years.
+
+## D252 A table's title is its first row; subgroups are rows
+
+ux/design.md §5, §6; ux/views/review-queue.md; ux/views/account.md.
+
+- **A flush card carries its title inside, over its header row, the two one tinted band** (user, 2026-11-12), as a padded card carries its title: the background keeps the page's structure, and a group is one block to scan, framed by its title band and its total row. Rejected: *the heading on the background* (tried on the accounts list: short words lost between cards, outweighed by the header rows); *the title in place of the first column's label* (the name of a column is not the name of a group); *a hairline beside a heading on the background*; *a tint of its own for the title* (a third surface colour, and ten strong bands on one page).
+- **A cut within one list is a subgroup row**: untinted, so that it can repeat, as a month would in the ledger. A group is a card where it has columns or a total of its own, a subgroup row where it keeps its list's. The review queue's sections are cards, its currency and waiting groups subgroup rows.

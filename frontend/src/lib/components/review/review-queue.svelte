@@ -31,6 +31,8 @@
 	import { REVIEW_BADGE_ICONS } from '#lib/components/common/review-badge.svelte';
 	import { accounts as accountDialog } from '#lib/accounts/controller.svelte.js';
 	import Card from '#lib/components/common/card.svelte';
+	import CardTitle from '#lib/components/common/card-title.svelte';
+	import SubgroupRow from '#lib/components/common/subgroup-row.svelte';
 	import NoticeLine from '#lib/components/common/notice-line.svelte';
 	import ActionButton from '#lib/components/common/action-button.svelte';
 	import EmptyState from '#lib/components/common/empty-state.svelte';
@@ -66,7 +68,8 @@
 	import { cn } from '#lib/utils.js';
 
 	// The review queue (views/review-queue.md): three sections (pending review, needs an account,
-	// waiting), each by date, as headed lists of unit rows. A unit is one block: its entries are
+	// waiting), each by date, as one flush card each (a title row over the header row), the unit rows beneath; the currency and
+	// waiting groups are subgroup rows among them. A unit is one block: its entries are
 	// joined, both legs of a pair shown. The cursor is on a unit; Enter opens the panel, which then
 	// steps through the queue in this order. The queue is a snapshot: it changes only on request.
 	let {
@@ -231,7 +234,7 @@
 	<div
 		bind:this={container}
 		tabindex="-1"
-		class="flex flex-col gap-6 outline-none"
+		class="flex flex-col gap-4 outline-none"
 		aria-busy={store.status === 'loading'}
 	>
 		{#if modelLine}
@@ -241,24 +244,14 @@
 			{@const info = SECTION_INFO[section.kind]}
 			{@const SectionIcon = REVIEW_BADGE_ICONS[SECTION_TOKEN[section.kind]]}
 			<section aria-labelledby={`section-${section.kind}`} data-section={section.kind}>
-				<h2
-					id={`section-${section.kind}`}
-					class="mb-2 flex items-center gap-2 text-base font-semibold"
-				>
-					<SectionIcon
-						size={16}
-						strokeWidth={1.75}
-						class="shrink-0 text-muted-foreground"
-						aria-hidden="true"
+				<Card variant="flush">
+					<CardTitle
+						id={`section-${section.kind}`}
+						title={info.title}
+						count={formatCount(section.total, locale)}
+						icon={SectionIcon}
 					/>
-					<span>{info.title}</span>
-					<span class="font-normal text-muted-foreground" data-slot="section-count">
-						({formatCount(section.total, locale)})
-					</span>
-				</h2>
-
-				{#if store.status === 'loading'}
-					<Card variant="flush">
+					{#if store.status === 'loading'}
 						<div role="grid" aria-label={info.title} class={LAST_ROW}>
 							{#each [0, 1, 2] as n (n)}
 								<div
@@ -276,66 +269,70 @@
 								</div>
 							{/each}
 						</div>
-					</Card>
-				{:else if section.units.length === 0}
-					<p class="text-sm text-muted-foreground" data-slot="section-empty">{info.empty}</p>
-				{:else}
-					{#each blocksOf(section.kind, section.units, section.groups, section.accountGroups) as block (block.key)}
-						{@const heading = block.group
-							? groupHeading(block.group.count, block.group.currency, locale)
-							: block.waitingGroup
-								? waitingReason(block.waitingGroup, lookups, locale)
-								: info.title}
-						{#if block.group}
-							{@const currency = block.group.currency}
-							<div class="mt-4 mb-2 flex flex-wrap items-center gap-3" data-group={currency}>
-								<h3 class="text-sm font-medium">{heading}</h3>
-								<ActionButton
-									variant="outline"
-									onclick={(event: MouseEvent) => addAccount(currency, event)}
-								>
-									Add account
-								</ActionButton>
-							</div>
-							{#if store.accountsAdded.includes(currency)}
-								<NoticeLine
-									notice={{ text: completableNotice(block.group.count, locale), error: false }}
-								>
-									{#snippet action()}
-										<ActionButton variant="link" class="h-auto p-0" onclick={() => store.load()}>
-											Refresh
-										</ActionButton>
-									{/snippet}
-								</NoticeLine>
-							{/if}
-						{:else if block.waitingGroup}
+					{:else if section.units.length === 0}
+						<p class="px-3 py-3 text-sm text-muted-foreground" data-slot="section-empty">
+							{info.empty}
+						</p>
+					{:else}
+						<div role="grid" aria-label={info.title} class={LAST_ROW}>
 							<div
-								class="mt-4 mb-2 flex flex-wrap items-center gap-3"
-								data-group-account={block.waitingGroup.account_id}
+								role="row"
+								class={cn(
+									ROW_GRID,
+									'h-8 border-b border-border bg-muted px-3 text-xs font-medium text-muted-foreground'
+								)}
+								style:grid-template-columns={template}
 							>
-								<h3 class="text-sm font-medium">{heading}</h3>
+								{#each COLUMNS as column (column.id)}
+									<div
+										role="columnheader"
+										class={column.align === 'right' ? 'text-right' : undefined}
+									>
+										{#if column.hiddenHeader}<span class="sr-only">{column.header}</span
+											>{:else}{columnHeader(column, columnCode)}{/if}
+									</div>
+								{/each}
 							</div>
-						{/if}
-						<Card variant="flush">
-							<div role="grid" aria-label={heading} class={LAST_ROW}>
-								<div
-									role="row"
-									class={cn(
-										ROW_GRID,
-										'h-8 rounded-t-[11px] border-b border-border bg-muted px-3 text-xs font-medium text-muted-foreground'
-									)}
-									style:grid-template-columns={template}
-								>
-									{#each COLUMNS as column (column.id)}
-										<div
-											role="columnheader"
-											class={column.align === 'right' ? 'text-right' : undefined}
-										>
-											{#if column.hiddenHeader}<span class="sr-only">{column.header}</span
-												>{:else}{columnHeader(column, columnCode)}{/if}
-										</div>
-									{/each}
-								</div>
+							{#each blocksOf(section.kind, section.units, section.groups, section.accountGroups) as block (block.key)}
+								{#if block.group}
+									{@const currency = block.group.currency}
+									<SubgroupRow
+										label={groupHeading(block.group.count, currency, locale)}
+										data-group={currency}
+									>
+										{#snippet action()}
+											<ActionButton
+												variant="outline"
+												onclick={(event: MouseEvent) => addAccount(currency, event)}
+											>
+												Add account
+											</ActionButton>
+										{/snippet}
+										{#if store.accountsAdded.includes(currency)}
+											<NoticeLine
+												notice={{
+													text: completableNotice(block.group.count, locale),
+													error: false
+												}}
+											>
+												{#snippet action()}
+													<ActionButton
+														variant="link"
+														class="h-auto p-0"
+														onclick={() => store.load()}
+													>
+														Refresh
+													</ActionButton>
+												{/snippet}
+											</NoticeLine>
+										{/if}
+									</SubgroupRow>
+								{:else if block.waitingGroup}
+									<SubgroupRow
+										label={waitingReason(block.waitingGroup, lookups, locale)}
+										data-group-account={block.waitingGroup.account_id}
+									/>
+								{/if}
 								{#each block.units as unit (unit.anchor_entry_id)}
 									<div
 										role="rowgroup"
@@ -365,9 +362,11 @@
 										{/each}
 									</div>
 								{/each}
-							</div>
-						</Card>
-					{/each}
+							{/each}
+						</div>
+					{/if}
+				</Card>
+				{#if store.status !== 'loading' && section.units.length > 0}
 					<div class="flex flex-wrap items-center gap-3 py-2 text-xs text-muted-foreground">
 						<span>
 							{formatCount(section.units.length, locale)} of {formatCount(section.total, locale)}

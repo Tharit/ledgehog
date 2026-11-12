@@ -109,6 +109,22 @@ describe('ReviewQueue', () => {
 		expect(screen.getByText(/Nothing is waiting/)).toBeInTheDocument();
 	});
 
+	it('is one flush card per section, the title row over the header row in one tinted band', async () => {
+		await shown({ pending_review: [flow(1, 'REWE')] });
+
+		const section = document.querySelector('[data-section="pending_review"]')!;
+		const title = section.querySelector('[data-slot="card-title"]')!;
+		expect(title).toHaveClass('bg-muted');
+		expect(title.nextElementSibling).toHaveAttribute('role', 'grid');
+		expect(title.querySelector('h2')).toHaveTextContent('Pending review (1)');
+		const header = section.querySelector('[role="row"]')!;
+		expect(header).toHaveClass('bg-muted');
+		expect(header).not.toHaveClass('rounded-t-[11px]');
+		const empty = document.querySelector('[data-section="waiting"]')!;
+		expect(empty.querySelector('[data-slot="card-title"]')).not.toBeNull();
+		expect(empty.querySelector('[data-slot="section-empty"]')).not.toBeNull();
+	});
+
 	it('gives each section heading its review state glyph, bare, and no tile', async () => {
 		await shown({ pending_review: [flow(1, 'REWE')] });
 
@@ -471,14 +487,54 @@ describe('ReviewQueue: needs an account and waiting', () => {
 			)
 		);
 
-		const headings = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
+		const headings = [...document.querySelectorAll('[data-group]')].map(
+			(h) => h.querySelector('[data-slot="subgroup-label"]')!.textContent
+		);
 		expect(headings).toEqual([
 			'A transfer needs an account in GBP',
 			'3 transfers need an account in USD'
 		]);
-		const usd = document.querySelector('[data-group="USD"]')!.nextElementSibling as HTMLElement;
-		expect(within(usd).getAllByRole('rowgroup')).toHaveLength(2);
+		// a subgroup row among the rows of one card, not a heading, not a card of its own
+		const usd = document.querySelector('[data-group="USD"]') as HTMLElement;
+		expect(usd).toHaveAttribute('role', 'row');
+		expect(
+			usd.closest('[data-section="needs_account"]')!.querySelectorAll('[role="grid"]')
+		).toHaveLength(1);
+		expect(within(usd).getByRole('button', { name: 'Add account' })).toBeInTheDocument();
+		expect(document.querySelectorAll('h3')).toHaveLength(0);
+		const after = [...usd.parentElement!.children]
+			.slice([...usd.parentElement!.children].indexOf(usd) + 1)
+			.filter((n) => n.getAttribute('role') === 'rowgroup');
+		expect(after).toHaveLength(2); // the USD units follow, then the GBP ones lead
+
 		expect(screen.getByRole('heading', { name: /Needs an account/ })).toHaveTextContent('(4)');
+	});
+
+	it('steps the cursor over the units only, a subgroup row is never a stop', async () => {
+		await showGrouped(
+			groupedQueue(
+				[needing(1, 'GBP'), needing(2, 'USD'), needing(3, 'USD')],
+				[
+					{ currency: 'GBP', count: 1 },
+					{ currency: 'USD', count: 2 }
+				]
+			)
+		);
+		const cursorUnit = () =>
+			document
+				.querySelector('[data-unit] [aria-selected="true"]')
+				?.closest('[data-unit]')
+				?.getAttribute('data-unit');
+
+		await key('j');
+		expect(cursorUnit()).toBe('1');
+		await key('j'); // across the USD subgroup row to the next unit
+		expect(cursorUnit()).toBe('2');
+		await key('j');
+		expect(cursorUnit()).toBe('3');
+		await key('j');
+		expect(cursorUnit()).toBe('3');
+		expect(document.querySelectorAll('[role="row"][aria-selected="true"]')).toHaveLength(1);
 	});
 
 	it('opens the Add account dialog for the currency, kind cash, and says nothing moved after it', async () => {
@@ -552,7 +608,7 @@ describe('ReviewQueue: needs an account and waiting', () => {
 	const waitingFor = (id: number, account_id: number, synced_through: string | null) =>
 		unit({ ...flow(id, `Out ${id}`), waiting: { account_id, synced_through } });
 
-	it('draws the waiting section as one card per account, its reason once in the heading', async () => {
+	it('draws the waiting section as one card, a subgroup row per account giving its reason once', async () => {
 		vi.mocked(getQueue).mockResolvedValue(
 			waitingQueue(
 				[waitingFor(1, 2, '2026-10-12'), waitingFor(2, 1, null), waitingFor(3, 2, '2026-10-12')],
@@ -566,15 +622,16 @@ describe('ReviewQueue: needs an account and waiting', () => {
 		await store.load();
 		render(ReviewQueue, { props: { store, lookups, locale: 'en' } });
 
-		const headings = [...document.querySelectorAll('[data-group-account] h3')].map((h) =>
-			h.textContent!.trim()
-		);
+		const headings = [
+			...document.querySelectorAll('[data-group-account] [data-slot="subgroup-label"]')
+		].map((h) => h.textContent!.trim());
 		expect(headings).toHaveLength(2);
 		expect(headings[0]).toBe('Waiting for Giro, not synced yet');
 		expect(headings[1]).toMatch(/^Waiting for Savings, synced through .*12.*2026$/);
 		expect(document.querySelectorAll('[data-slot="waiting-reason"]')).toHaveLength(0);
 		const section = document.querySelector('[data-section="waiting"]')!;
-		expect(section.querySelectorAll('[role="grid"]')).toHaveLength(2);
+		expect(section.querySelectorAll('[role="grid"]')).toHaveLength(1);
+		expect(section.querySelectorAll('[role="row"][data-group-account]')).toHaveLength(2);
 		expect(screen.queryByRole('button', { name: 'Add account' })).toBeNull(); // no action on a waiting group
 		expect(screen.getByRole('heading', { name: /Waiting \(/ })).toHaveTextContent('(3)');
 		// the units step in the order drawn: the account group first, then the next

@@ -44,13 +44,15 @@ them. The queue itself stays as it was fetched for the session (architecture
 §6.5).
 
 **Sections.** The queue is the units not confirmed (`spec.md` §6), each in one
-section, with the count per section.
+section, with the count per section. Each section is a card, its title the section's
+name and count (`design.md` §5); an empty one is its title and a line saying
+so.
 
 - **Pending review** — the units that have what they need and await a
   decision.
 - **Needs an account** — unmatched legs whose counter-account does not exist
-  (`spec.md` §5.7), grouped by the currency they need, with one add action
-  per currency group; this and the waiting section's grouping by account are
+  (`spec.md` §5.7), grouped by the currency they need, a subgroup row per
+  currency with its add action; this and the waiting section's grouping by account are
   the queue's only defined groupings:
 
   ```
@@ -66,7 +68,7 @@ section, with the count per section.
   arrive (`spec.md` §6): a partner leg, which cannot be confirmed until
   paired. Waiting is a hint; the unit stays editable. The section is grouped
   by the account waited for, as the needs-an-account section is by currency:
-  each group's heading gives the reason once — "Waiting for <account>, synced
+  each subgroup row gives the reason once — "Waiting for <account>, synced
   through <date>", or "…, not synced yet" for an account never fetched.
 
 **Unpaired legs show their offers** (`spec.md` §5.7) — unpaired legs and

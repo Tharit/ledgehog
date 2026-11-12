@@ -33,10 +33,9 @@ and not yet charged."). Saving writes the account's opening balance record,
 0 at the end of that day (`spec.md` §3.3, §3.10). The accounts are
 grouped by kind, a group per kind that has open accounts, in the order
 `spec.md` §3.3 names the kinds, and the closed accounts are a last group,
-"Closed". A group is laid out as the review queue's sections are: its
-heading on the background — the kind's default icon in the heading slot
-(`ux/design.md` §6), its name and the number of its accounts — over a flush
-card of its own. The cards share their columns, so that they line up as one
+"Closed". A group is a flush card of its own (`ux/design.md` §5), its
+title the kind: its default icon in the heading slot (§6), its name and the
+number of its accounts. The cards share their columns, so that they line up as one
 list: the account's icon and name, with its kind beneath in the Closed group,
 where kinds mix; its data age; its notices — "balance not anchored", the
 unexplained difference as an amount — the column taking the remaining width;
