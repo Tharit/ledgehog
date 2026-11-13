@@ -235,8 +235,8 @@ It is never part of an import.
 | | `consorsbank_giro` | `deutschebank_card` | `amex_card` | `caixabank_giro` | `olb_debt` |
 |---|---|---|---|---|---|
 | header marker | `Buchung`, `Valuta`, `Betrag` | `Belegdatum`, `Eingangstag`, `Verwendungszweck` | `Datum`, `Beschreibung`, `Betrag` | `Fecha`, `Fecha valor`, `Importe` | `Buchungsdatum`, `Valuta`, `Betrag` |
-| `booked_on` | `Buchung` | `Eingangstag` | `Datum` | `Fecha` | `Buchungsdatum` |
-| `value_on` | `Valuta` | `Belegdatum` | — | `Fecha valor` | `Valuta` |
+| `booked_on` | `Buchung` | `Belegdatum` | `Datum` | `Fecha` | `Buchungsdatum` |
+| `value_on` | `Valuta` | `Eingangstag` | — | `Fecha valor` | `Valuta` |
 | date format | `dd.MM.yyyy` | `d.M.yyyy` | `dd/MM/yyyy` | `dd.MM.yyyy` (text cells only; the sheet's dates are typed) | `dd.MM.yyyy` |
 | amount | `Betrag`, `.` thousands, `,` decimal | `Betrag#2` | `Betrag`, inverted | `Importe`, `.` thousands, `,` decimal | `Betrag`, `.` thousands, `,` decimal |
 | purpose | `Verwendungszweck` | `Verwendungszweck` | `Beschreibung` | `Movimiento`, `Más datos` | `Verwendungszweck` |

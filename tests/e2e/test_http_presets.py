@@ -210,14 +210,14 @@ def test_card_with_footer_balance_and_a_statement_payment(api: Api):
     )
     http.link(instance, card)
     body = http.upload_ok(instance, card, card_a_bytes())
-    # by hand: -12,00 (booked 2.8.), -9,09 (3.8.; the 10,00 USD row is charged 9,09 EUR) and -30,01
-    # (31.7.); statement date 3.8.; footer balance -51,10 = their sum; the payment is the net
+    # by hand: -12,00 (booked 1.8.), -9,09 (2.8.; the 10,00 USD row is charged 9,09 EUR) and -30,01
+    # (30.7.); statement date 3.8.; footer balance -51,10 = their sum; the payment is the net
     # negated, +51,10, dated 4 days after the statement: 7.8.
     assert body["summary"]["inserted"] == 4
     assert [(s.amount, s.booked_on, s.source_format) for s in http.sources(card)] == [
-        (-3001, D(2026, 7, 31), "csv:deutschebank_card (e2e)"),
-        (-1200, D(2026, 8, 2), "csv:deutschebank_card (e2e)"),
-        (-909, D(2026, 8, 3), "csv:deutschebank_card (e2e)"),
+        (-3001, D(2026, 7, 30), "csv:deutschebank_card (e2e)"),
+        (-1200, D(2026, 8, 1), "csv:deutschebank_card (e2e)"),
+        (-909, D(2026, 8, 2), "csv:deutschebank_card (e2e)"),
         (5110, D(2026, 8, 7), "csv:synthetic"),
     ]
     payment = http.sources(card)[-1]
@@ -225,15 +225,15 @@ def test_card_with_footer_balance_and_a_statement_payment(api: Api):
     assert http.records(card) == [("reported", -5110, D(2026, 8, 3))]
     # opening = -5110 - (-3001 - 1200 - 909) = 0: no derived entry; the payment is dated after the anchor
     assert http.entries(card) == [
-        ("movement", -3001, D(2026, 7, 31)),
-        ("movement", -1200, D(2026, 8, 2)),
-        ("movement", -909, D(2026, 8, 3)),
+        ("movement", -3001, D(2026, 7, 30)),
+        ("movement", -1200, D(2026, 8, 1)),
+        ("movement", -909, D(2026, 8, 2)),
         ("movement", 5110, D(2026, 8, 7)),
     ]
     synthetic = body["report"]["synthetic"]
     assert (synthetic["amount_minor"], synthetic["booked_on"]) == (5110, "2026-08-07")
     run = http.run(body["run_id"])
-    assert (run["covered_from"], run["covered_through"]) == ("2026-07-31", "2026-08-03")
+    assert (run["covered_from"], run["covered_through"]) == ("2026-07-30", "2026-08-03")
     f = http.facts(card)
     assert (f["anchored"], f["synced"], f["synced_through"]) == (True, True, "2026-08-03")
     assert f["unexplained_difference"] is None

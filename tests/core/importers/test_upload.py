@@ -75,7 +75,7 @@ PRESETS = [
         date(2026, 8, 10),
         4,
         (-5110, date(2026, 8, 3)),
-        (date(2026, 7, 31), date(2026, 8, 3)),
+        (date(2026, 7, 30), date(2026, 8, 3)),
         0,  # the synthetic payment brings the card back to zero: the opening is zero, so none
     ),
     Preset(

@@ -724,16 +724,17 @@ def _visa_statement(label: str, rows: list[Txn], *, opening: int, statement_on: 
     ]
     for t in rows:
         purpose = t.purpose if not t.name else f"{t.name} {t.purpose}"
-        beleg = t.booked_on - timedelta(days=1) if t.amount < 0 else t.booked_on
+        # booked_on is the Belegdatum; the posting day (Eingangstag) follows a day later for charges
+        eingang = t.booked_on + timedelta(days=1) if t.amount < 0 else t.booked_on
         if t.foreign:
             ccy, minor, rate = t.foreign
             rate_text = f"{rate / 10000:.4f}".replace(".", ",")
             lines.append(
-                f"{_short(beleg)};{_short(t.booked_on)};{purpose};{ccy};{_money(minor)};{rate_text};{_money(t.amount)};EUR"
+                f"{_short(t.booked_on)};{_short(eingang)};{purpose};{ccy};{_money(minor)};{rate_text};{_money(t.amount)};EUR"
             )
         else:
             lines.append(
-                f"{_short(beleg)};{_short(t.booked_on)};{purpose};EUR;{_money(t.amount)};;{_money(t.amount)};EUR"
+                f"{_short(t.booked_on)};{_short(eingang)};{purpose};EUR;{_money(t.amount)};;{_money(t.amount)};EUR"
             )
     lines.append(f"Saldo:;;;;;;{_money(balance)};EUR")
     data = b"\xef\xbb\xbf" + ("\n".join(lines) + "\n").encode("utf-8")

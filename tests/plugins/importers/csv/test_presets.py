@@ -80,7 +80,7 @@ def test_card_a() -> None:
     ticket = pf.rows[1]
     assert (ticket.instructed_amount_minor, ticket.instructed_currency) == (-1000, "USD")
     assert pf.rows[0].instructed_amount_minor is None  # Fremdwährung = EUR: ignored
-    assert pf.rows[0].value_on == date(2026, 8, 1) and pf.rows[0].booked_on == date(2026, 8, 2)
+    assert pf.rows[0].value_on == date(2026, 8, 2) and pf.rows[0].booked_on == date(2026, 8, 1)
     assert pf.covered_through == date(2026, 8, 3)
     assert (pf.reported_balance, pf.balance_on) == (-5110, date(2026, 8, 3))
     synth = pf.rows[-1]
