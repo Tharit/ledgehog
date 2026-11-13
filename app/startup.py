@@ -16,6 +16,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from sqlalchemy import Connection, Engine, text
 
+from app.core.balance.derived import DERIVATION_VERSION, recompute_derived
 from app.core.model.queue import ModelQueue, configure_model_queue
 from app.core.model.worker import ModelWorker
 from app.core.plugins.fetch import FetchImporter
@@ -32,6 +33,7 @@ from app.utils.db.engine import (
     matching_window_setting,
     max_rate_age_setting,
 )
+from app.utils.db.locks import lock_accounts
 
 log = logging.getLogger("ledgehog.startup")
 
@@ -96,8 +98,22 @@ def ensure_base_currency(conn: Connection, configured: str) -> None:
         raise BaseCurrencyMismatch(configured, stored.strip())
 
 
+def ensure_derivation(conn: Connection) -> int:
+    """Step 5: where the stored derivation version differs from the code's, recompute every account's
+    derived entries (spec §3.10) and store the code's version. Returns the accounts recomputed."""
+    stored = conn.execute(text("SELECT derivation_version FROM ledger_setting")).scalar_one()
+    if stored == DERIVATION_VERSION:
+        return 0
+    ids = list(conn.execute(text("SELECT id FROM account ORDER BY id")).scalars())
+    lock_accounts(conn, ids)
+    for account_id in ids:
+        recompute_derived(conn, account_id)
+    conn.execute(text("UPDATE ledger_setting SET derivation_version = :v"), {"v": DERIVATION_VERSION})
+    return len(ids)
+
+
 def reconcile_users(conn: Connection, users: Sequence[UserConfig]) -> ReconcileResult:
-    """Step 5: make `app_user` match the configured users, by login.
+    """Step 6: make `app_user` match the configured users, by login.
 
     Missing -> created. Display name changed -> updated. Configured password no
     longer verifies -> new hash and the user's sessions deleted. A user no longer
@@ -170,7 +186,7 @@ def reconcile_users(conn: Connection, users: Sequence[UserConfig]) -> ReconcileR
 
 
 def assert_pool_settings(engine: Engine, config: Config) -> None:
-    """Step 6: `make_engine` sets `ledger.max_rate_age` and `ledger.matching_window_days` on every
+    """Step 7: `make_engine` sets `ledger.max_rate_age` and `ledger.matching_window_days` on every
     connection; check that it did."""
     expected = {
         "ledger.max_rate_age": max_rate_age_setting(config),
@@ -187,7 +203,7 @@ def assert_pool_settings(engine: Engine, config: Config) -> None:
 
 
 def run_settle(engine: Engine) -> SettleResult:
-    """Step 7: settle once; a failure is reported, never a reason to refuse to start."""
+    """Step 8: settle once; a failure is reported, never a reason to refuse to start."""
     result = settle(engine)
     if result.error is not None:
         log.error("settling failed at start (the app starts anyway): %s", result.error)
@@ -249,17 +265,20 @@ def start(
     is the plugin registry the composition root supplies (name -> implementation); `frontend` the
     built SPA directory it serves.
     """
-    from app.api import create_app  # step 8 builds the API; imported late to keep this module light
+    from app.api import create_app  # step 9 builds the API; imported late to keep this module light
 
     log.info("starting: migrating the schema")
     migrate.upgrade(config)  # 2
     owns_engine = engine is None
     engine = engine or make_engine(config)
     try:
-        with engine.begin() as conn:  # 3, 4, 5: one transaction, so a refusal leaves nothing half-done
+        with engine.begin() as conn:  # 3, 4, 5, 6: one transaction, so a refusal leaves nothing half-done
             failed = fail_interrupted_runs(conn)
             ensure_base_currency(conn, config.base_currency)
+            recomputed = ensure_derivation(conn)  # 5
             reconciled = reconcile_users(conn, config.users)
+        if recomputed:
+            log.info("derived entries recomputed for %d account(s): the derivation changed", recomputed)
         if failed:
             log.warning("marked %d interrupted import run(s) failed", failed)
         for verb, logins in (
@@ -272,10 +291,10 @@ def start(
         ):
             if logins:
                 log.info("users %s: %s", verb, ", ".join(logins))
-        assert_pool_settings(engine, config)  # 6
+        assert_pool_settings(engine, config)  # 7
         worker = configure_model(config, engine)  # before 7: the settle lists what the model is to look at
-        result = run_settle(engine)  # 7
-        # 8: the one task registry of the process (architecture §5.3) is created here, with the app
+        result = run_settle(engine)  # 8
+        # 9: the one task registry of the process (architecture §5.3) is created here, with the app
         app = create_app(
             config,
             engine,

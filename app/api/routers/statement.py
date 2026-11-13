@@ -54,8 +54,8 @@ class StatementRecordOut(BaseModel):
     record_kind: Literal["reported", "manual"]
     balance: Money
     anchor: bool  # the account's earliest counting record
-    rows_sum: Money | None  # the movements of the record's interval; null for the anchor
-    difference: Money | None  # what the record owns beyond them; null for the anchor
+    difference: Money  # the record's derived entry; for the anchor, its opening
+    late_arrivals: int  # movements that are late arrivals for the record (spec §3.10)
 
 
 StatementItemOut = Annotated[StatementSourceOut | StatementRecordOut, Field(discriminator="kind")]
@@ -80,8 +80,8 @@ def _item(item: SourceItem | RecordItem, currency: str) -> StatementSourceOut | 
             record_kind=item.record_kind,  # type: ignore[arg-type]
             balance=money(item.balance),
             anchor=item.anchor,
-            rows_sum=None if item.rows_sum is None else money(item.rows_sum),
-            difference=None if item.difference is None else money(item.difference),
+            difference=money(item.difference),
+            late_arrivals=item.late_arrivals,
         )
     dup = item.duplicate_of
     return StatementSourceOut(

@@ -52,8 +52,8 @@ def test_items_of_both_kinds_with_money(anna: TestClient, api_engine: Engine) ->
         "record_kind": "reported",
         "balance": {"amount": 8000, "currency": "EUR"},
         "anchor": False,
-        "rows_sum": {"amount": -1000, "currency": "EUR"},
         "difference": {"amount": -1000, "currency": "EUR"},  # 8000 - 10000 - (-1000)
+        "late_arrivals": 0,
     }
     assert source["kind"] == "source" and source["booked_on"] == "2026-02-10"
     assert source["amount"] == {"amount": -1000, "currency": "EUR"}
@@ -61,7 +61,8 @@ def test_items_of_both_kinds_with_money(anna: TestClient, api_engine: Engine) ->
     assert (source["authored"], source["duplicate_of"], source["run_id"] is not None) == (False, None, True)
     assert source["entry_id"] is not None
     assert "raw" not in source
-    assert anchor["anchor"] is True and anchor["rows_sum"] is None and anchor["difference"] is None
+    assert anchor["anchor"] is True and anchor["late_arrivals"] == 0
+    assert anchor["difference"] == {"amount": 10_000, "currency": "EUR"}  # the opening it sets
 
 
 def test_paging_and_the_amount_filter(anna: TestClient, api_engine: Engine) -> None:

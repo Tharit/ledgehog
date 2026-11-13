@@ -150,6 +150,7 @@ def make_run(
     *,
     status: str = "ok",
     covered_through: date | None = date(2026, 3, 1),
+    covered_from: date | None = None,
     instance_id: int | None = None,
 ) -> int:
     cols: dict[str, Any] = {
@@ -161,6 +162,7 @@ def make_run(
     }
     if status in ("ok", "reverted"):
         cols["covered_through"] = covered_through
+        cols["covered_from"] = covered_from
     if status != "running":
         cols["finished_at"] = FINISHED
     if status == "reverted":

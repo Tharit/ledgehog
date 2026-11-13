@@ -6406,14 +6406,7 @@
             "type": "string"
           },
           "difference": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Money"
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "$ref": "#/components/schemas/Money"
           },
           "id": {
             "title": "Id",
@@ -6424,6 +6417,10 @@
             "title": "Kind",
             "type": "string"
           },
+          "late_arrivals": {
+            "title": "Late Arrivals",
+            "type": "integer"
+          },
           "record_kind": {
             "enum": [
               "reported",
@@ -6431,16 +6428,6 @@
             ],
             "title": "Record Kind",
             "type": "string"
-          },
-          "rows_sum": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Money"
-              },
-              {
-                "type": "null"
-              }
-            ]
           }
         },
         "required": [
@@ -6450,8 +6437,8 @@
           "record_kind",
           "balance",
           "anchor",
-          "rows_sum",
-          "difference"
+          "difference",
+          "late_arrivals"
         ],
         "title": "StatementRecordOut",
         "type": "object"

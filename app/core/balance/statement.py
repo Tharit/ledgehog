@@ -14,7 +14,7 @@ from typing import Literal
 
 from sqlalchemy import Connection, text
 
-from app.core.balance.derived import record_gaps
+from app.core.balance.derived import load_derivation_input, record_gaps
 from app.core.domain.source import BookingRef
 
 
@@ -51,8 +51,8 @@ class RecordItem:
     record_kind: str  # 'reported' | 'manual'
     balance: int
     anchor: bool
-    rows_sum: int | None  # None for the anchor
-    difference: int | None  # None for the anchor
+    difference: int  # the record's derived entry; for the anchor, its opening
+    late_arrivals: int
     kind: Literal["record"] = "record"
 
 
@@ -90,19 +90,9 @@ def get_statement(
         ),
         {"a": account_id},
     ).all()
-    records = conn.execute(
-        text(
-            "SELECT id, balance_on, balance, import_run_id IS NOT NULL AS reported"
-            " FROM v_balance_record WHERE account_id = :a"
-            " ORDER BY balance_on, id"
-        ),
-        {"a": account_id},
-    ).all()
-    movements = [(r.id, r.booked_on, int(r.amount)) for r in thin if not r.duplicate]
-    gaps = record_gaps(
-        [(r.id, r.balance_on, int(r.balance)) for r in records], [(d, a) for _, d, a in movements]
-    )
-    kinds = {r.id: "reported" if r.reported else "manual" for r in records}
+    data = load_derivation_input(conn, account_id)
+    gaps = record_gaps(data)
+    kinds = {r.id: "reported" if r.run_id is not None else "manual" for r in data.records}
 
     if amount is not None:  # the picker
         keep = sorted(
@@ -133,8 +123,8 @@ def get_statement(
                     record_kind=kinds[g.record_id],
                     balance=g.balance,
                     anchor=g.anchor,
-                    rows_sum=None if g.anchor else g.rows_sum,
-                    difference=None if g.anchor else g.amount,
+                    difference=g.amount,
+                    late_arrivals=g.late_arrivals,
                 )
             )
     return Statement(account_id, currency, tuple(items), len(keys), limit, offset)

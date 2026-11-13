@@ -3141,7 +3141,7 @@ export interface components {
              * Format: date
              */
             balance_on: string;
-            difference: components["schemas"]["Money"] | null;
+            difference: components["schemas"]["Money"];
             /** Id */
             id: number;
             /**
@@ -3149,12 +3149,13 @@ export interface components {
              * @enum {string}
              */
             kind: "record";
+            /** Late Arrivals */
+            late_arrivals: number;
             /**
              * Record Kind
              * @enum {string}
              */
             record_kind: "reported" | "manual";
-            rows_sum: components["schemas"]["Money"] | null;
         };
         /** StatementSourceOut */
         StatementSourceOut: {

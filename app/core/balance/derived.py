@@ -5,10 +5,11 @@ caller's transaction, under the account lock the caller holds; it never locks an
 
 Per counting record, in order (balance_on, id), the derived entry is
 
-    anchor (the first record):   opening = B - sum(movements dated <= D)
-    every later record:          (B - B_prev) - sum(movements dated in (D_prev, D])
+    (B - B_prev) - (C - C_prev),   C = sum of the movements dated <= D that the record counts
 
-where movements are the entries with a source transaction; derived entries never enter a sum.
+with B_prev = C_prev = 0 for the anchor (its entry is the opening). A reported record does not count the
+late arrivals (spec §3.10). Movements are the account's non-duplicate source transactions; derived entries
+never enter a sum.
 The stored entries are then reconciled against that: a zero result has no entry, an entry whose
 type changed is deleted and recreated (the unique indexes on openings and on the record are not
 deferrable, so every delete and demotion precedes every insert), an amount or date that differs
@@ -17,8 +18,8 @@ is updated in place, and a second call writes nothing.
 
 from __future__ import annotations
 
-from bisect import bisect_right
-from collections.abc import Iterable, Sequence
+from bisect import bisect_left, bisect_right
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, timedelta
 from itertools import accumulate
@@ -35,6 +36,11 @@ class Desired:
     amount: int
 
 
+DERIVATION_VERSION = 1
+"""Raised by a release that changes the formula above; the start sequence recomputes every account's
+derived entries when the stored `ledger_setting.derivation_version` differs (architecture §5.7)."""
+
+
 def recompute_derived(conn: Connection, account_id: int) -> None:
     """Bring the account's derived entries in line with its records and movements."""
     account = conn.execute(text("SELECT kind, currency FROM account WHERE id = :a"), {"a": account_id}).one()
@@ -43,75 +49,155 @@ def recompute_derived(conn: Connection, account_id: int) -> None:
 
 
 @dataclass(frozen=True)
+class Movement:
+    """A non-duplicate source transaction, as the derivation sees it.
+
+    `runs` are the runs that delivered it: its own run and the runs of the rows that duplicate it (empty
+    for a row no run delivered: user-authored, a booking).
+    """
+
+    booked_on: date
+    amount: int
+    runs: frozenset[int] = frozenset()
+
+
+@dataclass(frozen=True)
+class CountingRecord:
+    """A counting balance record with the coverage of its run (None for a manual record)."""
+
+    id: int
+    balance_on: date
+    balance: int
+    run_id: int | None = None
+    covered_from: date | None = None
+    covered_through: date | None = None
+
+
+@dataclass(frozen=True)
+class DerivationInput:
+    """Everything the one rule reads, built by `load_derivation_input` for both its callers."""
+
+    records: tuple[CountingRecord, ...]  # in order (balance_on, id)
+    movements: tuple[Movement, ...]
+    runs_through: Mapping[int, date | None]  # covered_through of every run that delivered a movement
+
+
+@dataclass(frozen=True)
 class RecordGap:
-    """What one counting record owns: its interval's movements and the amount left over (spec §3.10).
+    """What one counting record owns (spec §3.10).
 
     `amount` is the derived entry's amount: the opening for the anchor (the first record), the
-    reconciliation or valuation for every later one, zero where it owns none. `rows_sum` is the sum of the
-    movements in the record's interval: dated up to the record for the anchor, in (previous date, date]
-    for the others.
+    reconciliation or valuation for every later one, zero where it owns none. `late_arrivals` is the
+    number of movements that are late arrivals for the record.
     """
 
     record_id: int
     balance_on: date
     balance: int
     anchor: bool
-    rows_sum: int
     amount: int
+    late_arrivals: int
 
 
-def record_gaps(
-    records: Sequence[tuple[int, date, int]], movements: Iterable[tuple[date, int]]
-) -> list[RecordGap]:
-    """The one rule behind the derived entries and the statement's gaps (architecture §4.1).
+def load_derivation_input(conn: Connection, account_id: int) -> DerivationInput:
+    """The account's counting records and non-duplicate source transactions, with the runs that delivered
+    each. By I3 the entries of a non-duplicate source sum to its amount on its dates, so summing sources
+    is summing movements."""
+    records = tuple(
+        CountingRecord(r.id, r.balance_on, int(r.balance), r.import_run_id, r.covered_from, r.covered_through)
+        for r in conn.execute(
+            text(
+                "SELECT b.id, b.balance_on, b.balance, b.import_run_id, r.covered_from, r.covered_through"
+                " FROM v_balance_record b LEFT JOIN import_run r ON r.id = b.import_run_id"
+                " WHERE b.account_id = :a ORDER BY b.balance_on, b.id"
+            ),
+            {"a": account_id},
+        )
+    )
+    movements = tuple(
+        Movement(
+            r.booked_on,
+            int(r.amount),
+            frozenset(([r.import_run_id] if r.import_run_id is not None else []) + list(r.dup_runs)),
+        )
+        for r in conn.execute(
+            text(
+                "SELECT s.booked_on, s.amount, s.import_run_id,"
+                " COALESCE((SELECT array_agg(d.import_run_id) FROM source_transaction d"
+                "           WHERE d.duplicate_of = s.id AND d.import_run_id IS NOT NULL),"
+                "          ARRAY[]::bigint[]) AS dup_runs"
+                " FROM source_transaction s WHERE s.account_id = :a AND s.duplicate_of IS NULL"
+            ),
+            {"a": account_id},
+        )
+    )
+    delivering = {run for m in movements for run in m.runs}
+    through = {
+        r.id: r.covered_through
+        for r in conn.execute(
+            text("SELECT id, covered_through FROM import_run WHERE id = ANY(:ids)"),
+            {"ids": sorted(delivering)},
+        )
+    }
+    return DerivationInput(records, movements, through)
 
-    `records` are the counting records `(id, balance_on, balance)` in order (balance_on, id);
-    `movements` are `(booked_on, amount)` of the account's movements, in any order and any
-    grouping. The derived entry of the anchor is `B - sum(movements dated <= D)` and of every later
-    record `(B - B_prev) - sum(movements dated in (D_prev, D])`: one formula, the anchor with a
-    previous balance and a previous sum of zero.
+
+def record_gaps(data: DerivationInput) -> list[RecordGap]:
+    """The one rule behind the derived entries and the statement (architecture §4.1).
+
+    The derived entry of record i is `(B_i - B_(i-1)) - (C_i - C_(i-1))`, `C_i` the sum of the movements
+    dated up to D_i that the record counts; B_0 = C_0 = 0, so the anchor's is the opening `B_1 - C_1`.
+    A reported record whose run states a coverage does not count the late arrivals: movements dated within
+    that coverage that its run did not deliver and that every delivering run delivered after the record,
+    i.e. whose runs all cover a date after the record's. A manual record, a record without coverage and a
+    movement no run delivered always count.
     """
-    per_day: dict[date, int] = {}
-    for day, amount in movements:
-        per_day[day] = per_day.get(day, 0) + amount
-    days = sorted(per_day)
-    cumulative = [0, *accumulate(per_day[d] for d in days)]
+    moves = sorted(data.movements, key=lambda m: m.booked_on)
+    days = [m.booked_on for m in moves]
+    cumulative = [0, *accumulate(m.amount for m in moves)]
 
-    def through(d: date) -> int:
-        """Sum of the movements dated on or before `d`."""
-        return cumulative[bisect_right(days, d)]
+    def late(rec: CountingRecord, m: Movement) -> bool:
+        if not m.runs or rec.run_id in m.runs:
+            return False
+        for run in m.runs:
+            through = data.runs_through.get(run)
+            if through is None or through <= rec.balance_on:
+                return False
+        return True
 
     gaps: list[RecordGap] = []
-    prev_balance, prev_through = 0, 0
-    for rid, on, balance in records:
-        here = through(on)
-        rows_sum = here - prev_through
-        gaps.append(RecordGap(rid, on, balance, not gaps, rows_sum, (balance - prev_balance) - rows_sum))
-        prev_balance, prev_through = balance, here
+    prev_balance, prev_counted = 0, 0
+    for rec in data.records:
+        hi = bisect_right(days, rec.balance_on)
+        counted = cumulative[hi]
+        n_late = 0
+        if rec.run_id is not None and rec.covered_from is not None and rec.covered_through is not None:
+            end = bisect_right(days, min(rec.balance_on, rec.covered_through))
+            for m in moves[bisect_left(days, rec.covered_from) : end]:
+                if late(rec, m):
+                    counted -= m.amount
+                    n_late += 1
+        gaps.append(
+            RecordGap(
+                rec.id,
+                rec.balance_on,
+                rec.balance,
+                not gaps,
+                (rec.balance - prev_balance) - (counted - prev_counted),
+                n_late,
+            )
+        )
+        prev_balance, prev_counted = rec.balance, counted
     return gaps
 
 
 def _desired(conn: Connection, account_id: int, *, investment: bool) -> dict[int, Desired]:
-    records = conn.execute(
-        text(
-            "SELECT id, balance_on, balance FROM v_balance_record WHERE account_id = :a "
-            "ORDER BY balance_on, id"
-        ),
-        {"a": account_id},
-    ).all()
-    if not records:
+    data = load_derivation_input(conn, account_id)
+    if not data.records:
         return {}
-    per_day = conn.execute(
-        text(
-            "SELECT booked_on, sum(amount)::bigint AS total FROM ledger_entry "
-            "WHERE account_id = :a AND source_transaction_id IS NOT NULL "
-            "GROUP BY booked_on ORDER BY booked_on"
-        ),
-        {"a": account_id},
-    ).all()
-    first_movement = per_day[0].booked_on if per_day else None
+    first_movement = min((m.booked_on for m in data.movements), default=None)
     desired: dict[int, Desired] = {}
-    for gap in record_gaps([(r.id, r.balance_on, r.balance) for r in records], per_day):
+    for gap in record_gaps(data):
         if gap.amount == 0:
             continue
         if gap.anchor:

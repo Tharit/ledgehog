@@ -8,6 +8,7 @@ from app.startup import (
     StartupError,
     assert_pool_settings,
     ensure_base_currency,
+    ensure_derivation,
     fail_interrupted_runs,
     reconcile_users,
 )
@@ -55,6 +56,24 @@ def test_base_currency_mismatch_refuses_and_leaves_the_stored_value(db_conn):
         ensure_base_currency(db_conn, "USD")
     assert "USD" in str(err.value) and "EUR" in str(err.value)
     assert db_conn.execute(text("SELECT base_currency FROM ledger_setting")).scalar_one().strip() == "EUR"
+
+
+def test_derivation_is_recomputed_once_per_version(db_conn, make_account, monkeypatch):
+    import app.startup as startup
+    from app.core.balance.derived import DERIVATION_VERSION
+
+    ensure_base_currency(db_conn, "EUR")
+    a, b = make_account(db_conn, name="A"), make_account(db_conn, name="B")
+    seen: list[int] = []
+    monkeypatch.setattr(startup, "recompute_derived", lambda conn, account_id: seen.append(account_id))
+    version = lambda: db_conn.execute(text("SELECT derivation_version FROM ledger_setting")).scalar_one()  # noqa: E731
+    assert version() == 0  # what a migrated, existing ledger holds
+    assert ensure_derivation(db_conn) >= 2
+    assert {a, b} <= set(seen)
+    assert version() == DERIVATION_VERSION
+    seen.clear()
+    assert ensure_derivation(db_conn) == 0  # the second start does nothing
+    assert seen == []
 
 
 def _users(conn):

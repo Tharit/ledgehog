@@ -9,7 +9,7 @@ from datetime import date
 import pytest
 from sqlalchemy import Connection, text
 
-from app.core.balance.derived import record_gaps
+from app.core.balance.derived import CountingRecord, DerivationInput, Movement, record_gaps
 from app.core.balance.statement import RecordItem, SourceItem, StatementAccountMissing, get_statement
 from tests.core.balance.scene import Scene, day
 from tests.invariants.helpers import make_entry, make_run, make_source
@@ -29,9 +29,10 @@ def ledger_balance(conn: Connection, account: int) -> int:
     )
 
 
-def assert_agrees_with_the_ledger(s: Scene) -> None:
+def assert_agrees_with_the_ledger(s: Scene, late: int = 0) -> None:
     """The newest counting record's balance plus the non-duplicate movements dated after it (all of them
-    with no record) is the account's balance; every record's difference is its derived entry's amount."""
+    with no record) plus `late`, the amounts of the late arrivals for it, is the account's balance; every
+    record's difference is its derived entry's amount (the anchor's, its opening)."""
     s.recompute()
     items = full(s.conn, s.account)
     records = [i for i in items if isinstance(i, RecordItem)]
@@ -43,9 +44,9 @@ def assert_agrees_with_the_ledger(s: Scene) -> None:
         and i.duplicate_of is None
         and (newest is None or i.booked_on > newest.balance_on)
     ]
-    assert (newest.balance if newest else 0) + sum(after) == ledger_balance(s.conn, s.account)
+    assert (newest.balance if newest else 0) + sum(after) + late == ledger_balance(s.conn, s.account)
     for item in items:
-        if isinstance(item, RecordItem) and not item.anchor:
+        if isinstance(item, RecordItem):
             owned = s.derived_of(item.id)
             assert item.difference == (0 if owned is None else owned[2])
     s.check()
@@ -80,7 +81,7 @@ def test_anchor_only_counts_what_precedes_the_anchor_back_from_it(
     s.move(day(1, 3), 20)  # after it
     items = full(db_conn, s.account)
     (anchor,) = (i for i in items if isinstance(i, RecordItem))
-    assert (anchor.anchor, anchor.rows_sum, anchor.difference, anchor.balance) == (True, None, None, 1000)
+    assert (anchor.anchor, anchor.difference, anchor.balance, anchor.late_arrivals) == (True, 1150, 1000, 0)
     assert_agrees_with_the_ledger(s)
 
 
@@ -97,10 +98,10 @@ def test_several_records_each_interval_counts_from_the_previous_record(
     s.move(day(4, 2), 5)  # after the last record
     items = full(db_conn, s.account)
     records = [i for i in items if isinstance(i, RecordItem)]
-    assert [(r.balance_on, r.rows_sum, r.difference) for r in reversed(records)] == [
-        (day(1, 31), None, None),
-        (day(2, 28), -150, 50),
-        (day(3, 31), -10, 0),
+    assert [(r.balance_on, r.difference) for r in reversed(records)] == [
+        (day(1, 31), 1000),
+        (day(2, 28), 50),
+        (day(3, 31), 0),
     ]
     assert_agrees_with_the_ledger(s)
 
@@ -117,8 +118,8 @@ def test_records_sharing_a_date_stand_after_the_days_movements_and_the_later_one
     ids = [("record", i.id) if isinstance(i, RecordItem) else ("source", i.id) for i in items]
     assert ids[0] == ("record", second) and ids[1] == ("record", first)  # by id, descending, above the row
     rec = {i.id: i for i in items if isinstance(i, RecordItem)}
-    assert (rec[first].rows_sum, rec[first].difference) == (-10, -5)
-    assert (rec[second].rows_sum, rec[second].difference) == (0, -5)  # the change between the two
+    assert rec[first].difference == -5
+    assert rec[second].difference == -5  # the change between the two
     assert_agrees_with_the_ledger(s)
 
 
@@ -177,7 +178,7 @@ def test_an_investment_account_has_valuations_as_differences(db_conn: Connection
     s.move(day(2, 15), -1000)
     items = full(db_conn, s.account)
     records = [i for i in items if isinstance(i, RecordItem)]
-    assert [r.difference for r in reversed(records)] == [None, 400_000]
+    assert [r.difference for r in reversed(records)] == [5_000_000, 400_000]
     assert_agrees_with_the_ledger(s)
     assert s.derived()[-1][0] == "valuation"
 
@@ -212,11 +213,22 @@ def test_backfill_before_the_anchor_counts_back_from_the_anchor(
 
 
 def test_record_gaps_is_the_formula_of_the_derived_entries() -> None:
-    gaps = record_gaps(
-        [(1, date(2026, 1, 31), 1000), (2, date(2026, 2, 28), 900)],
-        [(date(2026, 1, 10), -20), (date(2026, 2, 3), -100), (date(2026, 2, 3), -50)],
+    data = DerivationInput(
+        (
+            CountingRecord(1, date(2026, 1, 31), 1000),
+            CountingRecord(2, date(2026, 2, 28), 900),
+        ),
+        (
+            Movement(date(2026, 1, 10), -20),
+            Movement(date(2026, 2, 3), -100),
+            Movement(date(2026, 2, 3), -50),
+        ),
+        {},
     )
-    assert [(g.anchor, g.rows_sum, g.amount) for g in gaps] == [(True, -20, 1020), (False, -150, 50)]
+    assert [(g.anchor, g.amount, g.late_arrivals) for g in record_gaps(data)] == [
+        (True, 1020, 0),
+        (False, 50, 0),
+    ]
 
 
 # ---- order, paging, the amount filter --------------------------------------------------------

@@ -720,6 +720,8 @@ def delete_source(
         )
         affected = remove_entries(conn, ids, scope=(ids, partners))
         conn.execute(text("DELETE FROM source_transaction WHERE id = :i"), {"i": source_id})
+        # the derivation reads source rows, so it follows the delete
+        recompute_derived(conn, int(locked.source.account_id))
         # the dry run reads the partners as they stand before the rollback
         return removed, counts, affected, partners
 
