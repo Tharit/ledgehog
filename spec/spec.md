@@ -570,22 +570,34 @@ manual records can also be edited. Deleting a record merges its interval into
 the next one.
 
 **One formula.** Every record owns one derived entry — the part of the change
-since the previous record that the entries in between do not explain:
+since the previous record that the movements it counts do not explain:
 
 ```
-derived entry for record i = (Bᵢ − Bᵢ₋₁) − Σ movements dated in (Dᵢ₋₁, Dᵢ]
+derived entry for record i = (Bᵢ − Bᵢ₋₁) − (Cᵢ − Cᵢ₋₁)
+Cᵢ = Σ movements dated up to Dᵢ that record i counts
 ```
 
 Only *movements* — entries with a source transaction — enter these sums.
 Derived entries never do, so records sharing a date, as two logins' reports of
 one closed day do, cannot count each other's entries.
 
+**A reported record does not count late arrivals.** Its balance is what the
+bank had booked when its run fetched it, so a movement booked later but dated
+on or before the record is no part of it — a card purchase posted after the
+statement it is dated before, a booking dated back into a closed day. A
+movement is a **late arrival** for a reported record when it is dated within
+the coverage of the record's run (§5.1), that run did not deliver it, neither
+as the row nor as a duplicate of it (§5.2), and every run that did deliver it
+covers a date after the record's. It counts from the first record it is not
+late for. A manual record counts every movement up to its date, and so does a
+record whose run states no coverage; a movement no run delivered, such as one
+a user entered, is never a late arrival.
+
 **The anchor** is the account's earliest record, whatever its kind. It has no
-previous record: B₀ is zero and its interval is everything up to the anchor
-date, so
+previous record: B₀ and C₀ are zero, so
 
 ```
-opening = anchor balance − Σ movements dated up to the anchor date
+opening = anchor balance − C₁
 ```
 
 The anchor's derived entry is the account's **opening**, dated the day before
@@ -601,9 +613,9 @@ not anchored* (§3.11).
 What a reconciliation means depends on where the number came from. After a
 manual count it is the ordinary explanation of the change — unrecorded cash
 spending. After a reported record it says that the bank's balance and the
-ledger disagree in that interval: either the bank booked into a day it had
-already closed, which the next record's reconciliation cancels, or something
-is missing or duplicated, which persists until the cause is fixed. What
+ledger disagree in that interval: either a run delivered less than the bank
+had booked, which a later record's reconciliation cancels, or something is
+missing or duplicated, which persists until the cause is fixed. What
 persists is the account's *unexplained difference* (§3.11).
 
 ### 3.11 Account and currency status
@@ -2586,6 +2598,9 @@ derived entry whose result is zero is deleted; one whose result becomes
 non-zero is created. Derived entries are never resolved and never reviewed:
 each is a consequence of a record.
 
+When a release changes how derived entries are computed, the start sequence
+recomputes every account's once (`architecture.md` §5.7).
+
 The consequences of deriving the opening from the anchor:
 
 - **Backfill.** Importing older history adds entries before the opening; the
@@ -2614,10 +2629,11 @@ runs over the reconciliations of every record from the account's first
 reported record through its latest, in record order, manual records included.
 Derived entries telescope, so a manual record between two reported ones
 cancels in the sum whatever its error, and the sum measures how far the latest
-reported balance and the ledger disagree. A booking the bank dated back into a
-day it had already closed leaves a pair of opposite reconciliations on
-consecutive records, which cancels in the sum; a missing or duplicated row
-leaves a reconciliation that later records do not cancel. A non-zero sum is
+reported balance and the ledger disagree. A booking the bank dated back before a
+record is a late arrival for it (§3.10) and leaves no reconciliation. A row one
+run failed to deliver and a later one did leaves a pair of opposite
+reconciliations, which cancels in the sum; a missing or duplicated row leaves a
+reconciliation that later records do not cancel. A non-zero sum is
 the account's **unexplained difference** (§3.11), and the
 summary of the run that caused or changed it says so. It is a notice, never a
 prompt and never a review item. The entries themselves are reconciliations, on
@@ -2629,7 +2645,10 @@ what is missing (a CSV for the gap, deduplicated against what exists, §5.2), to
 mark what is duplicated or clear a row marked wrongly (§5.6), to delete a
 user-authored transaction an import now duplicates (§3.9), or to correct or delete a manual
 record whose number was wrong. Once the cause is fixed, the
-reconciliation recomputes to zero and disappears.
+reconciliation recomputes to zero and disappears. A file for a gap counts
+toward the records after its coverage, but its rows are late arrivals for a
+record inside it: fill a gap with one file per record interval, each ending on
+or before its record's date, or delete the records inside the gap.
 
 **A manual anchor meets its first reported balance.** An account that began
 with a manual record — a CSV profile without a balance column, a balance set

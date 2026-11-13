@@ -118,15 +118,20 @@ density (`ux/patterns.md` §4.1, `design.md`). Two kinds of row:
   opens the row it duplicates.
 - **A balance record**, a marker row above the rows of its own date, since a
   record is the state at the end of its day: its kind (reported or manual), its
-  date and its balance. Where the rows since the previous record do not add up
-  to it, the marker says by how much: "rows add up to *Y* · difference *Z*",
-  and on an investment account "· valuation *Z*".
+  date and its balance. Where the ledger does not explain it, the marker says
+  by how much: "expected *X* · difference *Z*", where *X* is the previous
+  record's balance plus the movements this record counts that the previous one
+  did not (`spec.md` §3.10), and on an investment account "· valuation *Z*". A
+  reported record with late arrivals (`spec.md` §3.10) says how many, in quiet
+  text: "*n* bookings dated before it arrived later" ("1 booking … arrived
+  later").
   That difference is what the record's derived entry is in the ledger — a
   reconciliation, or a valuation on an investment account (`spec.md` §3.10) —
   so the statement shows where the ledger had to explain something without
-  reading the entry layer. The anchor, the earliest record, shows its balance
-  alone: the opening absorbs everything before it and reconciliation starts
-  with the next record (`spec.md` §5.10). The reported records that localise
+  reading the entry layer. The anchor, the earliest record, shows its balance and
+  the opening it sets, zero included: "opening *X*". The opening absorbs
+  everything before it, and reconciliation starts with the next record
+  (`spec.md` §5.10). The reported records that localise
   the unexplained difference carry a quiet mark.
 
 **The Balance column holds the records' balances alone.** A balance is stated

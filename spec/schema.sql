@@ -118,7 +118,9 @@ INSERT INTO currency (code, minor_units) VALUES
 -- Spec §3.8.
 CREATE TABLE ledger_setting (
     singleton           boolean PRIMARY KEY DEFAULT true CHECK (singleton),
-    base_currency       char(3)  NOT NULL REFERENCES currency(code)
+    base_currency       char(3)  NOT NULL REFERENCES currency(code),
+    -- the derivation of derived entries last applied (architecture §5.7)
+    derivation_version  integer  NOT NULL DEFAULT 0
 );
 
 -- ---------------------------------------------------------------------

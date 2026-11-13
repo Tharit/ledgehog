@@ -899,7 +899,9 @@ over the whole account.
 - `record` — the record's id, `balance_on`, `record_kind` (`reported` where the
   record has a run, else `manual`), `balance`, `anchor` (true for the account's
   earliest record),
-  `rows_sum` and `difference`, both null for the anchor.
+  `difference`, the amount of the record's derived entry — for the anchor, its
+  opening (`spec.md` §3.10) — and `late_arrivals`, the number of movements that
+  are late arrivals for it, zero where there are none.
 
 **The gap** is the formula of `spec.md`
 §3.10 applied to source transactions and records alone. Let the counting
@@ -909,19 +911,16 @@ duplicates. By `spec.md` I3 the entries of a non-duplicate source carry its
 dates and sum to its amount, so summing sources is summing the movements of the
 formula.
 
-- **Interval.** Movements dated in (Dᵢ₋₁, Dᵢ] belong to Rᵢ; those up to D₁ to the
-  anchor R₁; those after Dₙ to no record.
-- **Gap.** For i > 1, `rows_sum` is the sum of the movements in Rᵢ's interval and
-  `difference` = (Bᵢ − Bᵢ₋₁) − `rows_sum`: the amount of the derived entry the
-  record owns, or zero where it owns none. The anchor has neither; its derived
-  entry is the opening, which absorbs what precedes it and explains nothing
-  (`spec.md` §5.10). The function that derives the entries computes the
-  difference, and the statement calls it rather than reading the entries, so
-  the two agree by construction.
+- **Gap.** `difference` = (Bᵢ − Bᵢ₋₁) − (Cᵢ − Cᵢ₋₁) (`spec.md` §3.10): the
+  amount of the derived entry the record owns, or zero where it owns none. For
+  the anchor it is the opening, which absorbs what precedes it and explains
+  nothing (`spec.md` §5.10). The function that derives the entries computes it,
+  and the statement calls that function rather than reading the entries, so the
+  two agree by construction.
 - **The records add up to the ledger balance.** The opening and the differences
-  telescope: the derived entries and movements dated up to Dₙ add up to Bₙ
-  (`spec.md` §3.10), so Bₙ plus the movements dated after Dₙ is the account's
-  balance, the sum of its entries (I6). A test asserts this for every account.
+  telescope: the derived entries and the movements Rₙ counts add up to Bₙ
+  (`spec.md` §3.10), so Bₙ plus the movements dated after Dₙ and the late
+  arrivals for Rₙ is the account's balance, the sum of its entries (I6). A test asserts this for every account.
 - **Edge cases.** Records sharing a date stand after that day's movements, by id,
   and a later one's interval holds no movement: its `difference` is the change
   in balance between the two. A record of a reverted run does not count
@@ -2009,7 +2008,11 @@ neither, since its relay needs nothing of the app; the development sandbox
    Afterwards the configured value must equal the stored one, or the app
    refuses to start: rates are stored against it (`spec.md` §3.8), and a
    changed variable would silently misvalue every foreign amount.
-5. **Users.** Reconcile the configured users with `app_user`, matched by
+5. **Derived entries.** Where `ledger_setting.derivation_version` differs from
+   the code's, recompute every account's derived entries (`spec.md` §3.10) and
+   store the code's version. A release that changes the formula raises it;
+   otherwise this step does nothing.
+6. **Users.** Reconcile the configured users with `app_user`, matched by
    login: create a missing one; update the display name; set the password
    hash when the configured password no longer verifies against it, and
    delete that user's sessions. A configured user no longer configured is
@@ -2019,12 +2022,12 @@ neither, since its relay needs nothing of the app; the development sandbox
    one is ignored, and the log says so. A password change is therefore a
    changed variable and a restart; the application has no password-change
    flow.
-6. Set the connection settings that reach SQL (`ledger.max_rate_age`,
+7. Set the connection settings that reach SQL (`ledger.max_rate_age`,
    `ledger.matching_window_days`) on every connection the pool opens.
-7. **Settle.** Settling runs once, so a changed window or any other changed
+8. **Settle.** Settling runs once, so a changed window or any other changed
    configuration takes effect on stored data like any other write (`spec.md`
    §5, I37).
-8. Bind.
+9. Bind.
 
 The household is two people, but nothing enforces it. A user comes from the
 configuration or from an OIDC sign-in (§5.6); there is no setup operation,
