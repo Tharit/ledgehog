@@ -27,19 +27,27 @@ export function recordKindLabel(record: Pick<StatementRecord, 'record_kind'>): s
 }
 
 /**
- * Where the rows since the previous record do not add up to it, how much by: "rows add up to 120.00
- * · difference −3.50", on an investment account "· valuation 20.00". The anchor has none, and
- * neither has a record whose rows add up.
+ * What the ledger does not explain about a record (spec §3.10): "expected 1,000.00 · difference −3.50",
+ * on an investment account "· valuation 20.00"; expected is the balance less the difference. Nothing
+ * where there is no difference. The anchor always says the opening it sets: "opening 1,000.00".
  */
 export function recordGap(
-	record: Pick<StatementRecord, 'rows_sum' | 'difference'>,
+	record: Pick<StatementRecord, 'anchor' | 'balance' | 'difference'>,
 	{ investment, locale }: { investment: boolean; locale: string }
 ): string | null {
-	const { rows_sum: rows, difference } = record;
-	if (rows === null || difference === null || difference.amount === 0) return null;
-	const money = (m: { amount: number; currency: string }) =>
-		formatMoney(m.amount, m.currency, { locale });
-	return `rows add up to ${money(rows)} · ${investment ? 'valuation' : 'difference'} ${money(difference)}`;
+	const { balance, difference } = record;
+	const money = (minor: number, showPlus: boolean) =>
+		formatMoney(minor, balance.currency, { locale, showPlus });
+	if (record.anchor) return `opening ${money(difference.amount, false)}`;
+	if (difference.amount === 0) return null;
+	return `expected ${money(balance.amount - difference.amount, false)} · ${investment ? 'valuation' : 'difference'} ${money(difference.amount, true)}`;
+}
+
+/** "3 bookings dated before it arrived later": the movements a reported record does not count. */
+export function lateArrivalsLabel(record: Pick<StatementRecord, 'late_arrivals'>): string | null {
+	const n = record.late_arrivals;
+	if (n <= 0) return null;
+	return `${n} ${n === 1 ? 'booking' : 'bookings'} dated before it arrived later`;
 }
 
 /** The record that was asked to be shown the cursor again after a refetch: its key, else a neighbour's. */

@@ -11,9 +11,9 @@ const items = [
 	recordRow({
 		id: 2,
 		balance_on: '2026-10-11',
-		rows_sum: eur(-5000),
 		difference: eur(-350),
-		balance: eur(90000)
+		balance: eur(90000),
+		late_arrivals: 0
 	}),
 	sourceRow({
 		id: 3,
@@ -28,7 +28,7 @@ const items = [
 		origin: 'user',
 		counterparty_name: null
 	}),
-	recordRow({ id: 1, anchor: true, record_kind: 'manual', rows_sum: null, difference: null })
+	recordRow({ id: 1, anchor: true, record_kind: 'manual', difference: eur(100000) })
 ];
 
 function table(props = {}) {
@@ -109,10 +109,22 @@ describe('StatementTable rows', () => {
 		table();
 		const marker = within(row('record:2'));
 		expect(marker.getByText('Reported balance')).toBeInTheDocument();
-		expect(marker.getByText('rows add up to −50.00 · difference −3.50')).toBeInTheDocument();
+		expect(marker.getByText('expected 903.50 · difference −3.50')).toBeInTheDocument();
 		const anchor = within(row('record:1'));
 		expect(anchor.getByText('Manual balance')).toBeInTheDocument();
-		expect(anchor.queryByText(/rows add up/)).not.toBeInTheDocument();
+		expect(anchor.getByText('opening 1,000.00')).toBeInTheDocument();
+	});
+
+	it('says how many bookings a reported record did not count, quietly', () => {
+		table({
+			items: [recordRow({ id: 9, late_arrivals: 1 }), recordRow({ id: 8, late_arrivals: 3 })]
+		});
+		expect(
+			within(row('record:9')).getByText('1 booking dated before it arrived later')
+		).toBeInTheDocument();
+		expect(
+			within(row('record:8')).getByText('3 bookings dated before it arrived later')
+		).toBeInTheDocument();
 	});
 
 	it('calls the difference a valuation on an investment account', () => {

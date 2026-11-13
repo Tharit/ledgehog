@@ -30,8 +30,8 @@ export function recordRow(over: Partial<StatementRecord> = {}): StatementRecord 
 		record_kind: 'reported',
 		balance: eur(100000),
 		anchor: false,
-		rows_sum: eur(-5000),
 		difference: eur(0),
+		late_arrivals: 0,
 		...over
 	};
 }

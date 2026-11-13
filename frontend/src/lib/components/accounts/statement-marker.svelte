@@ -1,7 +1,7 @@
 <script lang="ts">
 	import PencilIcon from '@lucide/svelte/icons/pencil';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
-	import { recordGap, recordKindLabel } from '#lib/accounts/statement.js';
+	import { lateArrivalsLabel, recordGap, recordKindLabel } from '#lib/accounts/statement.js';
 	import DateDisplay from '#lib/components/common/date-display.svelte';
 	import MoneyDisplay from '#lib/components/common/money-display.svelte';
 	import RowActions, { type RowAction } from '#lib/components/common/row-actions.svelte';
@@ -11,8 +11,8 @@
 	import { STATEMENT_ROW, STATEMENT_TEMPLATE } from './statement-columns.js';
 
 	// A balance record, a marker row above the rows of its own date (a record is the state at the
-	// end of its day): its kind, its date and its balance; where the rows since the previous record do
-	// not add up to it, by how much. The anchor shows its balance alone. A record that localises the
+	// end of its day): its kind, its date and its balance; where the ledger does not explain it, "expected X ·
+	// difference Z"; the anchor says the opening it sets; a reported record with late arrivals says how many. A record that localises the
 	// unexplained difference carries a quiet mark. A marker opens no detail: Edit (a manual record)
 	// and Delete… are revealed on hover and focus, as on a settings row (patterns §11.3).
 	let {
@@ -37,6 +37,7 @@
 	} = $props();
 
 	const gap = $derived(recordGap(record, { investment, locale }));
+	const late = $derived(lateArrivalsLabel(record));
 	const name = $derived(`${recordKindLabel(record)} ${formatDate(record.balance_on, locale)}`);
 	const primary = $derived<RowAction[]>([
 		...(record.record_kind === 'manual'
@@ -79,6 +80,10 @@
 		{/if}
 		{#if gap}
 			<span class="min-w-0 truncate font-normal text-muted-foreground" data-slot="gap">{gap}</span>
+		{/if}
+		{#if late}
+			<span class="min-w-0 truncate font-normal text-muted-foreground" data-slot="late">{late}</span
+			>
 		{/if}
 		<span class="ml-auto shrink-0"><RowActions {name} {primary} /></span>
 	</div>
