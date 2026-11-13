@@ -488,10 +488,8 @@ def _everyday(rng: random.Random, channel: str, first: date, last: date, base: i
         out.append(
             Txn(
                 booked_on=first + timedelta(days=rng.randrange(days)),
-                name=m.name if channel == "giro" or channel == "visa" else "",
-                purpose=rng.choice(m.texts)
-                if channel in ("giro", "visa")
-                else f"{m.name.upper()} {rng.choice(m.texts)}",
+                name=m.name if channel in ("giro", "visa") else m.name.upper(),
+                purpose=rng.choice(m.texts),
                 amount=-amount if income else amount,
                 booking_text="Lastschrift" if channel == "giro" and rng.random() < 0.5 else "Kartenzahlung",
                 ref=_iban(_MERCHANTS.index(m) + 1) if channel == "giro" else "",
@@ -723,7 +721,8 @@ def _visa_statement(label: str, rows: list[Txn], *, opening: int, statement_on: 
         "Belegdatum;Eingangstag;Verwendungszweck;Fremdwährung;Betrag;Kurs;Betrag;Währung",
     ]
     for t in rows:
-        purpose = t.purpose if not t.name else f"{t.name} {t.purpose}"
+        # the real export's Verwendungszweck: the merchant, then place and country after commas
+        purpose = t.purpose if not t.name else f"{t.name}, {t.purpose}, DEU, DEU"
         # booked_on is the Belegdatum; the posting day (Eingangstag) follows a day later for charges
         eingang = t.booked_on + timedelta(days=1) if t.amount < 0 else t.booked_on
         if t.foreign:
@@ -753,10 +752,12 @@ def _visa_statement(label: str, rows: list[Txn], *, opening: int, statement_on: 
 
 
 def _inverted_file(label: str, account: str, rows: list[Txn]) -> SeedFile:
-    lines = ["Datum,Beschreibung,Betrag,Kategorie"]
+    lines = ["Datum,Beschreibung,Betrag,Weitere Details,Kategorie"]
     for t in rows:
+        # Beschreibung is the merchant (the counterparty); Weitere Details the free text
         lines.append(
-            f'{t.booked_on.day:02d}/{t.booked_on.month:02d}/{t.booked_on.year},{t.purpose},"{_money(-t.amount)}",n/a'
+            f"{t.booked_on.day:02d}/{t.booked_on.month:02d}/{t.booked_on.year},{t.name or t.purpose},"
+            f'"{_money(-t.amount)}",{t.purpose if t.name else ""},n/a'
         )
     data = "\n".join(lines).encode("utf-8")
     return SeedFile(

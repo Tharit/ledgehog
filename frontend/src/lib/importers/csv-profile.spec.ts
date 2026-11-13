@@ -50,6 +50,24 @@ describe('the CSV profile form', () => {
 		expect(settingsFromDraft(draftFromSettings(GIRO))).toEqual(GIRO);
 	});
 
+	it('reads a counterparty column with a pattern and writes it back unchanged', () => {
+		const settings = {
+			...GIRO,
+			counterparty_name: { column: 'Verwendungszweck', pattern: '^([^,]+),' }
+		};
+		const draft = draftFromSettings(settings);
+
+		expect(draft.counterpartyName).toBe('Verwendungszweck');
+		expect(draft.counterpartyPattern).toBe('^([^,]+),');
+		expect(settingsFromDraft(draft)).toEqual(settings);
+	});
+
+	it('writes a counterparty column without a pattern as the plain column', () => {
+		const draft = { ...emptyDraft(), counterpartyName: '4', counterpartyPattern: '  ' };
+
+		expect(settingsFromDraft(draft).counterparty_name).toBe(4);
+	});
+
 	it('reads a card with a statement payment, two amount columns and a position', () => {
 		const settings = {
 			...GIRO,
@@ -101,5 +119,7 @@ describe('the CSV profile form', () => {
 		expect(fieldOfSetting('filters.matches')).toBe('filters');
 		expect(fieldOfSetting('header_marker')).toBe('header_marker');
 		expect(fieldOfSetting('export_date.pattern')).toBe('export_date');
+		expect(fieldOfSetting('counterparty_name.pattern')).toBe('counterparty_pattern');
+		expect(fieldOfSetting('counterparty_name.column')).toBe('counterparty_name');
 	});
 });

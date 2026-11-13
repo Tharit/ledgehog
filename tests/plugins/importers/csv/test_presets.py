@@ -81,6 +81,10 @@ def test_card_a() -> None:
     assert (ticket.instructed_amount_minor, ticket.instructed_currency) == (-1000, "USD")
     assert pf.rows[0].instructed_amount_minor is None  # Fremdwährung = EUR: ignored
     assert pf.rows[0].value_on == date(2026, 8, 2) and pf.rows[0].booked_on == date(2026, 8, 1)
+    # the merchant is the part of Verwendungszweck before the first comma; the purpose keeps the full text
+    assert pf.rows[0].counterparty_name == "Beispiel Shop"
+    assert pf.rows[0].purpose == "Beispiel Shop, 12345 Musterstadt, DEU, DEU"
+    assert pf.rows[1].counterparty_name is None and pf.rows[1].purpose == "Muster Tickets USD"
     assert pf.covered_through == date(2026, 8, 3)
     assert (pf.reported_balance, pf.balance_on) == (-5110, date(2026, 8, 3))
     synth = pf.rows[-1]
@@ -92,7 +96,8 @@ def test_card_a() -> None:
 def test_card_b() -> None:
     pf = run(card_b_bytes(), profile=load_presets()["amex_card"], today=date(2026, 8, 10))
     assert [r.amount_minor for r in pf.rows] == [-1250, 10000, -123456]
-    assert pf.rows[0].purpose == "BEISPIEL SHOP"
+    assert [r.counterparty_name for r in pf.rows] == ["BEISPIEL SHOP", "ZAHLUNG ERHALTEN", "BEISPIEL ABO"]
+    assert [r.purpose for r in pf.rows] == ["Details", None, "Jahresabo"]
     assert pf.reported_balance is None and pf.balance_on is None
     assert pf.covered_through == date(2026, 8, 7) and pf.data_start == date(2026, 8, 5)
     assert pf.importer_stats["synthetic_skipped"] == 0 and len(pf.rows) == 3

@@ -91,6 +91,34 @@ def test_full_round_trips_and_is_json_serialisable() -> None:
     assert d["counterparty_ref"] == 4
 
 
+def test_counterparty_name_is_a_column_or_a_column_with_a_pattern() -> None:
+    plain = Profile.from_dict(minimal() | {"counterparty_name": "Name"})
+    plain.validate()
+    assert plain.counterparty_pattern is None and plain.to_dict()["counterparty_name"] == "Name"
+    with_pattern = {"column": "Zweck", "pattern": "^([^,]+),"}
+    p = Profile.from_dict(minimal() | {"counterparty_name": with_pattern})
+    p.validate()
+    assert (p.counterparty_name, p.counterparty_pattern) == ("Zweck", "^([^,]+),")
+    assert p.to_dict()["counterparty_name"] == with_pattern
+    assert Profile.from_dict(json.loads(json.dumps(p.to_dict()))) == p
+
+
+@pytest.mark.parametrize(
+    ("value", "setting"),
+    [
+        ({"column": "Z", "pattern": "("}, "counterparty_name.pattern"),
+        ({"column": "Z", "pattern": "^[^,]+,"}, "counterparty_name.pattern"),
+        ({"column": "Z", "pattern": 5}, "counterparty_name.pattern"),
+        ({"column": "Z", "patern": "(a)"}, "counterparty_name.patern"),
+        ({"pattern": "(a)"}, "counterparty_name"),
+        ({"column": "", "pattern": "(a)"}, "counterparty_name.column"),
+    ],
+)
+def test_invalid_counterparty_pattern_names_the_setting(value: dict[str, Any], setting: str) -> None:
+    with pytest.raises(InvalidProfile, match=setting):
+        Profile.from_dict(minimal() | {"counterparty_name": value}).validate()
+
+
 def test_unknown_setting_rejected_by_name() -> None:
     d = minimal() | {"decimal_seperator": ","}
     with pytest.raises(InvalidProfile, match="decimal_seperator"):

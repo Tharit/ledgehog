@@ -91,6 +91,19 @@ def _regex(v: str, setting: str) -> None:
         raise _fail(setting, f"not a valid regular expression ({exc})") from exc
 
 
+def _counterparty_name(v: Any) -> tuple[ColRef | None, str | None]:
+    """A column, or `{"column", "pattern"}`: the name is the pattern's first group in the cell."""
+    if not isinstance(v, Mapping):
+        return _opt_colref(v, "counterparty_name"), None
+    _only(v, {"column", "pattern"}, "counterparty_name")
+    if "column" not in v:
+        raise _fail("counterparty_name", "needs a column")
+    return (
+        _colref(v["column"], "counterparty_name.column"),
+        _opt_str(v.get("pattern"), "counterparty_name.pattern"),
+    )
+
+
 # -- parts ------------------------------------------------------------------------------------
 
 
@@ -350,6 +363,7 @@ class Profile:
     invert_amounts: bool = False
     invert_balance: bool = False
     counterparty_name: ColRef | None = None
+    counterparty_pattern: str | None = None
     counterparty_ref: ColRef | None = None
     counterparty_bic: ColRef | None = None
     end_to_end_id: ColRef | None = None
@@ -372,7 +386,11 @@ class Profile:
         for key in _REQUIRED:
             if key not in d:
                 raise _fail(key, "is required")
-        optional_cols = {k: _opt_colref(d.get(k), k) for k in ("value_on", "currency", *_OPTIONAL_COLUMNS)}
+        optional_cols = {
+            k: _opt_colref(d.get(k), k)
+            for k in ("value_on", "currency", *(c for c in _OPTIONAL_COLUMNS if c != "counterparty_name"))
+        }
+        name_column, name_pattern = _counterparty_name(d.get("counterparty_name"))
 
         def part(key: str, build: Any) -> Any:
             return None if d.get(key) is None else build(d[key])
@@ -399,6 +417,8 @@ class Profile:
             export_date=part("export_date", lambda v: LocatedDate.from_dict(v, "export_date")),
             coverage_end=part("coverage_end", lambda v: LocatedDate.from_dict(v, "coverage_end")),
             statement_payment=part("statement_payment", StatementPaymentSpec.from_dict),
+            counterparty_name=name_column,
+            counterparty_pattern=name_pattern,
             **optional_cols,
         )
 
@@ -416,7 +436,10 @@ class Profile:
             "thousands_sep": self.thousands_sep,
             "invert_amounts": self.invert_amounts,
             "invert_balance": self.invert_balance,
-            **{k: getattr(self, k) for k in _OPTIONAL_COLUMNS},
+            **{k: getattr(self, k) for k in _OPTIONAL_COLUMNS if k != "counterparty_name"},
+            "counterparty_name": self.counterparty_name
+            if self.counterparty_pattern is None
+            else {"column": self.counterparty_name, "pattern": self.counterparty_pattern},
             "purpose": list(self.purpose),
             "instructed": None if self.instructed is None else self.instructed.to_dict(),
             "currency": self.currency,
@@ -451,6 +474,11 @@ class Profile:
             raise _fail("thousands_sep", "must be one character or empty")
         if self.thousands_sep == self.decimal_sep:
             raise _fail("thousands_sep", "must differ from decimal_sep")
+        if self.counterparty_pattern is not None:
+            setting = "counterparty_name.pattern"
+            _regex(self.counterparty_pattern, setting)
+            if re.compile(self.counterparty_pattern).groups < 1:
+                raise _fail(setting, "needs a capture group: its first group is the name")
         for f in self.filters:
             f.validate()
         if self.balance is not None:

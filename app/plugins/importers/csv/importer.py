@@ -8,6 +8,7 @@ fails the run, and the report records the mismatch so the dry run shows it (csv.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Mapping, Sequence
 from datetime import date
 from typing import Any
@@ -177,6 +178,7 @@ def _read_rows(
             "booking_text",
         )
     }
+    name_pattern = None if prof.counterparty_pattern is None else re.compile(prof.counterparty_pattern)
     purpose_is = [col(p, "purpose") for p in prof.purpose]
     cur_i = col(prof.currency, "currency")
     instr_amount_i = instr_cur_i = None
@@ -257,6 +259,9 @@ def _read_rows(
                     instr_amount = -instr_amount
         purpose = _collapse(" ".join(cell(cells, i) for i in purpose_is)) or None
         extras = {k: (_collapse(cell(cells, i)) or None) for k, i in optional.items()}
+        if name_pattern is not None and extras["counterparty_name"] is not None:
+            hit_name = name_pattern.search(extras["counterparty_name"])
+            extras["counterparty_name"] = (hit_name.group(1) or "").strip() or None if hit_name else None
         row = IncomingRow(
             amount_minor=amount,
             currency=row_currency,

@@ -28,6 +28,26 @@ def test_basic_row_mapping() -> None:
     assert pf.report.emitted == 1 and pf.report.rows_read == 1
 
 
+def test_counterparty_name_pattern_captures_part_of_the_cell() -> None:
+    text = (
+        HEADER
+        + "03.08.2026;-1,00;EA Studio, 85354 Freising, DEU, DEU\n"
+        + "04.08.2026;-2,00;AUSLANDSEINSATZENTGELT\n"
+        + "05.08.2026;-3,00;  , leer\n"
+    )
+    pf = run(
+        text,
+        counterparty_name={"column": "Zweck", "pattern": "^([^,]+),"},
+        purpose=["Zweck"],
+    )
+    assert [r.counterparty_name for r in pf.rows] == ["EA Studio", None, None]
+    assert [r.purpose for r in pf.rows] == [
+        "EA Studio, 85354 Freising, DEU, DEU",
+        "AUSLANDSEINSATZENTGELT",
+        ", leer",
+    ]
+
+
 def test_all_optional_columns() -> None:
     text = "Datum;Betrag;N;I;B;E;M;T\n03.08.2026;1,00;Name;DE00 0000 0000;BICXXXX;E2E-1;MAN-1;Lastschrift\n"
     pf = run(

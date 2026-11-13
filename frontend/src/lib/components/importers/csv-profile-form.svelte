@@ -148,6 +148,12 @@
 				bind:value={draft.counterpartyName}
 			/>
 			<ProfileField
+				label="Counterparty name pattern"
+				hint="Optional. A regular expression, searched in that column’s cell; its first group is the name. A cell it does not match gives no name."
+				error={err('counterparty_pattern')}
+				bind:value={draft.counterpartyPattern}
+			/>
+			<ProfileField
 				label="Counterparty account column"
 				hint="Optional. The IBAN or account number."
 				error={err('counterparty_ref')}

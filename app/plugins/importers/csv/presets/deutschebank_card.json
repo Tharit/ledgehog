@@ -11,7 +11,7 @@
   "thousands_sep": ".",
   "invert_amounts": false,
   "invert_balance": false,
-  "counterparty_name": null,
+  "counterparty_name": {"column": "Verwendungszweck", "pattern": "^([^,]+),"},
   "counterparty_ref": null,
   "counterparty_bic": null,
   "end_to_end_id": null,

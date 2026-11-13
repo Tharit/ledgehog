@@ -33,6 +33,8 @@ export type CsvDraft = {
 	decimalSep: string;
 	thousandsSep: string;
 	counterpartyName: string;
+	/** optional: a regular expression whose first group, searched in that column's cell, is the name */
+	counterpartyPattern: string;
 	counterpartyRef: string;
 	counterpartyBic: string;
 	endToEndId: string;
@@ -87,6 +89,7 @@ export function emptyDraft(): CsvDraft {
 		decimalSep: ',',
 		thousandsSep: '.',
 		counterpartyName: '',
+		counterpartyPattern: '',
 		counterpartyRef: '',
 		counterpartyBic: '',
 		endToEndId: '',
@@ -146,6 +149,7 @@ export function draftFromSettings(settings: Json): CsvDraft {
 	const instructed = obj(settings.instructed);
 	const balance = obj(settings.balance);
 	const payment = obj(settings.statement_payment);
+	const name = obj(settings.counterparty_name);
 	const split = amount !== null && (amount.credit != null || amount.debit != null);
 	return {
 		...draft,
@@ -162,7 +166,8 @@ export function draftFromSettings(settings: Json): CsvDraft {
 		debit: text(amount?.debit),
 		decimalSep: text(settings.decimal_sep, draft.decimalSep),
 		thousandsSep: text(settings.thousands_sep, draft.thousandsSep),
-		counterpartyName: text(settings.counterparty_name),
+		counterpartyName: text(name ? name.column : settings.counterparty_name),
+		counterpartyPattern: text(name?.pattern),
 		counterpartyRef: text(settings.counterparty_ref),
 		counterpartyBic: text(settings.counterparty_bic),
 		endToEndId: text(settings.end_to_end_id),
@@ -239,6 +244,14 @@ function locatedOut(d: LocatedDraft) {
 		: null;
 }
 
+/** A plain column, or a column with a pattern once one is typed. */
+function counterpartyOut(d: CsvDraft) {
+	const pattern = orNull(d.counterpartyPattern);
+	return pattern === null
+		? column(d.counterpartyName)
+		: { column: column(d.counterpartyName), pattern };
+}
+
 /** The settings the server takes, from the form. Nothing is judged here: the server names what is wrong. */
 export function settingsFromDraft(d: CsvDraft): Json {
 	const signed = d.amountMode === 'signed';
@@ -258,7 +271,7 @@ export function settingsFromDraft(d: CsvDraft): Json {
 		thousands_sep: d.thousandsSep,
 		invert_amounts: d.invertAmounts,
 		invert_balance: d.invertBalance,
-		counterparty_name: column(d.counterpartyName),
+		counterparty_name: counterpartyOut(d),
 		counterparty_ref: column(d.counterpartyRef),
 		counterparty_bic: column(d.counterpartyBic),
 		end_to_end_id: column(d.endToEndId),
@@ -333,6 +346,8 @@ const SETTING_FIELDS: Record<string, string> = {
 	'amount.debit': 'amount',
 	'instructed.amount': 'instructed',
 	'instructed.currency': 'instructed',
+	'counterparty_name.column': 'counterparty_name',
+	'counterparty_name.pattern': 'counterparty_pattern',
 	'filters.column': 'filters',
 	'filters.equals': 'filters',
 	'filters.matches': 'filters',
@@ -370,6 +385,7 @@ export const CSV_FIELDS: readonly string[] = [
 	'decimal_sep',
 	'thousands_sep',
 	'counterparty_name',
+	'counterparty_pattern',
 	'counterparty_ref',
 	'counterparty_bic',
 	'end_to_end_id',

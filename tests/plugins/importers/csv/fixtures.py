@@ -49,7 +49,7 @@ def card_a_bytes() -> bytes:
         "Abrechnungsdatum: 3.8.2026",
         "",
         "Belegdatum;Eingangstag;Verwendungszweck;Fremdwährung;Betrag;Kurs;Betrag;Währung",
-        "1.8.2026;2.8.2026;Beispiel Shop;EUR;-12,00;;-12,00;EUR",
+        "1.8.2026;2.8.2026;Beispiel Shop, 12345 Musterstadt, DEU, DEU;EUR;-12,00;;-12,00;EUR",
         "2.8.2026;3.8.2026;Muster Tickets USD;USD;-10,00;1,10;-9,09;EUR",
         "30.7.2026;31.7.2026;Beispiel Cafe;EUR;-30,01;;-30,01;EUR",
         "Saldo:;;;;;;-51,10;EUR",

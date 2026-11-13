@@ -63,7 +63,8 @@ skipped", not as an empty import.
 | `booked_on` | a date column; the format is a profile setting, written with the tokens `dd`, `d`, `MM`, `M`, `yyyy` (`dd.MM.yyyy`, `d.M.yyyy`, `dd/MM/yyyy`; unpadded days and months parse under either; years have four digits) |
 | `value_on` | a date column, optional |
 | `amount` | one signed column, or a credit and a debit column; decimal and thousands separators are settings |
-| `counterparty_name`, `counterparty_ref`, `bic`, `end_to_end_id`, `mandate_ref`, `booking_text` | one column each, all optional |
+| `counterparty_name` | a column, optional; or the part of a column a pattern captures: a Python regular expression, searched in the cell, whose first group is the name (`^([^,]+),`). A cell the pattern does not match gives no name. The same column may also feed `purpose`. |
+| `counterparty_ref`, `bic`, `end_to_end_id`, `mandate_ref`, `booking_text` | one column each, all optional |
 | `purpose` | a list of columns, joined with a space; empty cells dropped |
 | instructed amount and currency | two columns, optional; ignored on a row whose currency equals the account's; the *invert amounts* setting applies to the instructed amount too |
 | currency | a column, optional; where there is one it must equal the account's currency |
@@ -221,8 +222,9 @@ read (`consorsbank_giro`).
 MT940 and camt statements, which have their own parsers and checks
 (`spec.md` §5.1). Files holding several tables or accounts, and a
 spreadsheet's sheets after the first.
-Extracting a counterparty from free text: the text stays in `purpose`, and
-rules and history read it (`spec.md` §5.9).
+Extracting a counterparty from free text beyond a pattern (§3): no heuristics,
+no model. A name with no fixed place in its cell stays in `purpose`, where
+rules read it; history needs a counterparty to key on (`spec.md` §5.9).
 
 A model-assisted *suggest a profile from a sample* is a separate, later
 function: it proposes the semantic settings a heuristic cannot — which column
@@ -239,9 +241,9 @@ It is never part of an import.
 | `value_on` | `Valuta` | `Eingangstag` | — | `Fecha valor` | `Valuta` |
 | date format | `dd.MM.yyyy` | `d.M.yyyy` | `dd/MM/yyyy` | `dd.MM.yyyy` (text cells only; the sheet's dates are typed) | `dd.MM.yyyy` |
 | amount | `Betrag`, `.` thousands, `,` decimal | `Betrag#2` | `Betrag`, inverted | `Importe`, `.` thousands, `,` decimal | `Betrag`, `.` thousands, `,` decimal |
-| purpose | `Verwendungszweck` | `Verwendungszweck` | `Beschreibung` | `Movimiento`, `Más datos` | `Verwendungszweck` |
+| purpose | `Verwendungszweck` | `Verwendungszweck` | `Weitere Details` | `Movimiento`, `Más datos` | `Verwendungszweck` |
 | booking text | `Buchungstext` | — | — | `Movimiento` | `Transaktions-Beschreibung` |
-| counterparty | `Sender / Empfänger`, `IBAN` | — | — | — | column 4, `IBAN` |
+| counterparty | `Sender / Empfänger`, `IBAN` | `Verwendungszweck`, pattern `^([^,]+),` | `Beschreibung` | — | column 4, `IBAN` |
 | instructed | — | `Fremdwährung`, `Betrag#1` | — | — | — |
 | currency | a currency column | a currency column | — (the account's) | — (the account's) | column 9 |
 | filter | skip `Valuta = vorgemerkt` | — | — | — | — |
