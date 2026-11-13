@@ -32,7 +32,7 @@ The stack is two containers, the app and an nginx relay that is the app's only w
 On the Docker host, from a checkout of this repository:
 
 ```sh
-docker build -t ledgehog:0.4.0 .
+docker build -t ledgehog:0.5.0 .
 ```
 
 The Dockerfile names its three base images by tag (`node:22-slim`, `python:3.12-slim` twice) with a
