@@ -8,7 +8,7 @@
 
 services:
   app:
-    image: ledgehog:0.5.0            # replace: the tag you built; pin by digest if pushed to a registry
+    image: ledgehog:0.5.1            # replace: the tag you built; pin by digest if pushed to a registry
     restart: unless-stopped
     depends_on: [relay]
     networks: [internal]             # its only peer is the relay; publishes no port
