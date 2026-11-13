@@ -181,9 +181,8 @@ shape later work:
 - **Does the bank's closing balance line up with its booking dates?** Check
   whether weekend or late bookings are dated after the balance they are
   included in, and how often the bank books into a day it has already closed
-  — each such booking leaves a pair of reconciliations that cancels in the
-  account's unexplained difference (`spec.md` §5.10) but still shows on the
-  reconciliation line — so the FinTS importer can report the closing balance
+  — each such booking is a late arrival for the balance it is dated
+  before (`spec.md` §3.10) — so the FinTS importer can report the closing balance
   of the last closed day (`spec.md` §5.1). Check too that python-fints exposes the statement-level
   balances (MT940 `60F`/`62F`, camt `CLBD`), not only the transaction lines.
   *Answered in part (2026-10-20): python-fints exposes only the transaction

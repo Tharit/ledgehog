@@ -921,9 +921,10 @@ formula.
   telescope: the derived entries and the movements Rₙ counts add up to Bₙ
   (`spec.md` §3.10), so Bₙ plus the movements dated after Dₙ and the late
   arrivals for Rₙ is the account's balance, the sum of its entries (I6). A test asserts this for every account.
-- **Edge cases.** Records sharing a date stand after that day's movements, by id,
-  and a later one's interval holds no movement: its `difference` is the change
-  in balance between the two. A record of a reverted run does not count
+- **Edge cases.** Records sharing a date stand after that day's movements, by id;
+  between them Cᵢ − Cᵢ₋₁ holds only late arrivals one counts and the other
+  does not, so the later one's `difference` is normally the change in balance
+  between the two. A record of a reverted run does not count
   (`spec.md` §3.10) and is not an item, and the rows that run wrote are gone.
   An investment account follows the same formula: the difference is what the
   entry layer calls a valuation (`spec.md` §3.3), and an account kept by records
@@ -2405,8 +2406,11 @@ Layers:
   reconciliations by account type (a later count, a forgotten receipt
   shrinking the difference, a zero result deleting the entry); a reported
   record reconciling, the unexplained difference summing from the first
-  reported record on — a back-dated booking's pair and a wrong manual record
-  between reported ones cancelling in it, a missing row persisting until
+  reported record on — a wrong manual record
+  between reported ones cancelling in it, a back-dated booking and a card
+  purchase posted after its statement counting as late arrivals with no
+  reconciliation — at the anchor too, in any upload order —, a gap file
+  spanning a record leaving a cancelling pair, a missing row persisting until
   fixed —, a deleted record merging its interval into the next one; data age
   from coverage on synced accounts and from records on unsynced and closed
   ones; closed-day

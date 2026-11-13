@@ -2621,8 +2621,8 @@ The consequences of deriving the opening from the anchor:
 
 A reported record is the cheapest guard in the system, and the only one that
 catches *false sameness* — a genuine transaction wrongly marked as a
-duplicate (§5.3). Its scope is the account, not the run: every ledger entry on
-the account in the record's interval is summed, not only the rows a run wrote.
+duplicate (§5.3). Its scope is the account, not the run: every movement on
+the account that the record counts is summed (§3.10), not only the rows its run wrote.
 
 **Reconciliations are summed from the first reported record on.** The sum
 runs over the reconciliations of every record from the account's first
