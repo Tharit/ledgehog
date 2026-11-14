@@ -4081,3 +4081,9 @@ spec §3.10, §5.1, §5.2; architecture balance tests; schema.sql.
 - **An earlier delivery is recorded.** D255 could not see a delivery skipped by identity, so a run delivering rows the account already held took them all for late, with a wrong opening where its record was the anchor. A skip is now recorded where the run's coverage ends before the coverage of the run that inserted the row. Accepted: skips before this release left no trace; running the import again records them. Rejected: *a date on the row, lowered at a skip* (an imported row is immutable, I2); *recording every skip* (each overlapping fetch would write one per row); *inserting the skipped row as a duplicate* (one identity per account).
 - **The derivation version is raised**, so derived entries are recomputed once at start.
 - Corrects §5.1 and the schema, which still said nothing in the domain reads where a run's data starts.
+
+## D257 A late arrival is marked on its row
+
+ux/views/account.md; architecture §4.1.
+
+- **A clock icon after the origin tag** (user, 2026-11-14). The marker's count said that bookings arrived later but not which; a refund dated months before the record it missed could not be found from it. The statement already runs the derivation, so the row can say it without storing anything. The tooltip names the latest record the row is late for; the earlier ones show it in their count. Rejected: *a list on the marker* (far from the row it names); *stored flags, to show it in the ledger list* (the note only means something next to the balance markers).

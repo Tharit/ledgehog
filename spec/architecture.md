@@ -894,7 +894,7 @@ over the whole account.
   `duplicate_of` (the row it duplicates — its id, `booked_on` and amount, so
   the row can name it — else null),
   `entry_id` (the lowest id among its entries, which opens its unit in the
-  review panel; null for a duplicate), and `run_id` (null for a row not imported). It never carries `raw`: provenance is
+  review panel; null for a duplicate), `run_id` (null for a row not imported), and `late_for` (the `balance_on` of the latest reported record the row is a late arrival for, `spec.md` §3.10; null where there is none, and for a duplicate). It never carries `raw`: provenance is
   `GET /api/ledger/sources/{id}`.
 - `record` — the record's id, `balance_on`, `record_kind` (`reported` where the
   record has a run, else `manual`), `balance`, `anchor` (true for the account's

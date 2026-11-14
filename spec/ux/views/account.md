@@ -110,7 +110,7 @@ The Transactions tab: the account's rows, newest first, paged like the ledger li
 density (`ux/patterns.md` §4.1, `design.md`). Two kinds of row:
 
 - **A source transaction**: booked date, counterparty, purpose and amount,
-  with its origin tag; its Balance cell is empty (`ux/patterns.md` §4.1). The
+  with its origin tag; its Balance cell is empty (`ux/patterns.md` §4.1). A row that is a late arrival for a reported record (`spec.md` §3.10) carries a small clock icon after its origin tag (`clock-arrow-left`). Its tooltip, which is also its accessible name, names the latest such record: "Arrived after the *date* balance". The
   counterparty and purpose cells show what the row holds — a booking's as it
   wrote them (`spec.md` §5.8) — and stay empty where a row has none, as a row
   entered by hand has no counterparty. A **duplicate** is dimmed — it counts
@@ -123,8 +123,8 @@ density (`ux/patterns.md` §4.1, `design.md`). Two kinds of row:
   record's balance plus the movements this record counts that the previous one
   did not (`spec.md` §3.10), and on an investment account "· valuation *Z*". A
   reported record with late arrivals (`spec.md` §3.10) says how many, in quiet
-  text: "*n* bookings dated before it arrived later" ("1 booking … arrived
-  later").
+  text: "*n* bookings dated earlier arrived after this balance" ("1 booking
+  dated earlier arrived after this balance").
   That difference is what the record's derived entry is in the ledger — a
   reconciliation, or a valuation on an investment account (`spec.md` §3.10) —
   so the statement shows where the ledger had to explain something without
