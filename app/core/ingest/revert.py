@@ -34,6 +34,7 @@ from app.core.ingest.removal import (
     entry_versions,
     remove_entries,
 )
+from app.core.resolution.confirmed import units_binds, units_sql
 from app.core.settle.settle import SettleResult, settle
 from app.utils import clock
 from app.utils.db.locks import WriteConflict, lock_accounts, lock_rows, lock_settle_shared, retry_on_deadlock
@@ -70,9 +71,9 @@ class NotLatestRun(RevertError):
 class RevertResult:
     run_id: int
     removed_entry_ids: tuple[int, ...] = ()
-    removed_confirmed: int = 0  # how many of `removed_entry_ids` carry no `unconfirmed` flag (spec §6)
+    removed_confirmed: int = 0  # how many of `removed_entry_ids` are in a confirmed unit (spec §6, I22)
     partner_entry_ids: tuple[int, ...] = ()  # unpaired and returned to review
-    partner_confirmed: int = 0  # how many of `partner_entry_ids` carry no `unconfirmed` flag
+    partner_confirmed: int = 0  # how many of `partner_entry_ids` are in a confirmed unit
     repointed_source_ids: tuple[tuple[int, int], ...] = ()  # (row id, its new original)
     cleared_duplicate_ids: tuple[int, ...] = ()  # rows that stopped being duplicates, now with an entry
     derived_changes: tuple[DerivedChange, ...] = ()
@@ -150,18 +151,19 @@ def _run_ids(conn: Connection, run_id: int) -> tuple[list[int], list[int]]:
 
 
 def _confirmed_count(conn: Connection, entry_ids: Sequence[int]) -> int:
-    """How many of the entries are confirmed: no `unconfirmed` review flag (spec §6), as stored now."""
+    """How many of the entries are confirmed, as stored now: their unit meets every requirement of
+    confirming (a type, a category for a flow, a pair for a transfer, only standing keys; spec §6, I22).
+
+    The judgement is the unit CTE of `core/resolution/confirmed.py`, not the `unconfirmed` flag, which
+    only says a unit carries non-standing keys. An id the query does not return counts as not confirmed.
+    """
     if not entry_ids:
         return 0
-    return int(
-        conn.execute(
-            text(
-                "SELECT count(*) FROM ledger_entry"
-                " WHERE id = ANY(:ids) AND NOT 'unconfirmed' = ANY(review_flags)"
-            ),
-            {"ids": list(entry_ids)},
-        ).scalar_one()
+    rows = conn.execute(
+        text(f"SELECT u.id FROM ({units_sql(of_entries=True)}) AS u WHERE u.id = ANY(:ids) AND u.unit_ok"),
+        {**units_binds(conn), "ids": list(entry_ids)},
     )
+    return len({int(i) for i in rows.scalars()})
 
 
 def _accounts_of_entries(conn: Connection, entry_ids: list[int]) -> set[int]:

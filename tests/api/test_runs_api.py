@@ -176,11 +176,17 @@ def test_the_dry_run_counts_the_confirmed_entries_among_those_removed_and_unpair
                 {"a": ga},
             ).scalars()
         )
-        # one confirmed (no flag), the others in review
+        # one confirmed (a flow with a category, standing keys only), the others in review
         conn.execute(
-            text("UPDATE ledger_entry SET review_flags = '{unconfirmed}' WHERE id = ANY(:i)"), {"i": ids}
+            text("UPDATE ledger_entry SET type = 'flow', derivation = '{}' WHERE id = ANY(:i)"),
+            {"i": ids},
         )
-        conn.execute(text("UPDATE ledger_entry SET review_flags = '{}' WHERE id = :i"), {"i": ids[0]})
+        category = conn.execute(
+            text("INSERT INTO category (name, kind) VALUES ('Groceries', 'expense') RETURNING id")
+        ).scalar_one()
+        conn.execute(
+            text("UPDATE ledger_entry SET category_id = :c WHERE id = :i"), {"c": category, "i": ids[0]}
+        )
     body = api.client.post(f"{RUNS}/{run_id}/revert", json={"dry_run": True}).json()
     assert len(body["removed_entry_ids"]) == len(ids) == 3
     assert body["removed_confirmed"] == 1

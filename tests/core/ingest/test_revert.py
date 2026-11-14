@@ -25,7 +25,7 @@ from app.core.settle.settle import SettleResult
 from app.utils.db.locks import WriteConflict, lock_accounts, lock_settle_exclusive
 from tests import lockwatch
 from tests.core.ingest.revert_helpers import BASE, Run, World, add_duplicate, day, transfer_to_savings
-from tests.invariants.helpers import make_balance_record, make_movement
+from tests.invariants.helpers import make_balance_record, make_category, make_movement
 
 
 @pytest.fixture
@@ -259,6 +259,44 @@ def test_a_partner_on_another_account_is_unpaired_and_its_account_recomputed(wor
     assert world.derived(world.savings) == [("opening", day(9), 500)]
     assert [c.account_id for c in result.derived_changes] == [world.savings]
     world.assert_checks_clean()
+
+
+# ---- the preview's confirmed counts: a unit meeting every requirement of confirming, not the flag ----
+
+
+def test_unpaired_transfer_legs_are_not_counted_as_confirmed(world: World) -> None:
+    run = world.run([(-500, day(10)), (-70, day(11))])
+    world.tx(
+        lambda c: c.execute(
+            text("UPDATE ledger_entry SET type = 'transfer' WHERE id = ANY(:i)"), {"i": run.entries}
+        )
+    )
+    result = revert_run(world.engine, run.id, user_id=None, dry_run=True)
+    assert len(result.removed_entry_ids) == 2
+    assert result.removed_confirmed == 0
+
+
+def test_a_categorised_flow_counts_and_a_flow_without_category_does_not(world: World) -> None:
+    run = world.run([(-500, day(10)), (-70, day(11))])
+
+    def categorise(c: Any) -> None:
+        cat = make_category(c, "Groceries")
+        c.execute(
+            text("UPDATE ledger_entry SET category_id = :c WHERE id = :e"), {"c": cat, "e": run.entries[0]}
+        )
+
+    world.tx(categorise)
+    result = revert_run(world.engine, run.id, user_id=None, dry_run=True)
+    assert result.removed_confirmed == 1  # the second entry is flagged `unclassified` only
+
+
+def test_a_confirmed_partner_of_another_run_counts_in_partner_confirmed(world: World) -> None:
+    run = world.run([(-500, day(10))])
+    b = transfer_to_savings(world, run.sources[0], run.entries[0])
+    result = revert_run(world.engine, run.id, user_id=None, dry_run=True)
+    assert result.partner_entry_ids == (b,)
+    assert result.partner_confirmed == 1
+    assert result.removed_confirmed == 1  # its own leg is paired, standing keys only
 
 
 # ---- rows of other runs that duplicate a deleted row ---------------------------------------
