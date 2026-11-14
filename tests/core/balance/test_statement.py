@@ -223,7 +223,6 @@ def test_record_gaps_is_the_formula_of_the_derived_entries() -> None:
             Movement(date(2026, 2, 3), -100),
             Movement(date(2026, 2, 3), -50),
         ),
-        {},
     )
     assert [(g.anchor, g.amount, g.late_arrivals) for g in record_gaps(data)] == [
         (True, 1020, 0),

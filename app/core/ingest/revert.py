@@ -12,7 +12,7 @@ Order inside the transaction:
 1. rows of OTHER runs that duplicate a row of this run get a new original: the lowest id is
    cleared and given its entry, the rest are repointed to it;
 2. the run's entries are removed through the removal routine;
-3. the run's source rows are deleted in one statement;
+3. the run's source rows are deleted in one statement, after the deliveries it skipped;
 4. the derived entries of every affected account are recomputed.
 """
 
@@ -286,7 +286,10 @@ def _revert_once(
         )
         # 1. rows of other runs that duplicate a row of this run get a new original
         cleared, repointed = _reassign_duplicates(conn, run_id, row_ids)
-        # 2. entries (the removal routine), 3. rows, 4. derived entries
+        # 2. entries (the removal routine), 3. rows (and the deliveries the run skipped), 4. derived entries
+        conn.execute(
+            text("DELETE FROM source_transaction_earlier_delivery WHERE import_run_id = :r"), {"r": run_id}
+        )
         affected = remove_entries(conn, removed, scope=scope)
         if row_ids:
             conn.execute(text("DELETE FROM source_transaction WHERE id = ANY(:ids)"), {"ids": row_ids})

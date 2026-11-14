@@ -18,8 +18,7 @@ is updated in place, and a second call writes nothing.
 
 from __future__ import annotations
 
-from bisect import bisect_left, bisect_right
-from collections.abc import Mapping
+from bisect import bisect_left
 from dataclasses import dataclass
 from datetime import date, timedelta
 from itertools import accumulate
@@ -36,7 +35,7 @@ class Desired:
     amount: int
 
 
-DERIVATION_VERSION = 1
+DERIVATION_VERSION = 2
 """Raised by a release that changes the formula above; the start sequence recomputes every account's
 derived entries when the stored `ledger_setting.derivation_version` differs (architecture §5.7)."""
 
@@ -52,24 +51,26 @@ def recompute_derived(conn: Connection, account_id: int) -> None:
 class Movement:
     """A non-duplicate source transaction, as the derivation sees it.
 
-    `runs` are the runs that delivered it: its own run and the runs of the rows that duplicate it (empty
-    for a row no run delivered: user-authored, a booking).
+    `arrived` is the earliest coverage end among the runs that delivered it, as the row, as a duplicate
+    of it or as an earlier delivery ingest skipped (None for a row no run delivered: user-authored,
+    a booking).
+    `missed` says that some run covers its date and ends before it arrived (spec §3.10).
     """
 
     booked_on: date
     amount: int
-    runs: frozenset[int] = frozenset()
+    arrived: date | None = None
+    missed: bool = False
 
 
 @dataclass(frozen=True)
 class CountingRecord:
-    """A counting balance record with the coverage of its run (None for a manual record)."""
+    """A counting balance record with its run and the coverage end of that run (None for a manual record)."""
 
     id: int
     balance_on: date
     balance: int
     run_id: int | None = None
-    covered_from: date | None = None
     covered_through: date | None = None
 
 
@@ -79,7 +80,6 @@ class DerivationInput:
 
     records: tuple[CountingRecord, ...]  # in order (balance_on, id)
     movements: tuple[Movement, ...]
-    runs_through: Mapping[int, date | None]  # covered_through of every run that delivered a movement
 
 
 @dataclass(frozen=True)
@@ -99,47 +99,65 @@ class RecordGap:
     late_arrivals: int
 
 
+_MOVEMENTS_SQL = """
+WITH deliveries AS (
+    SELECT COALESCE(s.duplicate_of, s.id) AS movement_id, s.import_run_id AS run_id
+    FROM source_transaction s
+    WHERE s.account_id = :a AND s.import_run_id IS NOT NULL
+  UNION ALL
+    SELECT COALESCE(s.duplicate_of, s.id), k.import_run_id
+    FROM source_transaction_earlier_delivery k JOIN source_transaction s ON s.id = k.source_transaction_id
+    WHERE s.account_id = :a
+)
+SELECT m.booked_on, m.amount, min(r.covered_through) AS arrived
+FROM source_transaction m
+LEFT JOIN deliveries d ON d.movement_id = m.id
+LEFT JOIN import_run r ON r.id = d.run_id
+WHERE m.account_id = :a AND m.duplicate_of IS NULL
+GROUP BY m.id, m.booked_on, m.amount
+"""
+
+
 def load_derivation_input(conn: Connection, account_id: int) -> DerivationInput:
-    """The account's counting records and non-duplicate source transactions, with the runs that delivered
-    each. By I3 the entries of a non-duplicate source sum to its amount on its dates, so summing sources
-    is summing movements."""
+    """The account's counting records and non-duplicate source transactions, each with when it arrived and
+    whether a run missed it. By I3 the entries of a non-duplicate source sum to its amount on its dates,
+    so summing sources is summing movements."""
     records = tuple(
-        CountingRecord(r.id, r.balance_on, int(r.balance), r.import_run_id, r.covered_from, r.covered_through)
+        CountingRecord(r.id, r.balance_on, int(r.balance), r.import_run_id, r.covered_through)
         for r in conn.execute(
             text(
-                "SELECT b.id, b.balance_on, b.balance, b.import_run_id, r.covered_from, r.covered_through"
+                "SELECT b.id, b.balance_on, b.balance, b.import_run_id, r.covered_through"
                 " FROM v_balance_record b LEFT JOIN import_run r ON r.id = b.import_run_id"
                 " WHERE b.account_id = :a ORDER BY b.balance_on, b.id"
             ),
             {"a": account_id},
         )
     )
-    movements = tuple(
-        Movement(
-            r.booked_on,
-            int(r.amount),
-            frozenset(([r.import_run_id] if r.import_run_id is not None else []) + list(r.dup_runs)),
-        )
+    runs = sorted(
+        (r.covered_through, r.covered_from)
         for r in conn.execute(
             text(
-                "SELECT s.booked_on, s.amount, s.import_run_id,"
-                " COALESCE((SELECT array_agg(d.import_run_id) FROM source_transaction d"
-                "           WHERE d.duplicate_of = s.id AND d.import_run_id IS NOT NULL),"
-                "          ARRAY[]::bigint[]) AS dup_runs"
-                " FROM source_transaction s WHERE s.account_id = :a AND s.duplicate_of IS NULL"
+                "SELECT covered_from, covered_through FROM import_run"
+                " WHERE account_id = :a AND emits = 'transactions' AND status = 'ok'"
+                " AND covered_from IS NOT NULL AND covered_through IS NOT NULL"
             ),
             {"a": account_id},
         )
     )
-    delivering = {run for m in movements for run in m.runs}
-    through = {
-        r.id: r.covered_through
-        for r in conn.execute(
-            text("SELECT id, covered_through FROM import_run WHERE id = ANY(:ids)"),
-            {"ids": sorted(delivering)},
+    ends = [through for through, _ in runs]
+
+    def missed(booked_on: date, arrived: date) -> bool:
+        # a run covering the date that ended before the movement arrived; the first one found decides
+        stop = bisect_left(ends, arrived)
+        return any(runs[i][1] <= booked_on for i in range(bisect_left(ends, booked_on), stop))
+
+    movements = tuple(
+        Movement(
+            r.booked_on, int(r.amount), r.arrived, r.arrived is not None and missed(r.booked_on, r.arrived)
         )
-    }
-    return DerivationInput(records, movements, through)
+        for r in conn.execute(text(_MOVEMENTS_SQL), {"a": account_id})
+    )
+    return DerivationInput(records, movements)
 
 
 def record_gaps(data: DerivationInput) -> list[RecordGap]:
@@ -147,34 +165,31 @@ def record_gaps(data: DerivationInput) -> list[RecordGap]:
 
     The derived entry of record i is `(B_i - B_(i-1)) - (C_i - C_(i-1))`, `C_i` the sum of the movements
     dated up to D_i that the record counts; B_0 = C_0 = 0, so the anchor's is the opening `B_1 - C_1`.
-    A reported record whose run states a coverage does not count the late arrivals: movements dated within
-    that coverage that its run did not deliver and that every delivering run delivered after the record,
-    i.e. whose runs all cover a date after the record's. A manual record, a record without coverage and a
-    movement no run delivered always count.
+    A reported record whose run states a coverage does not count the late arrivals: movements dated up to
+    its date that were missed and arrived after that coverage ended. A manual record, a record without
+    coverage and a movement no run delivered always count.
+
+    Records are walked in order with the missed movements dated so far; one whose arrival is on or before
+    a record's date is late for no later record either (a record's coverage reaches its date), so it
+    leaves the list for good.
     """
     moves = sorted(data.movements, key=lambda m: m.booked_on)
-    days = [m.booked_on for m in moves]
     cumulative = [0, *accumulate(m.amount for m in moves)]
-
-    def late(rec: CountingRecord, m: Movement) -> bool:
-        if not m.runs or rec.run_id in m.runs:
-            return False
-        for run in m.runs:
-            through = data.runs_through.get(run)
-            if through is None or through <= rec.balance_on:
-                return False
-        return True
-
+    entered = 0
+    open_missed: list[Movement] = []  # dated up to the record, missed, not yet arrived by its date
     gaps: list[RecordGap] = []
     prev_balance, prev_counted = 0, 0
     for rec in data.records:
-        hi = bisect_right(days, rec.balance_on)
-        counted = cumulative[hi]
+        while entered < len(moves) and moves[entered].booked_on <= rec.balance_on:
+            if moves[entered].missed:
+                open_missed.append(moves[entered])
+            entered += 1
+        open_missed = [m for m in open_missed if m.arrived is not None and m.arrived > rec.balance_on]
+        counted = cumulative[entered]
         n_late = 0
-        if rec.run_id is not None and rec.covered_from is not None and rec.covered_through is not None:
-            end = bisect_right(days, min(rec.balance_on, rec.covered_through))
-            for m in moves[bisect_left(days, rec.covered_from) : end]:
-                if late(rec, m):
+        if rec.covered_through is not None:
+            for m in open_missed:
+                if m.arrived is not None and m.arrived > rec.covered_through:
                     counted -= m.amount
                     n_late += 1
         gaps.append(

@@ -342,7 +342,7 @@ def _write_delivery(
             assert isinstance(ident, ContentHash)
             live.append((row, "content_hash", ident.hex()))
 
-    used, skipped, remaining = _identity_step(conn, account_id, live)
+    used, skipped, remaining = _identity_step(conn, account_id, live, run_id, covered_through)
     pairing = _amount_step(conn, account_id, remaining, used)
 
     inserted = 0
@@ -473,14 +473,21 @@ Live = tuple[IncomingRow, str, str]
 _CHUNK = 1_000  # source rows per INSERT statement
 
 
-def _identity_step(conn: Connection, account_id: int, live: list[Live]) -> tuple[set[int], int, list[Live]]:
-    """Step 1. Returns (existing rows used up, rows skipped, rows still to place)."""
+def _identity_step(
+    conn: Connection, account_id: int, live: list[Live], run_id: int, covered_through: date
+) -> tuple[set[int], int, list[Live]]:
+    """Step 1. Returns (existing rows used up, rows skipped, rows still to place).
+
+    An earlier delivery is recorded (source_transaction_earlier_delivery) where this run's coverage
+    ends before the coverage of the run that inserted the row it hit (spec §5.2).
+    """
     sids = [v for _, c, v in live if c == "source_id"]
     hashes = [v for _, c, v in live if c == "content_hash"]
     found = conn.execute(
         text(
-            "SELECT id, source_id, content_hash, duplicate_of FROM source_transaction"
-            " WHERE account_id = :a AND (source_id = ANY(:sids) OR content_hash = ANY(:hashes))"
+            "SELECT s.id, s.source_id, s.content_hash, s.duplicate_of, r.covered_through AS inserted_through"
+            " FROM source_transaction s LEFT JOIN import_run r ON r.id = s.import_run_id"
+            " WHERE s.account_id = :a AND (s.source_id = ANY(:sids) OR s.content_hash = ANY(:hashes))"
         ),
         {"a": account_id, "sids": sids, "hashes": hashes},
     ).all()
@@ -488,6 +495,7 @@ def _identity_step(conn: Connection, account_id: int, live: list[Live]) -> tuple
     by_hash = {r.content_hash: r for r in found if r.content_hash is not None}
     used: set[int] = set()
     skipped = 0
+    earlier: set[int] = set()
     remaining: list[Live] = []
     for item in live:
         _, col, value = item
@@ -499,6 +507,16 @@ def _identity_step(conn: Connection, account_id: int, live: list[Live]) -> tuple
         used.add(hit.id)
         if hit.duplicate_of is not None:  # a duplicate also accounts for its original
             used.add(hit.duplicate_of)
+        if hit.inserted_through is not None and covered_through < hit.inserted_through:
+            earlier.add(hit.id)
+    if earlier:
+        conn.execute(
+            text(
+                "INSERT INTO source_transaction_earlier_delivery (source_transaction_id, import_run_id)"
+                " SELECT unnest(CAST(:ids AS bigint[])), :r ON CONFLICT DO NOTHING"
+            ),
+            {"ids": sorted(earlier), "r": run_id},
+        )
     return used, skipped, remaining
 
 
