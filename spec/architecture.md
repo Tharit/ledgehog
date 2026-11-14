@@ -2409,7 +2409,9 @@ Layers:
   reported record on — a wrong manual record
   between reported ones cancelling in it, a back-dated booking and a card
   purchase posted after its statement counting as late arrivals with no
-  reconciliation — at the anchor too, in any upload order —, a gap file
+  reconciliation — at the anchor too, in any upload order, at every record
+  taken before it arrived, a run nested in a longer one included —, a run
+  delivering rows the account already holds counting them, a gap file
   spanning a record leaving a cancelling pair, a missing row persisting until
   fixed —, a deleted record merging its interval into the next one; data age
   from coverage on synced accounts and from records on unsynced and closed

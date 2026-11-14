@@ -585,13 +585,15 @@ one closed day do, cannot count each other's entries.
 bank had booked when its run fetched it, so a movement booked later but dated
 on or before the record is no part of it — a card purchase posted after the
 statement it is dated before, a booking dated back into a closed day. A
-movement is a **late arrival** for a reported record when it is dated within
-the coverage of the record's run (§5.1), that run did not deliver it, neither
-as the row nor as a duplicate of it (§5.2), and every run that did deliver it
-covers a date after the record's. It counts from the first record it is not
-late for. A manual record counts every movement up to its date, and so does a
-record whose run states no coverage; a movement no run delivered, such as one
-a user entered, is never a late arrival.
+movement **arrived** on the earliest coverage end among the runs that delivered
+it or a duplicate of it, a run whose delivery was skipped included (§5.2). It
+was **missed** if a run covers its date and ends before it arrived: that run
+should have delivered it and did not. A movement is a **late arrival** for a
+reported record when it was missed and arrived after the coverage of the
+record's run (§5.1). It counts from the first record it is not late for. A
+manual record counts every movement up to its date, and so does a record whose
+run states no coverage; a movement no run delivered, such as one a user
+entered, is never a late arrival.
 
 **The anchor** is the account's earliest record, whatever its kind. It has no
 previous record: B₀ and C₀ are zero, so
@@ -1095,8 +1097,9 @@ nothing else:
 - a document run covers through the date up to which its documents are
   complete (§5.5).
 
-A run also records where its data starts, for the import log; nothing in the
-domain reads it.
+A run also records where its data starts. From there through the date it
+covered is the run's **coverage**; apart from the import log, only late
+arrivals read where it starts (§3.10).
 
 **Closing balance.** Where the source reports one, the importer also delivers
 the account's closing balance, which ingest writes as a reported balance
@@ -1214,7 +1217,10 @@ Every other row is checked against what the account already holds, **per
 account and booking day**, in two steps:
 
 1. **By identity.** A row whose identity the account already holds —
-   duplicates included — is skipped.
+   duplicates included — is skipped. Where the run's coverage ends before the
+   coverage of the run that inserted the row held, ingest records the earlier
+   delivery: the bank had booked the row by the date the run's coverage ends
+   (§3.10). A revert removes what its run recorded.
 2. **By amount.** Each remaining incoming row is paired, one to one, with a
    remaining existing row on that day of the same amount, and inserted as its
    duplicate (§5.6).

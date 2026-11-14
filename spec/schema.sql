@@ -457,8 +457,9 @@ CREATE TABLE import_run (
     -- which its documents are complete (spec §5.1). NULL for a run that did
     -- not succeed.
     -- synced_through is derived from it (v_account_coverage). A document
-    -- run's coverage, like covered_from — where the run's data starts — is
-    -- for the import log only: nothing in the domain reads either.
+    -- run's coverage is for the import log only. covered_from — where the
+    -- run's data starts — is read by the import log and by late arrivals
+    -- (spec §3.10).
     covered_from         date,
     covered_through      date,
     -- ingest-reported facts about the run, for the run summary: counts (inserted,
@@ -715,6 +716,17 @@ CREATE INDEX ix_source_counterparty
 CREATE INDEX ix_source_purpose_trgm
     ON source_transaction USING gin (purpose gin_trgm_ops);
 CREATE INDEX ix_source_run ON source_transaction (import_run_id);
+
+-- A source transaction the account already held, delivered again by a run
+-- whose coverage ends before the coverage of the run that inserted it. Ingest
+-- skips the row by identity (spec §5.2) and notes the run here: the bank had
+-- booked the row by the date that run's coverage ends. Only late arrivals
+-- read it (spec §3.10).
+CREATE TABLE source_transaction_earlier_delivery (
+    source_transaction_id bigint NOT NULL REFERENCES source_transaction(id) ON DELETE CASCADE,
+    import_run_id         bigint NOT NULL REFERENCES import_run(id) ON DELETE CASCADE,
+    PRIMARY KEY (source_transaction_id, import_run_id)
+);
 
 -- ---------------------------------------------------------------------
 -- 6. Ledger layer — the interpretation you see, edit and report on
