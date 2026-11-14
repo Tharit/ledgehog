@@ -23,7 +23,7 @@ from typing import Any, Literal, cast
 from sqlalchemy import Connection, Row, TextClause, text
 
 from app.core.ingest.identity import canonical_text
-from app.core.plugins.classifier import EntryInput, HistoryKey, Vote
+from app.core.plugins.classifier import FIELD_ORDER, EntryInput, HistoryKey, Vote
 from app.core.resolution.confirmed import units_binds, units_sql
 from app.core.resolution.load import load_category_paths
 
@@ -177,18 +177,35 @@ def touches(grown: Grown, entry: EntryInput, payee_id: int | None) -> bool:
     return payee_id is not None and ("payee", payee_id) in b
 
 
+# A vote counts for a field unless pass 0 or a rule decided that field's value (spec I19, §5.9, history.md
+# §1); a vote left with no field to count is not selected, so it never grows a bucket. A flow's payee and
+# category and a transfer's counter-account are the fields a vote of that type can count for at all
+# (`HistoryClassifier._counted`), so only those are weighed; the type counts for both.
+_ABOUT = {
+    "type": "TRUE",
+    "payee": "e.type = 'flow'",
+    "category": "e.type = 'flow'",
+    "counter_account": "e.type = 'transfer'",
+}
+_COUNTS = {
+    f: f"({_ABOUT[f]} AND COALESCE(e.derivation -> '{f}' ->> 'pass', '') NOT IN ('own_account', 'rule'))"
+    for f in FIELD_ORDER
+}
+
 _VOTES = """
     WITH units AS ({units})
     SELECT e.id AS entry_id, e.account_id, e.booked_on, e.type, e.payee_id, e.category_id,
            CASE WHEN e.counterpart_entry_id IS NOT NULL THEN e.counter_account_id END AS counter_account_id,
            CASE WHEN e.counterpart_entry_id IS NOT NULL THEN ca.currency END AS counter_account_currency,
            CASE WHEN e.counterpart_entry_id IS NOT NULL THEN ca.closed_on END AS counter_account_closed_on,
-           s.counterparty_ref, s.counterparty_name, s.purpose, s.booking_text, s.mandate_ref
+           s.counterparty_ref, s.counterparty_name, s.purpose, s.booking_text, s.mandate_ref,
+           {counts}
       FROM units AS u
       JOIN ledger_entry AS e ON e.id = u.id
       JOIN source_transaction AS s ON s.id = e.source_transaction_id
       LEFT JOIN account AS ca ON ca.id = e.counter_account_id
      WHERE u.unit_ok
+       AND ({any_counts})
        {booking}
        {only}
 """
@@ -198,6 +215,8 @@ def _votes_sql(*, of_entries: bool) -> TextClause:
     return text(
         _VOTES.format(
             units=units_sql(of_entries=of_entries),
+            counts=", ".join(f"{c} AS counts_{f}" for f, c in _COUNTS.items()),
+            any_counts=" OR ".join(_COUNTS.values()),
             booking="AND s.origin <> 'booking'",
             only="AND e.id = ANY(:ids)" if of_entries else "",
         )
@@ -224,6 +243,7 @@ def _votes(rows: Iterable[Row[Any]]) -> list[Vote]:
                 purpose=m["purpose"],
                 booking_text=m["booking_text"],
                 mandate_ref=m["mandate_ref"],
+                counts_for=frozenset(f for f in _COUNTS if m[f"counts_{f}"]),
             )
         )
     return out

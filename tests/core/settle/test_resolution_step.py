@@ -223,33 +223,20 @@ def test_a_confirmed_entry_is_never_touched(isolated_engine: Engine, acct: int) 
     assert [_row(isolated_engine, i) for i in (reviewed, keyless)] == before
 
 
-def test_a_proposal_is_rederived_after_another_entry_confirms(isolated_engine: Engine, acct: int) -> None:
-    """A is confirmed by a rule in round 1; its vote gives B a proposal in round 2; round 3 never runs."""
+def test_a_rule_confirmed_entry_teaches_history_nothing(isolated_engine: Engine, acct: int) -> None:
+    """A is confirmed by rules in round 1; every field of it is rule-decided, so it casts no vote and B,
+    sharing only its counterparty reference, gets no proposal (D259, history.md §1)."""
     with isolated_engine.begin() as conn:
         p, c = _payee(conn, "Alpha"), make_category(conn, "Food")
         rs.rule(conn, "alpha payee", "payee", p, conditions=(rs.name_is("Alpha Shop"),))
         rs.rule(conn, "alpha cat", "category", c, conditions=(rs.name_is("Alpha Shop"),))
         a = _new(conn, acct, counterparty_name="Alpha Shop", counterparty_ref="REF-ALPHA")
         b = _new(conn, acct, counterparty_name="Some other text", counterparty_ref="REF-ALPHA")
-    calls: list[int] = []
-    real = resolution_module.resolve_step
-
-    def counting(conn: Connection) -> Any:
-        calls.append(1)
-        return real(conn)
-
-    settle_module.register_step("resolve", counting)
-    try:
-        assert settle(isolated_engine).error is None
-    finally:
-        settle_module.register_step("resolve", real)
-    assert len(calls) == 2
+    assert settle(isolated_engine).error is None
     rb = _row(isolated_engine, b)
-    assert (rb.type, rb.payee_id, rb.category_id) == ("flow", p, c)
-    assert rb.derivation["category"]["pass"] == "history"
-    assert rb.derivation["category"]["basis"]["of"] == 1
+    assert (rb.type, rb.payee_id, rb.category_id) == (None, None, None)
+    assert rb.derivation == {} and rb.review_flags == ["unclassified"]
     assert _row(isolated_engine, a).review_flags == []
-    assert rb.review_flags == ["unconfirmed"]
 
 
 def test_history_snapshot_is_loaded_once_per_settle(

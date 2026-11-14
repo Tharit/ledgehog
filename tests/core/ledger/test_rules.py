@@ -480,10 +480,13 @@ def test_a_payee_condition_on_a_rule_that_does_not_set_a_category_is_refused(
 # ---- the settle breakdown --------------------------------------------------------------------
 
 
-def _sonnenkorn(conn: Connection, acct: int, decided: int, proposed: int) -> tuple[list[int], list[int]]:
+def _sonnenkorn(
+    conn: Connection, acct: int, decided: int, proposed: int, category: int
+) -> tuple[list[int], list[int]]:
     """`decided` unconfirmed entries whose counterparty is Sonnenkorn, `proposed` unconfirmed ones of another
-    name but the same counterparty reference (key 1 of history reaches them once the first group is
-    confirmed)."""
+    name but the same counterparty reference (key 1 of history reaches them through a user-confirmed entry
+    of that reference: what a rule decided teaches history nothing, D259)."""
+    rs.confirmed_entry(conn, acct, category=category, counterparty_ref="DE01", purpose="Einkauf Obst")
     by_name = [
         rs.new_entry(
             conn, acct, counterparty_name="Sonnenkorn Bio", counterparty_ref="DE01", purpose="Einkauf Obst"
@@ -521,7 +524,7 @@ def test_a_create_splits_the_touched_entries_into_the_rule_and_history(
     isolated_engine: Engine, world: dict[str, Any]
 ):
     with isolated_engine.begin() as conn:
-        by_name, by_purpose = _sonnenkorn(conn, world["acct"], 3, 2)
+        by_name, by_purpose = _sonnenkorn(conn, world["acct"], 3, 2, world["food"])
     written = create_rule(isolated_engine, _sonnenkorn_rule(world), expected_count=3)
     assert written.settle is not None and written.settle.error is None
     assert _passes(isolated_engine, by_name) == ["rule"] * 3
@@ -536,7 +539,7 @@ def test_an_edit_that_narrows_a_rule_reports_what_the_new_conditions_decide(
     isolated_engine: Engine, world: dict[str, Any]
 ):
     with isolated_engine.begin() as conn:
-        by_name, by_purpose = _sonnenkorn(conn, world["acct"], 2, 2)
+        by_name, by_purpose = _sonnenkorn(conn, world["acct"], 2, 2, world["food"])
         other = rs.new_entry(conn, world["acct"], counterparty_name="Sonnenkorn Laden", purpose="Brot")
         rid = rs.rule(
             conn,

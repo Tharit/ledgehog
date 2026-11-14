@@ -180,6 +180,7 @@ class Vote:
 
     Each entry is one vote (a split's entries vote separately). The counter-account facts are
     those of the account the vote's transfer pointed at, filled only for a paired transfer.
+    `counts_for` is the fields the vote counts for: not those that pass 0 or a rule decided (history.md §1).
     """
 
     entry_id: int
@@ -196,6 +197,7 @@ class Vote:
     purpose: str | None = None
     booking_text: str | None = None
     mandate_ref: str | None = None
+    counts_for: frozenset[Field] = frozenset(FIELD_ORDER)
 
 
 class HistorySource(Protocol):

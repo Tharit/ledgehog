@@ -161,6 +161,8 @@ class HistoryClassifier:
         """(value voted, vote) for the votes that count for `field`."""
         out: list[tuple[int | str, Vote]] = []
         for v in votes:
+            if field not in v.counts_for:
+                continue  # pass 0 or a rule decided this field of the entry (history.md §1)
             if field == "type":
                 out.append((v.type, v))
             elif field == "counter_account":

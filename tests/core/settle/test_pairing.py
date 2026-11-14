@@ -6,6 +6,7 @@ these tests make has been accepted by the schema. Window: the configured 7 days.
 
 from __future__ import annotations
 
+import importlib
 import json
 import uuid
 from collections.abc import Callable
@@ -22,6 +23,8 @@ from app.core.settle import settle
 from tests.invariants.helpers import make_entry, make_run, pair
 
 MakeAccount = Callable[..., int]
+settle_module = importlib.import_module("app.core.settle.settle")
+resolution_module = importlib.import_module("app.core.settle.resolution")
 DAY = date(2026, 2, 10)
 PAIR = {"pass": "matcher_decision", "basis": {}}
 PAIR_COUNTER = {"pass": "matcher_decision", "basis": {"from": "counterpart"}}
@@ -443,7 +446,7 @@ def test_a_stable_guess_keeps_the_pair(isolated_engine: Engine, accts: tuple[int
 # ---- rounds: pairs teach history -------------------------------------------------------------------
 
 
-def test_a_pair_a_settle_made_teaches_history_in_the_next_round(
+def test_a_pair_pass_0_made_teaches_history_nothing(
     isolated_engine: Engine, accts: tuple[int, int, int]
 ) -> None:
     a, b, _ = accts
@@ -458,9 +461,39 @@ def test_a_pair_a_settle_made_teaches_history_in_the_next_round(
                 counterparty_name="Mietkonto",
             )
             new(conn, b, 9000 + day, on=DAY - timedelta(days=day * 3), counterparty_ref=IBAN_A)
-        # no IBAN: only what history learned from the pairs above can type it
+        # no IBAN: only history could type it, and pass 0 decided the pairs above (D259, history.md §1)
         z = new(conn, a, -777, counterparty_name="Mietkonto")
     settled(isolated_engine)
     rz = row(isolated_engine, z)
-    assert rz.type == "transfer" and rz.counter_account_id == b
-    assert rz.derivation["counter_account"]["pass"] == "history"
+    assert rz.type is None and rz.counter_account_id is None
+
+
+def test_a_pair_with_a_leg_the_user_typed_teaches_history_in_the_next_round(
+    isolated_engine: Engine, accts: tuple[int, int, int]
+) -> None:
+    """Round 1 pairs a pass-0 leg with the user's typed leg; that leg's type is `user` and its counter-account
+    comes from the pair (`matcher_decision`), so it votes (D259) and round 2 types a third entry from it;
+    a round 3 never runs. The pass-0 leg votes for nothing."""
+    a, b, c = accts
+    with isolated_engine.begin() as conn:
+        new(conn, a, -9000, counterparty_ref=IBAN_B)  # pass 0 types it a -> b
+        mine = leg(conn, b, 9000, counterparty_name="Mietkonto")  # the user's leg, no counter-account yet
+        z = new(conn, c, -777, counterparty_name="Mietkonto")  # only history can type it
+    calls: list[int] = []
+    real = resolution_module.resolve_step
+
+    def counting(conn: Connection) -> Any:
+        calls.append(1)
+        return real(conn)
+
+    settle_module.register_step("resolve", counting)
+    try:
+        settled(isolated_engine)
+    finally:
+        settle_module.register_step("resolve", real)
+    rm = row(isolated_engine, mine)
+    assert rm.counter_account_id == a and rm.derivation["counter_account"] == PAIR_COUNTER
+    rz = row(isolated_engine, z)
+    assert rz.type == "transfer" and rz.counter_account_id == a
+    assert rz.derivation["type"]["pass"] == "history"
+    assert len(calls) == 2

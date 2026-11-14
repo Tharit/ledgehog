@@ -9,7 +9,7 @@ from datetime import date, timedelta
 import pytest
 from sqlalchemy import Connection
 
-from app.core.plugins.classifier import HISTORY_KEYS, EntryInput
+from app.core.plugins.classifier import HISTORY_KEYS, ClassifierContext, EntryInput
 from app.core.resolution.confirmed import load_confirmed_ids
 from app.core.resolution.snapshot import (
     LOOKBACK_DAYS,
@@ -19,7 +19,8 @@ from app.core.resolution.snapshot import (
     load_votes_of,
     touches,
 )
-from tests.core.units.helpers import Bench, keys
+from app.plugins.classifiers.history import HistoryClassifier
+from tests.core.units.helpers import Bench, D, keys
 from tests.invariants.helpers import make_category, make_entry, make_source
 from tests.plugins.classifiers.fakes import ListHistory, entry, vote
 
@@ -123,7 +124,7 @@ def test_only_confirmed_units_vote(db_conn: Connection, make_account: MakeAccoun
     acct = make_account(db_conn)
     cat = make_category(db_conn, "Food")
     ok = make_entry(
-        db_conn, make_source(db_conn, acct), category_id=cat, derivation=_d(type="user", category="rule")
+        db_conn, make_source(db_conn, acct), category_id=cat, derivation=_d(type="user", category="user")
     )
     proposal = make_entry(
         db_conn, make_source(db_conn, acct), category_id=cat, derivation=_d(category="history")
@@ -175,3 +176,70 @@ def test_a_leg_whose_partner_is_unconfirmed_does_not_vote(
     b.pair(held_a, held_b)
     assert {v.entry_id for v in load_votes(db_conn)} == {clean_a, clean_b, sibling}
     assert {v.entry_id for v in load_votes_of(db_conn, [held_a, clean_b])} == {clean_b}
+
+
+def _counts(db_conn: Connection) -> dict[int, frozenset[str]]:
+    return {v.entry_id: v.counts_for for v in load_votes(db_conn)}
+
+
+def test_a_vote_counts_for_the_fields_neither_pass_0_nor_a_rule_decided(
+    db_conn: Connection, make_account: MakeAccount
+) -> None:
+    """history.md §1: a rule-decided type and counter-account are not taught; the rest still votes."""
+    b = Bench(db_conn, make_account)
+    # a transfer a rule made: type and counter-account both rule-decided, so nothing is left
+    ruled_a = b.transfer(b.source(), derivation=keys(type="rule", counter_account="rule"))
+    ruled_b = b.transfer(b.source(b.b), derivation=keys(type="rule", counter_account="rule"))
+    b.pair(ruled_a, ruled_b)
+    # a transfer pass 0 made (own accounts): the same
+    own_a = b.transfer(b.source(), derivation=keys(type="own_account", counter_account="own_account"))
+    own_b = b.transfer(b.source(b.b), derivation=keys(type="own_account", counter_account="own_account"))
+    b.pair(own_a, own_b)
+    # a rule's payee with a human's category: the category alone (and the type, which a human set)
+    mixed = b.flow(b.source(), derivation=keys(type="user", payee="rule", category="user"))
+    # a pair filled by its counterpart, with the type chosen by a matcher decision: every field votes
+    pair_a = b.transfer(
+        b.source(), derivation=keys(type="matcher_decision", counter_account="matcher_decision")
+    )
+    pair_b = b.transfer(
+        b.source(b.b), derivation=keys(type="matcher_decision", counter_account="matcher_decision")
+    )
+    b.pair(pair_a, pair_b)
+    got = _counts(db_conn)
+    assert not {ruled_a, ruled_b, own_a, own_b} & got.keys()  # no field left: not returned
+    assert got[mixed] == {"type", "category"}  # a flow's counter-account is moot
+    assert got[pair_a] == got[pair_b] == {"type", "counter_account"}
+    assert {v.entry_id for v in load_votes_of(db_conn, [ruled_a, mixed])} == {mixed}
+    assert len(load_snapshot(db_conn)) == 3
+
+
+def test_an_entry_without_derivation_keys_counts_for_every_field(
+    db_conn: Connection, make_account: MakeAccount
+) -> None:
+    b = Bench(db_conn, make_account)
+    plain = b.flow(b.source())
+    assert _counts(db_conn)[plain] == {"type", "payee", "category"}  # a flow: no counter-account
+
+
+def test_a_rule_made_transfer_gives_history_no_proposal_for_a_new_entry(
+    db_conn: Connection, make_account: MakeAccount
+) -> None:
+    """The user's scenario: `account is <card>` -> counter-account Receivables confirms the card's SIXT
+    entries; a new SIXT entry on another account is not proposed a transfer to Receivables (D259)."""
+    b = Bench(db_conn, make_account)
+    for _ in range(3):
+        src = make_source(db_conn, b.a, amount=-100, booked_on=D, columns={"counterparty_name": "SIXT"})
+        leg = make_entry(db_conn, src, type="transfer", derivation=keys(type="rule", counter_account="rule"))
+        other = make_entry(
+            db_conn,
+            make_source(db_conn, b.b, amount=100, booked_on=D),
+            type="transfer",
+            derivation=keys(type="rule", counter_account="rule"),
+        )
+        b.pair(leg, other)
+    snap = load_snapshot(db_conn)
+    assert len(snap) == 0
+    ctx = ClassifierContext(history=snap)
+    new = entry(counterparty_name="SIXT", account_id=b.cat)
+    assert HistoryClassifier().propose("type", new, ctx) is None
+    assert HistoryClassifier().propose("counter_account", new, ctx) is None

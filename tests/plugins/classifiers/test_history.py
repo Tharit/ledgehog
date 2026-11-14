@@ -550,3 +550,57 @@ def test_a_booking_entry_is_never_asked_by_history() -> None:
         assert all(H.propose(f, e, ctx) is None for f in ("type", "payee", "category", "counter_account"))
     assert history.calls == []
     assert H.propose("category", entry(counterparty_ref="X"), ctx) is not None
+
+
+# ---- what a vote counts for (history.md §1) ----
+
+
+def _only(*fields: str) -> frozenset[str]:
+    return frozenset(fields)
+
+
+def test_a_vote_excluded_from_a_field_still_counts_for_the_others() -> None:
+    # pass 0 or a rule decided the type and counter-account of these: only payee and category count
+    votes = [
+        vote(
+            counterparty_ref="CR",
+            type="flow",
+            payee_id=4,
+            category_id=9,
+            counts_for=_only("payee", "category"),
+        )
+        for _ in range(3)
+    ]
+    assert run("type", entry(counterparty_ref="CR"), votes) is None
+    assert run("counter_account", entry(counterparty_ref="CR"), votes) is None
+    p = run("category", entry(counterparty_ref="CR"), votes)
+    assert p is not None and p.value == 9 and p.basis["of"] == 3
+    p = run("payee", entry(counterparty_ref="CR"), votes)
+    assert p is not None and p.value == 4
+
+
+def test_of_how_many_leaves_out_the_votes_a_field_takes_none_from() -> None:
+    counted = [vote(counterparty_ref="CR", category_id=9) for _ in range(2)]
+    ruled = [vote(counterparty_ref="CR", category_id=3, counts_for=_only("type")) for _ in range(5)]
+    p = run("category", entry(counterparty_ref="CR"), counted + ruled)
+    assert p is not None and p.value == 9
+    assert (p.basis["agree"], p.basis["of"]) == (2, 2)
+    assert p.basis["since"] == "2026-03-01"
+    assert not p.gives_way  # the excluded votes do not make it non-unanimous
+
+
+def test_a_rule_made_transfer_teaches_neither_type_nor_counter_account() -> None:
+    teach = _only("payee", "category")
+    votes = [
+        vote(counterparty_name="SIXT", type="transfer", counter_account_id=5, counts_for=teach)
+        for _ in range(3)
+    ]
+    e = entry(counterparty_name="SIXT")
+    assert run("type", e, votes) is None
+    assert run("counter_account", e, votes) is None
+
+
+def test_categories_seen_follow_the_counted_votes() -> None:
+    votes = [vote(counterparty_ref="CR", category_id=7, counts_for=_only("type")) for _ in range(3)]
+    votes.append(vote(counterparty_ref="CR", category_id=8))
+    assert _seen(entry(counterparty_ref="CR"), votes) == (8,)
