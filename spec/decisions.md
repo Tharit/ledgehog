@@ -4016,7 +4016,7 @@ spec §3.10; schema `balance_record`; architecture §4.1 (*The account statement
 
 `balance_record.kind` held `reported` or `manual`, and a check made it equal to whether `import_run_id` is set: one fact stored twice, as D105 declined for an `adjustment` type. The column goes; the run says it. The statement still answers `record_kind`, derived. Rejected: *keeping the column for a new distinction* (D249 rejects the distinction it was considered for, and a column whose meaning changes from provenance to semantics invites misreading).
 
-## D249 An investment account's net deposits, gain and return
+## D249 An investment account's net deposits, gain and return — *partly superseded by D258*
 
 Partly supersedes D37 (distributions and fees as flows on the cash account). spec §3.4, §8; architecture §4.1; ux/views/account.md.
 
@@ -4087,3 +4087,10 @@ spec §3.10, §5.1, §5.2; architecture balance tests; schema.sql.
 ux/views/account.md; architecture §4.1.
 
 - **A clock icon after the origin tag** (user, 2026-11-14). The marker's count said that bookings arrived later but not which; a refund dated months before the record it missed could not be found from it. The statement already runs the derivation, so the row can say it without storing anything. The tooltip names the latest record the row is late for; the earlier ones show it in their count. Rejected: *a list on the marker* (far from the row it names); *stored flags, to show it in the ledger list* (the note only means something next to the balance markers).
+
+## D258 An investment account's net deposits, split into start balance and paid in/out
+
+Partly supersedes D249. spec §8; architecture §4.1; ux/views/account.md.
+
+- **Start balance and paid in/out, in place of net deposits** (user, 2026-11-14). The single "net deposits" figure claimed more than it was: for an account anchored mid-life the anchor's balance already holds earlier gains, so it was neither a deposit total nor a cost basis. It is split into the start balance (the anchor's balance on its date) and paid in/out (the movements since): the same numbers, no new data, honest labels. Gain and return, and D249's other choices, stand. Rejected: *keeping one "net deposits" row and fixing only the help text* (the label still claims it); *calling the start balance "opening"* (the spec's opening is the derived entry, the anchor balance less C₁, dated before the anchor).
+- **The breakdown sits on the Balance card** (user, 2026-11-14), so that start balance, paid in/out and gain add up to the balance; gain and return stay on the Performance card.

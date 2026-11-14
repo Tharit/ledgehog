@@ -74,13 +74,16 @@ the header:
   are marked in the statement rather than listed a second time. The date is
   the latest day the balance is known for: a synced account's
   `synced_through`, else the later of its latest movement and its latest
-  record; an account with neither shows none;
-- **on an investment account, its performance** (`spec.md` §8): net
-  deposits, gain and return p.a., "as of *date*", the latest record's. Net
-  deposits carries a help text: the balance at the first record, plus what
-  was paid in since, less what was taken out; not the cost of what is held.
-  The return shows "—" where there is none yet, with the reason as its help:
-  less than a year of records, or no rate fits;
+  record; an account with neither shows none. On an investment account, beneath
+  the facts line: the start balance ("Start balance, *date*") and what was
+  paid in or out since ("Paid in/out since"), both always shown (0.00 when
+  nothing moved), so that with the gain they add up to the balance. "Paid
+  in/out since" carries a help text: paid in since the start, less taken out;
+  a sale counts as paid out by what it brought. Not the cost of what is held;
+- **on an investment account, its performance** (`spec.md` §8): gain and
+  return p.a., "as of *date*", the latest record's. The return shows "—"
+  where there is none yet, with the reason as its help: less than a year of
+  records, or no rate fits;
 - **the sources**: each instance the account is linked to, one line each —
   its label, its importer and its action, "Upload file" for a file importer
   (`ux/views/importers.md`) and "Fetch" for one that fetches

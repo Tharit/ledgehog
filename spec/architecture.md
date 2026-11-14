@@ -936,12 +936,14 @@ formula.
 `balance_as_of`, the latest day it is known for (`ux/views/account.md`), next to
 `synced_through`, `last_data_on`, `unexplained_difference`, `anchored` and
 `records_since_zero`, and on an investment account its performance
-(`spec.md` §8): `net_deposits` and `gain` as money, `return_rate` as the
-savings rate is carried, and `return_as_of`, the latest record's date. They are
-computed as the gap is, from source transactions and records alone: net
-deposits are B₁ plus the movements dated after D₁, and gain is the balance
-less them. All four are null on any other account and on one without a
-record, and `return_rate` also where `spec.md` §8 shows no return. They are on
+(`spec.md` §8): `start_balance` (money: B₁), `start_on` (D₁, the anchor's date),
+`net_movements` (money: the movements dated after D₁) and `gain` as money,
+`return_rate` as the savings rate is carried, and `return_as_of`, the latest
+record's date. They are computed as the gap is, from source transactions and
+records alone: the start balance is B₁ on D₁, the net movements are the
+movements dated after D₁, and gain is the balance less both. All are null on
+any other account and on one without a record, and `return_rate` and
+`return_as_of` also where `spec.md` §8 shows no return. They are on
 every response that carries the facts: the list, and the
 `account` of every write. The list and the page need it (`ux/patterns.md` §4.4
 shows the facts wherever the account is shown with its balance), and the

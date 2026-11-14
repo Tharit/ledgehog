@@ -2974,8 +2974,9 @@ Every figure is in the base currency (§3.8). Periods bucket entries by
 | Savings rate | savings ÷ income |
 | Starting balances | openings, at their `booked_on` rate |
 | Valuation | valuations, grouped by account, at their `booked_on` rate |
-| Net deposits | per investment account, in its currency: its anchor's balance plus its movements dated after the anchor |
-| Gain | per investment account, in its currency: its balance minus its net deposits, which is the sum of its valuations |
+| Start balance | per investment account, in its currency: its anchor's balance, on the anchor's date |
+| Paid in/out | per investment account, in its currency: its movements dated after the anchor |
+| Gain | per investment account, in its currency: its balance minus its start balance and its paid in/out, which is the sum of its valuations |
 | Return | per investment account: its money-weighted annual return as of its latest balance record (below) |
 | Reconciliation | reconciliations, grouped by account, at their `booked_on` rate |
 | Transfers (net) | transfer legs, at their `booked_on` rate (§3.8) |
@@ -3010,11 +3011,12 @@ Every figure is in the base currency (§3.8). Periods bucket entries by
   anchor on, and stands as of the latest record: a movement after it waits for
   the next valuation. It is shown once the latest record is at least a year
   after the anchor, since a rate annualised from a shorter span misleads, and
-  not at all where no rate solves it. Net deposits and gain need no such span.
-  Neither is a cost basis (§1.2): a sale lowers net deposits by what it
-  brought, so a depot sold at a profit can hold negative net deposits, and the
-  gain is realised and unrealised together. An account without a record has
-  none of the three figures.
+  not at all where no rate solves it. Start balance, paid in/out and gain need
+  no such span.
+  None of them is a cost basis (§1.2): a sale counts as paid out by what it
+  brought, so a depot sold down can show a negative paid in/out, and the gain
+  is realised and unrealised together, counted from the anchor on. An account
+  without a record has none of the four figures.
 - **Refunds net.** A category's spend can be negative in a period where its
   refunds exceed its purchases; reports show it as it is.
 - **A period's spend** is the *Spend by category* row summed over the period,
