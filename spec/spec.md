@@ -126,7 +126,7 @@ invariant leaves the table, and its number stays unused.
 | I13 | Every counting balance record owns at most one derived entry — the anchor's is the account's opening, dated before every other entry on it — computed from the records and never edited, tagged or annotated. | 3.9, 3.10 |
 | I17 | No pass, matcher, settling or import creates an account, category or payee. | 5.9 |
 | I18 | Proposals are rederived from current inputs, rules and history; standing values are kept. When an entry's input changes it is resolved afresh, and when a value changes the standing values after it in field order are derived again; a merge's repointing is not a change of value, and a user-authored leg following its partner is not a change of input. | 3.5, 3.6, 5.7, 5.9 |
-| I19 | History learns only from confirmed values: a human's, or standing values. | 5.9 |
+| I19 | History learns only from confirmed values, per field, except those pass 0 or a rule decided. | 5.9 |
 | I20 | No automatic process changes a reviewed entry, except that a booking follows its source; derived entries, which are never reviewed, are the only other entries recomputed. | 5.8, 5.9, 6 |
 | I21 | Review is per unit — the entries of a source transaction and of a transfer pair — and a unit's edits take effect atomically when it is committed. | 6 |
 | I22 | A transfer is confirmed only as a pair. | 5.7, 6 |
@@ -843,9 +843,9 @@ ledger_entry   #24 Giro  -125000  flow  payee=Landlord  cat=Rent
 ```
 
 Every value comes from a rule, so every key is standing and the unit arrives
-confirmed: it never enters the review queue, and history learns from it like
-any confirmed entry (§5.9). Had history supplied the category instead, the
-unit would be reviewed like any other.
+confirmed: it never enters the review queue. It teaches history nothing, since
+the rules already decide every entry they match (§5.9). Had history supplied
+the category instead, the unit would be reviewed like any other.
 
 **Balances on hand-kept accounts** — the user states a balance as of a date,
 and the ledger derives what follows from it (§3.10):
@@ -2208,8 +2208,12 @@ the descriptor — counterparty name starts with 'PAYPAL *' is the typical case.
 
 **Saving, changing or deleting a rule** changes no standing value (I20); the
 proposals of unconfirmed entries follow it, as they follow any change (above).
-A rule is applied at a point in time: a standing key records the rule a value
-came from, which may since have changed or been deleted. The preview lists two
+A rule's values never taught history (pass 2), so a rule deleted, or one whose
+condition stops matching (a bank changing its descriptor), leaves no evidence
+behind: the next such entry is proposed only what humans decided, and its
+first confirmation is the precedent. A rule is applied at a point in time: a
+standing key records the rule a value came from, which may since have changed
+or been deleted. The preview lists two
 sets of entries: those the rule matches that hold a different value, and those
 carrying its standing key that it no longer matches — all of them, for a
 deletion. The first list holds only entries whose value the settle that
@@ -2249,9 +2253,15 @@ one source row, whose fields describe none of them, and item titles rarely
 repeat; a transfer booking follows its leg, whose own decision is the vote.
 Rules and the model classify booking entries. History keys on source
 signals, raw on both sides. **It learns only from confirmed entries with
-a source transaction** (I19) — confirmed by a human, or standing — because no
-other entry carries the source signals it keys on. A user-authored row brings
-only its purpose among the bank's fields, so no key on source fields applies
+a source transaction** (I19), because no other entry carries the source
+signals it keys on, **and from each only the values neither pass 0 nor a rule
+decided.** Those apply wherever they match, so within their scope their votes
+would only repeat them, and beyond it they carry a declaration onto entries
+its author left out: a company card booked by an account rule as transfers to
+a receivable would propose that receivable for a private rental from the same
+merchant on another card. Votes count per field: a rule's payee casts none,
+and the category a human confirmed beside it votes through key 3. A
+user-authored row brings only its purpose among the bank's fields, so no key on source fields applies
 to it; key 3 does once its payee is decided — which is what lets a typed
 "coffee at Starbucks" find its category the next time its payee is picked. A value still awaiting review never
 teaches, so one wrong guess cannot become history that the next similar
@@ -2461,9 +2471,9 @@ standing *are*, with completeness and pairing, the review state (§6):
 **every value a pass, the matcher, a booking or a commit sets carries a key**, so every
 value shows its basis. A unit whose keys are all standing is confirmed as soon
 as it meets every requirement of confirming
-(§6), and history learns from it as from any confirmed unit. That is not batch
-confirmation: what a human decided is the rule, written once with its matches
-in view. History and the model never confirm.
+(§6); history learns from it only what neither pass 0 nor a rule decided
+(pass 2). That is not batch confirmation: what a human decided is the rule,
+written once with its matches in view. History and the model never confirm.
 
 Consequences:
 

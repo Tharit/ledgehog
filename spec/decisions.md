@@ -1487,7 +1487,7 @@ acceptance test (architecture §8), and three were added: a shared account
 through two logins, a loan payment with an interest split, and an account's
 own history replacing counter-legs.
 
-## D133 Pass 0 and rules confirm what they decide — *partly superseded by D145 and D159*
+## D133 Pass 0 and rules confirm what they decide — *partly superseded by D145, D159 and D259*
 
 Partly supersedes D64 and D99; settles the open question of spec §9 on rules
 as standing confirmations. Every value carried a key until a human confirmed
@@ -1502,9 +1502,8 @@ A rule and an own-account match are not guesses. Their keys are now
 **standing** (spec §5.9, §6): they keep recording where a value came from, but
 a unit whose keys are all standing is confirmed as soon as it meets every
 requirement of confirming — complete, a transfer paired, no open document
-suggestions. History learns from such units, because the rule is a human's
-declaration (I19 reworded). Changing or deleting a rule reopens nothing it
-confirmed (I20 stands); re-resolving a unit shows what the rules say now.
+suggestions. Changing or deleting a rule reopens nothing it confirmed (I20
+stands); re-resolving a unit shows what the rules say now.
 Because a rule now confirms, the entries it would match are shown before it is
 saved (architecture §4.1) — the guard against a broad rule such as `PAYPAL *`
 also catching top-ups of a PayPal account. Rules change role, from
@@ -4094,3 +4093,12 @@ Partly supersedes D249. spec §8; architecture §4.1; ux/views/account.md.
 
 - **Start balance and paid in/out, in place of net deposits** (user, 2026-11-14). The single "net deposits" figure claimed more than it was: for an account anchored mid-life the anchor's balance already holds earlier gains, so it was neither a deposit total nor a cost basis. It is split into the start balance (the anchor's balance on its date) and paid in/out (the movements since): the same numbers, no new data, honest labels. Gain and return, and D249's other choices, stand. Rejected: *keeping one "net deposits" row and fixing only the help text* (the label still claims it); *calling the start balance "opening"* (the spec's opening is the derived entry, the anchor balance less C₁, dated before the anchor).
 - **The breakdown sits on the Balance card** (user, 2026-11-14), so that start balance, paid in/out and gain add up to the balance; gain and return stay on the Performance card.
+
+## D259 Pass 0 and rules teach history nothing
+
+spec I19, §4, §5.9; plugins/classifiers/history.md §1, §3; architecture §5.4, invariants, tests.
+
+- **A value pass 0 or a rule decided casts no vote** (user, 2026-11-14), reversing D133's "history learns from such units". A company card booked by an account rule as transfers to a receivable gave each of its merchants votes for the receivable. A private rental from the same merchant on another card was proposed as one, and each correction was outvoted by the card's growing count. A declaration applies itself wherever it matches, so its votes add nothing within its scope and carry it beyond the scope its author chose. Pass 0 is the same: key 1 repeats its own test, and key 2 carries an account holder's name to every own account that isn't tracked. D133's saving stands: rules still confirm.
+- **Per field.** A rule's payee casts no vote; the category a human confirmed beside it does, through key 3. A counter-account a pair filled votes: the matcher needs the partner present, and history proposes before it arrives.
+- Accepted: a rule whose condition stops matching, or one that is deleted, leaves no evidence behind; the next entry needs one confirmation. Company entries converted by hand rather than by a rule still vote.
+- Rejected: *votes only from the entry's own account* (a merchant learned on one account is lost to the others); *transfer evidence only from the entry's own account* (it also covers transfers made by hand, but it adds a filter and costs one confirmation per account and destination; kept in reserve); *negation in rules* (one rule per merchant also paid privately; deferred); *only `user` keys vote* (it drops a counter-account the matcher filled but keeps one a commit filled, for the same fact); *excluding the whole entry* (it breaks a rule's payee pooling the categories humans chose).

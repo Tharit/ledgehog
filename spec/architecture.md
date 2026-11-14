@@ -1359,7 +1359,7 @@ enforcement point:
 | I13 one derived entry per record, computed, never edited, tagged or annotated; the opening first | `core/balance` is the only writer; unique indexes; integrity views; `api` exposes no edit and no tagging for them |
 | I17 no pass, matcher, settling or import creates a dimension or account | operations of §4.1; proposal types carry ids, not names |
 | I18 proposals rederived, standing values kept; an entry resolved afresh when its input changes, and later fields derived again when a value changes | `core/settle` calls `core/resolution` and `core/matching` for the entries a change bears on; `core/resolution` applies the field order; the write that changes an entry's input resolves that entry afresh in the same transaction: an entry-form edit, and settling's booking step for the booking entries whose source text it changes (§5.2) |
-| I19 history learns only from confirmed values, a human's or standing ones | `core/resolution` supplies the history; a plugin never sees unconfirmed values |
+| I19 history learns only from confirmed values, per field, never from what pass 0 or a rule decided | `core/resolution` supplies the history, each vote with the fields it counts for; a plugin never sees unconfirmed values |
 | I20 no automatic process changes a reviewed entry, a booking following its source excepted | `core/settle` and `core/matching` select only unconfirmed units; `ingest` marks only rows it inserts; derived entries and bookings are the exceptions, and `core/bookings` changes of a booking only what its source changed |
 | I21 review per unit, committed atomically | `core/units`; `api` exposes no other write to an entry's interpretation but the two merges, of payees and of categories, each previewed and one transaction |
 | I22 a transfer confirmed only as a pair | `core/units`, at commit |
@@ -1673,8 +1673,8 @@ still stand.
 **Classifiers do not query the database** (§5.1). `core/resolution` hands
 them their evidence: the rules, read once per settle or preview, and a
 read-only history source. For a key and an entry it returns the candidate
-votes — confirmed entries within the lookback, excluding the given unit —
-with the facts the classifier's filters need: each vote's values, booking
+votes — confirmed entries within the lookback, excluding the given unit, each
+with the fields it counts for (I19) — with the facts the classifier's filters need: each vote's values, booking
 date and, for a counter-account, that account's currency and closing date.
 Core retrieves candidates by indexed lookups on each key's value; the
 classifier refines them — by mandate, booking text and purpose similarity —
@@ -2483,8 +2483,9 @@ Layers:
   preview writing nothing; a commit applied atomically and refused on a
   structural change but not on a recomputed proposal; a pair confirmed only
   as a whole; a unit decided entirely by pass 0 and rules confirmed without
-  review and teaching history, one with a single history key not; a standing
-  value held while rules and history change; a commit keeping the standing keys of the values it
+  review, one with a single history key not; a value pass 0 or a rule decided
+  never voting, while the human's value beside it on the same entry votes; a
+  standing value held while rules and history change; a commit keeping the standing keys of the values it
   leaves unchanged; a changed or deleted rule changing no existing value and
   listing both sets for review by hand; a category merge, refused across kinds and
   taking its children along; a broken pair returning the leg left behind

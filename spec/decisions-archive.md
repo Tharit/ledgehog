@@ -1024,6 +1024,10 @@ document instead deletes the automatic links of unconfirmed transactions to
 it. And the model's answer is kept per payload rather than per entry, so a
 document confirmed later is put to it once more (spec §5.9).
 
+## D133 Pass 0 and rules confirm what they decide, in part — *superseded by D259*
+
+- History learns from such units, because the rule is a human's declaration (I19 reworded).
+
 ## D142 Housekeeping after the second review, in part — *superseded by D230*
 
 - Waiting for a document requires an unconfirmed unit, as matching does. With

@@ -20,6 +20,12 @@ asked. Each entry is one vote; the entries of a split vote separately. The
 plugin asks core's history source for the votes matching a key value and
 never reads the database itself.
 
+A vote counts for a field only where neither pass 0 nor a rule decided that
+field's value (`spec.md` I19, §5.9): a transfer a rule made votes for neither
+its type nor its counter-account, and an entry with a rule's payee and a
+human's category votes for the category alone. A vote left with no field to
+count is not returned.
+
 The lookback is symmetric — confirmed entries booked within it on either side
 of the entry's `booked_on` — so a backfilled year learns from the
 confirmations that came after it, not only before.
@@ -67,7 +73,8 @@ history's only when that set is unanimous; otherwise it gives way to the model
   Key 3 applies to the category only, and only once the payee is resolved.
 
 *Of how many* is the number of votes counted for that field in that set,
-after the filters above — the matches of `spec.md` §5.9.
+after the filters above and leaving out the votes that field takes none from
+(§1) — the matches of `spec.md` §5.9.
 
 **What the model is told.** Where history counted votes for the category, the
 model's payload carries their categories: all the matches of the first key that
