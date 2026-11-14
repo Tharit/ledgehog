@@ -1,6 +1,6 @@
 [project]
 name = "ledgehog"
-version = "0.5.1"
+version = "0.5.2"
 description = "Household ledger"
 requires-python = ">=3.12,<3.13"
 dependencies = [
