@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { duplicateLabel } from '#lib/accounts/statement.js';
+	import ClockArrowLeftIcon from '@lucide/svelte/icons/clock-arrow-left';
+	import { duplicateLabel, lateForLabel } from '#lib/accounts/statement.js';
 	import OriginTag from '#lib/components/common/origin-tag.svelte';
 	import DateDisplay from '#lib/components/common/date-display.svelte';
 	import MoneyDisplay from '#lib/components/common/money-display.svelte';
@@ -10,6 +11,7 @@
 	// One source transaction of the account's statement: booked date, counterparty, purpose, origin
 	// tag and amount; its Balance cell is empty, a balance is stated where a record states it. The cells show what the row holds, empty where it holds
 	// none (a row entered by hand has no counterparty); the tag is the only mark of authorship. A
+	// late arrival for a reported record carries a clock icon after its tag, its tooltip naming the latest record. A
 	// duplicate is dimmed and names the row it duplicates, which a click opens.
 	// No action buttons (patterns §11.3): the row opens its detail.
 	let {
@@ -28,6 +30,8 @@
 		/** open the row this one duplicates */
 		onopenoriginal?: (sourceId: number) => void;
 	} = $props();
+
+	const lateFor = $derived(lateForLabel(row, locale));
 </script>
 
 <!-- the keyboard is handled for the whole list by the statement table; a click moves the cursor and opens -->
@@ -79,7 +83,20 @@
 			</button>
 		{/if}
 	</div>
-	<div role="gridcell" class="min-w-0"><OriginTag origin={row.origin} /></div>
+	<div role="gridcell" class="flex min-w-0 items-center gap-1.5">
+		<OriginTag origin={row.origin} />
+		{#if lateFor}
+			<span
+				class="inline-flex shrink-0 text-muted-foreground"
+				title={lateFor}
+				role="img"
+				aria-label={lateFor}
+				data-slot="late-for"
+			>
+				<ClockArrowLeftIcon size={14} strokeWidth={1.75} />
+			</span>
+		{/if}
+	</div>
 	<!-- amounts are not truncated: an ellipsis would hide digits -->
 	<div role="gridcell" class="min-w-0">
 		<MoneyDisplay minor={row.amount.amount} currency={row.amount.currency} {locale} />

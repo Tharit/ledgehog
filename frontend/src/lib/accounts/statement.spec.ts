@@ -6,6 +6,7 @@ import {
 	isInvestment,
 	itemKey,
 	lateArrivalsLabel,
+	lateForLabel,
 	recordGap,
 	recordKindLabel
 } from './statement.js';
@@ -43,10 +44,19 @@ describe('recordGap', () => {
 describe('lateArrivalsLabel', () => {
 	it('counts the bookings, singular for one, nothing for none', () => {
 		expect(lateArrivalsLabel({ late_arrivals: 0 })).toBeNull();
-		expect(lateArrivalsLabel({ late_arrivals: 1 })).toBe('1 booking dated before it arrived later');
-		expect(lateArrivalsLabel({ late_arrivals: 4 })).toBe(
-			'4 bookings dated before it arrived later'
+		expect(lateArrivalsLabel({ late_arrivals: 1 })).toBe(
+			'1 booking dated earlier arrived after this balance'
 		);
+		expect(lateArrivalsLabel({ late_arrivals: 4 })).toBe(
+			'4 bookings dated earlier arrived after this balance'
+		);
+	});
+});
+
+describe('lateForLabel', () => {
+	it('names the latest record the row is late for, nothing where it is not late', () => {
+		expect(lateForLabel({ late_for: null })).toBeNull();
+		expect(lateForLabel({ late_for: '2026-04-02' })).toBe('Arrived after the Apr 2, 2026 balance');
 	});
 });
 

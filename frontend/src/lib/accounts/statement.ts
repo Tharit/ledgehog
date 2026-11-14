@@ -2,7 +2,12 @@
 // balance record, the "duplicate of" label, the cursor's identity. The server computed every number
 // (architecture §4.1, "The account statement"); this only formats them.
 import { formatDate, formatMoney } from '#lib/format/index.js';
-import type { DuplicateOf, StatementItem, StatementRecord } from '#lib/types/domain.js';
+import type {
+	DuplicateOf,
+	StatementItem,
+	StatementRecord,
+	StatementSource
+} from '#lib/types/domain.js';
 
 /** Depots and other assets are investment accounts: their difference is a valuation (spec §3.3). */
 export function isInvestment(kind: string): boolean {
@@ -43,11 +48,17 @@ export function recordGap(
 	return `expected ${money(balance.amount - difference.amount, false)} · ${investment ? 'valuation' : 'difference'} ${money(difference.amount, true)}`;
 }
 
-/** "3 bookings dated before it arrived later": the movements a reported record does not count. */
+/** "3 bookings dated earlier arrived after this balance": the movements a reported record does not count. */
 export function lateArrivalsLabel(record: Pick<StatementRecord, 'late_arrivals'>): string | null {
 	const n = record.late_arrivals;
 	if (n <= 0) return null;
-	return `${n} ${n === 1 ? 'booking' : 'bookings'} dated before it arrived later`;
+	return `${n} ${n === 1 ? 'booking' : 'bookings'} dated earlier arrived after this balance`;
+}
+
+/** "Arrived after the Apr 2, 2026 balance": the tooltip of a row that is a late arrival, null where it is not. */
+export function lateForLabel(row: Pick<StatementSource, 'late_for'>, locale = 'en'): string | null {
+	if (row.late_for === null) return null;
+	return `Arrived after the ${formatDate(row.late_for, locale)} balance`;
 }
 
 /** The record that was asked to be shown the cursor again after a refetch: its key, else a neighbour's. */

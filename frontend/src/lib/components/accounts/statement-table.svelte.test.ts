@@ -89,6 +89,17 @@ describe('StatementTable rows', () => {
 		expect(within(row('source:9')).getByText('Entered')).toBeInTheDocument();
 	});
 
+	it('marks a late arrival with a clock icon named by the latest record it is late for', () => {
+		table({
+			items: [sourceRow({ id: 8, late_for: '2026-04-02' }), sourceRow({ id: 9, late_for: null })]
+		});
+		const mark = within(row('source:8')).getByRole('img', {
+			name: 'Arrived after the Apr 2, 2026 balance'
+		});
+		expect(mark).toHaveAttribute('title', 'Arrived after the Apr 2, 2026 balance');
+		expect(within(row('source:9')).queryByRole('img')).toBeNull();
+	});
+
 	it('dims a duplicate and names the row it duplicates', () => {
 		table();
 		const dup = row('source:3');
@@ -120,10 +131,10 @@ describe('StatementTable rows', () => {
 			items: [recordRow({ id: 9, late_arrivals: 1 }), recordRow({ id: 8, late_arrivals: 3 })]
 		});
 		expect(
-			within(row('record:9')).getByText('1 booking dated before it arrived later')
+			within(row('record:9')).getByText('1 booking dated earlier arrived after this balance')
 		).toBeInTheDocument();
 		expect(
-			within(row('record:8')).getByText('3 bookings dated before it arrived later')
+			within(row('record:8')).getByText('3 bookings dated earlier arrived after this balance')
 		).toBeInTheDocument();
 	});
 
