@@ -69,7 +69,9 @@ describe('describeFacts', () => {
 
 describe('describePerformance', () => {
 	const invest = {
-		net_deposits: { amount: 6_500_000, currency: 'EUR' },
+		start_balance: { amount: 6_000_000, currency: 'EUR' },
+		start_on: '2024-01-01',
+		net_movements: { amount: 500_000, currency: 'EUR' },
 		gain: { amount: 400_000, currency: 'EUR' },
 		return_rate: 623,
 		return_as_of: '2026-10-14'
@@ -79,7 +81,9 @@ describe('describePerformance', () => {
 		const p = describePerformance(account(invest), { locale: 'en' });
 		expect(p).toMatchObject({ gain: '+4,000.00\u00a0EUR', hasReturn: true, asOf: 'Oct 14, 2026' });
 		expect(p?.return).toBe('+6.2\u00a0% p.a.');
-		expect(p?.netDeposits).toBe('65,000.00\u00a0EUR');
+		expect(p?.startOn).toBe('Jan 1, 2024');
+		expect(p?.startBalanceMoney.amount).toBe(6_000_000);
+		expect(p?.netMovementsMoney.amount).toBe(500_000);
 	});
 
 	it('says a dash for the return where there is none', () => {

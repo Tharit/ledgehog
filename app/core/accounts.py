@@ -118,7 +118,9 @@ class AccountView:
     balance_as_of: date | None = None
     providers: tuple[str, ...] = ()  # a clearance account's providers, sorted; empty for any other kind
     # an investment account with a counting record (spec §8, D249); all None otherwise
-    net_deposits: int | None = None
+    start_balance: int | None = None
+    start_on: date | None = None  # the anchor's date
+    net_movements: int | None = None  # the movements dated after the anchor
     gain: int | None = None
     return_rate_bp: int | None = None  # the annual return in basis points; None: no return shown
     return_as_of: date | None = None  # the latest record's date
@@ -508,13 +510,15 @@ def list_accounts(conn: Connection) -> list[AccountView]:
 
 
 def _with_performance(conn: Connection, view: AccountView) -> AccountView:
-    """An investment account's net deposits, gain and return, from its records and source rows."""
+    """An investment account's start balance, movements, gain and return, from its records and rows."""
     perf = performance(conn, view.id, view.kind, view.balance)
     if perf is None:
         return view
     return replace(
         view,
-        net_deposits=perf.net_deposits,
+        start_balance=perf.start_balance,
+        start_on=perf.start_on,
+        net_movements=perf.net_movements,
         gain=perf.gain,
         return_rate_bp=perf.return_rate_bp,
         return_as_of=perf.return_as_of,

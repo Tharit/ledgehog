@@ -231,7 +231,7 @@
             "title": "Name",
             "type": "string"
           },
-          "net_deposits": {
+          "net_movements": {
             "anyOf": [
               {
                 "$ref": "#/components/schemas/Money"
@@ -300,6 +300,28 @@
             "title": "Sort Order",
             "type": "integer"
           },
+          "start_balance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "start_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start On"
+          },
           "synced": {
             "title": "Synced",
             "type": "boolean"
@@ -347,7 +369,9 @@
           "balance",
           "balance_as_of",
           "records_since_zero",
-          "net_deposits",
+          "start_balance",
+          "start_on",
+          "net_movements",
           "gain",
           "return_rate",
           "return_as_of"
@@ -3506,7 +3530,7 @@
             "title": "Name",
             "type": "string"
           },
-          "net_deposits": {
+          "net_movements": {
             "anyOf": [
               {
                 "$ref": "#/components/schemas/Money"
@@ -3575,6 +3599,28 @@
             "title": "Sort Order",
             "type": "integer"
           },
+          "start_balance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "start_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start On"
+          },
           "synced": {
             "title": "Synced",
             "type": "boolean"
@@ -3622,7 +3668,9 @@
           "balance",
           "balance_as_of",
           "records_since_zero",
-          "net_deposits",
+          "start_balance",
+          "start_on",
+          "net_movements",
           "gain",
           "return_rate",
           "return_as_of",

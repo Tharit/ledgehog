@@ -129,26 +129,51 @@ describe('AccountSummary: a clearance account', () => {
 describe('AccountSummary: the performance card', () => {
 	const invest = {
 		kind: 'investment' as const,
-		net_deposits: { amount: 6_500_000, currency: 'EUR' },
+		start_balance: { amount: 6_000_000, currency: 'EUR' },
+		start_on: '2024-01-01',
+		net_movements: { amount: 500_000, currency: 'EUR' },
 		gain: { amount: 400_000, currency: 'EUR' },
 		return_as_of: '2026-10-14'
 	};
 	const show = (over: Parameters<typeof account>[0]) =>
 		render(AccountSummary, { props: { account: account(over), sources: [], today: '2026-10-18' } });
 
-	it('shows net deposits, gain and return p.a. as of the latest record', () => {
+	it('shows the gain and return p.a. as of the latest record', () => {
 		show({ ...invest, return_rate: 623 });
 
 		const card = screen.getByRole('region', { name: 'Performance' });
 		expect(card).toHaveTextContent('as of Oct 14, 2026');
 		expect(card.querySelector('[data-slot="gain"]')).toHaveTextContent('+4,000.00');
-		expect(card.querySelector('[data-slot="net-deposits"]')).toHaveTextContent('65,000.00');
-		expect(card.querySelector('[data-slot="net-deposits"] [title]')?.getAttribute('title')).toMatch(
-			/not the cost of what is held/
-		);
+		expect(card.querySelector('[data-slot="start-balance"]')).toBeNull();
+		expect(card.querySelector('[data-slot="net-movements"]')).toBeNull();
 		expect(card).toHaveTextContent('Return p.a.');
 		expect(card.querySelector('[data-slot="return"]')).toHaveTextContent('+6.2');
 		expect(card.querySelector('[data-slot="return"]')).toHaveTextContent('p.a.');
+	});
+
+	it('shows the start balance and the signed paid in/out on the balance card', () => {
+		show({ ...invest, return_rate: 623 });
+
+		const card = screen.getByRole('region', { name: 'Balance' });
+		const start = card.querySelector('[data-slot="start-balance"]');
+		expect(start).toHaveTextContent('Start balance, Jan 1, 2024');
+		expect(start).toHaveTextContent('60,000.00');
+		expect(start).not.toHaveTextContent('+');
+		const moved = card.querySelector('[data-slot="net-movements"]');
+		expect(moved).toHaveTextContent('Paid in/out since');
+		expect(moved).toHaveTextContent('+5,000.00');
+		expect(moved?.querySelector('[title]')?.getAttribute('title')).toMatch(
+			/Not the cost of what is held/
+		);
+	});
+
+	it('shows a zero paid in/out as 0.00 (the formatter never signs zero), still as a row', () => {
+		show({ ...invest, net_movements: { amount: 0, currency: 'EUR' }, return_rate: null });
+		const moved = screen
+			.getByRole('region', { name: 'Balance' })
+			.querySelector('[data-slot="net-movements"]');
+		expect(moved).toHaveTextContent('Paid in/out since');
+		expect(moved).toHaveTextContent('0.00');
 	});
 
 	it('shows a dash with the reason as help where there is no return', () => {
@@ -163,6 +188,9 @@ describe('AccountSummary: the performance card', () => {
 
 	it('is absent on an account without the facts', () => {
 		show({});
+		expect(
+			screen.getByRole('region', { name: 'Balance' }).querySelector('[data-slot="start-balance"]')
+		).toBeNull();
 		expect(screen.queryByRole('region', { name: 'Performance' })).toBeNull();
 	});
 });

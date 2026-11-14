@@ -1309,7 +1309,7 @@ export interface components {
             last_data_on: string | null;
             /** Name */
             name: string;
-            net_deposits: components["schemas"]["Money"] | null;
+            net_movements: components["schemas"]["Money"] | null;
             /** Note */
             note: string | null;
             /** Providers */
@@ -1322,6 +1322,9 @@ export interface components {
             return_rate: number | null;
             /** Sort Order */
             sort_order: number;
+            start_balance: components["schemas"]["Money"] | null;
+            /** Start On */
+            start_on: string | null;
             /** Synced */
             synced: boolean;
             /** Synced Through */
@@ -2279,7 +2282,7 @@ export interface components {
             last_data_on: string | null;
             /** Name */
             name: string;
-            net_deposits: components["schemas"]["Money"] | null;
+            net_movements: components["schemas"]["Money"] | null;
             /** Note */
             note: string | null;
             /** Providers */
@@ -2292,6 +2295,9 @@ export interface components {
             return_rate: number | null;
             /** Sort Order */
             sort_order: number;
+            start_balance: components["schemas"]["Money"] | null;
+            /** Start On */
+            start_on: string | null;
             /** Synced */
             synced: boolean;
             /** Synced Through */

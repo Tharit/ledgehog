@@ -44,7 +44,11 @@ export type Account = {
 	balance_as_of: IsoDate | null;
 	records_since_zero: number[] | null;
 	/** an investment account's performance (spec §8); all null elsewhere and without a record */
-	net_deposits: Money | null;
+	start_balance: Money | null;
+	/** the anchor's date */
+	start_on: IsoDate | null;
+	/** the movements dated after the anchor, signed */
+	net_movements: Money | null;
 	gain: Money | null;
 	/** the annual return in basis points; null under a year of records or where no rate fits */
 	return_rate: number | null;

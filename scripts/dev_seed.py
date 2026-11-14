@@ -32,7 +32,7 @@ Dollars" (a USD pocket whose fetch asks for the text TAN **123456**) and "Testba
 
 Two hand-kept investment accounts (`depot_cases`; D249): "ETF Depot" with records at each quarter-end and
 "Crypto Wallet", young enough to show no return. The giro's savings-plan, distribution and fee rows are
-committed as transfers to and from the depot through the real `commit_unit`, so the depot's net deposits,
+committed as transfers to and from the depot through the real `commit_unit`, so the depot's net movements,
 gain and return are the ones the ledger derives; the seed summary prints them.
 
 Named rules (`dev_seed_data.RULES`: a counter-account rule against the cash account, a payee rule, a
@@ -603,16 +603,18 @@ def late_arrival_cases(engine: Engine, today: date, out: list[str]) -> None:
 
 
 def performance_lines(engine: Engine) -> list[str]:
-    """The figures of each seeded investment account (spec §8): net deposits, gain and return."""
+    """The figures of each seeded investment account (spec §8): start, movements, gain and return."""
     lines: list[str] = []
     with engine.connect() as conn:
         for v in list_accounts(conn):
-            if v.net_deposits is None or not v.name.endswith(data.SUFFIX):
+            if v.start_balance is None or v.net_movements is None or not v.name.endswith(data.SUFFIX):
                 continue
             bp = v.return_rate_bp
             rate = "no return yet" if bp is None else f"return {bp / 100:+.2f} % p.a."
             lines.append(
-                f"{v.name}: balance {v.balance / 100:.2f}, net deposits {v.net_deposits / 100:.2f}, "
+                f"{v.name}: balance {v.balance / 100:.2f}, "
+                f"start {v.start_balance / 100:.2f} on {v.start_on}, "
+                f"net movements {v.net_movements / 100:+.2f}, "
                 f"gain {(v.gain or 0) / 100:+.2f}, {rate} as of {v.return_as_of}"
             )
     return lines

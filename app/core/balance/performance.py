@@ -1,11 +1,12 @@
-"""An investment account's net deposits, gain and money-weighted return (spec §8, D249).
+"""An investment account's start balance, movements, gain and money-weighted return (spec §8, D249).
 
 Computed the way the statement's gaps are, from source transactions and counting records alone;
 the derived entries are never read, so the figures hold whatever state they are in. With the
 anchor `(D1, B1)`, the latest counting record `(Dn, Bn)` and the account's movements:
 
-    net deposits = B1 + sum(movements dated after D1)      (all of them, also those after Dn)
-    gain         = balance - net deposits                  (which is the sum of the valuations)
+    start balance = B1, on D1
+    net movements = sum(movements dated after D1)          (all of them, also those after Dn)
+    gain          = balance - B1 - net movements           (which is the sum of the valuations)
     return       = the annual rate (actual/365) at which -B1 on D1, -m on the date of each
                    movement in (D1, Dn] and +Bn on Dn discount to zero (XIRR)
 
@@ -32,7 +33,9 @@ _TOLERANCE = 1e-12
 
 @dataclass(frozen=True)
 class Performance:
-    net_deposits: int
+    start_balance: int  # B1, the anchor's balance
+    start_on: date  # D1, the anchor's date
+    net_movements: int  # the movements dated after D1, signed
     gain: int
     return_rate_bp: int | None  # the annual return in basis points, half-even; None: not shown
     return_as_of: date
@@ -137,10 +140,10 @@ def performance(conn: Connection, account_id: int, kind: str, balance: int) -> P
             {"a": account_id, "d1": d1},
         )
     ]
-    net_deposits = b1 + sum(a for _, a in movements)
+    net_movements = sum(a for _, a in movements)
     rate = None
     if len(records) > 1 and (dn - d1).days >= MIN_SPAN_DAYS:
         flows = [(d1, -b1), *((d, -a) for d, a in movements if d <= dn), (dn, bn)]
         r = xirr(flows)
         rate = None if r is None else round(r * 10_000)
-    return Performance(net_deposits, balance - net_deposits, rate, dn)
+    return Performance(b1, d1, net_movements, balance - b1 - net_movements, rate, dn)

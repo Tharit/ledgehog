@@ -137,7 +137,9 @@ describe('the grouped accounts list', () => {
 					id: 1,
 					kind: 'depot',
 					balance: eur(100000),
-					net_deposits: eur(94000),
+					start_balance: eur(90000),
+					start_on: '2024-01-01',
+					net_movements: eur(4000),
 					gain: eur(6000),
 					return_rate: 620,
 					return_as_of: '2026-10-01'
@@ -146,7 +148,9 @@ describe('the grouped accounts list', () => {
 					id: 2,
 					kind: 'depot',
 					balance: eur(500),
-					net_deposits: eur(400),
+					start_balance: eur(300),
+					start_on: '2024-01-01',
+					net_movements: eur(100),
 					gain: eur(100),
 					return_rate: null
 				})

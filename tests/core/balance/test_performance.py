@@ -1,4 +1,4 @@
-"""An investment account's net deposits, gain and money-weighted return (spec §8, D249)."""
+"""An investment account's start balance, net movements, gain and money-weighted return (spec §8, D249)."""
 
 from __future__ import annotations
 
@@ -74,18 +74,20 @@ def _facts(db_conn: Connection, s: Scene) -> AccountView:
     return view
 
 
-def test_net_deposits_gain_and_return_of_a_depot(db_conn: Connection, make_account: Make) -> None:
+def test_start_net_movements_gain_and_return_of_a_depot(db_conn: Connection, make_account: Make) -> None:
     s = _depot(db_conn, make_account)
     s.manual(date(2024, 1, 1), 1_000_000)  # the anchor
     s.move(date(2024, 7, 1), 100_000)  # paid in
     s.move(date(2025, 1, 15), -20_000)  # a distribution paid out to the cash account
     s.manual(date(2025, 6, 30), 1_300_000)
-    s.move(date(2025, 7, 10), 50_000)  # after the latest record: net deposits, not the return
+    s.move(date(2025, 7, 10), 50_000)  # after the latest record: a net movement, not the return
     s.recompute()
     v = _facts(db_conn, s)
     assert v.balance == 1_350_000
-    assert v.net_deposits == 1_000_000 + 100_000 - 20_000 + 50_000
-    assert v.gain == v.balance - v.net_deposits == 220_000
+    assert (v.start_balance, v.start_on) == (1_000_000, date(2024, 1, 1))
+    assert v.net_movements == 100_000 - 20_000 + 50_000
+    assert v.gain == 220_000
+    assert v.balance == v.start_balance + v.net_movements + v.gain
     assert v.return_as_of == date(2025, 6, 30)
     flows = [
         (date(2024, 1, 1), -1_000_000),
@@ -114,27 +116,29 @@ def test_the_return_waits_for_a_year_between_the_anchor_and_the_latest_record(
     last = s.manual(date(2025, 12, 31), 530_000)  # 364 days
     s.recompute()
     v = _facts(db_conn, s)
-    assert (v.net_deposits, v.gain, v.return_rate_bp) == (500_000, 30_000, None)
+    assert (v.start_balance, v.net_movements, v.gain, v.return_rate_bp) == (500_000, 0, 30_000, None)
     db_conn.execute(text("UPDATE balance_record SET balance_on = '2026-01-01' WHERE id = :i"), {"i": last})
     s.recompute()  # 365 days
     assert _facts(db_conn, s).return_rate_bp == 600
 
 
-def test_an_anchor_alone_has_net_deposits_and_no_gain_or_return(
+def test_an_anchor_alone_has_a_start_balance_and_no_gain_or_return(
     db_conn: Connection, make_account: Make
 ) -> None:
     s = _depot(db_conn, make_account)
     s.manual(date(2025, 1, 1), 500_000)
     s.recompute()
     v = _facts(db_conn, s)
-    assert (v.net_deposits, v.gain, v.return_rate_bp, v.return_as_of) == (500_000, 0, None, date(2025, 1, 1))
+    assert (v.start_balance, v.start_on, v.net_movements) == (500_000, date(2025, 1, 1), 0)
+    assert (v.gain, v.return_rate_bp, v.return_as_of) == (0, None, date(2025, 1, 1))
 
 
 def test_a_depot_without_a_record_has_none_of_the_figures(db_conn: Connection, make_account: Make) -> None:
     s = _depot(db_conn, make_account)
     s.move(date(2025, 1, 1), 1000)
     v = _facts(db_conn, s)
-    assert (v.net_deposits, v.gain, v.return_rate_bp, v.return_as_of) == (None, None, None, None)
+    assert (v.start_balance, v.start_on, v.net_movements, v.gain) == (None, None, None, None)
+    assert (v.return_rate_bp, v.return_as_of) == (None, None)
 
 
 def test_a_duplicate_row_is_no_movement(db_conn: Connection, make_account: Make) -> None:
@@ -143,7 +147,7 @@ def test_a_duplicate_row_is_no_movement(db_conn: Connection, make_account: Make)
     original = make_source(db_conn, s.account, amount=5_000, booked_on=date(2025, 2, 1))
     make_source(db_conn, s.account, amount=5_000, booked_on=date(2025, 2, 1), duplicate_of=original)
     s.recompute()
-    assert _facts(db_conn, s).net_deposits == 105_000
+    assert _facts(db_conn, s).net_movements == 5_000
 
 
 def test_a_reverted_runs_record_does_not_count(db_conn: Connection, make_account: Make) -> None:
@@ -166,7 +170,8 @@ def test_another_kind_of_account_has_none_of_the_figures(
     s.manual(date(2026, 1, 1), 120_000)
     s.recompute()
     v = _facts(db_conn, s)
-    assert (v.net_deposits, v.gain, v.return_rate_bp, v.return_as_of) == (None, None, None, None)
+    assert (v.start_balance, v.start_on, v.net_movements, v.gain) == (None, None, None, None)
+    assert (v.return_rate_bp, v.return_as_of) == (None, None)
 
 
 def test_an_asset_account_has_the_figures_too(db_conn: Connection, make_account: Make) -> None:
@@ -175,5 +180,5 @@ def test_an_asset_account_has_the_figures_too(db_conn: Connection, make_account:
     s.manual(date(2025, 1, 1), 120_000)  # 366 days: 2024 is a leap year
     s.recompute()
     v = _facts(db_conn, s)
-    assert (v.net_deposits, v.gain) == (100_000, 20_000)
+    assert (v.start_balance, v.net_movements, v.gain) == (100_000, 0, 20_000)
     assert v.return_rate_bp == round((1.2 ** (365 / 366) - 1) * 10_000)

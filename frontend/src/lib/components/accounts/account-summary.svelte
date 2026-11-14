@@ -2,8 +2,8 @@
 	import {
 		describeFacts,
 		describePerformance,
-		NET_DEPOSITS_HELP,
-		NO_RETURN_HELP
+		NO_RETURN_HELP,
+		PAID_IN_OUT_HELP
 	} from '#lib/accounts/facts.js';
 	import { uploadHref, type SourceLine } from '#lib/accounts/sources.js';
 	import { formatDate } from '#lib/format/index.js';
@@ -64,6 +64,30 @@
 				<span class="text-muted-foreground" data-fact={fact.id} title={fact.title}>{fact.text}</span
 				>
 			{/each}
+			{#if performance}
+				<div data-slot="start-balance" class="contents">
+					<CardRow label={`Start balance, ${performance.startOn}`}>
+						<MoneyDisplay
+							minor={performance.startBalanceMoney.amount}
+							currency={performance.startBalanceMoney.currency}
+							{locale}
+							showCurrency
+							showPlus={false}
+						/>
+					</CardRow>
+				</div>
+				<div data-slot="net-movements" class="contents">
+					<CardRow label="Paid in/out since" title={PAID_IN_OUT_HELP}>
+						<MoneyDisplay
+							minor={performance.netMovementsMoney.amount}
+							currency={performance.netMovementsMoney.currency}
+							{locale}
+							showCurrency
+							showPlus
+						/>
+					</CardRow>
+				</div>
+			{/if}
 		{/snippet}
 	</FigureCard>
 
@@ -83,17 +107,6 @@
 				</span>
 			{/snippet}
 			{#snippet rows()}
-				<div data-slot="net-deposits" class="contents">
-					<CardRow label="Net deposits" title={NET_DEPOSITS_HELP}>
-						<MoneyDisplay
-							minor={performance.netDepositsMoney.amount}
-							currency={performance.netDepositsMoney.currency}
-							{locale}
-							showCurrency
-							showPlus={false}
-						/>
-					</CardRow>
-				</div>
 				<div data-slot="return" class="contents">
 					<CardRow label="Return p.a." title={performance.hasReturn ? undefined : NO_RETURN_HELP}>
 						{performance.return}

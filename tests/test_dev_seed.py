@@ -470,9 +470,12 @@ def test_the_hand_kept_investment_accounts_show_a_return_and_a_young_one_does_no
     with dev_engine.connect() as conn:
         by_name = {v.name: v for v in list_accounts(conn)}
         depot, young = by_name["ETF Depot [seed]"], by_name["Crypto Wallet [seed]"]
-        assert depot.return_rate_bp is not None and depot.net_deposits is not None
-        assert depot.gain == depot.balance - depot.net_deposits
-        assert (young.net_deposits, young.return_rate_bp) == (150_000, None) and young.gain
+        assert depot.return_rate_bp is not None and depot.start_balance is not None
+        assert depot.net_movements is not None
+        assert depot.gain == depot.balance - depot.start_balance - depot.net_movements
+        assert young.start_balance is not None and young.net_movements is not None
+        assert (young.start_balance + young.net_movements, young.return_rate_bp) == (150_000, None)
+        assert young.gain
         # every leg on the depot was created by the commit, paired with its giro row: none waits
         waiting = conn.execute(
             text("SELECT count(*) FROM v_open_transfer_legs WHERE account_id = :a"), {"a": depot.id}

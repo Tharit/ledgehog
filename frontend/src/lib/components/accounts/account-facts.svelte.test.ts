@@ -5,7 +5,9 @@ import AccountFacts from './account-facts.svelte';
 
 const invest = {
 	kind: 'investment' as const,
-	net_deposits: { amount: 6_500_000, currency: 'EUR' },
+	start_balance: { amount: 6_000_000, currency: 'EUR' },
+	start_on: '2024-01-01',
+	net_movements: { amount: 500_000, currency: 'EUR' },
 	gain: { amount: 400_000, currency: 'EUR' },
 	return_as_of: '2026-10-14'
 };

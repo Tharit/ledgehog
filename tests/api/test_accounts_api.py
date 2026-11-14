@@ -60,7 +60,9 @@ def test_list_is_empty_then_carries_the_facts_of_each_account(anna: TestClient, 
             "balance": {"amount": 0, "currency": "EUR"},
             "balance_as_of": None,
             "records_since_zero": None,
-            "net_deposits": None,
+            "start_balance": None,
+            "start_on": None,
+            "net_movements": None,
             "gain": None,
             "return_rate": None,
             "return_as_of": None,
@@ -98,16 +100,19 @@ def test_a_depots_performance_is_in_the_facts_and_another_account_has_none(
 ) -> None:
     depot = seed_account(api_engine, "Depot", kind="depot")
     giro = seed_account(api_engine, "Giro")
-    assert anna.get("/api/ledger/accounts").json()["accounts"][0]["net_deposits"] is None  # no record yet
+    assert anna.get("/api/ledger/accounts").json()["accounts"][0]["start_balance"] is None  # no record yet
     seed_manual(api_engine, depot, date(2024, 1, 1), 1_000_000)
     seed_manual(api_engine, giro, date(2024, 1, 1), 1_000_000)
     set_manual_record(api_engine, depot, date(2025, 3, 1), 1_150_000)
     rows = {a["id"]: a for a in anna.get("/api/ledger/accounts").json()["accounts"]}
-    assert rows[depot]["net_deposits"] == {"amount": 1_000_000, "currency": "EUR"}
+    assert rows[depot]["start_balance"] == {"amount": 1_000_000, "currency": "EUR"}
+    assert rows[depot]["start_on"] == "2024-01-01"
+    assert rows[depot]["net_movements"] == {"amount": 0, "currency": "EUR"}
     assert rows[depot]["gain"] == {"amount": 150_000, "currency": "EUR"}
     assert rows[depot]["return_as_of"] == "2025-03-01"
     assert rows[depot]["return_rate"] == 1_275  # 1.15 ** (365 / 425) - 1 = 12.75 %
-    assert all(rows[giro][k] is None for k in ("net_deposits", "gain", "return_rate", "return_as_of"))
+    figures = ("start_balance", "start_on", "net_movements", "gain", "return_rate", "return_as_of")
+    assert all(rows[giro][k] is None for k in figures)
 
 
 def test_facts_after_a_manual_record_and_after_a_reconcile_difference(
