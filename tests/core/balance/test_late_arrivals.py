@@ -18,8 +18,9 @@ from app.core.balance.derived import (
     RecordGap,
     load_derivation_input,
     record_gaps,
+    record_gaps_with_late_for,
 )
-from app.core.balance.statement import RecordItem, get_statement
+from app.core.balance.statement import RecordItem, SourceItem, get_statement
 from tests.core.balance.scene import Scene, day
 from tests.invariants.helpers import make_balance_record, make_entry, make_run, make_source
 
@@ -32,8 +33,10 @@ def rec(rid: int, on: date, balance: int, through: date | None = None) -> Counti
     return CountingRecord(rid, on, balance, rid if through else None, through)
 
 
-def mv(on: date, amount: int, arrived: date | None = None, missed: bool = False) -> Movement:
-    return Movement(on, amount, arrived, missed)
+def mv(
+    on: date, amount: int, arrived: date | None = None, missed: bool = False, mid: int = 0
+) -> Movement:
+    return Movement(on, amount, arrived, missed, mid)
 
 
 def gaps(records: list[CountingRecord], movements: list[Movement]) -> list[tuple[int, int]]:
@@ -136,6 +139,25 @@ def test_a_refund_booked_months_later_is_late_for_every_record_taken_before_it_a
     assert gaps(records, moves) == [(0, 1), (0, 2), (0, 2), (0, 0)]
 
 
+def test_a_late_arrival_is_named_by_the_latest_record_it_is_late_for() -> None:
+    # the chain case: Jan 23 and Feb 9 arrive with the Apr 30 run, so they are late for the records of
+    # Feb 3 (Jan 23 only), Mar 3 and Apr 2; the latest is Apr 2. A movement that was never late has none.
+    records = [
+        rec(1, D(2026, 2, 3), -100, D(2026, 2, 3)),
+        rec(2, D(2026, 3, 3), -100, D(2026, 3, 3)),
+        rec(3, D(2026, 4, 2), -100, D(2026, 4, 2)),
+        rec(4, D(2026, 4, 30), -150, D(2026, 4, 30)),
+    ]
+    moves = [
+        mv(D(2026, 1, 10), -100, D(2026, 2, 3), mid=10),
+        mv(D(2026, 1, 23), -30, D(2026, 4, 30), missed=True, mid=11),
+        mv(D(2026, 2, 9), -20, D(2026, 4, 30), missed=True, mid=12),
+    ]
+    found, late_for = record_gaps_with_late_for(DerivationInput(tuple(records), tuple(moves)))
+    assert late_for == {11: D(2026, 4, 2), 12: D(2026, 4, 2)}
+    assert [g.late_arrivals for g in found] == [1, 2, 2, 0]  # the count agrees with the mapping
+
+
 def test_a_run_nested_in_a_longer_one_does_not_count_what_the_longer_one_missed() -> None:
     # run A covers Feb 1..Apr 30 (record Apr 30), run B covers March (record Mar 31); a row dated Feb 15
     # arrives with a May run: both runs missed it
@@ -206,9 +228,12 @@ def test_a_card_late_posting_is_in_the_statement_and_the_entries_agree(
     s = Scene(db_conn, make_account)
     run1 = make_run(db_conn, s.account, covered_from=day(1, 1), covered_through=day(1, 31))
     run2 = make_run(db_conn, s.account, covered_from=day(2, 1), covered_through=day(2, 28))
-    make_entry(db_conn, make_source(db_conn, s.account, amount=-100, booked_on=day(1, 10), run_id=run1))
-    make_entry(db_conn, make_source(db_conn, s.account, amount=-50, booked_on=day(1, 30), run_id=run2))
+    early = make_source(db_conn, s.account, amount=-100, booked_on=day(1, 10), run_id=run1)
+    make_entry(db_conn, early)
+    late = make_source(db_conn, s.account, amount=-50, booked_on=day(1, 30), run_id=run2)
+    make_entry(db_conn, late)
     make_entry(db_conn, make_source(db_conn, s.account, amount=-10, booked_on=day(2, 10), run_id=run2))
+    dup = make_source(db_conn, s.account, amount=-50, booked_on=day(1, 30), run_id=run2, duplicate_of=late)
     first = make_balance_record(db_conn, s.account, balance_on=day(1, 31), balance=-100, run_id=run1)
     second = make_balance_record(db_conn, s.account, balance_on=day(2, 28), balance=-160, run_id=run2)
     s.recompute()
@@ -217,4 +242,7 @@ def test_a_card_late_posting_is_in_the_statement_and_the_entries_agree(
     assert (items[second].difference, items[second].late_arrivals) == (0, 0)
     assert s.derived_of(first) is None
     assert s.derived_of(second) is None
+    sources = {i.id: i for i in get_statement(db_conn, s.account).items if isinstance(i, SourceItem)}
+    got = (sources[late].late_for, sources[early].late_for, sources[dup].late_for)
+    assert got == (day(1, 31), None, None)
     s.check()

@@ -55,12 +55,14 @@ class Movement:
     of it or as an earlier delivery ingest skipped (None for a row no run delivered: user-authored,
     a booking).
     `missed` says that some run covers its date and ends before it arrived (spec §3.10).
+    `id` is the source transaction's id.
     """
 
     booked_on: date
     amount: int
     arrived: date | None = None
     missed: bool = False
+    id: int = 0
 
 
 @dataclass(frozen=True)
@@ -109,7 +111,7 @@ WITH deliveries AS (
     FROM source_transaction_earlier_delivery k JOIN source_transaction s ON s.id = k.source_transaction_id
     WHERE s.account_id = :a
 )
-SELECT m.booked_on, m.amount, min(r.covered_through) AS arrived
+SELECT m.id, m.booked_on, m.amount, min(r.covered_through) AS arrived
 FROM source_transaction m
 LEFT JOIN deliveries d ON d.movement_id = m.id
 LEFT JOIN import_run r ON r.id = d.run_id
@@ -153,7 +155,11 @@ def load_derivation_input(conn: Connection, account_id: int) -> DerivationInput:
 
     movements = tuple(
         Movement(
-            r.booked_on, int(r.amount), r.arrived, r.arrived is not None and missed(r.booked_on, r.arrived)
+            r.booked_on,
+            int(r.amount),
+            r.arrived,
+            r.arrived is not None and missed(r.booked_on, r.arrived),
+            r.id,
         )
         for r in conn.execute(text(_MOVEMENTS_SQL), {"a": account_id})
     )
@@ -161,6 +167,11 @@ def load_derivation_input(conn: Connection, account_id: int) -> DerivationInput:
 
 
 def record_gaps(data: DerivationInput) -> list[RecordGap]:
+    """The gap of every counting record (see `record_gaps_with_late_for`)."""
+    return record_gaps_with_late_for(data)[0]
+
+
+def record_gaps_with_late_for(data: DerivationInput) -> tuple[list[RecordGap], dict[int, date]]:
     """The one rule behind the derived entries and the statement (architecture §4.1).
 
     The derived entry of record i is `(B_i - B_(i-1)) - (C_i - C_(i-1))`, `C_i` the sum of the movements
@@ -172,12 +183,16 @@ def record_gaps(data: DerivationInput) -> list[RecordGap]:
     Records are walked in order with the missed movements dated so far; one whose arrival is on or before
     a record's date is late for no later record either (a record's coverage reaches its date), so it
     leaves the list for good.
+
+    Also returns, per movement id, the `balance_on` of the latest record (in record order) the movement is a
+    late arrival for: the same test that counts `late_arrivals`, so the two agree by construction.
     """
     moves = sorted(data.movements, key=lambda m: m.booked_on)
     cumulative = [0, *accumulate(m.amount for m in moves)]
     entered = 0
     open_missed: list[Movement] = []  # dated up to the record, missed, not yet arrived by its date
     gaps: list[RecordGap] = []
+    late_for: dict[int, date] = {}
     prev_balance, prev_counted = 0, 0
     for rec in data.records:
         while entered < len(moves) and moves[entered].booked_on <= rec.balance_on:
@@ -192,6 +207,7 @@ def record_gaps(data: DerivationInput) -> list[RecordGap]:
                 if m.arrived is not None and m.arrived > rec.covered_through:
                     counted -= m.amount
                     n_late += 1
+                    late_for[m.id] = rec.balance_on
         gaps.append(
             RecordGap(
                 rec.id,
@@ -203,7 +219,7 @@ def record_gaps(data: DerivationInput) -> list[RecordGap]:
             )
         )
         prev_balance, prev_counted = rec.balance, counted
-    return gaps
+    return gaps, late_for
 
 
 def _desired(conn: Connection, account_id: int, *, investment: bool) -> dict[int, Desired]:

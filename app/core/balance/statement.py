@@ -14,7 +14,7 @@ from typing import Literal
 
 from sqlalchemy import Connection, text
 
-from app.core.balance.derived import load_derivation_input, record_gaps
+from app.core.balance.derived import load_derivation_input, record_gaps_with_late_for
 from app.core.domain.source import BookingRef
 
 
@@ -39,6 +39,7 @@ class SourceItem:
     duplicate_of: DuplicateRef | None
     entry_id: int | None  # the lowest id among its entries; None for a duplicate
     run_id: int | None
+    late_for: date | None = None  # `balance_on` of the latest reported record it is a late arrival for
     kind: Literal["source"] = "source"
     origin: str = "import"  # `import`, `user` or `booking`
     booking: BookingRef | None = None  # a booking's source, for navigation
@@ -91,7 +92,7 @@ def get_statement(
         {"a": account_id},
     ).all()
     data = load_derivation_input(conn, account_id)
-    gaps = record_gaps(data)
+    gaps, late_for = record_gaps_with_late_for(data)
     kinds = {r.id: "reported" if r.run_id is not None else "manual" for r in data.records}
 
     if amount is not None:  # the picker
@@ -100,7 +101,7 @@ def get_statement(
             reverse=True,
         )
         ids = [i for _, i in keep][offset : offset + limit]
-        found = _sources(conn, ids)
+        found = _sources(conn, ids, late_for)
         return Statement(account_id, currency, tuple(found[i] for i in ids), len(keep), limit, offset)
 
     # newest first; a record stands above the rows of its own date (rank 1 over 0)
@@ -108,7 +109,7 @@ def get_statement(
     keys += [(g.balance_on, 1, g.record_id) for g in gaps]
     keys.sort(reverse=True)
     page = keys[offset : offset + limit]
-    sources = _sources(conn, [i for _, rank, i in page if rank == 0])
+    sources = _sources(conn, [i for _, rank, i in page if rank == 0], late_for)
     by_record = {g.record_id: g for g in gaps}
     items: list[SourceItem | RecordItem] = []
     for _, rank, item_id in page:
@@ -130,7 +131,7 @@ def get_statement(
     return Statement(account_id, currency, tuple(items), len(keys), limit, offset)
 
 
-def _sources(conn: Connection, ids: list[int]) -> dict[int, SourceItem]:
+def _sources(conn: Connection, ids: list[int], late_for: dict[int, date]) -> dict[int, SourceItem]:
     """The full rows of one page."""
     if not ids:
         return {}
@@ -164,6 +165,7 @@ def _sources(conn: Connection, ids: list[int]) -> dict[int, SourceItem]:
             duplicate_of=None if r.of_id is None else DuplicateRef(r.of_id, r.of_on, int(r.of_amount)),
             entry_id=r.entry_id,  # a duplicate has no entries
             run_id=r.run_id,
+            late_for=late_for.get(r.id),
             origin=r.origin,
             booking=None
             if r.origin != "booking"

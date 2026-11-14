@@ -3180,6 +3180,8 @@ export interface components {
              * @enum {string}
              */
             kind: "source";
+            /** Late For */
+            late_for: string | null;
             /**
              * Origin
              * @enum {string}

@@ -10,7 +10,7 @@ from sqlalchemy import Engine
 
 from tests.api.accounts_helpers import assert_envelope, seed_account, seed_difference, seed_manual
 from tests.api.conftest import login
-from tests.invariants.helpers import make_entry, make_source
+from tests.invariants.helpers import make_balance_record, make_entry, make_run, make_source
 
 
 @pytest.fixture
@@ -99,3 +99,21 @@ def test_the_account_facts_carry_the_balance_everywhere(anna: TestClient, api_en
     assert written["balance"] == listed["balance"]
     newest = anna.get(url(aid)).json()["items"][0]
     assert newest["balance"] == listed["balance"]  # the newest item agrees with the ledger
+
+
+def test_a_late_arrival_carries_late_for_a_duplicate_none(anna: TestClient, api_engine: Engine) -> None:
+    aid = seed_account(api_engine)
+    with api_engine.begin() as conn:
+        run1 = make_run(conn, aid, covered_from=date(2026, 1, 1), covered_through=date(2026, 1, 31))
+        run2 = make_run(conn, aid, covered_from=date(2026, 2, 1), covered_through=date(2026, 2, 28))
+        early = make_source(conn, aid, amount=-100, booked_on=date(2026, 1, 10), run_id=run1)
+        make_entry(conn, early)
+        late = make_source(conn, aid, amount=-50, booked_on=date(2026, 1, 30), run_id=run2)
+        make_entry(conn, late)
+        dup = make_source(conn, aid, amount=-50, booked_on=date(2026, 1, 30), run_id=run2, duplicate_of=late)
+        make_balance_record(conn, aid, balance_on=date(2026, 1, 31), balance=-100, run_id=run1)
+        make_balance_record(conn, aid, balance_on=date(2026, 2, 28), balance=-150, run_id=run2)
+    by_id = {i["id"]: i for i in anna.get(url(aid)).json()["items"] if i["kind"] == "source"}
+    assert by_id[late]["late_for"] == "2026-01-31"
+    assert by_id[early]["late_for"] is None
+    assert by_id[dup]["late_for"] is None

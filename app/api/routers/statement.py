@@ -45,6 +45,7 @@ class StatementSourceOut(BaseModel):
     duplicate_of: DuplicateOfOut | None
     entry_id: int | None  # opens the row's unit in the review panel; null for a duplicate
     run_id: int | None  # null for an authored row
+    late_for: date | None  # balance_on of the latest reported record the row is a late arrival for (§3.10)
 
 
 class StatementRecordOut(BaseModel):
@@ -110,6 +111,7 @@ def _item(item: SourceItem | RecordItem, currency: str) -> StatementSourceOut | 
         ),
         entry_id=item.entry_id,
         run_id=item.run_id,
+        late_for=item.late_for,
     )
 
 

@@ -6508,6 +6508,18 @@
             "title": "Kind",
             "type": "string"
           },
+          "late_for": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Late For"
+          },
           "origin": {
             "enum": [
               "import",
@@ -6565,7 +6577,8 @@
           "booking",
           "duplicate_of",
           "entry_id",
-          "run_id"
+          "run_id",
+          "late_for"
         ],
         "title": "StatementSourceOut",
         "type": "object"
