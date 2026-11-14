@@ -69,6 +69,7 @@ from app.core.ingest.run import ingest_delivery, start_run
 from app.core.integrity import check_integrity
 from app.core.ledger.rules import RuleDraft, create_rule
 from app.core.plugins.classifier import Condition
+from app.core.plugins.importer import IncomingRow
 from app.core.resolution.registry import configure_classifiers, configure_rule_tools
 from app.core.settle.settle import settle
 from app.core.units.commit import commit_unit
@@ -505,6 +506,102 @@ def depot_cases(engine: Engine, plan: data.SeedPlan, out: list[str]) -> None:
     )
 
 
+@dataclass(frozen=True)
+class _CardRow:
+    """One booking of `late_arrival_cases`: dated on day `dom` of statement month `month` (0-3), delivered by
+    the statement run `run` (1-4)."""
+
+    month: int
+    dom: int
+    amount: int
+    purpose: str
+    run: int
+
+
+# Four monthly statement runs of the "Mastercard" card (spec §3.10), each reporting the balance at its end.
+_CARD_ROWS: tuple[_CardRow, ...] = (
+    _CardRow(0, 3, -4_590, "Tankstelle Aral", 1),
+    _CardRow(0, 9, -12_030, "Elektro Markt Ersatzkabel", 1),
+    _CardRow(0, 12, -799, "Streamingdienst Monatsabo", 1),
+    _CardRow(0, 14, 735, "Erstattung Auslandseinsatzentgelt", 4),  # month 1, delivered by run 4: late x3
+    _CardRow(0, 24, -3_210, "Baeckerei Sonnenschein", 1),
+    _CardRow(1, 5, -2_480, "Apotheke am Markt", 2),
+    _CardRow(1, 12, -799, "Streamingdienst Monatsabo", 2),
+    _CardRow(1, 25, -6_490, "Restaurant Zur Linde", 3),  # days before the month-2 statement, run 3: late x1
+    _CardRow(2, 10, -5_125, "Tankstelle Aral", 3),  # run 5 delivers it again, ending before run 3's coverage
+    _CardRow(2, 12, -799, "Streamingdienst Monatsabo", 3),
+    _CardRow(2, 22, -8_900, "Buchhandlung Lesezeit", 3),
+    _CardRow(3, 4, -2_240, "Baeckerei Sonnenschein", 4),
+    _CardRow(3, 12, -799, "Streamingdienst Monatsabo", 4),
+    _CardRow(3, 20, -4_380, "Supermarkt Frisch", 4),
+)
+_CARD_AGAIN = (7, 8)  # the indices in `_CARD_ROWS` that run 5 delivers a second time
+
+
+def late_arrival_cases(engine: Engine, today: date, out: list[str]) -> None:
+    """A card account whose statements arrive in four runs (spec §3.10): "Mastercard", each run covering one
+    calendar month and reporting the balance at its end (the sum of what it was delivered by then), so no
+    record shows a difference. A fee refund of month 1 is delivered only by the last run: late for the records
+    of months 1-3 (the statement marks them, and the row shows the clock). A dinner dated before the month-2
+    statement arrives with run 3: late for that one record. A fifth run, a re-export ending before run 3's
+    coverage, delivers two of run 3's rows again (an earlier delivery, spec §5.2). All through the real
+    `start_run` + `ingest_delivery`; the months are the four before the current one.
+    """
+    first = today.replace(day=1)
+    starts: list[date] = []
+    for _ in range(4):
+        first = (first - timedelta(days=1)).replace(day=1)
+        starts.append(first)
+    starts.reverse()
+    ends = [s - timedelta(days=1) for s in [*starts[1:], today.replace(day=1)]]
+    account = create_account(
+        engine, name="Mastercard" + data.SUFFIX, kind="card", currency="EUR", sort_order=len(data.ACCOUNTS)
+    )
+
+    def dated(r: _CardRow) -> date:
+        return starts[r.month] + timedelta(days=r.dom - 1)
+
+    def incoming(i: int) -> IncomingRow:
+        r = _CARD_ROWS[i]
+        return IncomingRow(
+            amount_minor=r.amount,
+            currency="EUR",
+            booked_on=dated(r),
+            source_format="statement",
+            raw={"line": i},
+            purpose=r.purpose + data.SUFFIX,
+            source_id=f"mc-{i}",
+        )
+
+    def deliver(rows: list[IncomingRow], start: date, through: date, balance: int | None = None) -> None:
+        run = start_run(engine, account, "transactions", importer="statement")
+        ingest_delivery(
+            engine,
+            run,
+            rows,
+            reported_balance=balance,
+            reported_balance_on=through if balance is not None else None,
+            covered_from=start,
+            covered_through=through,
+        )
+
+    for k in range(1, 5):
+        # what the record at the end of month k counts: the rows dated by then that runs 1..k delivered
+        counted = sum(r.amount for r in _CARD_ROWS if r.run <= k and dated(r) <= ends[k - 1])
+        deliver(
+            [incoming(i) for i, r in enumerate(_CARD_ROWS) if r.run == k], starts[k - 1], ends[k - 1], counted
+        )
+    deliver(
+        [incoming(i) for i in _CARD_AGAIN],
+        starts[1] + timedelta(days=14),
+        starts[2] + timedelta(days=19),
+    )
+    out.append(
+        f"card account 'Mastercard{data.SUFFIX}': four statement runs ({starts[0]} .. {ends[3]}), a refund "
+        "late for three records, a dinner late for one, one re-export (an earlier delivery), all reconciled"
+    )
+
+
 def performance_lines(engine: Engine) -> list[str]:
     """The figures of each seeded investment account (spec §8): net deposits, gain and return."""
     lines: list[str] = []
@@ -771,6 +868,7 @@ def seed(
         transfer_cases(engine, out)
         document_cases(engine, today, out)
     depot_cases(engine, plan, out)
+    late_arrival_cases(engine, today, out)
     if test_importers:
         testbank_instance(engine, today, out)
     settle(engine)  # review flags recomputed once, at the end

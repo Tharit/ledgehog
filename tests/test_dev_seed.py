@@ -175,7 +175,7 @@ def test_a_full_run_fills_every_account_through_the_real_pipeline(seeded: str, d
         }
     # the unsynced GBP cash account stays empty on purpose: the cross-currency legs offer to fill it
     empty = {name for name, n in per_account.items() if n == 0}
-    assert len(per_account) == 9 and empty == {"Bargeld GBP [seed]"}, per_account
+    assert len(per_account) == 10 and empty == {"Bargeld GBP [seed]"}, per_account
     assert all(name.endswith("[seed]") for name in per_account)
     assert _one(dev_engine, "SELECT count(*) FROM balance_record WHERE import_run_id IS NOT NULL") >= 3
     assert _one(dev_engine, "SELECT count(*) FROM balance_record WHERE import_run_id IS NULL") >= 2
@@ -479,3 +479,28 @@ def test_the_hand_kept_investment_accounts_show_a_return_and_a_young_one_does_no
         ).scalar_one()
         assert waiting == 0
     assert "ETF Depot [seed]: balance" in seeded and "no return yet" in seeded
+
+
+def test_the_card_statements_reconcile_and_show_late_arrivals(seeded: str, dev_engine: Engine):
+    from app.core.balance.statement import get_statement
+
+    with dev_engine.connect() as conn:
+        account = conn.execute(text("SELECT id FROM account WHERE name = 'Mastercard [seed]'")).scalar_one()
+        statement = get_statement(conn, account)
+        late_rows = conn.execute(
+            text(
+                "SELECT count(*) FROM source_transaction_earlier_delivery k"
+                " JOIN source_transaction s ON s.id = k.source_transaction_id WHERE s.account_id = :a"
+            ),
+            {"a": account},
+        ).scalar_one()
+    records = [i for i in reversed(statement.items) if i.kind == "record"]  # oldest first
+    assert [r.difference for r in records] == [0, 0, 0, 0]
+    assert [r.late_arrivals for r in records] == [1, 2, 1, 0]
+    assert late_rows == 2
+    late = {i.purpose: i.late_for for i in statement.items if i.kind == "source" and i.late_for}
+    assert [(p.split(" [")[0], d) for p, d in late.items()] == [
+        ("Restaurant Zur Linde", records[1].balance_on),
+        ("Erstattung Auslandseinsatzentgelt", records[2].balance_on),
+    ]
+    assert "card account 'Mastercard [seed]'" in seeded
