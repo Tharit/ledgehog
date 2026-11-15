@@ -84,7 +84,10 @@ async def test_the_request_has_a_stable_system_message_and_the_schema() -> None:
     assert str(endpoint.requests[0].url) == "http://model.test/v1/chat/completions"
     assert endpoint.requests[0].headers["authorization"] == "Bearer sekret"
     sys0, user0 = first["messages"]
-    assert sys0["role"] == "system" and user0 == {"role": "user", "content": "counterparty: AUCAT BAR"}
+    assert sys0["role"] == "system" and user0 == {
+        "role": "user",
+        "content": "counterparty: AUCAT BAR\ndirection: outflow",
+    }
     assert sys0 == second["messages"][0]  # identical for every entry: the server reuses its prefix
     assert sys0["content"] == system_message(CATEGORIES)
     lines = sys0["content"].splitlines()[-3:]
@@ -267,12 +270,13 @@ async def test_the_categories_history_counted_are_sent_as_paths_in_path_order() 
     user = endpoint.body()["messages"][1]["content"]
     assert user == (
         "counterparty: Friend Max\n"
+        "direction: outflow\n"
         "categories this household chose before for this counterparty:\n"
         "- Expense > Food\n"
         "- Expense > Travel > Tolls"
     )
     await client.ask(_entry(2, counterparty_name="Friend Max"), CATEGORIES)
-    assert endpoint.body(1)["messages"][1]["content"] == "counterparty: Friend Max"
+    assert endpoint.body(1)["messages"][1]["content"] == "counterparty: Friend Max\ndirection: outflow"
     await client.aclose()
 
 
@@ -287,6 +291,7 @@ def test_the_client_fingerprint_follows_the_payload_and_the_category_ids() -> No
 
 def test_the_instruction_explains_the_categories_chosen_before() -> None:
     assert "chose before for this counterparty" in INSTRUCTION and "the text decides" in INSTRUCTION
+    assert "an outflow is usually an expense" in INSTRUCTION and "a refund, which belongs to" in INSTRUCTION
 
 
 def test_the_classifier_stands_only_for_the_categories_it_was_asked_with() -> None:

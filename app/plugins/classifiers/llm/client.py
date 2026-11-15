@@ -40,6 +40,8 @@ INSTRUCTION = (
     "If no listed category fits, or the text says too little, answer null for category_id; "
     "then the rationale says what it is and what kind of category would fit it, "
     'for example "a Catalan motorway toll; there is no category for tolls". '
+    "The direction says whether money came in or went out: an outflow is usually an expense; "
+    "an inflow is usually income, or a refund, which belongs to the expense category it returns. "
     "Never invent an id. "
     "Where the entry lists categories this household chose before for this counterparty, "
     "prefer one of them when the text fits it; the text decides. "

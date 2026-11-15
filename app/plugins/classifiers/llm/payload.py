@@ -1,11 +1,13 @@
 """What the model is given of an entry, and the fingerprint of it (spec §5.9 pass 3, "Limited payload").
 
-The payload of an entry is the counterparty name, booking text and purpose, and for an entry with a source
-text, its source text and the name of its account. NEVER the counterparty IBAN, BIC, end-to-end id, mandate
-or other references, amounts, dates or balances, nor an account but the one such an entry is on. Besides
-that, where history counted votes for the category, the paths of the (at most three) categories it counted:
-never their counts, never the text of past entries. This module is the one place that reads an entry for
-the model, and `tests/plugins/classifiers/test_llm_payload.py` pins it.
+The payload of an entry is the counterparty name, booking text and purpose, whether the money came in or went
+out, and for an entry with a source text, its source text and the name of its account. The direction is one
+word, never the amount, and never a payload of its own: an entry without text is not asked. NEVER the
+counterparty IBAN, BIC, end-to-end id, mandate or other references, amounts, dates or balances, nor an
+account but the one such an entry is on. Besides that, where history counted votes for the category, the
+paths of the (at most three) categories it counted: never their counts, never the text of past entries.
+This module is the one place that reads an entry for the model,
+and `tests/plugins/classifiers/test_llm_payload.py` pins it.
 
 The client sends the payload and fingerprints it for the worker's list; the classifier compares the
 fingerprint with the one stored on the model's answer, so an answer stands only for the payload it was given.
@@ -33,6 +35,8 @@ _ENTRY_PARTS: tuple[tuple[str, str], ...] = (
     ("booking text", "booking_text"),
     ("purpose", "purpose"),
 )
+# the label of the direction, which follows the text parts
+_DIRECTION = "direction"
 # the parts of an entry with a source text, after the above: what its source gives it, and where it is booked
 _SOURCE_TEXT_PARTS: tuple[tuple[str, str], ...] = (
     ("source text", "source_text"),
@@ -40,15 +44,24 @@ _SOURCE_TEXT_PARTS: tuple[tuple[str, str], ...] = (
 )
 
 
-def payload_of(subject: EntryInput) -> dict[str, str] | None:
-    """The permitted text of an entry, by label; None where it would be empty (the pass does not run)."""
+def _texts(subject: EntryInput, parts: tuple[tuple[str, str], ...]) -> dict[str, str]:
     out: dict[str, str] = {}
-    parts = _ENTRY_PARTS + _SOURCE_TEXT_PARTS if has_source_text(subject.source_text) else _ENTRY_PARTS
     for label, attr in parts:
         value = getattr(subject, attr)
         if isinstance(value, str) and (text := " ".join(value.split())):
             out[label] = text
-    return out or None
+    return out
+
+
+def payload_of(subject: EntryInput) -> dict[str, str] | None:
+    """The permitted text of an entry, by label, with its direction after the entry's own text and before
+    the source text; None where the text would be empty (the pass does not run), whatever the direction."""
+    head = _texts(subject, _ENTRY_PARTS)
+    tail = _texts(subject, _SOURCE_TEXT_PARTS) if has_source_text(subject.source_text) else {}
+    if not head and not tail:
+        return None
+    direction = {_DIRECTION: "inflow" if subject.amount > 0 else "outflow"} if subject.amount else {}
+    return {**head, **direction, **tail}
 
 
 def fingerprint_of(payload: dict[str, str], categories: Sequence[int] = ()) -> str:

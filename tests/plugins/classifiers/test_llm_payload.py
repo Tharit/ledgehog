@@ -38,6 +38,7 @@ def test_the_payload_has_the_permitted_text_and_nothing_else() -> None:
         "counterparty": "AUCAT BAR CUBELLES",
         "booking text": "CARD PAYMENT",
         "purpose": "toll tag",
+        "direction": "outflow",
     }
     assert payload is not None
     sent = user_message(payload)
@@ -53,7 +54,7 @@ def test_an_empty_payload_is_none_whatever_else_the_entry_has() -> None:
 
 def test_the_fingerprint_follows_the_payload_only() -> None:
     a = payload_of(_entry(counterparty_name="X"))
-    b = payload_of(_entry(counterparty_name="X", amount=5, booked_on=date(2025, 1, 1), counterparty_ref="Z"))
+    b = payload_of(_entry(counterparty_name="X", amount=-5, booked_on=date(2025, 1, 1), counterparty_ref="Z"))
     c = payload_of(_entry(counterparty_name="X", purpose="more"))
     assert a is not None and b is not None and c is not None
     assert fingerprint_of(a) == fingerprint_of(b) != fingerprint_of(c)
@@ -67,10 +68,11 @@ def test_an_entry_with_a_source_text_adds_its_source_text_and_its_accounts_name(
         source_text="USB-C cable",
         account_name="Amazon clearing",
     )
-    assert payload_of(plain) == {"counterparty": "Amazon", "purpose": "order 1"}
+    assert payload_of(plain) == {"counterparty": "Amazon", "purpose": "order 1", "direction": "outflow"}
     assert payload_of(booked) == {
         "counterparty": "Amazon",
         "purpose": "order 1",
+        "direction": "outflow",
         "source text": "USB-C cable",
         "account": "Amazon clearing",
     }
@@ -80,10 +82,50 @@ def test_an_entry_with_a_source_text_adds_its_source_text_and_its_accounts_name(
 
 def test_a_source_text_alone_is_a_payload_and_a_blank_one_is_none() -> None:
     assert payload_of(_entry(source_text="Paperback", account_name="A")) == {
+        "direction": "outflow",
         "source text": "Paperback",
         "account": "A",
     }
     assert payload_of(_entry(source_text="  ", account_name="A")) is None
+
+
+# ---- the direction ----------------------------------------------------------------------------------
+
+
+def test_the_direction_is_inflow_or_outflow_between_the_text_and_the_source_text() -> None:
+    kw: dict[str, object] = {
+        "counterparty_name": "ACME",
+        "purpose": "ZINSEN",
+        "source_text": "Paperback",
+        "account_name": "Clearing",
+    }
+    out = payload_of(_entry(amount=-500, **kw))
+    inflow = payload_of(_entry(amount=500, **kw))
+    assert out is not None and inflow is not None
+    assert out["direction"] == "outflow" and inflow["direction"] == "inflow"
+    assert list(inflow) == ["counterparty", "purpose", "direction", "source text", "account"]
+    assert fingerprint_of(out) != fingerprint_of(inflow)
+
+
+def test_a_zero_amount_has_no_direction_line() -> None:
+    payload = payload_of(_entry(amount=0, counterparty_name="ACME"))
+    assert payload == {"counterparty": "ACME"}
+
+
+def test_the_direction_alone_is_no_payload() -> None:
+    assert payload_of(_entry(amount=500)) is None
+    assert payload_of(_entry(amount=-500)) is None
+    assert payload_fingerprint(_entry(amount=500)) is None
+
+
+def test_the_direction_never_carries_the_amount() -> None:
+    payload = payload_of(_entry(amount=-1234567, counterparty_name="ACME"))
+    assert payload is not None
+    sent = user_message(payload)
+    assert "direction: outflow" in sent
+    assert not any(ch.isdigit() for ch in sent)
+    same_way = payload_of(_entry(amount=-1, counterparty_name="ACME"))
+    assert same_way is not None and fingerprint_of(same_way) == fingerprint_of(payload)
 
 
 # ---- the categories history counted ----------------------------------------------------------------
@@ -98,11 +140,13 @@ def test_the_categories_are_paths_in_the_message_and_never_counts_or_past_text()
         "- Expense > Dining",
         "- Expense > Rent",
     ]
-    assert sent.startswith("counterparty: Friend Max\npurpose: Konzert\n")
+    assert sent.startswith("counterparty: Friend Max\npurpose: Konzert\ndirection: outflow\n")
     for secret in SECRETS:
         assert secret not in sent
     assert not any(ch.isdigit() for ch in sent)  # no counts, ids or dates
-    assert user_message(payload) == "counterparty: Friend Max\npurpose: Konzert"  # none counted: as before
+    assert (
+        user_message(payload) == "counterparty: Friend Max\npurpose: Konzert\ndirection: outflow"
+    )  # none counted: as before
 
 
 def test_the_fingerprint_covers_the_category_ids_as_a_set_never_their_counts_or_paths() -> None:
