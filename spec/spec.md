@@ -2381,7 +2381,8 @@ Constraints on pass 3:
   what the earlier passes proposed, as with no model — history's proposal where
   it gave way, otherwise nothing; they are asked when it answers again.
 - **Limited payload.** The counterparty name, booking text and purpose, and
-  for an entry with a source text, its source text and its account's name;
+  whether the money came in or went out, and for an entry with a source text,
+  its source text and its account's name;
   and where history counted votes for the category, the categories they
   hold — at most three, the most frequent, given by path in path order,
   without counts and without the text of past entries. These are the

@@ -1712,9 +1712,9 @@ Three properties the implementation must have:
   and the system stays fully usable — this is the state a deployment without
   a model is permanently in, not a degraded mode.
 - **The request payload is restricted** to the fields `spec.md` §5.9 permits:
-  counterparty name, booking text and purpose, and for an entry with a source
-  text also its source text and the name of its account. Never IBAN, BIC,
-  references, amounts, dates,
+  counterparty name, booking text and purpose, whether the money came in or
+  went out, and for an entry with a source text also its source text and the
+  name of its account. Never IBAN, BIC, references, amounts, dates,
   account numbers or balances. Enforcing that is the plugin's responsibility and is
   tested explicitly; with an empty payload the plugin is not called. Restricted
   is not anonymous: names and purpose lines include private persons' details, so

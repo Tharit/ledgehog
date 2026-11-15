@@ -829,7 +829,7 @@ categorised like imports. History learns from confirmed values on every origin
 except manual — whose entries have no source signals to match a future import —
 and gains a key of the account for derived flows.
 
-## D80 The model sees name, booking text and purpose
+## D80 The model sees name, booking text and purpose — *partly superseded by D260*
 
 Supersedes D25. The model's payload is the counterparty name, booking text and
 purpose, plus a confirmed document's merchant and lines (spec §5.9). Purpose
@@ -4102,3 +4102,7 @@ spec I19, §4, §5.9; plugins/classifiers/history.md §1, §3; architecture §5.
 - **Per field.** A rule's payee casts no vote; the category a human confirmed beside it does, through key 3. A counter-account a pair filled votes: the matcher needs the partner present, and history proposes before it arrives.
 - Accepted: a rule whose condition stops matching, or one that is deleted, leaves no evidence behind; the next entry needs one confirmation. Company entries converted by hand rather than by a rule still vote.
 - Rejected: *votes only from the entry's own account* (a merchant learned on one account is lost to the others); *transfer evidence only from the entry's own account* (it also covers transfers made by hand, but it adds a filter and costs one confirmation per account and destination; kept in reserve); *negation in rules* (one rule per merchant also paid privately; deferred); *only `user` keys vote* (it drops a counter-account the matcher filled but keeps one a commit filled, for the same fact); *excluding the whole entry* (it breaks a rule's payee pooling the categories humans chose).
+
+## D260 The model is told which way the money moved
+
+Partly supersedes D80. The model's payload gains the entry's direction — inflow or outflow, never the amount (spec §5.9). Names cannot tell `Expense > Gebuehren & Zinsen` from `Income > Kapitalertraege & Zinsen` for a purpose of "ZINSEN"; the direction can, on every account kind, where the account's kind could not — a checking account's interest goes both ways. It is a hint, not a filter: a refund is an inflow that belongs to the expense it returns (refunds net), so every category stays on offer. One bit discloses next to nothing; amounts, dates, balances and accounts stay unsent. Rejected: the account's kind (the direction already decides what it would), the amount (D80's reasons). The payload changes, so the model's standing answers are asked once more.
