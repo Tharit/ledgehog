@@ -1355,7 +1355,7 @@ enforcement point:
 | I8 only entries with a source may be incomplete | Postgres `CHECK ck_complete_unless_movement` |
 | I9 category implies flow; payee on flows; kind fixed; no cycles | Postgres `CHECK`, composite FK, triggers `trg_category_kind_fixed` and `trg_category_acyclic` |
 | I10 transfer pair mutual, distinct accounts, opposite signs, same-currency equal; one counterpart | Postgres deferred trigger; partial unique index |
-| I11 a counter-account is in the currency the money arrived in | one function in `core`, used by resolution (evidence filter), the preview and the matcher |
+| I11 a counter-account is in the currency the money arrived in | one function in `core`, told whether the choice is the user's, used by resolution (evidence filter), the preview and the matcher |
 | I13 one derived entry per record, computed, never edited, tagged or annotated; the opening first | `core/balance` is the only writer; unique indexes; integrity views; `api` exposes no edit and no tagging for them |
 | I17 no pass, matcher, settling or import creates a dimension or account | operations of §4.1; proposal types carry ids, not names |
 | I18 proposals rederived, standing values kept; an entry resolved afresh when its input changes, and later fields derived again when a value changes | `core/settle` calls `core/resolution` and `core/matching` for the entries a change bears on; `core/resolution` applies the field order; the write that changes an entry's input resolves that entry afresh in the same transaction: an entry-form edit, and settling's booking step for the booking entries whose source text it changes (§5.2) |
@@ -2443,7 +2443,13 @@ Layers:
   window widened for one pick, and a leg left behind paired as on ingest
   where its counter-account is decided, and shown in the operation's result; a
   counter-account rule not matching an account closed by the booking date;
-  counter-leg amounts, same- and cross-currency, with no conversion; a
+  counter-leg amounts, same- and cross-currency, with no conversion; a user's
+  choice of an own-currency counter-account for a leg with an instructed
+  amount: accepted from a commit, its counter-leg the leg's amount negated, a
+  third currency and a clearance account in another currency shown invalid in
+  the preview, without offers, and refused by the commit, never proposed by a
+  rule, history or the matcher; the picker's groups by currency, empty groups
+  left out; no account created from the review panel; a
   standing unit on an unsynced counter-account waiting with its counter-leg
   proposed, confirmed by one commit;
   a counter-leg left behind by a broken pair staying, as an unpaired leg; a

@@ -4106,3 +4106,22 @@ spec I19, §4, §5.9; plugins/classifiers/history.md §1, §3; architecture §5.
 ## D260 The model is told which way the money moved
 
 Partly supersedes D80. The model's payload gains the entry's direction — inflow or outflow, never the amount (spec §5.9). Names cannot tell `Expense > Gebuehren & Zinsen` from `Income > Kapitalertraege & Zinsen` for a purpose of "ZINSEN"; the direction can, on every account kind, where the account's kind could not — a checking account's interest goes both ways. It is a hint, not a filter: a refund is an inflow that belongs to the expense it returns (refunds net), so every category stays on offer. One bit discloses next to nothing; amounts, dates, balances and accounts stay unsent. Rejected: the account's kind (the direction already decides what it would), the amount (D80's reasons). The payload changes, so the model's standing answers are asked once more.
+
+## D261 A user may book a leg with an instructed amount in its own currency
+
+spec §3 examples, §5.7, §5.9; architecture invariants, tests; ux/views/review-queue.md.
+
+- **The instructed currency is the default, not the fact** (user, 2026-11-16). I11 asks for the currency the money arrived in, and the instructed currency answered that for every leg that has one. It is right for a withdrawal abroad and wrong for a purchase abroad made for someone who pays it back: the merchant received the dollars, the household a claim in euros. A foreign company expense could therefore not be booked to a EUR receivable (D250), and a USD receivable would never net against the EUR reimbursement.
+- **The user may choose an account in the leg's own currency**; the counter-leg is the leg's amount, negated (I10). Nothing is typed and nothing converted (I27). It mirrors the choice a leg without an instructed amount already had. I11 keeps its wording.
+- **Machine proposals keep to the default**: pass 0, rules, history's evidence filter and the matcher are unchanged, so the choice is made by hand each time.
+- **The picker lists every account, grouped by currency** (user, 2026-11-16): the instructed currency, the leg's own, the rest. It orders and does not filter; an invalid pick is shown in the preview and refused by the commit, like any invalid draft (ux/patterns §6). Rejected: *filtering or disabling accounts by currency* (a second place that applies the rule, and the reason for a missing account is not shown).
+- Accepted: a user can book a dollar withdrawal into a euro wallet. The picker groups accounts by currency, the instructed one first, and decides nothing; the preview shows the instructed amount as not booked.
+- Rejected: *exempting receivable and debt accounts* (a dollar loan repaid from a euro account does arrive in dollars; a rule per kind); *a third currency* (no amount is known for it); *clearance accounts* (their bookings are made by settling, from the leg's own report); *history learning the choice* (it would propose the euro wallet for cash abroad); *an opt-in on counter-account rules* (kept in reserve, if the manual step proves frequent).
+
+## D262 Accounts are added from the queue, not from the panel
+
+spec §3 examples, §5.7, §5.9; architecture tests.
+
+- **The review panel's counter-account picker creates no account** (user, 2026-11-16). "Add account" stays where the need is stated once for all the legs that share it: the currency group of the queue's needs-an-account section, and the accounts page. The panel had two further entry points, in the picker and on the partner field, each locked to the currency the rule required; with D261 that currency is a default the user may choose against, so the lock no longer had one answer.
+- Accepted: the first leg of a new currency takes two steps, adding the account in the queue and then picking it, where the panel did both.
+- Rejected: *keeping it in the panel, prefilled and unlocked* (a second way to do the same thing, and a dialog opened from inside a draft).

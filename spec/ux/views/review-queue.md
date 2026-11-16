@@ -61,9 +61,15 @@ so.
 
   One unit reads "A transfer needs an account in USD". The new account is then
   offered first on each, and each is confirmed on its own (`spec.md` §5.7). The
-  queue stays a snapshot: after an account is added, the group shows a quiet
-  notice, "3 units can now be completed: Refresh", and refetches only on
-  request.
+  counter-account picker groups the accounts by currency — "Accounts in USD"
+  (the instructed currency, where the leg has one), "Accounts in EUR" (the
+  leg's own), "Other accounts" — with the usual ranking within each group. No
+  account is disabled for its currency: a pick the currency rule does not allow
+  shows in the "After this commit" region, with the reason and no partner
+  offers (`spec.md` §5.9). The queue stays a snapshot: after an account is
+  added, the group shows a
+  quiet notice, "3 units can now be completed: Refresh", and refetches only
+  on request.
 - **Waiting** — entries expecting information that has not had its chance to
   arrive (`spec.md` §6): a partner leg, which cannot be confirmed until
   paired. Waiting is a hint; the unit stays editable. The section is grouped

@@ -754,9 +754,10 @@ ledger_entry   #34 Giro  -18734 EUR  type=NULL
 
 No history key knows a foreign operator, so #34 arrives unclassified, as the
 first withdrawal at home did. In the review panel the user converts it to a
-transfer; its counter-account cannot be the cash account, which holds euros,
-because the money arrived in dollars (the currency rule, §5.7). It is an
-unmatched transfer that needs an account in USD, and so is each of the other
+transfer; its counter-account is not the cash account, which holds euros: the
+money arrived in dollars (the currency rule, §5.7), and booking it in euros
+would be the user's choice against that, which is not what happened here. It
+is an unmatched transfer that needs an account in USD, and so is each of the other
 two once converted. The review queue groups such entries by the currency they
 need:
 
@@ -765,10 +766,10 @@ need:
 ```
 
 Creating the account from there — prefilled with USD — creates the account
-and nothing else. The unit it was added from takes it as the user's choice;
-each of the others offers it in its counter-account picker, and is confirmed
-on its own. Each commit creates a counter-leg for the negated instructed
-amount, exactly the dollars received.
+and nothing else. Each of the three then lists it first in its
+counter-account picker, under "Accounts in USD", and is confirmed on its own.
+Each commit creates a counter-leg for the negated instructed amount, exactly
+the dollars received.
 
 ```
 ledger_entry   #34 Giro      -18734 EUR  transfer  counterpart=#37
@@ -795,6 +796,20 @@ The account is EUR, so nothing is converted; the instructed amount is
 provenance (§3.8). An issuer that
 folds the fee into the same booking is the transfer-with-fee pattern above: one
 record, split into purchase and fee.
+
+**Expense abroad, to be reimbursed** — the same payment, made for an employer
+who reimburses the euros charged. The user converts #18 to a transfer and picks
+the receivable account "Expenses" (EUR), listed under "Accounts in EUR"
+(§5.7). The commit creates the counter-leg for the leg's own amount:
+
+```
+ledger_entry   #18 Card      -174210 EUR  transfer  counterpart=#20
+ledger_entry   #20 Expenses  +174210 EUR  transfer  counterpart=#18  (user-authored source)
+```
+
+The reimbursement, a transfer from Expenses to the Giro, brings the account
+back to zero. Nothing proposes this choice the next time: rules and history
+keep to the instructed currency.
 
 **Refund** — an €80 Amazon return arrives as `+8000`, `type='flow'`,
 `cat=Electronics`, so the expense category nets correctly.
@@ -1599,13 +1614,21 @@ its counterparty reference and it pairs like any other. It is what lets a card
 whose statements list no payments pair with the payoff on the account that
 pays it.
 
-**A counter-account must be in the currency the money arrived in.** Where a
-transfer leg has an instructed amount (§3.8), its counter-account is in the
-instructed currency: a withdrawal abroad delivers dollars, so it can only go to
-a dollar account. Where it has none, a machine-proposed counter-account is in
-the leg's own currency; a user may choose another, and enters the amount
-received (below). The rule is applied by one function, used by resolution
-(§5.9), the review preview and the matcher alike.
+**A counter-account must be in the currency the money arrived in.** The
+source's report is the default: where a transfer leg has an instructed amount
+(§3.8), that is the instructed currency — a withdrawal abroad delivers dollars,
+so it goes to a dollar account; where it has none, it is the leg's own
+currency. Every machine proposal — pass 0, a rule, history, the matcher — keeps
+to the default. Only the user can know otherwise, and may choose against it,
+one way for each case. For a leg with an instructed amount, an account in the
+leg's own currency: a card payment abroad made for an employer who reimburses
+the euros charged leaves a claim in euros, not dollars. The counter-account
+then takes the leg's amount, negated, like any same-currency transfer, and the
+instructed amount stays provenance. For a leg without one, an account in
+another currency, entering the amount received (below). A leg with an
+instructed amount takes no third currency. The rule is applied by one function,
+which is told whether the choice is the user's, used by resolution (§5.9), the
+review preview and the matcher alike.
 
 **A transfer leg's counter-account is stored on the entry**
 (`counter_account_id`), keyed `counter_account` like any derived value
@@ -1712,7 +1735,10 @@ them:
   pass `user`;
 - for a leg without a partner whose counter-account is unsynced, **a
   counter-leg**, which the commit creates (below), on an account that is open
-  on the leg's date and takes the instructed currency.
+  on the leg's date and that the currency rule allows.
+
+A leg whose counter-account the currency rule does not allow has no offers:
+nothing on that account is listed, and no counter-leg.
 
 An **open offer** is an offer of the first group that could still be this
 leg's: an unpaired transfer leg or an untyped entry on the counter-account,
@@ -1815,21 +1841,22 @@ corrects the amount through the entry form.
 
 #### Needing an account
 
-A leg without a counter-account is first given one in review: the picker
-offers the accounts the currency rule allows, and "new account", prefilled
-with the required currency (§5.9).
+A leg without a counter-account is given one in review: the picker lists every
+account, grouped by currency (§5.9). The picker creates nothing.
 
 **A leg whose counter-account does not exist yet** — the first withdrawal on a
 trip, with no cash account in that currency — stays unmatched. Nothing is
 created automatically: creating an account is a user action (§5.9). The review
 queue explains the leg when read — "needs an account in USD", derived from its
-instructed currency — and offers the existing accounts in that currency or
-"add account", prefilled with the currency. Adding the account creates
-nothing else; the unit it was added from takes it as the user's choice, and
-the legs that need it offer it first in the counter-account picker. Nothing
-proposes it: a counter-account is proposed only from evidence (history, a
-rule), the same for every currency, and the first assignment is what history
-learns from. Each unit is confirmed on its own (§6).
+instructed currency — and its section offers "add account" once per currency,
+prefilled with it. Adding the account creates nothing else; the legs that need
+it then list it first in the counter-account picker, in the group of their
+instructed currency. An account in the leg's own currency is the user's other
+choice (above), and taking it gives the leg its counter-account, so it leaves
+the section. Nothing proposes the new account: a counter-account is proposed
+only from evidence (history, a rule), the same for every currency, and the
+first assignment is what history learns from. Each unit is confirmed on its own
+(§6).
 
 A leg **needs an account** when it is an unpaired transfer leg with no
 counter-account, has an instructed currency, and no open non-own account in
@@ -1877,8 +1904,8 @@ with the leg. The booking's type and counter-account, and the pair on both
 legs, carry the standing key `booking`. Its amount is the leg's, negated;
 across currencies, the leg's instructed amount, negated. A clearance account
 takes a leg only in the currency the money arrived in by the leg's own report
-— its instructed currency, or its own where it has none: the user's choice of
-another currency, with the amount received typed, does not apply.
+— its instructed currency, or its own where it has none: the user's choice
+against the default (above) does not apply.
 A leg dated on or before the clearance account's start (§3.3) is the source of
 no booking: it stays an unpaired transfer leg in review, to be typed otherwise.
 
@@ -2523,8 +2550,21 @@ What the panel offers, each previewed before the commit:
   its booking; otherwise, on an
   unsynced counter-account, a counter-leg, which the commit creates; on a
   synced one the leg is committed with its destination and waits, and is
-  paired when its partner is imported (§5.7). The picker offers accounts satisfying the currency
-  rule, and "new account", prefilled with the required currency. Converting is
+  paired when its partner is imported (§5.7). The picker lists every account
+  but the entry's own, in up to three groups: "Accounts in USD", the leg's
+  instructed currency, where it has one; "Accounts in EUR", the leg's own
+  currency; and "Other accounts". A group with no
+  account is left out. The grouping orders the list and decides nothing: any
+  account can be picked, and the currency rule is applied to the pick like
+  every other rule of a draft. A pick the rule does not allow — a third
+  currency for a leg with an instructed amount, a clearance account in another
+  currency than the leg's report — leaves the leg without offers (§5.7), and
+  the preview says why, naming the currencies the leg can be booked in; the
+  commit is refused until it is changed (§6). The picker creates no account:
+  one that is missing is added from the review queue (§5.7) or the accounts
+  page. The preview shows what the counter-account receives; where the user
+  chose against an instructed amount, that is the leg's own amount, and the
+  instructed amount is shown as not booked. Converting is
   refused where another entry of the same source transaction is already a
   transfer (I31), and for an entry on a clearance account (§5.7).
 

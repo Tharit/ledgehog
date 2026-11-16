@@ -470,7 +470,7 @@ are many; "Load more candidates" widens the window for one pick, and a pick is
 a draft edit. A picked partner shows "Reset to proposal". Picking an offer of
 another amount splits the difference off the larger leg automatically, a fee
 shown in the preview, never a separate step. There is no "Unpair" control: the remedies are another partner, converting the
-leg to a flow, or changing its counter-account. "Add account" is a form dialog.
+leg to a flow, or changing its counter-account. "Add account", offered in the review queue, is a form dialog.
 
 ### 11.2 Forms and keys
 
