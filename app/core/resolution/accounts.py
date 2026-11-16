@@ -14,14 +14,37 @@ def currency_ok(entry: EntryInput, account: AccountFact) -> bool:
     """I11: the account is in the currency the money arrived in.
 
     That is the instructed currency where the source has one (a card payment abroad), else the
-    entry's own.
+    entry's own. A machine proposal (pass 0, a rule, history) is always on this default.
     """
     return arrival_currency_ok(entry.instructed_currency, entry.currency, account)
 
 
-def arrival_currency_ok(instructed_currency: str | None, currency: str, account: AccountFact) -> bool:
-    """`currency_ok` on its parts, for callers that hold a leg rather than an `EntryInput` (the matcher)."""
-    return (instructed_currency or currency) == account.currency
+def arrival_currency_ok(
+    instructed_currency: str | None, currency: str, account: AccountFact, *, users_choice: bool = False
+) -> bool:
+    """`currency_ok` on its parts, for callers that hold a leg rather than an `EntryInput`.
+
+    The ONE home of I11 (spec §5.7, D261). The default is the instructed currency, else the leg's own;
+    the matcher and every proposal keep to it. Where `users_choice`, a leg with an instructed currency
+    may also be booked in its own (the counter-account then takes the leg's amount, negated); a third
+    currency stays invalid, and a clearance account takes the default only.
+    """
+    if (instructed_currency or currency) == account.currency:
+        return True
+    return (
+        users_choice
+        and instructed_currency is not None
+        and not account.clearance
+        and account.currency == currency
+    )
+
+
+def currency_choices(instructed_currency: str | None, currency: str, account: AccountFact) -> list[str]:
+    """The currencies a leg can be booked in on `account`'s kind (the user's choice), default first."""
+    default = instructed_currency or currency
+    if instructed_currency is not None and not account.clearance and currency != default:
+        return [default, currency]
+    return [default]
 
 
 def open_on_booking_date(entry: EntryInput, account: AccountFact) -> bool:

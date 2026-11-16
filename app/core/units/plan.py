@@ -157,7 +157,7 @@ class Problem:
     code: str
     entry_id: int | None = None
     field: str | None = None
-    detail: Mapping[str, int | str | None] = dataclasses.field(default_factory=dict)
+    detail: Mapping[str, int | str | list[str] | None] = dataclasses.field(default_factory=dict)
     suggested_split: SuggestedSplit | None = None  # `pair_unequal` only
 
 

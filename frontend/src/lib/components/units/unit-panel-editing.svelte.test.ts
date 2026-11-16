@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { account, category, entry, payee, tag } from '#lib/ledger/fixtures.js';
 import { buildLookups } from '#lib/ledger/lookups.js';
 import { rule, source } from '#lib/rules/fixtures.js';
-import { accounts as accountDialog } from '#lib/accounts/controller.svelte.js';
 import { lookupsStore } from '#lib/stores/lookups.svelte.js';
 import { ruleNames } from '#lib/stores/rule-names.svelte.js';
 import type { UnitDraftRequest } from '#lib/units/types.js';
@@ -39,7 +38,8 @@ const lookups = buildLookups({
 	accounts: [
 		account({ id: 1, name: 'Giro' }),
 		account({ id: 2, name: 'Savings' }),
-		account({ id: 3, name: 'Dollar cash', currency: 'USD' })
+		account({ id: 3, name: 'Dollar cash', currency: 'USD' }),
+		account({ id: 5, name: 'Aaa old wallet', closed_on: '2026-01-01' })
 	],
 	categories: [category({ id: 10, name: 'Groceries' }), category({ id: 11, name: 'Dining' })],
 	payees: [payee({ id: 20, name: 'REWE' }), payee({ id: 21, name: 'Aldi' })],
@@ -646,102 +646,94 @@ describe('type', () => {
 		);
 	});
 
-	it('disables the accounts the currency rule rules out, and the entry’s own, with the reason', async () => {
-		const shown = unit({
-			anchor_entry_id: 1,
-			entries: [
-				entry({ id: 1, unit_key: 1, type: 'transfer', counter_account_id: 3, account_id: 1 })
-			]
-		});
-		vi.mocked(getUnit).mockResolvedValue(shown);
-		vi.mocked(previewUnit).mockResolvedValue(
-			preview(shown, {
-				problems: [
-					problem('currency_rule', {
-						entry_id: 1,
-						field: 'counter_account',
-						detail: { required: 'USD', actual: 'EUR' }
+	describe('the counter-account picker', () => {
+		async function openPicker(over: Parameters<typeof entry>[0] = {}, sourceOver = {}) {
+			const shown = unit({
+				anchor_entry_id: 1,
+				entries: [
+					entry({
+						id: 1,
+						unit_key: 1,
+						type: 'transfer',
+						counter_account_id: 3,
+						account_id: 1,
+						source: source(sourceOver),
+						...over
 					})
 				]
-			})
-		);
-		const panel = new UnitPanel(nav());
-		render(UnitPanelView, { props: { panel, lookups } });
-		panel.open(1);
-		const dialog = await screen.findByRole('dialog');
-		await waitFor(() => expect(panel.flow.previewStatus).toBe('ready'));
+			});
+			vi.mocked(getUnit).mockResolvedValue(shown);
+			vi.mocked(previewUnit).mockResolvedValue(
+				preview(shown, {
+					problems: [
+						problem('currency_rule', {
+							entry_id: 1,
+							field: 'counter_account',
+							detail: { required: 'EUR', actual: 'GBP', allowed: ['EUR', 'USD'] }
+						})
+					]
+				})
+			);
+			const panel = new UnitPanel(nav());
+			render(UnitPanelView, { props: { panel, lookups } });
+			panel.open(1);
+			const dialog = await screen.findByRole('dialog');
+			await waitFor(() => expect(panel.flow.previewStatus).toBe('ready'));
+			await fireEvent.click(within(dialog).getByRole('button', { name: 'Counter account' }));
+			return dialog;
+		}
 
-		await fireEvent.click(within(dialog).getByRole('button', { name: 'Counter account' }));
+		it('disables the entry’s own account with the reason, and no account for its currency', async () => {
+			await openPicker({}, { instructed_amount: { amount: -1000, currency: 'USD' } });
 
-		const giro = await screen.findByRole('option', { name: /Giro/ });
-		expect(giro).toHaveAttribute('aria-disabled', 'true');
-		expect(giro).toHaveTextContent('Own account');
-		const savings = screen.getByRole('option', { name: /Savings/ });
-		expect(savings).toHaveTextContent('Needs USD');
-		expect(screen.getByRole('option', { name: /Dollar cash/ })).not.toHaveAttribute(
-			'aria-disabled',
-			'true'
-		);
-	});
-});
+			const giro = await screen.findByRole('option', { name: /Giro/ });
+			expect(giro).toHaveAttribute('aria-disabled', 'true');
+			expect(giro).toHaveTextContent('Own account');
+			for (const name of [/Savings/, /Dollar cash/])
+				expect(screen.getByRole('option', { name })).not.toHaveAttribute('aria-disabled', 'true');
+			expect(screen.queryByText(/Needs /)).toBeNull();
+		});
 
-describe('Add account in the counter-account picker', () => {
-	const transfer = unit({
-		anchor_entry_id: 1,
-		entries: [entry({ id: 1, unit_key: 1, type: 'transfer', counter_account_id: null })]
-	});
+		it('groups the accounts by the instructed currency, the own currency, and the rest', async () => {
+			await openPicker({}, { instructed_amount: { amount: -1000, currency: 'USD' } });
+			await screen.findByRole('option', { name: /Giro/ });
 
-	async function openPicker(problems: ReturnType<typeof problem>[] = []) {
-		vi.mocked(getUnit).mockResolvedValue(transfer);
-		vi.mocked(previewUnit).mockImplementation(async (draft: UnitDraftRequest) => ({
-			...fakePreview(transfer, draft),
-			problems
-		}));
-		const panel = new UnitPanel(nav());
-		render(UnitPanelView, { props: { panel, lookups } });
-		panel.open(1);
-		const dialog = await screen.findByRole('dialog');
-		await waitFor(() => expect(panel.flow.previewStatus).toBe('ready'));
-		await fireEvent.click(within(dialog).getByRole('button', { name: 'Counter account' }));
-		return dialog;
-	}
+			const group = (name: string) => screen.getByRole('group', { name });
+			expect(within(group('Accounts in USD')).getByRole('option')).toHaveTextContent('Dollar cash');
+			// open accounts first, a closed one after them within the group (not by name)
+			expect(
+				within(group('Accounts in EUR'))
+					.getAllByRole('option')
+					.map((o) => o.textContent?.trim().replace(/^→\s*/, ''))
+			).toEqual([
+				expect.stringContaining('Giro'),
+				expect.stringContaining('Savings'),
+				expect.stringContaining('Aaa old wallet')
+			]);
+			expect(screen.queryByRole('group', { name: 'Other accounts' })).toBeNull(); // empty: left out
+			expect(
+				group('Accounts in USD').compareDocumentPosition(group('Accounts in EUR')) &
+					Node.DOCUMENT_POSITION_FOLLOWING
+			).toBeTruthy();
+		});
 
-	it('offers an Add account action instead of a link to another tab', async () => {
-		await openPicker();
+		it('has at most two groups for an entry without an instructed currency', async () => {
+			await openPicker();
+			await screen.findByRole('option', { name: /Giro/ });
 
-		expect(await screen.findByRole('button', { name: 'Add account' })).toBeInTheDocument();
-		expect(screen.queryByText(/opens in a new tab/)).toBeNull();
-	});
+			expect(screen.getByRole('group', { name: 'Accounts in EUR' })).toBeInTheDocument();
+			expect(
+				within(screen.getByRole('group', { name: 'Other accounts' })).getByRole('option')
+			).toHaveTextContent('Dollar cash');
+			expect(screen.queryByRole('group', { name: 'Accounts in USD' })).toBeNull();
+		});
 
-	it('opens the dialog with no currency when the preview states none', async () => {
-		const open = vi.spyOn(accountDialog, 'openAdd').mockImplementation(() => {});
-		await openPicker();
+		it('offers no Add account', async () => {
+			await openPicker();
+			await screen.findByRole('option', { name: /Giro/ });
 
-		await fireEvent.click(await screen.findByRole('button', { name: 'Add account' }));
-
-		expect(open).toHaveBeenCalledTimes(1);
-		expect(open.mock.calls[0][0]?.currency).toBeUndefined();
-		open.mockRestore();
-	});
-
-	it('locks the currency the currency rule requires, and chooses the new account', async () => {
-		const open = vi.spyOn(accountDialog, 'openAdd').mockImplementation(() => {});
-		await openPicker([
-			problem('currency_rule', {
-				entry_id: 1,
-				field: 'counter_account',
-				detail: { required: 'USD', actual: 'EUR' }
-			})
-		]);
-
-		await fireEvent.click(await screen.findByRole('button', { name: 'Add account' }));
-
-		expect(open.mock.calls[0][0]?.currency).toBe('USD');
-		open.mock.calls[0][0]?.onadded?.(account({ id: 8, name: 'Cash USD', currency: 'USD' }));
-		await waitFor(() =>
-			expect(lastRequest().entries![0].counter_account).toEqual({ mode: 'fixed', value: 8 })
-		);
-		open.mockRestore();
+			expect(screen.queryByRole('button', { name: 'Add account' })).toBeNull();
+		});
 	});
 });
 

@@ -603,7 +603,7 @@ class UnitProblemOut(BaseModel):
     code: str
     entry_id: int | None
     field: str | None
-    detail: dict[str, int | str | None]
+    detail: dict[str, int | str | list[str] | None]
     suggested_split: UnitSuggestedSplitOut | None = None  # `pair_unequal` only
 
     @staticmethod

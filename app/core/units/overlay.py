@@ -69,6 +69,7 @@ from app.core.plugins.classifier import (
     Vote,
 )
 from app.core.resolution import Decided, Resolved, resolve
+from app.core.resolution.accounts import arrival_currency_ok, currency_choices
 from app.core.resolution.load import UnconfirmedEntry
 from app.core.resolution.snapshot import LayeredHistory
 from app.core.resolution.types import check_may_be_empty, is_decided_empty, stands_for
@@ -936,15 +937,13 @@ def _apply_pairing(
         for a, b in ((r, partner), (partner, r)):
             acc = accounts.get(b.account_id)
             wanted = a.src.instructed_currency
-            if wanted is not None and acc is not None and acc.currency != wanted:
-                problems.append(
-                    Problem(
-                        "currency_rule",
-                        a.id,
-                        "counter_account",
-                        {"required": wanted, "actual": acc.currency},
-                    )
-                )
+            # a picked partner is the user's choice: the leg's own currency is allowed too (D261)
+            if (
+                wanted is not None
+                and acc is not None
+                and not arrival_currency_ok(wanted, a.src.currency, acc, users_choice=True)
+            ):
+                problems.append(_currency_problem(a, wanted, acc))
     return out
 
 
@@ -983,8 +982,9 @@ def _counter_leg_row(
     """The synthetic row of a counter-leg (spec §5.7), or None with the problem that refuses it.
 
     The leg must be a stored transfer without a partner (once the draft's own changes are applied), whose
-    counter-account is known, exists, is open on the leg's date and is unsynced (I40), and takes the leg's
-    instructed currency (I11). Its amount is `counter_leg_amount`, or the user's amount received."""
+    counter-account is known, exists, is open on the leg's date and is unsynced (I40), and
+    takes a currency the leg can be booked in (I11; the user's own-currency choice included). Its amount is
+    `counter_leg_amount`, or the user's amount received."""
     spec = d.pairing.counter_leg
     assert spec is not None
     c = _own_counter(first[leg.id]["counter_account"])
@@ -1000,7 +1000,10 @@ def _counter_leg_row(
         or acc.clearance  # a clearance account's counter-leg is a booking, made by settling (spec §5.7)
         or (own is not None and own.clearance)
         or (acc.closed_on is not None and leg.src.booked_on > acc.closed_on)
-        or (leg.src.instructed_currency is not None and acc.currency != leg.src.instructed_currency)
+        or (
+            leg.src.instructed_currency is not None
+            and not arrival_currency_ok(leg.src.instructed_currency, leg.src.currency, acc, users_choice=True)
+        )
     ):
         problems.append(not_offered)
         return None
@@ -1084,6 +1087,18 @@ def _pick_keys(row: _Row, set_by_pair: bool) -> None:
 # ---- 5. the invariants --------------------------------------------------------------------------
 
 
+def _currency_problem(r: _Row, required: str, counter: AccountFact) -> Problem:
+    """`currency_rule` (spec §5.7): `required` is the default currency, `allowed` every currency the leg can
+    be booked in on `counter`, default first (the user's own-currency choice is in it, D261)."""
+    allowed = currency_choices(r.src.instructed_currency, r.src.currency, counter)
+    return Problem(
+        "currency_rule",
+        r.id,
+        "counter_account",
+        {"required": required, "actual": counter.currency, "allowed": allowed},
+    )
+
+
 def _problems(rows: Sequence[_Row], world: World) -> list[Problem]:
     out: list[Problem] = []
     accounts = {a.id: a for a in world.accounts}
@@ -1117,17 +1132,14 @@ def _problems(rows: Sequence[_Row], world: World) -> list[Problem]:
                 )
             else:
                 # the currency the money arrived in; a clearance account takes a charge only in it, so a
-                # charge with no instructed currency can only go to one in its own (spec §5.7)
+                # charge with no instructed currency can only go to one in its own (spec §5.7). Machine
+                # proposals are filtered to the default at their source, so a value in the leg's own
+                # currency is the user's choice (D261) and is allowed here.
                 required = r.src.instructed_currency or (r.src.currency if acc.clearance else None)
-                if required is not None and acc.currency != required:
-                    out.append(
-                        Problem(
-                            "currency_rule",
-                            r.id,
-                            "counter_account",
-                            {"required": required, "actual": acc.currency},
-                        )
-                    )
+                if required is not None and not arrival_currency_ok(
+                    r.src.instructed_currency, r.src.currency, acc, users_choice=True
+                ):
+                    out.append(_currency_problem(r, required, acc))
         if (
             r.category_id is not None
             and r.draft.category.mode == "fixed"

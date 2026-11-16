@@ -47,3 +47,24 @@ def test_pass_zero_test_ignores_closing() -> None:
     closed = account(2, closed_on=DAY - timedelta(days=30))
     assert own_account_match_ok(entry(), closed)
     assert not own_account_match_ok(entry(), account(2, "USD"))
+
+
+def test_a_users_choice_may_also_be_the_legs_own_currency_where_there_is_an_instructed_one() -> None:
+    from app.core.resolution.accounts import arrival_currency_ok, currency_choices
+
+    eur, usd, gbp = account(2, "EUR"), account(3, "USD"), account(4, "GBP")
+    assert not arrival_currency_ok("USD", "EUR", eur)  # a machine keeps to the default
+    assert arrival_currency_ok("USD", "EUR", eur, users_choice=True)
+    assert arrival_currency_ok("USD", "EUR", usd, users_choice=True)
+    assert not arrival_currency_ok("USD", "EUR", gbp, users_choice=True)  # a third currency stays invalid
+    assert not arrival_currency_ok(None, "EUR", usd, users_choice=True)  # no instructed amount: not here
+    assert currency_choices("USD", "EUR", eur) == ["USD", "EUR"]
+    assert currency_choices(None, "EUR", eur) == ["EUR"]
+
+
+def test_a_clearance_account_takes_only_the_default_currency_whoever_chooses() -> None:
+    from app.core.resolution.accounts import arrival_currency_ok, currency_choices
+
+    clearance = account(2, "EUR", clearance=True)
+    assert not arrival_currency_ok("USD", "EUR", clearance, users_choice=True)
+    assert currency_choices("USD", "EUR", clearance) == ["USD"]

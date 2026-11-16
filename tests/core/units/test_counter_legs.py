@@ -268,6 +268,28 @@ def test_cross_currency_with_an_instructed_amount_needs_no_received_amount(scene
     ]
 
 
+def test_a_users_own_currency_choice_for_a_leg_with_an_instructed_amount_is_the_legs_amount_negated(
+    scene: Scene,
+) -> None:
+    e = leg(scene, -1000, scene.checking, counter=scene.cash, instructed=(-1100, "USD"))
+    plan = scene.preview(e, DraftEntry(e, pairing=cl(-1)))
+    assert not plan.problems
+    assert (plan.row(-1).amount, plan.row(-1).currency, plan.row(-1).account_id) == (1000, "EUR", scene.cash)
+    real, _ = committed(scene, e, DraftEntry(e, pairing=cl(-1)))
+    assert (scene.row(real).amount, scene.row(real).currency) == (1000, "EUR")
+    assert scene.row(real).counterpart_entry_id == e
+
+
+def test_a_third_currency_has_no_counter_leg_and_the_commit_is_refused(scene: Scene) -> None:
+    e = leg(scene, -1000, scene.checking, counter=scene.usd, instructed=(-900, "GBP"))
+    plan = scene.preview(e)
+    assert plan.transfers[e].offers == () and plan.transfers[e].proposal is None
+    assert codes(plan) == ["currency_rule"]
+    with pytest.raises(CommitRefused) as exc:
+        scene.commit_draft(dataclasses.replace(scene.draft(e), versions=plan.versions))
+    assert [p.code for p in exc.value.problems] == ["currency_rule"]
+
+
 def test_cross_currency_without_an_instructed_amount_takes_the_amount_received(scene: Scene) -> None:
     e = leg(scene, -1000, scene.checking, counter=scene.usd)
     plan = scene.preview(e, DraftEntry(e, pairing=cl(-1)))

@@ -98,6 +98,15 @@ export function describeProblem(problem: UnitProblem, context: ProblemContext): 
 					text: `A clearance account takes only charges in its own currency (${actual}); this charge is in ${required}.`,
 					remedy: `Choose an account in ${required}.`
 				};
+			// the default (the instructed currency) first, then the leg's own (spec §5.7)
+			const allowed = Array.isArray(detail.allowed)
+				? detail.allowed.filter((c): c is string => typeof c === 'string')
+				: [];
+			if (allowed.length === 2)
+				return {
+					text: `This transfer can be booked in ${allowed[0]} or ${allowed[1]}, not ${actual}.`,
+					remedy: `Choose an account in ${allowed[0]} or ${allowed[1]}.`
+				};
 			return {
 				text: `This transfer needs an account in ${required}, not ${actual}.`,
 				remedy: `Choose an account in ${required}.`

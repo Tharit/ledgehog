@@ -72,7 +72,9 @@ def check_pick(
             return not_offered
     else:
         account = accounts.get(partner.account_id)
-        if account is None or not arrival_currency_ok(leg.instructed_currency, leg.currency, account):
+        if account is None or not arrival_currency_ok(
+            leg.instructed_currency, leg.currency, account, users_choice=True
+        ):
             return not_offered
     if (
         partner.type == "transfer"

@@ -38,7 +38,7 @@
 
 	let open = $state(false);
 
-	const options = $derived(targetOptions(kind, lookups, value));
+	const options = $derived(targetOptions(kind, lookups));
 	const word = $derived(noun ?? kindWord(kind));
 	const article = $derived(/^[aeiou]/i.test(word) ? 'an' : 'a');
 	const chooseLabel = $derived(`Choose ${article} ${word}`);

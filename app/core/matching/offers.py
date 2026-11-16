@@ -2,7 +2,10 @@
 
 For a transfer leg L with the counter-account C (whatever it holds under any key), the offers are movements
 on C within a window, of the opposite sign and of ANY amount; where L has no counter-account, on every
-account the currency rule allows. Three groups, in this order:
+account the currency rule allows the user to pick (the default currency, and the leg's own where it has an
+instructed one, D261). A leg whose counter-account the rule does not allow (a third currency for a leg with
+an instructed amount) has no offers at all: no entry on that account, no counter-leg. Three groups, in
+this order:
 
 1. **open offers** — unpaired transfer legs (`open_leg`) and untyped entries (`untyped_entry`; only a source's
    original can become a transfer, I31, so no other is offered). An unpaired leg whose own known
@@ -10,11 +13,14 @@ account the currency rule allows. Three groups, in this order:
    days, then the earlier `booked_on`, then the lower entry id;
 2. **legs paired elsewhere** (`paired_elsewhere`), with their partner's summary, in the same order;
 3. **the counter-leg** (`counter_leg`) for a leg without a partner whose C is unsynced and open on the date:
-   what a commit would create on C. Its amount is the negated amount of L in one currency; across currencies
+   what a commit would create on C. Its amount is the negated amount of L in one currency (so for an
+   own-currency C of a leg with an instructed amount, the instructed amount is ignored); across currencies
    the negated instructed amount where L has one in C's currency, else `needs_received_amount` (no estimate:
    conversion happens only in reporting, I27).
 
-The **proposal** (a preselection in the preview, never stored): the first open offer when it is exact; else,
+The **proposal** (a preselection in the preview, never stored): the first exact open offer (for a leg
+without a counter-account, the first on an account of the default currency: a machine proposal never
+makes the user's choice against it); else,
 where there is no open offer at all, the counter-leg when offered; else nothing. A leg paired elsewhere is
 never proposed, nor is anything proposed for a leg that already has a partner.
 
@@ -145,6 +151,16 @@ def _reachable(leg: Leg, p: PoolEntry, partner_id: int | None, world: OfferWorld
     if leg.counter_account_id is not None:
         return other.account_id == leg.counter_account_id
     account = world.accounts.get(other.account_id)
+    return account is not None and arrival_currency_ok(
+        leg.instructed_currency, leg.currency, account, users_choice=True
+    )
+
+
+def _machine_ok(leg: Leg, offer: Offer, world: OfferWorld) -> bool:
+    """A proposal is a machine's: for a leg without a counter-account it stays on the default currency."""
+    if leg.counter_account_id is not None:
+        return True
+    account = world.accounts.get(offer.account_id)
     return account is not None and arrival_currency_ok(leg.instructed_currency, leg.currency, account)
 
 
@@ -199,8 +215,10 @@ def _counter_leg(leg: Leg, partner_id: int | None, world: OfferWorld, purpose: s
         return None
     if account.closed_on is not None and leg.booked_on > account.closed_on:
         return None
-    if leg.instructed_currency is not None and account.currency != leg.instructed_currency:
-        return None  # I11: the money arrived in another currency
+    if leg.instructed_currency is not None and not arrival_currency_ok(
+        leg.instructed_currency, leg.currency, account, users_choice=True
+    ):
+        return None  # I11: a third currency
     amount = counter_leg_amount(leg, account)
     shown_purpose = purpose if purpose is not None else leg.purpose
     return Offer(
@@ -245,6 +263,13 @@ def offers(
     }
     if touches_clearance(leg, world.accounts):  # a leg toward a clearance account has no offers (spec §5.7)
         return OfferSet((), None, False)
+    held = world.accounts.get(leg.counter_account_id) if leg.counter_account_id is not None else None
+    if (
+        held is not None
+        and leg.instructed_currency is not None
+        and not arrival_currency_ok(leg.instructed_currency, leg.currency, held, users_choice=True)
+    ):  # the currency rule does not allow its counter-account: no offers (spec §5.7)
+        return OfferSet((), None, False)
     has_more = False
     for p in pool:
         if not _reachable(leg, p, partner_id, world):
@@ -278,9 +303,10 @@ def offers(
 
     proposal: Proposal | None = None
     if partner_id is None:
-        if open_offers and open_offers[0].exact:
-            open_offers[0] = replace(open_offers[0], proposed=True)
-            proposal = Proposal("entry", open_offers[0].entry_id)
+        at = next((i for i, o in enumerate(open_offers) if o.exact and _machine_ok(leg, o, world)), None)
+        if at is not None:
+            open_offers[at] = replace(open_offers[at], proposed=True)
+            proposal = Proposal("entry", open_offers[at].entry_id)
         elif not open_offers and counter is not None:
             counter = replace(counter, proposed=True)
             proposal = Proposal("counter_leg", None)

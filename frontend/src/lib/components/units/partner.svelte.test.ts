@@ -2,7 +2,6 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { account, entry } from '#lib/ledger/fixtures.js';
 import { buildLookups } from '#lib/ledger/lookups.js';
-import { accounts as accountDialog } from '#lib/accounts/controller.svelte.js';
 import { ruleNames } from '#lib/stores/rule-names.svelte.js';
 import type { UnitDraftRequest, UnitPreview, UnitTransfer } from '#lib/units/types.js';
 import {
@@ -218,23 +217,14 @@ describe('the partner row of a transfer leg', () => {
 		);
 	});
 
-	it('says an account is needed and opens Add account locked to the currency', async () => {
-		const open = vi.spyOn(accountDialog, 'openAdd').mockImplementation(() => {});
+	it('says an account is needed, and offers no Add account', async () => {
 		const { dialog } = await openTransfer({
 			entryOver: { counter_account_id: null },
 			transfer: transferOut({ state: 'needs_account', needs_account: { currency: 'USD' } })
 		});
 
 		expect(partnerOf(dialog)).toHaveTextContent('Needs an account in USD');
-		expect(within(dialog).queryByRole('button', { name: 'Choose partner…' })).toBeNull();
-		await fireEvent.click(within(dialog).getByRole('button', { name: 'Add account' }));
-
-		expect(open.mock.calls[0][0]?.currency).toBe('USD');
-		open.mock.calls[0][0]?.onadded?.(account({ id: 8, name: 'Cash USD', currency: 'USD' }));
-		await waitFor(() =>
-			expect(lastRequest().entries![0].counter_account).toEqual({ mode: 'fixed', value: 8 })
-		);
-		open.mockRestore();
+		expect(within(dialog).queryByRole('button', { name: 'Add account' })).toBeNull();
 	});
 
 	it('keeps the stored partner row where the preview has said nothing of the leg', async () => {

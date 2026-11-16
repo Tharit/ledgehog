@@ -79,13 +79,14 @@ describe('TargetPicker', () => {
 		expect(screen.getByRole('option', { name: /Aldi/ })).toBeInTheDocument();
 	});
 
-	it('leaves a closed account out of the counter-accounts', async () => {
+	it('lists a closed account after the open ones', async () => {
 		setup({ kind: 'counter_account', label: 'Account' });
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Account' }));
 
-		expect(await screen.findByRole('option', { name: /Giro/ })).toBeInTheDocument();
-		expect(screen.queryByRole('option', { name: /Old wallet/ })).toBeNull();
+		const names = (await screen.findAllByRole('option')).map((o) => o.textContent ?? '');
+		expect(names.at(-1)).toMatch(/Old wallet/);
+		expect(names[0]).toMatch(/Giro/);
 	});
 
 	it('clears a clearable choice', async () => {

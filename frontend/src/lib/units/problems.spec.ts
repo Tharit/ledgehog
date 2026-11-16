@@ -25,9 +25,27 @@ describe('describeProblem', () => {
 		expect(text.remedy).toBe('Choose an account in USD.');
 	});
 
+	it('names the two currencies a transfer can be booked in', () => {
+		const text = words('currency_rule', {
+			detail: { required: 'USD', actual: 'GBP', allowed: ['USD', 'EUR'] }
+		});
+		expect(text.text).toBe('This transfer can be booked in USD or EUR, not GBP.');
+		expect(text.remedy).toBe('Choose an account in USD or EUR.');
+	});
+
+	it('names one currency when only one is allowed', () => {
+		const text = words('currency_rule', {
+			detail: { required: 'USD', actual: 'EUR', allowed: ['USD'] }
+		});
+		expect(text.text).toBe('This transfer needs an account in USD, not EUR.');
+		expect(text.remedy).toBe('Choose an account in USD.');
+	});
+
 	it('says a clearance account takes a charge only in its own currency', () => {
 		const text = describeProblem(
-			problem('currency_rule', { detail: { required: 'EUR', actual: 'USD' } }),
+			problem('currency_rule', {
+				detail: { required: 'EUR', actual: 'USD', allowed: ['EUR'] }
+			}),
 			{ ...context, counterKind: () => 'clearance' }
 		);
 		expect(text.text).toBe(

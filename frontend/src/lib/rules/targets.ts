@@ -6,11 +6,7 @@ import { categoryPath } from '#lib/theme/resolve.js';
 export type TargetOption = { id: number; label: string };
 
 /** The kind of row a target is: the lists differ, a counter-account is an account. */
-export function targetOptions(
-	kind: RuleSets,
-	lookups: Lookups,
-	keep: number | null
-): TargetOption[] {
+export function targetOptions(kind: RuleSets, lookups: Lookups): TargetOption[] {
 	let options: TargetOption[];
 	if (kind === 'category') {
 		options = [...lookups.categories.values()].map((c) => ({
@@ -20,10 +16,15 @@ export function targetOptions(
 	} else if (kind === 'payee') {
 		options = [...lookups.payees.values()].map((p) => ({ id: p.id, label: p.name }));
 	} else {
-		// a closed account cannot receive a transfer, but a rule that already names one keeps it
-		options = [...lookups.accounts.values()]
-			.filter((a) => a.closed_on === null || a.id === keep)
-			.map((a) => ({ id: a.id, label: a.name }));
+		// every account is listed, the open ones first and the closed ones after (spec §3.3); whether
+		// an account can take this entry is the preview's to say
+		const byName = (x: TargetOption, y: TargetOption) => x.label.localeCompare(y.label);
+		const accounts = [...lookups.accounts.values()];
+		const open = accounts.filter((a) => a.closed_on === null);
+		const closed = accounts.filter((a) => a.closed_on !== null);
+		return [open, closed].flatMap((part) =>
+			part.map((a) => ({ id: a.id, label: a.name })).sort(byName)
+		);
 	}
 	return options.sort((a, b) => a.label.localeCompare(b.label));
 }

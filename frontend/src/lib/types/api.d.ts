@@ -3889,7 +3889,7 @@ export interface components {
             code: string;
             /** Detail */
             detail: {
-                [key: string]: number | string | null;
+                [key: string]: number | string | string[] | null;
             };
             /** Entry Id */
             entry_id: number | null;

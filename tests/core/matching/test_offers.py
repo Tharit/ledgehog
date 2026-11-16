@@ -129,10 +129,21 @@ def test_without_a_counter_account_every_account_the_currency_rule_allows() -> N
     assert sorted(i for i in ids(res) if i is not None) == [10, 11]  # not the dollar account, not its own
 
 
-def test_with_an_instructed_currency_only_accounts_in_it() -> None:
+def test_with_an_instructed_currency_the_instructed_and_the_own_currency_are_offered() -> None:
+    # the user's pick (D261): accounts in the instructed currency, and in the leg's own
     leg = me(amount=-1000, instructed_amount=-1100, instructed_currency="USD")
     res = run(leg, p(10, account=B), p(11, account=USD_ACC, amount=1100))
-    assert ids(res) == [11]
+    assert sorted(i for i in ids(res) if i is not None) == [10, 11]
+
+
+def test_a_proposal_never_makes_the_choice_against_the_instructed_currency() -> None:
+    leg = me(amount=-1000, instructed_amount=-1100, instructed_currency="USD")
+    res = run(leg, p(10, account=B, amount=1000))  # exact, but on an account of the leg's own currency
+    assert ids(res) == [10] and res.proposal is None and not res.offers[0].proposed
+    res = run(
+        leg, p(10, account=B, amount=1000), p(11, account=USD_ACC, amount=1100, on=D + timedelta(days=2))
+    )
+    assert res.proposal is not None and res.proposal.entry_id == 11
 
 
 def test_own_partner_same_sign_zero_and_flows_are_never_offered() -> None:
@@ -233,8 +244,21 @@ def test_a_cross_currency_counter_leg_without_an_instructed_amount_needs_the_amo
 
 
 def test_no_counter_leg_where_the_currency_rule_is_broken() -> None:
-    leg = me(amount=-1000, instructed_amount=-1100, instructed_currency="USD", counter_account_id=CASH)
+    leg = me(amount=-1000, instructed_amount=-900, instructed_currency="GBP", counter_account_id=USD_ACC)
     assert run(leg).offers == ()
+
+
+def test_an_own_currency_counter_leg_of_a_leg_with_an_instructed_amount_is_the_legs_amount_negated() -> None:
+    leg = me(amount=-1000, instructed_amount=-1100, instructed_currency="USD", counter_account_id=CASH)
+    (offer,) = run(leg).offers
+    assert offer.counter_leg is not None
+    assert (offer.amount, offer.currency, offer.counter_leg.needs_received_amount) == (1000, "EUR", False)
+
+
+def test_a_leg_whose_counter_account_the_rule_does_not_allow_has_no_offers_at_all() -> None:
+    leg = me(amount=-1000, instructed_amount=-900, instructed_currency="GBP", counter_account_id=USD_ACC)
+    res = run(leg, p(10, account=USD_ACC, amount=1100))
+    assert res.offers == () and res.proposal is None
 
 
 # ---- the proposal -----------------------------------------------------------------------------------

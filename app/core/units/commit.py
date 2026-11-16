@@ -247,7 +247,9 @@ def _stale(plan: Plan) -> None:
         if p.code == "stale_reference":
             field = p.field or "id"
             found = p.detail.get("id")
-            raise StaleReference(field, _ENTITY.get(field, "row"), int(found) if found is not None else None)
+            raise StaleReference(
+                field, _ENTITY.get(field, "row"), int(found) if isinstance(found, int | str) else None
+            )
 
 
 def _write(conn: Connection, plan: Plan) -> dict[int, int]:

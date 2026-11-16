@@ -269,6 +269,18 @@ def test_a_charge_without_an_instructed_amount_cannot_go_to_a_foreign_currency_c
     assert booking_of(scene, e) is None
 
 
+def test_a_clearance_account_takes_a_leg_with_an_instructed_amount_only_in_that_currency(
+    scene: Scene,
+) -> None:
+    eur = clearance(scene, "Amazon.de")
+    e = charge(scene, -4997, instructed=(-5500, "USD"))
+    plan = scene.preview(e, DraftEntry(e, counter_account=fixed(eur)))
+    (problem,) = [p for p in plan.problems if p.code == "currency_rule"]
+    assert problem.detail == {"required": "USD", "actual": "EUR", "allowed": ["USD"]}
+    with pytest.raises(CommitRefused):
+        scene.commit(e, DraftEntry(e, counter_account=fixed(eur)))
+
+
 def test_a_flow_charge_has_no_booking(scene: Scene) -> None:
     clearance(scene)
     e = charge(scene)

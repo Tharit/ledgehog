@@ -8,7 +8,6 @@
 	import ReviewBadge from '#lib/components/common/review-badge.svelte';
 	import Segmented from '#lib/components/common/segmented.svelte';
 	import { Input } from '#lib/components/ui/input/index.js';
-	import { accounts as accountDialog } from '#lib/accounts/controller.svelte.js';
 	import type { Lookups } from '#lib/ledger/lookups.js';
 	import { NEW_RULE_PATH } from '#lib/rules/links.js';
 	import { withExample } from '#lib/rules/example.js';
@@ -84,29 +83,23 @@
 		view.original && view.inSplit ? 'Residual' : view.isNew || view.inSplit ? 'Split' : null
 	);
 	const amountError = $derived(flow.amountErrors[view.id] ?? null);
-	const required = $derived.by(() => {
-		const found = problems.find((p) => p.problem.code === 'currency_rule');
-		const value = found?.problem.detail.required;
-		return typeof value === 'string' ? value : null;
+	// the counter-account picker lists accounts by the currencies this leg can be booked in: the
+	// instructed currency (where the source has one), the entry's own, then the rest (spec §5.9)
+	const accountGroups = $derived.by(() => {
+		const own = view.amount?.currency ?? null;
+		const instructed = view.stored?.source?.instructed_amount?.currency ?? null;
+		const groups: { heading: string; has: (id: number) => boolean }[] = [];
+		const inCurrency = (currency: string) => (id: number) =>
+			lookups.accounts.get(id)?.currency === currency;
+		if (instructed && instructed !== own)
+			groups.push({ heading: `Accounts in ${instructed}`, has: inCurrency(instructed) });
+		if (own) groups.push({ heading: `Accounts in ${own}`, has: inCurrency(own) });
+		groups.push({ heading: 'Other accounts', has: () => true });
+		return groups;
 	});
 
 	function accountReason(id: number): string | undefined {
-		if (id === view.accountId) return 'Own account';
-		if (required && lookups.accounts.get(id)?.currency !== required) return `Needs ${required}`;
-		return undefined;
-	}
-
-	// "Add account" in the counter-account picker: the dialog opens locked to the currency the
-	// currency rule asks for, when the preview says one; the new account is chosen on success
-	function addAccount(
-		trigger: HTMLElement | null,
-		currency: string | undefined = required ?? undefined
-	) {
-		accountDialog.openAdd({
-			currency,
-			returnFocus: trigger,
-			onadded: (account) => pick(view.fields.counter_account, account.id)
-		});
+		return id === view.accountId ? 'Own account' : undefined;
 	}
 
 	function pick(field: FieldView, value: number | null) {
@@ -330,7 +323,6 @@
 					counterAccountId={typeof view.fields.counter_account.value === 'number'
 						? view.fields.counter_account.value
 						: null}
-					onaddaccount={addAccount}
 				/>
 			{/if}
 		{:else if isTransfer}
@@ -347,7 +339,7 @@
 					proposal={view.fields.counter_account.proposal}
 					invalid={invalid('counter_account')}
 					disabledReason={accountReason}
-					add={{ label: 'Add account', run: addAccount }}
+					groups={accountGroups}
 					onchange={(id) => pick(view.fields.counter_account, id)}
 				/>
 				{@render evidenceOf(view.fields.counter_account)}
@@ -362,7 +354,6 @@
 					counterAccountId={typeof view.fields.counter_account.value === 'number'
 						? view.fields.counter_account.value
 						: null}
-					onaddaccount={addAccount}
 				/>
 			{:else if partner}
 				<dt class="text-muted-foreground">Partner leg</dt>

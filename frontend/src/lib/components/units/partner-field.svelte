@@ -38,8 +38,7 @@
 		lookups,
 		locale = 'en',
 		counterAccountId,
-		direction = null,
-		onaddaccount
+		direction = null
 	}: {
 		view: EntryView;
 		flow: UnitDraftFlow;
@@ -49,8 +48,6 @@
 		counterAccountId: number | null;
 		/** where the partner's group sits in the panel; null when it is not shown there */
 		direction?: 'above' | 'below' | null;
-		/** "Add account" for the currency a transfer needs; the trigger takes the focus back */
-		onaddaccount: (trigger: HTMLElement | null, currency: string) => void;
 	} = $props();
 
 	// only called for a leg the preview told about
@@ -253,161 +250,146 @@
 	     on, so it has no control of its own -->
 	{#if !view.joined}
 		<div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-			{#if transfer.state === 'needs_account' && transfer.needs_account}
-				{@const currency = transfer.needs_account.currency}
+			<Popover.Root bind:open>
+				<Popover.Trigger>
+					{#snippet child({ props })}
+						<ActionButton
+							variant="outline"
+							data-picker="partner"
+							disabled={flow.committing}
+							{...props}
+						>
+							{paired ? 'Pick another partner…' : 'Choose partner…'}
+						</ActionButton>
+					{/snippet}
+				</Popover.Trigger>
+				<Popover.Content
+					align="start"
+					class="w-[26rem] max-w-[90vw] gap-0 p-1"
+					aria-label="Choose a partner"
+				>
+					<Command.Root shouldFilter={false} aria-busy={loading}>
+						{#if total > 0}
+							<Command.Input
+								placeholder="Find a candidate…"
+								aria-label="Search candidates"
+								bind:value={query}
+							/>
+						{/if}
+						<Command.List aria-label="Partner candidates" class="max-h-72">
+							{#each filtered as group (group.key)}
+								<Command.Group heading={group.label} data-group={group.key}>
+									{#each group.offers as offer (offer.entry_id ?? 'counter-leg')}
+										{@const account = lookups.accounts.get(offer.account_id)}
+										{@const hints = offerHints(offer, words)}
+										<Command.Item
+											value={`offer-${offer.entry_id ?? 'counter-leg'}`}
+											class="items-start"
+											data-offer={offer.entry_id ?? 'counter-leg'}
+											data-kind={offer.kind}
+											onSelect={() => choose(offer)}
+										>
+											<span class="flex min-w-0 flex-1 flex-col gap-0.5">
+												<span class="flex flex-wrap items-center gap-x-2">
+													{#if offer.kind === 'counter_leg'}
+														<span>Create the other side in</span>
+													{/if}
+													{#if account}
+														<AccountDot name={account.name} color={resolveAccount(account).color} />
+													{:else}
+														<span>Account {offer.account_id}</span>
+													{/if}
+													{#if offer.kind !== 'counter_leg'}
+														<DateDisplay date={offer.booked_on} {locale} />
+													{/if}
+													{#if offer.amount && offer.kind !== 'counter_leg'}
+														<MoneyDisplay
+															minor={offer.amount.amount}
+															currency={offer.amount.currency}
+															{locale}
+															showCurrency
+															class="inline"
+														/>
+													{/if}
+													{#if offer.exact}
+														<span class="rounded-sm bg-muted px-1 text-xs" data-tag="exact"
+															>exact</span
+														>
+													{/if}
+													{#if offer.proposed}
+														<span
+															class="rounded-sm bg-muted px-1 text-xs italic"
+															data-tag="proposed">proposed</span
+														>
+													{/if}
+													{#if offer.kind === 'untyped_entry'}
+														<span class="text-xs text-muted-foreground" data-tag="untyped"
+															>not yet typed</span
+														>
+													{/if}
+												</span>
+												{#if offer.description && offer.kind !== 'counter_leg'}
+													<span class="truncate text-xs text-muted-foreground"
+														>{offer.description}</span
+													>
+												{/if}
+												{#if offer.paired_with}
+													<span class="text-xs text-muted-foreground" data-slot="offer-paired">
+														paired with {legWords(offer.paired_with, words)}
+													</span>
+												{/if}
+												{#if hints.length > 0}
+													<span class="text-xs text-muted-foreground" data-slot="offer-hint">
+														{hints.join(' · ')}
+													</span>
+												{/if}
+											</span>
+										</Command.Item>
+									{/each}
+								</Command.Group>
+							{/each}
+							{#if total === 0}
+								<p
+									class="px-2 py-6 text-center text-sm text-muted-foreground"
+									data-slot="offers-empty"
+								>
+									No candidates in this window
+								</p>
+							{:else if filtered.length === 0}
+								<p class="px-2 py-6 text-center text-sm text-muted-foreground">No match.</p>
+							{/if}
+						</Command.List>
+					</Command.Root>
+					{#if transfer.has_more && flow.nextWindow !== null}
+						<div class="border-t px-1 pt-1">
+							<ActionButton
+								variant="link"
+								class="h-auto justify-start p-1 text-xs"
+								data-slot="load-more"
+								disabled={loading}
+								onclick={() => flow.widenWindow()}
+							>
+								Load more candidates
+							</ActionButton>
+						</div>
+					{:else if flow.previewWindow !== null}
+						<p
+							class="border-t px-2 pt-1 pb-0.5 text-xs text-muted-foreground"
+							data-slot="window-note"
+						>
+							Candidates within {flow.previewWindow} days.
+						</p>
+					{/if}
+				</Popover.Content>
+			</Popover.Root>
+			{#if view.picked}
 				<ActionButton
 					variant="link"
 					class="h-auto p-0 text-xs"
-					data-slot="partner-add-account"
-					onclick={(event) => onaddaccount(event.currentTarget, currency)}
+					onclick={() => flow.clearPairing(view.id)}
 				>
-					Add account
+					Reset to proposal
 				</ActionButton>
-			{:else}
-				<Popover.Root bind:open>
-					<Popover.Trigger>
-						{#snippet child({ props })}
-							<ActionButton
-								variant="outline"
-								data-picker="partner"
-								disabled={flow.committing}
-								{...props}
-							>
-								{paired ? 'Pick another partner…' : 'Choose partner…'}
-							</ActionButton>
-						{/snippet}
-					</Popover.Trigger>
-					<Popover.Content
-						align="start"
-						class="w-[26rem] max-w-[90vw] gap-0 p-1"
-						aria-label="Choose a partner"
-					>
-						<Command.Root shouldFilter={false} aria-busy={loading}>
-							{#if total > 0}
-								<Command.Input
-									placeholder="Find a candidate…"
-									aria-label="Search candidates"
-									bind:value={query}
-								/>
-							{/if}
-							<Command.List aria-label="Partner candidates" class="max-h-72">
-								{#each filtered as group (group.key)}
-									<Command.Group heading={group.label} data-group={group.key}>
-										{#each group.offers as offer (offer.entry_id ?? 'counter-leg')}
-											{@const account = lookups.accounts.get(offer.account_id)}
-											{@const hints = offerHints(offer, words)}
-											<Command.Item
-												value={`offer-${offer.entry_id ?? 'counter-leg'}`}
-												class="items-start"
-												data-offer={offer.entry_id ?? 'counter-leg'}
-												data-kind={offer.kind}
-												onSelect={() => choose(offer)}
-											>
-												<span class="flex min-w-0 flex-1 flex-col gap-0.5">
-													<span class="flex flex-wrap items-center gap-x-2">
-														{#if offer.kind === 'counter_leg'}
-															<span>Create the other side in</span>
-														{/if}
-														{#if account}
-															<AccountDot
-																name={account.name}
-																color={resolveAccount(account).color}
-															/>
-														{:else}
-															<span>Account {offer.account_id}</span>
-														{/if}
-														{#if offer.kind !== 'counter_leg'}
-															<DateDisplay date={offer.booked_on} {locale} />
-														{/if}
-														{#if offer.amount && offer.kind !== 'counter_leg'}
-															<MoneyDisplay
-																minor={offer.amount.amount}
-																currency={offer.amount.currency}
-																{locale}
-																showCurrency
-																class="inline"
-															/>
-														{/if}
-														{#if offer.exact}
-															<span class="rounded-sm bg-muted px-1 text-xs" data-tag="exact"
-																>exact</span
-															>
-														{/if}
-														{#if offer.proposed}
-															<span
-																class="rounded-sm bg-muted px-1 text-xs italic"
-																data-tag="proposed">proposed</span
-															>
-														{/if}
-														{#if offer.kind === 'untyped_entry'}
-															<span class="text-xs text-muted-foreground" data-tag="untyped"
-																>not yet typed</span
-															>
-														{/if}
-													</span>
-													{#if offer.description && offer.kind !== 'counter_leg'}
-														<span class="truncate text-xs text-muted-foreground"
-															>{offer.description}</span
-														>
-													{/if}
-													{#if offer.paired_with}
-														<span class="text-xs text-muted-foreground" data-slot="offer-paired">
-															paired with {legWords(offer.paired_with, words)}
-														</span>
-													{/if}
-													{#if hints.length > 0}
-														<span class="text-xs text-muted-foreground" data-slot="offer-hint">
-															{hints.join(' · ')}
-														</span>
-													{/if}
-												</span>
-											</Command.Item>
-										{/each}
-									</Command.Group>
-								{/each}
-								{#if total === 0}
-									<p
-										class="px-2 py-6 text-center text-sm text-muted-foreground"
-										data-slot="offers-empty"
-									>
-										No candidates in this window
-									</p>
-								{:else if filtered.length === 0}
-									<p class="px-2 py-6 text-center text-sm text-muted-foreground">No match.</p>
-								{/if}
-							</Command.List>
-						</Command.Root>
-						{#if transfer.has_more && flow.nextWindow !== null}
-							<div class="border-t px-1 pt-1">
-								<ActionButton
-									variant="link"
-									class="h-auto justify-start p-1 text-xs"
-									data-slot="load-more"
-									disabled={loading}
-									onclick={() => flow.widenWindow()}
-								>
-									Load more candidates
-								</ActionButton>
-							</div>
-						{:else if flow.previewWindow !== null}
-							<p
-								class="border-t px-2 pt-1 pb-0.5 text-xs text-muted-foreground"
-								data-slot="window-note"
-							>
-								Candidates within {flow.previewWindow} days.
-							</p>
-						{/if}
-					</Popover.Content>
-				</Popover.Root>
-				{#if view.picked}
-					<ActionButton
-						variant="link"
-						class="h-auto p-0 text-xs"
-						onclick={() => flow.clearPairing(view.id)}
-					>
-						Reset to proposal
-					</ActionButton>
-				{/if}
 			{/if}
 		</div>
 	{/if}

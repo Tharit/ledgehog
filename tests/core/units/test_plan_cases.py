@@ -131,8 +131,16 @@ def test_the_currency_rule_binds_a_transfer_with_an_instructed_amount(scene: Sce
     _src, (e,) = scene.movement(-1000, instructed=(-1100, "USD"))
     ok = scene.preview(e, DraftEntry(e, type=fixed("transfer"), counter_account=fixed(scene.usd)))
     assert ok.problems == ()
-    bad = scene.preview(e, DraftEntry(e, type=fixed("transfer"), counter_account=fixed(scene.savings)))
-    assert codes(bad) == ["currency_rule"]
+    # the user may choose the leg's own currency (D261): the counter-account takes the amount negated
+    own_currency = scene.preview(
+        e, DraftEntry(e, type=fixed("transfer"), counter_account=fixed(scene.savings))
+    )
+    assert own_currency.problems == ()
+    _src, (g,) = scene.movement(-1000, instructed=(-900, "GBP"))  # a third currency stays invalid
+    third = scene.preview(g, DraftEntry(g, type=fixed("transfer"), counter_account=fixed(scene.usd)))
+    assert codes(third) == ["currency_rule"]
+    assert third.problems[0].detail == {"required": "GBP", "actual": "USD", "allowed": ["GBP", "EUR"]}
+    assert not third.transfers[g].offers
     own = scene.preview(e, DraftEntry(e, type=fixed("transfer"), counter_account=fixed(scene.checking)))
     assert "own_counter_account" in codes(own)
 

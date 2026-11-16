@@ -2,7 +2,6 @@
 	import XIcon from '@lucide/svelte/icons/x';
 	import ChevronsUpDownIcon from '@lucide/svelte/icons/chevrons-up-down';
 	import RuleTarget from '#lib/components/rules/rule-target.svelte';
-	import ActionButton from '#lib/components/common/action-button.svelte';
 	import IconButton from '#lib/components/common/icon-button.svelte';
 	import Picker from '#lib/components/common/picker.svelte';
 	import * as Popover from '#lib/components/ui/popover/index.js';
@@ -13,8 +12,9 @@
 
 	// One derived value of an entry chosen from a searchable list (the shared picker in a popover):
 	// a category, a payee or a transfer's counter-account. Only existing things are offered; adding
-	// one is done in Settings, or, where the caller gives `add` (accounts), in a dialog from here. The X is not a plain clear (see `clearable`). An item may be disabled with its reason (an account the currency
-	// rule or the entry's own account rules out). A proposal is italic and muted.
+	// one is done in Settings. The X is not a plain clear (see `clearable`). An item may be disabled
+	// with its reason (the entry's own account). Where the caller gives `groups` the items are
+	// listed under those headings. A proposal is italic and muted.
 	let {
 		kind,
 		value,
@@ -26,7 +26,7 @@
 		emptyText,
 		disabled = false,
 		disabledReason,
-		add,
+		groups,
 		onchange
 	}: {
 		kind: RuleSets;
@@ -43,20 +43,26 @@
 		disabled?: boolean;
 		/** why an item cannot be chosen */
 		disabledReason?: (id: number) => string | undefined;
-		/** an action under the list that adds the thing wanted (a dialog); `trigger` takes the focus back */
-		add?: { label: string; run: (trigger: HTMLElement | null) => void };
+		/** headings to list the items under, in order; an item goes under the first whose `has` takes it, one no group has is left out */
+		groups?: { heading: string; has: (id: number) => boolean }[];
 		onchange: (id: number | null) => void;
 	} = $props();
 
 	let open = $state(false);
-	let trigger = $state<HTMLElement | null>(null);
 
-	const items = $derived(
-		targetOptions(kind, lookups, value).map((option) => ({
+	const items = $derived.by(() => {
+		const options = targetOptions(kind, lookups).map((option) => ({
 			...option,
-			disabled: disabledReason?.(option.id)
-		}))
-	);
+			disabled: disabledReason?.(option.id),
+			group: groups?.find((g) => g.has(option.id))?.heading
+		}));
+		if (!groups) return options;
+		// the order of the groups, each keeping the order of the options
+		const rank = (group: string | undefined) => groups.findIndex((g) => g.heading === group);
+		return options
+			.filter((o) => o.group !== undefined)
+			.sort((a, b) => rank(a.group) - rank(b.group));
+	});
 	const manage = $derived(
 		kind === 'category'
 			? { href: '/settings/categories', text: 'Manage categories' }
@@ -74,7 +80,6 @@
 <div class="flex items-center gap-1" data-slot="field-picker">
 	<Popover.Root bind:open>
 		<Popover.Trigger
-			bind:ref={trigger}
 			aria-label={label}
 			aria-invalid={invalid || undefined}
 			data-picker={kind}
@@ -110,21 +115,7 @@
 					<RuleTarget sets={kind} id={option.id} {lookups} full />
 				{/snippet}
 			</Picker>
-			{#if add}
-				<div class="border-t px-1 pt-1">
-					<ActionButton
-						variant="link"
-						class="h-auto justify-start p-1 text-xs"
-						data-slot="picker-add"
-						onclick={() => {
-							open = false;
-							add.run(trigger);
-						}}
-					>
-						{add.label}
-					</ActionButton>
-				</div>
-			{:else if manage}
+			{#if manage}
 				<a
 					href={manage.href}
 					target="_blank"

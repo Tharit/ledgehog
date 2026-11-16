@@ -308,9 +308,14 @@ def test_a_cross_currency_pick_is_matched_by_the_instructed_amount(scene: Scene)
     plan, _ = preview_then_commit(scene, pick_draft(scene, e, x))
     assert plan.row(e).fields["counter_account"].value == scene.usd
     assert plan.row(e).counterpart_entry_id == x
-    # a leg that says the money arrived in dollars is not offered a euro account
+    # the user's pick of an account in the leg's own currency is allowed (D261)
+    e2 = leg(scene, -1000, scene.checking, instructed=(-1100, "USD"))
     y = leg(scene, 1000, scene.savings)
-    assert codes(scene.preview(e, DraftEntry(e, pairing=pick(y)))) == ["partner_not_offered"]
+    assert scene.preview(e2, DraftEntry(e2, pairing=pick(y))).problems == ()
+    # a third currency is not offered
+    e3 = leg(scene, -1000, scene.checking, instructed=(-900, "GBP"))
+    z = leg(scene, 1100, scene.usd, currency="USD")
+    assert codes(scene.preview(e3, DraftEntry(e3, pairing=pick(z)))) == ["partner_not_offered"]
 
 
 # ---- proposals and re-resolving ---------------------------------------------------------------------
