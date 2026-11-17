@@ -123,6 +123,9 @@ class TagApplyBody(BaseModel):
     from_: Annotated[date | None, Field(alias="from")] = None
     to: date | None = None
     account_id: list[EntityId] = []
+    counter_account_id: list[EntityId] = []
+    no_counter_account: bool = False
+    paired: bool = False
     category_id: list[EntityId] = []
     category_descendants: bool = True
     uncategorised: bool = False
@@ -226,6 +229,9 @@ def apply_ledger_tag(tag_id: PathId, body: TagApplyBody, user: CurrentUser, engi
             date_from=body.from_,
             date_to=body.to,
             account_ids=tuple(body.account_id),
+            counter_account_ids=tuple(body.counter_account_id),
+            no_counter_account=body.no_counter_account,
+            paired=body.paired,
             category_ids=tuple(body.category_id),
             category_descendants=body.category_descendants,
             uncategorised=body.uncategorised,

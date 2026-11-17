@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine
+from sqlalchemy import Engine, text
 
 from app.api import create_app
 from app.core.ledger import tags as tags_mod
@@ -312,6 +312,63 @@ def test_filter_vocabulary_matches_the_list(anna: TestClient, api_engine: Engine
     assert [e["id"] for e in listed["entries"]] == [hit]  # same filter, same set
 
 
+@pytest.mark.parametrize("which", ["counter_account_id", "no_counter_account", "counter_and_none", "paired"])
+def test_the_counter_account_filters_tag_exactly_what_the_list_shows(
+    anna: TestClient, api_engine: Engine, acct: int, which: str
+):
+    with api_engine.begin() as conn:
+        b, c = seed.account(conn, "B"), seed.account(conn, "C")
+        out = seed.entry(conn, acct, amount=-700, type="transfer")
+        into = seed.entry(conn, b, amount=700, type="transfer")
+        to_c = seed.entry(conn, acct, amount=-100, type="transfer")  # unpaired, names C
+        bare = seed.entry(conn, acct, amount=-50, type="transfer")  # unpaired, names nobody
+        seed.entry(conn, acct, amount=-400)  # a flow: never matches
+        for entry_id, counter in ((out, b), (into, acct), (to_c, c)):
+            conn.execute(
+                text("UPDATE ledger_entry SET counter_account_id = :c WHERE id = :i"),
+                {"c": counter, "i": entry_id},
+            )
+        conn.execute(
+            text(
+                "UPDATE ledger_entry SET counterpart_entry_id = CASE id WHEN :o THEN :i ELSE :o END"
+                " WHERE id IN (:o, :i)"
+            ),
+            {"o": out, "i": into},
+        )
+    params: dict[str, Any] = {
+        "counter_account_id": {"counter_account_id": [c]},
+        "no_counter_account": {"no_counter_account": True},
+        "counter_and_none": {"counter_account_id": [c], "no_counter_account": True},
+        "paired": {"paired": True},
+    }[which]
+    expected = {
+        "counter_account_id": {to_c},
+        "no_counter_account": {bare},
+        "counter_and_none": {to_c, bare},
+        "paired": {out, into},
+    }[which]
+    t = new_tag(anna)["id"]
+    shown = anna.get("/api/ledger/entries", params={**params, "limit": 100}).json()
+    assert {e["id"] for e in shown["entries"]} == expected
+    preview = apply(anna, t, **params, dry_run=True).json()
+    assert preview["selected"] == shown["total"] == len(expected)
+    assert memberships(api_engine) == []  # a dry run writes nothing
+    done = apply(anna, t, **params, expected_count=preview["newly_tagged"])
+    assert done.status_code == 200, done.text
+    assert memberships(api_engine) == sorted((e, t) for e in expected)
+    assert_envelope(apply(anna, t, counter_account_id=[0]), 422, "validation_error")
+
+
+def test_a_counter_account_filter_alone_is_a_filter_not_an_empty_one(
+    anna: TestClient, api_engine: Engine, acct: int
+):
+    t = new_tag(anna)["id"]
+    add(api_engine, acct)
+    for params in ({"counter_account_id": [acct]}, {"no_counter_account": True}, {"paired": True}):
+        assert apply(anna, t, **params, dry_run=True).status_code == 200  # no `all` needed
+    assert_envelope(apply(anna, t, dry_run=True), 422, "validation_error")
+
+
 def test_uncategorised_flag_and_unreviewed_selection(anna: TestClient, api_engine: Engine, acct: int):
     t = new_tag(anna)["id"]
     flagged = add(api_engine, acct, on=date(2026, 3, 2), flags=("unclassified",))
@@ -332,6 +389,8 @@ def test_filter_validation_is_shared_with_the_list(anna: TestClient, api_engine:
         {"flag": ["nope"]},
         {"q": ""},
         {"account_id": [0]},
+        {"counter_account_id": [0]},
+        {"paired": "maybe"},
         {"unknown": 1},
         {"expected_count": -1},
         {"currency": "eu", "amount_min": 1},

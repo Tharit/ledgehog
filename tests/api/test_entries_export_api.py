@@ -260,6 +260,23 @@ def test_row_count_equals_the_lists_total(anna: TestClient, api_engine: Engine, 
     assert len(totals) > 3  # the filters really differ
 
 
+def test_the_paired_and_no_counter_account_filters_apply_to_the_export(anna: TestClient, api_engine: Engine):
+    with api_engine.begin() as conn:
+        a, b = seed.account(conn, "Giro"), seed.account(conn, "Cash")
+        out = seed.entry(conn, a, amount=-500, type="transfer")
+        into = seed.entry(conn, b, amount=500, type="transfer")
+        lone = seed.entry(conn, a, amount=-1, type="transfer", on=date(2026, 3, 2))
+        seed.entry(conn, a, amount=-9)  # a flow: matches neither
+        for entry_id, other in ((out, b), (into, a)):
+            conn.execute(
+                text("UPDATE ledger_entry SET counter_account_id = :c WHERE id = :i"),
+                {"c": other, "i": entry_id},
+            )
+        pair(conn, out, into)
+    assert {int(r["id"]) for r in exported(anna, paired="true")} == {out, into}
+    assert [int(r["id"]) for r in exported(anna, no_counter_account="true")] == [lone]
+
+
 def test_bad_filter_is_a_422_before_any_row(anna: TestClient):
     r = anna.get(URL, params={"from": "2026-03-09", "to": "2026-03-01"})
     assert_envelope(r, 422, "validation_error")

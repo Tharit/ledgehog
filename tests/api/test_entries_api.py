@@ -184,6 +184,35 @@ def test_counter_account_over_http(anna: TestClient, api_engine: Engine, acct: i
     assert sorted(entry_ids(anna, counter_account_id=[b, c, acct])) == sorted([to_b, to_c, back])
 
 
+def test_paired_and_no_counter_account_over_http(anna: TestClient, api_engine: Engine, acct: int):
+    with api_engine.begin() as conn:
+        b = seed.account(conn, "B")
+        out = seed.entry(conn, acct, amount=-700, type="transfer")
+        into = seed.entry(conn, b, amount=700, type="transfer")
+        conn.execute(
+            text(
+                "UPDATE ledger_entry SET counterpart_entry_id = CASE id WHEN :o THEN :i ELSE :o END,"
+                " counter_account_id = CASE id WHEN :o THEN :b ELSE :a END WHERE id IN (:o, :i)"
+            ),
+            {"o": out, "i": into, "a": acct, "b": b},
+        )
+        known = seed.entry(conn, acct, amount=-100, type="transfer")  # unpaired, names B
+        conn.execute(
+            text("UPDATE ledger_entry SET counter_account_id = :c WHERE id = :i"), {"c": b, "i": known}
+        )
+        bare = seed.entry(conn, acct, amount=-50, type="transfer")  # unpaired, names nobody
+        flow = seed.entry(conn, acct, amount=-400)
+    assert sorted(entry_ids(anna, paired="true")) == sorted([out, into])
+    assert flow not in entry_ids(anna, paired="true")
+    assert entry_ids(anna, no_counter_account="true") == [bare]
+    assert sorted(entry_ids(anna, no_counter_account="true", counter_account_id=b)) == sorted(
+        [bare, known, out]
+    )
+    assert entry_ids(anna, counter_account_id=b, account_id=acct, paired="true", direction="out") == [out]
+    assert sorted(entry_ids(anna, paired="false")) == sorted(entry_ids(anna))
+    assert_envelope(anna.get(URL, params={"paired": "maybe"}), 422, "validation_error")
+
+
 def test_uncategorised_over_http(anna: TestClient, api_engine: Engine, acct: int):
     with api_engine.begin() as conn:
         c = seed.category(conn, "Food")

@@ -192,6 +192,59 @@ def test_counter_account_combines_with_account_type_and_direction(db_conn: Conne
     assert sorted_ids(db_conn, counter_account_ids=(b,), direction="in") == []
 
 
+def _paired_pair(conn: Connection, a: int, b: int) -> tuple[int, int]:
+    """A paired transfer: -700 out of `a`, into `b`; each leg names the other account."""
+    out = seed.entry(conn, a, amount=-700, type="transfer")
+    into = seed.entry(conn, b, amount=700, type="transfer")
+    conn.execute(
+        text(
+            "UPDATE ledger_entry SET counterpart_entry_id = CASE id WHEN :o THEN :i ELSE :o END,"
+            " counter_account_id = CASE id WHEN :o THEN :b ELSE :a END WHERE id IN (:o, :i)"
+        ),
+        {"o": out, "i": into, "a": a, "b": b},
+    )
+    return out, into
+
+
+def test_no_counter_account_alone_selects_the_transfer_legs_that_have_none(db_conn: Connection, acct: int):
+    x = _legs(db_conn, acct)
+    seed.derived(db_conn, acct)
+    assert sorted_ids(db_conn, no_counter_account=True) == [x["bare"]]  # no flow, no derived entry
+
+
+def test_no_counter_account_is_an_alternative_to_counter_account_ids(db_conn: Connection, acct: int):
+    x = _legs(db_conn, acct)
+    got = sorted_ids(db_conn, counter_account_ids=(x["b"],), no_counter_account=True)
+    assert got == sorted([x["to_b"], x["bare"]])
+    # across dimensions it restricts as usual
+    both = sorted_ids(db_conn, counter_account_ids=(x["b"],), no_counter_account=True, account_ids=(acct,))
+    assert both == sorted([x["to_b"], x["bare"]])
+    assert sorted_ids(db_conn, no_counter_account=True, direction="in") == []
+
+
+def test_paired_keeps_the_transfer_legs_that_have_a_partner(db_conn: Connection, acct: int):
+    x = _legs(db_conn, acct)  # none of these is paired
+    b = seed.account(db_conn, "P")
+    out, into = _paired_pair(db_conn, acct, b)
+    seed.derived(db_conn, acct)
+    assert sorted_ids(db_conn, paired=True) == sorted([out, into])
+    assert x["flow"] not in ids(db_conn, paired=True)
+    assert sorted_ids(db_conn, paired=False) == sorted_ids(db_conn)  # false restricts nothing
+
+
+def test_paired_combines_with_account_counter_account_and_direction(db_conn: Connection, acct: int):
+    x = _legs(db_conn, acct)
+    b = seed.account(db_conn, "P")
+    out, into = _paired_pair(db_conn, acct, b)
+    # the counter-account alone also lists the unpaired leg that names it; paired leaves the real pair
+    assert sorted_ids(db_conn, counter_account_ids=(x["b"],), account_ids=(acct,)) == [x["to_b"]]
+    assert sorted_ids(db_conn, counter_account_ids=(b,), account_ids=(acct,), paired=True) == [out]
+    assert sorted_ids(db_conn, counter_account_ids=(x["b"],), account_ids=(acct,), paired=True) == []
+    assert sorted_ids(db_conn, account_ids=(acct,), paired=True, direction="out") == [out]
+    assert sorted_ids(db_conn, account_ids=(b,), paired=True, direction="in") == [into]
+    assert sorted_ids(db_conn, account_ids=(b,), paired=True, direction="out") == []
+
+
 def test_payee_or(db_conn: Connection, acct: int):
     p1, p2, p3 = (seed.payee(db_conn, n) for n in ("P1", "P2", "P3"))
     e1, e2, _e3 = (seed.entry(db_conn, acct, payee_id=p) for p in (p1, p2, p3))

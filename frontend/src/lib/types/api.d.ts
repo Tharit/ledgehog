@@ -3384,6 +3384,11 @@ export interface components {
              * @default []
              */
             category_id: number[];
+            /**
+             * Counter Account Id
+             * @default []
+             */
+            counter_account_id: number[];
             /** Currency */
             currency?: string | null;
             /** Direction */
@@ -3402,6 +3407,16 @@ export interface components {
             flag: ("unconfirmed" | "unclassified" | "waiting" | "unmatched_transfer")[];
             /** From */
             from?: string | null;
+            /**
+             * No Counter Account
+             * @default false
+             */
+            no_counter_account: boolean;
+            /**
+             * Paired
+             * @default false
+             */
+            paired: boolean;
             /**
              * Payee Id
              * @default []
@@ -6008,6 +6023,8 @@ export interface operations {
                 to?: string | null;
                 account_id?: number[] | null;
                 counter_account_id?: number[] | null;
+                no_counter_account?: boolean;
+                paired?: boolean;
                 category_id?: number[] | null;
                 category_descendants?: boolean;
                 uncategorised?: boolean;
@@ -6063,6 +6080,8 @@ export interface operations {
                 to?: string | null;
                 account_id?: number[] | null;
                 counter_account_id?: number[] | null;
+                no_counter_account?: boolean;
+                paired?: boolean;
                 category_id?: number[] | null;
                 category_descendants?: boolean;
                 uncategorised?: boolean;

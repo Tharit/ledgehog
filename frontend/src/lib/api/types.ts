@@ -157,6 +157,10 @@ export type EntryFilter = {
 	account_id: number[];
 	/** the transfer legs whose counter-account it is */
 	counter_account_id: number[];
+	/** also the transfer legs that have no counter-account yet (an alternative in the dimension) */
+	no_counter_account: boolean;
+	/** narrows to the transfer legs that have a partner */
+	paired: boolean;
 	category_id: number[];
 	/** a category includes its descendants unless this is false */
 	category_descendants: boolean;

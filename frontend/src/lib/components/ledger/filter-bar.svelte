@@ -95,12 +95,16 @@
 		hint: REVIEW_FLAG_INFO[flag].sentence,
 		flag
 	}));
-	// the account chip also holds the counter-account: "Giro → Cash" when both are set
+	// the account chip also holds the counter-account and "paired": "Giro → Cash · Paired transfers only"
 	const accountLabel = $derived.by(() => {
 		const account = parts.find((part) => part.key === 'account')?.label;
 		const counter = parts.find((part) => part.key === 'counter_account')?.label;
-		if (account && counter) return `${account} → ${counter.replace('Counter-account: ', '')}`;
-		return account ?? counter ?? 'All accounts';
+		const paired = parts.find((part) => part.key === 'paired')?.label;
+		const side =
+			account && counter
+				? `${account} → ${counter.replace('Counter-account: ', '')}`
+				: (account ?? counter);
+		return [side, paired].filter(Boolean).join(' · ') || 'All accounts';
 	});
 	// the category chip also holds the type: a type is shown in the category column
 	const categoryLabel = $derived.by(() => {
@@ -184,6 +188,8 @@
 		options={accountOptions}
 		account={filter.account_id}
 		counter={filter.counter_account_id}
+		noCounter={filter.no_counter_account}
+		paired={filter.paired}
 		onchange={update}
 	/>
 	<OptionsChip

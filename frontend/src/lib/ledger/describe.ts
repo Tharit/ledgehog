@@ -9,6 +9,7 @@ export type FilterKey =
 	| 'date'
 	| 'account'
 	| 'counter_account'
+	| 'paired'
 	| 'category'
 	| 'payee'
 	| 'tag'
@@ -61,10 +62,14 @@ export function describeFilter(
 		add('account', named(filter.account_id, lookups.accounts, 'Account', 'accounts'));
 	}
 
-	if (filter.counter_account_id.length) {
-		const names = named(filter.counter_account_id, lookups.accounts, 'Account', 'accounts');
-		add('counter_account', `Counter-account: ${names}`);
+	if (filter.counter_account_id.length || filter.no_counter_account) {
+		const names = filter.counter_account_id.length
+			? named(filter.counter_account_id, lookups.accounts, 'Account', 'accounts')
+			: '';
+		const none = filter.no_counter_account ? (names ? ' + none' : 'none') : '';
+		add('counter_account', `Counter-account: ${names}${none}`);
 	}
+	if (filter.paired) add('paired', 'Paired transfers only');
 
 	if (filter.category_id.length || filter.uncategorised) {
 		let label = filter.category_id.length

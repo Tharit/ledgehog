@@ -24,6 +24,8 @@ export function emptyFilter(): LedgerFilterState {
 	return {
 		account_id: [],
 		counter_account_id: [],
+		no_counter_account: false,
+		paired: false,
 		category_id: [],
 		category_descendants: true,
 		uncategorised: false,
@@ -92,6 +94,8 @@ export function normalizeFilter(filter: LedgerFilterState): LedgerFilterState {
 		to,
 		account_id: cleanIds(filter.account_id),
 		counter_account_id: cleanIds(filter.counter_account_id),
+		no_counter_account: filter.no_counter_account === true,
+		paired: filter.paired === true,
 		category_id,
 		// "exact" only means something next to a category
 		category_descendants: category_id.length === 0 ? true : filter.category_descendants !== false,
@@ -144,6 +148,8 @@ export function fromSearchParams(input: URLSearchParams | string): LedgerFilterS
 		to: first('to'),
 		account_id: integers(params.getAll('account_id')),
 		counter_account_id: integers(params.getAll('counter_account_id')),
+		no_counter_account: ['true', '1'].includes(first('no_counter_account') ?? ''),
+		paired: ['true', '1'].includes(first('paired') ?? ''),
 		category_id: integers(params.getAll('category_id')),
 		category_descendants: !['false', '0'].includes(first('category_descendants') ?? ''),
 		uncategorised: ['true', '1'].includes(first('uncategorised') ?? ''),

@@ -89,9 +89,10 @@ def compose(flt: LedgerFilter) -> Composed:
         where.append(le.c.booked_on <= flt.date_to)
     if flt.account_ids:
         where.append(le.c.account_id.in_(flt.account_ids))
-    if flt.counter_account_ids:
-        # an entry with no counter-account compares NULL and matches none
-        where.append(le.c.counter_account_id.in_(flt.counter_account_ids))
+    if flt.counter_account_ids or flt.no_counter_account:
+        where.append(_counter_account(flt))
+    if flt.paired:
+        where.append(and_(le.c.type == "transfer", le.c.counterpart_entry_id.is_not(None)))
     if flt.payee_ids:
         where.append(le.c.payee_id.in_(flt.payee_ids))
     if flt.category_ids or flt.uncategorised:
@@ -138,6 +139,17 @@ def _category(flt: LedgerFilter) -> ColumnElement[bool]:
         # entries that could have a category but have none: flows, and entries with no type yet
         # (what an import produces before anything classifies it); never transfers or derived entries
         options.append(and_(or_(le.c.type == "flow", le.c.type.is_(None)), le.c.category_id.is_(None)))
+    return or_(*options)
+
+
+def _counter_account(flt: LedgerFilter) -> ColumnElement[bool]:
+    options: list[ColumnElement[bool]] = []
+    if flt.counter_account_ids:
+        # an entry with no counter-account compares NULL and matches none
+        options.append(le.c.counter_account_id.in_(flt.counter_account_ids))
+    if flt.no_counter_account:
+        # the transfer legs that have none yet; no other entry could have one
+        options.append(and_(le.c.type == "transfer", le.c.counter_account_id.is_(None)))
     return or_(*options)
 
 

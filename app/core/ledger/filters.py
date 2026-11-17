@@ -39,6 +39,8 @@ class LedgerFilter:
     date_to: date | None = None  # inclusive
     account_ids: tuple[int, ...] = ()
     counter_account_ids: tuple[int, ...] = ()  # transfer legs whose counter-account is any of them
+    no_counter_account: bool = False  # transfer legs with none yet; OR-ed with counter_account_ids
+    paired: bool = False  # transfer legs that have a partner; any other entry matches none
     category_ids: tuple[int, ...] = ()
     category_descendants: bool = True  # a parent includes its descendants
     uncategorised: bool = False  # flows and untyped entries with no category; OR-ed with category_ids

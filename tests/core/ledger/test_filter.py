@@ -19,6 +19,7 @@ def test_empty_filter_is_valid_and_says_so():
     flt = LedgerFilter()
     assert flt.is_empty
     assert not LedgerFilter(account_ids=(1,)).is_empty
+    assert not LedgerFilter(no_counter_account=True).is_empty and not LedgerFilter(paired=True).is_empty
     assert not LedgerFilter(uncategorised=True).is_empty
     assert not LedgerFilter(category_descendants=False, text="x").is_empty
 

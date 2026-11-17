@@ -42,6 +42,18 @@ describe('describeFilter', () => {
 		expect(describe_({ counter_account_id: [99] })[0].label).toBe('Counter-account: Account 99');
 	});
 
+	it('names "no counter-account" alone or next to counter-accounts, and the paired narrowing', () => {
+		expect(describe_({ no_counter_account: true })).toEqual([
+			{ key: 'counter_account', label: 'Counter-account: none' }
+		]);
+		expect(describe_({ counter_account_id: [2], no_counter_account: true })[0].label).toBe(
+			'Counter-account: Visa + none'
+		);
+		expect(describe_({ paired: true })).toEqual([
+			{ key: 'paired', label: 'Paired transfers only' }
+		]);
+	});
+
 	it('names tags, payees and categories', () => {
 		expect(describe_({ tag_id: [7] })[0]).toEqual({ key: 'tag', label: 'Lisbon trip' });
 		expect(describe_({ tag_id: [7, 8] })[0].label).toBe('2 tags');

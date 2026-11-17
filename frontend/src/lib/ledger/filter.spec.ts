@@ -24,6 +24,8 @@ describe('emptyFilter and isEmpty', () => {
 		expect(isEmpty({ ...emptyFilter(), q: 'rewe' })).toBe(false);
 		expect(isEmpty({ ...emptyFilter(), account_id: [1] })).toBe(false);
 		expect(isEmpty({ ...emptyFilter(), counter_account_id: [1] })).toBe(false);
+		expect(isEmpty({ ...emptyFilter(), no_counter_account: true })).toBe(false);
+		expect(isEmpty({ ...emptyFilter(), paired: true })).toBe(false);
 		expect(isEmpty({ ...emptyFilter(), uncategorised: true })).toBe(false);
 		expect(isEmpty({ ...emptyFilter(), flag: ['waiting'] })).toBe(false);
 	});
@@ -40,6 +42,13 @@ describe('toSearchParams', () => {
 		expect(url({ from: '2026-10-01', to: '2026-10-31', account_id: [1, 2], tag_id: [9] })).toBe(
 			'from=2026-10-01&to=2026-10-31&account_id=1&account_id=2&tag_id=9'
 		);
+	});
+
+	it('writes the two counter-account switches right after the counter-accounts', () => {
+		expect(
+			url({ counter_account_id: [3], no_counter_account: true, paired: true, category_id: [1] })
+		).toBe('counter_account_id=3&no_counter_account=true&paired=true&category_id=1');
+		expect(url({ no_counter_account: false, paired: false })).toBe('');
 	});
 
 	it('writes the counter-accounts after the accounts, repeated', () => {
@@ -100,6 +109,8 @@ describe('fromSearchParams', () => {
 			to: '2026-10-11',
 			account_id: [1, 4],
 			counter_account_id: [2, 6],
+			no_counter_account: true,
+			paired: true,
 			category_id: [7],
 			category_descendants: false,
 			uncategorised: true,
@@ -130,6 +141,15 @@ describe('fromSearchParams', () => {
 			...emptyFilter(),
 			counter_account_id: [3, 5]
 		});
+	});
+
+	it('reads the two counter-account switches, true or 1', () => {
+		expect(fromSearchParams('no_counter_account=true&paired=1')).toEqual({
+			...emptyFilter(),
+			no_counter_account: true,
+			paired: true
+		});
+		expect(fromSearchParams('no_counter_account=no&paired=')).toEqual(emptyFilter());
 	});
 
 	it('is stable: reading a canonical URL and writing it again gives the same URL', () => {

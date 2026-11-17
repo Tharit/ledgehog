@@ -6,7 +6,7 @@ export const DEFAULT_PAGE_SIZE = 100;
 /**
  * A filter as query parameters, in the API's names and in a fixed order (so the same filter is
  * always the same string). Empty values are left out and arrays are repeated parameters; a
- * parameter at its API default (`category_descendants=true`, `uncategorised=false`) is left out.
+ * parameter at its API default (`category_descendants=true`, `uncategorised=false`, `no_counter_account=false`, `paired=false`) is left out.
  */
 export function filterQuery(filter: EntryFilter): Query {
 	const text = filter.q.trim();
@@ -15,6 +15,8 @@ export function filterQuery(filter: EntryFilter): Query {
 		to: filter.to,
 		account_id: filter.account_id,
 		counter_account_id: filter.counter_account_id,
+		no_counter_account: filter.no_counter_account ? true : undefined,
+		paired: filter.paired ? true : undefined,
 		category_id: filter.category_id,
 		category_descendants: filter.category_descendants ? undefined : false,
 		uncategorised: filter.uncategorised ? true : undefined,

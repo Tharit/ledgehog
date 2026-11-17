@@ -19,6 +19,8 @@ function lastUrl(): string {
 const empty: EntryFilter = {
 	account_id: [],
 	counter_account_id: [],
+	no_counter_account: false,
+	paired: false,
 	category_id: [],
 	category_descendants: true,
 	uncategorised: false,
@@ -62,6 +64,11 @@ describe('exportUrl', () => {
 		);
 		expect(query).not.toMatch(/limit|offset/);
 	});
+
+	it('carries the two counter-account switches', () => {
+		const query = exportUrl({ ...empty, no_counter_account: true, paired: true }).split('?')[1];
+		expect(query).toBe('no_counter_account=true&paired=true');
+	});
 });
 
 describe('listEntries', () => {
@@ -91,6 +98,21 @@ describe('listEntries', () => {
 				'&counter_account_id=4&counter_account_id=5&tag_id=7' +
 				'&type=flow&flag=unconfirmed&flag=waiting&limit=100'
 		);
+	});
+
+	it('sends no_counter_account and paired next to the counter-accounts, only when set', async () => {
+		await listEntries({
+			...empty,
+			counter_account_id: [4],
+			no_counter_account: true,
+			paired: true,
+			uncategorised: true
+		});
+		expect(lastUrl()).toBe(
+			'/api/ledger/entries?counter_account_id=4&no_counter_account=true&paired=true&uncategorised=true&limit=100'
+		);
+		await listEntries({ ...empty, no_counter_account: false, paired: false });
+		expect(lastUrl()).toBe('/api/ledger/entries?limit=100');
 	});
 
 	it('sends the amount range with its currency and direction', async () => {

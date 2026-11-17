@@ -136,7 +136,8 @@ describe('FilterBar: the counter-account section of the account chip', () => {
 		await fireEvent.click(toggle);
 
 		expect(toggle).toHaveAttribute('aria-expanded', 'true');
-		expect(screen.getAllByRole('checkbox')).toHaveLength(4);
+		// both lists, and the two switches below the counter-accounts
+		expect(screen.getAllByRole('checkbox')).toHaveLength(6);
 		expect(screen.getByRole('list', { name: 'Counter-account' })).toBeInTheDocument();
 	});
 
@@ -179,6 +180,67 @@ describe('FilterBar: the counter-account section of the account chip', () => {
 		expect(screen.getByRole('button', { name: 'Giro → Cash' })).toBeInTheDocument();
 	});
 
+	it('labels the chip for "none" and "paired"', () => {
+		const first = bar({ no_counter_account: true });
+		expect(screen.getByRole('button', { name: 'Counter-account: none' })).toBeInTheDocument();
+		first.unmount();
+
+		const second = bar({ account_id: [1], no_counter_account: true });
+		expect(screen.getByRole('button', { name: 'Giro → none' })).toBeInTheDocument();
+		second.unmount();
+
+		const third = bar({ paired: true });
+		expect(screen.getByRole('button', { name: 'Paired transfers only' })).toBeInTheDocument();
+		third.unmount();
+
+		bar({ account_id: [1], counter_account_id: [2], paired: true });
+		expect(
+			screen.getByRole('button', { name: 'Giro → Cash · Paired transfers only' })
+		).toBeInTheDocument();
+	});
+
+	it('offers "without a counter-account" and "paired transfers only" as checkboxes', async () => {
+		const { onchange } = bar();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'All accounts' }));
+		await fireEvent.click(await screen.findByRole('button', { name: 'Counter-account' }));
+		const none = screen.getByRole('checkbox', { name: 'Without a counter-account' });
+		const paired = screen.getByRole('checkbox', { name: 'Paired transfers only' });
+		expect(none).not.toBeChecked();
+
+		await fireEvent.click(none);
+		expect(onchange).toHaveBeenLastCalledWith({ ...emptyFilter(), no_counter_account: true });
+		await fireEvent.click(paired);
+		expect(onchange).toHaveBeenLastCalledWith({ ...emptyFilter(), paired: true });
+	});
+
+	it.each([
+		['no_counter_account', 'Without a counter-account', 'Counter-account: none'],
+		['paired', 'Paired transfers only', 'Paired transfers only']
+	] as const)('arrives open and ticked with %s set', async (key, box, chip) => {
+		bar({ [key]: true });
+
+		await fireEvent.click(screen.getByRole('button', { name: chip }));
+
+		expect(await screen.findByRole('checkbox', { name: box })).toBeChecked();
+		expect(screen.getByRole('button', { name: 'Counter-account' })).toHaveAttribute(
+			'aria-expanded',
+			'true'
+		);
+	});
+
+	it('clears the two switches with both sections', async () => {
+		const { onchange } = bar({ no_counter_account: true, paired: true });
+
+		await fireEvent.click(
+			screen.getByRole('button', { name: 'Counter-account: none · Paired transfers only' })
+		);
+		await screen.findByRole('list', { name: 'Account' });
+		await fireEvent.click(screen.getAllByRole('button', { name: 'Clear' }).at(-1)!);
+
+		expect(onchange).toHaveBeenCalledWith({ ...emptyFilter() });
+	});
+
 	it('clears both sections', async () => {
 		const { onchange } = bar({ account_id: [1], counter_account_id: [2] });
 
@@ -207,7 +269,8 @@ describe('FilterBar: the counter-account section of the account chip', () => {
 			target: { value: 'cash' }
 		});
 
-		expect(screen.getAllByRole('checkbox')).toHaveLength(2);
+		// one match in each list, and the two switches
+		expect(screen.getAllByRole('checkbox')).toHaveLength(4);
 	});
 });
 

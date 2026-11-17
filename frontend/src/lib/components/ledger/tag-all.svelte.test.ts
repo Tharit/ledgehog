@@ -25,7 +25,13 @@ const lookups = buildLookups({
 function setup(props: { reason?: string | null; marked?: Entry[] } = {}) {
 	const { marked = [], ...rest } = props;
 	const host = {
-		filter: () => ({ ...emptyFilter(), account_id: [1] }),
+		filter: () => ({
+			...emptyFilter(),
+			account_id: [1],
+			counter_account_id: [2],
+			no_counter_account: true,
+			paired: true
+		}),
 		locale: () => 'en',
 		addTag: vi.fn(),
 		markedRows: () => marked,
@@ -109,7 +115,13 @@ describe('TagAll: the dialog', () => {
 		// each row is an account: its tile, not its dot
 		expect(accounts.querySelectorAll('span[style*="--tile-fg"]')).toHaveLength(2);
 		expect(accounts.querySelector('[data-slot="account-dot"]')).toBeNull();
-		expect(vi.mocked(applyTag).mock.calls[0][1]).toMatchObject({ dry_run: true, account_id: [1] });
+		expect(vi.mocked(applyTag).mock.calls[0][1]).toMatchObject({
+			dry_run: true,
+			account_id: [1],
+			counter_account_id: [2],
+			no_counter_account: true,
+			paired: true
+		});
 		await waitFor(() => expect(confirm()).toBeEnabled());
 	});
 

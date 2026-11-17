@@ -264,3 +264,23 @@ def test_other_dimensions_select_through_the_shared_filter(isolated_engine: Engi
     add(isolated_engine, b, on=date(2026, 3, 2), amount=500)
     r = go(isolated_engine, tag, LedgerFilter(account_ids=(b,), direction="out"))
     assert memberships(isolated_engine) == [(keep, tag)] and r.per_account == {b: 1}
+
+
+def test_the_counter_account_filters_select_through_the_shared_filter(
+    isolated_engine: Engine, two_accounts, tag
+):
+    a, b = two_accounts
+    to_b = add(isolated_engine, a, on=date(2026, 3, 2), amount=-100, type="transfer")
+    bare = add(isolated_engine, a, on=date(2026, 3, 2), amount=-50, type="transfer")
+    add(isolated_engine, a, on=date(2026, 3, 2), amount=-400)  # a flow
+    with isolated_engine.begin() as conn:
+        conn.execute(
+            text("UPDATE ledger_entry SET counter_account_id = :b WHERE id = :i"), {"b": b, "i": to_b}
+        )
+    dry = go(isolated_engine, tag, LedgerFilter(counter_account_ids=(b,)), dry_run=True)
+    assert dry.selected == 1 and memberships(isolated_engine) == []
+    go(isolated_engine, tag, LedgerFilter(counter_account_ids=(b,)))
+    assert memberships(isolated_engine) == [(to_b, tag)]
+    go(isolated_engine, tag, LedgerFilter(no_counter_account=True))
+    assert memberships(isolated_engine) == sorted([(to_b, tag), (bare, tag)])
+    assert go(isolated_engine, tag, LedgerFilter(paired=True), dry_run=True).selected == 0

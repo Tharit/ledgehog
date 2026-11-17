@@ -31,6 +31,8 @@ function last(): [string, RequestInit] {
 const empty: EntryFilter = {
 	account_id: [],
 	counter_account_id: [],
+	no_counter_account: false,
+	paired: false,
 	category_id: [],
 	category_descendants: true,
 	uncategorised: false,
@@ -57,6 +59,9 @@ describe('applyBody', () => {
 				...empty,
 				from: '2026-10-01',
 				account_id: [2],
+				counter_account_id: [3, 4],
+				no_counter_account: true,
+				paired: true,
 				tag_id: [7],
 				q: '  rewe ',
 				amount_min: 100,
@@ -73,6 +78,9 @@ describe('applyBody', () => {
 			from: '2026-10-01',
 			to: null,
 			account_id: [2],
+			counter_account_id: [3, 4],
+			no_counter_account: true,
+			paired: true,
 			tag_id: [7],
 			q: 'rewe',
 			amount_min: 100,
@@ -85,6 +93,14 @@ describe('applyBody', () => {
 			all: false,
 			dry_run: true,
 			expected_count: 12
+		});
+	});
+
+	it('sends the counter-account fields unset as empty and false', () => {
+		expect(applyBody(empty)).toMatchObject({
+			counter_account_id: [],
+			no_counter_account: false,
+			paired: false
 		});
 	});
 

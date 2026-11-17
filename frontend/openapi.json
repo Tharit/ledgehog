@@ -7076,6 +7076,16 @@
             "title": "Category Id",
             "type": "array"
           },
+          "counter_account_id": {
+            "default": [],
+            "items": {
+              "exclusiveMinimum": 0.0,
+              "maximum": 9007199254740992.0,
+              "type": "integer"
+            },
+            "title": "Counter Account Id",
+            "type": "array"
+          },
           "currency": {
             "anyOf": [
               {
@@ -7146,6 +7156,16 @@
               }
             ],
             "title": "From"
+          },
+          "no_counter_account": {
+            "default": false,
+            "title": "No Counter Account",
+            "type": "boolean"
+          },
+          "paired": {
+            "default": false,
+            "title": "Paired",
+            "type": "boolean"
           },
           "payee_id": {
             "default": [],
@@ -12247,6 +12267,26 @@
           },
           {
             "in": "query",
+            "name": "no_counter_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "No Counter Account",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "paired",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Paired",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
             "name": "category_id",
             "required": false,
             "schema": {
@@ -12575,6 +12615,26 @@
                 }
               ],
               "title": "Counter Account Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "no_counter_account",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "No Counter Account",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "paired",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Paired",
+              "type": "boolean"
             }
           },
           {
