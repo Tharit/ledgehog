@@ -4155,3 +4155,12 @@ Partly supersedes D264. spec §8; architecture §4.1, §8; ux/views/reports.md.
 - **The unpaired transfer legs are one line beside the chart, linking to the ledger** (user, 2026-11-17). D264 named the legs that are in no link, those with no counter-account and incoming ones with no partner, and no ledger filter selects that set. The unpaired legs are a set the ledger already filters and the Overview already shows. Accepted: an unpaired outgoing leg with a counter-account is both drawn and counted in the line. Rejected: *drawing paired transfers only* (the link's filter cannot tell paired from unpaired, so its drill-down would list more than its figure); *a new ledger filter for "no counter-account" or "paired"* (a dimension for one figure).
 - **The answer carries what stayed with its two components, and a total per group** (user, 2026-11-17). The first build added both in the client, the only money summed there. Rejected: *group rows without a figure* (a group's figures are its whole, reports.md).
 - **Unclassified and reconciliations are listed as By category lists them,** in "Not in the categories above", with the accounts beneath; the first build had put them under Income or Expense by sign.
+
+## D266 A counter-leg's purpose names the counterparty
+
+spec §5.7.
+
+- **A counter-leg's purpose is its partner's counterparty name and purpose, joined as `<name>, <purpose>`** (user, 2026-11-17), either alone where the other is empty. A counter-leg has no counterparty or payee of its own, so the list falls back to its purpose (D263). The partner's purpose alone ("GA-AUSZAHLUNG 12.11.") is the weaker half of what the bank said; the name is the part that reads. A transfer booking on a clearance account takes its purpose the same way, and a changed counterparty name re-derives it like a changed purpose.
+- **The raw counterparty name, not the resolved payee:** a source's text is fixed once written, and a payee changes with resolution.
+- Accepted: history and rules see a longer purpose on the counter-account; the counter-leg's type and counter-account carry standing keys, so nothing on it is derived again. Stored counter-legs keep their purpose. A transfer booking takes the new text at its next settle, which leaves its entry's values as they are (§5.8).
+- Rejected: *the name in the counter-leg's own counterparty field* (payee resolution and counterparty rules would act on the cash side of every withdrawal); *the partner's text joined at display time* (a live link between two legs that are separate once created).
