@@ -716,6 +716,24 @@ describe('UnitPanel: grouped by source transaction', () => {
 		expect(strips[0].querySelector('[data-slot="authored-hint"]')).toBeNull();
 	});
 
+	it('shows the one strip left when the draft turns the pair into a flow and the counter-leg goes', async () => {
+		const shown = pair();
+		const { dialog } = await openPanel(shown);
+		expect(dialog.querySelectorAll('[data-slot="source-strip"]')).toHaveLength(2);
+
+		// the preview of a flow: the counter-leg is no longer part of the unit
+		const answer = preview(shown);
+		answer.rows[0].fields.type = { ...answer.rows[0].fields.type, value: 'flow' };
+		answer.rows[1].in_unit = false;
+		vi.mocked(previewUnit).mockResolvedValue(answer);
+		await fireEvent.keyDown(dialog, { key: 'x' });
+
+		await waitFor(() => expect(dialog.querySelector('[data-slot="group-header"]')).toBeNull());
+		const strips = dialog.querySelectorAll('[data-slot="source-strip"]');
+		expect(strips).toHaveLength(1);
+		expect(strips[0]).toHaveTextContent('Source 5');
+	});
+
 	it('keeps a single source plain: no header, no indent, the strip on top', async () => {
 		const src = source({ counterparty_name: 'Amazon' });
 		const { dialog } = await openPanel(

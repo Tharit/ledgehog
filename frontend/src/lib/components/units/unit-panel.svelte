@@ -130,11 +130,16 @@
 	const accountName = (id: number) => lookups.accounts.get(id)?.name;
 	const problemTexts = $derived(flow.problemTexts);
 	// one group per source transaction: its blocks, with "Split entry" at its foot. A unit of one
-	// source keeps the plain layout (the strip on top, no header)
+	// source keeps the plain layout (the strip on top, no header); its strip is the group's, as the
+	// stored sources may include a leg the draft has dropped
 	const panelGroups = $derived(
 		unit && flow.draft ? groupsOf(views, [...flow.draft.knownEntries.values()]) : []
 	);
 	const multi = $derived(panelGroups.length > 1);
+	// the stored sources until the draft is there
+	const plainStrip = $derived(
+		panelGroups.length === 0 ? groups : panelGroups[0].strip ? [panelGroups[0].strip] : []
+	);
 	// where each leg's partner is shown, for the hint in its partner row
 	const directions = $derived(partnerDirections(panelGroups));
 	const reason = $derived(flow.commitReason);
@@ -398,7 +403,7 @@
 			{:else if unit}
 				<div class={cn('flex flex-col gap-3', panel.status === 'loading' && 'opacity-60')}>
 					{#if !multi}
-						<SourceStrip {groups} {locale} {accountName} />
+						<SourceStrip groups={plainStrip} {locale} {accountName} />
 					{/if}
 					{#if unit.entries.some((e) => e.model_pending)}
 						<p class="text-sm text-muted-foreground" data-slot="model-pending">
