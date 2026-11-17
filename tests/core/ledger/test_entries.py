@@ -78,16 +78,41 @@ def test_split_part_carries_the_whole_source_amount(db_conn: Connection, acct: i
         assert by[i].source is not None and (by[i].source.amount, by[i].source.currency) == (-1000, "EUR")
 
 
-def test_display_text_falls_back(db_conn: Connection, acct: int):
-    a = seed.entry(db_conn, acct, description="D", counterparty="C", purpose="P")
-    b = seed.entry(db_conn, acct, counterparty="C", purpose="P")
-    c = seed.entry(db_conn, acct, purpose="P")
-    d = seed.entry(db_conn, acct)
-    s = seed.entry(db_conn, acct, counterparty="C", purpose="P", source_text="S")
-    page = {e.id: e.display_text for e in list_entries(db_conn, LedgerFilter(), limit=10, offset=0).entries}
-    assert page == {a: "D", b: "C", c: "P", d: None, s: "S"}
-    e = seed.entry(db_conn, acct, description="D", source_text="S")
-    assert get_entry(db_conn, e).display_text == "D"  # type: ignore[union-attr]
+def _shown(conn: Connection, acct: int, **kw: Any):
+    row = get_entry(conn, seed.entry(conn, acct, **kw))
+    assert row is not None
+    d, p = row.display_description, row.display_payee
+    return (None if d is None else (d.from_, d.text)), (None if p is None else (p.from_, p.payee_id, p.text))
+
+
+def test_display_description_falls_back(db_conn: Connection, acct: int):
+    assert _shown(db_conn, acct, description="D", purpose="P", source_text="S")[0] == ("description", "D")
+    assert _shown(db_conn, acct, purpose="P", source_text="S")[0] == ("source_text", "S")
+    assert _shown(db_conn, acct, purpose="P")[0] == ("purpose", "P")
+    assert _shown(db_conn, acct)[0] is None
+
+
+def test_display_description_skips_blank_text(db_conn: Connection, acct: int):
+    assert _shown(db_conn, acct, description="  ", purpose="P")[0] == ("purpose", "P")
+    assert _shown(db_conn, acct, description=" ", source_text="", purpose="  ")[0] is None
+
+
+def test_display_payee_is_the_payee_else_the_counterparty(db_conn: Connection, acct: int):
+    p = seed.payee(db_conn, "Rewe")
+    assert _shown(db_conn, acct, payee_id=p, counterparty="CP")[1] == ("payee", p, None)
+    assert _shown(db_conn, acct, counterparty="CP")[1] == ("counterparty", None, "CP")
+    assert _shown(db_conn, acct, counterparty="  ")[1] is None
+    assert _shown(db_conn, acct)[1] is None
+
+
+def test_display_fields_agree_between_page_and_single(db_conn: Connection, acct: int):
+    e = seed.entry(db_conn, acct, counterparty="C", purpose="P")
+    page = {r.id: r for r in list_entries(db_conn, LedgerFilter(), limit=10, offset=0).entries}
+    got = get_entry(db_conn, e)
+    assert got is not None
+    assert (
+        page[e].display_description == got.display_description and page[e].display_payee == got.display_payee
+    )
 
 
 def test_tag_ids_per_row_sorted_and_empty(db_conn: Connection, acct: int):
@@ -104,7 +129,8 @@ def test_unfiltered_includes_derived_entries(db_conn: Connection, acct: int):
     o = seed.derived(db_conn, acct)
     assert sorted_ids(db_conn) == sorted([m, o])
     row = next(e for e in list_entries(db_conn, LedgerFilter(), limit=9, offset=0).entries if e.id == o)
-    assert row.source_transaction_id is None and row.source is None and row.display_text is None
+    assert row.source_transaction_id is None and row.source is None
+    assert row.display_description is None and row.display_payee is None
 
 
 def test_dates_inclusive(db_conn: Connection, acct: int):

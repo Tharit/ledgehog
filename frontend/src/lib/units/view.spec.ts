@@ -236,7 +236,7 @@ describe('previewRowEntry', () => {
 		const row = previewRowOf(entry({ id: 2, category_id: 10, payee_id: 20, version: 4 }), {
 			description: 'mine'
 		});
-		const asEntry = previewRowEntry(row, entry({ id: 2, display_text: 'REWE Markt' }));
+		const asEntry = previewRowEntry(row, entry({ id: 2 }));
 
 		expect(asEntry).toMatchObject({
 			id: 2,
@@ -244,9 +244,10 @@ describe('previewRowEntry', () => {
 			type: 'flow',
 			category_id: 10,
 			payee_id: 20,
-			display_text: 'REWE Markt'
+			display_description: { text: 'mine', from: 'description' },
+			display_payee: { payee_id: 20, from: 'payee' }
 		});
-		expect(previewRowEntry(row).display_text).toBe('mine');
+		expect(previewRowEntry(row).display_description?.text).toBe('mine');
 	});
 
 	it('reads a transfer’s counter-account', () => {

@@ -7,6 +7,7 @@
 // outcome needs (patching the list, moving on) as a host.
 
 import { ApiError, commitUnit, createTag, getUnit, previewUnit } from '#lib/api/index.js';
+import { entryName } from '#lib/ledger/display.js';
 import { describeTagError } from '#lib/ledger/errors.js';
 import type { Entry, Tag } from '#lib/types/domain.js';
 import {
@@ -331,7 +332,10 @@ export class UnitDraftFlow {
 
 	/** "Your changes to … were dropped": entries that left the unit take what was drafted on them along. */
 	#droppedNotice(draft: Draft): FlowNotice {
-		const labels = draft.dropped.map((id) => draft.knownEntry(id)?.display_text ?? `Entry ${id}`);
+		const labels = draft.dropped.map((id) => {
+			const known = draft.knownEntry(id);
+			return (known && entryName(known)) || `Entry ${id}`;
+		});
 		const one = labels.length === 1;
 		return {
 			kind: 'info',

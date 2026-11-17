@@ -272,7 +272,8 @@ export function joinedScene(proposal = true) {
 		source_transaction_id: 5,
 		source: source({ amount: EUR(-4900) }),
 		review_flags: ['unconfirmed'],
-		display_text: 'The leg',
+		display_description: { text: 'The leg', from: 'description' },
+		display_payee: null,
 		derivation: {}
 	});
 	const partner = entry({
@@ -287,7 +288,8 @@ export function joinedScene(proposal = true) {
 		source_transaction_id: 6,
 		source: source({ amount: EUR(5000) }),
 		description: 'Incoming',
-		display_text: 'The partner',
+		display_description: { text: 'The partner', from: 'description' },
+		display_payee: null,
 		tag_ids: [7],
 		derivation: { payee: { pass: 'rule', basis: { rule_id: 3 } } }
 	});
@@ -301,7 +303,8 @@ export function joinedScene(proposal = true) {
 		booked_on: '2026-10-09',
 		source_transaction_id: 6,
 		source: source({ amount: EUR(5000) }),
-		display_text: 'The sibling',
+		display_description: { text: 'The sibling', from: 'description' },
+		display_payee: null,
 		derivation: {}
 	});
 	const other = entry({
@@ -313,7 +316,8 @@ export function joinedScene(proposal = true) {
 		amount: EUR(4900),
 		booked_on: '2026-10-08',
 		source_transaction_id: 8,
-		display_text: 'The other',
+		display_description: { text: 'The other', from: 'description' },
+		display_payee: null,
 		derivation: {}
 	});
 	const loaded = unit({ anchor_entry_id: 1, entries: [leg] });

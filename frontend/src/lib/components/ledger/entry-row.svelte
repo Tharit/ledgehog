@@ -78,7 +78,14 @@
 	const counterAccount = $derived(
 		entry.counter_account_id === null ? undefined : lookups.accounts.get(entry.counter_account_id)
 	);
-	const payee = $derived(entry.payee_id === null ? undefined : lookups.payees.get(entry.payee_id));
+	// the payee column: the entry's payee (from the lookups), else its source's counterparty name
+	const shownPayee = $derived(entry.display_payee);
+	const payee = $derived(
+		shownPayee?.from === 'payee' ? lookups.payees.get(shownPayee.payee_id) : undefined
+	);
+	const counterparty = $derived(shownPayee?.from === 'counterparty' ? shownPayee.text : undefined);
+	// the description column: the entry's own text, else what its source says (shown muted)
+	const shownDescription = $derived(entry.display_description);
 	const category = $derived(
 		entry.category_id === null ? undefined : lookups.categories.get(entry.category_id)
 	);
@@ -189,9 +196,15 @@
 			<div
 				role="gridcell"
 				class="min-w-0 truncate"
-				title={!fixed && payee ? payee.name : undefined}
+				title={!fixed ? (payee?.name ?? counterparty) : undefined}
 			>
-				{#if !fixed && payee}{payee.name}{/if}
+				{#if !fixed}
+					{#if payee}
+						{payee.name}
+					{:else if counterparty}
+						<span class="text-muted-foreground" data-slot="source-payee">{counterparty}</span>
+					{/if}
+				{/if}
 			</div>
 		{:else if column.id === 'tags'}
 			<div role="gridcell" class="flex min-w-0 items-center">
@@ -227,16 +240,16 @@
 						role="img"><SplitIcon size={14} strokeWidth={1.75} /></span
 					>
 				{/if}
-				<!-- the source text is what the entry is, muted; the description stays the user's -->
-				{#if entry.source_text}
+				{#if shownDescription}
 					<span
-						class="min-w-0 truncate text-muted-foreground"
-						title={entry.source_text}
-						data-slot="source-text">{entry.source_text}</span
+						class={cn(
+							'min-w-0 truncate',
+							shownDescription.from !== 'description' && 'text-muted-foreground'
+						)}
+						title={shownDescription.text}
+						data-slot={shownDescription.from === 'description' ? undefined : 'source-description'}
+						>{shownDescription.text}</span
 					>
-				{/if}
-				{#if entry.description}
-					<span class="min-w-0 truncate" title={entry.description}>{entry.description}</span>
 				{/if}
 			</div>
 		{:else if column.id === 'review'}

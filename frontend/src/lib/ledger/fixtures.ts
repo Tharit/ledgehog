@@ -1,7 +1,15 @@
 // Test fixtures for the ledger: whole API objects with sensible defaults.
 import type { Account, Category, Entry, Payee, Tag, TagApplyOut } from '#lib/types/domain.js';
 
+/**
+ * A whole entry. Like the API, it derives what its description and payee columns show from the
+ * description, the source text and the payee, unless a test sets `display_description` or
+ * `display_payee` itself.
+ */
 export function entry(over: Partial<Entry> = {}): Entry {
+	const description = over.description ?? null;
+	const sourceText = over.source_text ?? null;
+	const payeeId = over.payee_id ?? null;
 	return {
 		id: 1,
 		version: 1,
@@ -12,7 +20,12 @@ export function entry(over: Partial<Entry> = {}): Entry {
 		type: 'flow',
 		description: null,
 		note: null,
-		display_text: 'REWE Markt',
+		display_description: description
+			? { text: description, from: 'description' }
+			: sourceText
+				? { text: sourceText, from: 'source_text' }
+				: null,
+		display_payee: payeeId === null ? null : { payee_id: payeeId, from: 'payee' },
 		payee_id: null,
 		category_id: null,
 		counter_account_id: null,

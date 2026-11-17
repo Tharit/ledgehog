@@ -56,8 +56,8 @@ describe('EntryRow: a flow entry', () => {
 			'date',
 			'account',
 			'category',
-			'payee',
 			'tags',
+			'payee',
 			'description',
 			'review',
 			'amount'
@@ -71,10 +71,22 @@ describe('EntryRow: a flow entry', () => {
 		expect(screen.getByTitle('A long purpose text')).toBeInTheDocument();
 	});
 
-	it("shows the entry's own description only: nothing borrowed from the source", () => {
-		row({ description: null, display_text: 'REWE Markt' });
+	it('shows a purpose taken from the source muted, in regular weight', () => {
+		row({ display_description: { text: 'Invoice 42', from: 'purpose' } });
 
-		expect(screen.queryByText('REWE Markt')).toBeNull();
+		const text = screen.getByText('Invoice 42');
+		expect(text).toHaveClass('text-muted-foreground', 'truncate');
+		expect(text).not.toHaveClass('italic');
+		expect(text).toHaveAttribute('title', 'Invoice 42');
+	});
+
+	it("shows the entry's own description in normal text", () => {
+		row({
+			description: 'Groceries',
+			display_description: { text: 'Groceries', from: 'description' }
+		});
+
+		expect(screen.getByText('Groceries')).not.toHaveClass('text-muted-foreground');
 	});
 
 	it('leaves the cell empty, without a placeholder, when the description is empty', () => {
@@ -93,13 +105,39 @@ describe('EntryRow: a flow entry', () => {
 		expect(screen.queryByText('Booked')).toBeNull();
 	});
 
-	it('shows the source text muted, then the description the user gave', () => {
+	it('shows the source text muted when the entry has no description, and one value only', () => {
+		row({ source_text: 'USB cable' });
+
+		const text = within(screen.getByRole('row')).getAllByRole('gridcell')[cell('description')];
+		expect(text.textContent?.trim()).toBe('USB cable');
+		expect(screen.getByText('USB cable')).toHaveClass('text-muted-foreground');
+	});
+
+	it('shows the description alone when the entry also has a source text', () => {
 		row({ source_text: 'USB cable', description: 'for the office' });
 
 		const text = within(screen.getByRole('row')).getAllByRole('gridcell')[cell('description')];
-		expect(text.textContent?.replace(/\s+/g, ' ').trim()).toBe('USB cable for the office');
-		expect(screen.getByText('USB cable')).toHaveClass('text-muted-foreground');
-		expect(screen.getByText('for the office')).not.toHaveClass('text-muted-foreground');
+		expect(text.textContent?.trim()).toBe('for the office');
+	});
+
+	it('shows the counterparty as muted plain text in the payee column, without a chip', () => {
+		row({ display_payee: { text: 'Rewe Markt GmbH', from: 'counterparty' } });
+
+		const cells = within(screen.getByRole('row')).getAllByRole('gridcell');
+		const name = within(cells[cell('payee')]).getByText('Rewe Markt GmbH');
+		expect(name).toHaveClass('text-muted-foreground');
+		expect(name).not.toHaveClass('italic');
+		expect(cells[cell('payee')]).toHaveAttribute('title', 'Rewe Markt GmbH');
+		expect(cells[cell('payee')]).toHaveClass('truncate');
+		expect(cells[cell('payee')].querySelector('svg')).toBeNull();
+	});
+
+	it("shows the entry's payee in normal text, not muted", () => {
+		row({ payee_id: 20 });
+
+		const cells = within(screen.getByRole('row')).getAllByRole('gridcell');
+		expect(cells[cell('payee')]).toHaveTextContent('REWE');
+		expect(cells[cell('payee')].querySelector('.text-muted-foreground')).toBeNull();
 	});
 
 	it('shows Unclassified as an absent value, with the badge the server sent', () => {

@@ -6,7 +6,7 @@
 import { amountHeader } from '#lib/format/index.js';
 
 export type ColumnId =
-	'date' | 'account' | 'category' | 'payee' | 'tags' | 'description' | 'review' | 'amount';
+	'date' | 'account' | 'category' | 'tags' | 'payee' | 'description' | 'review' | 'amount';
 
 export type Column = {
 	id: ColumnId;
@@ -22,8 +22,8 @@ export const COLUMNS: readonly Column[] = [
 	{ id: 'date', header: 'Date', width: '6.5rem' },
 	{ id: 'account', header: 'Account', width: '9rem' },
 	{ id: 'category', header: 'Category', width: '10rem' },
-	{ id: 'payee', header: 'Payee', width: '9rem' },
 	{ id: 'tags', header: 'Tags', width: '12rem' },
+	{ id: 'payee', header: 'Payee', width: '9rem' },
 	{ id: 'description', header: 'Description', width: 'minmax(0, 1fr)' },
 	{ id: 'review', header: 'Review', hiddenHeader: true, width: '4.5rem' },
 	{ id: 'amount', header: 'Amount', width: '7rem', align: 'right' }

@@ -535,6 +535,23 @@ export function consequenceGroups(preview: UnitPreview | null): ConsequenceGroup
 	});
 }
 
+const filled = (text: string | null | undefined): text is string => !!text && text.trim() !== '';
+
+/** The description column's text for a preview row: its description, else source text, else purpose. */
+function displayDescription(row: PreviewRow, base: Entry | null): Entry['display_description'] {
+	if (filled(row.description)) return { text: row.description, from: 'description' };
+	if (filled(row.source_text)) return { text: row.source_text, from: 'source_text' };
+	const purpose = base?.source?.purpose;
+	return filled(purpose) ? { text: purpose, from: 'purpose' } : null;
+}
+
+/** The payee column's value for a preview row: the payee as drafted, else the counterparty. */
+function displayPayee(payeeId: number | null, base: Entry | null): Entry['display_payee'] {
+	if (payeeId !== null) return { payee_id: payeeId, from: 'payee' };
+	const name = base?.source?.counterparty_name;
+	return filled(name) ? { text: name, from: 'counterparty' } : null;
+}
+
 /**
  * A preview row as an entry, so the compact row of the ledger can draw it. The text of an entry
  * the unit holds is its own; one outside the unit has none beyond its description.
@@ -542,6 +559,7 @@ export function consequenceGroups(preview: UnitPreview | null): ConsequenceGroup
 export function previewRowEntry(row: PreviewRow, base: Entry | null = null): Entry {
 	const value = (name: FieldName) => row.fields[name]?.value ?? null;
 	const type = value('type');
+	const payeeId = typeof value('payee') === 'number' ? (value('payee') as number) : null;
 	return {
 		id: row.id,
 		version: row.version ?? 0,
@@ -552,8 +570,9 @@ export function previewRowEntry(row: PreviewRow, base: Entry | null = null): Ent
 		type: type === 'flow' || type === 'transfer' ? type : null,
 		description: row.description,
 		note: row.note,
-		display_text: base?.display_text ?? row.description,
-		payee_id: typeof value('payee') === 'number' ? (value('payee') as number) : null,
+		display_description: displayDescription(row, base),
+		display_payee: displayPayee(payeeId, base),
+		payee_id: payeeId,
 		category_id: typeof value('category') === 'number' ? (value('category') as number) : null,
 		counter_account_id:
 			typeof value('counter_account') === 'number' ? (value('counter_account') as number) : null,

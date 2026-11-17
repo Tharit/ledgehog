@@ -1757,6 +1757,39 @@ export interface components {
             /** Instance Id */
             instance_id: number;
         };
+        /**
+         * DisplayDescriptionOut
+         * @description The entry's description, else its source text, else its source's purpose, and which it is.
+         */
+        DisplayDescriptionOut: {
+            /**
+             * From
+             * @enum {string}
+             */
+            from: "description" | "source_text" | "purpose";
+            /** Text */
+            text: string;
+        };
+        /** DisplayPayeeCounterparty */
+        DisplayPayeeCounterparty: {
+            /**
+             * From
+             * @constant
+             */
+            from: "counterparty";
+            /** Text */
+            text: string;
+        };
+        /** DisplayPayeePayee */
+        DisplayPayeePayee: {
+            /**
+             * From
+             * @constant
+             */
+            from: "payee";
+            /** Payee Id */
+            payee_id: number;
+        };
         /** DocumentBookingDetailOut */
         DocumentBookingDetailOut: {
             /** Account Id */
@@ -1936,8 +1969,9 @@ export interface components {
             };
             /** Description */
             description: string | null;
-            /** Display Text */
-            display_text: string | null;
+            display_description: components["schemas"]["DisplayDescriptionOut"] | null;
+            /** Display Payee */
+            display_payee: components["schemas"]["DisplayPayeePayee"] | components["schemas"]["DisplayPayeeCounterparty"] | null;
             /** Id */
             id: number;
             /**

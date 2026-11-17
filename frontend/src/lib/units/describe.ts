@@ -2,6 +2,7 @@
 // Pure and DOM-free so the panel and the queue say the same things. Nothing here decides
 // anything about a unit: state and entries are the server's.
 import { documentLabel } from '#lib/accounts/booking.js';
+import { entryName } from '#lib/ledger/display.js';
 import type { Lookups } from '#lib/ledger/lookups.js';
 import type { Entry, SourceTransaction } from '#lib/types/domain.js';
 import type { Unit, UnitReason, UnitState } from './types.js';
@@ -49,12 +50,14 @@ export function anchorEntry(unit: Pick<Unit, 'anchor_entry_id' | 'entries'>): En
 	return unit.entries.find((e) => e.id === unit.anchor_entry_id) ?? unit.entries[0];
 }
 
-/** What an entry is called in a list: its text, else its counterparty, else "Entered by hand". */
-export function entryLabel(entry: Entry): string {
+/**
+ * What an entry is called in a list (patterns §4.1): its description or source text, else its
+ * payee or counterparty name, else its purpose, else "Entered by hand". The payee's name needs
+ * the lookups; without them that step is skipped.
+ */
+export function entryLabel(entry: Entry, lookups?: Lookups): string {
 	return (
-		entry.display_text?.trim() ||
-		entry.source?.counterparty_name?.trim() ||
-		(entry.authored ? 'Entered by hand' : `Entry ${entry.id}`)
+		entryName(entry, lookups?.payees) || (entry.authored ? 'Entered by hand' : `Entry ${entry.id}`)
 	);
 }
 
@@ -87,7 +90,7 @@ export function unitTitle(
 			(anchor.authored ? 'Entered by hand' : `Entry ${anchor.id}`);
 		return `${text} (split in ${n})`;
 	}
-	return entryLabel(anchor);
+	return entryLabel(anchor, lookups);
 }
 
 /** One source transaction of the unit, with the entries that share it. */

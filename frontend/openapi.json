@@ -1731,6 +1731,68 @@
         "title": "DiscoveryResultOut",
         "type": "object"
       },
+      "DisplayDescriptionOut": {
+        "description": "The entry's description, else its source text, else its source's purpose, and which it is.",
+        "properties": {
+          "from": {
+            "enum": [
+              "description",
+              "source_text",
+              "purpose"
+            ],
+            "title": "From",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "from"
+        ],
+        "title": "DisplayDescriptionOut",
+        "type": "object"
+      },
+      "DisplayPayeeCounterparty": {
+        "properties": {
+          "from": {
+            "const": "counterparty",
+            "title": "From",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "text"
+        ],
+        "title": "DisplayPayeeCounterparty",
+        "type": "object"
+      },
+      "DisplayPayeePayee": {
+        "properties": {
+          "from": {
+            "const": "payee",
+            "title": "From",
+            "type": "string"
+          },
+          "payee_id": {
+            "title": "Payee Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "from",
+          "payee_id"
+        ],
+        "title": "DisplayPayeePayee",
+        "type": "object"
+      },
       "DocumentBookingDetailOut": {
         "properties": {
           "account_id": {
@@ -2311,16 +2373,29 @@
             ],
             "title": "Description"
           },
-          "display_text": {
+          "display_description": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/DisplayDescriptionOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "display_payee": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DisplayPayeePayee"
+              },
+              {
+                "$ref": "#/components/schemas/DisplayPayeeCounterparty"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Display Text"
+            "title": "Display Payee"
           },
           "id": {
             "title": "Id",
@@ -2487,7 +2562,8 @@
           "type",
           "description",
           "note",
-          "display_text",
+          "display_description",
+          "display_payee",
           "source_text",
           "payee_id",
           "category_id",

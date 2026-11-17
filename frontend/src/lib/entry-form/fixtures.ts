@@ -104,7 +104,8 @@ export function authored(over: Partial<Entry> = {}): Entry {
 		authored: true,
 		booked_on: '2026-10-09',
 		amount: { amount: -1250, currency: 'EUR' },
-		display_text: 'groceries',
+		display_description: { text: 'groceries', from: 'description' },
+		display_payee: null,
 		source: {
 			amount: { amount: -1250, currency: 'EUR' },
 			booking: null,

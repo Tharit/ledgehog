@@ -91,7 +91,13 @@ describe('UnitPanel: a flow unit', () => {
 		const { dialog } = await openPanel(
 			unit({
 				anchor_entry_id: 1,
-				entries: [entry({ id: 1, unit_key: 1, display_text: 'REWE Markt Berlin' })]
+				entries: [
+					entry({
+						id: 1,
+						unit_key: 1,
+						display_description: { text: 'REWE Markt Berlin', from: 'description' }
+					})
+				]
 			})
 		);
 
@@ -119,7 +125,11 @@ describe('UnitPanel: a flow unit', () => {
 		expect(rule.closest('[data-slot="evidence"]')).not.toHaveAttribute('data-proposal');
 		// the proposed category is italic too; the decided payee is not
 		expect(within(dialog).getByText('Groceries').closest('[data-proposal]')).toHaveClass('italic');
-		expect(within(dialog).getByText('REWE').closest('[data-proposal]')).toBeNull();
+		// the title is named by the payee too (patterns §4.1), so look past it
+		const payee = within(dialog)
+			.getAllByText('REWE')
+			.find((el) => !el.closest('[data-dialog-title]'))!;
+		expect(payee.closest('[data-proposal]')).toBeNull();
 	});
 
 	it('says a rule is deleted when the loaded list lacks it', async () => {
@@ -246,14 +256,14 @@ describe('UnitPanel: other units', () => {
 						unit_key: 1,
 						source: src,
 						source_transaction_id: 5,
-						display_text: 'Amazon'
+						display_description: { text: 'Amazon', from: 'description' }
 					}),
 					entry({
 						id: 2,
 						unit_key: 1,
 						source: src,
 						source_transaction_id: 5,
-						display_text: 'Amazon'
+						display_description: { text: 'Amazon', from: 'description' }
 					})
 				]
 			})
@@ -320,7 +330,7 @@ describe('UnitPanel: other units', () => {
 						unit_key: 1,
 						authored: true,
 						source_transaction_id: 5,
-						display_text: 'Flea market',
+						display_description: { text: 'Flea market', from: 'description' },
 						source: source({
 							counterparty_name: 'Flea market',
 							purpose: 'Chair',
@@ -434,7 +444,13 @@ describe('UnitPanel: other units', () => {
 			unit({
 				anchor_entry_id: 1,
 				entries: [
-					entry({ id: 1, unit_key: 1, authored: true, display_text: 'Flea market', derivation: {} })
+					entry({
+						id: 1,
+						unit_key: 1,
+						authored: true,
+						display_description: { text: 'Flea market', from: 'description' },
+						derivation: {}
+					})
 				]
 			})
 		);

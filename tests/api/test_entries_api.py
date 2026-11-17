@@ -94,7 +94,8 @@ def test_row_json_shape_and_money(anna: TestClient, api_engine: Engine, acct: in
             "type": "flow",
             "description": None,
             "note": "n",
-            "display_text": "CP",
+            "display_description": {"text": "PU", "from": "purpose"},
+            "display_payee": {"from": "payee", "payee_id": p},
             "source_text": None,
             "payee_id": p,
             "category_id": c,
@@ -326,7 +327,10 @@ def test_user_authored_entries_carry_their_source_and_derived_have_none(
         derived = seed.derived(conn, acct)
     rows = {e["id"]: e for e in listed(anna)["entries"]}
     for got in (rows[user], anna.get(f"{URL}/{user}").json()):
-        assert got["authored"] is True and got["display_text"] == "Hand entered"
+        assert got["authored"] is True and got["display_description"] == {
+            "text": "Hand entered",
+            "from": "purpose",
+        }
         src = got["source"]
         assert src["purpose"] == "Hand entered" and src["amount"] == {"amount": -1000, "currency": "EUR"}
         assert src["source_format"] is None
@@ -436,3 +440,13 @@ def test_derived_entries_have_no_unit_and_are_not_authored(anna: TestClient, api
         None,
         {},
     )
+
+
+def test_display_fields_serialize_with_from_and_counterparty_text(
+    anna: TestClient, api_engine: Engine, acct: int
+):
+    with api_engine.begin() as conn:
+        e = seed.entry(conn, acct, counterparty="Rewe Markt", purpose="  ", source_text="Bio Banane")
+    for got in (next(r for r in listed(anna)["entries"] if r["id"] == e), anna.get(f"{URL}/{e}").json()):
+        assert got["display_payee"] == {"from": "counterparty", "text": "Rewe Markt"}
+        assert got["display_description"] == {"text": "Bio Banane", "from": "source_text"}

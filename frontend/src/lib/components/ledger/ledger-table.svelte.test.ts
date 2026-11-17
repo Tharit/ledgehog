@@ -19,9 +19,21 @@ const lookups = buildLookups({
 	tags: [tag({ id: 30, name: 'Lisbon' }), tag({ id: 31, name: 'Tax' })]
 });
 const three = [
-	entry({ id: 3, description: 'Third', display_text: 'Third' }),
-	entry({ id: 2, description: 'Second', display_text: 'Second' }),
-	entry({ id: 1, description: 'First', display_text: 'First' })
+	entry({
+		id: 3,
+		description: 'Third',
+		display_description: { text: 'Third', from: 'description' }
+	}),
+	entry({
+		id: 2,
+		description: 'Second',
+		display_description: { text: 'Second', from: 'description' }
+	}),
+	entry({
+		id: 1,
+		description: 'First',
+		display_description: { text: 'First', from: 'description' }
+	})
 ];
 
 function table(props = {}) {
@@ -45,8 +57,17 @@ describe('LedgerTable: the model', () => {
 	it('marks the row of each entry the model is still looking at, and no other', () => {
 		table({
 			entries: [
-				entry({ id: 2, description: 'Second', display_text: 'Second', model_pending: true }),
-				entry({ id: 1, description: 'First', display_text: 'First' })
+				entry({
+					id: 2,
+					description: 'Second',
+					display_description: { text: 'Second', from: 'description' },
+					model_pending: true
+				}),
+				entry({
+					id: 1,
+					description: 'First',
+					display_description: { text: 'First', from: 'description' }
+				})
 			],
 			total: 2
 		});
@@ -783,14 +804,23 @@ describe('LedgerTable: marks of the unit panel (patterns §7, design §7)', () =
 	const marked = () =>
 		applyAffected(three, {
 			entries: [
-				entry({ id: 3, description: 'Third', display_text: 'Third' }),
+				entry({
+					id: 3,
+					description: 'Third',
+					display_description: { text: 'Third', from: 'description' }
+				}),
 				entry({
 					id: 2,
 					description: 'Second',
-					display_text: 'Second',
+					display_description: { text: 'Second', from: 'description' },
 					review_flags: ['unconfirmed']
 				}),
-				entry({ id: 1, description: 'First', display_text: 'First', review_flags: ['unconfirmed'] })
+				entry({
+					id: 1,
+					description: 'First',
+					display_description: { text: 'First', from: 'description' },
+					review_flags: ['unconfirmed']
+				})
 			],
 			resolved: [3, 1],
 			confirmed: [3]
@@ -810,9 +840,22 @@ describe('LedgerTable: marks of the unit panel (patterns §7, design §7)', () =
 
 	it('mutes a committed row that stays in review too, with its own badge and no check', () => {
 		const patched = [
-			entry({ id: 3, description: 'Third', display_text: 'Third' }),
-			entry({ id: 2, description: 'Second', display_text: 'Second' }),
-			entry({ id: 1, description: 'First', display_text: 'First', review_flags: ['unconfirmed'] })
+			entry({
+				id: 3,
+				description: 'Third',
+				display_description: { text: 'Third', from: 'description' }
+			}),
+			entry({
+				id: 2,
+				description: 'Second',
+				display_description: { text: 'Second', from: 'description' }
+			}),
+			entry({
+				id: 1,
+				description: 'First',
+				display_description: { text: 'First', from: 'description' },
+				review_flags: ['unconfirmed']
+			})
 		];
 		table({ marks: marked(), entries: patched, total: patched.length });
 
@@ -859,7 +902,12 @@ describe('LedgerTable: marks of the unit panel (patterns §7, design §7)', () =
 
 describe('LedgerTable: the entries of a unit are drawn together (patterns §4.1)', () => {
 	const rows = [
-		entry({ id: 5, unit_key: null, description: 'Alone', display_text: 'Alone' }),
+		entry({
+			id: 5,
+			unit_key: null,
+			description: 'Alone',
+			display_description: { text: 'Alone', from: 'description' }
+		}),
 		entry({ id: 4, unit_key: 10, amount: { amount: -300, currency: 'EUR' }, description: 'A' }),
 		entry({ id: 3, unit_key: 10, amount: { amount: -200, currency: 'EUR' }, description: 'B' }),
 		entry({ id: 2, unit_key: 11, type: 'transfer', description: 'Out' }),

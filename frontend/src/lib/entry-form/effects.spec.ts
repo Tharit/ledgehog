@@ -99,9 +99,13 @@ describe('summarizeDelete', () => {
 
 describe('describeEntry', () => {
 	it('is the amount with its currency and the text', () => {
-		const entry = { amount: { amount: -1250, currency: 'EUR' }, display_text: 'groceries' };
+		const entry = {
+			amount: { amount: -1250, currency: 'EUR' },
+			display_description: { text: 'groceries', from: 'description' as const },
+			display_payee: null
+		};
 		expect(describeEntry(entry, 'en')).toBe('−1250'.length > 0 ? describeEntry(entry, 'en') : '');
 		expect(describeEntry(entry, 'en')).toMatch(/12\.50.*EUR · groceries$/);
-		expect(describeEntry({ ...entry, display_text: null }, 'en')).toMatch(/EUR$/);
+		expect(describeEntry({ ...entry, display_description: null }, 'en')).toMatch(/EUR$/);
 	});
 });

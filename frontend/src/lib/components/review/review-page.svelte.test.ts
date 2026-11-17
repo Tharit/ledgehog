@@ -36,7 +36,15 @@ vi.mock('#lib/units/panel-instance.js', () => ({ unitPanel: { open: vi.fn() } })
 const plain = (id: number, text: string) =>
 	unit({
 		anchor_entry_id: id,
-		entries: [entry({ id, unit_key: id, description: text, display_text: text, derivation: {} })]
+		entries: [
+			entry({
+				id,
+				unit_key: id,
+				description: text,
+				display_description: { text, from: 'description' },
+				derivation: {}
+			})
+		]
 	});
 
 /** a poll of the change watcher that finds the ledger at this value */

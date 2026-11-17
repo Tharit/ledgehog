@@ -8,7 +8,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import date
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import Connection, FromClause, func, select, text
 
@@ -30,6 +30,19 @@ class PartnerSummary:
 
 
 @dataclass(frozen=True)
+class DisplayDescription:
+    text: str
+    from_: Literal["description", "source_text", "purpose"]  # which of the three it is
+
+
+@dataclass(frozen=True)
+class DisplayPayee:
+    from_: Literal["payee", "counterparty"]
+    payee_id: int | None = None  # set when `from_` is "payee"
+    text: str | None = None  # the counterparty name, set when `from_` is "counterparty"
+
+
+@dataclass(frozen=True)
 class EntryRow:
     id: int
     version: int
@@ -41,7 +54,8 @@ class EntryRow:
     type: str | None
     description: str | None
     note: str | None
-    display_text: str | None  # description, else source text, else counterparty_name, else purpose
+    display_description: DisplayDescription | None  # what the description column shows (patterns §4.1)
+    display_payee: DisplayPayee | None  # what the payee column shows (patterns §4.1)
     payee_id: int | None
     category_id: int | None
     counter_account_id: int | None
@@ -71,10 +85,31 @@ class EntryPage:
     offset: int
 
 
-def display_text(
-    description: str | None, source_text: str | None, counterparty: str | None, purpose: str | None
-) -> str | None:
-    return description or source_text or counterparty or purpose or None
+def _text(value: str | None) -> str | None:
+    """The text, or None where it is missing or blank."""
+    return value if value is not None and value.strip() else None
+
+
+def display_description(
+    description: str | None, source_text: str | None, purpose: str | None
+) -> DisplayDescription | None:
+    """The entry's description, else its source text, else its source's purpose; blank counts as none."""
+    if (t := _text(description)) is not None:
+        return DisplayDescription(text=t, from_="description")
+    if (t := _text(source_text)) is not None:
+        return DisplayDescription(text=t, from_="source_text")
+    if (t := _text(purpose)) is not None:
+        return DisplayDescription(text=t, from_="purpose")
+    return None
+
+
+def display_payee(payee_id: int | None, counterparty: str | None) -> DisplayPayee | None:
+    """The entry's payee, else its source's counterparty name; blank counts as none."""
+    if payee_id is not None:
+        return DisplayPayee(from_="payee", payee_id=payee_id)
+    if (t := _text(counterparty)) is not None:
+        return DisplayPayee(from_="counterparty", text=t)
+    return None
 
 
 # the list's order, shared by the page and the stream
@@ -215,7 +250,8 @@ def _build(conn: Connection, rows: Sequence[Any]) -> tuple[EntryRow, ...]:
             type=r.type,
             description=r.description,
             note=r.note,
-            display_text=display_text(r.description, r.source_text, r.counterparty_name, r.purpose),
+            display_description=display_description(r.description, r.source_text, r.purpose),
+            display_payee=display_payee(r.payee_id, r.counterparty_name),
             payee_id=r.payee_id,
             category_id=r.category_id,
             counter_account_id=r.counter_account_id,

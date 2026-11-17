@@ -38,7 +38,11 @@ const spotify = entry({
 		booking_text: 'LASTSCHRIFT'
 	})
 });
-const handmade = entry({ id: 13, source: null, display_text: 'Coffee at Starbucks' });
+const handmade = entry({
+	id: 13,
+	source: null,
+	display_description: { text: 'Coffee at Starbucks', from: 'description' }
+});
 
 function find(entries = [rewe, spotify], total = entries.length) {
 	vi.mocked(api.listEntries).mockResolvedValue({ entries, total, limit: 8, offset: 0 });

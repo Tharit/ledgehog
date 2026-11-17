@@ -13,7 +13,7 @@ from typing import Annotated, Any, Literal, cast
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, StringConstraints
+from pydantic import BaseModel, Field, StringConstraints
 
 from app.api.errors import map_error
 from app.api.ids import MAX_ID, EntityId, PathId
@@ -111,6 +111,36 @@ class PartnerOut(BaseModel):
     amount: Money
 
 
+class DisplayDescriptionOut(BaseModel):
+    """The entry's description, else its source text, else its source's purpose, and which it is."""
+
+    text: str
+    from_: Literal["description", "source_text", "purpose"] = Field(serialization_alias="from")
+
+
+class DisplayPayeePayee(BaseModel):
+    from_: Literal["payee"] = Field(serialization_alias="from")
+    payee_id: int
+
+
+class DisplayPayeeCounterparty(BaseModel):
+    from_: Literal["counterparty"] = Field(serialization_alias="from")
+    text: str
+
+
+# a plain union: the literal `from` tells the two apart (a discriminator would name the Python field `from_`)
+DisplayPayeeOut = DisplayPayeePayee | DisplayPayeeCounterparty
+
+
+def _display_payee(row: EntryRow) -> DisplayPayeePayee | DisplayPayeeCounterparty | None:
+    dp = row.display_payee
+    if dp is None:
+        return None
+    if dp.from_ == "payee" and dp.payee_id is not None:
+        return DisplayPayeePayee(from_="payee", payee_id=dp.payee_id)
+    return DisplayPayeeCounterparty(from_="counterparty", text=dp.text or "")
+
+
 class EntryOut(BaseModel):
     id: int
     version: int
@@ -121,7 +151,8 @@ class EntryOut(BaseModel):
     type: EntryType | None
     description: str | None
     note: str | None
-    display_text: str | None  # description, else source text, else counterparty name, else purpose
+    display_description: DisplayDescriptionOut | None  # what the description column shows (patterns §4.1)
+    display_payee: DisplayPayeeOut | None  # what the payee column shows; ids only, like the row's payee_id
     source_text: str | None  # the text its source gives the entry (a booking's line); null for most
     payee_id: int | None
     category_id: int | None
@@ -151,7 +182,12 @@ class EntryOut(BaseModel):
             type=cast(EntryType | None, row.type),
             description=row.description,
             note=row.note,
-            display_text=row.display_text,
+            display_description=None
+            if row.display_description is None
+            else DisplayDescriptionOut(
+                text=row.display_description.text, from_=row.display_description.from_
+            ),
+            display_payee=_display_payee(row),
             source_text=row.source_text,
             payee_id=row.payee_id,
             category_id=row.category_id,

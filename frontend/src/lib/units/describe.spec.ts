@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { account, entry } from '#lib/ledger/fixtures.js';
+import { account, entry, payee } from '#lib/ledger/fixtures.js';
 import { buildLookups } from '#lib/ledger/lookups.js';
 import { source } from '#lib/rules/fixtures.js';
 import {
@@ -33,7 +33,7 @@ describe('stateText', () => {
 });
 
 describe('unitShape and title', () => {
-	const flow = entry({ id: 1, display_text: 'REWE Markt' });
+	const flow = entry({ id: 1, display_description: { text: 'REWE Markt', from: 'description' } });
 	it('a single entry is titled by its text', () => {
 		expect(unitShape([flow])).toBe('single');
 		expect(unitTitle({ anchor_entry_id: 1, entries: [flow] }, lookups)).toBe('REWE Markt');
@@ -42,7 +42,12 @@ describe('unitShape and title', () => {
 	it('a split is titled by its source, not by an entry', () => {
 		const src = source({ counterparty_name: 'REWE Markt' });
 		const entries = [
-			entry({ id: 1, display_text: 'Bio Banane', source: src, source_transaction_id: 5 }),
+			entry({
+				id: 1,
+				display_description: { text: 'Bio Banane', from: 'description' },
+				source: src,
+				source_transaction_id: 5
+			}),
 			entry({ id: 2, source: src, source_transaction_id: 5 })
 		];
 		expect(unitShape(entries)).toBe('split');
@@ -74,7 +79,12 @@ describe('unitShape and title', () => {
 				booking: { kind: 'document', id: 3, account_id: null, ...booking }
 			});
 			const entries = [
-				entry({ id: 1, display_text: 'Bio Banane, 1 Stk', source: src, source_transaction_id: 5 }),
+				entry({
+					id: 1,
+					display_description: { text: 'Bio Banane, 1 Stk', from: 'description' },
+					source: src,
+					source_transaction_id: 5
+				}),
 				entry({ id: 2, source: src, source_transaction_id: 5 }),
 				entry({ id: 3, source: src, source_transaction_id: 5 })
 			];
@@ -106,12 +116,26 @@ describe('unitShape and title', () => {
 		expect(unitTitle({ anchor_entry_id: 1, entries }, lookups)).toBe('Transfer Giro → Savings');
 	});
 
-	it('falls back from text to counterparty to hand-entered', () => {
+	it('is named by text, else payee or counterparty, else purpose, else hand-entered', () => {
+		const withPayees = { ...lookups, payees: new Map([[20, payee({ id: 20, name: 'REWE' })]]) };
+		const text = { text: 'Bio Banane', from: 'source_text' as const };
+		const purpose = { text: 'Card 0815', from: 'purpose' as const };
+		const cp = { text: 'Acme', from: 'counterparty' as const };
+		const own = { payee_id: 20, from: 'payee' as const };
+		expect(entryLabel(entry({ display_description: text, display_payee: cp }))).toBe('Bio Banane');
+		expect(entryLabel(entry({ display_description: purpose, display_payee: cp }))).toBe('Acme');
 		expect(
-			entryLabel(entry({ display_text: null, source: source({ counterparty_name: 'Acme' }) }))
-		).toBe('Acme');
-		expect(entryLabel(entry({ display_text: null, authored: true }))).toBe('Entered by hand');
-		expect(entryLabel(entry({ id: 9, display_text: null }))).toBe('Entry 9');
+			entryLabel(entry({ display_description: purpose, display_payee: own }), withPayees)
+		).toBe('REWE');
+		// without the payee list that step is skipped
+		expect(entryLabel(entry({ display_description: purpose, display_payee: own }))).toBe(
+			'Card 0815'
+		);
+		expect(entryLabel(entry({ display_description: purpose }))).toBe('Card 0815');
+		expect(entryLabel(entry({ display_description: null, authored: true }))).toBe(
+			'Entered by hand'
+		);
+		expect(entryLabel(entry({ id: 9, display_description: null }))).toBe('Entry 9');
 	});
 
 	it('the anchor is the named entry, else the first', () => {

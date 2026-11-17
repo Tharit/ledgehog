@@ -37,7 +37,7 @@ function flow(id: number, text: string, over = {}) {
 				id,
 				unit_key: id,
 				description: text,
-				display_text: text,
+				display_description: { text, from: 'description' },
 				category_id: 10,
 				derivation: { category: history },
 				review_flags: ['unconfirmed'],
@@ -178,8 +178,18 @@ describe('ReviewQueue', () => {
 				unit({
 					anchor_entry_id: 1,
 					entries: [
-						entry({ id: 1, unit_key: 1, description: 'Amazon', display_text: 'Amazon' }),
-						entry({ id: 2, unit_key: 1, description: 'Amazon', display_text: 'Amazon' })
+						entry({
+							id: 1,
+							unit_key: 1,
+							description: 'Amazon',
+							display_description: { text: 'Amazon', from: 'description' }
+						}),
+						entry({
+							id: 2,
+							unit_key: 1,
+							description: 'Amazon',
+							display_description: { text: 'Amazon', from: 'description' }
+						})
 					]
 				}),
 				unit({
@@ -191,7 +201,7 @@ describe('ReviewQueue', () => {
 							type: 'transfer',
 							account_id: 1,
 							description: 'Out',
-							display_text: 'Out',
+							display_description: { text: 'Out', from: 'description' },
 							counterpart_entry_id: 4
 						}),
 						entry({
@@ -200,7 +210,7 @@ describe('ReviewQueue', () => {
 							type: 'transfer',
 							account_id: 2,
 							description: 'In',
-							display_text: 'In',
+							display_description: { text: 'In', from: 'description' },
 							counterpart_entry_id: 3
 						})
 					]
@@ -322,7 +332,7 @@ describe('ReviewQueue: marks after a commit', () => {
 			id,
 			unit_key: id,
 			description: text,
-			display_text: text,
+			display_description: { text, from: 'description' },
 			category_id: 10,
 			derivation: { category: history },
 			review_flags: flags as never
@@ -390,8 +400,18 @@ describe('ReviewQueue: the keyboard', () => {
 				unit({
 					anchor_entry_id: 1,
 					entries: [
-						entry({ id: 1, unit_key: 1, description: 'Amazon', display_text: 'Amazon' }),
-						entry({ id: 2, unit_key: 1, description: 'Amazon', display_text: 'Amazon' })
+						entry({
+							id: 1,
+							unit_key: 1,
+							description: 'Amazon',
+							display_description: { text: 'Amazon', from: 'description' }
+						}),
+						entry({
+							id: 2,
+							unit_key: 1,
+							description: 'Amazon',
+							display_description: { text: 'Amazon', from: 'description' }
+						})
 					]
 				}),
 				flow(3, 'REWE')
@@ -429,8 +449,18 @@ describe('ReviewQueue: the keyboard', () => {
 				unit({
 					anchor_entry_id: 3,
 					entries: [
-						entry({ id: 3, unit_key: 3, description: 'Amazon', display_text: 'Amazon' }),
-						entry({ id: 4, unit_key: 3, description: 'Amazon', display_text: 'Amazon' })
+						entry({
+							id: 3,
+							unit_key: 3,
+							description: 'Amazon',
+							display_description: { text: 'Amazon', from: 'description' }
+						}),
+						entry({
+							id: 4,
+							unit_key: 3,
+							description: 'Amazon',
+							display_description: { text: 'Amazon', from: 'description' }
+						})
 					]
 				})
 			]

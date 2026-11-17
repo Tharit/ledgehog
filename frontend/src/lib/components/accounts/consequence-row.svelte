@@ -1,6 +1,7 @@
 <script lang="ts">
 	import DateDisplay from '#lib/components/common/date-display.svelte';
 	import MoneyDisplay from '#lib/components/common/money-display.svelte';
+	import { entryName } from '#lib/ledger/display.js';
 	import type { Entry } from '#lib/types/domain.js';
 
 	// One entry of a consequence list (patterns §6) in a dialog: date and amount keep their width, the
@@ -11,12 +12,12 @@
 		locale = 'en',
 		note
 	}: {
-		entry: Pick<Entry, 'booked_on' | 'amount' | 'description' | 'display_text'>;
+		entry: Pick<Entry, 'booked_on' | 'amount' | 'display_description' | 'display_payee'>;
 		locale?: string;
 		note?: string;
 	} = $props();
 
-	const text = $derived(entry.description ?? entry.display_text ?? '');
+	const text = $derived(entryName(entry) ?? '');
 </script>
 
 <li

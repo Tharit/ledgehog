@@ -2,6 +2,8 @@
 // a short list (edit) or one sentence (delete).
 import type { SourceDeleteCounts, SourceEditEffects } from '#lib/api/types.js';
 import { formatMoney } from '#lib/format/index.js';
+import { entryName } from '#lib/ledger/display.js';
+import type { Entry, Payee } from '#lib/types/domain.js';
 
 /** Spec §5.6: always shown above Save; it is the confirmation (decision D214). */
 export const EDIT_WARNING =
@@ -72,14 +74,18 @@ export function summarizeDelete(counts: SourceDeleteCounts): string {
 
 /** An entry in a notice: "−12.50 EUR · groceries". */
 export function describeEntry(
-	entry: { amount: { amount: number; currency: string }; display_text: string | null },
-	locale = 'en'
+	entry: { amount: { amount: number; currency: string } } & Pick<
+		Entry,
+		'display_description' | 'display_payee'
+	>,
+	locale = 'en',
+	payees?: ReadonlyMap<number, Payee>
 ): string {
 	const money = formatMoney(entry.amount.amount, entry.amount.currency, {
 		locale,
 		showCurrency: true,
 		showPlus: false
 	});
-	const text = entry.display_text?.trim();
+	const text = entryName(entry, payees);
 	return text ? `${money} · ${text}` : money;
 }
