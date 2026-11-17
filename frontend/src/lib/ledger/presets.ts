@@ -28,3 +28,27 @@ export function datePresets(today: IsoDate): DatePreset[] {
 		{ id: 'last-year', label: 'Last year', from: iso(year - 1, 0, 1), to: iso(year - 1, 11, 31) }
 	];
 }
+
+const DAY_MS = 86_400_000;
+
+function parts(date: IsoDate): [number, number, number] {
+	const [year, month, day] = date.split('-').map(Number);
+	return [year, month - 1, day];
+}
+
+/**
+ * The span before (`-1`) or after (`1`) a period, of the same length (reports.md): by calendar
+ * months when the period is whole months (a month, a quarter, a year), by its days otherwise.
+ */
+export function stepRange(from: IsoDate, to: IsoDate, direction: -1 | 1): [IsoDate, IsoDate] {
+	const [fy, fm, fd] = parts(from);
+	const [ty, tm, td] = parts(to);
+	if (fd === 1 && td === new Date(Date.UTC(ty, tm + 1, 0)).getUTCDate()) {
+		const months = (ty - fy) * 12 + (tm - fm) + 1;
+		const shift = direction * months;
+		return [iso(fy, fm + shift, 1), iso(ty, tm + shift + 1, 0)];
+	}
+	const days = Math.round((Date.UTC(ty, tm, td) - Date.UTC(fy, fm, fd)) / DAY_MS) + 1;
+	const shift = direction * days;
+	return [iso(fy, fm, fd + shift), iso(ty, tm, td + shift)];
+}

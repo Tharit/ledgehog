@@ -2,8 +2,11 @@
 	import Segmented from '#lib/components/common/segmented.svelte';
 	import DateChip from '#lib/components/ledger/date-chip.svelte';
 	import OptionsChip, { type ChipOption } from '#lib/components/ledger/options-chip.svelte';
+	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
+	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import { formatDateRange } from '#lib/format/index.js';
 	import type { Lookups } from '#lib/ledger/lookups.js';
+	import { stepRange } from '#lib/ledger/presets.js';
 	import {
 		defaultRange,
 		STEPS,
@@ -84,6 +87,15 @@
 		{ value: 'account', label: 'By account' }
 	];
 
+	const STEP_BUTTON =
+		'inline-flex h-full w-8 items-center justify-center outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset disabled:opacity-50 disabled:hover:bg-transparent';
+
+	/** The period's neighbour of the same length; the next is off once the period reaches today. */
+	function stepPeriod(direction: -1 | 1) {
+		const [from, to] = stepRange(params.from, params.to, direction);
+		onchange({ from, to });
+	}
+
 	/** Leaving the by-account mode with a transfer kind falls back to Expense. */
 	function changeMode(value: TimeMode) {
 		const transfer = params.kind === 'transfer_in' || params.kind === 'transfer_out';
@@ -104,6 +116,27 @@
 			onchange({ from: from ?? fallback.from, to: to ?? fallback.to });
 		}}
 	/>
+	<div
+		class="inline-flex h-8 divide-x divide-border overflow-hidden rounded-md border border-border"
+		role="group"
+		aria-label="Step the period"
+	>
+		<button
+			type="button"
+			class={STEP_BUTTON}
+			aria-label="Previous period"
+			title="Previous period"
+			onclick={() => stepPeriod(-1)}><ChevronLeftIcon class="size-4" /></button
+		>
+		<button
+			type="button"
+			class={STEP_BUTTON}
+			aria-label="Next period"
+			title="Next period"
+			disabled={params.to >= today}
+			onclick={() => stepPeriod(1)}><ChevronRightIcon class="size-4" /></button
+		>
+	</div>
 	{#if filters}
 		{#if accounts}
 			<OptionsChip

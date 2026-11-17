@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { datePresets } from './presets.js';
+import { datePresets, stepRange } from './presets.js';
 
 function byId(today: string) {
 	return Object.fromEntries(datePresets(today).map((p) => [p.id, [p.from, p.to]]));
@@ -49,5 +49,33 @@ describe('datePresets', () => {
 
 	it('last 30 days is thirty days counting today', () => {
 		expect(byId('2026-03-30')['last-30-days']).toEqual(['2026-03-01', '2026-03-30']);
+	});
+});
+
+describe('stepRange', () => {
+	it('steps a month by months, across the year', () => {
+		expect(stepRange('2026-02-01', '2026-02-28', -1)).toEqual(['2026-01-01', '2026-01-31']);
+		expect(stepRange('2026-01-01', '2026-01-31', -1)).toEqual(['2025-12-01', '2025-12-31']);
+		expect(stepRange('2025-12-01', '2025-12-31', 1)).toEqual(['2026-01-01', '2026-01-31']);
+	});
+
+	it('lands on the last day of a shorter month', () => {
+		expect(stepRange('2026-03-01', '2026-03-31', -1)).toEqual(['2026-02-01', '2026-02-28']);
+		expect(stepRange('2026-01-01', '2026-01-31', 1)).toEqual(['2026-02-01', '2026-02-28']);
+	});
+
+	it('steps a quarter, a year and twelve months by their own length', () => {
+		expect(stepRange('2026-07-01', '2026-09-30', -1)).toEqual(['2026-04-01', '2026-06-30']);
+		expect(stepRange('2026-01-01', '2026-03-31', -1)).toEqual(['2025-10-01', '2025-12-31']);
+		expect(stepRange('2025-01-01', '2025-12-31', -1)).toEqual(['2024-01-01', '2024-12-31']);
+		expect(stepRange('2025-10-01', '2026-09-30', -1)).toEqual(['2024-10-01', '2025-09-30']);
+		expect(stepRange('2025-10-01', '2026-09-30', 1)).toEqual(['2026-10-01', '2027-09-30']);
+	});
+
+	it('steps anything else by its days', () => {
+		expect(stepRange('2026-10-05', '2026-10-11', -1)).toEqual(['2026-09-28', '2026-10-04']);
+		expect(stepRange('2026-10-05', '2026-10-11', 1)).toEqual(['2026-10-12', '2026-10-18']);
+		expect(stepRange('2026-01-20', '2026-02-10', -1)).toEqual(['2025-12-29', '2026-01-19']);
+		expect(stepRange('2026-01-20', '2026-02-10', 1)).toEqual(['2026-02-11', '2026-03-04']);
 	});
 });

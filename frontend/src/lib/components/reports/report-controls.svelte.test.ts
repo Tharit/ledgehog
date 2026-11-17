@@ -137,4 +137,21 @@ describe('ReportControls: the mark of an account and a tag option', () => {
 		expect(chip?.getAttribute('style')).toContain('--dim-lavender');
 		expect(tileOf(row)).toBeNull();
 	});
+
+	it('steps the period to the span before or after, of the same length', async () => {
+		const onchange = setup('from=2026-02-01&to=2026-02-28');
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Previous period' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Next period' }));
+
+		expect(onchange).toHaveBeenNthCalledWith(1, { from: '2026-01-01', to: '2026-01-31' });
+		expect(onchange).toHaveBeenNthCalledWith(2, { from: '2026-03-01', to: '2026-03-31' });
+	});
+
+	it('turns the next arrow off once the period reaches today', () => {
+		setup('from=2026-10-01&to=2026-10-31');
+
+		expect(screen.getByRole('button', { name: 'Next period' })).toBeDisabled();
+		expect(screen.getByRole('button', { name: 'Previous period' })).toBeEnabled();
+	});
 });
