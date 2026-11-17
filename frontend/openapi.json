@@ -109,6 +109,43 @@
         "title": "AccountGroupOut",
         "type": "object"
       },
+      "AccountKindSeriesOut": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "checking",
+              "savings",
+              "card",
+              "cash",
+              "digital_wallet",
+              "depot",
+              "debt",
+              "receivable",
+              "asset",
+              "clearance"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "sum": {
+            "$ref": "#/components/schemas/LineOut"
+          },
+          "total": {
+            "items": {
+              "$ref": "#/components/schemas/LineOut"
+            },
+            "title": "Total",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "total",
+          "sum"
+        ],
+        "title": "AccountKindSeriesOut",
+        "type": "object"
+      },
       "AccountLinkOut": {
         "properties": {
           "account_id": {
@@ -3561,6 +3598,20 @@
       "OverTimeOut": {
         "description": "Only the fields of the chosen mode are present.",
         "properties": {
+          "account_kinds": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AccountKindSeriesOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Kinds"
+          },
           "account_slices": {
             "anyOf": [
               {

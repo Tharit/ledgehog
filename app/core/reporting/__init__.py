@@ -58,6 +58,7 @@ from app.core.reporting.periods import (
 )
 from app.core.reporting.savings import (
     ACCOUNT_KINDS,
+    AccountKindOverTime,
     AccountOverTime,
     AccountsOverTime,
     CategoriesOverTime,
@@ -72,6 +73,7 @@ from app.core.reporting.spend import ByCategory, CategoryRow, Slice, by_category
 
 __all__ = [
     "ACCOUNT_KINDS",
+    "AccountKindOverTime",
     "AccountOverTime",
     "AccountsOverTime",
     "accounts_over_time",

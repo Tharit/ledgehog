@@ -463,6 +463,12 @@ class AccountSeriesOut(BaseModel):
     sum: LineOut  # over the range
 
 
+class AccountKindSeriesOut(BaseModel):
+    kind: AccountKind
+    total: list[LineOut]  # per period: its accounts' amounts, added
+    sum: LineOut  # over the range
+
+
 class OverTimeOut(BaseModel):
     """Only the fields of the chosen mode are present."""
 
@@ -481,6 +487,7 @@ class OverTimeOut(BaseModel):
     sum: LineOut | None = None  # the kind's total over the range
     # mode = account (also `other`, `totals` and `sum`, as above)
     accounts: list[AccountSeriesOut] | None = None  # only accounts with entries, by the range's magnitude
+    account_kinds: list[AccountKindSeriesOut] | None = None  # in the usual kind order; kinds with an account
     account_slices: list[SliceAccountOut] | None = None  # the largest accounts of the kind's sign
 
 
@@ -521,6 +528,14 @@ def get_over_time(
                         sum=LineOut.of(a.sum, base),
                     )
                     for a in by_acc.accounts
+                ],
+                account_kinds=[
+                    AccountKindSeriesOut(
+                        kind=k.kind,  # type: ignore[arg-type]
+                        total=[LineOut.of(x, base) for x in k.total],
+                        sum=LineOut.of(k.sum, base),
+                    )
+                    for k in by_acc.account_kinds
                 ],
                 account_slices=[SliceAccountOut(account_id=a) for a in by_acc.slices],
                 other=[LineOut.of(x, base) for x in by_acc.other],

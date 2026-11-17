@@ -577,6 +577,7 @@ def test_over_time_by_account_carries_each_accounts_amount_per_period(anna: Test
         "step",
         "periods",
         "accounts",
+        "account_kinds",
         "account_slices",
         "other",
         "totals",
@@ -585,6 +586,9 @@ def test_over_time_by_account_carries_each_accounts_amount_per_period(anna: Test
     assert [a["account_id"] for a in body["accounts"]] == [seeded.giro, seeded.cash, seeded.usd]
     giro = body["accounts"][0]
     assert giro["total"] == [line(-49_500, 4), line(-8_300, 2)] and giro["sum"] == line(-57_800, 6)
+    kinds = {k["kind"]: k for k in body["account_kinds"]}
+    assert [k["kind"] for k in body["account_kinds"]] == ["checking", "card", "cash"]
+    assert kinds["checking"]["total"] == giro["total"] and kinds["cash"]["sum"] == line(-1_200, 1)
     assert body["account_slices"] == [{"account_id": seeded.giro}, {"account_id": seeded.cash}]
     assert body["other"] == [line(0, 0), line(None, 1, [usd_unvalued(-2_000)])]
     by_cat = get(anna, OVER_TIME, **SEP_OCT, mode="category", kind="expense")

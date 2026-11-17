@@ -64,7 +64,9 @@ class Facts:
     def own_lines(self) -> dict[tuple[date | None, int], Line]:
         """The entries booked directly to a category, by (bucket, category id): the `own` Lines."""
         return {
-            (b, cat): line for (b, c, cat), line in self.cells.items() if cat is not None and c in ("income", "expense")
+            (b, cat): line
+            for (b, c, cat), line in self.cells.items()
+            if cat is not None and c in ("income", "expense")
         }
 
 

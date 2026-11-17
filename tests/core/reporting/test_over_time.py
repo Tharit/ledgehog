@@ -217,3 +217,22 @@ def test_an_account_of_the_other_sign_is_no_slice_and_leaves_the_bar_of_its_peri
     assert got.slices == (big, swing)
     assert got.other == (EMPTY, EMPTY)
     assert {a.account_id: a.sum for a in got.accounts}[refunded] == Line(400, 2)
+
+
+def test_account_kinds_carry_the_sums_of_their_accounts(ledger: Connection):
+    h = household(ledger)  # Giro (checking), Travel card (card), Cash (cash)
+    flt = entry_filter(*SEP_OCT)
+    for kind in ("expense", "income", "transfer_in", "transfer_out"):
+        got = accounts_over_time(ledger, flt, "month", kind)
+        assert [k.kind for k in got.account_kinds] == sorted(
+            {k.kind for k in got.account_kinds}, key=["checking", "card", "cash"].index
+        )
+        for i in range(2):
+            assert add(k.total[i] for k in got.account_kinds) == got.totals[i]
+        assert add(k.sum for k in got.account_kinds) == got.sum
+    expense = accounts_over_time(ledger, flt, "month", "expense")
+    by_kind = {k.kind: k for k in expense.account_kinds}
+    assert list(by_kind) == ["checking", "card", "cash"]
+    assert by_kind["checking"].total == (Line(-49_500, 4), Line(-8_300, 2))
+    assert by_kind["cash"].sum == Line(-1_200, 1)
+    assert h.usd in {a.account_id for a in expense.accounts}

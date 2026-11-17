@@ -142,8 +142,18 @@ def test_every_cell_of_over_time_by_account_equals_its_drilldown(ledger: Connect
                 # the account, the kind's own filter, the dates: as the category mode's whole-kind link
                 own = replace(base, account_ids=(series.account_id,), **narrow)
                 for (a, b), line in zip(cuts, series.total, strict=True):
-                    _agrees(ledger, line, f"{tag} {series.account_id} {a}", replace(own, date_from=a, date_to=b))
+                    period = replace(own, date_from=a, date_to=b)
+                    _agrees(ledger, line, f"{tag} {series.account_id} {a}", period)
                 _agrees(ledger, series.sum, f"{tag} {series.account_id} sum", own)
+            kind_of = {
+                int(r.id): str(r.kind) for r in ledger.execute(text("SELECT id, kind FROM account"))
+            }
+            for group in got.account_kinds:  # an account kind's drill-down is its listed accounts
+                ids = tuple(s.account_id for s in got.accounts if kind_of[s.account_id] == group.kind)
+                mine = replace(base, account_ids=ids, **narrow)
+                for (a, b), line in zip(cuts, group.total, strict=True):
+                    _agrees(ledger, line, f"{tag} {group.kind} {a}", replace(mine, date_from=a, date_to=b))
+                _agrees(ledger, group.sum, f"{tag} {group.kind} sum", mine)
             # the kind's total is every account's figure together
             _agrees(ledger, got.sum, f"{tag} sum", replace(base, **narrow))
 

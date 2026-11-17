@@ -11,11 +11,12 @@ from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import date
 
-from sqlalchemy import Connection, Date, DateTime, cast, func, literal, or_, select
+from sqlalchemy import Connection, Date, DateTime, cast, func, literal, or_, select, text
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.core.ledger import LedgerFilter, compose
 from app.core.ledger.sql import le
+from app.core.reporting.balances import KIND_ORDER
 from app.core.reporting.facts import CLASS_OF, KIND_SIGN, Facts, fetch, rcat
 from app.core.reporting.line import EMPTY, Line, Savings, add, line_of_group, savings_of
 from app.core.reporting.periods import Period, Step, periods
@@ -71,10 +72,18 @@ class AccountOverTime:
 
 
 @dataclass(frozen=True)
+class AccountKindOverTime:
+    kind: str  # an account kind
+    total: tuple[Line, ...]  # per period: its accounts' amounts, added
+    sum: Line  # over the range
+
+
+@dataclass(frozen=True)
 class AccountsOverTime:
     kind: str  # expense, income, transfer_in or transfer_out
     periods: tuple[Period, ...]
     accounts: tuple[AccountOverTime, ...]  # only those with entries, by the range's magnitude
+    account_kinds: tuple[AccountKindOverTime, ...]  # in KIND_ORDER; only kinds with a listed account
     slices: tuple[int, ...]  # the largest accounts of the kind's sign over the range
     other: tuple[Line, ...]  # per period: the remaining accounts, summed
     totals: tuple[Line, ...]  # per period: the kind's total
@@ -166,7 +175,7 @@ def _account_lines(
 
 
 def accounts_over_time(conn: Connection, flt: LedgerFilter, step: Step, kind: str) -> AccountsOverTime:
-    """Each account's amount of `kind` per period, with the slices and "other" as the category mode has them."""
+    """Each account's amount of `kind` per period, with slices and "other" as the category mode has them."""
     assert flt.date_from is not None and flt.date_to is not None
     assert kind in ACCOUNT_KINDS
     cut = periods(flt.date_from, flt.date_to, step)
@@ -181,10 +190,19 @@ def accounts_over_time(conn: Connection, flt: LedgerFilter, step: Step, kind: st
     slices = [s for s in series if s.sum.total is not None and s.sum.total * sign > 0][:TOP_SLICES]
     rest = [s for s in series if s not in slices and not opposes(s.sum, kind)]
     totals = tuple(add(s.total[i] for s in series) for i in range(len(cut)))
+    kind_of = {int(r.id): str(r.kind) for r in conn.execute(text("SELECT id, kind FROM account"))}
+    groups = tuple(
+        AccountKindOverTime(
+            k, tuple(add(s.total[i] for s in mine) for i in range(len(cut))), add(s.sum for s in mine)
+        )
+        for k in KIND_ORDER
+        if (mine := [s for s in series if kind_of[s.account_id] == k])
+    )
     return AccountsOverTime(
         kind=kind,
         periods=tuple(cut),
         accounts=tuple(series),
+        account_kinds=groups,
         slices=tuple(s.account_id for s in slices),
         # a period in which a remaining account nets to the other sign leaves it out of the bar
         other=tuple(add(s.total[i] for s in rest if not opposes(s.total[i], kind)) for i in range(len(cut))),
