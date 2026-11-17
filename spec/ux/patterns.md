@@ -86,7 +86,7 @@ says so; those are revisited after the first month of use, not per view.
 
 An entry row shows, in this order: date, account (always in the ledger list; a
 view of one account may leave it out), category or the transfer's destination
-("→ Cash"), payee, tags, description (the entry's own `description` only; the one column that takes the remaining
+("→ Cash"), tags, payee, description (the one column that takes the remaining
 width), the review badges (§4.2) and the amount. Derived entries (opening,
 valuation, reconciliation) render in the same row shape with their type in
 place of a category and no review affordances (spec §3.9).
@@ -97,18 +97,32 @@ It belongs to an account's statement (`ux/views/account.md`), the list of what
 the account's sources delivered, and is the only mark of authorship there. A
 list of entries — the ledger list, the review queue — does not show it: its
 rows are read by what they mean, and the work panel's provenance says who
-wrote the source (§4.5). Every cell shows the data the row holds, empty where
-it holds none, and no list renders a row differently for its account's kind or
-its author.
+wrote the source (§4.5). Every cell shows the data the row holds, or what its
+source says where the entry says nothing (below), and is empty where neither
+has any; no list renders a row differently for its account's kind or its
+author.
 
-The description column shows the entry's `description` and nothing borrowed
-from its source transaction: the source fields are shown where they belong, in
-the work panel and in the rule preview's source columns. An entry with a
-source text (spec §5.9) — an order's item booked on a clearance account —
-shows it there, muted, followed by the description where the user gave one:
-the source text is what the entry is, the description stays the user's. An
-entry with neither shows an empty cell. Whether imports get a description at creation
-is open (§10). The API's derived `display_text` is not used by the column.
+**The payee and description columns fall back to the source.** Most entries
+never get a payee or a description of their own, so where the entry has none,
+these two columns show what its source says. They read the row's derived
+`display_payee` and `display_description` (architecture §4.1):
+
+- the payee column shows the entry's payee, else its source's counterparty
+  name, as plain text without a chip;
+- the description column shows the entry's description, else its source text
+  (spec §5.9), else its source's purpose, on one line, cut short, with the
+  whole text in a tooltip.
+
+The entry's own payee or description renders as a decided or proposed value
+(§4.3). A value taken from the source (the source text, the counterparty name,
+the purpose) renders muted, so a glance shows which rows the user has
+described. An empty payee falls back even when the user emptied it; the panel
+still shows "No payee" (§4.3). A derived entry has no source, so its cells are
+empty.
+
+Where an entry is named in one line (the panel title, a notice, a search
+result), it is called by its description or source text, else its payee or
+counterparty name, else its purpose.
 
 The entries of one unit (spec §6) are shown together wherever a unit is shown:
 a split's entries under their source. In the work panel that is one group per
@@ -419,8 +433,6 @@ row; a resolved row stays in place, marked (§7).
   real descriptors);
 - how rules are ordered by priority, and whether the editor needs to show
   that at all;
-- whether imports get a description at creation (the list shows an entry's own
-  `description` only, §4.1), and if so how it is filled and reviewed;
 - the starter categories offered on an empty tree (the author's tree);
 
 all of them to be tried on real data.

@@ -568,6 +568,11 @@ GET    /api/reports/by-category                a date range, as a category
                                                reconciliation lines beside it;
                                                the Overview's top categories
                                                are this route with `top`
+GET    /api/reports/by-account                 a date range, as the money each
+                                               account received, passed on
+                                               and paid: flows by account and
+                                               top-level category, transfers
+                                               by account and counter-account
 GET    /api/reports/over-time                  a range cut into periods: the
                                                savings and rate of each, or
                                                each category's amount
@@ -592,6 +597,19 @@ unclassified, reconciliations, their sum, the rate, and whether it is
 incomplete. A report's filters are the ledger list's (`spec.md` §8), one
 predicate, so the entries behind a figure are exactly the entries its
 drill-down lists.
+
+**The by-account answer is a list of links** (`spec.md` §8), each a `Line`.
+Per kind: the kind's total, every top-level category with entries (its
+total, and one link per account), the ids of the largest `top` categories of
+the kind's sign, and the remaining ones summed per account as "other".
+Beside them, per account: unclassified in, unclassified out, and the
+account's reconciliations as one net link. `transfers` holds one link per
+pair of account and counter-account, the outgoing legs only; `undrawn` is
+the line of the transfer legs that are in no link. `stayed` is derived, per
+account: what it received from the links drawn on the income side, less its
+transfers out, never below zero. The route takes `from`, `to`, `tag_id` and
+`top`, and no `account_id`: the predicate selects a leg by its own account,
+which would drop the transfers into a chosen account.
 
 **Starting a sync is validated as a whole**: nothing starts if any item is
 refused. An unknown instance or account is 404 `not_found`, an account not
@@ -787,10 +805,12 @@ them. The filter is the dimensions of `spec.md` §8, one query parameter each; t
 them all, these are the ones that carry a rule.
 
 - `from`, `to` select by `booked_on`, inclusive at both ends.
-- `account_id`, `category_id`, `payee_id`, `tag_id`, `type` and `flag` repeat. **Several values of one
+- `account_id`, `counter_account_id`, `category_id`, `payee_id`, `tag_id`, `type` and `flag` repeat. **Several values of one
   dimension are alternatives (OR); dimensions combine (AND).** An entry matches `tag_id` by carrying any of
   the tags, and `flag` by carrying any of the review tokens (`spec.md` §6). An entry with no type yet matches
   no `type`.
+- `counter_account_id` selects the transfer legs with that counter-account; an entry without one matches
+  none.
 - `category_id` includes the category's descendants; `category_descendants=false` asks for the category
   itself. `uncategorised=true` adds the entries that could have a category and have none (type `flow`, or no
   type yet; never a transfer or a derived entry) to the category dimension, so with `category_id` it is an
@@ -816,9 +836,12 @@ currency, `[{amount, currency}]`, one item per currency present, ordered by code
 `spec.md` I27), `limit` and `offset`.
 
 **Rows.** An entry as the interpretation layer holds it: id and version, account, `booked_on` and `value_on`,
-the signed amount with its currency (§4.5), type, description and note, `display_text` (derived: the
-description, else the source text, else the counterparty name, else the purpose; offered for uses such as the
-panel title and search results, while the list's description column shows `description` alone, `patterns.md` §4.1), payee, category,
+the signed amount with its currency (§4.5), type, description and note, `display_description` and
+`display_payee` (derived: what the row's description and payee columns show, `patterns.md` §4.1;
+`display_description` is `{text, from}`: the description, else the source text, else the purpose, with `from`
+naming which one (`description`, `source_text` or `purpose`); `display_payee` is `{payee_id, from: "payee"}` for
+an entry with a payee, else `{text, from: "counterparty"}` with its source's counterparty name; each is null
+when nothing in its chain has text, and blank text counts as none), payee, category,
 counter-account and counterpart entry, source transaction, `source_text` (the text its source gives the entry, null for most, `spec.md` §5.9), `derivation`, `unit_key` (the same for every
 entry of a unit), `origin` (its source transaction's: `import`, `user` or `booking`), review flags, tag ids and `source`. A row carries
 ids only; names, icons and colours come from the account, category, payee and tag lists the client already
@@ -2069,7 +2092,8 @@ frontend/src/
     accounts/          the account list, `/accounts/[id]` and the file upload
                        `/accounts/[id]/upload`
     sync/              the sync page: plan, progress, report
-    reports/           three tabs: `by-category`, `over-time`, `balances`
+    reports/           four tabs: `by-category`, `by-account`, `over-time`,
+                       `balances`
     settings/          management: categories, payees, tags, rules, importers
                        (below)
   lib/
@@ -2540,7 +2564,10 @@ Layers:
   savings including reconciliations; net worth summing valued accounts with
   the others on the unvalued line; a drill-down equals its number — for every
   cell of a seeded ledger, the entries the cell's filter lists are as many as
-  it counts and sum to its total; one savings computation, the Overview's and
+  it counts and sum to its total; the by-account links of a kind summing to
+  its by-category figures, a pair counted once by its outgoing leg, a transfer
+  there and back as two links, and a leg without a counter-account on the
+  undrawn line; one savings computation, the Overview's and
   the over-time report's alike, its rate null on income of zero or less and
   its marker per cause; periods bucketed in the household's zone.
 - **Importer tests** — against recorded payloads committed as fixtures, never

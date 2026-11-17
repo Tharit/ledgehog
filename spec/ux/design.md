@@ -360,6 +360,7 @@ section numbers in this table are `patterns.md`'s.
 | changed as a consequence (§7) | 2px `ochre` bar on the left edge, with the tooltip "changed by your last action" |
 | proposal (§4.3) | `text-muted`, italic |
 | decided value | `text`, regular |
+| taken from the source (`patterns.md` §4.1) | `text-muted`, regular |
 | absent value (§9) — "Unclassified", "→ ?", "not anchored", unvalued | `text-muted` with a dotted underline, the explanation in a tooltip |
 | disabled commit (§6) | `primary` at 40 %, its reason as tooltip |
 | notice (account facts, stale state) | one line, `text-muted`, `info` icon; never a banner or a dialog |
@@ -378,6 +379,12 @@ section numbers in this table are `patterns.md`'s.
   than the ranking. Amounts on charts follow `patterns.md` §2, signs included.
 - In a signed time series income draws above the zero line and expense below
   it; an account's line takes the account's colour (§3).
+- In a sankey a category is a slim bar in its resolved colour, and an
+  account a wider block in the account's colour with its icon and name. A
+  link takes its category's colour at 35 %; a transfer is `stone` at 35 %,
+  and the band of money that stayed in an account `stone` at 20 %. Every
+  link's tooltip names its category or "Transfer", its two ends and its
+  amount.
 
 ## 9. Mascot and brand
 

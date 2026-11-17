@@ -3486,7 +3486,7 @@ type decision) stays as history. D199 does not mention the column.
   plugin and schema; *a payee delete that cascades to such rules* — it silently deletes rules the user wrote for
   another purpose.
 
-## D216 The list's description column shows the entry's own description
+## D216 The list's description column shows the entry's own description — *superseded by D263*
 
 Patterns §4.1, §10; architecture §4.1. Supersedes the fallback in the row spec ("the entry's description, else the
 source's counterparty name or purpose") and the derived `display_text` as the column's text.
@@ -4125,3 +4125,25 @@ spec §3 examples, §5.7, §5.9; architecture tests.
 - **The review panel's counter-account picker creates no account** (user, 2026-11-16). "Add account" stays where the need is stated once for all the legs that share it: the currency group of the queue's needs-an-account section, and the accounts page. The panel had two further entry points, in the picker and on the partner field, each locked to the currency the rule required; with D261 that currency is a default the user may choose against, so the lock no longer had one answer.
 - Accepted: the first leg of a new currency takes two steps, adding the account in the queue and then picking it, where the panel did both.
 - Rejected: *keeping it in the panel, prefilled and unlocked* (a second way to do the same thing, and a dialog opened from inside a draft).
+
+## D263 The payee and description columns fall back to the source
+
+Patterns §4.1, §10; architecture §4.1; design §7. Supersedes D216 and the derived `display_text`.
+
+- **Each column shows the entry's own value, else what its source says.** The payee column shows the payee, else the source's counterparty name. The description column shows the description, else the source text, else the purpose. A year of imported data showed that payees and descriptions are rarely set, which left the list mostly blank. Values taken from the source render muted in regular weight, distinct from a proposal's italic. That answers D216's concern (a fallback hides that an entry has no description of its own) through styling instead of an empty cell.
+- **Tags move before the payee,** so that payee and description, the two columns read together, sit side by side.
+- **The API derives both, with where they came from:** `display_description {text, from}` and `display_payee` (`{payee_id}` or `{text}`, with `from`). A resolved payee is given as an id; its name and icon come from the client's payee list, like every reference in a row. `display_text` is removed: its single chain mixed the two columns and didn't say where its text came from. A one-line name (panel title, notice, search result) is built from the two fields.
+- **An emptied payee falls back too.** The panel shows "No payee", set by you.
+- **Closes** the question in patterns §10 of whether imports get a description at creation: they don't, because the fallback covers it.
+- Rejected: *client-side chains over the row's fields*, a second definition next to the API's; *a name and icon in `display_payee`*, because rows carry ids only; *no visual difference*, because it hides which rows the user has described; *a marker icon*, clutter for what the colour already says.
+
+## D264 A fourth report, By account, drawn as a sankey
+
+spec §8; architecture §4.1, §6.2, §8; ux/views/reports.md; ux/design.md §8.
+
+- **A report of how money moved through the accounts** (user, 2026-11-17): income categories, the accounts that received, the accounts that paid, expense categories. The other reports say what money was spent on, not which account it arrived in or was paid from.
+- **Its own tab, not a variant of By category.** It shows both kinds at once, so the kind control would have no meaning; it adds accounts and transfers, which the category table does not hold; and a variant is a different chart of the same figures. Named for the dimension it adds: "Flows" would contradict "transfers are not flows".
+- **An account may stand twice, as receiver and as payer,** so a transfer always runs left to right and no cycle can arise. Every transfer link is a booked sum in its own direction. Accepted: a chain (checking to savings to depot) is not drawn as one path, and the band of income that stayed in an account is derived. Rejected: *cancelling cycles* (the drawn amounts are no ledger sums, and the returned money is lost from view); *drawing a cycle's smallest link against its direction, marked* (it stands on the wrong side of both its accounts and overstates them); *one node per account, dropping a link* (wrong totals).
+- **A transfer is counted once, by its outgoing leg,** so a pair is not doubled and the link's entries are one ledger filter. A leg with no counter-account yet, and an incoming leg with no partner, are one line beneath the chart. Rejected: *an "Unknown account" node* (a node for a state review removes).
+- **The ledger filter gains the counter-account,** so a transfer link's drill-down lists exactly its entries. Rejected: *linking to the account's outgoing transfers* (a superset where it sends to several accounts: a report-only sum).
+- **No account filter on this tab.** The ledger's predicate selects a leg by its own account, so transfers into a chosen account would vanish. Rejected: *a second meaning of the filter for this report*.
