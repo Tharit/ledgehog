@@ -18,7 +18,10 @@ modes of *Over time*, where the by-account mode adds Transfers in and
 Transfers out; and the ledger's own account and tag filters with the same
 parameters, so that the cost of a trip is *By category* with a tag filter.
 The *By account* tab has the period and the tag filter only: its accounts are
-what it shows.
+what it shows. Beside the period, two arrows step it to the span before or
+after, of the same length: by calendar months when the period is whole months
+(a month, a quarter, a year, the last twelve months), by its days otherwise.
+The next arrow is off once the period reaches today.
 
 **Every number links to the ledger** with the equivalent filter, so there is no
 report-only sum: the period as dates, the category with its descendants, the
