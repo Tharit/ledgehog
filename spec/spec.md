@@ -1785,9 +1785,11 @@ A **counter-leg** is the other side of a transfer, created for the user on an
 unsynced account (I40), where no import will ever deliver it: a user-authored
 source transaction and its entry on the counter-account, with the partner's
 `booked_on`, paired with it. Its source has a random id, like a row from the
-entry form, the partner's purpose ("GA-AUSZAHLUNG Sparkasse"), so it reads
-well and teaches history, and a `raw` that records the entry it was created
-for — provenance that nothing reads. **Only a commit creates one**, except on
+entry form, a purpose made from the partner's counterparty name and purpose,
+joined as `<name>, <purpose>` ("Sparkasse Musterstadt, GA-AUSZAHLUNG 12.11.") —
+either alone where the other is empty — so it reads well and teaches history,
+no counterparty name of its own, and a `raw` that records the entry it was
+created for — provenance that nothing reads. **Only a commit creates one**, except on
 a clearance account, where the counter-leg is a booking settling makes
 (below): the panel offers it for a leg without a partner whose counter-account
 is unsynced and not a clearance account, and proposes it where the leg has no
@@ -1898,7 +1900,7 @@ creates the cash leg (§4).
 A leg whose type and counter-account are decided — under standing keys, from
 pass 0, a rule or a commit (§5.9) — as a transfer to a clearance account
 (§3.3) is the source of a **transfer booking** on that account (§5.8):
-`source_id` `transfer:<entry id>`, with the leg's `booked_on` and purpose and
+`source_id` `transfer:<entry id>`, with the leg's `booked_on`, a purpose and
 no counterparty name, like any counter-leg (above), and one entry, typed `transfer`, its counter-account the leg's account, paired
 with the leg. The booking's type and counter-account, and the pair on both
 legs, carry the standing key `booking`. Its amount is the leg's, negated;
@@ -1911,7 +1913,7 @@ no booking: it stays an unpaired transfer leg in review, to be typed otherwise.
 
 The booking follows its leg (§5.8): converting the leg to a flow, changing its
 counter-account, or removing it — marked as a duplicate, reverted, deleted —
-removes the booking; a changed date, amount or purpose, a split of the leg,
+removes the booking; a changed date, amount, counterparty name or purpose, a split of the leg,
 re-derives it. The
 pair is therefore complete as soon as the leg is decided, and the unit is
 confirmed when the leg's keys are all standing — a transfer is still
@@ -3033,6 +3035,7 @@ Every figure is in the base currency (§3.8). Periods bucket entries by
 | Transfers (net) | transfer legs, at their `booked_on` rate (§3.8) |
 | FX translation | per account, as defined in §3.8 |
 | Spend by category | expense-kind flows, grouped by category, date range — refunds net |
+| Money by account | flows grouped by account and top-level category; outgoing transfer legs grouped by account and counter-account |
 | Spend at a merchant | flows, grouped by payee |
 | Cost of a trip | flows ∩ tag |
 
@@ -3075,6 +3078,15 @@ Every figure is in the base currency (§3.8). Periods bucket entries by
   entries and reconciliations stand beside it, not in it.
 - **Unclassified is two figures where it stands beside a spend or income
   figure:** the money out and the money in. Savings takes it as one net line.
+- **Money by account** is what each account received, passed on and paid in
+  a range. Its flows are the *Spend by category* figures cut by account,
+  income and expense alike, with unclassified money in and out and each
+  account's reconciliations beside them. Its transfers are counted once
+  each, by the outgoing leg at that leg's `booked_on` rate, between the
+  leg's account and its counter-account. A transfer leg with no
+  counter-account yet, and an incoming leg with no partner, stand beside
+  the picture as one line, not in it. Transfers stay out of income, expense
+  and savings here as everywhere.
 - **Net worth today** takes every account's full balance, as the account list
   shows it; a net worth at an earlier date, and its history, cut the entries at
   that date and convert at its rate.
@@ -3090,12 +3102,15 @@ which are never counted as zero.
 Every conversion goes through one function, and only reporting calls it
 (I27).
 
-Filters are multiplicative: date ∩ account ∩ category ∩ payee ∩ tag ∩ amount
-range ∩ text, and the entry's type and review flag narrow it further. Several
+Filters are multiplicative: date ∩ account ∩ counter-account ∩ category ∩
+payee ∩ tag ∩ amount range ∩ text, and the entry's type and review flag
+narrow it further. Several
 values of one dimension are alternatives; the dimensions combine. One good
 filter bar replaces most reports.
 
 - **Dates** select by `booked_on` and are inclusive at both ends.
+- **A counter-account** selects the transfer legs whose counter-account it
+  is (§5.7); no other entry has one.
 - **A category includes its descendants,** unless the filter asks for exactly
   that category. **Uncategorised** selects the entries that could have a
   category and have none — flows, and entries with no type yet, never
