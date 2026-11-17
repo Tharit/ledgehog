@@ -575,7 +575,9 @@ GET    /api/reports/by-account                 a date range, as the money each
                                                by account and counter-account
 GET    /api/reports/over-time                  a range cut into periods: the
                                                savings and rate of each, or
-                                               each category's amount
+                                               each category's or account's
+                                               amount of a kind, or each
+                                               account's transfers in or out
 GET    /api/reports/balances                   net worth, each account kind's
                                                net worth and every account's
                                                balance at month-ends
@@ -2568,6 +2570,8 @@ Layers:
   it counts and sum to its total; the by-account links of a kind summing to
   its by-category figures, a pair counted once by its outgoing leg, a transfer
   there and back as two links, an unpaired outgoing leg in its account's link to no account whether or not it names a counter-account, and an unpaired incoming leg in the link from no account to its own;
+  the over-time accounts of a kind summing per period to the kind's total, and
+  every transfer leg in its own account's figure of its direction;
   one savings computation, the Overview's and
   the over-time report's alike, its rate null on income of zero or less and
   its marker per cause; periods bucketed in the household's zone.

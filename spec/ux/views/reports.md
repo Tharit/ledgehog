@@ -13,10 +13,12 @@ figures) is a variant inside a type, selected by a control, not a new tab.
 
 **Shared controls**, all in the URL: the period (the ledger's date chip and
 its presets, with "Last 12 months" and "Last year" among them); the kind
-(Expense or Income) in *By category* and in the by-category mode of *Over
-time*; and the ledger's own account and tag filters with the same parameters,
-so that the cost of a trip is *By category* with a tag filter. *By account*
-has the period and the tag filter only: its accounts are what it shows.
+(Expense or Income) in *By category* and in the by-category and by-account
+modes of *Over time*, where the by-account mode adds Transfers in and
+Transfers out; and the ledger's own account and tag filters with the same
+parameters, so that the cost of a trip is *By category* with a tag filter.
+The *By account* tab has the period and the tag filter only: its accounts are
+what it shows.
 
 **Every number links to the ledger** with the equivalent filter, so there is no
 report-only sum: the period as dates, the category with its descendants, the
@@ -66,6 +68,12 @@ Reconciliations, Savings and Savings rate, so that each column visibly sums to
 its savings, and a Total column. The savings and the rate are the same
 computation as the Overview's. Mode *By category*: stacked bars of the top
 categories and "Other"; the category tree with a column per period and a total.
+Mode *By account*: stacked bars of the top accounts and "Other", each with its
+amount of the kind; the accounts chosen in the account filter are the ones
+stacked, every account when none is chosen. Transfers in and Transfers out are
+an account's transfer legs by direction, paired or not. The table has the
+accounts grouped by kind, as *Balances* has them, with a column per period and
+a total.
 
 **Tab 4: Balances.** The balance at each month-end of the range (the current month's
 point is today), in the base currency: net worth by default, individual

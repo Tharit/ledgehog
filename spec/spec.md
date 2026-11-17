@@ -3036,6 +3036,7 @@ Every figure is in the base currency (§3.8). Periods bucket entries by
 | FX translation | per account, as defined in §3.8 |
 | Spend by category | expense-kind flows, grouped by category, date range — refunds net |
 | Money by account | flows grouped by account and top-level category; outgoing transfer legs grouped by account and counter-account |
+| Transfers by account | transfer legs, grouped by account and direction, at their `booked_on` rate |
 | Spend at a merchant | flows, grouped by payee |
 | Cost of a trip | flows ∩ tag |
 
@@ -3089,6 +3090,10 @@ Every figure is in the base currency (§3.8). Periods bucket entries by
   Two legs of one transfer that are not paired yet are thus both counted until
   they are, and neither against a real account. Transfers stay out of income,
   expense and savings here as everywhere.
+- **Transfers by account** counts each leg on its own account, money in and
+  money out apart, paired or not, so a transfer is in the figures of both its
+  accounts. *Money by account* counts a paired transfer once, by its outgoing
+  leg, because it draws it between the two.
 - **Net worth today** takes every account's full balance, as the account list
   shows it; a net worth at an earlier date, and its history, cut the entries at
   that date and convert at its rate.
