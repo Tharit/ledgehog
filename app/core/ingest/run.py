@@ -362,6 +362,14 @@ def _write_delivery(
         insert_entries(conn, to_entry)
         inserted += len(to_entry)
 
+    # The run starts counting before any recompute: the derivation reads its coverage from the row.
+    conn.execute(
+        text(
+            "UPDATE import_run SET status = 'ok', finished_at = clock_timestamp(),"
+            " covered_from = :from, covered_through = :through WHERE id = :id"
+        ),
+        {"id": run_id, "from": covered_from, "through": covered_through},
+    )
     record_id: int | None = None
     if reported_balance is not None and reported_balance_on is not None:
         record_id = insert_reported_record(
@@ -384,12 +392,8 @@ def _write_delivery(
     if reported_balance is not None and reported_balance_on is not None:
         stats["balance"] = {"balance_on": reported_balance_on.isoformat(), "balance": reported_balance}
     conn.execute(
-        text(
-            "UPDATE import_run SET status = 'ok', finished_at = clock_timestamp(),"
-            " covered_from = :from, covered_through = :through, stats = CAST(:stats AS jsonb)"
-            " WHERE id = :id"
-        ),
-        {"id": run_id, "from": covered_from, "through": covered_through, "stats": json.dumps(stats)},
+        text("UPDATE import_run SET stats = CAST(:stats AS jsonb) WHERE id = :id"),
+        {"id": run_id, "stats": json.dumps(stats)},
     )
     return _Counts(
         inserted,

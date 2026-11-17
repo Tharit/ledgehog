@@ -35,7 +35,7 @@ class Desired:
     amount: int
 
 
-DERIVATION_VERSION = 2
+DERIVATION_VERSION = 3
 """Raised by a release that changes the formula above; the start sequence recomputes every account's
 derived entries when the stored `ledger_setting.derivation_version` differs (architecture §5.7)."""
 
