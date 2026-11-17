@@ -3078,15 +3078,14 @@ Every figure is in the base currency (§3.8). Periods bucket entries by
   entries and reconciliations stand beside it, not in it.
 - **Unclassified is two figures where it stands beside a spend or income
   figure:** the money out and the money in. Savings takes it as one net line.
-- **Money by account** is what each account received, passed on and paid in
-  a range. Its flows are the *Spend by category* figures cut by account,
-  income and expense alike, with unclassified money in and out and each
-  account's reconciliations beside them. Its transfers are counted once
-  each, by the outgoing leg at that leg's `booked_on` rate, between the
-  leg's account and its counter-account. A transfer leg with no
-  counter-account yet, and an incoming leg with no partner, stand beside
-  the picture as one line, not in it. Transfers stay out of income, expense
-  and savings here as everywhere.
+- **Money by account** is what each account received, passed on and paid in a
+  range. Its flows are the *Spend by category* figures cut by account, income
+  and expense alike, with unclassified money in and out and each account's
+  reconciliations beside them. Its transfers are counted once each, by the
+  outgoing leg at that leg's `booked_on` rate, between the leg's account and
+  its counter-account. The unpaired legs are one line beside the picture; of
+  them only an outgoing leg with a counter-account is also in it. Transfers
+  stay out of income, expense and savings here as everywhere.
 - **Net worth today** takes every account's full balance, as the account list
   shows it; a net worth at an earlier date, and its history, cut the entries at
   that date and convert at its rate.

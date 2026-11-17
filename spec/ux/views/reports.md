@@ -49,11 +49,12 @@ than what leaves it shows money kept; one with more leaving than arriving
 shows money drawn from its balance. Unclassified money in and out and
 reconciliations are nodes of their own on the side of their sign. A link
 whose net is of the opposite sign (refunds beyond purchases on one account)
-is not drawn and is named in a note, as are the transfer legs that name no
-second account yet or whose partner is missing. The table: Income and
-Expense, each category with its accounts beneath it, and Transfers, each
-sending account with the receiving accounts beneath it; a category's row is
-its *By category* figure.
+is not drawn and is named in a note. A second note counts the transfers not
+paired yet and links to the ledger's unpaired legs as the Overview's do. The
+table: Income and Expense, each category with its accounts beneath it;
+Transfers, each sending account with the receiving accounts beneath it; and
+"Not in the categories above" as *By category* has it, each line with its
+accounts beneath it. A category's row is its *By category* figure.
 
 **Tab 3: Over time.** A range cut into months, quarters or years in the household's
 calendar; a period the range cuts is labelled with its days. Default mode,

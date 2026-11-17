@@ -599,17 +599,19 @@ predicate, so the entries behind a figure are exactly the entries its
 drill-down lists.
 
 **The by-account answer is a list of links** (`spec.md` §8), each a `Line`.
-Per kind: the kind's total, every top-level category with entries (its
-total, and one link per account), the ids of the largest `top` categories of
-the kind's sign, and the remaining ones summed per account as "other".
-Beside them, per account: unclassified in, unclassified out, and the
-account's reconciliations as one net link. `transfers` holds one link per
-pair of account and counter-account, the outgoing legs only; `undrawn` is
-the line of the transfer legs that are in no link. `stayed` is derived, per
-account: what it received from the links drawn on the income side, less its
-transfers out, never below zero. The route takes `from`, `to`, `tag_id` and
-`top`, and no `account_id`: the predicate selects a leg by its own account,
-which would drop the transfers into a chosen account.
+Per kind: the kind's total, every top-level category with entries (its total,
+and one link per account), the ids of the largest `top` categories of the
+kind's sign, and the remaining ones summed per account as "other". Beside
+them, each with its total and one link per account: unclassified in,
+unclassified out, and reconciliations, an account's as one net link.
+`transfers` holds, per sending account, its total and one link per
+counter-account: the outgoing legs only. `unpaired` is the line of the
+unpaired transfer legs, of which only an outgoing one with a counter-account
+is also in a link. `stayed` is derived, per account: what it received from the
+links drawn on the income side, less its transfers out, never below zero,
+given with both components. The route takes `from`, `to`, `tag_id` and `top`,
+and no `account_id`: the predicate selects a leg by its own account, which
+would drop the transfers into a chosen account.
 
 **Starting a sync is validated as a whole**: nothing starts if any item is
 refused. An unknown instance or account is 404 `not_found`, an account not
@@ -2566,8 +2568,8 @@ Layers:
   cell of a seeded ledger, the entries the cell's filter lists are as many as
   it counts and sum to its total; the by-account links of a kind summing to
   its by-category figures, a pair counted once by its outgoing leg, a transfer
-  there and back as two links, and a leg without a counter-account on the
-  undrawn line; one savings computation, the Overview's and
+  there and back as two links, and every unpaired leg on the unpaired line;
+  one savings computation, the Overview's and
   the over-time report's alike, its rate null on income of zero or less and
   its marker per cause; periods bucketed in the household's zone.
 - **Importer tests** — against recorded payloads committed as fixtures, never

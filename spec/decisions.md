@@ -4147,3 +4147,11 @@ spec §8; architecture §4.1, §6.2, §8; ux/views/reports.md; ux/design.md §8.
 - **A transfer is counted once, by its outgoing leg,** so a pair is not doubled and the link's entries are one ledger filter. A leg with no counter-account yet, and an incoming leg with no partner, are one line beneath the chart. Rejected: *an "Unknown account" node* (a node for a state review removes).
 - **The ledger filter gains the counter-account,** so a transfer link's drill-down lists exactly its entries. Rejected: *linking to the account's outgoing transfers* (a superset where it sends to several accounts: a report-only sum).
 - **No account filter on this tab.** The ledger's predicate selects a leg by its own account, so transfers into a chosen account would vanish. Rejected: *a second meaning of the filter for this report*.
+
+## D265 By account counts its unpaired transfers beside the chart; its answer carries every sum shown
+
+Partly supersedes D264. spec §8; architecture §4.1, §8; ux/views/reports.md.
+
+- **The unpaired transfer legs are one line beside the chart, linking to the ledger** (user, 2026-11-17). D264 named the legs that are in no link, those with no counter-account and incoming ones with no partner, and no ledger filter selects that set. The unpaired legs are a set the ledger already filters and the Overview already shows. Accepted: an unpaired outgoing leg with a counter-account is both drawn and counted in the line. Rejected: *drawing paired transfers only* (the link's filter cannot tell paired from unpaired, so its drill-down would list more than its figure); *a new ledger filter for "no counter-account" or "paired"* (a dimension for one figure).
+- **The answer carries what stayed with its two components, and a total per group** (user, 2026-11-17). The first build added both in the client, the only money summed there. Rejected: *group rows without a figure* (a group's figures are its whole, reports.md).
+- **Unclassified and reconciliations are listed as By category lists them,** in "Not in the categories above", with the accounts beneath; the first build had put them under Income or Expense by sign.
