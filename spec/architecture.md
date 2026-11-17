@@ -273,14 +273,19 @@ GET    /api/units/queue                        the units not confirmed, in
                                                synced_through | null}`; a
                                                booking's unit says so
                                                (`booking`, with its source
-                                               kind)
+                                               kind); `account_id` repeats and
+                                               narrows the queue to the units
+                                               with an entry on any of those
+                                               accounts, with the sections' and
+                                               groups' counts narrowed with it
 GET    /api/units/queue/count                  how many units can be acted on
                                                now: `count`, the sum of
                                                `pending_review` and
                                                `needs_account`, not waiting;
                                                `count` is for the Review item
                                                of the navigation, the split
-                                               for the Overview
+                                               for the Overview; it takes no
+                                               filter
 GET    /api/units/{entry_id}                   a unit's stored state
 POST   /api/units/preview                      stored state + draft → the unit a
                                                commit would write: rows (with
@@ -2255,7 +2260,9 @@ The interaction model drives the API more than any other screen (§4.1).
 Three sections — pending review, needs an account, waiting — each ordered by
 booked date, then anchor entry id; whether and how to group units by shape
 within a section is open until real units have been seen
-(`ux/views/review-queue.md`). Each unit is committed with one keystroke, which
+(`ux/views/review-queue.md`). An account filter, in the address, narrows the
+queue to the units with an entry on any chosen account; the Review item's count
+is never filtered. Each unit is committed with one keystroke, which
 moves to the next. There is no batch confirmation; units decided entirely by
 pass 0 and rules arrive confirmed once complete, and enter the queue only
 while they wait for a partner (`spec.md` §5.9, §6). Keyboard-first; the
@@ -2273,8 +2280,8 @@ partner completes it; a booking's unit offers no partner, convert or split
 (§4.1); the preview says which state the commit leads to.
 
 **The queue is a snapshot, not a live view.** A working set is fetched when the
-screen opens, and nothing is added, removed or reordered for the duration of the
-session. **Each unit is previewed fresh when it is opened**, so its proposals
+screen opens or its filter changes, and nothing is added, removed or reordered
+for the duration of the session. **Each unit is previewed fresh when it is opened**, so its proposals
 are current: confirming the first entry from a new merchant gives the next ones
 in the list a proposal by the time the cursor reaches them, without the list
 moving. Rows resolved during the session — whether acted on directly or as a

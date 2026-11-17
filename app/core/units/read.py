@@ -150,7 +150,11 @@ _SECTIONED = """
                    ('waiting' = ANY(le.review_flags)) AS waiting
               FROM units AS u JOIN ledger_entry AS le ON le.id = u.id
               JOIN source_transaction AS st ON st.id = le.source_transaction_id
-             WHERE NOT u.unit_ok),
+             WHERE NOT u.unit_ok
+               AND (cardinality(CAST(:accounts AS bigint[])) = 0
+                    OR u.unit_key IN (
+                        SELECT m.unit_key FROM units AS m JOIN ledger_entry AS me ON me.id = m.id
+                         WHERE me.account_id = ANY(CAST(:accounts AS bigint[]))))),
          q AS (
             SELECT l.unit_key, min(l.id) AS anchor,
                    CASE WHEN bool_or(l.needs_account) THEN 'needs_account'
@@ -208,6 +212,9 @@ _QUEUE_TOTAL = text(
     f"""
     WITH units AS ({units_sql()})
     SELECT count(DISTINCT u.unit_key) FROM units AS u WHERE NOT u.unit_ok
+       AND (cardinality(CAST(:accounts AS bigint[])) = 0
+            OR u.unit_key IN (SELECT m.unit_key FROM units AS m JOIN ledger_entry AS me ON me.id = m.id
+                               WHERE me.account_id = ANY(CAST(:accounts AS bigint[]))))
     """
 )
 
@@ -243,12 +250,20 @@ def decode_cursor(token: str) -> tuple[date, int]:
         raise InvalidCursor("cursor") from exc
 
 
-def _section(conn: Connection, kind: SectionKind, *, limit: int, cursor: str | None) -> QueueSection:
+def _binds(conn: Connection, accounts: tuple[int, ...]) -> dict[str, object]:
+    """The binds of the sectioned queries: the standing passes and the accounts the queue is narrowed to
+    (none: the whole queue)."""
+    return {**units_binds(conn), "accounts": list(accounts)}
+
+
+def _section(
+    conn: Connection, kind: SectionKind, *, limit: int, cursor: str | None, accounts: tuple[int, ...]
+) -> QueueSection:
     after_on, after_anchor = decode_cursor(cursor) if cursor else (None, 0)
     rows = conn.execute(
         _QUEUE_PAGE,
         {
-            **units_binds(conn),
+            **_binds(conn, accounts),
             "section": kind,
             "after_on": after_on,
             "after_anchor": after_anchor,
@@ -258,7 +273,7 @@ def _section(conn: Connection, kind: SectionKind, *, limit: int, cursor: str | N
     if rows:
         total = int(rows[0].total)
     elif cursor:  # a cursor past the end: the page is empty, the section is not
-        total = _section_total(conn, kind)
+        total = _section_total(conn, kind, accounts)
     else:
         total = 0
     page, more = rows[:limit], len(rows) > limit
@@ -266,11 +281,11 @@ def _section(conn: Connection, kind: SectionKind, *, limit: int, cursor: str | N
     units = _units_of_page(conn, [int(r.unit_key) for r in page], by_key)
     groups: tuple[CurrencyGroup, ...] = ()
     if kind == "needs_account":
-        found = conn.execute(_NEEDS_ACCOUNT_GROUPS, units_binds(conn)).all()
+        found = conn.execute(_NEEDS_ACCOUNT_GROUPS, _binds(conn, accounts)).all()
         groups = tuple(CurrencyGroup(currency=str(r.currency), count=int(r.n)) for r in found)
     account_groups: tuple[AccountGroup, ...] = ()
     if kind == "waiting":
-        found = conn.execute(_WAITING_GROUPS, units_binds(conn)).all()
+        found = conn.execute(_WAITING_GROUPS, _binds(conn, accounts)).all()
         account_groups = tuple(
             AccountGroup(account_id=int(r.account_id), synced_through=r.synced_through, count=int(r.n))
             for r in found
@@ -285,8 +300,8 @@ def _section(conn: Connection, kind: SectionKind, *, limit: int, cursor: str | N
     )
 
 
-def _section_total(conn: Connection, kind: SectionKind) -> int:
-    return int(conn.execute(_SECTION_TOTAL, {**units_binds(conn), "section": kind}).scalar_one())
+def _section_total(conn: Connection, kind: SectionKind, accounts: tuple[int, ...]) -> int:
+    return int(conn.execute(_SECTION_TOTAL, {**_binds(conn, accounts), "section": kind}).scalar_one())
 
 
 def _units_of_page(conn: Connection, keys: list[int], facts: dict[int, Row[Any]]) -> tuple[UnitView, ...]:
@@ -317,16 +332,20 @@ def review_queue(
     limit: int = DEFAULT_LIMIT,
     section: SectionKind | None = None,
     cursor: str | None = None,
+    account_ids: tuple[int, ...] = (),
 ) -> ReviewQueue:
-    """The first page of every section, or the page after `cursor` of one `section`."""
+    """The first page of every section, or the page after `cursor` of one `section`. `account_ids` narrows
+    the queue to the units with an entry on any of them (none: the whole queue); the sections, their groups
+    and their counts are those of the units left."""
     wanted = SECTIONS if section is None else (section,)
     built = tuple(
-        _section(conn, kind, limit=limit, cursor=cursor if section == kind else None) for kind in wanted
+        _section(conn, kind, limit=limit, cursor=cursor if section == kind else None, accounts=account_ids)
+        for kind in wanted
     )
     if section is None:
         total = sum(s.total for s in built)
     else:
-        total = int(conn.execute(_QUEUE_TOTAL, units_binds(conn)).scalar_one())
+        total = int(conn.execute(_QUEUE_TOTAL, _binds(conn, account_ids)).scalar_one())
     return ReviewQueue(sections=built, total=total)
 
 
@@ -343,7 +362,7 @@ class ActionableCounts:
 def actionable_counts(conn: Connection) -> ActionableCounts:
     """Units that can be acted on now, by section: pending review and needs an account, not waiting (a
     waiting unit completes itself). The queue's own sections, one cheap pass."""
-    n = {str(r.section): int(r.n) for r in conn.execute(_ACTIONABLE_COUNT, units_binds(conn))}
+    n = {str(r.section): int(r.n) for r in conn.execute(_ACTIONABLE_COUNT, _binds(conn, ()))}
     return ActionableCounts(
         pending_review=n.get("pending_review", 0), needs_account=n.get("needs_account", 0)
     )

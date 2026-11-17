@@ -26,6 +26,19 @@ waiting — as a count chip (`design.md` §5), and nothing at zero (architecture
 looking at entries, a small activity mark beside the count says so, and its
 tooltip how many.
 
+**An account filter narrows the queue.** Above the sections stands the
+ledger list's filter bar with its Account chip alone, without the chip's
+counter-account section; several accounts are alternatives. A unit shows when
+any of its entries is on a chosen account, so a transfer between two accounts
+shows under either. The filter is in the address, like the ledger list's, and
+changing it fetches the queue again, as a refresh does. The sections, their
+groups and their counts are those of the units the filter shows. The Review
+item and the Overview's To review card count the whole queue, since the work is
+the household's and not one view's. A filter that shows nothing says so and
+offers "Clear filters" (`ux/patterns.md` §11.6). The ledger's other dimensions
+are not offered: category, payee and tags are proposals that change under
+review, and the type and flags are what the sections already show.
+
 **What the model has not yet answered says so.** A unit the model is still
 looking at is marked on each row the model has not yet answered, one quiet
 line above the list says how many there are, and the panel says the model's

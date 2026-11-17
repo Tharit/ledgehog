@@ -23,6 +23,44 @@ beforeEach(() => {
 	vi.mocked(listRules).mockResolvedValue([rule({ id: 3, name: 'Rewe' })]);
 });
 
+describe('ReviewQueueStore account filter', () => {
+	it('fetches with the accounts, pages with them, and fetches again only when they change', async () => {
+		vi.mocked(getQueue).mockResolvedValue({
+			...queue(),
+			sections: [
+				section('pending_review', [plain(1)], { total: 2, next_cursor: 'c1' }),
+				section('needs_account', []),
+				section('waiting', [])
+			],
+			total: 2
+		});
+		const store = new ReviewQueueStore();
+
+		await store.applyAccounts([2, 3]);
+		expect(getQueue).toHaveBeenLastCalledWith(expect.objectContaining({ accountIds: [2, 3] }));
+		await store.loadMore('pending_review');
+		expect(getQueue).toHaveBeenLastCalledWith({
+			section: 'pending_review',
+			cursor: 'c1',
+			accountIds: [2, 3]
+		});
+
+		const calls = vi.mocked(getQueue).mock.calls.length;
+		await store.applyAccounts([2, 3]);
+		expect(getQueue).toHaveBeenCalledTimes(calls);
+		await store.applyAccounts([]);
+		expect(getQueue).toHaveBeenCalledTimes(calls + 1);
+		expect(getQueue).toHaveBeenLastCalledWith(expect.objectContaining({ accountIds: [] }));
+	});
+
+	it('fetches on the first apply even with no accounts', async () => {
+		vi.mocked(getQueue).mockResolvedValue(queue({}));
+		const store = new ReviewQueueStore();
+		await store.applyAccounts([]);
+		expect(getQueue).toHaveBeenCalledTimes(1);
+	});
+});
+
 describe('ReviewQueueStore', () => {
 	it('loads the three sections, always in the same order', async () => {
 		vi.mocked(getQueue).mockResolvedValue(
@@ -83,7 +121,11 @@ describe('ReviewQueueStore', () => {
 
 		await store.loadMore('pending_review');
 
-		expect(getQueue).toHaveBeenLastCalledWith({ section: 'pending_review', cursor: 'c1' });
+		expect(getQueue).toHaveBeenLastCalledWith({
+			section: 'pending_review',
+			cursor: 'c1',
+			accountIds: []
+		});
 		const pending = store.sections[0];
 		expect(pending.units.map((u) => u.anchor_entry_id)).toEqual([1, 2, 3, 4]);
 		expect(pending.nextCursor).toBeNull();

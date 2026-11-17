@@ -75,8 +75,15 @@
 	let {
 		store,
 		lookups,
-		locale = 'en'
-	}: { store: ReviewQueueStore; lookups: Lookups; locale?: string } = $props();
+		locale = 'en',
+		onclearfilters
+	}: {
+		store: ReviewQueueStore;
+		lookups: Lookups;
+		locale?: string;
+		/** the account filter is cleared: offered when the filter shows nothing */
+		onclearfilters?: () => void;
+	} = $props();
 
 	let cursorId = $state<number | null>(null); // the anchor entry id of the unit under the cursor
 	let container = $state<HTMLElement | null>(null);
@@ -226,6 +233,14 @@
 		onretry={failure.retryable ? () => store.load() : undefined}
 		class="max-w-none items-center p-8 text-center"
 	/>
+{:else if store.status === 'ready' && store.total === 0 && store.accountIds.length > 0}
+	<EmptyState
+		title="No units match these filters"
+		actionLabel="Clear filters"
+		onaction={onclearfilters}
+	>
+		{store.accountIds.map((id) => lookups.accounts.get(id)?.name ?? `Account ${id}`).join(' · ')}
+	</EmptyState>
 {:else if store.status === 'ready' && store.total === 0}
 	<EmptyState title="Nothing to review" actionLabel="Open the ledger" actionHref="/ledger">
 		Every unit is confirmed. New ones appear here when an account is synced or a file is uploaded.

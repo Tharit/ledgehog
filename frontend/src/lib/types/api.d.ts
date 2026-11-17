@@ -1212,6 +1212,7 @@ export interface paths {
         /**
          * Get Review Queue
          * @description The review queue: the first page of each section, or the page after `cursor` of one `section`.
+         *     `account_id` (repeatable) narrows it to the units with an entry on any of those accounts.
          */
         get: operations["get_review_queue"];
         put?: never;
@@ -8359,6 +8360,7 @@ export interface operations {
                 limit?: number;
                 section?: ("pending_review" | "needs_account" | "waiting") | null;
                 cursor?: string | null;
+                account_id?: number[] | null;
             };
             header?: never;
             path?: never;

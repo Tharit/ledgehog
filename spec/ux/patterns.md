@@ -346,7 +346,7 @@ row; a resolved row stays in place, marked (§7).
   The consequence mark fades when the cursor visits the row; the muting and the
   check stay until the list is refreshed.
 - **Snapshots stay snapshots.** A list fetched for a session (the review queue,
-  architecture §6.5; the ledger list, whose filter is in its address) does not
+  architecture §6.5, and the ledger list, whose filters are in their address) does not
   add or reorder rows; new data, whatever wrote it, appears as a passive notice
   ("New data — Refresh") that refetches only on request (architecture §4.2). An
   action patches the rows it touched in place and

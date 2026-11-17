@@ -16145,7 +16145,7 @@
     },
     "/api/units/queue": {
       "get": {
-        "description": "The review queue: the first page of each section, or the page after `cursor` of one `section`.",
+        "description": "The review queue: the first page of each section, or the page after `cursor` of one `section`.\n`account_id` (repeatable) narrows it to the units with an entry on any of those accounts.",
         "operationId": "get_review_queue",
         "parameters": [
           {
@@ -16197,6 +16197,27 @@
                 }
               ],
               "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "account_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740992,
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Account Id"
             }
           }
         ],

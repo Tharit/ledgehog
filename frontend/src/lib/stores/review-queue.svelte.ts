@@ -82,6 +82,21 @@ export class ReviewQueueStore {
 			this.accountsAdded = [...this.accountsAdded, currency];
 	}
 
+	/** the accounts the queue is narrowed to (none: the whole queue); the page keeps them in the address */
+	accountIds = $state.raw<readonly number[]>([]);
+	#applied = false;
+
+	/** The address says which accounts: fetch the queue again when they differ from those held (or it
+	 * was never fetched). The same accounts in the same order are no change. */
+	applyAccounts(ids: readonly number[]): Promise<void> {
+		const same =
+			ids.length === this.accountIds.length && ids.every((id, i) => id === this.accountIds[i]);
+		if (this.#applied && same) return Promise.resolve();
+		this.#applied = true;
+		this.accountIds = ids;
+		return this.load();
+	}
+
 	/** the unit (anchor id) the panel shows: the page puts its cursor there */
 	revealed = $state<number | null>(null);
 
@@ -143,7 +158,7 @@ export class ReviewQueueStore {
 		await this.news.prepare();
 		if (generation !== this.#generation) return;
 		try {
-			const queue = await getQueue({ signal: controller.signal });
+			const queue = await getQueue({ accountIds: this.accountIds, signal: controller.signal });
 			if (generation !== this.#generation) return;
 			this.sections = SECTION_ORDER.map((kind) => {
 				const found = queue.sections.find((s) => s.kind === kind);
@@ -180,7 +195,11 @@ export class ReviewQueueStore {
 		const generation = this.#generation;
 		this.#update(kind, { loadingMore: true, moreError: null });
 		try {
-			const page = await getQueue({ section: kind, cursor: section.nextCursor });
+			const page = await getQueue({
+				section: kind,
+				cursor: section.nextCursor,
+				accountIds: this.accountIds
+			});
 			if (generation !== this.#generation) return;
 			const found = page.sections.find((s) => s.kind === kind);
 			// the section as it is NOW (an action may have patched its rows meanwhile)

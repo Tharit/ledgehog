@@ -221,6 +221,29 @@ def test_queue_parameter_errors(anna: TestClient) -> None:
         assert_envelope(anna.get(QUEUE, params=params), 422, "validation_error")
 
 
+def test_the_queue_takes_repeated_account_ids_and_the_count_none(
+    anna: TestClient, api_engine: Engine, world: Bench
+) -> None:
+    def build(b: Bench) -> tuple[int, int]:
+        return b.flow(b.source(), done=False), b.flow(b.source(b.b), done=False)
+
+    on_a, on_b = _make(api_engine, world, build)
+
+    def anchors(**params: Any) -> list[int]:
+        r = anna.get(QUEUE, params=params)
+        assert r.status_code == 200, r.text
+        return [u["anchor_entry_id"] for u in r.json()["sections"][0]["units"]]
+
+    assert anchors(account_id=[world.a]) == [on_a]
+    assert anchors(account_id=[world.b]) == [on_b]
+    assert anchors(account_id=[world.a, world.b]) == [on_a, on_b]
+    assert anchors(account_id=[999999]) == []
+    body = anna.get(QUEUE, params={"account_id": [world.a]}).json()
+    assert body["total"] == 1 and body["sections"][0]["total"] == 1
+    assert anna.get(f"{QUEUE}/count", params={"account_id": [world.a]}).json()["count"] == 2
+    assert_envelope(anna.get(QUEUE, params={"account_id": "x"}), 422, "validation_error")
+
+
 def test_queue_count(anna: TestClient, api_engine: Engine, world: Bench) -> None:
     assert anna.get(f"{QUEUE}/count").json() == {"count": 0, "pending_review": 0, "needs_account": 0}
 

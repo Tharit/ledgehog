@@ -33,6 +33,7 @@
 		searchEl = $bindable(null),
 		onchange,
 		ondown,
+		accountOnly = false,
 		trailing
 	}: {
 		filter: EntryFilter;
@@ -46,6 +47,8 @@
 		onchange: (next: EntryFilter) => void;
 		/** `↓` in the text box: the keyboard moves to the list */
 		ondown?: () => void;
+		/** only the Account chip, without its counter-account section (a view of units, not entries) */
+		accountOnly?: boolean;
 		/** the "Tag all N…" action, at the end of the bar */
 		trailing?: Snippet;
 	} = $props();
@@ -175,14 +178,14 @@
 </script>
 
 <div class="flex flex-wrap items-center gap-2" role="search" aria-label="Filter entries">
-	<DateChip
-		label={label('date', 'Any date')}
-		from={filter.from}
-		to={filter.to}
-		{today}
-		{locale}
-		onchange={(from, to) => update({ from, to })}
-	/>
+	{#if !accountOnly}<DateChip
+			label={label('date', 'Any date')}
+			from={filter.from}
+			to={filter.to}
+			{today}
+			{locale}
+			onchange={(from, to) => update({ from, to })}
+		/>{/if}
 	<AccountChip
 		label={accountLabel}
 		options={accountOptions}
@@ -190,114 +193,116 @@
 		counter={filter.counter_account_id}
 		noCounter={filter.no_counter_account}
 		paired={filter.paired}
+		counterAccount={!accountOnly}
 		onchange={update}
 	/>
-	<OptionsChip
-		label={categoryLabel}
-		heading="Categories"
-		options={categoryOptions}
-		selected={filter.category_id}
-		active={filter.category_id.length > 0 || filter.uncategorised || filter.type.length > 0}
-		emptyText="No categories yet"
-		manageHref="/settings/categories"
-		onchange={(category_id) => update({ category_id })}
-	>
-		{#snippet footer()}
-			<div class="mt-1 flex flex-col gap-0.5 border-t border-border pt-2">
-				<div class="flex items-center justify-between">
-					<span class="text-xs font-medium text-muted-foreground">Type</span>
-					{#if filter.type.length > 0}
-						<Button variant="ghost" size="xs" onclick={() => update({ type: [] })}>Clear</Button>
-					{/if}
+	{#if !accountOnly}<OptionsChip
+			label={categoryLabel}
+			heading="Categories"
+			options={categoryOptions}
+			selected={filter.category_id}
+			active={filter.category_id.length > 0 || filter.uncategorised || filter.type.length > 0}
+			emptyText="No categories yet"
+			manageHref="/settings/categories"
+			onchange={(category_id) => update({ category_id })}
+		>
+			{#snippet footer()}
+				<div class="mt-1 flex flex-col gap-0.5 border-t border-border pt-2">
+					<div class="flex items-center justify-between">
+						<span class="text-xs font-medium text-muted-foreground">Type</span>
+						{#if filter.type.length > 0}
+							<Button variant="ghost" size="xs" onclick={() => update({ type: [] })}>Clear</Button>
+						{/if}
+					</div>
+					<ul class="-mx-1" aria-label="Type">
+						{#each ENTRY_TYPES as type (type)}
+							<li>
+								<label
+									class="flex h-8 items-center gap-2 rounded-md px-1.5 text-[13px] hover:bg-row-hover"
+								>
+									<input
+										type="checkbox"
+										class="size-4 shrink-0 accent-primary"
+										checked={filter.type.includes(type)}
+										onchange={(event) => toggleType(type, event.currentTarget.checked)}
+									/>
+									<DimensionIcon icon={ENTRY_TYPE_INFO[type].icon} color="stone" />
+									<span class="truncate">{ENTRY_TYPE_INFO[type].name}</span>
+								</label>
+							</li>
+						{/each}
+					</ul>
 				</div>
-				<ul class="-mx-1" aria-label="Type">
-					{#each ENTRY_TYPES as type (type)}
-						<li>
-							<label
-								class="flex h-8 items-center gap-2 rounded-md px-1.5 text-[13px] hover:bg-row-hover"
-							>
-								<input
-									type="checkbox"
-									class="size-4 shrink-0 accent-primary"
-									checked={filter.type.includes(type)}
-									onchange={(event) => toggleType(type, event.currentTarget.checked)}
-								/>
-								<DimensionIcon icon={ENTRY_TYPE_INFO[type].icon} color="stone" />
-								<span class="truncate">{ENTRY_TYPE_INFO[type].name}</span>
-							</label>
-						</li>
-					{/each}
-				</ul>
-			</div>
-			<div class="mt-1 flex flex-col gap-1 border-t border-border pt-2 text-[13px]">
-				<label class="flex items-center gap-2">
-					<input
-						type="checkbox"
-						class="size-4 accent-primary"
-						checked={!filter.category_descendants}
-						disabled={filter.category_id.length === 0}
-						onchange={(event) => update({ category_descendants: !event.currentTarget.checked })}
-					/>
-					Exact: not its subcategories
-				</label>
-				<label class="flex items-center gap-2">
-					<input
-						type="checkbox"
-						class="size-4 accent-primary"
-						checked={filter.uncategorised}
-						onchange={(event) => update({ uncategorised: event.currentTarget.checked })}
-					/>
-					Include entries without a category
-				</label>
-			</div>
-		{/snippet}
-	</OptionsChip>
-	<OptionsChip
-		label={label('payee', 'All payees')}
-		heading="Payees"
-		options={payeeOptions}
-		selected={filter.payee_id}
-		emptyText="No payees yet"
-		manageHref="/settings/payees"
-		onchange={(payee_id) => update({ payee_id })}
-	/>
-	<OptionsChip
-		label={label('tag', 'Tags')}
-		heading="Tags"
-		options={tagOptions}
-		selected={filter.tag_id}
-		emptyText="No tags yet"
-		onchange={(tag_id) => update({ tag_id })}
-	/>
-	<OptionsChip
-		label={label('flag', 'Review')}
-		heading="Review state"
-		options={flagOptions}
-		selected={filter.flag}
-		onchange={(flag) => update({ flag })}
-	/>
-	<AmountChip
-		label={label('amount', 'Amount')}
-		active={parts.some((part) => part.key === 'amount')}
-		amount_min={filter.amount_min}
-		amount_max={filter.amount_max}
-		currency={filter.currency}
-		direction={filter.direction}
-		{currencies}
-		defaultCurrency={baseCurrency}
-		{locale}
-		onchange={updateAmount}
-	/>
-	<Input
-		bind:ref={searchEl}
-		bind:value={text}
-		type="text"
-		placeholder="Filter…"
-		aria-label="Filter entries by text"
-		class="w-56 rounded-full bg-muted"
-		oninput={typed}
-		onkeydown={onsearchkeydown}
-	/>
+				<div class="mt-1 flex flex-col gap-1 border-t border-border pt-2 text-[13px]">
+					<label class="flex items-center gap-2">
+						<input
+							type="checkbox"
+							class="size-4 accent-primary"
+							checked={!filter.category_descendants}
+							disabled={filter.category_id.length === 0}
+							onchange={(event) => update({ category_descendants: !event.currentTarget.checked })}
+						/>
+						Exact: not its subcategories
+					</label>
+					<label class="flex items-center gap-2">
+						<input
+							type="checkbox"
+							class="size-4 accent-primary"
+							checked={filter.uncategorised}
+							onchange={(event) => update({ uncategorised: event.currentTarget.checked })}
+						/>
+						Include entries without a category
+					</label>
+				</div>
+			{/snippet}
+		</OptionsChip>
+		<OptionsChip
+			label={label('payee', 'All payees')}
+			heading="Payees"
+			options={payeeOptions}
+			selected={filter.payee_id}
+			emptyText="No payees yet"
+			manageHref="/settings/payees"
+			onchange={(payee_id) => update({ payee_id })}
+		/>
+		<OptionsChip
+			label={label('tag', 'Tags')}
+			heading="Tags"
+			options={tagOptions}
+			selected={filter.tag_id}
+			emptyText="No tags yet"
+			onchange={(tag_id) => update({ tag_id })}
+		/>
+		<OptionsChip
+			label={label('flag', 'Review')}
+			heading="Review state"
+			options={flagOptions}
+			selected={filter.flag}
+			onchange={(flag) => update({ flag })}
+		/>
+		<AmountChip
+			label={label('amount', 'Amount')}
+			active={parts.some((part) => part.key === 'amount')}
+			amount_min={filter.amount_min}
+			amount_max={filter.amount_max}
+			currency={filter.currency}
+			direction={filter.direction}
+			{currencies}
+			defaultCurrency={baseCurrency}
+			{locale}
+			onchange={updateAmount}
+		/>
+		<Input
+			bind:ref={searchEl}
+			bind:value={text}
+			type="text"
+			placeholder="Filter…"
+			aria-label="Filter entries by text"
+			class="w-56 rounded-full bg-muted"
+			oninput={typed}
+			onkeydown={onsearchkeydown}
+		/>
+	{/if}
 	{#if !isEmpty(filter)}
 		<Button variant="ghost" onclick={clearAll}>Clear</Button>
 	{/if}

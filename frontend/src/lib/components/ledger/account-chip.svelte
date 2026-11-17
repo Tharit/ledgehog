@@ -16,6 +16,7 @@
 		counter,
 		noCounter,
 		paired,
+		counterAccount = true,
 		onchange
 	}: {
 		label: string;
@@ -26,6 +27,8 @@
 		noCounter: boolean;
 		/** only the transfer legs that have a partner */
 		paired: boolean;
+		/** the counter-account section; a view that filters units, not transfers, leaves it out */
+		counterAccount?: boolean;
 		onchange: (patch: {
 			account_id?: number[];
 			counter_account_id?: number[];
@@ -36,7 +39,7 @@
 
 	let query = $state('');
 	let expanded = $state(false);
-	const set = $derived(counter.length > 0 || noCounter || paired);
+	const set = $derived(counterAccount && (counter.length > 0 || noCounter || paired));
 	const open = $derived(expanded || set);
 	const searchable = $derived(options.length > 8);
 	const shown = $derived(
@@ -103,50 +106,52 @@
 		<p class="py-2 text-sm text-muted-foreground">No accounts yet</p>
 	{:else}
 		{@render list('Account', 'account_id', account)}
-		<div class="mt-1 flex flex-col gap-0.5 border-t border-border pt-2">
-			<div class="flex items-center gap-2">
-				<button
-					type="button"
-					class="-mx-1 flex items-center gap-1 rounded-md px-1 text-xs font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:hover:text-muted-foreground"
-					aria-expanded={open}
-					disabled={set}
-					onclick={() => (expanded = !expanded)}
-				>
-					<ChevronRightIcon
-						size={14}
-						strokeWidth={1.75}
-						class={cn('shrink-0 transition-transform', open && 'rotate-90')}
-						aria-hidden="true"
-					/>
-					Counter-account
-				</button>
-				<span class="text-xs text-muted-foreground">transfers only</span>
+		{#if counterAccount}
+			<div class="mt-1 flex flex-col gap-0.5 border-t border-border pt-2">
+				<div class="flex items-center gap-2">
+					<button
+						type="button"
+						class="-mx-1 flex items-center gap-1 rounded-md px-1 text-xs font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:hover:text-muted-foreground"
+						aria-expanded={open}
+						disabled={set}
+						onclick={() => (expanded = !expanded)}
+					>
+						<ChevronRightIcon
+							size={14}
+							strokeWidth={1.75}
+							class={cn('shrink-0 transition-transform', open && 'rotate-90')}
+							aria-hidden="true"
+						/>
+						Counter-account
+					</button>
+					<span class="text-xs text-muted-foreground">transfers only</span>
+				</div>
+				{#if open}
+					{@render list('Counter-account', 'counter_account_id', counter)}
+					<div class="mt-1 flex flex-col gap-1 border-t border-border pt-2 text-[13px]">
+						<label class="flex items-center gap-2">
+							<input
+								type="checkbox"
+								class="size-4 accent-primary"
+								checked={noCounter}
+								onchange={(event) => onchange({ no_counter_account: event.currentTarget.checked })}
+							/>
+							Without a counter-account
+						</label>
+					</div>
+					<div class="mt-1 flex flex-col gap-1 border-t border-border pt-2 text-[13px]">
+						<label class="flex items-center gap-2">
+							<input
+								type="checkbox"
+								class="size-4 accent-primary"
+								checked={paired}
+								onchange={(event) => onchange({ paired: event.currentTarget.checked })}
+							/>
+							Paired transfers only
+						</label>
+					</div>
+				{/if}
 			</div>
-			{#if open}
-				{@render list('Counter-account', 'counter_account_id', counter)}
-				<div class="mt-1 flex flex-col gap-1 border-t border-border pt-2 text-[13px]">
-					<label class="flex items-center gap-2">
-						<input
-							type="checkbox"
-							class="size-4 accent-primary"
-							checked={noCounter}
-							onchange={(event) => onchange({ no_counter_account: event.currentTarget.checked })}
-						/>
-						Without a counter-account
-					</label>
-				</div>
-				<div class="mt-1 flex flex-col gap-1 border-t border-border pt-2 text-[13px]">
-					<label class="flex items-center gap-2">
-						<input
-							type="checkbox"
-							class="size-4 accent-primary"
-							checked={paired}
-							onchange={(event) => onchange({ paired: event.currentTarget.checked })}
-						/>
-						Paired transfers only
-					</label>
-				</div>
-			{/if}
-		</div>
+		{/if}
 	{/if}
 </FilterChip>

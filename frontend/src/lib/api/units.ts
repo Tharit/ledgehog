@@ -22,6 +22,8 @@ export type QueueOptions = {
 	section?: SectionKind;
 	limit?: number;
 	cursor?: string;
+	/** narrow to the units with an entry on any of these accounts (none: the whole queue) */
+	accountIds?: readonly number[];
 	signal?: AbortSignal;
 };
 
@@ -30,9 +32,13 @@ export function getQueue({
 	section,
 	limit = QUEUE_PAGE_SIZE,
 	cursor,
+	accountIds = [],
 	signal
 }: QueueOptions = {}): Promise<ReviewQueue> {
-	return request('GET', '/api/units/queue', { query: { limit, section, cursor }, signal });
+	return request('GET', '/api/units/queue', {
+		query: { limit, section, cursor, account_id: [...accountIds] },
+		signal
+	});
 }
 
 /**

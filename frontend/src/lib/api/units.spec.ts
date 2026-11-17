@@ -52,6 +52,15 @@ describe('getQueue', () => {
 	});
 });
 
+describe('getQueue with an account filter', () => {
+	it('repeats account_id, and sends none for the whole queue', async () => {
+		await getQueue({ accountIds: [3, 5] });
+		expect(lastUrl()).toBe('/api/units/queue?limit=50&account_id=3&account_id=5');
+		await getQueue({ accountIds: [] });
+		expect(lastUrl()).toBe('/api/units/queue?limit=50');
+	});
+});
+
 describe('getQueueCounts', () => {
 	it('reads the count of the units that can be acted on, with its split', async () => {
 		fetchMock.mockImplementation(async () =>

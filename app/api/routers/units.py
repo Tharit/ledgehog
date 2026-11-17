@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from app.api.errors import ApiError, map_error
 from app.api.ids import PathId
 from app.api.routers.changes import model_pending_of
-from app.api.routers.entries import EntryOut
+from app.api.routers.entries import EntryOut, Ids
 from app.api.routers.unit_drafts import (
     UnitCommitOut,
     UnitDraftIn,
@@ -160,8 +160,10 @@ def get_review_queue(
     limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = DEFAULT_LIMIT,
     section: SectionKind | None = None,
     cursor: Token | None = None,
+    account_id: Ids = None,
 ) -> ReviewQueueOut:
-    """The review queue: the first page of each section, or the page after `cursor` of one `section`."""
+    """The review queue: the first page of each section, or the page after `cursor` of one `section`.
+    `account_id` (repeatable) narrows it to the units with an entry on any of those accounts."""
     if cursor is not None and section is None:
         raise ApiError(
             422,
@@ -170,7 +172,9 @@ def get_review_queue(
             [{"location": ["query", "section"], "message": "required with cursor", "type": "missing"}],
         )
     with engine.connect() as conn:
-        queue = review_queue(conn, limit=limit, section=section, cursor=cursor)
+        queue = review_queue(
+            conn, limit=limit, section=section, cursor=cursor, account_ids=tuple(account_id or ())
+        )
     pending = model_pending_of(request)
     return ReviewQueueOut(
         sections=[QueueSectionOut.of(s, pending) for s in queue.sections], total=queue.total

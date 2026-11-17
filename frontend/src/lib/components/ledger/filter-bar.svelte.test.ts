@@ -453,3 +453,21 @@ describe('FilterBar: the text box', () => {
 		expect(document.activeElement).not.toBe(box());
 	});
 });
+
+describe('FilterBar: account chip alone', () => {
+	it('shows only the Account chip, without a text box or the counter-account section', async () => {
+		const { onchange } = bar({}, { accountOnly: true });
+
+		expect(screen.queryByRole('textbox', { name: 'Filter entries by text' })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Any date' })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'All categories' })).toBeNull();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'All accounts' }));
+		await screen.findByRole('list', { name: 'Account' });
+		expect(screen.queryByRole('button', { name: 'Counter-account' })).toBeNull();
+		expect(screen.queryByText('transfers only')).toBeNull();
+
+		await fireEvent.click(screen.getByRole('checkbox', { name: 'Cash' }));
+		expect(onchange).toHaveBeenCalledWith(expect.objectContaining({ account_id: [2] }));
+	});
+});

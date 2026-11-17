@@ -1,5 +1,12 @@
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
+	import { onDestroy, onMount, untrack } from 'svelte';
+	import FilterBar from '#lib/components/ledger/filter-bar.svelte';
+	import { todayIso } from '#lib/format/index.js';
+	import { emptyFilter, fromSearchParams, toSearchParams } from '#lib/ledger/filter.js';
+	import { UNIT_PARAM } from '#lib/units/address.js';
+	import { unitPanel } from '#lib/units/panel-instance.js';
 	import NewDataNotice from '#lib/components/common/new-data-notice.svelte';
 	import PageHeader from '#lib/components/common/page-header.svelte';
 	import ReviewQueue from '#lib/components/review/review-queue.svelte';
@@ -11,10 +18,25 @@
 	const queue = new ReviewQueueStore();
 	const locale = $derived(session.config?.locale ?? 'en');
 
-	onMount(() => {
-		void queue.load();
-		void lookupsStore.ensure();
+	onMount(() => void lookupsStore.ensure());
+
+	// The address is the filter (as the ledger's): the accounts it names are what the queue shows,
+	// and a change fetches the queue again, as a refresh does.
+	$effect(() => {
+		const accounts = fromSearchParams(page.url.search).account_id;
+		untrack(() => void queue.applyAccounts(accounts));
 	});
+
+	async function show(account_id: number[]) {
+		const params = toSearchParams({ ...emptyFilter(), account_id });
+		// the panel's address survives a filter change
+		if (unitPanel.unitId !== null) params.set(UNIT_PARAM, String(unitPanel.unitId));
+		const query = params.toString();
+		await goto(`${page.url.pathname}${query ? `?${query}` : ''}`, {
+			replaceState: true,
+			reset: false
+		});
+	}
 	onDestroy(() => queue.dispose());
 
 	// notices of the entry form (a delete) land on this page's line; a created entry opens in the
@@ -47,7 +69,22 @@
 		description="Units waiting for a decision: check what was proposed, then commit them one at a time."
 	/>
 
+	<FilterBar
+		accountOnly
+		filter={{ ...emptyFilter(), account_id: [...queue.accountIds] }}
+		lookups={lookupsStore.lookups}
+		{locale}
+		today={todayIso(session.config?.timezone ?? 'UTC')}
+		baseCurrency={session.config?.base_currency ?? 'EUR'}
+		onchange={(next) => show(next.account_id)}
+	/>
+
 	<NewDataNotice {stale} onrefresh={() => queue.load()} {notice} />
 
-	<ReviewQueue store={queue} lookups={lookupsStore.lookups} {locale} />
+	<ReviewQueue
+		store={queue}
+		lookups={lookupsStore.lookups}
+		{locale}
+		onclearfilters={() => show([])}
+	/>
 </div>

@@ -321,7 +321,11 @@ describe('ReviewQueue', () => {
 		await fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
 
 		await waitFor(() => expect(screen.getByText('Lidl')).toBeInTheDocument());
-		expect(getQueue).toHaveBeenLastCalledWith({ section: 'pending_review', cursor: 'c1' });
+		expect(getQueue).toHaveBeenLastCalledWith({
+			section: 'pending_review',
+			cursor: 'c1',
+			accountIds: []
+		});
 		expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull();
 	});
 });
@@ -683,5 +687,30 @@ describe('ReviewQueue: needs an account and waiting', () => {
 			Number(n.getAttribute('data-unit'))
 		);
 		expect(drawn).toEqual([2, 1, 3]);
+	});
+});
+
+describe('ReviewQueue with an account filter', () => {
+	it('says nothing matches and offers Clear filters, naming the accounts', async () => {
+		vi.mocked(getQueue).mockResolvedValue(queue({}));
+		const store = new ReviewQueueStore();
+		await store.applyAccounts([2]);
+		const onclearfilters = vi.fn();
+		render(ReviewQueue, { props: { store, lookups, locale: 'en', onclearfilters } });
+
+		expect(screen.getByText('No units match these filters')).toBeInTheDocument();
+		expect(screen.getByText('Savings')).toBeInTheDocument();
+		await fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+		expect(onclearfilters).toHaveBeenCalledTimes(1);
+	});
+
+	it('keeps the sections and their own empty lines when something shows', async () => {
+		vi.mocked(getQueue).mockResolvedValue(queue({ pending_review: [flow(1, 'REWE')] }));
+		const store = new ReviewQueueStore();
+		await store.applyAccounts([1]);
+		render(ReviewQueue, { props: { store, lookups, locale: 'en' } });
+
+		expect(screen.queryByText('No units match these filters')).toBeNull();
+		expect(screen.getByText('No transfer is missing an account.')).toBeInTheDocument();
 	});
 });

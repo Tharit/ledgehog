@@ -11,7 +11,7 @@ import pytest
 from sqlalchemy import Connection, text
 
 from app.core.units.read import actionable_count, actionable_counts, review_queue
-from tests.core.units.helpers import Bench
+from tests.core.units.helpers import Bench, keys
 from tests.invariants.helpers import link_account, make_instance, make_run, make_source
 
 DAY = date(2026, 3, 10)
@@ -236,3 +236,54 @@ def test_waiting_groups_count_units_per_account_in_the_accounts_order_over_the_w
     assert waiting.groups == ()
     later = review_queue(db_conn, section="waiting", limit=2, cursor=waiting.next_cursor)
     assert [(g.account_id, g.count) for g in later.sections[0].account_groups] == [(late, 2), (early, 3)]
+
+
+def test_an_account_filter_shows_a_unit_when_any_entry_is_on_a_chosen_account(
+    db_conn: Connection, bench: Bench, make_account: Any
+) -> None:
+    other = make_account(db_conn, name="C")
+    on_a = bench.flow(bench.source(on=date(2026, 1, 1)), done=False)
+    on_c = bench.flow(bench.source(other, on=date(2026, 1, 2)), done=False)
+    x = bench.transfer(bench.source(on=date(2026, 1, 3)))
+    y = bench.transfer(
+        bench.source(bench.b, on=date(2026, 1, 3), amount=100), derivation=keys(counter_account="history")
+    )
+    bench.pair(x, y)
+    assert _sections(review_queue(db_conn, account_ids=(bench.a,)))["pending_review"] == [on_a, x]
+    assert _sections(review_queue(db_conn, account_ids=(bench.b,)))["pending_review"] == [x]
+    both = review_queue(db_conn, account_ids=(bench.b, other))  # alternatives
+    assert _sections(both)["pending_review"] == [on_c, x]
+    assert both.total == 2 and both.sections[0].total == 2
+    assert review_queue(db_conn, account_ids=(999999,)).total == 0
+    assert review_queue(db_conn).total == 3
+
+
+def test_an_account_filter_narrows_sections_groups_and_paging(
+    db_conn: Connection, bench: Bench, make_account: Any
+) -> None:
+    other = make_account(db_conn, name="C")
+    mine = [_leg(bench, instructed="USD", on=date(2026, 1, 1 + i)) for i in range(3)]
+    _leg(bench, instructed="CHF", account=other, on=date(2026, 1, 9))
+    _leg(bench, instructed="USD", account=other, on=date(2026, 1, 10))
+    waits = _leg(bench, instructed=None, counter_account_id=bench.b)
+    _wait(db_conn, waits)
+    _wait(db_conn, _leg(bench, instructed=None, account=other, counter_account_id=bench.b))
+    q = review_queue(db_conn, limit=2, account_ids=(bench.a,))
+    needs = q.sections[1]
+    assert needs.total == 3 and len(needs.units) == 2 and needs.next_cursor
+    assert [(g.currency, g.count) for g in needs.groups] == [("USD", 3)]
+    assert q.sections[2].total == 1 and [g.count for g in q.sections[2].account_groups] == [1]
+    assert q.total == 4
+    more = review_queue(
+        db_conn, section="needs_account", limit=2, cursor=needs.next_cursor, account_ids=(bench.a,)
+    )
+    assert _sections(more)["needs_account"] == mine[2:] and more.sections[0].next_cursor is None
+    assert [(g.currency, g.count) for g in more.sections[0].groups] == [("USD", 3)]
+    assert more.total == 4
+
+
+def test_the_actionable_counts_ignore_any_account_filter(db_conn: Connection, bench: Bench) -> None:
+    bench.flow(bench.source(), done=False)
+    bench.flow(bench.source(bench.b), done=False)
+    assert review_queue(db_conn, account_ids=(bench.a,)).total == 1
+    assert actionable_count(db_conn) == 2
