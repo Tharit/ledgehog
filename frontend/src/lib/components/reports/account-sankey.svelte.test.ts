@@ -49,6 +49,24 @@ describe('AccountSankey', () => {
 		await fireEvent.focus(other.querySelector('a')!);
 		expect(await screen.findByText(/Other to Savings/)).toBeInTheDocument();
 	});
+
+	it('tells what stayed from the answer’s own figures, adding nothing', async () => {
+		const { container } = render(AccountSankey, { props: { model: model() } });
+
+		const links = await vi_waitFor(() => container.querySelectorAll('[data-link]'));
+		const band = [...links].find((l) => l.getAttribute('data-link') === '1:a1>2:a1')!;
+		await fireEvent.pointerMove(band, { clientX: 20, clientY: 20 });
+
+		// 305,000 received, 103,000 transferred out, 202,000 stayed (the links beside it sum to
+		// 302,000 and 100,000)
+		const tip = (await screen.findByText('Transferred out')).closest(
+			'[data-slot="figure-tooltip"]'
+		)!;
+		expect(tip).toHaveTextContent(/Received\s*\+?3,050\.00/);
+		expect(tip).toHaveTextContent(/Transferred out\s*\S?1,030\.00/);
+		expect(tip).toHaveTextContent(/Stayed\s*\+?2,020\.00/);
+		expect(tip).not.toHaveTextContent('3,020.00');
+	});
 });
 
 /** The chart lays out when its container has a size; poll for the links to appear. */

@@ -19,13 +19,7 @@ describe('ByAccountView', () => {
 			props: { report: byAccount(), categories, accounts, scope }
 		});
 
-		expect(rowsOf(container, 'income')).toEqual([
-			'income:c5',
-			'income:c7',
-			'income:total',
-			'income:unclassified',
-			'income:reconciliations'
-		]);
+		expect(rowsOf(container, 'income')).toEqual(['income:c5', 'income:c7', 'income:total']);
 		await fireEvent.click(screen.getByRole('button', { name: 'Expand Salary' }));
 		expect(rowsOf(container, 'income').slice(0, 3)).toEqual([
 			'income:c5',
@@ -33,13 +27,19 @@ describe('ByAccountView', () => {
 			'income:c7'
 		]);
 		await fireEvent.click(screen.getByRole('button', { name: 'Collapse Salary' }));
-		expect(rowsOf(container, 'income')).toHaveLength(5);
+		expect(rowsOf(container, 'income')).toHaveLength(3);
 
 		// the transfers: the sending accounts, their receivers folded away
 		expect(rowsOf(container, 'transfers')).toEqual([
 			'transfers:a1',
 			'transfers:a2',
 			'transfers:a3'
+		]);
+		// not in the categories above: unclassified out and in, reconciliations
+		expect(rowsOf(container, 'other')).toEqual([
+			'other:unclassified-out',
+			'other:unclassified-in',
+			'other:reconciliations'
 		]);
 	});
 
@@ -53,7 +53,14 @@ describe('ByAccountView', () => {
 			'href',
 			'/ledger?from=2026-10-01&to=2026-10-31&category_id=5'
 		);
-		expect(row('income:unclassified').querySelector('a')).toBeNull();
+		// a line beside the tree: its total, linked as By category links it
+		expect(row('other:unclassified-out').querySelector('a')).toHaveAttribute(
+			'href',
+			'/ledger?from=2026-10-01&to=2026-10-31&uncategorised=true&direction=out'
+		);
+		// a sending account's total is a figure, not a link: no filter lists exactly its legs
+		expect(row('transfers:a1').querySelector('a')).toBeNull();
+		expect(row('transfers:a1').querySelector('[data-slot="figure"]')).toBeInTheDocument();
 		await fireEvent.click(screen.getByRole('button', { name: 'Expand Giro' }));
 		const leg = row('transfers:a1:a2').querySelector('a')!;
 		expect(leg.getAttribute('href')).toContain('counter_account_id=2');
@@ -71,26 +78,39 @@ describe('ByAccountView', () => {
 		expect(note.querySelectorAll('a')).toHaveLength(3);
 	});
 
-	it('names the transfer legs that cannot be drawn with their count and figure, not as a link', () => {
+	it('counts the transfers not paired yet, with their figure as a link to the ledger’s unpaired legs', () => {
 		const { container } = render(ByAccountView, {
-			props: { report: byAccount(), categories, accounts, scope }
+			props: { report: byAccount(), categories, accounts, scope: { ...scope, tagIds: [4] } }
 		});
 
-		const note = container.querySelector('[data-slot="undrawn-note"]')!;
-		expect(note).toHaveTextContent(/2 transfer legs that name no second account/);
-		expect(note.querySelector('a')).toBeNull();
-		expect(note.querySelector('[data-slot="figure"]')).toBeInTheDocument();
+		const note = container.querySelector('[data-slot="unpaired-note"]')!;
+		expect(note).toHaveTextContent(/^\s*Not paired yet: 2 transfers/);
+		expect(note).not.toHaveTextContent(/Not in the chart/);
+		const href = note.querySelector('a')!.getAttribute('href')!;
+		const query = new URLSearchParams(href.split('?')[1]);
+		expect(href.startsWith('/ledger?')).toBe(true);
+		expect(query.getAll('type')).toEqual(['transfer']);
+		expect(query.getAll('flag')).toEqual(['waiting', 'unmatched_transfer']);
+		expect(query.getAll('tag_id')).toEqual(['4']);
+		expect(query.get('from')).toBe('2026-10-01');
+	});
+
+	it('has no unpaired note at a count of 0', () => {
+		const { container } = render(ByAccountView, {
+			props: { report: byAccount({ unpaired: line(0) }), categories, accounts, scope }
+		});
+		expect(container.querySelector('[data-slot="unpaired-note"]')).toBeNull();
 	});
 
 	it('says nothing is there, with the filters when there are some', () => {
 		const empty = byAccount({
 			income: { total: line(0), categories: [], slices: [], other: [] },
 			expense: { total: line(0), categories: [], slices: [], other: [] },
-			unclassified_in: [],
-			unclassified_out: [],
-			reconciliations: [],
+			unclassified_in: { total: line(0), accounts: [] },
+			unclassified_out: { total: line(0), accounts: [] },
+			reconciliations: { total: line(0), accounts: [] },
 			transfers: [],
-			undrawn: line(0),
+			unpaired: line(0),
 			stayed: []
 		});
 		const plain = render(ByAccountView, {

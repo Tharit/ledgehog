@@ -30,11 +30,11 @@
 	const nothing = $derived(
 		report.income.categories.length === 0 &&
 			report.expense.categories.length === 0 &&
-			report.unclassified_in.length === 0 &&
-			report.unclassified_out.length === 0 &&
-			report.reconciliations.length === 0 &&
+			report.unclassified_in.accounts.length === 0 &&
+			report.unclassified_out.accounts.length === 0 &&
+			report.reconciliations.accounts.length === 0 &&
 			report.transfers.length === 0 &&
-			report.undrawn.count === 0
+			report.unpaired.count === 0
 	);
 </script>
 
@@ -57,11 +57,11 @@
 					(<FigureLink line={item.line} href={item.href} {locale} />){/each}.
 			</p>
 		{/if}
-		{#if chart.notes.undrawn}
-			<p class="text-sm text-muted-foreground" data-slot="undrawn-note">
-				Not in the chart: {formatCount(chart.notes.undrawn.count, locale)}
-				{chart.notes.undrawn.count === 1 ? 'transfer leg' : 'transfer legs'} that name no second account
-				yet or whose partner is missing (<FigureLink line={chart.notes.undrawn} {locale} />).
+		{#if chart.notes.unpaired}
+			<p class="text-sm text-muted-foreground" data-slot="unpaired-note">
+				Not paired yet: {formatCount(chart.notes.unpaired.line.count, locale)}
+				{chart.notes.unpaired.line.count === 1 ? 'transfer' : 'transfers'}
+				(<FigureLink line={chart.notes.unpaired.line} href={chart.notes.unpaired.href} {locale} />).
 			</p>
 		{/if}
 

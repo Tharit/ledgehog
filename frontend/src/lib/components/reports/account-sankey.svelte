@@ -58,7 +58,7 @@
 				title: link.label,
 				rows: [
 					{ label: 'Received', value: money(link.stayed.received) },
-					{ label: 'Transferred out', value: money(-link.stayed.transferredOut) },
+					{ label: 'Transferred out', value: money(link.stayed.transferredOut) },
 					{ label: 'Stayed', value: money(link.value) }
 				]
 			};

@@ -12,6 +12,7 @@ import {
 	accountReconciliationsHref,
 	accountUnclassifiedHref,
 	transferHref,
+	unpairedHref,
 	type Scope
 } from './links.js';
 import type { Kind } from './shapes.js';
@@ -60,8 +61,8 @@ export type SankeyLink = {
 	line: Line | null;
 	/** none for the band that stayed */
 	href: string | null;
-	/** the stayed band only: what the account received on the income side, and what it
-	 *  transferred out, as magnitudes in minor units (the band is the first less the second) */
+	/** the stayed band only: the answer's own figures, in minor units: what the account received
+	 *  on the income side, what it transferred out (signed as booked), and what stayed */
 	stayed?: { received: number; transferredOut: number };
 };
 
@@ -74,8 +75,8 @@ export type AccountSankey = {
 	links: SankeyLink[];
 	notes: {
 		opposite: OppositeLink[];
-		/** the transfer legs that name no second account yet or whose partner is missing, when any */
-		undrawn: Line | null;
+		/** the transfer legs not paired yet, with their ledger filter, when there are any */
+		unpaired: { line: Line; href: string } | null;
 	};
 	/** the most nodes in one column: the chart's height grows with it */
 	fullest: number;
@@ -237,7 +238,7 @@ export function accountSankey(
 			);
 		}
 	}
-	for (const link of report.unclassified_in) {
+	for (const link of report.unclassified_in.accounts) {
 		sideLink(
 			'income',
 			'unclassified',
@@ -246,7 +247,7 @@ export function accountSankey(
 			accountUnclassifiedHref(scope, link.account_id, 'in')
 		);
 	}
-	for (const link of report.unclassified_out) {
+	for (const link of report.unclassified_out.accounts) {
 		sideLink(
 			'expense',
 			'unclassified',
@@ -256,7 +257,7 @@ export function accountSankey(
 		);
 	}
 	// the net of an account's reconciliations is on the side of its sign: no link is of the other
-	for (const link of report.reconciliations) {
+	for (const link of report.reconciliations.accounts) {
 		const side = (minorOf(link.line) ?? 0) < 0 ? 'expense' : 'income';
 		sideLink(
 			side,
@@ -268,7 +269,13 @@ export function accountSankey(
 	}
 
 	// between the account columns: a transfer is a link between two accounts at its booked amount
-	for (const transfer of report.transfers) {
+	for (const transfer of report.transfers.flatMap((g) =>
+		g.to.map((t) => ({
+			from_account_id: g.from_account_id,
+			to_account_id: t.account_id,
+			line: t.line
+		}))
+	)) {
 		if (transfer.from_account_id === transfer.to_account_id) continue;
 		const from = accountEnd(transfer.from_account_id, 1);
 		const to = accountEnd(transfer.to_account_id, 2);
@@ -299,15 +306,10 @@ export function accountSankey(
 		});
 	}
 
-	// the income that stayed: derived from the answer's `stayed`, tooltip names what it is made of
+	// the income that stayed: the answer's `stayed`, whose tooltip has its components from the answer
 	for (const stayed of report.stayed) {
 		const from = accountEnd(stayed.account_id, 1);
 		const to = accountEnd(stayed.account_id, 2);
-		const sum = (list: Draft[]) => list.reduce((n, d) => n + d.value, 0);
-		const received = sum(drafts.filter((d) => d.target.id === from.id && d.target.column === 1));
-		const transferredOut = sum(
-			drafts.filter((d) => d.kind === 'transfer' && d.source.id === from.id)
-		);
 		drafts.push({
 			source: from,
 			target: to,
@@ -320,7 +322,7 @@ export function accountSankey(
 			icon: TRANSFER.icon,
 			line: null,
 			href: null,
-			stayed: { received, transferredOut }
+			stayed: { received: stayed.received.amount, transferredOut: stayed.transferred_out.amount }
 		});
 	}
 
@@ -385,7 +387,11 @@ export function accountSankey(
 			order: n.position
 		})),
 		links,
-		notes: { opposite, undrawn: report.undrawn.count > 0 ? report.undrawn : null },
+		notes: {
+			opposite,
+			unpaired:
+				report.unpaired.count > 0 ? { line: report.unpaired, href: unpairedHref(scope) } : null
+		},
 		fullest
 	};
 }

@@ -10,10 +10,11 @@
 	import FigureLink from './figure-link.svelte';
 
 	// The data beside the sankey: Income and Expense, each category (its *By category* figure) with
-	// its accounts beneath it, then the unclassified and the reconciliations with their accounts;
-	// and Transfers, each sending account with the receiving accounts beneath. A group that the
-	// answer gives no figure for has none: the client adds nothing. Every figure links to the
-	// ledger with the equivalent filter. Groups open collapsed, as the category tree does.
+	// its accounts beneath it; Transfers, each sending account with the receiving accounts beneath;
+	// and "Not in the categories above" as By category has it. Every figure is the answer's own
+	// (the client adds nothing) and links to the ledger with the equivalent filter, except a
+	// sending account's total, which no filter lists exactly. Groups open collapsed, as the
+	// category tree does.
 	let {
 		report,
 		categories,
@@ -70,13 +71,9 @@
 								<span class={row.depth === 0 ? 'font-medium' : ''}>{row.label}</span>
 							</span>
 						</th>
-						<td class="px-3 py-2 text-right tabular-nums">
-							{#if row.line}{formatCount(row.line.count, locale)}{/if}
-						</td>
+						<td class="px-3 py-2 text-right tabular-nums">{formatCount(row.line.count, locale)}</td>
 						<td class="px-3 py-2 pr-4 text-right">
-							{#if row.line}
-								<FigureLink line={row.line} href={row.href ?? undefined} {locale} />
-							{/if}
+							<FigureLink line={row.line} href={row.href ?? undefined} title={row.title} {locale} />
 						</td>
 					</tr>
 				{/each}

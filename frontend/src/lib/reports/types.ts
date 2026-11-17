@@ -14,4 +14,6 @@ export type ByCategory = Schemas['ByCategoryOut'];
 export type ByAccount = Schemas['ByAccountOut'];
 export type KindLinks = Schemas['KindLinksOut'];
 export type AccountLink = Schemas['AccountLinkOut'];
-export type TransferLink = Schemas['TransferLinkOut'];
+export type AccountLinks = Schemas['AccountLinksOut'];
+export type TransferGroup = Schemas['TransferGroupOut'];
+export type Stayed = Schemas['StayedOut'];

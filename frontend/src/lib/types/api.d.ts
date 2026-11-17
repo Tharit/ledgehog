@@ -914,7 +914,8 @@ export interface paths {
         /**
          * Get By Account
          * @description The money each account received, passed on and paid over a range, as a list of links: the
-         *     *By category* figures cut by account, the transfers by account and counter-account, and what stayed.
+         *     *By category* figures cut by account, the transfers by account and counter-account, the
+         *     unpaired legs as one line, and what stayed.
          *     There is no `account_id`: a transfer into a chosen account would drop out of its own account's view.
          */
         get: operations["get_by_account"];
@@ -1304,6 +1305,12 @@ export interface components {
             account_id: number;
             line: components["schemas"]["LineOut"];
         };
+        /** AccountLinksOut */
+        AccountLinksOut: {
+            /** Accounts */
+            accounts: components["schemas"]["AccountLinkOut"][];
+            total: components["schemas"]["LineOut"];
+        };
         /** AccountMatchOut */
         AccountMatchOut: {
             /** Closed */
@@ -1418,8 +1425,7 @@ export interface components {
              */
             from: string;
             income: components["schemas"]["KindLinksOut"];
-            /** Reconciliations */
-            reconciliations: components["schemas"]["AccountLinkOut"][];
+            reconciliations: components["schemas"]["AccountLinksOut"];
             /** Stayed */
             stayed: components["schemas"]["StayedOut"][];
             /**
@@ -1428,12 +1434,10 @@ export interface components {
              */
             to: string;
             /** Transfers */
-            transfers: components["schemas"]["TransferLinkOut"][];
-            /** Unclassified In */
-            unclassified_in: components["schemas"]["AccountLinkOut"][];
-            /** Unclassified Out */
-            unclassified_out: components["schemas"]["AccountLinkOut"][];
-            undrawn: components["schemas"]["LineOut"];
+            transfers: components["schemas"]["TransferGroupOut"][];
+            unclassified_in: components["schemas"]["AccountLinksOut"];
+            unclassified_out: components["schemas"]["AccountLinksOut"];
+            unpaired: components["schemas"]["LineOut"];
         };
         /** ByCategoryOut */
         ByCategoryOut: {
@@ -3308,11 +3312,16 @@ export interface components {
             /** Value On */
             value_on: string | null;
         };
-        /** StayedOut */
+        /**
+         * StayedOut
+         * @description Derived, with no entries behind it: `amount` is `received` plus `transferred_out`, never below zero.
+         */
         StayedOut: {
             /** Account Id */
             account_id: number;
             amount: components["schemas"]["Money"];
+            received: components["schemas"]["Money"];
+            transferred_out: components["schemas"]["Money"];
         };
         /**
          * SyncEventPayloads
@@ -3617,13 +3626,19 @@ export interface components {
             to: string;
             unclassified_out: components["schemas"]["LineOut"];
         };
-        /** TransferLinkOut */
-        TransferLinkOut: {
+        /** TransferGroupOut */
+        TransferGroupOut: {
             /** From Account Id */
             from_account_id: number;
+            /** To */
+            to: components["schemas"]["TransferToOut"][];
+            total: components["schemas"]["LineOut"];
+        };
+        /** TransferToOut */
+        TransferToOut: {
+            /** Account Id */
+            account_id: number;
             line: components["schemas"]["LineOut"];
-            /** To Account Id */
-            to_account_id: number;
         };
         /**
          * UnitBookingOut

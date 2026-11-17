@@ -3,7 +3,7 @@
 // carried over. A whole kind lists its top-level categories as alternatives; unclassified,
 // reconciliations and unconfirmed link to the ledger's own filters for them.
 import type { Category } from '#lib/types/domain.js';
-import { ledgerHref } from './figures.js';
+import { ledgerHref, UNPAIRED_TRANSFERS_FILTER } from './figures.js';
 import type { Kind } from './shapes.js';
 
 /** What a figure is of: its days and the filters the page carries. */
@@ -97,5 +97,14 @@ export function transferHref(scope: Scope, from: number, to: number): string {
 		counter_account_id: [to],
 		type: ['transfer'],
 		direction: 'out'
+	});
+}
+
+/** The unpaired transfer legs of the period: the Overview's filter (`figures.ts`) cut to the days and tags. */
+export function unpairedHref(scope: Scope): string {
+	return ledgerHref({
+		...base(scope),
+		type: [...UNPAIRED_TRANSFERS_FILTER.type],
+		flag: [...UNPAIRED_TRANSFERS_FILTER.flag]
 	});
 }

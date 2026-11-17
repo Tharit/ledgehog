@@ -329,11 +329,11 @@ def test_by_account_of_an_empty_ledger(anna: TestClient):
         "to": "2026-10-31",
         "income": kind,
         "expense": kind,
-        "unclassified_in": [],
-        "unclassified_out": [],
-        "reconciliations": [],
+        "unclassified_in": {"total": line(0, 0), "accounts": []},
+        "unclassified_out": {"total": line(0, 0), "accounts": []},
+        "reconciliations": {"total": line(0, 0), "accounts": []},
         "transfers": [],
-        "undrawn": line(0, 0),
+        "unpaired": line(0, 0),
         "stayed": [],
     }
 
@@ -362,12 +362,29 @@ def test_by_account_of_a_household_month(anna: TestClient, seeded: Household):
     assert exp["other"] is None  # travel nets to the other sign: neither a slice nor "other"
     travel = next(x for x in exp["categories"] if x["category_id"] == seeded.travel)
     assert {a["account_id"] for a in travel["accounts"]} == {g, u}
-    assert body["unclassified_in"] == [{"account_id": g, "line": line(2_500, 1)}]
-    assert body["unclassified_out"] == [{"account_id": g, "line": line(-300, 1)}]
-    assert body["reconciliations"] == [{"account_id": g, "line": line(-700, 1)}]
-    assert body["transfers"] == [{"from_account_id": g, "to_account_id": c, "line": line(-5_000, 1)}]
-    assert body["undrawn"] == line(-7_000, 2)
-    assert body["stayed"] == [{"account_id": g, "amount": eur(298_500)}]
+    assert body["unclassified_in"] == {
+        "total": line(2_500, 1),
+        "accounts": [{"account_id": g, "line": line(2_500, 1)}],
+    }
+    assert body["unclassified_out"] == {
+        "total": line(-300, 1),
+        "accounts": [{"account_id": g, "line": line(-300, 1)}],
+    }
+    assert body["reconciliations"] == {
+        "total": line(-700, 1),
+        "accounts": [{"account_id": g, "line": line(-700, 1)}],
+    }
+    assert body["transfers"] == [
+        {
+            "from_account_id": g,
+            "total": line(-5_000, 1),
+            "to": [{"account_id": c, "line": line(-5_000, 1)}],
+        }
+    ]
+    assert body["unpaired"] == line(-7_000, 2)
+    assert body["stayed"] == [
+        {"account_id": g, "amount": eur(298_500), "received": eur(303_500), "transferred_out": eur(-5_000)}
+    ]
 
 
 def test_by_account_totals_are_by_categorys(anna: TestClient, seeded: Household):
@@ -384,7 +401,7 @@ def test_by_account_totals_are_by_categorys(anna: TestClient, seeded: Household)
 def test_by_account_takes_the_tag_filter(anna: TestClient, seeded: Household):
     body = get(anna, BY_ACCOUNT, **{"from": "2026-09-01", "to": "2026-09-30"}, tag_id=seeded.trip)
     assert body["expense"]["total"] == line(-40_000, 1)
-    assert body["income"]["categories"] == [] and body["transfers"] == [] and body["undrawn"] == line(0, 0)
+    assert body["income"]["categories"] == [] and body["transfers"] == [] and body["unpaired"] == line(0, 0)
 
 
 def test_every_link_of_by_account_counts_what_the_ledger_list_lists_for_its_drilldown(
@@ -406,21 +423,24 @@ def test_every_link_of_by_account_counts_what_the_ledger_list_lists_for_its_dril
         for c in body[kind]["categories"]:
             for k in c["accounts"]:
                 agrees(k["line"], account_id=k["account_id"], category_id=c["category_id"])
-    for k in body["unclassified_in"]:
+    for k in body["unclassified_in"]["accounts"]:
         agrees(k["line"], account_id=k["account_id"], uncategorised="true", direction="in")
-    for k in body["unclassified_out"]:
+    for k in body["unclassified_out"]["accounts"]:
         agrees(k["line"], account_id=k["account_id"], uncategorised="true", direction="out")
-    for k in body["reconciliations"]:
+    for k in body["reconciliations"]["accounts"]:
         agrees(k["line"], account_id=k["account_id"], type="reconciliation")
     assert body["transfers"], "the household has a paired transfer"
-    for t in body["transfers"]:
-        agrees(
-            t["line"],
-            account_id=t["from_account_id"],
-            counter_account_id=t["to_account_id"],
-            type="transfer",
-            direction="out",
-        )
+    for g in body["transfers"]:
+        assert g["total"]["count"] == sum(t["line"]["count"] for t in g["to"])
+        for t in g["to"]:
+            agrees(
+                t["line"],
+                account_id=g["from_account_id"],
+                counter_account_id=t["account_id"],
+                type="transfer",
+                direction="out",
+            )
+    agrees(body["unpaired"], type="transfer", flag=["waiting", "unmatched_transfer"])
 
 
 # ---- Over time

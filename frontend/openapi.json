@@ -126,6 +126,26 @@
         "title": "AccountLinkOut",
         "type": "object"
       },
+      "AccountLinksOut": {
+        "properties": {
+          "accounts": {
+            "items": {
+              "$ref": "#/components/schemas/AccountLinkOut"
+            },
+            "title": "Accounts",
+            "type": "array"
+          },
+          "total": {
+            "$ref": "#/components/schemas/LineOut"
+          }
+        },
+        "required": [
+          "total",
+          "accounts"
+        ],
+        "title": "AccountLinksOut",
+        "type": "object"
+      },
       "AccountMatchOut": {
         "properties": {
           "closed": {
@@ -564,11 +584,7 @@
             "$ref": "#/components/schemas/KindLinksOut"
           },
           "reconciliations": {
-            "items": {
-              "$ref": "#/components/schemas/AccountLinkOut"
-            },
-            "title": "Reconciliations",
-            "type": "array"
+            "$ref": "#/components/schemas/AccountLinksOut"
           },
           "stayed": {
             "items": {
@@ -584,26 +600,18 @@
           },
           "transfers": {
             "items": {
-              "$ref": "#/components/schemas/TransferLinkOut"
+              "$ref": "#/components/schemas/TransferGroupOut"
             },
             "title": "Transfers",
             "type": "array"
           },
           "unclassified_in": {
-            "items": {
-              "$ref": "#/components/schemas/AccountLinkOut"
-            },
-            "title": "Unclassified In",
-            "type": "array"
+            "$ref": "#/components/schemas/AccountLinksOut"
           },
           "unclassified_out": {
-            "items": {
-              "$ref": "#/components/schemas/AccountLinkOut"
-            },
-            "title": "Unclassified Out",
-            "type": "array"
+            "$ref": "#/components/schemas/AccountLinksOut"
           },
-          "undrawn": {
+          "unpaired": {
             "$ref": "#/components/schemas/LineOut"
           }
         },
@@ -617,7 +625,7 @@
           "unclassified_out",
           "reconciliations",
           "transfers",
-          "undrawn",
+          "unpaired",
           "stayed"
         ],
         "title": "ByAccountOut",
@@ -6877,6 +6885,7 @@
         "type": "object"
       },
       "StayedOut": {
+        "description": "Derived, with no entries behind it: `amount` is `received` plus `transferred_out`, never below zero.",
         "properties": {
           "account_id": {
             "title": "Account Id",
@@ -6884,11 +6893,19 @@
           },
           "amount": {
             "$ref": "#/components/schemas/Money"
+          },
+          "received": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "transferred_out": {
+            "$ref": "#/components/schemas/Money"
           }
         },
         "required": [
           "account_id",
-          "amount"
+          "amount",
+          "received",
+          "transferred_out"
         ],
         "title": "StayedOut",
         "type": "object"
@@ -7771,26 +7788,46 @@
         "title": "ThisMonthSpendOut",
         "type": "object"
       },
-      "TransferLinkOut": {
+      "TransferGroupOut": {
         "properties": {
           "from_account_id": {
             "title": "From Account Id",
             "type": "integer"
           },
-          "line": {
-            "$ref": "#/components/schemas/LineOut"
+          "to": {
+            "items": {
+              "$ref": "#/components/schemas/TransferToOut"
+            },
+            "title": "To",
+            "type": "array"
           },
-          "to_account_id": {
-            "title": "To Account Id",
-            "type": "integer"
+          "total": {
+            "$ref": "#/components/schemas/LineOut"
           }
         },
         "required": [
           "from_account_id",
-          "to_account_id",
+          "total",
+          "to"
+        ],
+        "title": "TransferGroupOut",
+        "type": "object"
+      },
+      "TransferToOut": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "integer"
+          },
+          "line": {
+            "$ref": "#/components/schemas/LineOut"
+          }
+        },
+        "required": [
+          "account_id",
           "line"
         ],
-        "title": "TransferLinkOut",
+        "title": "TransferToOut",
         "type": "object"
       },
       "UnitBookingOut": {
@@ -14791,7 +14828,7 @@
     },
     "/api/reports/by-account": {
       "get": {
-        "description": "The money each account received, passed on and paid over a range, as a list of links: the\n*By category* figures cut by account, the transfers by account and counter-account, and what stayed.\nThere is no `account_id`: a transfer into a chosen account would drop out of its own account's view.",
+        "description": "The money each account received, passed on and paid over a range, as a list of links: the\n*By category* figures cut by account, the transfers by account and counter-account, the\nunpaired legs as one line, and what stayed.\nThere is no `account_id`: a transfer into a chosen account would drop out of its own account's view.",
         "operationId": "get_by_account",
         "parameters": [
           {

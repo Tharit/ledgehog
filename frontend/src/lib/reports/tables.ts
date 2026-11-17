@@ -173,9 +173,9 @@ export function notInCategories(
 // ---- By account
 
 /**
- * One row of the By account table: a group (a category, "Unclassified", a sending account) or what
- * is beneath it (an account), or a kind's total. A group of the unclassified, the reconciliations
- * and the transfers has no figure of its own: the answer gives none, and the client adds nothing.
+ * One row of the By account table: a group (a category, a line of "Not in the categories above", a
+ * sending account) or what is beneath it (an account), or a kind's total. Every figure is the
+ * answer's own: the client adds nothing.
  */
 export type AccountRow = {
 	key: string;
@@ -185,9 +185,11 @@ export type AccountRow = {
 	/** the lead tile: an icon name on a dimension colour name */
 	icon: string;
 	color: string;
-	/** null on a group the answer gives no figure for */
-	line: Line | null;
+	line: Line;
+	/** null where no ledger filter lists exactly the entries of the figure */
 	href: string | null;
+	/** what a figure without a link says it is */
+	title?: string;
 	/** a kind's total: drawn strong */
 	total?: boolean;
 	categoryId?: number;
@@ -195,17 +197,19 @@ export type AccountRow = {
 };
 
 export type AccountSection = {
-	key: 'income' | 'expense' | 'transfers';
+	key: 'income' | 'expense' | 'transfers' | 'other';
 	label: string;
 	rows: AccountRow[];
 };
 
+const SENT_TITLE =
+	'The transfers this account sent to another account. The ledger cannot list exactly these: it also has the legs that name no second account yet.';
+
 /**
  * The table beside the sankey: Income and Expense, each category (all of them, not only the slices)
- * with its accounts beneath, the kind's total, then "Unclassified" and "Reconciliations" with their
- * accounts; and Transfers, each sending account with the receiving accounts beneath. A category's
- * row is its *By category* figure. Reconciliations are on the side of their net's sign (an account
- * whose net could not be valued is listed with the income).
+ * with its accounts beneath and the kind's total; Transfers, each sending account with its total and
+ * the receiving accounts beneath; and "Not in the categories above" as *By category* has it,
+ * each line with its total and its accounts beneath. A category's row is its *By category* figure.
  */
 export function accountTable(
 	report: ByAccount,
@@ -216,11 +220,7 @@ export function accountTable(
 	const accountLook = (id: number) =>
 		accounts.get(id) ? resolveAccount(accounts.get(id)!) : { icon: OTHER_ICON, color: OTHER_COLOR };
 	const nameOf = (id: number) => accounts.get(id)?.name ?? 'Account';
-	const accountRow = (
-		prefix: string,
-		link: { account_id: number; line: Line },
-		href: string
-	): AccountRow => ({
+	const accountRow = (prefix: string, link: AccountLink, href: string | null): AccountRow => ({
 		key: `${prefix}:a${link.account_id}`,
 		label: nameOf(link.account_id),
 		depth: 1,
@@ -230,27 +230,13 @@ export function accountTable(
 		href,
 		accountId: link.account_id
 	});
-	const group = (
-		key: string,
-		label: string,
-		look: { icon: string; color: string },
-		children: AccountRow[]
-	): AccountRow[] =>
-		children.length === 0
-			? []
-			: [{ key, label, depth: 0, hasChildren: true, ...look, line: null, href: null }, ...children];
 
-	const kindSection = (
-		kind: Kind,
-		unclassified: readonly AccountLink[],
-		reconciliations: readonly AccountLink[]
-	): AccountSection => {
-		const prefix = kind;
+	const kindSection = (kind: Kind): AccountSection => {
 		const rows: AccountRow[] = [];
 		for (const row of report[kind].categories) {
 			const look = resolveCategory(categories.get(row.category_id), categories);
 			rows.push({
-				key: `${prefix}:c${row.category_id}`,
+				key: `${kind}:c${row.category_id}`,
 				label: categories.get(row.category_id)?.name ?? 'Category',
 				depth: 0,
 				hasChildren: row.accounts.length > 0,
@@ -262,7 +248,7 @@ export function accountTable(
 			for (const link of row.accounts) {
 				rows.push({
 					...accountRow(
-						`${prefix}:c${row.category_id}`,
+						`${kind}:c${row.category_id}`,
 						link,
 						accountCategoryHref(scope, link.account_id, [row.category_id])
 					),
@@ -270,77 +256,93 @@ export function accountTable(
 				});
 			}
 		}
-		const look = measureLook(kind);
 		rows.push({
-			key: `${prefix}:total`,
+			key: `${kind}:total`,
 			label: `${kind === 'income' ? 'Income' : 'Expense'}, total`,
 			depth: 0,
 			hasChildren: false,
-			...look,
+			...measureLook(kind),
 			line: report[kind].total,
 			href: kindHref(scope, kind, categories),
 			total: true
 		});
-		const direction = kind === 'income' ? 'in' : 'out';
-		rows.push(
-			...group(
-				`${prefix}:unclassified`,
-				`Unclassified, ${direction}`,
-				measureLook('unclassified'),
-				unclassified.map((l) =>
-					accountRow(
-						`${prefix}:unclassified`,
-						l,
-						accountUnclassifiedHref(scope, l.account_id, direction)
-					)
-				)
-			),
-			...group(
-				`${prefix}:reconciliations`,
-				'Reconciliations',
-				measureLook('reconciliations'),
-				reconciliations.map((l) =>
-					accountRow(
-						`${prefix}:reconciliations`,
-						l,
-						accountReconciliationsHref(scope, l.account_id)
-					)
-				)
-			)
-		);
 		return { key: kind, label: kind === 'income' ? 'Income' : 'Expense', rows };
 	};
-	const negative = (l: AccountLink) => (minorOf(l.line) ?? 0) < 0;
 
-	// each sending account once, in the order of its first (largest) transfer
-	const senders = [...new Set(report.transfers.map((t) => t.from_account_id))];
-	const transferRows = senders.flatMap((from) => {
-		const sent = report.transfers.filter((t) => t.from_account_id === from);
-		return group(
-			`transfers:a${from}`,
-			nameOf(from),
-			accountLook(from),
-			sent.map((t) => ({
-				key: `transfers:a${from}:a${t.to_account_id}`,
-				label: nameOf(t.to_account_id),
-				depth: 1,
-				hasChildren: false,
-				...accountLook(t.to_account_id),
-				line: t.line,
-				href: transferHref(scope, from, t.to_account_id),
-				accountId: t.to_account_id
-			}))
-		);
-	});
+	const transferRows = report.transfers.flatMap((group) => [
+		{
+			key: `transfers:a${group.from_account_id}`,
+			label: nameOf(group.from_account_id),
+			depth: 0,
+			hasChildren: group.to.length > 0,
+			...accountLook(group.from_account_id),
+			line: group.total,
+			href: null,
+			title: SENT_TITLE,
+			accountId: group.from_account_id
+		},
+		...group.to.map((t): AccountRow => ({
+			key: `transfers:a${group.from_account_id}:a${t.account_id}`,
+			label: nameOf(t.account_id),
+			depth: 1,
+			hasChildren: false,
+			...accountLook(t.account_id),
+			line: t.line,
+			href: transferHref(scope, group.from_account_id, t.account_id),
+			accountId: t.account_id
+		}))
+	]);
+
+	// what stands beside the tree, in By category's order and words; a line with no entries is not listed
+	const beside = [
+		{
+			key: 'unclassified-out',
+			label: 'Unclassified, out',
+			measure: 'unclassified' as const,
+			links: report.unclassified_out,
+			href: (id: number) => accountUnclassifiedHref(scope, id, 'out'),
+			total: unclassifiedHref(scope, 'out')
+		},
+		{
+			key: 'unclassified-in',
+			label: 'Unclassified, in',
+			measure: 'unclassified' as const,
+			links: report.unclassified_in,
+			href: (id: number) => accountUnclassifiedHref(scope, id, 'in'),
+			total: unclassifiedHref(scope, 'in')
+		},
+		{
+			key: 'reconciliations',
+			label: 'Reconciliations',
+			measure: 'reconciliations' as const,
+			links: report.reconciliations,
+			href: (id: number) => accountReconciliationsHref(scope, id),
+			total: reconciliationsHref(scope)
+		}
+	].flatMap((item) =>
+		item.links.total.count === 0
+			? []
+			: [
+					{
+						key: `other:${item.key}`,
+						label: item.label,
+						depth: 0,
+						hasChildren: item.links.accounts.length > 0,
+						...measureLook(item.measure),
+						line: item.links.total,
+						href: item.total
+					} satisfies AccountRow,
+					...item.links.accounts.map((l) =>
+						accountRow(`other:${item.key}`, l, item.href(l.account_id))
+					)
+				]
+	);
 
 	return [
-		kindSection(
-			'income',
-			report.unclassified_in,
-			report.reconciliations.filter((l) => !negative(l))
-		),
-		kindSection('expense', report.unclassified_out, report.reconciliations.filter(negative)),
-		{ key: 'transfers', label: 'Transfers', rows: transferRows }
+		kindSection('income'),
+		kindSection('expense'),
+		{ key: 'transfers', label: 'Transfers', rows: transferRows },
+		{ key: 'other', label: 'Not in the categories above', rows: beside }
 	];
 }
 

@@ -225,6 +225,8 @@ export function byAccountLookups(): Lookups {
  * Transfers: Giro to Savings and back, one of Giro to Depot that could not be valued, one of Depot
  * to Savings of the other sign. Giro kept 302000 less 100000 sent; Depot kept its reconciliation.
  */
+const money = (amount: number) => ({ amount, currency: 'EUR' });
+
 export function byAccount(over: Partial<ByAccount> = {}): ByAccount {
 	const link = (account_id: number, total: number | null, count = 1) => ({
 		account_id,
@@ -258,19 +260,38 @@ export function byAccount(over: Partial<ByAccount> = {}): ByAccount {
 			slices: [4, 1],
 			other: [link(2, -5000)]
 		},
-		unclassified_in: [link(1, 2000)],
-		unclassified_out: [link(1, -2500), link(3, 300)],
-		reconciliations: [link(3, 4000), link(1, -100)],
+		unclassified_in: { total: line(2000), accounts: [link(1, 2000)] },
+		unclassified_out: {
+			total: line(-2200, { count: 3 }),
+			accounts: [link(1, -2500), link(3, 300)]
+		},
+		reconciliations: {
+			total: line(3900, { count: 2 }),
+			accounts: [link(3, 4000), link(1, -100)]
+		},
+		// totals and `stayed` are the answer's own figures: some are not the sum of the links beside
+		// them, so a test of what is shown cannot pass by adding
 		transfers: [
-			{ from_account_id: 1, to_account_id: 2, line: line(-100000, { count: 2 }) },
-			{ from_account_id: 2, to_account_id: 1, line: line(-5000) },
-			{ from_account_id: 1, to_account_id: 3, line: line(null) },
-			{ from_account_id: 3, to_account_id: 2, line: line(300) }
+			{
+				from_account_id: 1,
+				total: line(-110000, { count: 3 }),
+				to: [
+					{ account_id: 2, line: line(-100000, { count: 2 }) },
+					{ account_id: 3, line: line(null) }
+				]
+			},
+			{ from_account_id: 2, total: line(-5000), to: [{ account_id: 1, line: line(-5000) }] },
+			{ from_account_id: 3, total: line(300), to: [{ account_id: 2, line: line(300) }] }
 		],
-		undrawn: line(-7000, { count: 2 }),
+		unpaired: line(-7000, { count: 2 }),
 		stayed: [
-			{ account_id: 1, amount: { amount: 202000, currency: 'EUR' } },
-			{ account_id: 3, amount: { amount: 4000, currency: 'EUR' } }
+			{
+				account_id: 1,
+				amount: money(202000),
+				received: money(305000),
+				transferred_out: money(-103000)
+			},
+			{ account_id: 3, amount: money(4000), received: money(4000), transferred_out: money(0) }
 		],
 		...over
 	};

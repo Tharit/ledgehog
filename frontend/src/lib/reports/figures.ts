@@ -51,7 +51,8 @@ export function byCategoryHref(from: string, to: string): string {
 }
 
 /** The transfer legs that still wait for a partner or have none (spec §6). */
-export const UNPAIRED_TRANSFERS_HREF = ledgerHref({
+export const UNPAIRED_TRANSFERS_FILTER = {
 	type: ['transfer'],
 	flag: ['waiting', 'unmatched_transfer']
-});
+} satisfies Partial<LedgerFilterState>;
+export const UNPAIRED_TRANSFERS_HREF = ledgerHref(UNPAIRED_TRANSFERS_FILTER);

@@ -3,9 +3,11 @@
 What each account received, passed on and paid. The flows are the by-category figures cut by account:
 per kind, every top-level category (with its descendants) and the accounts behind it, the categories
 beyond `top` summed per account as "other", and per account the unclassified money in and out and its
-reconciliations as one net link. The transfers are counted once, by the outgoing leg, between the leg's
-account and its counter-account; the transfer legs that are in no link are one `undrawn` line.
-`stayed` is derived: what an account received on the income side, less what it transferred out.
+reconciliations as one net link, each group with its total. The transfers are counted once, by the
+outgoing leg, per sending account and counter-account (a leg with `amount < 0` and a counter-account,
+paired or not). Every unpaired transfer leg is one `unpaired` line (the Overview's figure cut to the
+filter); of them only an outgoing leg with a counter-account is also in a link. `stayed` is derived: what
+an account received on the income side, less what it transferred out, with both components.
 
 Two statements, both selecting through `app.core.ledger.compose` like every report, each entry valued once
 (`base_value()`, I27): the flows grouped by account, class and category, and the transfer legs grouped by
@@ -17,7 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import Connection, and_, case, func, or_, select
+from sqlalchemy import Connection, and_, func, or_, select
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.core.ledger import LedgerFilter, compose
@@ -41,6 +43,12 @@ class CategoryLinks:
 
 
 @dataclass(frozen=True)
+class AccountLinks:
+    total: Line  # the group's Line: the sum of its links, by-category's figure for the same range
+    accounts: tuple[AccountLink, ...]
+
+
+@dataclass(frozen=True)
 class KindLinks:
     total: Line  # the by-category total of the kind
     categories: tuple[CategoryLinks, ...]  # top-level, by magnitude; only those with entries
@@ -49,34 +57,43 @@ class KindLinks:
 
 
 @dataclass(frozen=True)
-class TransferLink:
-    from_account_id: int
-    to_account_id: int
+class TransferTo:
+    account_id: int  # the leg's counter-account
     line: Line  # negative: the outgoing legs
+
+
+@dataclass(frozen=True)
+class TransferGroup:
+    from_account_id: int
+    total: Line  # the sum of its `to` lines
+    to: tuple[TransferTo, ...]
 
 
 @dataclass(frozen=True)
 class Stayed:
     account_id: int
-    amount: int  # minor units of the base currency, positive
+    amount: int  # minor units of the base currency, positive: received + transferred_out
+    received: int  # the drawn income-side links, summed
+    transferred_out: int  # the outgoing transfers, signed as booked (<= 0)
 
 
 @dataclass(frozen=True)
 class ByAccount:
     income: KindLinks
     expense: KindLinks
-    unclassified_in: tuple[AccountLink, ...]
-    unclassified_out: tuple[AccountLink, ...]
-    reconciliations: tuple[AccountLink, ...]  # one net link per account
-    transfers: tuple[TransferLink, ...]
-    undrawn: Line
+    unclassified_in: AccountLinks
+    unclassified_out: AccountLinks
+    reconciliations: AccountLinks  # accounts: one net link each
+    transfers: tuple[TransferGroup, ...]
+    unpaired: Line
     stayed: tuple[Stayed, ...]
 
 
 def _order(link: Any) -> tuple[int, ...]:
     """Largest magnitude first (an unvalued total counts as 0), then by id(s)."""
-    ids = (link.account_id,) if hasattr(link, "account_id") else (link.from_account_id, link.to_account_id)
-    return (-abs(link.line.total or 0), *ids)
+    line = link.total if hasattr(link, "total") else link.line
+    ident = link.from_account_id if hasattr(link, "from_account_id") else link.account_id
+    return (-abs(line.total or 0), ident)
 
 
 def _links(by_account: dict[int, list[Line]]) -> tuple[AccountLink, ...]:
@@ -122,20 +139,21 @@ def _flows(conn: Connection, flt: LedgerFilter) -> dict[tuple[int, str, int | No
 
 
 def _transfer_lines(conn: Connection, flt: LedgerFilter) -> tuple[dict[tuple[int, int], Line], Line]:
-    """The outgoing legs with a counter-account by (account, counter-account), and the undrawn line.
+    """The outgoing legs with a counter-account by (account, counter-account), and the unpaired line.
 
-    Undrawn: the legs with no counter-account, and the incoming legs with no counterpart entry. An
-    incoming leg that has a counterpart is in neither (its pair's outgoing leg stands for it).
+    A link: `amount < 0` with a counter-account, paired or not. Unpaired: every transfer leg with no
+    counterpart entry, either sign, with or without a counter-account (the predicate of the Overview's
+    `unpaired_transfers`). An unpaired outgoing leg with a counter-account is in both; an incoming leg is
+    in no link. Each leg is valued once; the two sets are told apart on the grouped rows.
     """
     parts = compose(flt)
     base = func.base_value(le.c.amount, le.c.currency, le.c.booked_on)
-    drawn: ColumnElement[bool] = and_(le.c.amount < 0, le.c.counter_account_id.is_not(None))
-    undrawn: ColumnElement[bool] = or_(
-        le.c.counter_account_id.is_(None), and_(le.c.amount > 0, le.c.counterpart_entry_id.is_(None))
-    )
+    in_link: ColumnElement[bool] = and_(le.c.amount < 0, le.c.counter_account_id.is_not(None))
+    unpaired: ColumnElement[bool] = le.c.counterpart_entry_id.is_(None)
     entries = (
         select(
-            case((drawn, "transfer"), else_="undrawn").label("klass"),
+            in_link.label("in_link"),
+            unpaired.label("unpaired"),
             le.c.account_id.label("account_id"),
             le.c.counter_account_id.label("counter_account_id"),
             le.c.currency.label("currency"),
@@ -143,12 +161,13 @@ def _transfer_lines(conn: Connection, flt: LedgerFilter) -> tuple[dict[tuple[int
             base.label("base"),
         )
         .select_from(parts.source)
-        .where(*parts.where, le.c.type == "transfer", or_(drawn, undrawn))
+        .where(*parts.where, le.c.type == "transfer", or_(in_link, unpaired))
         .cte("legs")
         .prefix_with("MATERIALIZED")
     )
     stmt = select(
-        entries.c.klass,
+        entries.c.in_link,
+        entries.c.unpaired,
         entries.c.account_id,
         entries.c.counter_account_id,
         entries.c.currency,
@@ -156,17 +175,23 @@ def _transfer_lines(conn: Connection, flt: LedgerFilter) -> tuple[dict[tuple[int
         func.count().filter(entries.c.base.is_(None)).label("n_unvalued"),
         func.coalesce(func.sum(entries.c.base), 0).label("base_sum"),
         func.coalesce(func.sum(entries.c.amount).filter(entries.c.base.is_(None)), 0).label("unvalued_sum"),
-    ).group_by(entries.c.klass, entries.c.account_id, entries.c.counter_account_id, entries.c.currency)
+    ).group_by(
+        entries.c.in_link,
+        entries.c.unpaired,
+        entries.c.account_id,
+        entries.c.counter_account_id,
+        entries.c.currency,
+    )
     pairs: dict[tuple[int, int], list[Line]] = {}
     left: list[Line] = []
     for r in conn.execute(stmt):
         one = line_of_group(
             str(r.currency), int(r.n), int(r.n_unvalued), int(r.base_sum), int(r.unvalued_sum)
         )
-        if r.klass == "undrawn":
-            left.append(one)
-        else:
+        if r.in_link:
             pairs.setdefault((int(r.account_id), int(r.counter_account_id)), []).append(one)
+        if r.unpaired:
+            left.append(one)
     return {key: add(lines) for key, lines in pairs.items()}, add(left)
 
 
@@ -208,7 +233,9 @@ def _kind(
     )
     accounts = {r: {a: add(ls) for a, ls in by.items()} for r, by in per_root.items()}
     if top is None:
-        return KindLinks(total, categories, None, None), accounts, [n.category_id for n in roots]
+        # no limit: the categories pick_slices would choose (not the opposite-sign ones) count as slices
+        unlimited, _ = pick_slices(nodes, kind, len(roots))
+        return KindLinks(total, categories, None, None), accounts, [n.category_id for n in unlimited]
     chosen, rest = pick_slices(nodes, kind, top)
     other: dict[int, list[Line]] = {}
     for n in rest:
@@ -228,21 +255,33 @@ def by_account(conn: Connection, flt: LedgerFilter, top: int | None = None) -> B
     income, income_accounts, drawn_categories = _kind(conn, flows, "income", top)
     expense, _, _ = _kind(conn, flows, "expense", top)
 
-    def beside(klass: str) -> tuple[AccountLink, ...]:
-        return _links({a: [line] for (a, k, _), line in flows.items() if k == klass})
+    def beside(klass: str) -> AccountLinks:
+        links = _links({a: [line] for (a, k, _), line in flows.items() if k == klass})
+        return AccountLinks(add(k.line for k in links), links)
 
     unclassified_in = beside("unclassified_in")
     unclassified_out = beside("unclassified_out")
     reconciliations = beside("reconciliation")
-    out, undrawn = _transfer_lines(conn, flt)
-    transfers = tuple(sorted((TransferLink(a, b, line) for (a, b), line in out.items()), key=_order))
+    out, unpaired = _transfer_lines(conn, flt)
+    to_by_sender: dict[int, list[TransferTo]] = {}
+    for (a, b), line in out.items():
+        to_by_sender.setdefault(a, []).append(TransferTo(b, line))
+    transfers = tuple(
+        sorted(
+            (
+                TransferGroup(a, add(t.line for t in tos), tuple(sorted(tos, key=_order)))
+                for a, tos in to_by_sender.items()
+            ),
+            key=_order,
+        )
+    )
 
     # what each account drew on the income side: the links with a positive total
-    drawn: dict[int, int] = {}
+    received: dict[int, int] = {}
 
     def draw(account: int, line: Line) -> None:
         if line.total is not None and line.total > 0:
-            drawn[account] = drawn.get(account, 0) + line.total
+            received[account] = received.get(account, 0) + line.total
 
     for cat in drawn_categories:
         for a, line in income_accounts.get(cat, {}).items():
@@ -250,14 +289,16 @@ def by_account(conn: Connection, flt: LedgerFilter, top: int | None = None) -> B
     if income.other is not None:
         for link in income.other:
             draw(link.account_id, link.line)
-    for link in (*unclassified_in, *reconciliations):
+    for link in (*unclassified_in.accounts, *reconciliations.accounts):
         draw(link.account_id, link.line)
-    passed_on: dict[int, int] = {}
-    for t in transfers:
-        passed_on[t.from_account_id] = passed_on.get(t.from_account_id, 0) - (t.line.total or 0)
+    transferred_out = {g.from_account_id: g.total.total or 0 for g in transfers}  # unvalued counts as 0
     stayed = tuple(
         sorted(
-            (Stayed(a, kept) for a, got in drawn.items() if (kept := got - passed_on.get(a, 0)) > 0),
+            (
+                Stayed(a, kept, got, transferred_out.get(a, 0))
+                for a, got in received.items()
+                if (kept := got + transferred_out.get(a, 0)) > 0
+            ),
             key=lambda s: (-s.amount, s.account_id),
         )
     )
@@ -268,6 +309,6 @@ def by_account(conn: Connection, flt: LedgerFilter, top: int | None = None) -> B
         unclassified_out=unclassified_out,
         reconciliations=reconciliations,
         transfers=transfers,
-        undrawn=undrawn,
+        unpaired=unpaired,
         stayed=stayed,
     )

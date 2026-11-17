@@ -150,7 +150,8 @@ describe('accountSankey: the links', () => {
 			line: null,
 			color: 'stone'
 		});
-		expect(band.stayed).toEqual({ received: 302000, transferredOut: 100000 });
+		// the answer's own figures, not the sum of the links beside the band (302000 and -100000)
+		expect(band.stayed).toEqual({ received: 305000, transferredOut: -103000 });
 		expect(link('1:a3>2:a3').stayed).toEqual({ received: 4000, transferredOut: 0 });
 		expect(STAYED_OPACITY).toBeLessThan(0.35);
 	});
@@ -179,7 +180,10 @@ describe('accountSankey: the links', () => {
 
 	it('draws nothing for a side with no drawn link, and no node for it', () => {
 		const m = accountSankey(
-			byAccount({ unclassified_in: [], income: { ...byAccount().income, other: [] } }),
+			byAccount({
+				unclassified_in: { total: line(0), accounts: [] },
+				income: { ...byAccount().income, other: [] }
+			}),
 			categories,
 			accounts,
 			scope
@@ -201,13 +205,22 @@ describe('accountSankey: the links', () => {
 });
 
 describe('accountSankey: the notes', () => {
-	it('names the transfer legs that cannot be drawn, with their count', () => {
-		expect(model().notes.undrawn).toEqual(byAccount().undrawn);
+	it('names the transfers not paired yet, with the ledger filter for them', () => {
+		const unpaired = model().notes.unpaired!;
+		expect(unpaired.line).toEqual(byAccount().unpaired);
+		// the Overview's filter (type and the two flags), cut to the period and the tags
+		expect(query(unpaired.href)).toEqual({
+			from: ['2026-10-01'],
+			to: ['2026-10-31'],
+			tag_id: ['4'],
+			type: ['transfer'],
+			flag: ['waiting', 'unmatched_transfer']
+		});
 	});
 
 	it('has none when there are no such legs', () => {
-		const m = accountSankey(byAccount({ undrawn: line(0) }), categories, accounts, scope);
-		expect(m.notes.undrawn).toBeNull();
+		const m = accountSankey(byAccount({ unpaired: line(0) }), categories, accounts, scope);
+		expect(m.notes.unpaired).toBeNull();
 	});
 });
 
@@ -291,11 +304,11 @@ describe('accountSankey: every link drills into the ledger with its filter', () 
 
 describe('layerPlan', () => {
 	const none = {
-		unclassified_in: [],
-		unclassified_out: [],
-		reconciliations: [],
+		unclassified_in: { total: line(0), accounts: [] },
+		unclassified_out: { total: line(0), accounts: [] },
+		reconciliations: { total: line(0), accounts: [] },
 		transfers: [],
-		undrawn: line(0),
+		unpaired: line(0),
 		stayed: []
 	};
 	const link = (account_id: number, total: number) => ({ account_id, line: line(total) });
@@ -338,7 +351,14 @@ describe('layerPlan', () => {
 				slices: [4],
 				other: []
 			},
-			stayed: [{ account_id: 1, amount: { amount: 300000, currency: 'EUR' } }]
+			stayed: [
+				{
+					account_id: 1,
+					amount: { amount: 300000, currency: 'EUR' },
+					received: { amount: 300000, currency: 'EUR' },
+					transferred_out: { amount: 0, currency: 'EUR' }
+				}
+			]
 		});
 		const plan = layerPlan(accountSankey(answer, categories, accounts, scope));
 		expect(plan.layers).toEqual({ 0: 0, 1: 1, 2: 2, 3: 3 });

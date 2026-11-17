@@ -322,15 +322,29 @@ class KindLinksOut(BaseModel):
     other: list[AccountLinkOut] | None  # with `top`: the remaining ones summed per account; null if none
 
 
-class TransferLinkOut(BaseModel):
-    from_account_id: int
-    to_account_id: int  # the leg's counter-account
+class AccountLinksOut(BaseModel):
+    total: LineOut  # the group's figure: the sum of its links, as *By category* gives it
+    accounts: list[AccountLinkOut]
+
+
+class TransferToOut(BaseModel):
+    account_id: int  # the receiving account: the leg's counter-account
     line: LineOut  # the outgoing legs: negative
 
 
+class TransferGroupOut(BaseModel):
+    from_account_id: int
+    total: LineOut  # the sum of `to`
+    to: list[TransferToOut]
+
+
 class StayedOut(BaseModel):
+    """Derived, with no entries behind it: `amount` is `received` plus `transferred_out`, never below zero."""
+
     account_id: int
-    amount: Money  # base currency, positive: derived, with no entries behind it
+    amount: Money  # base currency, positive
+    received: Money  # the account's drawn income-side links, summed
+    transferred_out: Money  # its outgoing transfers, signed as booked (zero or negative)
 
 
 class ByAccountOut(BaseModel):
@@ -339,16 +353,20 @@ class ByAccountOut(BaseModel):
     to: date
     income: KindLinksOut
     expense: KindLinksOut
-    unclassified_in: list[AccountLinkOut]
-    unclassified_out: list[AccountLinkOut]
-    reconciliations: list[AccountLinkOut]  # one net link per account
-    transfers: list[TransferLinkOut]  # each pair of account and counter-account, the outgoing legs only
-    undrawn: LineOut  # the transfer legs in no link: no counter-account, or incoming with no partner
+    unclassified_in: AccountLinksOut
+    unclassified_out: AccountLinksOut
+    reconciliations: AccountLinksOut  # one net link per account
+    transfers: list[TransferGroupOut]  # per sending account, the outgoing legs with a counter-account
+    unpaired: LineOut  # every unpaired transfer leg: the Overview's figure cut to the filter
     stayed: list[StayedOut]  # per account: received on the income side less transferred out, if positive
 
 
 def _account_links(links: tuple[rp.AccountLink, ...], base: str) -> list[AccountLinkOut]:
     return [AccountLinkOut(account_id=k.account_id, line=LineOut.of(k.line, base)) for k in links]
+
+
+def _group(group: rp.AccountLinks, base: str) -> AccountLinksOut:
+    return AccountLinksOut(total=LineOut.of(group.total, base), accounts=_account_links(group.accounts, base))
 
 
 def _kind_links(kind: rp.KindLinks, base: str) -> KindLinksOut:
@@ -378,7 +396,8 @@ def get_by_account(
     top: Annotated[int | None, Query(ge=1, le=50)] = None,
 ) -> ByAccountOut:
     """The money each account received, passed on and paid over a range, as a list of links: the
-    *By category* figures cut by account, the transfers by account and counter-account, and what stayed.
+    *By category* figures cut by account, the transfers by account and counter-account, the
+    unpaired legs as one line, and what stayed.
     There is no `account_id`: a transfer into a chosen account would drop out of its own account's view."""
     base: str = request.app.state.config.base_currency
     flt = rp.entry_filter(from_, to, (), tag_id or ())
@@ -390,20 +409,25 @@ def get_by_account(
         to=to,
         income=_kind_links(got.income, base),
         expense=_kind_links(got.expense, base),
-        unclassified_in=_account_links(got.unclassified_in, base),
-        unclassified_out=_account_links(got.unclassified_out, base),
-        reconciliations=_account_links(got.reconciliations, base),
+        unclassified_in=_group(got.unclassified_in, base),
+        unclassified_out=_group(got.unclassified_out, base),
+        reconciliations=_group(got.reconciliations, base),
         transfers=[
-            TransferLinkOut(
-                from_account_id=t.from_account_id,
-                to_account_id=t.to_account_id,
-                line=LineOut.of(t.line, base),
+            TransferGroupOut(
+                from_account_id=g.from_account_id,
+                total=LineOut.of(g.total, base),
+                to=[TransferToOut(account_id=t.account_id, line=LineOut.of(t.line, base)) for t in g.to],
             )
-            for t in got.transfers
+            for g in got.transfers
         ],
-        undrawn=LineOut.of(got.undrawn, base),
+        unpaired=LineOut.of(got.unpaired, base),
         stayed=[
-            StayedOut(account_id=s.account_id, amount=Money(amount=s.amount, currency=base))
+            StayedOut(
+                account_id=s.account_id,
+                amount=Money(amount=s.amount, currency=base),
+                received=Money(amount=s.received, currency=base),
+                transferred_out=Money(amount=s.transferred_out, currency=base),
+            )
             for s in got.stayed
         ],
     )

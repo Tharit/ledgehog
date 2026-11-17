@@ -25,11 +25,13 @@ from app.core.reporting.balances import (
 )
 from app.core.reporting.by_account import (
     AccountLink,
+    AccountLinks,
     ByAccount,
     CategoryLinks,
     KindLinks,
     Stayed,
-    TransferLink,
+    TransferGroup,
+    TransferTo,
     by_account,
 )
 from app.core.reporting.facts import KIND_SIGN, Facts, count_matching, entry_filter, fetch
@@ -73,6 +75,7 @@ __all__ = [
     "STEPS",
     "AccountBalance",
     "AccountLink",
+    "AccountLinks",
     "AccountSeries",
     "BalancesReport",
     "ByAccount",
@@ -103,7 +106,8 @@ __all__ = [
     "Step",
     "ThisMonthSpend",
     "TooManyPeriods",
-    "TransferLink",
+    "TransferGroup",
+    "TransferTo",
     "Unvalued",
     "UnvaluedAccounts",
     "add",
