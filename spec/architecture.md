@@ -604,14 +604,14 @@ and one link per account), the ids of the largest `top` categories of the
 kind's sign, and the remaining ones summed per account as "other". Beside
 them, each with its total and one link per account: unclassified in,
 unclassified out, and reconciliations, an account's as one net link.
-`transfers` holds, per sending account, its total and one link per
-counter-account: the outgoing legs only. `unpaired` is the line of the
-unpaired transfer legs, of which only an outgoing one with a counter-account
-is also in a link. `stayed` is derived, per account: what it received from the
-links drawn on the income side, less its transfers out, never below zero,
-given with both components. The route takes `from`, `to`, `tag_id` and `top`,
-and no `account_id`: the predicate selects a leg by its own account, which
-would drop the transfers into a chosen account.
+`transfers` holds, per sending account, its total, one link per
+counter-account for its paired outgoing legs, and one link to no account for
+its unpaired ones. A last group, with no sending account, holds the unpaired
+incoming legs, one link per account. `stayed` is derived, per account: what it
+received from the links drawn on the income side, less its transfers out,
+never below zero. The route takes `from`, `to`, `tag_id` and `top`, and no
+`account_id`: the predicate selects a leg by its own account, which would drop
+the transfers into a chosen account.
 
 **Starting a sync is validated as a whole**: nothing starts if any item is
 refused. An unknown instance or account is 404 `not_found`, an account not
@@ -811,8 +811,7 @@ them all, these are the ones that carry a rule.
   dimension are alternatives (OR); dimensions combine (AND).** An entry matches `tag_id` by carrying any of
   the tags, and `flag` by carrying any of the review tokens (`spec.md` §6). An entry with no type yet matches
   no `type`.
-- `counter_account_id` selects the transfer legs with that counter-account; an entry without one matches
-  none.
+- `counter_account_id` selects the transfer legs with that counter-account; an entry without one matches none. `no_counter_account=true` adds the transfer legs that have none to the counter-account dimension, so with `counter_account_id` it is an alternative, not a restriction. `paired=true` keeps the transfer legs that have a partner; any other entry matches none.
 - `category_id` includes the category's descendants; `category_descendants=false` asks for the category
   itself. `uncategorised=true` adds the entries that could have a category and have none (type `flow`, or no
   type yet; never a transfer or a derived entry) to the category dimension, so with `category_id` it is an
@@ -2568,7 +2567,7 @@ Layers:
   cell of a seeded ledger, the entries the cell's filter lists are as many as
   it counts and sum to its total; the by-account links of a kind summing to
   its by-category figures, a pair counted once by its outgoing leg, a transfer
-  there and back as two links, and every unpaired leg on the unpaired line;
+  there and back as two links, an unpaired outgoing leg in its account's link to no account whether or not it names a counter-account, and an unpaired incoming leg in the link from no account to its own;
   one savings computation, the Overview's and
   the over-time report's alike, its rate null on income of zero or less and
   its marker per cause; periods bucketed in the household's zone.

@@ -3081,11 +3081,14 @@ Every figure is in the base currency (§3.8). Periods bucket entries by
 - **Money by account** is what each account received, passed on and paid in a
   range. Its flows are the *Spend by category* figures cut by account, income
   and expense alike, with unclassified money in and out and each account's
-  reconciliations beside them. Its transfers are counted once each, by the
-  outgoing leg at that leg's `booked_on` rate, between the leg's account and
-  its counter-account. The unpaired legs are one line beside the picture; of
-  them only an outgoing leg with a counter-account is also in it. Transfers
-  stay out of income, expense and savings here as everywhere.
+  reconciliations beside them. A paired transfer is counted once, by its
+  outgoing leg, from that leg's account to its counter-account. An unpaired
+  leg is counted by itself, against no account: an outgoing one from its
+  account, an incoming one to its own, whether or not it names a
+  counter-account yet. Each is valued at the counted leg's `booked_on` rate.
+  Two legs of one transfer that are not paired yet are thus both counted until
+  they are, and neither against a real account. Transfers stay out of income,
+  expense and savings here as everywhere.
 - **Net worth today** takes every account's full balance, as the account list
   shows it; a net worth at an earlier date, and its history, cut the entries at
   that date and convert at its rate.
@@ -3108,8 +3111,11 @@ values of one dimension are alternatives; the dimensions combine. One good
 filter bar replaces most reports.
 
 - **Dates** select by `booked_on` and are inclusive at both ends.
-- **A counter-account** selects the transfer legs whose counter-account it
-  is (§5.7); no other entry has one.
+- **A counter-account** selects the transfer legs whose counter-account it is
+  (§5.7); no other entry has one. **Without a counter-account** selects the
+  transfer legs that have none yet, and is an alternative to the
+  counter-accounts chosen beside it. **Paired** narrows to the transfer legs
+  that have a partner.
 - **A category includes its descendants,** unless the filter asks for exactly
   that category. **Uncategorised** selects the entries that could have a
   category and have none — flows, and entries with no type yet, never

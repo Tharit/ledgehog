@@ -4164,3 +4164,20 @@ spec §5.7.
 - **The raw counterparty name, not the resolved payee:** a source's text is fixed once written, and a payee changes with resolution.
 - Accepted: history and rules see a longer purpose on the counter-account; the counter-leg's type and counter-account carry standing keys, so nothing on it is derived again. Stored counter-legs keep their purpose. A transfer booking takes the new text at its next settle, which leaves its entry's values as they are (§5.8).
 - Rejected: *the name in the counter-leg's own counterparty field* (payee resolution and counterparty rules would act on the cash side of every withdrawal); *the partner's text joined at display time* (a live link between two legs that are separate once created).
+
+## D267 The band of money that stayed shows its amount alone; no flow is thinner than a pixel
+
+Partly supersedes D265. ux/views/reports.md; ux/design.md §8; architecture §4.1.
+
+- **The band's tooltip gives what stayed and nothing else** (user, 2026-11-17). A tooltip describes the flow under the pointer; what the account received and transferred out are other flows, drawn beside it with tooltips of their own. It is the one derived figure whose tooltip does not name its components, because here they are on screen. The answer drops the two components again, since nothing shows them. Rejected: *keeping them as a second, muted line* (still flows that are not the hovered one).
+- **A link or node is at least 1px** (user, 2026-11-17), so that a small flow beside a large one is a visible line. Accepted: such a flow is drawn slightly larger than its share.
+
+## D268 By account draws paired transfers between accounts, and unpaired legs to or from "Unpaired"
+
+Partly supersedes D265. spec §8; architecture §4.1, §8; ux/views/reports.md.
+
+- **A pair is counted by its outgoing leg, between its two accounts; an unpaired leg by itself, to or from a node "Unpaired"** (user, 2026-11-17), whether or not it names a counter-account yet. Under D265 such legs were counted in a note beneath the chart, some of them drawn as well, and an outgoing leg that named no second account was missing from the picture. The note and its line in the answer go.
+- **Two unpaired legs of one transfer meet at "Unpaired" on both sides,** so no account shows the money twice. The state is transient, and the node is what points at the entries to resolve. Rejected: *"Unknown account"* (an unpaired leg may well know its counter-account); *drawing an unpaired leg to or from the counter-account it names* (where both legs exist the receiver would show the money twice, and an incoming leg drawn from an account would make that link two ledger filters, not one).
+- **Every transfer row links.** A sending account's total is all its outgoing transfers; "Unpaired" as sender is the unpaired incoming legs. D265 had to leave the sending account's total a plain figure.
+- **The ledger filters for paired transfer legs** (user, 2026-11-17), offered in the Account chip's counter-account section. A link between two accounts needs it: the counter-account alone also lists the unpaired legs that name it. The unpaired side uses the review flags the Overview's figure uses.
+- **The ledger also filters for transfer legs without a counter-account** (user, 2026-11-17), an alternative within the counter-account dimension as "uncategorised" is within the category dimension, offered in the same section of the chip. No figure of the report needs it; it completes the dimension, and finds such legs in any period where the review queue shows only the open ones.

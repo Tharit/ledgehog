@@ -384,7 +384,7 @@ section numbers in this table are `patterns.md`'s.
   link takes its category's colour at 35 %; a transfer is `stone` at 35 %,
   and the band of money that stayed in an account `stone` at 20 %. Every
   link's tooltip names its category or "Transfer", its two ends and its
-  amount.
+  amount. No link or node is drawn thinner than 1px.
 
 ## 9. Mascot and brand
 
