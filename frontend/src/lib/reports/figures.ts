@@ -3,6 +3,7 @@
 // what it sums (spec §8: the entries behind a figure are exactly the entries its drill-down lists).
 import { formatMoney } from '#lib/format/index.js';
 import { emptyFilter, toSearchParams, type LedgerFilterState } from '#lib/ledger/filter.js';
+import { UNPAIRED_FLAGS } from '#lib/ledger/review.js';
 import type { Line } from './types.js';
 
 /** How many entries of a line could not be valued. */
@@ -53,6 +54,6 @@ export function byCategoryHref(from: string, to: string): string {
 /** The transfer legs that still wait for a partner or have none (spec §6). */
 export const UNPAIRED_TRANSFERS_FILTER = {
 	type: ['transfer'],
-	flag: ['waiting', 'unmatched_transfer']
+	flag: [...UNPAIRED_FLAGS]
 } satisfies Partial<LedgerFilterState>;
 export const UNPAIRED_TRANSFERS_HREF = ledgerHref(UNPAIRED_TRANSFERS_FILTER);

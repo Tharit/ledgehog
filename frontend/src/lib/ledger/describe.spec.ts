@@ -81,7 +81,15 @@ describe('describeFilter', () => {
 	});
 
 	it('names review flags and entry types', () => {
-		expect(describe_({ flag: ['waiting'] })[0]).toEqual({ key: 'flag', label: 'Waiting' });
+		expect(describe_({ flag: ['waiting'] })[0]).toEqual({
+			key: 'flag',
+			label: 'Unpaired: Waiting'
+		});
+		expect(describe_({ flag: ['unmatched_transfer'] })[0].label).toBe('Unpaired: Unmatched');
+		expect(describe_({ flag: ['unmatched_transfer', 'waiting'] })[0].label).toBe('Unpaired');
+		expect(describe_({ flag: ['waiting', 'unmatched_transfer', 'unconfirmed'] })[0].label).toBe(
+			'3 review flags'
+		);
 		expect(describe_({ flag: ['waiting', 'unconfirmed'] })[0].label).toBe('2 review flags');
 		expect(describe_({ type: ['flow', 'transfer'] })[0].label).toBe('Type: Flow, Transfer');
 	});

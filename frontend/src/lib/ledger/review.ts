@@ -4,9 +4,12 @@ import { REVIEW_FLAGS } from './filter.js';
 export const REVIEW_FLAG_INFO: Readonly<Record<string, { name: string; sentence: string }>> = {
 	unconfirmed: { name: 'Unconfirmed', sentence: 'Values are proposals' },
 	unclassified: { name: 'Unclassified', sentence: 'Type or category missing' },
-	waiting: { name: 'Waiting', sentence: 'Partner still expected' },
-	unmatched_transfer: { name: 'Unmatched transfer', sentence: 'Transfer leg without a partner' }
+	waiting: { name: 'Unpaired: Waiting', sentence: 'Partner still expected' },
+	unmatched_transfer: { name: 'Unpaired: Unmatched', sentence: 'Transfer leg without a partner' }
 };
+
+/** The two flags that together mean an unpaired transfer leg (spec §6). */
+export const UNPAIRED_FLAGS = ['waiting', 'unmatched_transfer'] as const;
 
 /** The tokens in the order the badges and the filter list them. */
 export const REVIEW_FLAG_ORDER: readonly string[] = REVIEW_FLAGS;

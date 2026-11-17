@@ -78,7 +78,7 @@ describe('FilterBar: chips', () => {
 		expect(screen.getByRole('button', { name: 'Oct 1 – Oct 11' })).toBeInTheDocument();
 		expect(screen.getByRole('button', { name: 'Giro' })).toBeInTheDocument();
 		expect(screen.getByRole('button', { name: 'Lisbon trip' })).toBeInTheDocument();
-		expect(screen.getByRole('button', { name: 'Waiting' })).toBeInTheDocument();
+		expect(screen.getByRole('button', { name: 'Unpaired: Waiting' })).toBeInTheDocument();
 		expect(screen.getByRole('button', { name: 'Out · ≥ 50.00 EUR' })).toBeInTheDocument();
 	});
 
@@ -371,8 +371,15 @@ describe('FilterBar: the review state chip', () => {
 			'title',
 			'Partner still expected'
 		);
-		expect(within(list).getByRole('checkbox', { name: 'Waiting' })).toBeInTheDocument();
+		expect(within(list).getByRole('checkbox', { name: 'Unpaired: Waiting' })).toBeInTheDocument();
+		expect(within(list).getByRole('checkbox', { name: 'Unpaired: Unmatched' })).toBeInTheDocument();
 		expect(list.querySelector('span[style*="--tile-fg"]')).toBeNull();
+	});
+
+	it('calls the two unpaired flags together "Unpaired"', () => {
+		bar({ flag: ['waiting', 'unmatched_transfer'] });
+
+		expect(screen.getByRole('button', { name: 'Unpaired' })).toBeInTheDocument();
 	});
 });
 

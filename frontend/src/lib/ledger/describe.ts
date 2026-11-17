@@ -2,7 +2,7 @@
 import { formatDate, formatDateRange, formatMoney } from '#lib/format/index.js';
 import type { EntryFilter } from '#lib/types/domain.js';
 import type { Lookups } from './lookups.js';
-import { REVIEW_FLAG_INFO } from './review.js';
+import { REVIEW_FLAG_INFO, UNPAIRED_FLAGS } from './review.js';
 import { ENTRY_TYPE_INFO } from './types.js';
 
 export type FilterKey =
@@ -88,11 +88,16 @@ export function describeFilter(
 	if (amount) add('amount', amount);
 
 	if (filter.flag.length) {
+		const unpaired =
+			filter.flag.length === UNPAIRED_FLAGS.length &&
+			UNPAIRED_FLAGS.every((flag) => filter.flag.includes(flag));
 		add(
 			'flag',
-			filter.flag.length === 1
-				? (REVIEW_FLAG_INFO[filter.flag[0]]?.name ?? filter.flag[0])
-				: `${filter.flag.length} review flags`
+			unpaired
+				? 'Unpaired'
+				: filter.flag.length === 1
+					? (REVIEW_FLAG_INFO[filter.flag[0]]?.name ?? filter.flag[0])
+					: `${filter.flag.length} review flags`
 		);
 	}
 
