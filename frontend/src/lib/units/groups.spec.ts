@@ -168,12 +168,13 @@ describe('the ghost group of a counter-leg', () => {
 				account_id: 2,
 				booked_on: '2026-10-11',
 				amount: { amount: 5000, currency: 'EUR' },
-				description: 'Savings top-up',
+				description: null,
 				source_transaction_id: -7,
 				derivation: {}
 			}),
 			{
 				original: false,
+				purpose: 'Savings top-up',
 				in_unit: true,
 				counter_leg_for: 1,
 				transfer: transferOut({ state: 'paired' })

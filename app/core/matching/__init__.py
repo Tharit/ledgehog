@@ -11,6 +11,7 @@ from app.core.matching.offers import (
     Proposal,
     Summary,
     counter_leg_amount,
+    counter_leg_purpose,
     offers,
 )
 from app.core.matching.pairing import PAIR_BASIS, Pair, pair_all
@@ -29,6 +30,7 @@ __all__ = [
     "Summary",
     "candidates",
     "counter_leg_amount",
+    "counter_leg_purpose",
     "is_candidate",
     "leg_of",
     "offers",

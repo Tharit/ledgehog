@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from app.core.matching import Leg, OfferWorld, PoolEntry, Summary, offers
+from app.core.matching import Leg, OfferWorld, PoolEntry, Summary, counter_leg_purpose, offers
 from app.core.matching.offers import OfferSet
 from app.core.plugins.classifier import AccountFact
 
@@ -360,3 +360,16 @@ def test_has_more_counts_only_what_would_be_offered() -> None:
         p(13, on=far, amount=-5),  # same sign
     )
     assert not res.has_more
+
+
+def test_the_counter_leg_purpose_joins_the_counterparty_name_and_the_purpose() -> None:
+    assert counter_leg_purpose("Sparkasse Musterstadt", "GA-AUSZAHLUNG 12.11.") == (
+        "Sparkasse Musterstadt, GA-AUSZAHLUNG 12.11."
+    )
+    assert counter_leg_purpose("Sparkasse Musterstadt", None) == "Sparkasse Musterstadt"
+    assert counter_leg_purpose(None, "GA-AUSZAHLUNG") == "GA-AUSZAHLUNG"
+    assert counter_leg_purpose("", "GA-AUSZAHLUNG") == "GA-AUSZAHLUNG"
+    assert counter_leg_purpose(None, None) is None
+    assert counter_leg_purpose("", None) is None
+    assert counter_leg_purpose("  ", " \t") is None
+    assert counter_leg_purpose("  Bank ", " Rent \n") == "Bank, Rent"

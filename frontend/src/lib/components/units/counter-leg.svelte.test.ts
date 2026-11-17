@@ -115,13 +115,14 @@ const ghostRow = (tempId: number, amount = eur(10000), accountId = 3) =>
 			counter_account_id: 1,
 			booked_on: '2026-10-12',
 			amount,
-			description: 'Rent',
+			description: null,
 			source_transaction_id: tempId,
 			derivation: {}
 		}),
 		{
 			original: false,
 			in_unit: true,
+			purpose: 'Sparkasse Musterstadt, Rent',
 			counter_leg_for: 1,
 			transfer: transferOut({ state: 'paired' })
 		}
@@ -293,6 +294,7 @@ describe('the block of a pending counter-leg', () => {
 		await waitFor(() => expect(row.querySelector('[data-slot="counter-leg-creates"]')).toBeNull());
 		expect(row).not.toHaveTextContent('Oct 12, 2026');
 		expect(row).toHaveTextContent('picked by you');
+		expect(within(dialog).getByText('Sparkasse Musterstadt, Rent')).toBeInTheDocument();
 		expect(row.querySelector('[data-proposal]')).toBeNull();
 		// same currency: no input
 		expect(within(dialog).queryByLabelText('Amount received')).toBeNull();

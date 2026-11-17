@@ -103,7 +103,14 @@ def test_the_draft_record_is_strict() -> None:
 
 
 def test_a_leg_with_no_open_offer_shows_its_counter_leg_as_the_proposal_taken(scene: Scene) -> None:
-    e = leg(scene, -1000, scene.checking, counter=scene.cash, purpose="GA-AUSZAHLUNG Sparkasse")
+    e = leg(
+        scene,
+        -1000,
+        scene.checking,
+        counter=scene.cash,
+        counterparty="Sparkasse Musterstadt",
+        purpose="GA-AUSZAHLUNG 12.11.",
+    )
     plan = scene.preview(e)
     ghost = proposed_temp_id(e)
     t = plan.transfers[e]
@@ -111,11 +118,13 @@ def test_a_leg_with_no_open_offer_shows_its_counter_leg_as_the_proposal_taken(sc
     assert t.partner is not None and t.partner.entry_id == ghost and t.partner.account_id == scene.cash
     assert t.proposal is not None and t.proposal.kind == "counter_leg"  # the proposal it had stays shown
     assert [o.kind for o in t.offers] == ["counter_leg"] and t.offers[0].proposed
+    assert t.offers[0].counter_leg is not None  # the offer shows the purpose the commit writes
+    assert t.offers[0].counter_leg.purpose == "Sparkasse Musterstadt, GA-AUSZAHLUNG 12.11."
     g = plan.row(ghost)
     assert g.version is None and g.stored is None and g.in_unit and g.original
     assert (g.account_id, g.amount, g.currency, g.booked_on) == (scene.cash, 1000, "EUR", D)
     assert (g.purpose, g.description, g.counter_leg_for, g.counterpart_entry_id) == (
-        "GA-AUSZAHLUNG Sparkasse",
+        "Sparkasse Musterstadt, GA-AUSZAHLUNG 12.11.",
         None,
         e,
         e,
@@ -137,7 +146,14 @@ def test_a_leg_with_no_open_offer_shows_its_counter_leg_as_the_proposal_taken(sc
 
 def test_a_commit_creates_the_counter_leg_as_the_users_decision(scene: Scene) -> None:
     set_manual_record_on(scene, scene.cash, 10_000)
-    e = leg(scene, -1000, scene.checking, counter=scene.cash, purpose="GA-AUSZAHLUNG Sparkasse")
+    e = leg(
+        scene,
+        -1000,
+        scene.checking,
+        counter=scene.cash,
+        counterparty="Sparkasse Musterstadt",
+        purpose="GA-AUSZAHLUNG 12.11.",
+    )
     plan, result = preview_then_commit(scene, scene.draft(e))
     ghost = proposed_temp_id(e)
     real = result.created[ghost]
@@ -145,7 +161,10 @@ def test_a_commit_creates_the_counter_leg_as_the_users_decision(scene: Scene) ->
     assert source.importer is None and source.import_run_id is None and source.source_format is None
     assert source.content_hash is None and source.source_id and source.duplicate_of is None
     assert (source.amount, source.currency, source.booked_on) == (1000, "EUR", D)
-    assert source.purpose == "GA-AUSZAHLUNG Sparkasse" and source.raw == {"counter_leg_for": e}
+    assert (
+        source.purpose == "Sparkasse Musterstadt, GA-AUSZAHLUNG 12.11." and source.counterparty_name is None
+    )
+    assert source.raw == {"counter_leg_for": e}
     entry = scene.row(real)
     assert (entry.type, entry.counter_account_id, entry.counterpart_entry_id) == (
         "transfer",

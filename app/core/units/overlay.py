@@ -58,7 +58,15 @@ from datetime import date
 from typing import Any
 
 from app.core.bookings.transfers import ChargeFacts, transfer_booking_plan
-from app.core.matching import Leg, counter_leg_amount, leg_of, pair_all, unmatched, waiting
+from app.core.matching import (
+    Leg,
+    counter_leg_amount,
+    counter_leg_purpose,
+    leg_of,
+    pair_all,
+    unmatched,
+    waiting,
+)
 from app.core.plugins.classifier import (
     FIELD_ORDER,
     MAY_BE_EMPTY,
@@ -692,6 +700,7 @@ def _charge_facts(r: _Row) -> ChargeFacts | None:
         amount=r.amount,
         booked_on=s.booked_on,
         purpose=s.purpose,
+        counterparty_name=s.counterparty_name,
         counter_account_id=r.counter_account_id,
         instructed_currency=s.instructed_currency,
         instructed_amount=s.instructed_amount,
@@ -1028,7 +1037,7 @@ def _counter_leg_row(
         booked_on=leg.src.booked_on,
         value_on=None,
         user_authored=True,
-        purpose=leg.src.purpose,
+        purpose=counter_leg_purpose(leg.src.counterparty_name, leg.src.purpose),
     )
     return _Row(
         id=spec.temp_id,
@@ -1479,6 +1488,7 @@ def plan_unit(stored: StoredUnit, draft: UnitDraft, world: World) -> Plan:
             original=r.original,
             leg=leg_of(_entry_input(r), type=r.type, counter_account_id=r.counter_account_id),
             purpose=r.src.purpose,
+            counterparty_name=r.src.counterparty_name,
             counter_leg_for=r.counter_leg_for,
             booking=r.src.booking,
             booking_key=r.src.booking_key,

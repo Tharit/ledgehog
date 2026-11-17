@@ -63,7 +63,7 @@ def test_the_preview_shows_the_counter_leg_booking_settling_will_make(scene: Sce
     assert (b.booking, b.booking_key) == ("transfer", e)
     assert b.version is None and b.stored is None and b.in_unit and b.original
     assert (b.account_id, b.amount, b.currency, b.booked_on) == (account, 4997, "EUR", D)
-    assert (b.purpose, b.counterpart_entry_id, b.description) == ("AMZN Mktp", e, None)
+    assert (b.purpose, b.counterpart_entry_id, b.description) == ("Amazon, AMZN Mktp", e, None)
     assert b.fields["type"].value == "transfer" and b.fields["counter_account"].value == scene.checking
     assert b.derivation == {"type": BOOKING_KEY, "counter_account": BOOKING_KEY, "counterpart": BOOKING_KEY}
     c = plan.row(e)

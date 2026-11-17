@@ -146,6 +146,7 @@ def load_charges(conn: Connection) -> list[ChargeFacts]:
             amount=r.amount,
             booked_on=r.booked_on,
             purpose=r.purpose,
+            counterparty_name=r.counterparty_name,
             counter_account_id=r.counter_account_id,
             instructed_currency=r.instructed_currency,
             instructed_amount=r.instructed_amount,
@@ -153,7 +154,7 @@ def load_charges(conn: Connection) -> list[ChargeFacts]:
         for r in conn.execute(
             text(
                 "SELECT e.id, e.account_id, e.currency, e.amount, e.booked_on, s.purpose,"
-                " e.counter_account_id, s.instructed_currency, s.instructed_amount"
+                " s.counterparty_name, e.counter_account_id, s.instructed_currency, s.instructed_amount"
                 " FROM ledger_entry e"
                 " JOIN source_transaction s ON s.id = e.source_transaction_id"
                 " JOIN account c ON c.id = e.counter_account_id AND c.kind = 'clearance'"

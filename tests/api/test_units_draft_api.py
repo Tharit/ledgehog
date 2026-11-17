@@ -59,7 +59,7 @@ def test_preview_shape(anna: TestClient, scene: Scene) -> None:
     (row,) = body["rows"]
     assert set(row) == set(
         "id version source_transaction_id unit_key in_unit original account_id booked_on value_on amount"
-        " description note source_text tag_ids counterpart_entry_id fields review_flags derivation"
+        " description note source_text purpose tag_ids counterpart_entry_id fields review_flags derivation"
         " stored".split()
         + ["transfer", "counter_leg_for", "booking", "booking_for"]
     )
@@ -299,7 +299,16 @@ def test_a_tag_in_both_lists_is_invalid_draft_and_an_unknown_tag_is_stale(
 # ---- transfer legs: state, partner, offers (spec §5.7) ----------------------------------------------------
 
 
-def _leg(scene: Scene, amount: int, account: int, *, counter: int | None = None, day: int = 0) -> int:
+def _leg(
+    scene: Scene,
+    amount: int,
+    account: int,
+    *,
+    counter: int | None = None,
+    day: int = 0,
+    counterparty: str | None = None,
+    purpose: str | None = None,
+) -> int:
     from datetime import timedelta
 
     keys = {"type": {"pass": "user"}, **({"counter_account": {"pass": "user"}} if counter else {})}
@@ -311,6 +320,8 @@ def _leg(scene: Scene, amount: int, account: int, *, counter: int | None = None,
         counter_account_id=counter,
         derivation=json.dumps(keys),
         authored=True,
+        counterparty=counterparty,
+        purpose=purpose,
     )
     return e
 
@@ -556,11 +567,19 @@ def _counter_leg_draft(e: int, temp: int = -1, received: int | None = None) -> d
 
 
 def test_a_counter_leg_previews_as_a_row_and_commits_through_the_api(anna: TestClient, scene: Scene) -> None:
-    e = _leg(scene, -1000, scene.checking, counter=scene.cash)
+    e = _leg(
+        scene,
+        -1000,
+        scene.checking,
+        counter=scene.cash,
+        counterparty="Sparkasse Musterstadt",
+        purpose="GA-AUSZAHLUNG 12.11.",
+    )
     draft = _counter_leg_draft(e, -5)
     body = anna.post(PREVIEW, json=draft).json()
     assert body["problems"] == [] and body["state"]["confirmed"] is True
     ghost = next(r for r in body["rows"] if r["id"] == -5)
+    assert ghost["purpose"] == "Sparkasse Musterstadt, GA-AUSZAHLUNG 12.11." and ghost["description"] is None
     assert ghost["counter_leg_for"] == e and ghost["version"] is None and ghost["in_unit"]
     assert ghost["account_id"] == scene.cash and ghost["amount"] == {"amount": 1000, "currency": "EUR"}
     assert ghost["counterpart_entry_id"] == e and ghost["transfer"]["state"] == "paired"

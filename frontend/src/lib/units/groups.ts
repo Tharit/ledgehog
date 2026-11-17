@@ -116,7 +116,7 @@ function ghostGroups(views: readonly EntryView[]): PanelGroup[] {
 				splitEntryId: null,
 				ghost: {
 					forAccountId: leg?.accountId ?? null,
-					purpose: view.description,
+					purpose: view.row?.purpose ?? null,
 					booking: view.bookingFor !== null
 				}
 			};

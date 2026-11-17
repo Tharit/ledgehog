@@ -250,6 +250,16 @@ describe('previewRowEntry', () => {
 		expect(previewRowEntry(row).display_description?.text).toBe('mine');
 	});
 
+	it('falls back to the preview row’s own purpose, as a counter-leg not yet created has', () => {
+		const row = previewRowOf(entry({ id: -1, description: null, source_text: null }), {
+			purpose: 'Sparkasse Musterstadt, Rent'
+		});
+		expect(previewRowEntry(row).display_description).toEqual({
+			text: 'Sparkasse Musterstadt, Rent',
+			from: 'purpose'
+		});
+	});
+
 	it('reads a transfer’s counter-account', () => {
 		const row = previewRowOf(entry({ id: 2, type: 'transfer', counter_account_id: 3 }));
 		expect(previewRowEntry(row)).toMatchObject({ type: 'transfer', counter_account_id: 3 });

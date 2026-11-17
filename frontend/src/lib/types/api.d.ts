@@ -3985,6 +3985,8 @@ export interface components {
             note: string | null;
             /** Original */
             original: boolean;
+            /** Purpose */
+            purpose: string | null;
             /** Review Flags */
             review_flags: string[];
             /** Source Text */

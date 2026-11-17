@@ -11,7 +11,7 @@ from __future__ import annotations
 import dataclasses
 from collections.abc import Callable, Collection, Mapping, Sequence
 
-from app.core.matching import OfferWorld, PoolEntry, Summary, offers
+from app.core.matching import OfferWorld, PoolEntry, Summary, counter_leg_purpose, offers
 from app.core.units.draft import CounterLegDraft, DraftEntry, PairingDraft, UnitDraft
 from app.core.units.plan import (
     PartnerView,
@@ -84,7 +84,7 @@ def transfer_views(
             offer_world,
             window,
             partner_id=r.counterpart_entry_id,
-            purpose=r.purpose,
+            purpose=counter_leg_purpose(r.counterparty_name, r.purpose),
         )
         partner_row = rows.get(r.counterpart_entry_id) if r.counterpart_entry_id is not None else None
         needs = _needs_account(r, world)

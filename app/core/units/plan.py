@@ -262,6 +262,7 @@ class PlannedRow:
     original: bool  # the residual of its source
     leg: Leg | None = None  # the matcher's view of the row as planned (offers are made for it)
     purpose: str | None = None  # the source's purpose as stored
+    counterparty_name: str | None = None  # the source's counterparty name as stored
     # a counter-leg the draft creates (spec §5.7): the entry it was created for. The row is a new source
     # transaction on the leg's counter-account with this one entry
     counter_leg_for: int | None = None

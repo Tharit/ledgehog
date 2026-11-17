@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from app.core.bookings.documents import BookingPlan, EntryPlan, PairPlan
+from app.core.matching import counter_leg_purpose
 
 TRANSFER_SOURCE = "transfer"
 
@@ -33,6 +34,7 @@ class ChargeFacts:
     booked_on: date
     purpose: str | None
     counter_account_id: int
+    counterparty_name: str | None = None
     instructed_currency: str | None = None
     instructed_amount: int | None = None
 
@@ -73,7 +75,7 @@ def transfer_booking_plan(
         source_id=transfer_source_id(charge.entry_id),
         booked_on=charge.booked_on,
         amount=amount,
-        purpose=charge.purpose,
+        purpose=counter_leg_purpose(charge.counterparty_name, charge.purpose),
         counterparty_name=None,
         entries=(EntryPlan(amount, None),),
         pair=PairPlan(charge.entry_id, charge.account_id),

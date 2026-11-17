@@ -537,11 +537,14 @@ export function consequenceGroups(preview: UnitPreview | null): ConsequenceGroup
 
 const filled = (text: string | null | undefined): text is string => !!text && text.trim() !== '';
 
-/** The description column's text for a preview row: its description, else source text, else purpose. */
+/**
+ * The description column's text for a preview row: its description, else source text, else purpose
+ * (the row's own, which a counter-leg not yet created has; else the base entry's source purpose).
+ */
 function displayDescription(row: PreviewRow, base: Entry | null): Entry['display_description'] {
 	if (filled(row.description)) return { text: row.description, from: 'description' };
 	if (filled(row.source_text)) return { text: row.source_text, from: 'source_text' };
-	const purpose = base?.source?.purpose;
+	const purpose = filled(row.purpose) ? row.purpose : base?.source?.purpose;
 	return filled(purpose) ? { text: purpose, from: 'purpose' } : null;
 }
 

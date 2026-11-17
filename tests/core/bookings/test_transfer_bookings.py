@@ -47,7 +47,7 @@ def test_a_rule_decided_charge_books_its_counter_leg_and_the_unit_is_confirmed(s
     assert b is not None
     assert (b.origin, b.account_id, b.currency) == ("booking", account, "EUR")
     assert (b.importer, b.import_run_id, b.source_format) == (None, None, None)
-    assert (b.booked_on, b.amount, b.purpose, b.counterparty_name) == (D, 4997, "AMZN Mktp", None)
+    assert (b.booked_on, b.amount, b.purpose, b.counterparty_name) == (D, 4997, "Amazon, AMZN Mktp", None)
     assert b.duplicate_of is None and b.raw
     (leg,) = booking_entries(scene, e)
     assert (leg.type, leg.account_id, leg.amount, leg.booked_on) == ("transfer", account, 4997, D)
@@ -257,6 +257,26 @@ def test_moving_the_charge_to_another_clearance_account_moves_the_booking(scene:
     assert confirmed(scene, e, moved.id)
 
 
+def test_a_changed_counterparty_name_rederives_the_booking_purpose(scene: Scene) -> None:
+    account = clearance(scene)
+    rule_to(scene, account)
+    e = charge(scene, -4997, authored=True)
+    scene.settle()
+    (leg,) = booking_entries(scene, e)
+    assert booking_of(scene, e).purpose == "Amazon, AMZN Mktp"
+    src = scene.row(e).source_transaction_id
+    scene.tx(
+        lambda c: c.execute(
+            text("UPDATE source_transaction SET counterparty_name = 'Amazon EU' WHERE id = :s"), {"s": src}
+        )
+    )
+    assert scene.settle().error is None
+    (again,) = booking_entries(scene, e)
+    assert again.id == leg.id  # re-derived, not made again
+    b = booking_of(scene, e)
+    assert (b.purpose, b.counterparty_name) == ("Amazon EU, AMZN Mktp", None)
+
+
 def test_a_changed_amount_date_and_purpose_rederive_the_booking(scene: Scene) -> None:
     account = clearance(scene)
     rule_to(scene, account)
@@ -285,7 +305,7 @@ def test_a_changed_amount_date_and_purpose_rederive_the_booking(scene: Scene) ->
     assert again.id == leg.id  # re-derived, not made again
     assert (again.amount, again.booked_on) == (5100, date(2026, 3, 12))
     b = booking_of(scene, e)
-    assert (b.amount, b.booked_on, b.purpose) == (5100, date(2026, 3, 12), "new")
+    assert (b.amount, b.booked_on, b.purpose) == (5100, date(2026, 3, 12), "Amazon, new")
     assert scene.row(e).counterpart_entry_id == leg.id and again.counterpart_entry_id == e
     assert confirmed(scene, e, leg.id)
 
@@ -424,7 +444,7 @@ def test_an_entry_form_edit_of_an_authored_charge_re_derives_its_booking_and_pai
     (after,) = booking_entries(scene, e)
     assert after.id == leg.id and (after.amount, after.booked_on) == (5100, date(2026, 3, 12))
     b = booking_of(scene, e)
-    assert (b.amount, b.purpose, b.booked_on) == (5100, "new", date(2026, 3, 12))
+    assert (b.amount, b.purpose, b.booked_on) == (5100, "Amazon, new", date(2026, 3, 12))
     row = scene.row(e)
     assert row.counterpart_entry_id == leg.id and after.counterpart_entry_id == e
     assert row.derivation["counterpart"] == BOOKING_KEY and after.derivation["counterpart"] == BOOKING_KEY

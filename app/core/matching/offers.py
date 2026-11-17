@@ -205,6 +205,14 @@ def counter_leg_amount(leg: Leg, account: AccountFact) -> int | None:
     return None
 
 
+def counter_leg_purpose(counterparty_name: str | None, purpose: str | None) -> str | None:
+    """The purpose of the counter-leg of a leg whose source has this counterparty name and purpose (spec
+    §5.7): `<name>, <purpose>`, either alone where the other is empty, None where both are. Raw source
+    values, trimmed: not the resolved payee, not canonical text."""
+    parts = [p for p in ((counterparty_name or "").strip(), (purpose or "").strip()) if p]
+    return ", ".join(parts) or None
+
+
 def _counter_leg(leg: Leg, partner_id: int | None, world: OfferWorld, purpose: str | None) -> Offer | None:
     """The counter-leg a commit would create: for a leg without a partner whose C is unsynced and open."""
     c = leg.counter_account_id

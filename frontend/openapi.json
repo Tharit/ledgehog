@@ -8824,6 +8824,17 @@
             "title": "Original",
             "type": "boolean"
           },
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          },
           "review_flags": {
             "items": {
               "type": "string"
@@ -8915,6 +8926,7 @@
           "description",
           "note",
           "source_text",
+          "purpose",
           "tag_ids",
           "counterpart_entry_id",
           "fields",

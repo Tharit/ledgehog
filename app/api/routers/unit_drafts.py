@@ -443,6 +443,7 @@ class UnitPreviewRowOut(BaseModel):
     description: str | None
     note: str | None
     source_text: str | None  # the text its source gives the entry (a booking's line); null for most
+    purpose: str | None  # its source's purpose as stored (a counter-leg's: the one a commit writes)
     tag_ids: list[int]
     counterpart_entry_id: int | None
     fields: dict[FieldName, UnitFieldOut]
@@ -478,6 +479,7 @@ class UnitPreviewRowOut(BaseModel):
             description=r.description,
             note=r.note,
             source_text=r.source_text,
+            purpose=r.purpose,
             tag_ids=list(r.tag_ids),
             counterpart_entry_id=r.counterpart_entry_id,
             counter_leg_for=r.counter_leg_for,
@@ -517,6 +519,7 @@ class UnitPreviewRowOut(BaseModel):
             description=s.description,
             note=s.note,
             source_text=s.source_text,
+            purpose=None,  # a removed row is not shown as a counter-leg
             tag_ids=list(s.tag_ids),
             counterpart_entry_id=s.counterpart_entry_id,
             booking=booking,
