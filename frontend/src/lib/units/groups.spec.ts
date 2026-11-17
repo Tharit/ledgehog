@@ -93,7 +93,7 @@ describe('groupsOf', () => {
 		expect(groupsOf(viewsOf(tie), tie.entries).map((g) => g.sourceId)).toEqual([5, 6]);
 	});
 
-	it('says what the header shows: account, booked date, source amount', () => {
+	it('says what the header shows: account and booked date', () => {
 		const authored = unit({
 			anchor_entry_id: 1,
 			entries: [leg(1, 1, 5, '2026-10-10', { authored: true }), leg(2, 2, 6, '2026-10-09')]
@@ -101,10 +101,33 @@ describe('groupsOf', () => {
 		const [first, second] = groupsOf(viewsOf(authored), authored.entries);
 		expect(first.header).toEqual({
 			accountId: 2,
-			bookedOn: '2026-10-09',
-			amount: { amount: 5000, currency: 'EUR' }
+			bookedOn: '2026-10-09'
 		});
 		expect(second.header).toMatchObject({ accountId: 1, bookedOn: '2026-10-10' });
+	});
+
+	it('shows a source that follows its partner with the amount the preview gives it', () => {
+		const answer = preview(pair);
+		answer.splits = [
+			{
+				source_transaction_id: 6,
+				source_amount: { amount: 4500, currency: 'EUR' },
+				residual_entry_id: 2,
+				residual_amount: { amount: 4500, currency: 'EUR' },
+				entry_ids: [2]
+			}
+		];
+		const views = entryViews({
+			unit: pair,
+			draft: Draft.of(pair),
+			preview: answer,
+			rules,
+			locale: 'en'
+		});
+		const groups = groupsOf(views, pair.entries);
+		expect(groups.find((g) => g.sourceId === 6)!.strip!.source!.amount.amount).toBe(4500);
+		expect(groups.find((g) => g.sourceId === 5)!.strip!.source!.amount.amount).toBe(-5000);
+		expect(pair.entries[1].source!.amount.amount).toBe(5000); // the stored unit is not touched
 	});
 
 	it('is one group for a single source: residual first, then the splits as added', () => {
@@ -225,8 +248,7 @@ describe('the ghost group of a counter-leg', () => {
 		expect(ghost.ghost).toEqual({ forAccountId: 1, purpose: 'Savings top-up', booking: false });
 		expect(ghost.header).toEqual({
 			accountId: 2,
-			bookedOn: '2026-10-11',
-			amount: { amount: 5000, currency: 'EUR' }
+			bookedOn: '2026-10-11'
 		});
 		expect(ghost.splitEntryId).toBeNull();
 		expect(ghost.strip).toBeNull();

@@ -4,15 +4,13 @@
 // entry". Pure: it orders and gathers what the views already say. A group is data, so a later
 // group that has no entry yet (a counter-leg offer, "created when you commit") can be appended.
 import { sourceGroups, type SourceGroup } from './describe.js';
-import type { Entry, Money } from '#lib/types/domain.js';
+import type { Entry } from '#lib/types/domain.js';
 import type { EntryView } from './view.js';
 
 export type GroupHeader = {
 	accountId: number | null;
 	/** the booked date of the group's entry; null when it has none yet */
 	bookedOn: string | null;
-	/** what the source transaction said */
-	amount: Money | null;
 };
 
 export type PanelGroup = {
@@ -63,7 +61,12 @@ export function groupsOf(views: readonly EntryView[], entries: readonly Entry[])
 		const lead = ordered[0];
 		const stored = ordered.filter((v) => !v.isNew);
 		const storedIds = stored.map((v) => v.id);
-		const strip = stripOf(strips, storedIds);
+		const stripped = stripOf(strips, storedIds);
+		// a source that follows its partner has its new amount in the preview (spec §5.7)
+		const strip =
+			stripped?.source && lead.sourceAmount
+				? { ...stripped, source: { ...stripped.source, amount: lead.sourceAmount } }
+				: stripped;
 		const date = (v: EntryView) => v.row?.booked_on ?? v.stored?.booked_on ?? null;
 		const dated = stored.find((v) => date(v) !== null) ?? lead;
 		const original = ordered.find((v) => v.original && !v.isNew);
@@ -72,11 +75,7 @@ export function groupsOf(views: readonly EntryView[], entries: readonly Entry[])
 			sourceId: lead.sourceId,
 			header: {
 				accountId: (original ?? lead).accountId,
-				bookedOn: date(dated),
-				amount:
-					stored.find((v) => v.stored?.source)?.stored?.source?.amount ??
-					lead.sourceAmount ??
-					(original ?? lead).amount
+				bookedOn: date(dated)
 			},
 			strip,
 			views: ordered,
@@ -108,8 +107,7 @@ function ghostGroups(views: readonly EntryView[]): PanelGroup[] {
 				sourceId: null,
 				header: {
 					accountId: view.accountId,
-					bookedOn: view.row?.booked_on ?? null,
-					amount: view.amount
+					bookedOn: view.row?.booked_on ?? null
 				},
 				strip: null,
 				views: [view],
