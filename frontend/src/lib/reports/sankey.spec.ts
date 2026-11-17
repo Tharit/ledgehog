@@ -3,7 +3,15 @@ import { resolveCategory } from '#lib/theme/resolve.js';
 import { dimensionVars } from '#lib/theme/dimensions.js';
 import { line } from './fixtures.js';
 import type { Scope } from './links.js';
-import { accountSankey, layerPlan, otherCategoryIds, STAYED_OPACITY } from './sankey.js';
+import {
+	accountSankey,
+	layerPlan,
+	strokeOf,
+	THIN_OPACITY,
+	LINK_OPACITY,
+	otherCategoryIds,
+	STAYED_OPACITY
+} from './sankey.js';
 import { byAccount, byAccountLookups } from './trend-fixtures.js';
 
 const { categories, accounts } = byAccountLookups();
@@ -25,8 +33,8 @@ const column = (n: number) =>
 describe('accountSankey: the nodes', () => {
 	it('puts the income side, the receiving accounts, the paying accounts and the expense side in four columns', () => {
 		expect(column(0)).toEqual(['Salary', 'Other', 'Unclassified', 'Reconciliations']);
-		expect(column(1).sort()).toEqual(['Depot', 'Giro', 'Savings']);
-		expect(column(2).sort()).toEqual(['Depot', 'Giro', 'Savings']);
+		expect(column(1).sort()).toEqual(['Depot', 'Giro', 'Savings', 'Unpaired']);
+		expect(column(2).sort()).toEqual(['Depot', 'Giro', 'Savings', 'Unpaired']);
 		expect(column(3)).toEqual(['Home', 'Food', 'Other', 'Unclassified', 'Reconciliations']);
 		expect(model().fullest).toBe(5);
 	});
@@ -45,8 +53,8 @@ describe('accountSankey: the nodes', () => {
 	});
 
 	it('orders the side columns as the answer gives them and the accounts by what passes through', () => {
-		expect(column(1)).toEqual(['Giro', 'Savings', 'Depot']);
-		expect(column(2)).toEqual(['Giro', 'Savings', 'Depot']);
+		expect(column(1)).toEqual(['Giro', 'Savings', 'Depot', 'Unpaired']);
+		expect(column(2)).toEqual(['Giro', 'Savings', 'Depot', 'Unpaired']);
 	});
 
 	it('keeps each column in the answer’s order, the neutral nodes last, accounts alike in both columns', () => {
@@ -105,6 +113,8 @@ describe('accountSankey: the links', () => {
 				'0:reconciliation>1:a3',
 				'1:a1>2:a2',
 				'1:a2>2:a1',
+				'1:a1>2:unpaired',
+				'1:unpaired>2:a1',
 				'1:a1>2:a1',
 				'1:a3>2:a3',
 				'2:a1>3:c4',
@@ -150,9 +160,8 @@ describe('accountSankey: the links', () => {
 			line: null,
 			color: 'stone'
 		});
-		// the answer's own figures, not the sum of the links beside the band (302000 and -100000)
-		expect(band.stayed).toEqual({ received: 305000, transferredOut: -103000 });
-		expect(link('1:a3>2:a3').stayed).toEqual({ received: 4000, transferredOut: 0 });
+		expect(band.label).toBe('Stayed');
+		expect(link('1:a3>2:a3').value).toBe(4000);
 		expect(STAYED_OPACITY).toBeLessThan(0.35);
 	});
 
@@ -204,23 +213,93 @@ describe('accountSankey: the links', () => {
 	});
 });
 
-describe('accountSankey: the notes', () => {
-	it('names the transfers not paired yet, with the ledger filter for them', () => {
-		const unpaired = model().notes.unpaired!;
-		expect(unpaired.line).toEqual(byAccount().unpaired);
-		// the Overview's filter (type and the two flags), cut to the period and the tags
-		expect(query(unpaired.href)).toEqual({
-			from: ['2026-10-01'],
-			to: ['2026-10-31'],
-			tag_id: ['4'],
-			type: ['transfer'],
-			flag: ['waiting', 'unmatched_transfer']
+describe('accountSankey: "Unpaired"', () => {
+	const noUnpaired = () =>
+		byAccount({
+			transfers: byAccount()
+				.transfers.filter((g) => g.from_account_id !== null)
+				.map((g) => ({
+					...g,
+					to: g.to.filter((t) => t.account_id !== null)
+				}))
 		});
+
+	it('stands in both account columns, neutral and last, with the lead tile of a lost end', () => {
+		const m = model();
+		const one = m.nodes.find((n) => n.key === '1:unpaired')!;
+		const two = m.nodes.find((n) => n.key === '2:unpaired')!;
+		expect(one).toMatchObject({ label: 'Unpaired', color: 'stone', icon: 'unlink', column: 1 });
+		expect(two).toMatchObject({ label: 'Unpaired', color: 'stone', icon: 'unlink', column: 2 });
+		for (const c of [1, 2]) {
+			const labels = m.nodes.filter((n) => n.column === c).map((n) => n.label);
+			expect(labels.at(-1)).toBe('Unpaired');
+		}
 	});
 
-	it('has none when there are no such legs', () => {
-		const m = accountSankey(byAccount({ unpaired: line(0) }), categories, accounts, scope);
-		expect(m.notes.unpaired).toBeNull();
+	it('draws an account’s unpaired outgoing legs to it and the unpaired incoming legs from it, as transfers', () => {
+		expect(link('1:a1>2:unpaired')).toMatchObject({
+			kind: 'transfer',
+			label: 'Transfer',
+			from: 'Giro',
+			to: 'Unpaired',
+			value: 2000
+		});
+		expect(link('1:unpaired>2:a1')).toMatchObject({
+			kind: 'transfer',
+			label: 'Transfer',
+			from: 'Unpaired',
+			to: 'Giro',
+			value: 1500
+		});
+		// booked signs: outgoing negative, incoming positive
+		expect(link('1:a1>2:unpaired').line!.total!.amount).toBe(-2000);
+		expect(link('1:unpaired>2:a1').line!.total!.amount).toBe(1500);
+	});
+
+	it('has no node in a column when nothing runs to or from it', () => {
+		const m = accountSankey(noUnpaired(), categories, accounts, scope);
+		expect(m.nodes.some((n) => n.label === 'Unpaired')).toBe(false);
+	});
+
+	it('has the one column only when only one side has links', () => {
+		const answer = byAccount();
+		const onlyOut = accountSankey(
+			byAccount({ transfers: answer.transfers.filter((g) => g.from_account_id !== null) }),
+			categories,
+			accounts,
+			scope
+		);
+		expect(onlyOut.nodes.filter((n) => n.label === 'Unpaired').map((n) => n.column)).toEqual([2]);
+		const onlyIn = accountSankey(
+			byAccount({ transfers: answer.transfers.filter((g) => g.from_account_id === null) }),
+			categories,
+			accounts,
+			scope
+		);
+		expect(onlyIn.nodes.filter((n) => n.label === 'Unpaired').map((n) => n.column)).toEqual([1]);
+	});
+
+	it('stands an account with only an unpaired outgoing transfer in the receiving column', () => {
+		const m = accountSankey(
+			byAccount({
+				income: { total: line(0), categories: [], slices: [], other: [] },
+				expense: { total: line(0), categories: [], slices: [], other: [] },
+				unclassified_in: { total: line(0), accounts: [] },
+				unclassified_out: { total: line(0), accounts: [] },
+				reconciliations: { total: line(0), accounts: [] },
+				stayed: [],
+				transfers: [
+					{ from_account_id: 3, total: line(-900), to: [{ account_id: null, line: line(-900) }] }
+				]
+			}),
+			categories,
+			accounts,
+			scope
+		);
+		expect(m.nodes.map((n) => [n.column, n.label])).toEqual([
+			[1, 'Depot'],
+			[2, 'Unpaired']
+		]);
 	});
 });
 
@@ -281,17 +360,38 @@ describe('accountSankey: every link drills into the ledger with its filter', () 
 		});
 	});
 
-	it('a transfer from A to B: A, B as the counter-account, the type and the direction out', () => {
+	it('a paired transfer from A to B: A, B as the counter-account, the type, out and paired', () => {
 		expect(query(link('1:a1>2:a2').href)).toEqual({
 			...period,
 			account_id: ['1'],
 			counter_account_id: ['2'],
 			type: ['transfer'],
-			direction: ['out']
+			direction: ['out'],
+			paired: ['true']
 		});
 		expect(query(link('1:a2>2:a1').href)).toMatchObject({
 			account_id: ['2'],
 			counter_account_id: ['1']
+		});
+	});
+
+	it('A to "Unpaired": the account, the type, out and the Overview’s two flags', () => {
+		expect(query(link('1:a1>2:unpaired').href)).toEqual({
+			...period,
+			account_id: ['1'],
+			type: ['transfer'],
+			direction: ['out'],
+			flag: ['waiting', 'unmatched_transfer']
+		});
+	});
+
+	it('"Unpaired" to A: the account, the type, in and the two flags', () => {
+		expect(query(link('1:unpaired>2:a1').href)).toEqual({
+			...period,
+			account_id: ['1'],
+			type: ['transfer'],
+			direction: ['in'],
+			flag: ['waiting', 'unmatched_transfer']
 		});
 	});
 
@@ -308,7 +408,6 @@ describe('layerPlan', () => {
 		unclassified_out: { total: line(0), accounts: [] },
 		reconciliations: { total: line(0), accounts: [] },
 		transfers: [],
-		unpaired: line(0),
 		stayed: []
 	};
 	const link = (account_id: number, total: number) => ({ account_id, line: line(total) });
@@ -354,9 +453,7 @@ describe('layerPlan', () => {
 			stayed: [
 				{
 					account_id: 1,
-					amount: { amount: 300000, currency: 'EUR' },
-					received: { amount: 300000, currency: 'EUR' },
-					transferred_out: { amount: 0, currency: 'EUR' }
+					amount: { amount: 300000, currency: 'EUR' }
 				}
 			]
 		});
@@ -367,5 +464,17 @@ describe('layerPlan', () => {
 			{ source: '1:a1', target: '2:a1' },
 			{ source: '2:a1', target: '3:c4' }
 		]);
+	});
+});
+
+describe('strokeOf', () => {
+	it('draws a link thinner than 1px at 1px, and more opaque so that it shows', () => {
+		expect(strokeOf(0.01, LINK_OPACITY)).toEqual({ width: 1, opacity: THIN_OPACITY });
+		expect(strokeOf(-3, 0.2)).toEqual({ width: 1, opacity: THIN_OPACITY });
+	});
+
+	it('leaves a link of 1px or more as it is', () => {
+		expect(strokeOf(1, LINK_OPACITY)).toEqual({ width: 1, opacity: LINK_OPACITY });
+		expect(strokeOf(12.5, 0.2)).toEqual({ width: 12.5, opacity: 0.2 });
 	});
 });

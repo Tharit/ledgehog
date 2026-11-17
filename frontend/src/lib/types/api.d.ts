@@ -914,8 +914,8 @@ export interface paths {
         /**
          * Get By Account
          * @description The money each account received, passed on and paid over a range, as a list of links: the
-         *     *By category* figures cut by account, the transfers by account and counter-account, the
-         *     unpaired legs as one line, and what stayed.
+         *     *By category* figures cut by account, the transfers by account and counter-account
+         *     (an unpaired leg against no account), and what stayed.
          *     There is no `account_id`: a transfer into a chosen account would drop out of its own account's view.
          */
         get: operations["get_by_account"];
@@ -1437,7 +1437,6 @@ export interface components {
             transfers: components["schemas"]["TransferGroupOut"][];
             unclassified_in: components["schemas"]["AccountLinksOut"];
             unclassified_out: components["schemas"]["AccountLinksOut"];
-            unpaired: components["schemas"]["LineOut"];
         };
         /** ByCategoryOut */
         ByCategoryOut: {
@@ -3314,14 +3313,13 @@ export interface components {
         };
         /**
          * StayedOut
-         * @description Derived, with no entries behind it: `amount` is `received` plus `transferred_out`, never below zero.
+         * @description Derived, with no entries behind it: what the account received on the income side, less its transfers
+         *     out, never below zero.
          */
         StayedOut: {
             /** Account Id */
             account_id: number;
             amount: components["schemas"]["Money"];
-            received: components["schemas"]["Money"];
-            transferred_out: components["schemas"]["Money"];
         };
         /**
          * SyncEventPayloads
@@ -3644,7 +3642,7 @@ export interface components {
         /** TransferGroupOut */
         TransferGroupOut: {
             /** From Account Id */
-            from_account_id: number;
+            from_account_id: number | null;
             /** To */
             to: components["schemas"]["TransferToOut"][];
             total: components["schemas"]["LineOut"];
@@ -3652,7 +3650,7 @@ export interface components {
         /** TransferToOut */
         TransferToOut: {
             /** Account Id */
-            account_id: number;
+            account_id: number | null;
             line: components["schemas"]["LineOut"];
         };
         /**

@@ -1,6 +1,5 @@
 <script lang="ts">
 	import Card from '#lib/components/common/card.svelte';
-	import { formatCount } from '#lib/format/index.js';
 	import type { Scope } from '#lib/reports/links.js';
 	import { accountSankey } from '#lib/reports/sankey.js';
 	import type { ByAccount } from '#lib/reports/types.js';
@@ -33,8 +32,7 @@
 			report.unclassified_in.accounts.length === 0 &&
 			report.unclassified_out.accounts.length === 0 &&
 			report.reconciliations.accounts.length === 0 &&
-			report.transfers.length === 0 &&
-			report.unpaired.count === 0
+			report.transfers.length === 0
 	);
 </script>
 
@@ -55,13 +53,6 @@
 				{#each chart.notes.opposite as item, i (item.key)}
 					{i > 0 ? ', ' : ''}{item.from} to {item.to}
 					(<FigureLink line={item.line} href={item.href} {locale} />){/each}.
-			</p>
-		{/if}
-		{#if chart.notes.unpaired}
-			<p class="text-sm text-muted-foreground" data-slot="unpaired-note">
-				Not paired yet: {formatCount(chart.notes.unpaired.line.count, locale)}
-				{chart.notes.unpaired.line.count === 1 ? 'transfer' : 'transfers'}
-				(<FigureLink line={chart.notes.unpaired.line} href={chart.notes.unpaired.href} {locale} />).
 			</p>
 		{/if}
 

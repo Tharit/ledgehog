@@ -269,29 +269,31 @@ export function byAccount(over: Partial<ByAccount> = {}): ByAccount {
 			total: line(3900, { count: 2 }),
 			accounts: [link(3, 4000), link(1, -100)]
 		},
-		// totals and `stayed` are the answer's own figures: some are not the sum of the links beside
-		// them, so a test of what is shown cannot pass by adding
+		// totals are the answer's own figures: some are not the sum of the links beside them, so a
+		// test of what is shown cannot pass by adding
 		transfers: [
 			{
 				from_account_id: 1,
-				total: line(-110000, { count: 3 }),
+				total: line(-112000, { count: 4 }),
 				to: [
 					{ account_id: 2, line: line(-100000, { count: 2 }) },
-					{ account_id: 3, line: line(null) }
+					{ account_id: 3, line: line(null) },
+					// its unpaired outgoing legs
+					{ account_id: null, line: line(-2000) }
 				]
 			},
 			{ from_account_id: 2, total: line(-5000), to: [{ account_id: 1, line: line(-5000) }] },
-			{ from_account_id: 3, total: line(300), to: [{ account_id: 2, line: line(300) }] }
-		],
-		unpaired: line(-7000, { count: 2 }),
-		stayed: [
+			{ from_account_id: 3, total: line(300), to: [{ account_id: 2, line: line(300) }] },
+			// the unpaired incoming legs: no sending account, positive as booked
 			{
-				account_id: 1,
-				amount: money(202000),
-				received: money(305000),
-				transferred_out: money(-103000)
-			},
-			{ account_id: 3, amount: money(4000), received: money(4000), transferred_out: money(0) }
+				from_account_id: null,
+				total: line(1500, { count: 2 }),
+				to: [{ account_id: 1, line: line(1500, { count: 2 }) }]
+			}
+		],
+		stayed: [
+			{ account_id: 1, amount: money(202000) },
+			{ account_id: 3, amount: money(4000) }
 		],
 		...over
 	};

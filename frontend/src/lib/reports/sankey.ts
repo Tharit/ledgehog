@@ -12,7 +12,8 @@ import {
 	accountReconciliationsHref,
 	accountUnclassifiedHref,
 	transferHref,
-	unpairedHref,
+	unpairedInHref,
+	unpairedOutHref,
 	type Scope
 } from './links.js';
 import type { Kind } from './shapes.js';
@@ -61,9 +62,6 @@ export type SankeyLink = {
 	line: Line | null;
 	/** none for the band that stayed */
 	href: string | null;
-	/** the stayed band only: the answer's own figures, in minor units: what the account received
-	 *  on the income side, what it transferred out (signed as booked), and what stayed */
-	stayed?: { received: number; transferredOut: number };
 };
 
 /** A link not drawn since its net is of the other sign. */
@@ -75,8 +73,6 @@ export type AccountSankey = {
 	links: SankeyLink[];
 	notes: {
 		opposite: OppositeLink[];
-		/** the transfer legs not paired yet, with their ledger filter, when there are any */
-		unpaired: { line: Line; href: string } | null;
 	};
 	/** the most nodes in one column: the chart's height grows with it */
 	fullest: number;
@@ -86,6 +82,8 @@ export type AccountSankey = {
 const UNCLASSIFIED = { label: 'Unclassified', ...measureLook('unclassified') };
 const RECONCILIATIONS = { label: 'Reconciliations', ...measureLook('reconciliations') };
 const OTHER = { label: 'Other', color: OTHER_COLOR, icon: OTHER_ICON };
+/** The lead tile of "Unpaired": a transfer that lost its other end. */
+const UNPAIRED_ICON = 'unlink';
 const TRANSFER = { label: 'Transfer', ...measureLook('transfers') };
 
 /** The sign of a side: income and the money kept are positive, expense and transfers negative. */
@@ -268,45 +266,62 @@ export function accountSankey(
 		);
 	}
 
-	// between the account columns: a transfer is a link between two accounts at its booked amount
-	for (const transfer of report.transfers.flatMap((g) =>
-		g.to.map((t) => ({
-			from_account_id: g.from_account_id,
-			to_account_id: t.account_id,
-			line: t.line
-		}))
-	)) {
-		if (transfer.from_account_id === transfer.to_account_id) continue;
-		const from = accountEnd(transfer.from_account_id, 1);
-		const to = accountEnd(transfer.to_account_id, 2);
-		const href = transferHref(scope, transfer.from_account_id, transfer.to_account_id);
-		const state = signed(transfer.line, -1);
-		if (state === 'opposite') {
-			opposite.push({
-				key: `${from.id}:1>${to.id}:2`,
+	// "Unpaired" stands in both account columns, neutral, last: the receiver of an account's
+	// unpaired outgoing legs, the sender of the unpaired incoming ones
+	const unpairedEnd = (column: 1 | 2) => ({
+		column,
+		id: 'unpaired',
+		account: true,
+		label: 'Unpaired',
+		color: OTHER_COLOR,
+		icon: UNPAIRED_ICON
+	});
+
+	// between the account columns: a paired transfer is a link between two accounts at its booked
+	// amount, an unpaired leg a link to or from "Unpaired"
+	for (const group of report.transfers) {
+		for (const leg of group.to) {
+			const sender = group.from_account_id;
+			const receiver = leg.account_id;
+			if (sender === null && receiver === null) continue;
+			if (sender === receiver) continue;
+			const from = sender === null ? unpairedEnd(1) : accountEnd(sender, 1);
+			const to = receiver === null ? unpairedEnd(2) : accountEnd(receiver, 2);
+			const href =
+				sender === null
+					? unpairedInHref(scope, receiver!)
+					: receiver === null
+						? unpairedOutHref(scope, sender)
+						: transferHref(scope, sender, receiver);
+			// outgoing legs are negative as booked, the unpaired incoming ones positive
+			const state = signed(leg.line, sender === null ? 1 : -1);
+			if (state === 'opposite') {
+				opposite.push({
+					key: `${from.id}:1>${to.id}:2`,
+					from: from.label,
+					to: to.label,
+					line: leg.line,
+					href
+				});
+			}
+			if (state !== 'drawn') continue;
+			drafts.push({
+				source: from,
+				target: to,
+				value: Math.abs(minorOf(leg.line) ?? 0),
+				kind: 'transfer',
+				label: TRANSFER.label,
 				from: from.label,
 				to: to.label,
-				line: transfer.line,
+				color: OTHER_COLOR,
+				icon: TRANSFER.icon,
+				line: leg.line,
 				href
 			});
 		}
-		if (state !== 'drawn') continue;
-		drafts.push({
-			source: from,
-			target: to,
-			value: Math.abs(minorOf(transfer.line) ?? 0),
-			kind: 'transfer',
-			label: TRANSFER.label,
-			from: from.label,
-			to: to.label,
-			color: OTHER_COLOR,
-			icon: TRANSFER.icon,
-			line: transfer.line,
-			href
-		});
 	}
 
-	// the income that stayed: the answer's `stayed`, whose tooltip has its components from the answer
+	// the income that stayed: the answer's `stayed`, derived, so not a link to the ledger
 	for (const stayed of report.stayed) {
 		const from = accountEnd(stayed.account_id, 1);
 		const to = accountEnd(stayed.account_id, 2);
@@ -315,14 +330,13 @@ export function accountSankey(
 			target: to,
 			value: stayed.amount.amount,
 			kind: 'stayed',
-			label: `Stayed in ${from.label}`,
+			label: 'Stayed',
 			from: from.label,
 			to: to.label,
 			color: OTHER_COLOR,
 			icon: TRANSFER.icon,
 			line: null,
-			href: null,
-			stayed: { received: stayed.received.amount, transferredOut: stayed.transferred_out.amount }
+			href: null
 		});
 	}
 
@@ -357,7 +371,9 @@ export function accountSankey(
 	for (const n of nodes.values()) {
 		if (n.account) through.set(n.id, (through.get(n.id) ?? 0) + n.weight);
 	}
-	const weigh = (n: { id: string; account: boolean }) => (n.account ? (through.get(n.id) ?? 0) : 0);
+	// "Unpaired" is last in its column, below any account
+	const weigh = (n: { id: string; account: boolean }) =>
+		n.id === 'unpaired' ? -1 : n.account ? (through.get(n.id) ?? 0) : 0;
 	const sorted = [...nodes.values()].sort(
 		(a, b) => a.column - b.column || weigh(b) - weigh(a) || a.order - b.order
 	);
@@ -387,11 +403,7 @@ export function accountSankey(
 			order: n.position
 		})),
 		links,
-		notes: {
-			opposite,
-			unpaired:
-				report.unpaired.count > 0 ? { line: report.unpaired, href: unpairedHref(scope) } : null
-		},
+		notes: { opposite },
 		fullest
 	};
 }
@@ -429,4 +441,16 @@ export function layerPlan(model: Pick<AccountSankey, 'nodes' | 'links'>): {
 		}
 	}
 	return { layers, spine };
+}
+
+/** The thinnest a link or a node is drawn (px), so that a tiny flow is still a visible line. */
+export const MIN_DRAWN = 1;
+/** The opacity of a link drawn at the minimum width: a 1px line at 35 % or 20 % barely shows. */
+export const THIN_OPACITY = 0.6;
+
+/** How a link of laid-out `width` is stroked: at least `MIN_DRAWN`, more opaque when it had to be raised. */
+export function strokeOf(width: number, opacity: number): { width: number; opacity: number } {
+	return width < MIN_DRAWN
+		? { width: MIN_DRAWN, opacity: Math.max(opacity, THIN_OPACITY) }
+		: { width, opacity };
 }

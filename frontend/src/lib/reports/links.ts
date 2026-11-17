@@ -90,21 +90,39 @@ export function accountReconciliationsHref(scope: Scope, accountId: number): str
 	return ledgerHref({ ...ofAccount(scope, accountId), type: ['reconciliation'] });
 }
 
-/** The transfer legs that leave `from` for `to`. */
+/** The paired transfer legs that leave `from` for `to`: the counter-account filter alone also lists the unpaired ones. */
 export function transferHref(scope: Scope, from: number, to: number): string {
 	return ledgerHref({
 		...ofAccount(scope, from),
 		counter_account_id: [to],
 		type: ['transfer'],
-		direction: 'out'
+		direction: 'out',
+		paired: true
 	});
 }
 
-/** The unpaired transfer legs of the period: the Overview's filter (`figures.ts`) cut to the days and tags. */
-export function unpairedHref(scope: Scope): string {
-	return ledgerHref({
-		...base(scope),
-		type: [...UNPAIRED_TRANSFERS_FILTER.type],
-		flag: [...UNPAIRED_TRANSFERS_FILTER.flag]
-	});
+// The unpaired side is the Overview's filter (`figures.ts`): one definition of "unpaired".
+const unpaired = () => ({
+	type: [...UNPAIRED_TRANSFERS_FILTER.type],
+	flag: [...UNPAIRED_TRANSFERS_FILTER.flag]
+});
+
+/** The unpaired outgoing legs of an account (the link from it to "Unpaired"). */
+export function unpairedOutHref(scope: Scope, accountId: number): string {
+	return ledgerHref({ ...ofAccount(scope, accountId), ...unpaired(), direction: 'out' });
+}
+
+/** The unpaired incoming legs of an account (the link from "Unpaired" to it). */
+export function unpairedInHref(scope: Scope, accountId: number): string {
+	return ledgerHref({ ...ofAccount(scope, accountId), ...unpaired(), direction: 'in' });
+}
+
+/** All the outgoing transfer legs of an account: a sending account's total. */
+export function sentHref(scope: Scope, accountId: number): string {
+	return ledgerHref({ ...ofAccount(scope, accountId), type: ['transfer'], direction: 'out' });
+}
+
+/** All the unpaired incoming legs: "Unpaired" as sender, its total. */
+export function unpairedSenderHref(scope: Scope): string {
+	return ledgerHref({ ...base(scope), ...unpaired(), direction: 'in' });
 }

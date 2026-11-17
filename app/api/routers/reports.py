@@ -328,23 +328,22 @@ class AccountLinksOut(BaseModel):
 
 
 class TransferToOut(BaseModel):
-    account_id: int  # the receiving account: the leg's counter-account
-    line: LineOut  # the outgoing legs: negative
+    account_id: int | None  # the receiving account: the leg's counter-account; null: "Unpaired"
+    line: LineOut  # as booked: negative for an outgoing leg
 
 
 class TransferGroupOut(BaseModel):
-    from_account_id: int
+    from_account_id: int | None  # null: the unpaired incoming legs, `to` being their own accounts
     total: LineOut  # the sum of `to`
     to: list[TransferToOut]
 
 
 class StayedOut(BaseModel):
-    """Derived, with no entries behind it: `amount` is `received` plus `transferred_out`, never below zero."""
+    """Derived, with no entries behind it: what the account received on the income side, less its transfers
+    out, never below zero."""
 
     account_id: int
     amount: Money  # base currency, positive
-    received: Money  # the account's drawn income-side links, summed
-    transferred_out: Money  # its outgoing transfers, signed as booked (zero or negative)
 
 
 class ByAccountOut(BaseModel):
@@ -356,8 +355,9 @@ class ByAccountOut(BaseModel):
     unclassified_in: AccountLinksOut
     unclassified_out: AccountLinksOut
     reconciliations: AccountLinksOut  # one net link per account
-    transfers: list[TransferGroupOut]  # per sending account, the outgoing legs with a counter-account
-    unpaired: LineOut  # every unpaired transfer leg: the Overview's figure cut to the filter
+    transfers: list[
+        TransferGroupOut
+    ]  # per sending account, then a group of no sender: the unpaired incoming legs
     stayed: list[StayedOut]  # per account: received on the income side less transferred out, if positive
 
 
@@ -396,8 +396,8 @@ def get_by_account(
     top: Annotated[int | None, Query(ge=1, le=50)] = None,
 ) -> ByAccountOut:
     """The money each account received, passed on and paid over a range, as a list of links: the
-    *By category* figures cut by account, the transfers by account and counter-account, the
-    unpaired legs as one line, and what stayed.
+    *By category* figures cut by account, the transfers by account and counter-account
+    (an unpaired leg against no account), and what stayed.
     There is no `account_id`: a transfer into a chosen account would drop out of its own account's view."""
     base: str = request.app.state.config.base_currency
     flt = rp.entry_filter(from_, to, (), tag_id or ())
@@ -420,13 +420,10 @@ def get_by_account(
             )
             for g in got.transfers
         ],
-        unpaired=LineOut.of(got.unpaired, base),
         stayed=[
             StayedOut(
                 account_id=s.account_id,
                 amount=Money(amount=s.amount, currency=base),
-                received=Money(amount=s.received, currency=base),
-                transferred_out=Money(amount=s.transferred_out, currency=base),
             )
             for s in got.stayed
         ],

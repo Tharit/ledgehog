@@ -13,7 +13,11 @@ import {
 	categoryHref,
 	kindHref,
 	reconciliationsHref,
+	sentHref,
 	transferHref,
+	unpairedInHref,
+	unpairedOutHref,
+	unpairedSenderHref,
 	unclassifiedHref,
 	unconfirmedHref,
 	type Scope
@@ -188,8 +192,6 @@ export type AccountRow = {
 	line: Line;
 	/** null where no ledger filter lists exactly the entries of the figure */
 	href: string | null;
-	/** what a figure without a link says it is */
-	title?: string;
 	/** a kind's total: drawn strong */
 	total?: boolean;
 	categoryId?: number;
@@ -201,9 +203,6 @@ export type AccountSection = {
 	label: string;
 	rows: AccountRow[];
 };
-
-const SENT_TITLE =
-	'The transfers this account sent to another account. The ledger cannot list exactly these: it also has the legs that name no second account yet.';
 
 /**
  * The table beside the sankey: Income and Expense, each category (all of them, not only the slices)
@@ -269,29 +268,40 @@ export function accountTable(
 		return { key: kind, label: kind === 'income' ? 'Income' : 'Expense', rows };
 	};
 
-	const transferRows = report.transfers.flatMap((group) => [
-		{
-			key: `transfers:a${group.from_account_id}`,
-			label: nameOf(group.from_account_id),
-			depth: 0,
-			hasChildren: group.to.length > 0,
-			...accountLook(group.from_account_id),
-			line: group.total,
-			href: null,
-			title: SENT_TITLE,
-			accountId: group.from_account_id
-		},
-		...group.to.map((t): AccountRow => ({
-			key: `transfers:a${group.from_account_id}:a${t.account_id}`,
-			label: nameOf(t.account_id),
-			depth: 1,
-			hasChildren: false,
-			...accountLook(t.account_id),
-			line: t.line,
-			href: transferHref(scope, group.from_account_id, t.account_id),
-			accountId: t.account_id
-		}))
-	]);
+	// each sending account with its total and its receivers (paired), "Unpaired" last; then the
+	// group "Unpaired" as sender, with the accounts that received its legs
+	const unpairedLook = { icon: 'unlink', color: OTHER_COLOR };
+	const transferRows = report.transfers.flatMap((group) => {
+		const from = group.from_account_id;
+		const prefix = from === null ? 'transfers:unpaired' : `transfers:a${from}`;
+		return [
+			{
+				key: prefix,
+				label: from === null ? 'Unpaired' : nameOf(from),
+				depth: 0,
+				hasChildren: group.to.length > 0,
+				...(from === null ? unpairedLook : accountLook(from)),
+				line: group.total,
+				href: from === null ? unpairedSenderHref(scope) : sentHref(scope, from),
+				...(from === null ? {} : { accountId: from })
+			} satisfies AccountRow,
+			...group.to.map((t): AccountRow => ({
+				key: `${prefix}:${t.account_id === null ? 'unpaired' : `a${t.account_id}`}`,
+				label: t.account_id === null ? 'Unpaired' : nameOf(t.account_id),
+				depth: 1,
+				hasChildren: false,
+				...(t.account_id === null ? unpairedLook : accountLook(t.account_id)),
+				line: t.line,
+				href:
+					from === null
+						? unpairedInHref(scope, t.account_id!)
+						: t.account_id === null
+							? unpairedOutHref(scope, from)
+							: transferHref(scope, from, t.account_id),
+				...(t.account_id === null ? {} : { accountId: t.account_id })
+			}))
+		];
+	});
 
 	// what stands beside the tree, in By category's order and words; a line with no entries is not listed
 	const beside = [

@@ -341,24 +341,34 @@ describe('accountTable', () => {
 		expect(rows.filter((r) => r.depth === 0).map((r) => r.key)).toEqual(['other:unclassified-out']);
 	});
 
-	it('gives a sending account its total, as a plain figure: no filter lists exactly its legs', () => {
+	it('gives a sending account its total, as a link to all its outgoing transfer legs', () => {
 		const group = row('transfers:a1');
-		expect(group).toMatchObject({ label: 'Giro', depth: 0, hasChildren: true, href: null });
+		expect(group).toMatchObject({ label: 'Giro', depth: 0, hasChildren: true });
 		// the answer's total (not the sum of the links beneath it), with its count
-		expect(group.line.total!.amount).toBe(-110000);
-		expect(group.line.count).toBe(3);
-		expect(group.title).toMatch(/no second account/);
+		expect(group.line.total!.amount).toBe(-112000);
+		expect(group.line.count).toBe(4);
+		expect(Object.fromEntries(query(group.href))).toEqual({
+			from: '2026-10-01',
+			to: '2026-10-31',
+			tag_id: '4',
+			account_id: '1',
+			type: 'transfer',
+			direction: 'out'
+		});
 	});
 
-	it('lists each sending account with the receiving accounts beneath it', () => {
+	it('lists each sending account with its receivers, "Unpaired" last, then "Unpaired" as sender', () => {
 		expect(section('transfers').rows.map((r) => r.key)).toEqual([
 			'transfers:a1',
 			'transfers:a1:a2',
 			'transfers:a1:a3',
+			'transfers:a1:unpaired',
 			'transfers:a2',
 			'transfers:a2:a1',
 			'transfers:a3',
-			'transfers:a3:a2'
+			'transfers:a3:a2',
+			'transfers:unpaired',
+			'transfers:unpaired:a1'
 		]);
 		const leg = row('transfers:a1:a2');
 		expect(leg.line.total!.amount).toBe(-100000);
@@ -366,9 +376,35 @@ describe('accountTable', () => {
 			account_id: '1',
 			counter_account_id: '2',
 			type: 'transfer',
-			direction: 'out'
+			direction: 'out',
+			paired: 'true'
 		});
 		// one that could not be valued stays in the table
 		expect(row('transfers:a1:a3').line.total).toBeNull();
+	});
+
+	it('links the "Unpaired" rows to the unpaired legs, with the Overview’s flags', () => {
+		const flags = ['waiting', 'unmatched_transfer'];
+		const out = row('transfers:a1:unpaired');
+		expect(out).toMatchObject({ label: 'Unpaired', depth: 1 });
+		expect(out.line.total!.amount).toBe(-2000);
+		expect(query(out.href).getAll('direction')).toEqual(['out']);
+		expect(query(out.href).getAll('account_id')).toEqual(['1']);
+		expect(query(out.href).getAll('flag')).toEqual(flags);
+
+		const sender = row('transfers:unpaired');
+		expect(sender).toMatchObject({ label: 'Unpaired', depth: 0, hasChildren: true });
+		expect(sender.line.total!.amount).toBe(1500);
+		expect(Object.fromEntries([...query(sender.href)])).toMatchObject({
+			type: 'transfer',
+			direction: 'in'
+		});
+		expect(query(sender.href).getAll('flag')).toEqual(flags);
+		expect(query(sender.href).has('account_id')).toBe(false);
+
+		const into = row('transfers:unpaired:a1');
+		expect(query(into.href).getAll('account_id')).toEqual(['1']);
+		expect(query(into.href).getAll('direction')).toEqual(['in']);
+		expect(query(into.href).getAll('flag')).toEqual(flags);
 	});
 });

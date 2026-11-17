@@ -6,7 +6,9 @@
 	import {
 		layerPlan,
 		LINK_OPACITY,
+		MIN_DRAWN,
 		STAYED_OPACITY,
+		strokeOf,
 		type AccountSankey,
 		type SankeyLink,
 		type SankeyNode
@@ -53,22 +55,13 @@
 	const money = (minor: number) => formatMoney(minor, model.currency, { locale });
 
 	function describe(link: SankeyLink): Tip {
-		if (link.stayed) {
-			return {
-				title: link.label,
-				rows: [
-					{ label: 'Received', value: money(link.stayed.received) },
-					{ label: 'Transferred out', value: money(link.stayed.transferredOut) },
-					{ label: 'Stayed', value: money(link.value) }
-				]
-			};
-		}
 		return {
 			title: link.label,
 			rows: [
 				{
-					label: `${link.from} to ${link.to}`,
-					value: link.line?.total ? money(link.line.total.amount) : '',
+					// the band that stayed is in one account and has no figure of the ledger's: its own value
+					label: link.kind === 'stayed' ? link.from : `${link.from} to ${link.to}`,
+					value: link.line?.total ? money(link.line.total.amount) : money(link.value),
 					icon: link.icon,
 					color: link.color
 				}
@@ -128,15 +121,16 @@
 								{@const link = raw as unknown as LaidLink}
 								{#if link.kind && link.value > 0}
 									{@const fg = dimensionVars(link.color).fg}
+									{@const stroke = strokeOf(link.width, opacityOf(link))}
 									{#snippet band()}
 										<Link
 											data={link}
 											sankey
 											orientation="horizontal"
 											stroke={fg}
-											strokeWidth={link.width}
+											strokeWidth={stroke.width}
 											fill="none"
-											style={`stroke-opacity: ${opacityOf(link)}`}
+											style={`stroke-opacity: ${stroke.opacity}`}
 										/>
 									{/snippet}
 									<g
@@ -166,7 +160,7 @@
 								{@const node = raw as unknown as Laid}
 								{@const fg = dimensionVars(node.color).fg}
 								{@const Icon = iconFor(node.icon)}
-								{@const high = node.y1 - node.y0}
+								{@const high = Math.max(MIN_DRAWN, node.y1 - node.y0)}
 								<g data-node={node.key} data-column={node.column}>
 									{#if node.account}
 										<rect

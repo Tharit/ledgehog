@@ -23,9 +23,8 @@ from app.core.reporting import (
     by_account,
     by_category,
     entry_filter,
-    overview,
 )
-from tests.core.reporting.helpers import TODAY, Household, household, listed_base_sum, rate
+from tests.core.reporting.helpers import Household, household, listed_base_sum, rate
 from tests.fixtures import ledger_seed as seed
 from tests.invariants.helpers import pair
 
@@ -43,7 +42,7 @@ def link_map(links: tuple[AccountLink, ...] | AccountLinks | None) -> dict[int, 
     return {k.account_id: k.line for k in (links.accounts if isinstance(links, AccountLinks) else links)}
 
 
-def tos(group: TransferGroup) -> dict[int, Line]:
+def tos(group: TransferGroup) -> dict[int | None, Line]:
     return {t.account_id: t.line for t in group.to}
 
 
@@ -150,7 +149,7 @@ def test_a_link_with_no_entries_is_absent(ledger: Connection):
     assert got.income.categories == () and got.income.total == EMPTY
     for group in (got.unclassified_in, got.unclassified_out, got.reconciliations):
         assert group == AccountLinks(EMPTY, ())
-    assert got.transfers == () and got.unpaired == EMPTY and got.stayed == ()
+    assert got.transfers == () and got.stayed == ()
 
 
 def test_unclassified_and_reconciliations_are_one_link_per_account(ledger: Connection, seeded: Household):
@@ -188,7 +187,6 @@ def test_a_paired_transfer_is_counted_once_by_its_outgoing_leg(ledger: Connectio
     paired(ledger, a, b, -5_000)
     got = by_account(ledger, entry_filter(*OCT))
     assert got.transfers == (TransferGroup(a, Line(-5_000, 1), (TransferTo(b, Line(-5_000, 1)),)),)
-    assert got.unpaired == EMPTY  # the incoming leg is in neither
 
 
 def test_a_transfer_there_and_back_is_two_links(ledger: Connection):
@@ -233,37 +231,55 @@ def test_each_leg_is_valued_at_its_own_rate_and_unvalued_is_listed(ledger: Conne
         assert [(u.currency, u.amount, u.count) for u in line.unvalued] == [("USD", -500, 1)]
 
 
-def test_every_unpaired_leg_is_on_the_unpaired_line_and_only_an_outgoing_one_with_a_counter_account_is_a_link(
+def test_an_unpaired_outgoing_leg_goes_to_no_account_whether_or_not_it_names_one(ledger: Connection):
+    a, b = seed.account(ledger, "A"), seed.account(ledger, "B")
+    leg(ledger, a, -1_000, None, flags=UNPAIRED)  # no counter-account
+    leg(ledger, a, -250, b, flags=UNPAIRED)  # a known counter-account, no partner entry
+    paired(ledger, a, b, -3_000)
+    got = by_account(ledger, entry_filter(*OCT))
+    (group,) = got.transfers
+    assert group.from_account_id == a and group.total == Line(-4_250, 3)
+    # the paired link to B, then the unpaired legs against no account (even the one that names B)
+    assert tos(group) == {b: Line(-3_000, 1), None: Line(-1_250, 2)}
+    assert [t.account_id for t in group.to] == [b, None]  # by magnitude: -3000 before -1250
+    assert add(t.line for t in group.to) == group.total
+
+
+def test_an_unpaired_incoming_leg_is_in_the_group_of_no_sender_under_its_own_account(ledger: Connection):
+    a, b = seed.account(ledger, "A"), seed.account(ledger, "B")
+    leg(ledger, a, 700, None, flags=UNPAIRED)  # incoming, no counter-account
+    leg(ledger, a, 400, b, flags=UNPAIRED)  # incoming, names B: still counted to A, its own account
+    leg(ledger, b, 100, a, flags=UNPAIRED)
+    got = by_account(ledger, entry_filter(*OCT))
+    (group,) = got.transfers
+    assert group.from_account_id is None and group.total == Line(1_200, 3)
+    assert [(t.account_id, t.line) for t in group.to] == [(a, Line(1_100, 2)), (b, Line(100, 1))]
+
+
+def test_both_legs_of_an_unpaired_transfer_meet_at_unpaired_and_no_account_shows_the_money_twice(
     ledger: Connection,
 ):
     a, b = seed.account(ledger, "A"), seed.account(ledger, "B")
-    leg(ledger, a, -1_000, None, flags=UNPAIRED)  # outgoing, no counter-account
-    leg(ledger, a, 700, None, flags=UNPAIRED)  # incoming, no counter-account
-    leg(ledger, a, 400, b, flags=UNPAIRED)  # incoming, a counter-account, no partner entry
-    leg(ledger, a, -250, b, flags=UNPAIRED)  # outgoing, a known counter-account, no partner: also a link
-    paired(ledger, a, b, -3_000)  # in neither: its outgoing leg is the link, the incoming leg stands for it
+    leg(ledger, a, -500, b, flags=UNPAIRED)  # the two legs of one transfer, each naming the other
+    leg(ledger, b, 500, a, flags=UNPAIRED)
     got = by_account(ledger, entry_filter(*OCT))
-    assert got.unpaired == Line(-1_000 + 700 + 400 - 250, 4)
-    # links: the paired outgoing leg and the unpaired outgoing one with a counter-account; no incoming leg
-    assert got.transfers == (TransferGroup(a, Line(-3_250, 2), (TransferTo(b, Line(-3_250, 2)),)),)
+    out, nobody = got.transfers  # the sending account's group first, the group of no sender last
+    assert (out.from_account_id, out.to) == (a, (TransferTo(None, Line(-500, 1)),))
+    assert (nobody.from_account_id, nobody.to) == (None, (TransferTo(b, Line(500, 1)),))
+    assert all(t.account_id not in (a, b) or g.from_account_id is None for g in got.transfers for t in g.to)
 
 
-def test_an_unpaired_incoming_leg_is_on_the_unpaired_line_but_in_no_link(ledger: Connection):
+def test_the_group_of_no_sender_and_the_null_receiver_come_last_however_large(ledger: Connection):
     a, b = seed.account(ledger, "A"), seed.account(ledger, "B")
-    leg(ledger, a, 400, b, flags=UNPAIRED)
+    leg(ledger, b, 9_000, None, flags=UNPAIRED)  # the largest figure of all, but it has no sender
+    leg(ledger, a, -8_000, None, flags=UNPAIRED)  # the largest link of A, but it has no receiver
+    paired(ledger, a, b, -100)
     got = by_account(ledger, entry_filter(*OCT))
-    assert got.transfers == () and got.unpaired == Line(400, 1)
+    assert [g.from_account_id for g in got.transfers] == [a, None]
+    assert [t.account_id for t in got.transfers[0].to] == [b, None]
 
 
-def test_the_unpaired_line_is_the_overviews_figure_cut_to_the_filter(ledger: Connection, seeded: Household):
-    # the Overview's figure takes every date; the by-account line the filter's
-    wide = by_account(ledger, entry_filter(D(2020, 1, 1), D(2030, 1, 1))).unpaired
-    assert wide == overview(ledger, TODAY).net_worth.unpaired_transfers == Line(-7_000, 2)
-    assert by_account(ledger, entry_filter(D(2026, 10, 15), D(2026, 10, 15))).unpaired == Line(-4_000, 1)
-    assert by_account(ledger, entry_filter(D(2026, 9, 1), D(2026, 9, 30))).unpaired == EMPTY
-
-
-def test_a_paired_incoming_leg_is_in_neither_even_when_its_partner_is_outside_the_range(
+def test_a_paired_incoming_leg_is_in_nothing_even_when_its_partner_is_outside_the_range(
     ledger: Connection,
 ):
     a, b = seed.account(ledger, "A"), seed.account(ledger, "B")
@@ -271,7 +287,7 @@ def test_a_paired_incoming_leg_is_in_neither_even_when_its_partner_is_outside_th
     into = leg(ledger, b, 5_000, a, D(2026, 10, 1))
     pair(ledger, out, into)
     got = by_account(ledger, entry_filter(*OCT))  # holds the incoming leg only
-    assert got.transfers == () and got.unpaired == EMPTY
+    assert got.transfers == ()
 
 
 def test_transfers_follow_the_tag_filter_and_the_range(ledger: Connection):
@@ -298,8 +314,8 @@ def test_stayed_is_what_an_account_received_less_what_it_transferred_out(
 ):
     got = by_account(ledger, entry_filter(*OCT))
     # Giro: salary 300000 + gifts 1000 + unclassified in 2500 (the -700 reconciliation does not count),
-    # less the 5000 transferred to Cash; the unpaired legs are in no link
-    assert got.stayed == (Stayed(seeded.giro, 298_500, 303_500, -5_000),)
+    # less its outgoing transfers: 5000 to Cash and the two unpaired legs of 4000 and 3000
+    assert got.stayed == (Stayed(seeded.giro, 291_500),)
     # the same with `top`: the categories beyond it are "other", counted just the same
     assert by_account(ledger, entry_filter(*OCT), top=1).stayed == got.stayed
 
@@ -318,9 +334,17 @@ def test_stayed_counts_the_positive_links_only_and_is_floored_at_zero(ledger: Co
     paired(ledger, c, a, -100)  # C received nothing on the income side
     got = by_account(ledger, entry_filter(*OCT))
     assert _stayed(got) == {a: 800 - 300}  # B: 50 - 500 < 0; C: 0 - 100 < 0
-    (only,) = got.stayed
-    assert (only.received, only.transferred_out) == (800, -300)
-    assert only.amount == max(0, only.received + only.transferred_out)
+
+
+def test_an_unpaired_outgoing_leg_reduces_stayed_like_a_paired_one(ledger: Connection):
+    a, b = seed.account(ledger, "A"), seed.account(ledger, "B")
+    salary = seed.category(ledger, "Salary", kind="income")
+    seed.entry(ledger, a, amount=1_000, on=OCT[0], category_id=salary)
+    paired(ledger, a, b, -300)
+    leg(ledger, a, -200, b, flags=UNPAIRED)  # unpaired, names B
+    leg(ledger, a, -100, None, flags=UNPAIRED)  # unpaired, names nobody
+    leg(ledger, a, 90, None, flags=UNPAIRED)  # an incoming leg reduces nothing
+    assert by_account(ledger, entry_filter(*OCT)).stayed == (Stayed(a, 400),)
 
 
 def test_stayed_is_absent_when_zero(ledger: Connection):
@@ -335,7 +359,7 @@ def test_stayed_counts_unclassified_in_and_positive_reconciliations(ledger: Conn
     a = seed.account(ledger, "A")
     seed.entry(ledger, a, amount=400, on=OCT[0])  # unclassified in
     seed.derived(ledger, a, type="reconciliation", on=OCT[0], amount=250)
-    assert by_account(ledger, entry_filter(*OCT)).stayed == (Stayed(a, 650, 650, 0),)
+    assert by_account(ledger, entry_filter(*OCT)).stayed == (Stayed(a, 650),)
 
 
 def test_without_top_the_income_categories_that_count_are_those_pick_slices_would_choose(ledger: Connection):
@@ -343,16 +367,16 @@ def test_without_top_the_income_categories_that_count_are_those_pick_slices_woul
     s1, s2 = seed.category(ledger, "S1", kind="income"), seed.category(ledger, "S2", kind="income")
     seed.entry(ledger, a, amount=600, on=OCT[0], category_id=s1)
     seed.entry(ledger, a, amount=100, on=OCT[0], category_id=s2)
-    assert by_account(ledger, entry_filter(*OCT)).stayed == (Stayed(a, 700, 700, 0),)
+    assert by_account(ledger, entry_filter(*OCT)).stayed == (Stayed(a, 700),)
     # with `top=1`: S1 is a slice, S2 is "other"; the same 700
-    assert by_account(ledger, entry_filter(*OCT), top=1).stayed == (Stayed(a, 700, 700, 0),)
+    assert by_account(ledger, entry_filter(*OCT), top=1).stayed == (Stayed(a, 700),)
     # an income category that nets to the other sign is a slice in neither case: not drawn
     b = seed.account(ledger, "B")
     s3 = seed.category(ledger, "S3", kind="income")
     seed.entry(ledger, a, amount=50, on=OCT[0], category_id=s3)
     seed.entry(ledger, b, amount=-200, on=OCT[0], category_id=s3)
-    assert by_account(ledger, entry_filter(*OCT)).stayed == (Stayed(a, 700, 700, 0),)
-    assert by_account(ledger, entry_filter(*OCT), top=3).stayed == (Stayed(a, 700, 700, 0),)
+    assert by_account(ledger, entry_filter(*OCT)).stayed == (Stayed(a, 700),)
+    assert by_account(ledger, entry_filter(*OCT), top=3).stayed == (Stayed(a, 700),)
 
 
 def test_an_unvalued_transfer_counts_as_nothing_passed_on(ledger: Connection):
@@ -363,12 +387,12 @@ def test_an_unvalued_transfer_counts_as_nothing_passed_on(ledger: Connection):
     rate(ledger, "USD", D(2026, 10, 20), "1.0")
     seed.entry(ledger, usd, amount=1_000, on=OCT[0], category_id=salary)
     paired(ledger, usd, b, -400, D(2026, 10, 25))  # valued at the rate of the 20th
-    assert by_account(ledger, entry_filter(*OCT)).stayed == (Stayed(usd, 600, 1_000, -400),)
+    assert by_account(ledger, entry_filter(*OCT)).stayed == (Stayed(usd, 600),)
     paired(ledger, usd, b, -300, D(2026, 11, 30))  # a rate too old, but outside the range: no effect
-    assert by_account(ledger, entry_filter(*OCT)).stayed == (Stayed(usd, 600, 1_000, -400),)
+    assert by_account(ledger, entry_filter(*OCT)).stayed == (Stayed(usd, 600),)
     # the 25th's rate falls away (the 1st's is too old): the leg is unvalued and counts as 0 passed on
     ledger.execute(text("DELETE FROM fx_rate WHERE rate_date = :d"), {"d": D(2026, 10, 20)})
-    assert by_account(ledger, entry_filter(*OCT)).stayed == (Stayed(usd, 1_000, 1_000, 0),)
+    assert by_account(ledger, entry_filter(*OCT)).stayed == (Stayed(usd, 1_000),)
 
 
 # ---- a drill-down equals its number
@@ -379,6 +403,36 @@ def _agrees(conn: Connection, line: Line, what: str, flt: LedgerFilter) -> None:
     got = list_entries(conn, flt, limit=1, offset=0).total
     assert line.count == got, f"{what}: counts {line.count} entries, its drill-down lists {got}"
     assert line.total == (listed_base_sum(conn, flt) if line.count else 0), f"{what}: the total differs"
+
+
+FLAGS = ("waiting", "unmatched_transfer")  # the review flags that select the unpaired legs
+
+
+def _transfers_agree(
+    conn: Connection, got: ByAccount, start: date, end: date, tags: tuple[int, ...], where: str
+) -> None:
+    """Every figure of the transfers: each link, and each group's total, equals its ledger drill-down."""
+
+    def narrow(**kw: Any) -> LedgerFilter:
+        return LedgerFilter(date_from=start, date_to=end, tag_ids=tags, types=("transfer",), **kw)
+
+    for g in got.transfers:
+        sender = g.from_account_id
+        if sender is None:
+            total = narrow(direction="in", flags=FLAGS)
+        else:
+            total = narrow(account_ids=(sender,), direction="out")
+        _agrees(conn, g.total, f"{where} group {sender} total", total)
+        for t in g.to:
+            if sender is None:  # Unpaired -> account
+                flt = narrow(account_ids=(t.account_id,), direction="in", flags=FLAGS)
+            elif t.account_id is None:  # account -> Unpaired
+                flt = narrow(account_ids=(sender,), direction="out", flags=FLAGS)
+            else:  # account -> account
+                flt = narrow(
+                    account_ids=(sender,), counter_account_ids=(t.account_id,), direction="out", paired=True
+                )
+            _agrees(conn, t.line, f"{where} {sender} -> {t.account_id}", flt)
 
 
 def test_every_link_of_a_household_equals_its_drilldown(ledger: Connection, seeded: Household):
@@ -431,101 +485,49 @@ def test_every_link_of_a_household_equals_its_drilldown(ledger: Connection, seed
                 f"{where} reconciliations x {k.account_id}",
                 narrow(start, end, tags, account_ids=(k.account_id,), types=("reconciliation",)),
             )
-        for g in got.transfers:
-            for t in g.to:
-                _agrees(
-                    ledger,
-                    t.line,
-                    f"{where} transfer {g.from_account_id} -> {t.account_id}",
-                    narrow(
-                        start,
-                        end,
-                        tags,
-                        account_ids=(g.from_account_id,),
-                        counter_account_ids=(t.account_id,),
-                        types=("transfer",),
-                        direction="out",
-                    ),
-                )
-        _agrees(
-            ledger,
-            got.unpaired,
-            f"{where} unpaired",
-            narrow(start, end, tags, types=("transfer",), flags=("waiting", "unmatched_transfer")),
-        )
+        _transfers_agree(ledger, got, start, end, tags, where)
 
 
-def test_every_transfer_link_equals_its_drilldown_there_and_back(ledger: Connection):
-    a, b = seed.account(ledger, "A"), seed.account(ledger, "B")
+def _mixed(ledger: Connection) -> tuple[int, int, int]:
+    """Paired transfers there and back, and unpaired legs of every kind, flagged as settling would."""
+    a, b, c = (seed.account(ledger, n) for n in "ABC")
     paired(ledger, a, b, -5_000)
     paired(ledger, b, a, -1_200)
-    leg(ledger, a, -250, b, flags=UNPAIRED)  # an unpaired outgoing leg is in its link too
+    paired(ledger, a, c, -300)
+    leg(ledger, a, -250, b, flags=UNPAIRED)  # outgoing, names B
+    leg(ledger, a, -75, None, flags=("waiting",))  # outgoing, names nobody
+    leg(ledger, c, -40, a, flags=UNPAIRED)  # outgoing from C
+    leg(ledger, b, 400, a, flags=UNPAIRED)  # incoming, names A: counted to B, its own account
+    leg(ledger, a, 700, None, flags=("waiting",))  # incoming, names nobody
+    return a, b, c
+
+
+def test_every_transfer_figure_equals_its_drilldown_with_every_kind_of_leg(ledger: Connection):
+    a, b, c = _mixed(ledger)
     got = by_account(ledger, entry_filter(*OCT))
-    assert len(got.transfers) == 2
+    assert [g.from_account_id for g in got.transfers] == [a, b, c, None]
+    ga, gb, gc, nobody = got.transfers
+    assert tos(ga) == {b: Line(-5_000, 1), c: Line(-300, 1), None: Line(-325, 2)}
+    assert ga.total == Line(-5_625, 4)
+    assert tos(gb) == {a: Line(-1_200, 1)} and tos(gc) == {None: Line(-40, 1)}
+    assert tos(nobody) == {b: Line(400, 1), a: Line(700, 1)} and nobody.total == Line(1_100, 2)
     for g in got.transfers:
-        for t in g.to:
-            _agrees(
-                ledger,
-                t.line,
-                f"{g.from_account_id} -> {t.account_id}",
-                LedgerFilter(
-                    date_from=OCT[0],
-                    date_to=OCT[1],
-                    account_ids=(g.from_account_id,),
-                    counter_account_ids=(t.account_id,),
-                    types=("transfer",),
-                    direction="out",
-                ),
-            )
+        assert add(t.line for t in g.to) == g.total
+    _transfers_agree(ledger, got, *OCT, (), "mixed")
 
 
-def test_the_unpaired_line_equals_the_ledger_filtered_by_the_two_unpaired_flags(ledger: Connection):
+def test_the_transfer_figures_follow_the_tag_filter(ledger: Connection):
     a, b = seed.account(ledger, "A"), seed.account(ledger, "B")
-    leg(ledger, a, -1_000, None, flags=UNPAIRED)
-    leg(ledger, a, 700, None, flags=("waiting",))
-    leg(ledger, a, 400, b, flags=UNPAIRED)
-    leg(ledger, a, -250, b, flags=("waiting",))
-    paired(ledger, a, b, -3_000)
-    got = by_account(ledger, entry_filter(*OCT))
-    assert got.unpaired.count == 4
-    _agrees(
-        ledger,
-        got.unpaired,
-        "unpaired",
-        LedgerFilter(
-            date_from=OCT[0], date_to=OCT[1], types=("transfer",), flags=("waiting", "unmatched_transfer")
-        ),
-    )
-
-
-def test_an_unpaired_outgoing_leg_with_a_counter_account_is_in_its_link_and_on_the_unpaired_line(
-    ledger: Connection,
-):
-    a, b = seed.account(ledger, "A"), seed.account(ledger, "B")
-    paired(ledger, a, b, -5_000)
-    leg(ledger, a, -250, b, flags=UNPAIRED)
-    got = by_account(ledger, entry_filter(*OCT))
-    (group,) = got.transfers
-    (t,) = group.to
-    assert t.line == Line(-5_250, 2) and got.unpaired == Line(-250, 1)
-    _agrees(
-        ledger,
-        t.line,
-        "A -> B",
-        LedgerFilter(
-            date_from=OCT[0],
-            date_to=OCT[1],
-            account_ids=(a,),
-            counter_account_ids=(b,),
-            types=("transfer",),
-            direction="out",
-        ),
-    )
-    _agrees(
-        ledger,
-        got.unpaired,
-        "unpaired",
-        LedgerFilter(
-            date_from=OCT[0], date_to=OCT[1], types=("transfer",), flags=("waiting", "unmatched_transfer")
-        ),
-    )
+    t = seed.tag(ledger, "trip")
+    out, _ = paired(ledger, a, b, -5_000)
+    tagged_unpaired = leg(ledger, a, -250, None, flags=UNPAIRED)
+    leg(ledger, b, 99, None, flags=UNPAIRED)  # untagged
+    for entry in (out, tagged_unpaired):
+        ledger.execute(
+            text("INSERT INTO ledger_entry_tag (ledger_entry_id, tag_id) VALUES (:e, :t)"),
+            {"e": entry, "t": t},
+        )
+    got = by_account(ledger, entry_filter(*OCT, (), (t,)))
+    assert [g.from_account_id for g in got.transfers] == [a]
+    assert tos(got.transfers[0]) == {b: Line(-5_000, 1), None: Line(-250, 1)}
+    _transfers_agree(ledger, got, *OCT, (t,), "tagged")

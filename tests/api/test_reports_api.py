@@ -333,7 +333,6 @@ def test_by_account_of_an_empty_ledger(anna: TestClient):
         "unclassified_out": {"total": line(0, 0), "accounts": []},
         "reconciliations": {"total": line(0, 0), "accounts": []},
         "transfers": [],
-        "unpaired": line(0, 0),
         "stayed": [],
     }
 
@@ -374,17 +373,19 @@ def test_by_account_of_a_household_month(anna: TestClient, seeded: Household):
         "total": line(-700, 1),
         "accounts": [{"account_id": g, "line": line(-700, 1)}],
     }
+    # Giro's paired transfer to Cash, then its two unpaired outgoing legs against no account (last)
     assert body["transfers"] == [
         {
             "from_account_id": g,
-            "total": line(-5_000, 1),
-            "to": [{"account_id": c, "line": line(-5_000, 1)}],
+            "total": line(-12_000, 3),
+            "to": [
+                {"account_id": c, "line": line(-5_000, 1)},
+                {"account_id": None, "line": line(-7_000, 2)},
+            ],
         }
     ]
-    assert body["unpaired"] == line(-7_000, 2)
-    assert body["stayed"] == [
-        {"account_id": g, "amount": eur(298_500), "received": eur(303_500), "transferred_out": eur(-5_000)}
-    ]
+    assert "unpaired" not in body
+    assert body["stayed"] == [{"account_id": g, "amount": eur(291_500)}]
 
 
 def test_by_account_totals_are_by_categorys(anna: TestClient, seeded: Household):
@@ -401,7 +402,7 @@ def test_by_account_totals_are_by_categorys(anna: TestClient, seeded: Household)
 def test_by_account_takes_the_tag_filter(anna: TestClient, seeded: Household):
     body = get(anna, BY_ACCOUNT, **{"from": "2026-09-01", "to": "2026-09-30"}, tag_id=seeded.trip)
     assert body["expense"]["total"] == line(-40_000, 1)
-    assert body["income"]["categories"] == [] and body["transfers"] == [] and body["unpaired"] == line(0, 0)
+    assert body["income"]["categories"] == [] and body["transfers"] == []
 
 
 def test_every_link_of_by_account_counts_what_the_ledger_list_lists_for_its_drilldown(
@@ -429,18 +430,51 @@ def test_every_link_of_by_account_counts_what_the_ledger_list_lists_for_its_dril
         agrees(k["line"], account_id=k["account_id"], uncategorised="true", direction="out")
     for k in body["reconciliations"]["accounts"]:
         agrees(k["line"], account_id=k["account_id"], type="reconciliation")
-    assert body["transfers"], "the household has a paired transfer"
+    assert body["transfers"], "the household has transfers"
+    flags = ["waiting", "unmatched_transfer"]
     for g in body["transfers"]:
+        sender = g["from_account_id"]
         assert g["total"]["count"] == sum(t["line"]["count"] for t in g["to"])
+        if sender is None:
+            agrees(g["total"], type="transfer", direction="in", flag=flags)
+        else:
+            agrees(g["total"], account_id=sender, type="transfer", direction="out")
         for t in g["to"]:
-            agrees(
-                t["line"],
-                account_id=g["from_account_id"],
-                counter_account_id=t["account_id"],
-                type="transfer",
-                direction="out",
-            )
-    agrees(body["unpaired"], type="transfer", flag=["waiting", "unmatched_transfer"])
+            if sender is None:  # Unpaired -> account
+                agrees(t["line"], account_id=t["account_id"], type="transfer", direction="in", flag=flags)
+            elif t["account_id"] is None:  # account -> Unpaired
+                agrees(t["line"], account_id=sender, type="transfer", direction="out", flag=flags)
+            else:
+                agrees(
+                    t["line"],
+                    account_id=sender,
+                    counter_account_id=t["account_id"],
+                    type="transfer",
+                    direction="out",
+                    paired="true",
+                )
+
+
+def test_by_account_carries_an_unpaired_incoming_leg_in_the_group_of_no_sender(
+    anna: TestClient, api_engine: Engine
+):
+    with api_engine.begin() as conn:
+        a, b = seed.account(conn, "A"), seed.account(conn, "B")
+        seed.entry(conn, a, amount=400, on=date(2026, 10, 5), type="transfer", flags=("waiting",))
+        seed.entry(conn, b, amount=-100, on=date(2026, 10, 6), type="transfer", flags=("unmatched_transfer",))
+    body = get(anna, BY_ACCOUNT, **OCT)
+    assert body["transfers"] == [
+        {
+            "from_account_id": b,
+            "total": line(-100, 1),
+            "to": [{"account_id": None, "line": line(-100, 1)}],
+        },
+        {
+            "from_account_id": None,
+            "total": line(400, 1),
+            "to": [{"account_id": a, "line": line(400, 1)}],
+        },
+    ]
 
 
 # ---- Over time

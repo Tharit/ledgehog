@@ -33,7 +33,8 @@ describe('ByAccountView', () => {
 		expect(rowsOf(container, 'transfers')).toEqual([
 			'transfers:a1',
 			'transfers:a2',
-			'transfers:a3'
+			'transfers:a3',
+			'transfers:unpaired'
 		]);
 		// not in the categories above: unclassified out and in, reconciliations
 		expect(rowsOf(container, 'other')).toEqual([
@@ -43,7 +44,7 @@ describe('ByAccountView', () => {
 		]);
 	});
 
-	it('links every figure of the table to the ledger, a group without a figure to nothing', async () => {
+	it('links every figure of the table to the ledger', async () => {
 		const { container } = render(ByAccountView, {
 			props: { report: byAccount(), categories, accounts, scope }
 		});
@@ -58,9 +59,22 @@ describe('ByAccountView', () => {
 			'href',
 			'/ledger?from=2026-10-01&to=2026-10-31&uncategorised=true&direction=out'
 		);
-		// a sending account's total is a figure, not a link: no filter lists exactly its legs
-		expect(row('transfers:a1').querySelector('a')).toBeNull();
-		expect(row('transfers:a1').querySelector('[data-slot="figure"]')).toBeInTheDocument();
+		// a sending account's total is a link to all its outgoing transfer legs
+		const sent = new URLSearchParams(
+			row('transfers:a1').querySelector('a')!.getAttribute('href')!.split('?')[1]
+		);
+		expect([sent.get('account_id'), sent.get('type'), sent.get('direction')]).toEqual([
+			'1',
+			'transfer',
+			'out'
+		]);
+		expect(sent.has('counter_account_id')).toBe(false);
+		// "Unpaired" as sender links to the unpaired incoming legs
+		const unpaired = new URLSearchParams(
+			row('transfers:unpaired').querySelector('a')!.getAttribute('href')!.split('?')[1]
+		);
+		expect(unpaired.get('direction')).toBe('in');
+		expect(unpaired.getAll('flag')).toEqual(['waiting', 'unmatched_transfer']);
 		await fireEvent.click(screen.getByRole('button', { name: 'Expand Giro' }));
 		const leg = row('transfers:a1:a2').querySelector('a')!;
 		expect(leg.getAttribute('href')).toContain('counter_account_id=2');
@@ -78,28 +92,12 @@ describe('ByAccountView', () => {
 		expect(note.querySelectorAll('a')).toHaveLength(3);
 	});
 
-	it('counts the transfers not paired yet, with their figure as a link to the ledger’s unpaired legs', () => {
+	it('has no note about unpaired transfers: they are in the chart and the table', () => {
 		const { container } = render(ByAccountView, {
-			props: { report: byAccount(), categories, accounts, scope: { ...scope, tagIds: [4] } }
-		});
-
-		const note = container.querySelector('[data-slot="unpaired-note"]')!;
-		expect(note).toHaveTextContent(/^\s*Not paired yet: 2 transfers/);
-		expect(note).not.toHaveTextContent(/Not in the chart/);
-		const href = note.querySelector('a')!.getAttribute('href')!;
-		const query = new URLSearchParams(href.split('?')[1]);
-		expect(href.startsWith('/ledger?')).toBe(true);
-		expect(query.getAll('type')).toEqual(['transfer']);
-		expect(query.getAll('flag')).toEqual(['waiting', 'unmatched_transfer']);
-		expect(query.getAll('tag_id')).toEqual(['4']);
-		expect(query.get('from')).toBe('2026-10-01');
-	});
-
-	it('has no unpaired note at a count of 0', () => {
-		const { container } = render(ByAccountView, {
-			props: { report: byAccount({ unpaired: line(0) }), categories, accounts, scope }
+			props: { report: byAccount(), categories, accounts, scope }
 		});
 		expect(container.querySelector('[data-slot="unpaired-note"]')).toBeNull();
+		expect(container).not.toHaveTextContent(/Not paired yet/);
 	});
 
 	it('says nothing is there, with the filters when there are some', () => {
@@ -110,7 +108,6 @@ describe('ByAccountView', () => {
 			unclassified_out: { total: line(0), accounts: [] },
 			reconciliations: { total: line(0), accounts: [] },
 			transfers: [],
-			unpaired: line(0),
 			stayed: []
 		});
 		const plain = render(ByAccountView, {

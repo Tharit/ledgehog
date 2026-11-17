@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/svelte';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { accountSankey } from '#lib/reports/sankey.js';
 import { byAccount, byAccountLookups } from '#lib/reports/trend-fixtures.js';
+import { THIN_OPACITY } from '#lib/reports/sankey.js';
 import AccountSankey from './account-sankey.svelte';
 
 const { categories, accounts } = byAccountLookups();
@@ -50,22 +51,38 @@ describe('AccountSankey', () => {
 		expect(await screen.findByText(/Other to Savings/)).toBeInTheDocument();
 	});
 
-	it('tells what stayed from the answer’s own figures, adding nothing', async () => {
+	it('tells only what stayed: the API’s amount, with no received or transferred-out figure', async () => {
 		const { container } = render(AccountSankey, { props: { model: model() } });
 
 		const links = await vi_waitFor(() => container.querySelectorAll('[data-link]'));
 		const band = [...links].find((l) => l.getAttribute('data-link') === '1:a1>2:a1')!;
 		await fireEvent.pointerMove(band, { clientX: 20, clientY: 20 });
 
-		// 305,000 received, 103,000 transferred out, 202,000 stayed (the links beside it sum to
-		// 302,000 and 100,000)
-		const tip = (await screen.findByText('Transferred out')).closest(
-			'[data-slot="figure-tooltip"]'
-		)!;
-		expect(tip).toHaveTextContent(/Received\s*\+?3,050\.00/);
-		expect(tip).toHaveTextContent(/Transferred out\s*\S?1,030\.00/);
-		expect(tip).toHaveTextContent(/Stayed\s*\+?2,020\.00/);
-		expect(tip).not.toHaveTextContent('3,020.00');
+		const tip = (await screen.findByText('Stayed')).closest('[data-slot="figure-tooltip"]')!;
+		expect(tip).toHaveTextContent('Giro');
+		// the answer's amount, 202,000 minor units
+		expect(tip).toHaveTextContent(/\+?2,020\.00/);
+		expect(tip).not.toHaveTextContent(/Received|Transferred/);
+		expect(tip.querySelectorAll('.amount')).toHaveLength(1);
+	});
+
+	it('draws a tiny flow as a visible line: at least 1px wide and 1px tall', async () => {
+		// Other to Savings is 10.00 of 3,000.00: its laid-out width is far below 1px
+		const { container } = render(AccountSankey, { props: { model: model() } });
+
+		const links = await vi_waitFor(() => container.querySelectorAll('[data-link]'));
+		const tiny = [...links].find((l) => l.getAttribute('data-link') === '0:other>1:a2')!;
+		const path = tiny.querySelector('path')!;
+		expect(Number(path.getAttribute('stroke-width'))).toBeGreaterThanOrEqual(1);
+		expect(path.getAttribute('style')).toContain(`stroke-opacity: ${THIN_OPACITY}`);
+		for (const l of links) {
+			expect(Number(l.querySelector('path')!.getAttribute('stroke-width'))).toBeGreaterThanOrEqual(
+				1
+			);
+		}
+		for (const rect of container.querySelectorAll('[data-node] rect')) {
+			expect(Number(rect.getAttribute('height'))).toBeGreaterThanOrEqual(1);
+		}
 	});
 });
 
