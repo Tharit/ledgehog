@@ -301,6 +301,114 @@ def get_by_category(
     )
 
 
+# ---- By account
+
+
+class AccountLinkOut(BaseModel):
+    account_id: int
+    line: LineOut  # signed as booked
+
+
+class CategoryLinksOut(BaseModel):
+    category_id: int  # a top-level category
+    total: LineOut  # with its descendants: its *By category* figure
+    accounts: list[AccountLinkOut]  # the total cut by account; the links sum to it
+
+
+class KindLinksOut(BaseModel):
+    total: LineOut  # the kind's *By category* total
+    categories: list[CategoryLinksOut]  # top-level, by magnitude; only those with entries
+    slices: list[int] | None  # with `top`: the category ids of the largest of the kind's sign
+    other: list[AccountLinkOut] | None  # with `top`: the remaining ones summed per account; null if none
+
+
+class TransferLinkOut(BaseModel):
+    from_account_id: int
+    to_account_id: int  # the leg's counter-account
+    line: LineOut  # the outgoing legs: negative
+
+
+class StayedOut(BaseModel):
+    account_id: int
+    amount: Money  # base currency, positive: derived, with no entries behind it
+
+
+class ByAccountOut(BaseModel):
+    base_currency: str
+    from_: date = Field(serialization_alias="from")
+    to: date
+    income: KindLinksOut
+    expense: KindLinksOut
+    unclassified_in: list[AccountLinkOut]
+    unclassified_out: list[AccountLinkOut]
+    reconciliations: list[AccountLinkOut]  # one net link per account
+    transfers: list[TransferLinkOut]  # each pair of account and counter-account, the outgoing legs only
+    undrawn: LineOut  # the transfer legs in no link: no counter-account, or incoming with no partner
+    stayed: list[StayedOut]  # per account: received on the income side less transferred out, if positive
+
+
+def _account_links(links: tuple[rp.AccountLink, ...], base: str) -> list[AccountLinkOut]:
+    return [AccountLinkOut(account_id=k.account_id, line=LineOut.of(k.line, base)) for k in links]
+
+
+def _kind_links(kind: rp.KindLinks, base: str) -> KindLinksOut:
+    return KindLinksOut(
+        total=LineOut.of(kind.total, base),
+        categories=[
+            CategoryLinksOut(
+                category_id=c.category_id,
+                total=LineOut.of(c.total, base),
+                accounts=_account_links(c.accounts, base),
+            )
+            for c in kind.categories
+        ],
+        slices=None if kind.slices is None else list(kind.slices),
+        other=None if kind.other is None else _account_links(kind.other, base),
+    )
+
+
+@router.get("/by-account")
+def get_by_account(
+    user: CurrentUser,
+    engine: EngineDep,
+    request: Request,
+    from_: Annotated[date, Query(alias="from")],
+    to: Required,
+    tag_id: Ids = None,
+    top: Annotated[int | None, Query(ge=1, le=50)] = None,
+) -> ByAccountOut:
+    """The money each account received, passed on and paid over a range, as a list of links: the
+    *By category* figures cut by account, the transfers by account and counter-account, and what stayed.
+    There is no `account_id`: a transfer into a chosen account would drop out of its own account's view."""
+    base: str = request.app.state.config.base_currency
+    flt = rp.entry_filter(from_, to, (), tag_id or ())
+    with engine.connect() as conn:
+        got = rp.by_account(conn, flt, top)
+    return ByAccountOut(
+        base_currency=base,
+        from_=from_,
+        to=to,
+        income=_kind_links(got.income, base),
+        expense=_kind_links(got.expense, base),
+        unclassified_in=_account_links(got.unclassified_in, base),
+        unclassified_out=_account_links(got.unclassified_out, base),
+        reconciliations=_account_links(got.reconciliations, base),
+        transfers=[
+            TransferLinkOut(
+                from_account_id=t.from_account_id,
+                to_account_id=t.to_account_id,
+                line=LineOut.of(t.line, base),
+            )
+            for t in got.transfers
+        ],
+        undrawn=LineOut.of(got.undrawn, base),
+        stayed=[
+            StayedOut(account_id=s.account_id, amount=Money(amount=s.amount, currency=base))
+            for s in got.stayed
+        ],
+    )
+
+
 # ---- Over time
 
 

@@ -1,7 +1,7 @@
 // The reporting reads (architecture §4.1): read-only aggregates, every figure a `Line`. The ledger
 // list's account and tag filters apply to the ones that take them.
 import type { Balances, Kind, OverTime, Step } from '#lib/reports/shapes.js';
-import type { ByCategory, Overview } from '#lib/reports/types.js';
+import type { ByAccount, ByCategory, Overview } from '#lib/reports/types.js';
 import { request } from './http.js';
 
 /** Net worth, savings, this month's spend and the stalest accounts by data age, at the household's today. */
@@ -32,6 +32,29 @@ export function getByCategory({
 }: ByCategoryOptions): Promise<ByCategory> {
 	return request('GET', '/api/reports/by-category', {
 		query: { from, to, kind, account_id: accountIds, tag_id: tagIds, top },
+		signal
+	});
+}
+
+export type ByAccountOptions = {
+	from: string;
+	to: string;
+	tagIds?: readonly number[];
+	/** the largest top-level categories of each kind as `slices`, the rest as `other` */
+	top?: number;
+	signal?: AbortSignal;
+};
+
+/** Where money came from and went, by account: the links of categories, accounts and transfers. */
+export function getByAccount({
+	from,
+	to,
+	tagIds,
+	top,
+	signal
+}: ByAccountOptions): Promise<ByAccount> {
+	return request('GET', '/api/reports/by-account', {
+		query: { from, to, tag_id: tagIds, top },
 		signal
 	});
 }

@@ -1,10 +1,10 @@
 // Test fixtures of the reports' answers beyond the Overview's: the category tree, the periods, the
 // savings of each, the balances. Whole API objects with sensible defaults.
 import { account, category } from '#lib/ledger/fixtures.js';
-import { buildLookups, type Lookups } from '#lib/ledger/lookups.js';
+import { buildLookups, withCategories, type Lookups } from '#lib/ledger/lookups.js';
 import type { Balances, CategorySeries, OverTime, Period, Savings } from './shapes.js';
 import { line } from './fixtures.js';
-import type { ByCategory, Line } from './types.js';
+import type { ByAccount, ByCategory, Line } from './types.js';
 
 /** Food (sage) with Groceries and Eating out beneath, Home (slate), Salary (income, forest). */
 export function reportLookups(): Lookups {
@@ -203,6 +203,74 @@ export function balances(over: Partial<Balances> = {}): Balances {
 					{ amount: 8000, currency: 'USD' }
 				]
 			}
+		],
+		...over
+	};
+}
+
+/** `reportLookups` with two more income and expense categories: Interest (7) and Travel (8). */
+export function byAccountLookups(): Lookups {
+	const base = reportLookups();
+	return withCategories(base, [
+		...base.categories.values(),
+		category({ id: 7, name: 'Interest', kind: 'income', color: 'teal', sort_order: 5 }),
+		category({ id: 8, name: 'Travel', kind: 'expense', color: 'ochre', sort_order: 6 })
+	]);
+}
+
+/**
+ * A By account answer for October 2026 (accounts: Giro 1, Savings 2, Depot 3). Income: Salary 300000
+ * on Giro as a slice, Interest 1000 on Savings in "Other". Expense: Home on Giro and Depot and Food
+ * on Giro as slices, Travel on Savings in "Other", Refunds (+500 on Giro) of the other sign.
+ * Transfers: Giro to Savings and back, one of Giro to Depot that could not be valued, one of Depot
+ * to Savings of the other sign. Giro kept 302000 less 100000 sent; Depot kept its reconciliation.
+ */
+export function byAccount(over: Partial<ByAccount> = {}): ByAccount {
+	const link = (account_id: number, total: number | null, count = 1) => ({
+		account_id,
+		line: line(total, { count })
+	});
+	return {
+		base_currency: 'EUR',
+		from: '2026-10-01',
+		to: '2026-10-31',
+		income: {
+			total: line(301000, { count: 2 }),
+			categories: [
+				{ category_id: 5, total: line(300000), accounts: [link(1, 300000)] },
+				{ category_id: 7, total: line(1000), accounts: [link(2, 1000)] }
+			],
+			slices: [5],
+			other: [link(2, 1000)]
+		},
+		expense: {
+			total: line(-105000, { count: 6 }),
+			categories: [
+				{
+					category_id: 4,
+					total: line(-60000, { count: 2 }),
+					accounts: [link(1, -50000), link(3, -10000)]
+				},
+				{ category_id: 1, total: line(-40000), accounts: [link(1, -40000)] },
+				{ category_id: 8, total: line(-5000), accounts: [link(2, -5000)] },
+				{ category_id: 6, total: line(500), accounts: [link(1, 500)] }
+			],
+			slices: [4, 1],
+			other: [link(2, -5000)]
+		},
+		unclassified_in: [link(1, 2000)],
+		unclassified_out: [link(1, -2500), link(3, 300)],
+		reconciliations: [link(3, 4000), link(1, -100)],
+		transfers: [
+			{ from_account_id: 1, to_account_id: 2, line: line(-100000, { count: 2 }) },
+			{ from_account_id: 2, to_account_id: 1, line: line(-5000) },
+			{ from_account_id: 1, to_account_id: 3, line: line(null) },
+			{ from_account_id: 3, to_account_id: 2, line: line(300) }
+		],
+		undrawn: line(-7000, { count: 2 }),
+		stayed: [
+			{ account_id: 1, amount: { amount: 202000, currency: 'EUR' } },
+			{ account_id: 3, amount: { amount: 4000, currency: 'EUR' } }
 		],
 		...over
 	};

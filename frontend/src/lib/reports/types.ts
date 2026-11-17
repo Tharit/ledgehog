@@ -11,3 +11,7 @@ export type SavingsSpan = Schemas['SavingsSpanOut'];
 export type MonthSpend = Schemas['MonthSpendOut'];
 export type ThisMonthSpend = Schemas['ThisMonthSpendOut'];
 export type ByCategory = Schemas['ByCategoryOut'];
+export type ByAccount = Schemas['ByAccountOut'];
+export type KindLinks = Schemas['KindLinksOut'];
+export type AccountLink = Schemas['AccountLinkOut'];
+export type TransferLink = Schemas['TransferLinkOut'];

@@ -7,7 +7,7 @@ import { fromSearchParams } from '#lib/ledger/filter.js';
 import { datePresets } from '#lib/ledger/presets.js';
 import type { Kind, Step } from './shapes.js';
 
-export type ReportId = 'by-category' | 'over-time' | 'balances';
+export type ReportId = 'by-category' | 'by-account' | 'over-time' | 'balances';
 export type TimeMode = 'income-expense' | 'category';
 
 export type ReportParams = {
@@ -28,13 +28,14 @@ export const STEPS: readonly { step: Step; label: string }[] = [
 
 export const REPORT_TABS: readonly { href: string; label: string; id: ReportId }[] = [
 	{ href: '/reports/by-category', label: 'By category', id: 'by-category' },
+	{ href: '/reports/by-account', label: 'By account', id: 'by-account' },
 	{ href: '/reports/over-time', label: 'Over time', id: 'over-time' },
 	{ href: '/reports/balances', label: 'Balances', id: 'balances' }
 ];
 
 /** The range a report opens on: the month so far for the split, the last 12 months for the trends. */
 export function defaultRange(report: ReportId, today: string): { from: string; to: string } {
-	const id = report === 'by-category' ? 'this-month' : 'last-12-months';
+	const id = report === 'by-category' || report === 'by-account' ? 'this-month' : 'last-12-months';
 	const preset = datePresets(today).find((p) => p.id === id)!;
 	return { from: preset.from, to: preset.to };
 }
@@ -71,9 +72,12 @@ export function toQuery(params: ReportParams, report: ReportId, today: string): 
 		query.set('from', params.from);
 		query.set('to', params.to);
 	}
-	if (report !== 'balances') {
+	// Balances is of every account, and By account shows the accounts: neither has the account filter
+	if (report !== 'balances' && report !== 'by-account') {
 		for (const id of [...params.accountIds].sort((a, b) => a - b))
 			query.append('account_id', String(id));
+	}
+	if (report !== 'balances') {
 		for (const id of [...params.tagIds].sort((a, b) => a - b)) query.append('tag_id', String(id));
 	}
 	const byCategory =

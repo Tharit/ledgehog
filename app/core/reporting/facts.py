@@ -32,7 +32,18 @@ from app.core.reporting.periods import Step
 CLASSES = ("income", "expense", "unclassified_out", "unclassified_in", "reconciliation")
 KIND_SIGN = {"expense": -1, "income": 1}  # the sign a category of the kind normally has
 
-_cat = table("category", column("id"), column("kind")).alias("rcat")
+rcat = table("category", column("id"), column("kind")).alias("rcat")
+
+# the class of an entry, told apart by the entry alone (`rcat` joined on its category)
+CLASS_OF = case(
+    (le.c.type == "reconciliation", "reconciliation"),
+    (
+        le.c.category_id.is_(None),
+        case((le.c.amount < 0, "unclassified_out"), else_="unclassified_in"),
+    ),
+    (rcat.c.kind == "income", "income"),
+    else_="expense",
+)
 
 Key = tuple[date | None, str, int | None]  # (period bucket or None, class, category id or None)
 
@@ -82,25 +93,16 @@ def fetch(conn: Connection, flt: LedgerFilter, step: Step | None = None) -> Fact
         if step is not None
         else cast(literal(None), Date)
     )
-    klass = case(
-        (le.c.type == "reconciliation", "reconciliation"),
-        (
-            le.c.category_id.is_(None),
-            case((le.c.amount < 0, "unclassified_out"), else_="unclassified_in"),
-        ),
-        (_cat.c.kind == "income", "income"),
-        else_="expense",
-    )
     entries = (
         select(
             bucket.label("bucket"),
-            klass.label("klass"),
+            CLASS_OF.label("klass"),
             le.c.category_id.label("category_id"),
             le.c.currency.label("currency"),
             le.c.amount.label("amount"),
             base.label("base"),
         )
-        .select_from(parts.source.outerjoin(_cat, _cat.c.id == le.c.category_id))
+        .select_from(parts.source.outerjoin(rcat, rcat.c.id == le.c.category_id))
         .where(*parts.where, or_(le.c.type.is_(None), le.c.type.in_(("flow", "reconciliation"))))
         # valued once per entry: the planner may not inline the conversion into each aggregate below
         .cte("entries")

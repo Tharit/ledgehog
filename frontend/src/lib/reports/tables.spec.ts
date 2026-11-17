@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Scope } from './links.js';
 import {
+	accountTable,
 	balanceTable,
 	categoryTable,
 	categoryTrendTable,
@@ -9,6 +10,8 @@ import {
 } from './tables.js';
 import {
 	balances,
+	byAccount,
+	byAccountLookups,
 	byCategoryTree,
 	overTimeCategories,
 	overTimeSavings,
@@ -221,5 +224,106 @@ describe('balanceTable', () => {
 
 	it('lists an account with no valued balance as unvalued, in its own currency', () => {
 		expect(table.unvalued).toEqual([{ accountId: 3, name: 'Depot', native: '80.00 USD' }]);
+	});
+});
+
+describe('accountTable', () => {
+	const lookups = byAccountLookups();
+	const sections = accountTable(byAccount(), lookups.categories, lookups.accounts, {
+		...scope,
+		tagIds: [4]
+	});
+	const section = (key: string) => sections.find((s) => s.key === key)!;
+	const row = (key: string) => sections.flatMap((s) => s.rows).find((r) => r.key === key)!;
+	const query = (href: string | null) => new URLSearchParams(href!.split('?')[1]);
+
+	it('has Income and Expense, each category with its accounts beneath, and Transfers', () => {
+		expect(sections.map((s) => s.label)).toEqual(['Income', 'Expense', 'Transfers']);
+		expect(section('income').rows.map((r) => r.key)).toEqual([
+			'income:c5',
+			'income:c5:a1',
+			'income:c7',
+			'income:c7:a2',
+			'income:total',
+			'income:unclassified',
+			'income:unclassified:a1',
+			'income:reconciliations',
+			'income:reconciliations:a3'
+		]);
+		// all the categories, not only the slices: Travel and Refunds are not slices
+		expect(section('expense').rows.map((r) => r.key)).toEqual([
+			'expense:c4',
+			'expense:c4:a1',
+			'expense:c4:a3',
+			'expense:c1',
+			'expense:c1:a1',
+			'expense:c8',
+			'expense:c8:a2',
+			'expense:c6',
+			'expense:c6:a1',
+			'expense:total',
+			'expense:unclassified',
+			'expense:unclassified:a1',
+			'expense:unclassified:a3',
+			'expense:reconciliations',
+			'expense:reconciliations:a1'
+		]);
+	});
+
+	it('gives a category its By category figure and each account its link, as drill-downs', () => {
+		const salary = row('income:c5');
+		expect(salary).toMatchObject({ label: 'Salary', depth: 0, hasChildren: true, categoryId: 5 });
+		expect(salary.line!.total!.amount).toBe(300000);
+		expect(Object.fromEntries(query(salary.href))).toEqual({
+			from: '2026-10-01',
+			to: '2026-10-31',
+			tag_id: '4',
+			category_id: '5'
+		});
+		const giro = row('expense:c4:a1');
+		expect(giro).toMatchObject({ label: 'Giro', depth: 1, hasChildren: false, accountId: 1 });
+		expect(giro.line!.total!.amount).toBe(-50000);
+		expect(query(giro.href).getAll('account_id')).toEqual(['1']);
+		expect(query(giro.href).getAll('category_id')).toEqual(['4']);
+		expect(row('expense:total').href).toContain('category_id=');
+	});
+
+	it('shows an opposite-sign link in the table, though it is not drawn', () => {
+		expect(row('expense:c6:a1').line!.total!.amount).toBe(500);
+		expect(row('expense:unclassified:a3').line!.total!.amount).toBe(300);
+	});
+
+	it('gives the unclassified, the reconciliations and a sending account no figure of their own', () => {
+		for (const key of ['income:unclassified', 'income:reconciliations', 'transfers:a1']) {
+			expect(row(key)).toMatchObject({ line: null, href: null, hasChildren: true, depth: 0 });
+		}
+	});
+
+	it('puts a reconciliation on the side of its sign', () => {
+		expect(row('income:reconciliations:a3').line!.total!.amount).toBe(4000);
+		expect(row('expense:reconciliations:a1').line!.total!.amount).toBe(-100);
+		expect(query(row('income:reconciliations:a3').href).getAll('type')).toEqual(['reconciliation']);
+	});
+
+	it('lists each sending account once with the receiving accounts beneath it', () => {
+		expect(section('transfers').rows.map((r) => r.key)).toEqual([
+			'transfers:a1',
+			'transfers:a1:a2',
+			'transfers:a1:a3',
+			'transfers:a2',
+			'transfers:a2:a1',
+			'transfers:a3',
+			'transfers:a3:a2'
+		]);
+		const leg = row('transfers:a1:a2');
+		expect(leg.line!.total!.amount).toBe(-100000);
+		expect(Object.fromEntries(query(leg.href))).toMatchObject({
+			account_id: '1',
+			counter_account_id: '2',
+			type: 'transfer',
+			direction: 'out'
+		});
+		// one that could not be valued stays in the table
+		expect(row('transfers:a1:a3').line!.total).toBeNull();
 	});
 });

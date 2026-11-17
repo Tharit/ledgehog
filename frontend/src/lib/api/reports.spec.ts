@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from './http.js';
-import { getBalances, getByCategory, getOverTime, getOverview } from './reports.js';
+import { getBalances, getByAccount, getByCategory, getOverTime, getOverview } from './reports.js';
 
 const fetchMock = vi.fn();
 
@@ -37,6 +37,18 @@ describe('getOverview', () => {
 			reply({ error: { code: 'internal_error', message: 'x', details: null } }, 500)
 		);
 		await expect(getOverview()).rejects.toBeInstanceOf(ApiError);
+	});
+});
+
+describe('getByAccount', () => {
+	it('asks for a range, the tags and the largest ten, and no account', async () => {
+		await getByAccount({ from: '2026-10-01', to: '2026-10-31' });
+		expect(lastUrl()).toBe('/api/reports/by-account?from=2026-10-01&to=2026-10-31');
+
+		await getByAccount({ from: '2026-10-01', to: '2026-10-31', tagIds: [7, 9], top: 10 });
+		expect(lastUrl()).toBe(
+			'/api/reports/by-account?from=2026-10-01&to=2026-10-31&tag_id=7&tag_id=9&top=10'
+		);
 	});
 });
 

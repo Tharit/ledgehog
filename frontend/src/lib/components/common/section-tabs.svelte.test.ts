@@ -4,7 +4,7 @@ import { REPORT_TABS } from '#lib/reports/params.js';
 import SectionTabs from './section-tabs.svelte';
 
 describe('SectionTabs', () => {
-	it('links the three reports and marks the current one', () => {
+	it('links the four reports and marks the current one', () => {
 		render(SectionTabs, {
 			props: { tabs: REPORT_TABS, label: 'Reports', currentPath: '/reports/over-time' }
 		});
@@ -12,6 +12,7 @@ describe('SectionTabs', () => {
 		const nav = screen.getByRole('navigation', { name: 'Reports' });
 		expect([...nav.querySelectorAll('a')].map((a) => a.getAttribute('href'))).toEqual([
 			'/reports/by-category',
+			'/reports/by-account',
 			'/reports/over-time',
 			'/reports/balances'
 		]);

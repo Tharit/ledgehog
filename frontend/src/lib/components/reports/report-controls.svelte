@@ -24,6 +24,7 @@
 		today,
 		locale = 'en',
 		filters = true,
+		accounts = true,
 		kind = false,
 		step = false,
 		mode = false,
@@ -36,6 +37,8 @@
 		locale?: string;
 		/** the account and tag filters (not on Balances: it is of every account) */
 		filters?: boolean;
+		/** the account filter (not on By account: its accounts are what it shows) */
+		accounts?: boolean;
 		/** Expense or Income */
 		kind?: boolean;
 		step?: boolean;
@@ -89,14 +92,16 @@
 		}}
 	/>
 	{#if filters}
-		<OptionsChip
-			label={named(params.accountIds, lookups.accounts, 'All accounts', 'accounts')}
-			heading="Accounts"
-			options={accountOptions}
-			selected={params.accountIds}
-			emptyText="No accounts yet"
-			onchange={(accountIds) => onchange({ accountIds })}
-		/>
+		{#if accounts}
+			<OptionsChip
+				label={named(params.accountIds, lookups.accounts, 'All accounts', 'accounts')}
+				heading="Accounts"
+				options={accountOptions}
+				selected={params.accountIds}
+				emptyText="No accounts yet"
+				onchange={(accountIds) => onchange({ accountIds })}
+			/>
+		{/if}
 		<OptionsChip
 			label={named(params.tagIds, lookups.tags, 'Tags', 'tags')}
 			heading="Tags"

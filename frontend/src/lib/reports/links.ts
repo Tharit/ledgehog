@@ -60,3 +60,42 @@ export function reconciliationsHref(scope: Scope): string {
 export function unconfirmedHref(scope: Scope): string {
 	return ledgerHref({ ...base(scope), flag: ['unconfirmed'] });
 }
+
+// ---- By account: the drill-downs of one account's link (reports.md, Tab 2). Each carries the
+// period and the page's tags; the page has no account filter, the link's account is the filter.
+
+function ofAccount(scope: Scope, accountId: number) {
+	return { ...base(scope), account_id: [accountId] };
+}
+
+/** A category (with its descendants) on one account; "Other" lists the categories it holds. */
+export function accountCategoryHref(
+	scope: Scope,
+	accountId: number,
+	categoryIds: readonly number[]
+): string {
+	return ledgerHref({ ...ofAccount(scope, accountId), category_id: [...categoryIds] });
+}
+
+/** What one account has that has no category yet, out or in. */
+export function accountUnclassifiedHref(
+	scope: Scope,
+	accountId: number,
+	direction: 'in' | 'out'
+): string {
+	return ledgerHref({ ...ofAccount(scope, accountId), uncategorised: true, direction });
+}
+
+export function accountReconciliationsHref(scope: Scope, accountId: number): string {
+	return ledgerHref({ ...ofAccount(scope, accountId), type: ['reconciliation'] });
+}
+
+/** The transfer legs that leave `from` for `to`. */
+export function transferHref(scope: Scope, from: number, to: number): string {
+	return ledgerHref({
+		...ofAccount(scope, from),
+		counter_account_id: [to],
+		type: ['transfer'],
+		direction: 'out'
+	});
+}

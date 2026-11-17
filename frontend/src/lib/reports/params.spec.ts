@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { defaultRange, parseParams, sharedQuery, toQuery } from './params.js';
+import { defaultRange, parseParams, sharedQuery, toQuery, type ReportId } from './params.js';
 
 const TODAY = '2026-10-20';
 
 describe('defaultRange', () => {
 	it('opens the split on this month and the trends on the last 12 months', () => {
 		expect(defaultRange('by-category', TODAY)).toEqual({ from: '2026-10-01', to: '2026-10-31' });
+		expect(defaultRange('by-account', TODAY)).toEqual({ from: '2026-10-01', to: '2026-10-31' });
 		expect(defaultRange('over-time', TODAY)).toEqual({ from: '2025-10-01', to: '2026-09-30' });
 		expect(defaultRange('balances', TODAY)).toEqual({ from: '2025-10-01', to: '2026-09-30' });
 	});
@@ -61,7 +62,7 @@ describe('parseParams', () => {
 });
 
 describe('toQuery', () => {
-	const back = (report: 'by-category' | 'over-time' | 'balances', search: string) =>
+	const back = (report: ReportId, search: string) =>
 		toQuery(parseParams(search, report, TODAY), report, TODAY).toString();
 
 	it('leaves the defaults out', () => {
@@ -83,6 +84,12 @@ describe('toQuery', () => {
 	it('keeps the kind only where the report has one', () => {
 		expect(back('over-time', 'kind=income')).toBe('');
 		expect(back('by-category', 'kind=income')).toBe('kind=income');
+	});
+
+	it('By account has the period and the tags: an account in the address is ignored', () => {
+		expect(
+			back('by-account', 'account_id=2&tag_id=7&kind=income&from=2026-01-01&to=2026-02-01')
+		).toBe('from=2026-01-01&to=2026-02-01&tag_id=7');
 	});
 
 	it('Balances has the period only', () => {

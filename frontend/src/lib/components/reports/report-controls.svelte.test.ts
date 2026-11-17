@@ -55,6 +55,14 @@ describe('ReportControls', () => {
 		expect(screen.queryByRole('button', { name: 'Year' })).toBeNull();
 	});
 
+	it('By account has the period and the tags, no account filter', () => {
+		setup('', { accounts: false });
+
+		expect(screen.queryByRole('button', { name: /All accounts/ })).toBeNull();
+		expect(screen.getByRole('button', { name: /Tags/ })).toBeInTheDocument();
+		expect(screen.queryByRole('button', { name: 'Expense' })).toBeNull();
+	});
+
 	it('writes the period in the date chip and offers the new presets', async () => {
 		setup('from=2026-01-01&to=2026-06-30');
 

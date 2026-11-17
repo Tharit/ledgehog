@@ -2,19 +2,24 @@
 // data"), as plain models the components draw: rows, cells, and the link every number carries.
 import { formatMoney } from '#lib/format/index.js';
 import { ACCOUNT_KINDS } from '#lib/accounts/kinds.js';
-import { type Measure } from '#lib/theme/measures.js';
+import { measureLook, type Measure } from '#lib/theme/measures.js';
+import { resolveAccount, resolveCategory } from '#lib/theme/resolve.js';
 import type { Account, Category } from '#lib/types/domain.js';
-import { minorOf, periodLabel } from './charts.js';
+import { minorOf, OTHER_COLOR, OTHER_ICON, periodLabel } from './charts.js';
 import {
+	accountCategoryHref,
+	accountReconciliationsHref,
+	accountUnclassifiedHref,
 	categoryHref,
 	kindHref,
 	reconciliationsHref,
+	transferHref,
 	unclassifiedHref,
 	unconfirmedHref,
 	type Scope
 } from './links.js';
-import type { Balances, OverTime, Period, Savings } from './shapes.js';
-import type { ByCategory, Line } from './types.js';
+import type { Balances, Kind, OverTime, Period, Savings } from './shapes.js';
+import type { AccountLink, ByAccount, ByCategory, Line } from './types.js';
 
 // ---- the category tree
 
@@ -163,6 +168,180 @@ export function notInCategories(
 		],
 		unconfirmed: { count: report.unconfirmed_count, href: unconfirmedHref(scope) }
 	};
+}
+
+// ---- By account
+
+/**
+ * One row of the By account table: a group (a category, "Unclassified", a sending account) or what
+ * is beneath it (an account), or a kind's total. A group of the unclassified, the reconciliations
+ * and the transfers has no figure of its own: the answer gives none, and the client adds nothing.
+ */
+export type AccountRow = {
+	key: string;
+	label: string;
+	depth: number;
+	hasChildren: boolean;
+	/** the lead tile: an icon name on a dimension colour name */
+	icon: string;
+	color: string;
+	/** null on a group the answer gives no figure for */
+	line: Line | null;
+	href: string | null;
+	/** a kind's total: drawn strong */
+	total?: boolean;
+	categoryId?: number;
+	accountId?: number;
+};
+
+export type AccountSection = {
+	key: 'income' | 'expense' | 'transfers';
+	label: string;
+	rows: AccountRow[];
+};
+
+/**
+ * The table beside the sankey: Income and Expense, each category (all of them, not only the slices)
+ * with its accounts beneath, the kind's total, then "Unclassified" and "Reconciliations" with their
+ * accounts; and Transfers, each sending account with the receiving accounts beneath. A category's
+ * row is its *By category* figure. Reconciliations are on the side of their net's sign (an account
+ * whose net could not be valued is listed with the income).
+ */
+export function accountTable(
+	report: ByAccount,
+	categories: ReadonlyMap<number, Category>,
+	accounts: ReadonlyMap<number, Account>,
+	scope: Scope
+): AccountSection[] {
+	const accountLook = (id: number) =>
+		accounts.get(id) ? resolveAccount(accounts.get(id)!) : { icon: OTHER_ICON, color: OTHER_COLOR };
+	const nameOf = (id: number) => accounts.get(id)?.name ?? 'Account';
+	const accountRow = (
+		prefix: string,
+		link: { account_id: number; line: Line },
+		href: string
+	): AccountRow => ({
+		key: `${prefix}:a${link.account_id}`,
+		label: nameOf(link.account_id),
+		depth: 1,
+		hasChildren: false,
+		...accountLook(link.account_id),
+		line: link.line,
+		href,
+		accountId: link.account_id
+	});
+	const group = (
+		key: string,
+		label: string,
+		look: { icon: string; color: string },
+		children: AccountRow[]
+	): AccountRow[] =>
+		children.length === 0
+			? []
+			: [{ key, label, depth: 0, hasChildren: true, ...look, line: null, href: null }, ...children];
+
+	const kindSection = (
+		kind: Kind,
+		unclassified: readonly AccountLink[],
+		reconciliations: readonly AccountLink[]
+	): AccountSection => {
+		const prefix = kind;
+		const rows: AccountRow[] = [];
+		for (const row of report[kind].categories) {
+			const look = resolveCategory(categories.get(row.category_id), categories);
+			rows.push({
+				key: `${prefix}:c${row.category_id}`,
+				label: categories.get(row.category_id)?.name ?? 'Category',
+				depth: 0,
+				hasChildren: row.accounts.length > 0,
+				...look,
+				line: row.total,
+				href: categoryHref(scope, row.category_id),
+				categoryId: row.category_id
+			});
+			for (const link of row.accounts) {
+				rows.push({
+					...accountRow(
+						`${prefix}:c${row.category_id}`,
+						link,
+						accountCategoryHref(scope, link.account_id, [row.category_id])
+					),
+					categoryId: row.category_id
+				});
+			}
+		}
+		const look = measureLook(kind);
+		rows.push({
+			key: `${prefix}:total`,
+			label: `${kind === 'income' ? 'Income' : 'Expense'}, total`,
+			depth: 0,
+			hasChildren: false,
+			...look,
+			line: report[kind].total,
+			href: kindHref(scope, kind, categories),
+			total: true
+		});
+		const direction = kind === 'income' ? 'in' : 'out';
+		rows.push(
+			...group(
+				`${prefix}:unclassified`,
+				`Unclassified, ${direction}`,
+				measureLook('unclassified'),
+				unclassified.map((l) =>
+					accountRow(
+						`${prefix}:unclassified`,
+						l,
+						accountUnclassifiedHref(scope, l.account_id, direction)
+					)
+				)
+			),
+			...group(
+				`${prefix}:reconciliations`,
+				'Reconciliations',
+				measureLook('reconciliations'),
+				reconciliations.map((l) =>
+					accountRow(
+						`${prefix}:reconciliations`,
+						l,
+						accountReconciliationsHref(scope, l.account_id)
+					)
+				)
+			)
+		);
+		return { key: kind, label: kind === 'income' ? 'Income' : 'Expense', rows };
+	};
+	const negative = (l: AccountLink) => (minorOf(l.line) ?? 0) < 0;
+
+	// each sending account once, in the order of its first (largest) transfer
+	const senders = [...new Set(report.transfers.map((t) => t.from_account_id))];
+	const transferRows = senders.flatMap((from) => {
+		const sent = report.transfers.filter((t) => t.from_account_id === from);
+		return group(
+			`transfers:a${from}`,
+			nameOf(from),
+			accountLook(from),
+			sent.map((t) => ({
+				key: `transfers:a${from}:a${t.to_account_id}`,
+				label: nameOf(t.to_account_id),
+				depth: 1,
+				hasChildren: false,
+				...accountLook(t.to_account_id),
+				line: t.line,
+				href: transferHref(scope, from, t.to_account_id),
+				accountId: t.to_account_id
+			}))
+		);
+	});
+
+	return [
+		kindSection(
+			'income',
+			report.unclassified_in,
+			report.reconciliations.filter((l) => !negative(l))
+		),
+		kindSection('expense', report.unclassified_out, report.reconciliations.filter(negative)),
+		{ key: 'transfers', label: 'Transfers', rows: transferRows }
+	];
 }
 
 // ---- Over time

@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
 
 from app.api import create_app
+from app.api.openapi import build_openapi
 from app.utils import clock
 from app.utils.config import Config
 from tests.api.accounts_helpers import assert_envelope
@@ -23,6 +24,7 @@ from tests.fixtures import ledger_seed as seed
 
 OVERVIEW = "/api/reports/overview"
 BY_CATEGORY = "/api/reports/by-category"
+BY_ACCOUNT = "/api/reports/by-account"
 OVER_TIME = "/api/reports/over-time"
 BALANCES = "/api/reports/balances"
 NOON = datetime(2026, 10, 20, 10, 0, tzinfo=UTC)
@@ -64,7 +66,7 @@ def usd_unvalued(amount: int, count: int = 1) -> dict[str, Any]:
     return {"amount": {"amount": amount, "currency": "USD"}, "count": count}
 
 
-@pytest.mark.parametrize("url", [OVERVIEW, BY_CATEGORY, OVER_TIME, BALANCES])
+@pytest.mark.parametrize("url", [OVERVIEW, BY_CATEGORY, BY_ACCOUNT, OVER_TIME, BALANCES])
 def test_every_report_requires_a_session(client: TestClient, url: str):
     assert_envelope(client.get(url), 401, "unauthenticated")
 
@@ -295,6 +297,130 @@ def test_every_node_of_by_category_counts_what_the_ledger_list_lists_for_its_dri
     assert body["unclassified_in"]["count"] == listed(uncategorised="true", direction="in")
     assert body["reconciliations"]["count"] == listed(type="reconciliation")
     assert body["unconfirmed_count"] == listed(flag="unconfirmed")
+
+
+# ---- By account
+
+OCT = {"from": "2026-10-01", "to": "2026-10-31"}
+
+
+def test_by_account_needs_its_range_and_names_what_is_wrong(anna: TestClient):
+    assert error_locations(anna.get(BY_ACCOUNT)) == [["query", "from"], ["query", "to"]]
+    for bad in ({"top": 0}, {"top": 51}, {"tag_id": 0}, {"tag_id": "x"}):
+        assert_envelope(anna.get(BY_ACCOUNT, params={**OCT, **bad}), 422, "validation_error")
+    assert_envelope(
+        anna.get(BY_ACCOUNT, params={"from": "2026-10-02", "to": "2026-10-01"}), 422, "validation_error"
+    )
+
+
+def test_by_account_takes_no_account_filter(anna: TestClient, seeded: Household):
+    paths = build_openapi(anna.app)["paths"]  # type: ignore[arg-type]
+    names = {p["name"] for p in paths[BY_ACCOUNT]["get"]["parameters"]}
+    assert names == {"from", "to", "tag_id", "top"}
+    assert get(anna, BY_ACCOUNT, **OCT, account_id=seeded.cash) == get(anna, BY_ACCOUNT, **OCT)
+
+
+def test_by_account_of_an_empty_ledger(anna: TestClient):
+    body = get(anna, BY_ACCOUNT, **OCT)
+    kind = {"total": line(0, 0), "categories": [], "slices": None, "other": None}
+    assert body == {
+        "base_currency": "EUR",
+        "from": "2026-10-01",
+        "to": "2026-10-31",
+        "income": kind,
+        "expense": kind,
+        "unclassified_in": [],
+        "unclassified_out": [],
+        "reconciliations": [],
+        "transfers": [],
+        "undrawn": line(0, 0),
+        "stayed": [],
+    }
+
+
+def test_by_account_of_a_household_month(anna: TestClient, seeded: Household):
+    body = get(anna, BY_ACCOUNT, **OCT, top=1)
+    g, c, u = seeded.giro, seeded.cash, seeded.usd
+    assert (body["from"], body["to"], body["base_currency"]) == ("2026-10-01", "2026-10-31", "EUR")
+    inc = body["income"]
+    assert inc["total"] == line(301_000, 2) and inc["slices"] == [seeded.salary]
+    assert [x["category_id"] for x in inc["categories"]] == [seeded.salary, seeded.gifts]
+    assert inc["categories"][0] == {
+        "category_id": seeded.salary,
+        "total": line(300_000, 1),
+        "accounts": [{"account_id": g, "line": line(300_000, 1)}],
+    }
+    assert inc["other"] == [{"account_id": g, "line": line(1_000, 1)}]
+    exp = body["expense"]
+    assert exp["total"] == line(-9_500, 4, [usd_unvalued(-2_000)]) and exp["slices"] == [seeded.food]
+    food = next(x for x in exp["categories"] if x["category_id"] == seeded.food)
+    assert food["total"] == line(-10_200, 2)
+    assert food["accounts"] == [  # the child's entries, rolled up, by magnitude
+        {"account_id": g, "line": line(-9_000, 1)},
+        {"account_id": c, "line": line(-1_200, 1)},
+    ]
+    assert exp["other"] is None  # travel nets to the other sign: neither a slice nor "other"
+    travel = next(x for x in exp["categories"] if x["category_id"] == seeded.travel)
+    assert {a["account_id"] for a in travel["accounts"]} == {g, u}
+    assert body["unclassified_in"] == [{"account_id": g, "line": line(2_500, 1)}]
+    assert body["unclassified_out"] == [{"account_id": g, "line": line(-300, 1)}]
+    assert body["reconciliations"] == [{"account_id": g, "line": line(-700, 1)}]
+    assert body["transfers"] == [{"from_account_id": g, "to_account_id": c, "line": line(-5_000, 1)}]
+    assert body["undrawn"] == line(-7_000, 2)
+    assert body["stayed"] == [{"account_id": g, "amount": eur(298_500)}]
+
+
+def test_by_account_totals_are_by_categorys(anna: TestClient, seeded: Household):
+    rng = {"from": "2026-08-01", "to": "2026-10-31"}
+    body = get(anna, BY_ACCOUNT, **rng)
+    for kind in ("expense", "income"):
+        assert body[kind]["total"] == get(anna, BY_CATEGORY, **rng, kind=kind)["total"]
+    assert (
+        get(anna, BY_ACCOUNT, **rng, tag_id=seeded.trip)["expense"]["total"]
+        == get(anna, BY_CATEGORY, **rng, tag_id=seeded.trip)["total"]
+    )
+
+
+def test_by_account_takes_the_tag_filter(anna: TestClient, seeded: Household):
+    body = get(anna, BY_ACCOUNT, **{"from": "2026-09-01", "to": "2026-09-30"}, tag_id=seeded.trip)
+    assert body["expense"]["total"] == line(-40_000, 1)
+    assert body["income"]["categories"] == [] and body["transfers"] == [] and body["undrawn"] == line(0, 0)
+
+
+def test_every_link_of_by_account_counts_what_the_ledger_list_lists_for_its_drilldown(
+    anna: TestClient, seeded: Household
+):
+    rng = {"from": "2026-08-01", "to": "2026-10-31"}
+    body = get(anna, BY_ACCOUNT, **rng, top=1)
+
+    def listed(**params: Any) -> dict[str, Any]:
+        return get(anna, "/api/ledger/entries", limit=500, **rng, **params)
+
+    def agrees(link: dict[str, Any], **params: Any) -> None:
+        page = listed(**params)
+        assert page["total"] == link["count"], params
+        if link["count"] and not link["unvalued"]:  # every entry valued, all in the base currency here
+            assert page["sums"] == [link["total"]], params
+
+    for kind in ("income", "expense"):
+        for c in body[kind]["categories"]:
+            for k in c["accounts"]:
+                agrees(k["line"], account_id=k["account_id"], category_id=c["category_id"])
+    for k in body["unclassified_in"]:
+        agrees(k["line"], account_id=k["account_id"], uncategorised="true", direction="in")
+    for k in body["unclassified_out"]:
+        agrees(k["line"], account_id=k["account_id"], uncategorised="true", direction="out")
+    for k in body["reconciliations"]:
+        agrees(k["line"], account_id=k["account_id"], type="reconciliation")
+    assert body["transfers"], "the household has a paired transfer"
+    for t in body["transfers"]:
+        agrees(
+            t["line"],
+            account_id=t["from_account_id"],
+            counter_account_id=t["to_account_id"],
+            type="transfer",
+            direction="out",
+        )
 
 
 # ---- Over time

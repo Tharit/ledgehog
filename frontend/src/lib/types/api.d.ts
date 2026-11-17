@@ -904,6 +904,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/reports/by-account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get By Account
+         * @description The money each account received, passed on and paid over a range, as a list of links: the
+         *     *By category* figures cut by account, the transfers by account and counter-account, and what stayed.
+         *     There is no `account_id`: a transfer into a chosen account would drop out of its own account's view.
+         */
+        get: operations["get_by_account"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/reports/by-category": {
         parameters: {
             query?: never;
@@ -1276,6 +1298,12 @@ export interface components {
             /** Synced Through */
             synced_through: string | null;
         };
+        /** AccountLinkOut */
+        AccountLinkOut: {
+            /** Account Id */
+            account_id: number;
+            line: components["schemas"]["LineOut"];
+        };
         /** AccountMatchOut */
         AccountMatchOut: {
             /** Closed */
@@ -1379,6 +1407,34 @@ export interface components {
             /** Reference */
             reference: string | null;
         };
+        /** ByAccountOut */
+        ByAccountOut: {
+            /** Base Currency */
+            base_currency: string;
+            expense: components["schemas"]["KindLinksOut"];
+            /**
+             * From
+             * Format: date
+             */
+            from: string;
+            income: components["schemas"]["KindLinksOut"];
+            /** Reconciliations */
+            reconciliations: components["schemas"]["AccountLinkOut"][];
+            /** Stayed */
+            stayed: components["schemas"]["StayedOut"][];
+            /**
+             * To
+             * Format: date
+             */
+            to: string;
+            /** Transfers */
+            transfers: components["schemas"]["TransferLinkOut"][];
+            /** Unclassified In */
+            unclassified_in: components["schemas"]["AccountLinkOut"][];
+            /** Unclassified Out */
+            unclassified_out: components["schemas"]["AccountLinkOut"][];
+            undrawn: components["schemas"]["LineOut"];
+        };
         /** ByCategoryOut */
         ByCategoryOut: {
             /** Base Currency */
@@ -1465,6 +1521,14 @@ export interface components {
             dry_run: boolean;
             held: components["schemas"]["HeldOut"];
             settle: components["schemas"]["SettleOut"] | null;
+        };
+        /** CategoryLinksOut */
+        CategoryLinksOut: {
+            /** Accounts */
+            accounts: components["schemas"]["AccountLinkOut"][];
+            /** Category Id */
+            category_id: number;
+            total: components["schemas"]["LineOut"];
         };
         /** CategoryMergeBody */
         CategoryMergeBody: {
@@ -2091,6 +2155,16 @@ export interface components {
         InstanceStartedEvent: {
             /** Instance Id */
             instance_id: number;
+        };
+        /** KindLinksOut */
+        KindLinksOut: {
+            /** Categories */
+            categories: components["schemas"]["CategoryLinksOut"][];
+            /** Other */
+            other: components["schemas"]["AccountLinkOut"][] | null;
+            /** Slices */
+            slices: number[] | null;
+            total: components["schemas"]["LineOut"];
         };
         /** KindNetWorthOut */
         KindNetWorthOut: {
@@ -3234,6 +3308,12 @@ export interface components {
             /** Value On */
             value_on: string | null;
         };
+        /** StayedOut */
+        StayedOut: {
+            /** Account Id */
+            account_id: number;
+            amount: components["schemas"]["Money"];
+        };
         /**
          * SyncEventPayloads
          * @description Not a body: the nine events of `GET /api/sync/tasks/{id}/events`, by name. A frame's `event:` is a
@@ -3536,6 +3616,14 @@ export interface components {
              */
             to: string;
             unclassified_out: components["schemas"]["LineOut"];
+        };
+        /** TransferLinkOut */
+        TransferLinkOut: {
+            /** From Account Id */
+            from_account_id: number;
+            line: components["schemas"]["LineOut"];
+            /** To Account Id */
+            to_account_id: number;
         };
         /**
          * UnitBookingOut
@@ -7443,6 +7531,49 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BalancesOut"];
+                };
+            };
+            /** @description Not signed in (or wrong login or password). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is not valid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_by_account: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+                tag_id?: number[] | null;
+                top?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ByAccountOut"];
                 };
             };
             /** @description Not signed in (or wrong login or password). */

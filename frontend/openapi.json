@@ -109,6 +109,23 @@
         "title": "AccountGroupOut",
         "type": "object"
       },
+      "AccountLinkOut": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "integer"
+          },
+          "line": {
+            "$ref": "#/components/schemas/LineOut"
+          }
+        },
+        "required": [
+          "account_id",
+          "line"
+        ],
+        "title": "AccountLinkOut",
+        "type": "object"
+      },
       "AccountMatchOut": {
         "properties": {
           "closed": {
@@ -529,6 +546,83 @@
         "title": "BookingOut",
         "type": "object"
       },
+      "ByAccountOut": {
+        "properties": {
+          "base_currency": {
+            "title": "Base Currency",
+            "type": "string"
+          },
+          "expense": {
+            "$ref": "#/components/schemas/KindLinksOut"
+          },
+          "from": {
+            "format": "date",
+            "title": "From",
+            "type": "string"
+          },
+          "income": {
+            "$ref": "#/components/schemas/KindLinksOut"
+          },
+          "reconciliations": {
+            "items": {
+              "$ref": "#/components/schemas/AccountLinkOut"
+            },
+            "title": "Reconciliations",
+            "type": "array"
+          },
+          "stayed": {
+            "items": {
+              "$ref": "#/components/schemas/StayedOut"
+            },
+            "title": "Stayed",
+            "type": "array"
+          },
+          "to": {
+            "format": "date",
+            "title": "To",
+            "type": "string"
+          },
+          "transfers": {
+            "items": {
+              "$ref": "#/components/schemas/TransferLinkOut"
+            },
+            "title": "Transfers",
+            "type": "array"
+          },
+          "unclassified_in": {
+            "items": {
+              "$ref": "#/components/schemas/AccountLinkOut"
+            },
+            "title": "Unclassified In",
+            "type": "array"
+          },
+          "unclassified_out": {
+            "items": {
+              "$ref": "#/components/schemas/AccountLinkOut"
+            },
+            "title": "Unclassified Out",
+            "type": "array"
+          },
+          "undrawn": {
+            "$ref": "#/components/schemas/LineOut"
+          }
+        },
+        "required": [
+          "base_currency",
+          "from",
+          "to",
+          "income",
+          "expense",
+          "unclassified_in",
+          "unclassified_out",
+          "reconciliations",
+          "transfers",
+          "undrawn",
+          "stayed"
+        ],
+        "title": "ByAccountOut",
+        "type": "object"
+      },
       "ByCategoryOut": {
         "properties": {
           "base_currency": {
@@ -796,6 +890,31 @@
           "settle"
         ],
         "title": "CategoryDeleteOut",
+        "type": "object"
+      },
+      "CategoryLinksOut": {
+        "properties": {
+          "accounts": {
+            "items": {
+              "$ref": "#/components/schemas/AccountLinkOut"
+            },
+            "title": "Accounts",
+            "type": "array"
+          },
+          "category_id": {
+            "title": "Category Id",
+            "type": "integer"
+          },
+          "total": {
+            "$ref": "#/components/schemas/LineOut"
+          }
+        },
+        "required": [
+          "category_id",
+          "total",
+          "accounts"
+        ],
+        "title": "CategoryLinksOut",
         "type": "object"
       },
       "CategoryMergeBody": {
@@ -2828,6 +2947,56 @@
           "instance_id"
         ],
         "title": "InstanceStartedEvent",
+        "type": "object"
+      },
+      "KindLinksOut": {
+        "properties": {
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/CategoryLinksOut"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
+          "other": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AccountLinkOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Other"
+          },
+          "slices": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slices"
+          },
+          "total": {
+            "$ref": "#/components/schemas/LineOut"
+          }
+        },
+        "required": [
+          "total",
+          "categories",
+          "slices",
+          "other"
+        ],
+        "title": "KindLinksOut",
         "type": "object"
       },
       "KindNetWorthOut": {
@@ -6707,6 +6876,23 @@
         "title": "StatementSourceOut",
         "type": "object"
       },
+      "StayedOut": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "integer"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/Money"
+          }
+        },
+        "required": [
+          "account_id",
+          "amount"
+        ],
+        "title": "StayedOut",
+        "type": "object"
+      },
       "SyncEventPayloads": {
         "description": "Not a body: the nine events of `GET /api/sync/tasks/{id}/events`, by name. A frame's `event:` is a\nkey of this object and its `data:` is the JSON of that key's value.",
         "properties": {
@@ -7583,6 +7769,28 @@
           "reconciliations"
         ],
         "title": "ThisMonthSpendOut",
+        "type": "object"
+      },
+      "TransferLinkOut": {
+        "properties": {
+          "from_account_id": {
+            "title": "From Account Id",
+            "type": "integer"
+          },
+          "line": {
+            "$ref": "#/components/schemas/LineOut"
+          },
+          "to_account_id": {
+            "title": "To Account Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "from_account_id",
+          "to_account_id",
+          "line"
+        ],
+        "title": "TransferLinkOut",
         "type": "object"
       },
       "UnitBookingOut": {
@@ -14564,6 +14772,109 @@
           }
         },
         "summary": "Get Balances",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/api/reports/by-account": {
+      "get": {
+        "description": "The money each account received, passed on and paid over a range, as a list of links: the\n*By category* figures cut by account, the transfers by account and counter-account, and what stayed.\nThere is no `account_id`: a transfer into a chosen account would drop out of its own account's view.",
+        "operationId": "get_by_account",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "from",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "From",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "To",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tag_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740992,
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tag Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "top",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 50,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Top"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ByAccountOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not signed in (or wrong login or password)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is not valid."
+          }
+        },
+        "summary": "Get By Account",
         "tags": [
           "reports"
         ]
