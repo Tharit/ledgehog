@@ -19,6 +19,7 @@ from sqlalchemy import Connection, text
 from app.core.ledger import LedgerFilter, list_entries
 from app.core.reporting import (
     Line,
+    accounts_over_time,
     by_category,
     categories_over_time,
     entry_filter,
@@ -122,6 +123,29 @@ def test_every_cell_of_over_time_equals_its_drilldown(ledger: Connection, seeded
                     own_filter = replace(period, category_ids=(c,), category_descendants=False)
                     _agrees(ledger, own, f"{tag} {kind} {c} own {a}", own_filter)
                 _agrees(ledger, series.sum, f"{tag} {kind} {c} sum", replace(base, category_ids=(c,)))
+
+
+def test_every_cell_of_over_time_by_account_equals_its_drilldown(ledger: Connection, seeded: Household):
+    narrows: dict[str, dict[str, Any]] = {
+        "expense": {"category_ids": _roots(ledger, "expense")},
+        "income": {"category_ids": _roots(ledger, "income")},
+        "transfer_in": {"types": ("transfer",), "direction": "in"},
+        "transfer_out": {"types": ("transfer",), "direction": "out"},
+    }
+    for (start, end), extra in product(RANGES, _filters(seeded)):
+        base = entry_filter(start, end, extra.get("account_ids", ()), extra.get("tag_ids", ()))
+        cuts = [(p.start, p.end) for p in periods(start, end, "month")]
+        for kind, narrow in narrows.items():
+            got = accounts_over_time(ledger, base, "month", kind)
+            tag = f"{start}..{end} {extra} {kind}"
+            for series in got.accounts:
+                # the account, the kind's own filter, the dates: as the category mode's whole-kind link
+                own = replace(base, account_ids=(series.account_id,), **narrow)
+                for (a, b), line in zip(cuts, series.total, strict=True):
+                    _agrees(ledger, line, f"{tag} {series.account_id} {a}", replace(own, date_from=a, date_to=b))
+                _agrees(ledger, series.sum, f"{tag} {series.account_id} sum", own)
+            # the kind's total is every account's figure together
+            _agrees(ledger, got.sum, f"{tag} sum", replace(base, **narrow))
 
 
 def test_the_overviews_unpaired_transfers_drilldown(ledger: Connection, seeded: Household):

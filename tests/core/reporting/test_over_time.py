@@ -11,6 +11,7 @@ from app.core.reporting import (
     EMPTY,
     Line,
     Unvalued,
+    accounts_over_time,
     add,
     by_category,
     categories_over_time,
@@ -134,3 +135,85 @@ def test_other_collects_the_remaining_top_level_categories_per_period(ledger: Co
     got = categories_over_time(ledger, entry_filter(D(2026, 3, 1), D(2026, 4, 30)), "month", "expense")
     assert got.slices == tuple(cats[:6])
     assert got.other == (Line(-700, 2), Line(-50, 1))  # March: C6 and C7; April: C7 alone
+
+
+# ---- By account
+
+SEP_OCT = (D(2026, 9, 1), D(2026, 10, 31))
+
+
+def test_accounts_of_a_kind_sum_per_period_to_the_kinds_total(ledger: Connection):
+    h = household(ledger)
+    flt = entry_filter(*SEP_OCT)
+    for kind in ("expense", "income"):
+        got = accounts_over_time(ledger, flt, "month", kind)
+        category_mode = categories_over_time(ledger, flt, "month", kind)
+        assert got.totals == category_mode.totals and got.sum == category_mode.sum
+        for i in range(2):
+            assert add(a.total[i] for a in got.accounts) == got.totals[i]
+        assert all(a.sum == add(a.total) for a in got.accounts)
+    expense = accounts_over_time(ledger, flt, "month", "expense")
+    series = {a.account_id: a for a in expense.accounts}
+    assert series[h.giro].total == (Line(-49_500, 4), Line(-8_300, 2))
+    assert series[h.cash].total == (EMPTY, Line(-1_200, 1))
+    assert series[h.usd].total == (EMPTY, Line(None, 1, (Unvalued("USD", -2_000, 1),)))
+    assert [a.account_id for a in expense.accounts] == [h.giro, h.cash, h.usd]  # by magnitude, unvalued last
+    income = accounts_over_time(ledger, flt, "month", "income")
+    assert [(a.account_id, a.total) for a in income.accounts] == [
+        (h.giro, (Line(300_000, 1), Line(301_000, 2)))
+    ]
+
+
+def test_every_transfer_leg_is_in_its_own_accounts_figure_of_its_direction(ledger: Connection):
+    h = household(ledger)  # a paired Giro -> Cash transfer and two unpaired outgoing legs, all in October
+    flt = entry_filter(*SEP_OCT)
+    out = accounts_over_time(ledger, flt, "month", "transfer_out")
+    assert [(a.account_id, a.total) for a in out.accounts] == [(h.giro, (EMPTY, Line(-12_000, 3)))]
+    assert out.totals == (EMPTY, Line(-12_000, 3)) and out.sum == Line(-12_000, 3)
+    into = accounts_over_time(ledger, flt, "month", "transfer_in")
+    assert [(a.account_id, a.total) for a in into.accounts] == [(h.cash, (EMPTY, Line(5_000, 1)))]
+    # an unpaired incoming leg is counted too
+    seed.entry(ledger, h.giro, amount=700, on=D(2026, 9, 12), type="transfer", flags=("waiting",))
+    into = accounts_over_time(ledger, flt, "month", "transfer_in")
+    series = {a.account_id: a for a in into.accounts}
+    assert series[h.giro].total == (Line(700, 1), EMPTY)
+    assert add(a.total[0] for a in into.accounts) == into.totals[0] == Line(700, 1)
+
+
+def test_the_account_and_tag_filters_apply_to_the_accounts_figures(ledger: Connection):
+    h = household(ledger)
+    only_cash = entry_filter(*SEP_OCT, account_ids=[h.cash])
+    got = accounts_over_time(ledger, only_cash, "month", "expense")
+    assert [a.account_id for a in got.accounts] == [h.cash]
+    assert accounts_over_time(ledger, only_cash, "month", "transfer_out").accounts == ()
+    tagged = accounts_over_time(ledger, entry_filter(*SEP_OCT, tag_ids=[h.trip]), "month", "expense")
+    assert {a.account_id: a.sum for a in tagged.accounts} == {
+        h.giro: Line(-40_000, 1),
+        h.usd: Line(None, 1, (Unvalued("USD", -2_000, 1),)),
+    }
+
+
+def test_account_slices_and_other(ledger: Connection):
+    accounts = [seed.account(ledger, f"A{i}") for i in range(8)]
+    for i, acct in enumerate(accounts):
+        seed.entry(ledger, acct, amount=-(1000 - i * 100), on=D(2026, 3, 5), type="transfer")
+    seed.entry(ledger, accounts[7], amount=-50, on=D(2026, 4, 5), type="transfer")
+    got = accounts_over_time(ledger, entry_filter(D(2026, 3, 1), D(2026, 4, 30)), "month", "transfer_out")
+    assert got.slices == tuple(accounts[:6])
+    assert got.other == (Line(-700, 2), Line(-50, 1))  # March: A6 and A7; April: A7 alone
+
+
+def test_an_account_of_the_other_sign_is_no_slice_and_leaves_the_bar_of_its_period(ledger: Connection):
+    big, refunded, swing = (seed.account(ledger, n) for n in ("Big", "Refunded", "Swing"))
+    shop = seed.category(ledger, "Shop")
+    seed.entry(ledger, big, amount=-9_000, on=D(2026, 3, 5), category_id=shop)
+    seed.entry(ledger, refunded, amount=-100, on=D(2026, 3, 6), category_id=shop)
+    seed.entry(ledger, refunded, amount=500, on=D(2026, 4, 6), category_id=shop)  # nets to + in April
+    seed.entry(ledger, swing, amount=-300, on=D(2026, 3, 7), category_id=shop)
+    seed.entry(ledger, swing, amount=-200, on=D(2026, 4, 7), category_id=shop)
+    flt = entry_filter(D(2026, 3, 1), D(2026, 4, 30))
+    got = accounts_over_time(ledger, flt, "month", "expense")
+    # "refunded" nets -100 + 500 = +400 over the range: no slice, and "other" leaves it out of both periods
+    assert got.slices == (big, swing)
+    assert got.other == (EMPTY, EMPTY)
+    assert {a.account_id: a.sum for a in got.accounts}[refunded] == Line(400, 2)

@@ -416,6 +416,31 @@
         "title": "AccountOut",
         "type": "object"
       },
+      "AccountSeriesOut": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "integer"
+          },
+          "sum": {
+            "$ref": "#/components/schemas/LineOut"
+          },
+          "total": {
+            "items": {
+              "$ref": "#/components/schemas/LineOut"
+            },
+            "title": "Total",
+            "type": "array"
+          }
+        },
+        "required": [
+          "account_id",
+          "total",
+          "sum"
+        ],
+        "title": "AccountSeriesOut",
+        "type": "object"
+      },
       "AccountWriteOut": {
         "properties": {
           "account": {
@@ -3536,6 +3561,34 @@
       "OverTimeOut": {
         "description": "Only the fields of the chosen mode are present.",
         "properties": {
+          "account_slices": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SliceAccountOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Slices"
+          },
+          "accounts": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AccountSeriesOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accounts"
+          },
           "base_currency": {
             "title": "Base Currency",
             "type": "string"
@@ -3557,7 +3610,9 @@
           "kind": {
             "enum": [
               "expense",
-              "income"
+              "income",
+              "transfer_in",
+              "transfer_out"
             ],
             "title": "Kind",
             "type": "string"
@@ -6090,6 +6145,19 @@
           "error"
         ],
         "title": "SettleOut",
+        "type": "object"
+      },
+      "SliceAccountOut": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "account_id"
+        ],
+        "title": "SliceAccountOut",
         "type": "object"
       },
       "SliceIdOut": {
@@ -15131,7 +15199,7 @@
     },
     "/api/reports/over-time": {
       "get": {
-        "description": "A range cut into calendar months, quarters or years (at most 120): the savings and rate of each,\nor each category's amount. The ledger list's account and tag filters apply to every figure.",
+        "description": "A range cut into calendar months, quarters or years (at most 120): the savings and rate of each,\nor each category's amount of a kind (`expense`, `income`), or each account's amount of a kind (those\ntwo, or `transfer_in` / `transfer_out`: its transfer legs by direction, paired or not). The transfer\nkinds only exist in mode `account`: with another mode, `kind` is a 422. The ledger list's account and\ntag filters apply to every figure.",
         "operationId": "get_over_time",
         "parameters": [
           {
@@ -15177,7 +15245,8 @@
               "default": "savings",
               "enum": [
                 "savings",
-                "category"
+                "category",
+                "account"
               ],
               "title": "Mode",
               "type": "string"
@@ -15191,7 +15260,9 @@
               "default": "expense",
               "enum": [
                 "expense",
-                "income"
+                "income",
+                "transfer_in",
+                "transfer_out"
               ],
               "title": "Kind",
               "type": "string"

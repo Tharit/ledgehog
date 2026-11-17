@@ -57,9 +57,13 @@ from app.core.reporting.periods import (
     periods,
 )
 from app.core.reporting.savings import (
+    ACCOUNT_KINDS,
+    AccountOverTime,
+    AccountsOverTime,
     CategoriesOverTime,
     CategorySeries,
     SavingsOverTime,
+    accounts_over_time,
     categories_over_time,
     savings_in,
     savings_over_time,
@@ -67,6 +71,10 @@ from app.core.reporting.savings import (
 from app.core.reporting.spend import ByCategory, CategoryRow, Slice, by_category
 
 __all__ = [
+    "ACCOUNT_KINDS",
+    "AccountOverTime",
+    "AccountsOverTime",
+    "accounts_over_time",
     "EMPTY",
     "KIND_ORDER",
     "KIND_SIGN",

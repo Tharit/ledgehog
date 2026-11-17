@@ -30,7 +30,8 @@ from app.core.reporting.line import Line, add, line_of_group
 from app.core.reporting.periods import Step
 
 CLASSES = ("income", "expense", "unclassified_out", "unclassified_in", "reconciliation")
-KIND_SIGN = {"expense": -1, "income": 1}  # the sign a category of the kind normally has
+# the sign a figure of the kind normally has: a category of the kind, or the transfer legs of a direction
+KIND_SIGN = {"expense": -1, "income": 1, "transfer_out": -1, "transfer_in": 1}
 
 rcat = table("category", column("id"), column("kind")).alias("rcat")
 
@@ -63,7 +64,7 @@ class Facts:
     def own_lines(self) -> dict[tuple[date | None, int], Line]:
         """The entries booked directly to a category, by (bucket, category id): the `own` Lines."""
         return {
-            (b, cat): line for (b, c, cat), line in self.cells.items() if cat is not None and c in KIND_SIGN
+            (b, cat): line for (b, c, cat), line in self.cells.items() if cat is not None and c in ("income", "expense")
         }
 
 

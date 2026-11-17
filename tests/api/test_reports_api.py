@@ -490,6 +490,8 @@ def test_over_time_names_the_parameter_at_fault(anna: TestClient):
         ({**SEP_OCT, "step": "week"}, "step"),
         ({**SEP_OCT, "mode": "chart"}, "mode"),
         ({**SEP_OCT, "kind": "transfer"}, "kind"),
+        ({**SEP_OCT, "kind": "transfer_in"}, "kind"),  # the transfer kinds are by-account only
+        ({**SEP_OCT, "kind": "transfer_out", "mode": "category"}, "kind"),
         ({"from": "2015-01-01", "to": "2026-10-31", "step": "month"}, "step"),  # 142 months
     ):
         r = anna.get(OVER_TIME, params=params)
@@ -565,6 +567,35 @@ def test_over_time_by_category_carries_the_tree_per_period(anna: TestClient, see
     assert {c["category_id"]: c["sum"] for c in body["categories"]} == {
         c["category_id"]: c["total"] for c in whole["categories"]
     }
+
+
+def test_over_time_by_account_carries_each_accounts_amount_per_period(anna: TestClient, seeded: Household):
+    body = get(anna, OVER_TIME, **SEP_OCT, mode="account", kind="expense")
+    assert set(body) == {
+        "base_currency",
+        "kind",
+        "step",
+        "periods",
+        "accounts",
+        "account_slices",
+        "other",
+        "totals",
+        "sum",
+    }
+    assert [a["account_id"] for a in body["accounts"]] == [seeded.giro, seeded.cash, seeded.usd]
+    giro = body["accounts"][0]
+    assert giro["total"] == [line(-49_500, 4), line(-8_300, 2)] and giro["sum"] == line(-57_800, 6)
+    assert body["account_slices"] == [{"account_id": seeded.giro}, {"account_id": seeded.cash}]
+    assert body["other"] == [line(0, 0), line(None, 1, [usd_unvalued(-2_000)])]
+    by_cat = get(anna, OVER_TIME, **SEP_OCT, mode="category", kind="expense")
+    assert body["totals"] == by_cat["totals"] and body["sum"] == by_cat["sum"]
+    out = get(anna, OVER_TIME, **SEP_OCT, mode="account", kind="transfer_out")
+    assert out["kind"] == "transfer_out"
+    assert out["accounts"] == [
+        {"account_id": seeded.giro, "total": [line(0, 0), line(-12_000, 3)], "sum": line(-12_000, 3)}
+    ]
+    into = get(anna, OVER_TIME, **SEP_OCT, mode="account", kind="transfer_in", account_id=[seeded.cash])
+    assert into["sum"] == line(5_000, 1) and into["account_slices"] == [{"account_id": seeded.cash}]
 
 
 def test_over_time_filters_are_the_ledgers(anna: TestClient, seeded: Household):

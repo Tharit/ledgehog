@@ -433,6 +433,9 @@ def get_by_account(
 # ---- Over time
 
 
+OverTimeKind = Literal["expense", "income", "transfer_in", "transfer_out"]
+
+
 class PeriodOut(Span):
     """A calendar month, quarter or year, clipped to the range."""
 
@@ -450,11 +453,21 @@ class SliceIdOut(BaseModel):
     category_id: int
 
 
+class SliceAccountOut(BaseModel):
+    account_id: int
+
+
+class AccountSeriesOut(BaseModel):
+    account_id: int
+    total: list[LineOut]  # per period: the account's amount of the kind
+    sum: LineOut  # over the range
+
+
 class OverTimeOut(BaseModel):
     """Only the fields of the chosen mode are present."""
 
     base_currency: str
-    kind: Kind
+    kind: OverTimeKind
     step: rp.Step
     periods: list[PeriodOut]
     # mode = savings
@@ -466,6 +479,9 @@ class OverTimeOut(BaseModel):
     other: list[LineOut] | None = None  # per period: the remaining top-level categories, summed
     totals: list[LineOut] | None = None  # per period: the kind's total
     sum: LineOut | None = None  # the kind's total over the range
+    # mode = account (also `other`, `totals` and `sum`, as above)
+    accounts: list[AccountSeriesOut] | None = None  # only accounts with entries, by the range's magnitude
+    account_slices: list[SliceAccountOut] | None = None  # the largest accounts of the kind's sign
 
 
 @router.get("/over-time", response_model_exclude_unset=True)
@@ -476,16 +492,41 @@ def get_over_time(
     from_: Annotated[date, Query(alias="from")],
     to: Required,
     step: rp.Step = "month",
-    mode: Literal["savings", "category"] = "savings",
-    kind: Kind = "expense",
+    mode: Literal["savings", "category", "account"] = "savings",
+    kind: OverTimeKind = "expense",
     account_id: Ids = None,
     tag_id: Ids = None,
 ) -> OverTimeOut:
     """A range cut into calendar months, quarters or years (at most 120): the savings and rate of each,
-    or each category's amount. The ledger list's account and tag filters apply to every figure."""
+    or each category's amount of a kind (`expense`, `income`), or each account's amount of a kind (those
+    two, or `transfer_in` / `transfer_out`: its transfer legs by direction, paired or not). The transfer
+    kinds only exist in mode `account`: with another mode, `kind` is a 422. The ledger list's account and
+    tag filters apply to every figure."""
     base: str = request.app.state.config.base_currency
     flt = rp.entry_filter(from_, to, account_id or (), tag_id or ())
+    if kind.startswith("transfer") and mode != "account":
+        raise InvalidFilter("kind", f"kind {kind} is only available in mode account")
     with engine.connect() as conn:
+        if mode == "account":
+            by_acc = rp.accounts_over_time(conn, flt, step, kind)
+            return OverTimeOut(
+                base_currency=base,
+                kind=kind,
+                step=step,
+                periods=[PeriodOut(from_=p.start, to=p.end) for p in by_acc.periods],
+                accounts=[
+                    AccountSeriesOut(
+                        account_id=a.account_id,
+                        total=[LineOut.of(x, base) for x in a.total],
+                        sum=LineOut.of(a.sum, base),
+                    )
+                    for a in by_acc.accounts
+                ],
+                account_slices=[SliceAccountOut(account_id=a) for a in by_acc.slices],
+                other=[LineOut.of(x, base) for x in by_acc.other],
+                totals=[LineOut.of(x, base) for x in by_acc.totals],
+                sum=LineOut.of(by_acc.sum, base),
+            )
         if mode == "savings":
             got = rp.savings_over_time(conn, flt, step)
             return OverTimeOut(
