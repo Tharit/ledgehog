@@ -958,7 +958,10 @@ export interface paths {
         /**
          * Get Over Time
          * @description A range cut into calendar months, quarters or years (at most 120): the savings and rate of each,
-         *     or each category's amount. The ledger list's account and tag filters apply to every figure.
+         *     or each category's amount of a kind (`expense`, `income`), or each account's amount of a kind (those
+         *     two, or `transfer_in` / `transfer_out`: its transfer legs by direction, paired or not). The transfer
+         *     kinds only exist in mode `account`: with another mode, `kind` is a 422. The ledger list's account and
+         *     tag filters apply to every figure.
          */
         get: operations["get_over_time"];
         put?: never;
@@ -1299,6 +1302,17 @@ export interface components {
             /** Synced Through */
             synced_through: string | null;
         };
+        /** AccountKindSeriesOut */
+        AccountKindSeriesOut: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "checking" | "savings" | "card" | "cash" | "digital_wallet" | "depot" | "debt" | "receivable" | "asset" | "clearance";
+            sum: components["schemas"]["LineOut"];
+            /** Total */
+            total: components["schemas"]["LineOut"][];
+        };
         /** AccountLinkOut */
         AccountLinkOut: {
             /** Account Id */
@@ -1365,6 +1379,14 @@ export interface components {
             /** Synced Through */
             synced_through: string | null;
             unexplained_difference: components["schemas"]["Money"] | null;
+        };
+        /** AccountSeriesOut */
+        AccountSeriesOut: {
+            /** Account Id */
+            account_id: number;
+            sum: components["schemas"]["LineOut"];
+            /** Total */
+            total: components["schemas"]["LineOut"][];
         };
         /** AccountWriteOut */
         AccountWriteOut: {
@@ -2338,6 +2360,12 @@ export interface components {
          * @description Only the fields of the chosen mode are present.
          */
         OverTimeOut: {
+            /** Account Kinds */
+            account_kinds?: components["schemas"]["AccountKindSeriesOut"][] | null;
+            /** Account Slices */
+            account_slices?: components["schemas"]["SliceAccountOut"][] | null;
+            /** Accounts */
+            accounts?: components["schemas"]["AccountSeriesOut"][] | null;
             /** Base Currency */
             base_currency: string;
             /** Categories */
@@ -2346,7 +2374,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "expense" | "income";
+            kind: "expense" | "income" | "transfer_in" | "transfer_out";
             /** Other */
             other?: components["schemas"]["LineOut"][] | null;
             /** Periods */
@@ -3086,6 +3114,11 @@ export interface components {
             error: string | null;
             /** Touched Entry Ids */
             touched_entry_ids: number[];
+        };
+        /** SliceAccountOut */
+        SliceAccountOut: {
+            /** Account Id */
+            account_id: number;
         };
         /** SliceIdOut */
         SliceIdOut: {
@@ -7681,8 +7714,8 @@ export interface operations {
                 from: string;
                 to: string;
                 step?: "month" | "quarter" | "year";
-                mode?: "savings" | "category";
-                kind?: "expense" | "income";
+                mode?: "savings" | "category" | "account";
+                kind?: "expense" | "income" | "transfer_in" | "transfer_out";
                 account_id?: number[] | null;
                 tag_id?: number[] | null;
             };

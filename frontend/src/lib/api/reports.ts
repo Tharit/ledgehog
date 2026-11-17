@@ -1,6 +1,6 @@
 // The reporting reads (architecture §4.1): read-only aggregates, every figure a `Line`. The ledger
 // list's account and tag filters apply to the ones that take them.
-import type { Balances, Kind, OverTime, Step } from '#lib/reports/shapes.js';
+import type { Balances, OverTime, OverTimeKind, Step } from '#lib/reports/shapes.js';
 import type { ByAccount, ByCategory, Overview } from '#lib/reports/types.js';
 import { request } from './http.js';
 
@@ -63,9 +63,10 @@ export type OverTimeOptions = {
 	from: string;
 	to: string;
 	step?: Step;
-	/** `savings`: income, expense and savings per period; `category`: each category's amount */
-	mode?: 'savings' | 'category';
-	kind?: Kind;
+	/** `savings`: income, expense and savings per period; `category` and `account`: each one's amount */
+	mode?: 'savings' | 'category' | 'account';
+	/** the transfer kinds only with `account` */
+	kind?: OverTimeKind;
 	accountIds?: readonly number[];
 	tagIds?: readonly number[];
 	signal?: AbortSignal;

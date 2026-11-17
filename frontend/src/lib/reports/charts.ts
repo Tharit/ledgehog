@@ -5,7 +5,15 @@ import { formatDate, formatDateRange, formatMonth, formatPointLabel } from '#lib
 import { measureLook } from '#lib/theme/measures.js';
 import { resolveAccount, resolveCategory } from '#lib/theme/resolve.js';
 import type { Account, Category } from '#lib/types/domain.js';
-import type { Balances, CategorySeries, OverTime, Period, Savings, Step } from './shapes.js';
+import type {
+	AccountSeries,
+	Balances,
+	CategorySeries,
+	OverTime,
+	Period,
+	Savings,
+	Step
+} from './shapes.js';
 import type { ByCategory, Line } from './types.js';
 
 /** The colour of "Other" in every chart (design §8), and its lead tile's icon (design §6). */
@@ -139,9 +147,31 @@ export type StackSeries = {
 	color: string;
 	/** the lead tile's icon name (design §6) */
 	icon: string;
+	/** the category of a category stack's series, null for "Other" and in an account stack */
 	categoryId: number | null;
+	/** the account of an account stack's series, null for "Other" and in a category stack */
+	accountId?: number | null;
 };
 export type StackRow = { key: string; label: string; [series: string]: string | number };
+
+/** One row per period, one magnitude per series (`values[j]` is series j's line per period). */
+function stackRows(
+	report: OverTime,
+	series: readonly StackSeries[],
+	values: ReadonlyArray<readonly Line[]>,
+	locale: string
+): StackRow[] {
+	return report.periods.map((period, i) => {
+		const row: StackRow = {
+			key: period.from,
+			label: periodLabel(period, report.step, locale)
+		};
+		series.forEach((s, j) => {
+			row[s.key] = Math.abs(minorOf(values[j][i]) ?? 0);
+		});
+		return row;
+	});
+}
 
 /**
  * Stacked bars of the top categories and "Other": one row per period, one value per series, the
@@ -180,17 +210,50 @@ export function categoryStack(
 		});
 		values.push(report.other);
 	}
-	const rows = report.periods.map((period, i) => {
-		const row: StackRow = {
-			key: period.from,
-			label: periodLabel(period, report.step, locale)
-		};
-		series.forEach((s, j) => {
-			row[s.key] = Math.abs(minorOf(values[j][i]) ?? 0);
+	return { series, rows: stackRows(report, series, values, locale) };
+}
+
+/**
+ * *By account*: stacked bars of the top accounts and "Other", as the category stack has them, in
+ * the accounts' resolved colours.
+ */
+export function accountStack(
+	report: OverTime,
+	accounts: ReadonlyMap<number, Account>,
+	locale = 'en'
+): { series: StackSeries[]; rows: StackRow[] } {
+	const byId = new Map<number, AccountSeries>(
+		(report.accounts ?? []).map((a) => [a.account_id, a])
+	);
+	const series: StackSeries[] = [];
+	const values: Array<readonly Line[]> = [];
+	for (const { account_id } of report.account_slices ?? []) {
+		const source = byId.get(account_id);
+		if (!source) continue;
+		const account = accounts.get(account_id);
+		const look = account ? resolveAccount(account) : { color: OTHER_COLOR, icon: OTHER_ICON };
+		series.push({
+			key: `a${account_id}`,
+			label: account?.name ?? 'Account',
+			color: look.color,
+			icon: look.icon,
+			categoryId: null,
+			accountId: account_id
 		});
-		return row;
-	});
-	return { series, rows };
+		values.push(source.total);
+	}
+	if (report.other?.some((line) => (minorOf(line) ?? 0) !== 0)) {
+		series.push({
+			key: 'other',
+			label: 'Other',
+			color: OTHER_COLOR,
+			icon: OTHER_ICON,
+			categoryId: null,
+			accountId: null
+		});
+		values.push(report.other);
+	}
+	return { series, rows: stackRows(report, series, values, locale) };
 }
 
 // ---- Balances

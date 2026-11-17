@@ -61,6 +61,29 @@ describe('parseParams', () => {
 	});
 });
 
+describe('parseParams: the by-account mode of Over time', () => {
+	it('reads the mode and its transfer kinds', () => {
+		expect(parseParams('mode=account', 'over-time', TODAY)).toMatchObject({
+			mode: 'account',
+			kind: 'expense'
+		});
+		expect(parseParams('mode=account&kind=transfer_in', 'over-time', TODAY).kind).toBe(
+			'transfer_in'
+		);
+		expect(parseParams('mode=account&kind=transfer_out', 'over-time', TODAY).kind).toBe(
+			'transfer_out'
+		);
+	});
+
+	it('parses a transfer kind outside the account mode to Expense', () => {
+		expect(parseParams('mode=category&kind=transfer_in', 'over-time', TODAY).kind).toBe('expense');
+		expect(parseParams('kind=transfer_out', 'over-time', TODAY).kind).toBe('expense');
+		expect(parseParams('mode=account&kind=transfer_out', 'by-category', TODAY).kind).toBe(
+			'expense'
+		);
+	});
+});
+
 describe('toQuery', () => {
 	const back = (report: ReportId, search: string) =>
 		toQuery(parseParams(search, report, TODAY), report, TODAY).toString();
@@ -79,6 +102,14 @@ describe('toQuery', () => {
 		).toBe(
 			'from=2026-01-01&to=2026-06-30&account_id=2&account_id=3&tag_id=7&kind=income&step=year&mode=category'
 		);
+	});
+
+	it('writes the by-account mode and its kind, the defaults left out', () => {
+		expect(back('over-time', 'mode=account')).toBe('mode=account');
+		expect(back('over-time', 'mode=account&kind=transfer_out&step=year')).toBe(
+			'kind=transfer_out&step=year&mode=account'
+		);
+		expect(back('over-time', 'mode=account&kind=income')).toBe('kind=income&mode=account');
 	});
 
 	it('keeps the kind only where the report has one', () => {

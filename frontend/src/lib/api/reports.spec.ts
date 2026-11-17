@@ -69,6 +69,16 @@ describe('getOverTime', () => {
 		expect(lastUrl()).toBe(
 			'/api/reports/over-time?from=2026-01-01&to=2026-06-30&step=quarter&mode=category&kind=income&account_id=3&tag_id=7'
 		);
+
+		await getOverTime({
+			from: '2026-01-01',
+			to: '2026-06-30',
+			mode: 'account',
+			kind: 'transfer_out'
+		});
+		expect(lastUrl()).toBe(
+			'/api/reports/over-time?from=2026-01-01&to=2026-06-30&mode=account&kind=transfer_out'
+		);
 	});
 });
 

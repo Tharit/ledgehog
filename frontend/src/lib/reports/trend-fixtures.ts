@@ -2,7 +2,15 @@
 // savings of each, the balances. Whole API objects with sensible defaults.
 import { account, category } from '#lib/ledger/fixtures.js';
 import { buildLookups, withCategories, type Lookups } from '#lib/ledger/lookups.js';
-import type { Balances, CategorySeries, OverTime, Period, Savings } from './shapes.js';
+import type {
+	AccountKindSeries,
+	AccountSeries,
+	Balances,
+	CategorySeries,
+	OverTime,
+	Period,
+	Savings
+} from './shapes.js';
 import { line } from './fixtures.js';
 import type { ByAccount, ByCategory, Line } from './types.js';
 
@@ -142,6 +150,46 @@ export function overTimeCategories(over: Partial<OverTime> = {}): OverTime {
 		other: [line(0), line(-1500)],
 		totals: [line(-40000), line(-51500)],
 		sum: line(-91500),
+		...over
+	};
+}
+
+function accountSeries(account_id: number, total: number[]): AccountSeries {
+	const lines = total.map((v) => line(v, { count: v === 0 ? 0 : 1 }));
+	return {
+		account_id,
+		total: lines,
+		sum: line(
+			total.reduce((a, b) => a + b, 0),
+			{ count: total.filter((v) => v !== 0).length }
+		)
+	};
+}
+
+/**
+ * By account over two months, expense: Giro (-300, -200) and Savings (-100, 0) are the slices,
+ * Depot (-50, -15) is in Other; the kinds Checking, Savings and Depot hold one account each.
+ */
+export function overTimeAccounts(over: Partial<OverTime> = {}): OverTime {
+	return {
+		base_currency: 'EUR',
+		kind: 'expense',
+		step: 'month',
+		periods: [period('2026-08-01', '2026-08-31'), period('2026-09-01', '2026-09-30')],
+		accounts: [
+			accountSeries(1, [-30000, -20000]),
+			accountSeries(2, [-10000, 0]),
+			accountSeries(3, [-5000, -1500])
+		],
+		account_kinds: [
+			{ kind: 'checking', ...accountSeries(1, [-30000, -20000]) },
+			{ kind: 'savings', ...accountSeries(2, [-10000, 0]) },
+			{ kind: 'depot', ...accountSeries(3, [-5000, -1500]) }
+		].map(({ kind, total, sum }) => ({ kind: kind as AccountKindSeries['kind'], total, sum })),
+		account_slices: [{ account_id: 1 }, { account_id: 2 }],
+		other: [line(-5000), line(-1500)],
+		totals: [line(-45000), line(-21500)],
+		sum: line(-66500),
 		...over
 	};
 }

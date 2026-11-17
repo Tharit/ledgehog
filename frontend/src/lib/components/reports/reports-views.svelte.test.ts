@@ -3,10 +3,12 @@ import { describe, expect, it } from 'vitest';
 import {
 	balances,
 	byCategoryTree,
+	overTimeAccounts,
 	overTimeCategories,
 	overTimeSavings,
 	reportLookups
 } from '#lib/reports/trend-fixtures.js';
+import { line } from '#lib/reports/fixtures.js';
 import type { Scope } from '#lib/reports/links.js';
 import { dimensionVars } from '#lib/theme/dimensions.js';
 import BalancesView from './balances-view.svelte';
@@ -298,6 +300,73 @@ describe('OverTimeView, by category', () => {
 			'[data-slot="category-stack-chart"] [data-slot="chart"]'
 		)!;
 		expect(chart).toHaveClass('h-72', 'aspect-auto');
+	});
+});
+
+describe('OverTimeView, by account', () => {
+	const props = { report: overTimeAccounts(), categories, accounts, scope };
+
+	it('opens collapsed to the kinds and expands one like the tree in Settings', async () => {
+		const { container } = render(OverTimeView, { props });
+
+		const table = container.querySelector('[data-slot="account-trend-table"]') as HTMLElement;
+		expect(table.querySelectorAll('tbody tr')).toHaveLength(3);
+		expect(table.querySelector('[data-account="1"]')).toBeNull();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Expand Checking' }));
+		expect(table.querySelectorAll('tbody tr')).toHaveLength(4);
+		expect(table.querySelector('[data-account="1"]')).toHaveTextContent('Giro');
+		await fireEvent.click(screen.getByRole('button', { name: 'Collapse Checking' }));
+		expect(table.querySelectorAll('tbody tr')).toHaveLength(3);
+	});
+
+	it('has a column per period and a total, each cell a link to the ledger', async () => {
+		const { container } = render(OverTimeView, { props });
+
+		const table = container.querySelector('[data-slot="account-trend-table"]') as HTMLElement;
+		await fireEvent.click(screen.getByRole('button', { name: 'Expand Checking' }));
+		const giro = table.querySelector('[data-account="1"]') as HTMLElement;
+		const links = [...giro.querySelectorAll('a')].map((a) => new URL(a.href, 'http://x'));
+		expect(links.map((u) => u.searchParams.get('from'))).toEqual([
+			'2026-08-01',
+			'2026-09-01',
+			'2026-10-01'
+		]);
+		expect(links.every((u) => u.searchParams.getAll('account_id').join() === '1')).toBe(true);
+		expect(table.querySelector('[data-account-kind="checking"] td:last-child')).toHaveTextContent(
+			'−500.00'
+		);
+		expect(table.querySelector('[data-row="total"]')).toHaveTextContent('−665.00');
+	});
+
+	it('draws the stack chart of the accounts at a fixed height', () => {
+		const { container } = render(OverTimeView, { props });
+
+		const chart = container.querySelector(
+			'[data-slot="category-stack-chart"] [data-slot="chart"]'
+		)!;
+		expect(chart).toHaveClass('h-72', 'aspect-auto');
+		const legend = container.querySelector('[data-slot="chart-legend"]')!;
+		expect(legend).toHaveTextContent('Giro');
+		expect(legend).toHaveTextContent('Other');
+	});
+
+	it('says so when the period has nothing', () => {
+		render(OverTimeView, {
+			props: {
+				...props,
+				report: overTimeAccounts({
+					accounts: [],
+					account_kinds: [],
+					account_slices: [],
+					other: [],
+					totals: [],
+					sum: line(0)
+				})
+			}
+		});
+
+		expect(screen.getByText('Nothing in this period.')).toBeInTheDocument();
 	});
 });
 

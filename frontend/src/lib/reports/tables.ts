@@ -8,6 +8,7 @@ import type { Account, Category } from '#lib/types/domain.js';
 import { minorOf, OTHER_COLOR, OTHER_ICON, periodLabel } from './charts.js';
 import {
 	accountCategoryHref,
+	accountKindHref,
 	accountReconciliationsHref,
 	accountUnclassifiedHref,
 	categoryHref,
@@ -506,7 +507,8 @@ export function categoryTrendTable(
 		};
 	});
 	const totals = [...(report.totals ?? []), report.sum as Line];
-	const kind = report.kind;
+	// the category mode has the two kinds a category can be of
+	const kind: Kind = report.kind === 'income' ? 'income' : 'expense';
 	return {
 		columns,
 		rows,
@@ -520,6 +522,90 @@ export function categoryTrendTable(
 				line,
 				href: kindHref(scopes[i], kind, categories)
 			}))
+		}
+	};
+}
+
+export type AccountTrendCell = { line: Line; href: string };
+
+/** A row of the by-account table: an account kind (depth 0) or an account beneath it (depth 1). */
+export type AccountTrendRow = {
+	key: string;
+	depth: 0 | 1;
+	hasChildren: boolean;
+	name: string;
+	/** the account kind the row stands for or sits under */
+	accountKind: string;
+	/** null on a kind's row */
+	accountId: number | null;
+	cells: AccountTrendCell[];
+};
+
+/**
+ * *By account*: the accounts grouped by kind as Balances has them, with a column per period and a
+ * total, each cell drilling into the ledger for its period: an account on itself, a kind on the
+ * accounts of the kind that are listed (within the account filter), the total on the page's own
+ * filter; each with the kind's filter. The figures are the server's, the client adds nothing.
+ */
+export function accountTrendTable(
+	report: OverTime,
+	accounts: ReadonlyMap<number, Account>,
+	categories: ReadonlyMap<number, Category>,
+	scope: Scope,
+	locale = 'en'
+): { columns: Column[]; rows: AccountTrendRow[]; total: TrendRow } {
+	const kind = report.kind;
+	const scopes = [...report.periods.map((p) => periodScope(p, scope)), scope];
+	const columns: Column[] = [
+		...report.periods.map((p) => ({ key: p.from, label: periodLabel(p, report.step, locale) })),
+		{ key: 'total', label: 'Total' }
+	];
+	const cellsOf = (lines: readonly Line[], accountIds?: readonly number[]): AccountTrendCell[] =>
+		lines.map((line, i) => ({
+			line,
+			href: accountKindHref(scopes[i], kind, categories, accountIds)
+		}));
+	const labels = new Map(ACCOUNT_KINDS.map(({ kind: k, label }) => [k, label]));
+	const listed = report.accounts ?? [];
+	const kindOf = (accountId: number) => accounts.get(accountId)?.kind ?? 'asset';
+	const rows: AccountTrendRow[] = [];
+	for (const group of report.account_kinds ?? []) {
+		const members = listed.filter((a) => kindOf(a.account_id) === group.kind);
+		const ids = members
+			.map((a) => a.account_id)
+			.filter((id) => scope.accountIds.length === 0 || scope.accountIds.includes(id))
+			.sort((a, b) => a - b);
+		rows.push({
+			key: `k:${group.kind}`,
+			depth: 0,
+			hasChildren: members.length > 0,
+			name: labels.get(group.kind) ?? group.kind,
+			accountKind: group.kind,
+			accountId: null,
+			cells: cellsOf([...group.total, group.sum], ids)
+		});
+		for (const a of members) {
+			rows.push({
+				key: `a:${a.account_id}`,
+				depth: 1,
+				hasChildren: false,
+				name: accounts.get(a.account_id)?.name ?? 'Account',
+				accountKind: group.kind,
+				accountId: a.account_id,
+				cells: cellsOf([...a.total, a.sum], [a.account_id])
+			});
+		}
+	}
+	const totals = [...(report.totals ?? []), report.sum as Line];
+	return {
+		columns,
+		rows,
+		total: {
+			key: 'total',
+			measure: kind === 'income' || kind === 'expense' ? kind : 'transfers',
+			label: 'Total',
+			strong: true,
+			cells: cellsOf(totals).map((cell): TrendCell => ({ kind: 'line', ...cell }))
 		}
 	};
 }

@@ -55,6 +55,40 @@ describe('ReportControls', () => {
 		expect(screen.queryByRole('button', { name: 'Year' })).toBeNull();
 	});
 
+	it('offers the transfer kinds in the by-account mode alone', () => {
+		setup('mode=account', { mode: true, kind: true });
+
+		expect(screen.getByRole('button', { name: 'Transfers in' })).toBeInTheDocument();
+		expect(screen.getByRole('button', { name: 'Transfers out' })).toBeInTheDocument();
+		expect(screen.getByRole('button', { name: 'By account' })).toHaveAttribute(
+			'aria-pressed',
+			'true'
+		);
+	});
+
+	it('has only Expense and Income in the by-category mode', () => {
+		setup('mode=category', { mode: true, kind: true });
+
+		expect(screen.queryByRole('button', { name: 'Transfers in' })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Transfers out' })).toBeNull();
+	});
+
+	it('falls back to Expense when the mode leaves the accounts with a transfer kind', async () => {
+		const onchange = setup('mode=account&kind=transfer_out', { mode: true, kind: true });
+
+		await fireEvent.click(screen.getByRole('button', { name: 'By category' }));
+
+		expect(onchange).toHaveBeenCalledWith({ mode: 'category', kind: 'expense' });
+	});
+
+	it('leaves the kind alone when the mode changes with a kind of every mode', async () => {
+		const onchange = setup('mode=account&kind=income', { mode: true, kind: true });
+
+		await fireEvent.click(screen.getByRole('button', { name: 'By category' }));
+
+		expect(onchange).toHaveBeenCalledWith({ mode: 'category' });
+	});
+
 	it('By account has the period and the tags, no account filter', () => {
 		setup('', { accounts: false });
 

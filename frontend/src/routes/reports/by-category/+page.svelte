@@ -13,7 +13,7 @@
 		getByCategory({
 			from: p.from,
 			to: p.to,
-			kind: p.kind,
+			kind: p.kind === 'income' ? 'income' : 'expense',
 			accountIds: p.accountIds,
 			tagIds: p.tagIds,
 			top: TOP,

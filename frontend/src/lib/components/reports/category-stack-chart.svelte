@@ -8,8 +8,9 @@
 	import DimensionIcon from '#lib/components/common/dimension-icon.svelte';
 	import FigureTooltip from './figure-tooltip.svelte';
 
-	// The top categories and "Other" as stacked bars per period, in the categories' resolved colours
-	// ("Other" in stone). The bars are magnitudes; the axis and the tooltip write the kind's sign.
+	// The top categories (or accounts, in the by-account mode) and "Other" as stacked bars per period,
+	// in their resolved colours ("Other" in stone). The bars are magnitudes; the axis and the tooltip
+	// write the kind's sign.
 	let {
 		series,
 		rows,
@@ -20,7 +21,7 @@
 		series: readonly StackSeries[];
 		rows: readonly StackRow[];
 		currency: string;
-		/** the sign of the kind's amounts: -1 for expense, 1 for income */
+		/** the sign of the kind's amounts: -1 for expense and transfers out, 1 for income and transfers in */
 		sign?: 1 | -1;
 		locale?: string;
 	} = $props();

@@ -11,7 +11,7 @@
 		type ReportParams,
 		type TimeMode
 	} from '#lib/reports/params.js';
-	import type { Kind, Step } from '#lib/reports/shapes.js';
+	import type { OverTimeKind, Step } from '#lib/reports/shapes.js';
 	import { resolveAccount, resolveTag } from '#lib/theme/resolve.js';
 
 	// The controls shared by the reports (reports.md): the period (the ledger's date chip with its
@@ -39,7 +39,7 @@
 		filters?: boolean;
 		/** the account filter (not on By account: its accounts are what it shows) */
 		accounts?: boolean;
-		/** Expense or Income */
+		/** Expense or Income (and, in the by-account mode, Transfers in and out) */
 		kind?: boolean;
 		step?: boolean;
 		mode?: boolean;
@@ -68,14 +68,27 @@
 		return `${ids.length} ${many}`;
 	}
 
-	const KINDS: { value: Kind; label: string }[] = [
+	const KINDS: { value: OverTimeKind; label: string }[] = [
 		{ value: 'expense', label: 'Expense' },
 		{ value: 'income', label: 'Income' }
 	];
+	// the transfer kinds exist only in the by-account mode (reports.md)
+	const ACCOUNT_KINDS: { value: OverTimeKind; label: string }[] = [
+		...KINDS,
+		{ value: 'transfer_in', label: 'Transfers in' },
+		{ value: 'transfer_out', label: 'Transfers out' }
+	];
 	const MODES: { value: TimeMode; label: string }[] = [
 		{ value: 'income-expense', label: 'Income and expense' },
-		{ value: 'category', label: 'By category' }
+		{ value: 'category', label: 'By category' },
+		{ value: 'account', label: 'By account' }
 	];
+
+	/** Leaving the by-account mode with a transfer kind falls back to Expense. */
+	function changeMode(value: TimeMode) {
+		const transfer = params.kind === 'transfer_in' || params.kind === 'transfer_out';
+		onchange(value !== 'account' && transfer ? { mode: value, kind: 'expense' } : { mode: value });
+	}
 </script>
 
 <div class="flex flex-wrap items-center gap-3" role="group" aria-label="Report controls">
@@ -112,17 +125,12 @@
 		/>
 	{/if}
 	{#if mode}
-		<Segmented
-			label="Mode"
-			options={MODES}
-			value={params.mode}
-			onchange={(value) => onchange({ mode: value })}
-		/>
+		<Segmented label="Mode" options={MODES} value={params.mode} onchange={changeMode} />
 	{/if}
 	{#if kind}
 		<Segmented
 			label="Kind"
-			options={KINDS}
+			options={params.mode === 'account' ? ACCOUNT_KINDS : KINDS}
 			value={params.kind}
 			onchange={(value) => onchange({ kind: value })}
 		/>

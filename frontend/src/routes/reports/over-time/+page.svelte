@@ -7,13 +7,13 @@
 	import { useReport } from '#lib/stores/report-route.svelte.js';
 
 	// *Over time* (reports.md): the range cut into months, quarters or years. The default mode is
-	// *Income and expense*; *By category* adds the kind.
+	// *Income and expense*; *By category* and *By account* add the kind.
 	const report = useReport('over-time', (p, signal) =>
 		getOverTime({
 			from: p.from,
 			to: p.to,
 			step: p.step,
-			mode: p.mode === 'category' ? 'category' : 'savings',
+			mode: p.mode === 'income-expense' ? 'savings' : p.mode,
 			kind: p.kind,
 			accountIds: p.accountIds,
 			tagIds: p.tagIds,
@@ -35,7 +35,7 @@
 		today={report.today}
 		locale={report.locale}
 		mode
-		kind={report.params.mode === 'category'}
+		kind={report.params.mode !== 'income-expense'}
 		step
 		onchange={report.change}
 	/>
@@ -49,6 +49,7 @@
 			<OverTimeView
 				report={data}
 				categories={lookupsStore.lookups.categories}
+				accounts={lookupsStore.lookups.accounts}
 				scope={{
 					from: report.params.from,
 					to: report.params.to,

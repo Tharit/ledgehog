@@ -4,7 +4,7 @@
 // reconciliations and unconfirmed link to the ledger's own filters for them.
 import type { Category } from '#lib/types/domain.js';
 import { ledgerHref, UNPAIRED_TRANSFERS_FILTER } from './figures.js';
-import type { Kind } from './shapes.js';
+import type { Kind, OverTimeKind } from './shapes.js';
 
 /** What a figure is of: its days and the filters the page carries. */
 export type Scope = {
@@ -46,6 +46,34 @@ export function kindHref(
 	categories: ReadonlyMap<number, Category>
 ): string {
 	return ledgerHref({ ...base(scope), category_id: kindCategoryIds(categories, kind) });
+}
+
+/**
+ * A kind of *Over time* in the ledger's filters (reports.md): income and expense are their
+ * top-level categories as alternatives; the transfer kinds are the legs of that direction, paired
+ * or not, so the type and the direction.
+ */
+function overTimeKindFilter(kind: OverTimeKind, categories: ReadonlyMap<number, Category>) {
+	if (kind === 'transfer_in') return { type: ['transfer'], direction: 'in' as const };
+	if (kind === 'transfer_out') return { type: ['transfer'], direction: 'out' as const };
+	return { category_id: kindCategoryIds(categories, kind) };
+}
+
+/**
+ * *Over time by account*: a kind on the given accounts (the page's own filter when omitted), for the
+ * scope's period and tags.
+ */
+export function accountKindHref(
+	scope: Scope,
+	kind: OverTimeKind,
+	categories: ReadonlyMap<number, Category>,
+	accountIds: readonly number[] = scope.accountIds
+): string {
+	return ledgerHref({
+		...base(scope),
+		account_id: [...accountIds],
+		...overTimeKindFilter(kind, categories)
+	});
 }
 
 /** Entries without a category (spec §8: flows, and entries with no type yet), out, in or both. */

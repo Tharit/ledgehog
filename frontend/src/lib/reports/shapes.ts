@@ -13,3 +13,7 @@ export type PointNetWorth = Schemas['PointNetWorthOut'];
 
 export type Step = 'month' | 'quarter' | 'year';
 export type Kind = 'expense' | 'income';
+/** The kinds of *Over time*: the by-account mode adds the transfers in and out (reports.md). */
+export type OverTimeKind = Schemas['OverTimeOut']['kind'];
+export type AccountSeries = Schemas['AccountSeriesOut'];
+export type AccountKindSeries = Schemas['AccountKindSeriesOut'];

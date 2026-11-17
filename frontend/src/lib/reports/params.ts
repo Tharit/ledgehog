@@ -5,15 +5,15 @@
 // out), so the same controls are always the same URL.
 import { fromSearchParams } from '#lib/ledger/filter.js';
 import { datePresets } from '#lib/ledger/presets.js';
-import type { Kind, Step } from './shapes.js';
+import type { OverTimeKind, Step } from './shapes.js';
 
 export type ReportId = 'by-category' | 'by-account' | 'over-time' | 'balances';
-export type TimeMode = 'income-expense' | 'category';
+export type TimeMode = 'income-expense' | 'category' | 'account';
 
 export type ReportParams = {
 	from: string;
 	to: string;
-	kind: Kind;
+	kind: OverTimeKind;
 	step: Step;
 	mode: TimeMode;
 	accountIds: number[];
@@ -53,12 +53,25 @@ export function parseParams(
 	let to = filter.to ?? fallback.to;
 	if (from > to) [from, to] = [to, from];
 	const step = params.get('step');
+	const modeParam = params.get('mode');
+	const mode: TimeMode =
+		modeParam === 'category' || modeParam === 'account' ? modeParam : 'income-expense';
+	const kindParam = params.get('kind');
+	// the transfer kinds exist only in the by-account mode of Over time (reports.md)
+	const kind: OverTimeKind =
+		kindParam === 'income'
+			? 'income'
+			: (kindParam === 'transfer_in' || kindParam === 'transfer_out') &&
+				  report === 'over-time' &&
+				  mode === 'account'
+				? kindParam
+				: 'expense';
 	return {
 		from,
 		to,
-		kind: params.get('kind') === 'income' ? 'income' : 'expense',
+		kind,
 		step: step === 'quarter' || step === 'year' ? step : 'month',
-		mode: params.get('mode') === 'category' ? 'category' : 'income-expense',
+		mode,
 		accountIds: filter.account_id,
 		tagIds: filter.tag_id
 	};
@@ -80,12 +93,12 @@ export function toQuery(params: ReportParams, report: ReportId, today: string): 
 	if (report !== 'balances') {
 		for (const id of [...params.tagIds].sort((a, b) => a - b)) query.append('tag_id', String(id));
 	}
-	const byCategory =
-		report === 'by-category' || (report === 'over-time' && params.mode === 'category');
-	if (byCategory && params.kind === 'income') query.set('kind', 'income');
+	const hasKind =
+		report === 'by-category' || (report === 'over-time' && params.mode !== 'income-expense');
+	if (hasKind && params.kind !== 'expense') query.set('kind', params.kind);
 	if (report === 'over-time') {
 		if (params.step !== 'month') query.set('step', params.step);
-		if (params.mode === 'category') query.set('mode', 'category');
+		if (params.mode !== 'income-expense') query.set('mode', params.mode);
 	}
 	return query;
 }

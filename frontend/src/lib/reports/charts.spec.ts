@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+	accountStack,
 	balanceRows,
 	categoryStack,
 	donutSlices,
@@ -13,6 +14,7 @@ import { line } from './fixtures.js';
 import {
 	balances,
 	byCategoryTree,
+	overTimeAccounts,
 	overTimeCategories,
 	overTimeSavings,
 	period,
@@ -113,6 +115,38 @@ describe('categoryStack', () => {
 		const { series } = categoryStack(overTimeCategories({ other: [line(0), line(0)] }), categories);
 
 		expect(series.map((s) => s.key)).toEqual(['c4', 'c1']);
+	});
+});
+
+describe('accountStack', () => {
+	it('is the top accounts and Other, per period, in their colours', () => {
+		const { series, rows } = accountStack(overTimeAccounts(), accounts);
+
+		expect(series.map((s) => [s.label, s.color])).toEqual([
+			['Giro', 'forest'],
+			['Savings', 'teal'],
+			['Other', 'stone']
+		]);
+		expect(series.map((s) => s.accountId)).toEqual([1, 2, null]);
+		expect(rows.map((r) => [r.label, r.a1, r.a2, r.other])).toEqual([
+			['Aug 2026', 30000, 10000, 5000],
+			['Sep 2026', 20000, 0, 1500]
+		]);
+	});
+
+	it('draws magnitudes, so a transfer in and an expense stack alike', () => {
+		const { rows } = accountStack(
+			overTimeAccounts({ kind: 'transfer_in', other: [line(0), line(0)] }),
+			accounts
+		);
+
+		expect(rows[0].a1).toBe(30000);
+	});
+
+	it('has no Other series when nothing is in it', () => {
+		const { series } = accountStack(overTimeAccounts({ other: [line(0), line(0)] }), accounts);
+
+		expect(series.map((s) => s.key)).toEqual(['a1', 'a2']);
 	});
 });
 

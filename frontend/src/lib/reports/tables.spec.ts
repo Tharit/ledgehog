@@ -3,6 +3,7 @@ import { line } from './fixtures.js';
 import type { Scope } from './links.js';
 import {
 	accountTable,
+	accountTrendTable,
 	balanceTable,
 	categoryTable,
 	categoryTrendTable,
@@ -14,6 +15,7 @@ import {
 	byAccount,
 	byAccountLookups,
 	byCategoryTree,
+	overTimeAccounts,
 	overTimeCategories,
 	overTimeSavings,
 	reportLookups
@@ -406,5 +408,77 @@ describe('accountTable', () => {
 		expect(query(into.href).getAll('account_id')).toEqual(['1']);
 		expect(query(into.href).getAll('direction')).toEqual(['in']);
 		expect(query(into.href).getAll('flag')).toEqual(flags);
+	});
+});
+
+describe('accountTrendTable', () => {
+	const query = (href: string) => new URLSearchParams(href.split('?')[1]);
+
+	it('has the kinds with their accounts beneath, a column per period and a Total', () => {
+		const table = accountTrendTable(overTimeAccounts(), accounts, categories, scope);
+
+		expect(table.columns.map((c) => c.label)).toEqual(['Aug 2026', 'Sep 2026', 'Total']);
+		expect(table.rows.map((r) => [r.name, r.depth, r.hasChildren])).toEqual([
+			['Checking', 0, true],
+			['Giro', 1, false],
+			['Savings', 0, true],
+			['Savings', 1, false],
+			['Depot', 0, true],
+			['Depot', 1, false]
+		]);
+		// the server's figures, the client adds nothing
+		const kind = table.rows[0];
+		expect(kind.cells.map((c) => c.line.total?.amount)).toEqual([-30000, -20000, -50000]);
+		expect(table.total.cells.map((c) => (c.kind === 'line' ? c.line.total?.amount : null))).toEqual(
+			[-45000, -21500, -66500]
+		);
+		expect(table.total.measure).toBe('expense');
+	});
+
+	it("links an account on itself, with the kind's categories and its period", () => {
+		const table = accountTrendTable(overTimeAccounts(), accounts, categories, {
+			...scope,
+			accountIds: [1, 2],
+			tagIds: [7]
+		});
+		const giro = query(table.rows[1].cells[0].href);
+
+		expect(giro.get('from')).toBe('2026-08-01');
+		expect(giro.get('to')).toBe('2026-08-31');
+		expect(giro.getAll('account_id')).toEqual(['1']);
+		expect(giro.getAll('tag_id')).toEqual(['7']);
+		expect(giro.getAll('category_id')).toEqual(['1', '4', '6']);
+		// the Total column is the report range
+		expect(query(table.rows[1].cells[2].href).get('from')).toBe('2026-10-01');
+	});
+
+	it('links a kind on its listed accounts within the chip, the total on the chip itself', () => {
+		const table = accountTrendTable(overTimeAccounts(), accounts, categories, {
+			...scope,
+			accountIds: [1, 3]
+		});
+
+		expect(query(table.rows[0].cells[0].href).getAll('account_id')).toEqual(['1']);
+		const total = table.total.cells[0];
+		expect(total.kind === 'line' && query(total.href!).getAll('account_id')).toEqual(['1', '3']);
+		const everyAccount = accountTrendTable(overTimeAccounts(), accounts, categories, scope);
+		expect(query(everyAccount.rows[0].cells[0].href).getAll('account_id')).toEqual(['1']);
+		const none = everyAccount.total.cells[0];
+		expect(none.kind === 'line' && query(none.href!).has('account_id')).toBe(false);
+	});
+
+	it('links the transfer kinds by type and direction', () => {
+		const table = accountTrendTable(
+			overTimeAccounts({ kind: 'transfer_in' }),
+			accounts,
+			categories,
+			scope
+		);
+		const cell = query(table.rows[1].cells[0].href);
+
+		expect(cell.getAll('type')).toEqual(['transfer']);
+		expect(cell.get('direction')).toBe('in');
+		expect(cell.has('category_id')).toBe(false);
+		expect(table.total.measure).toBe('transfers');
 	});
 });
