@@ -5902,6 +5902,7 @@ export interface operations {
                 from?: string | null;
                 to?: string | null;
                 account_id?: number[] | null;
+                counter_account_id?: number[] | null;
                 category_id?: number[] | null;
                 category_descendants?: boolean;
                 uncategorised?: boolean;
@@ -5956,6 +5957,7 @@ export interface operations {
                 from?: string | null;
                 to?: string | null;
                 account_id?: number[] | null;
+                counter_account_id?: number[] | null;
                 category_id?: number[] | null;
                 category_descendants?: boolean;
                 uncategorised?: boolean;

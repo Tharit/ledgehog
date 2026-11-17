@@ -51,6 +51,18 @@ describe('links', () => {
 		expect(ledgerHref({ uncategorised: true, direction: 'out', from: '2026-10-01' })).toBe(
 			'/ledger?from=2026-10-01&uncategorised=true&direction=out'
 		);
+		expect(
+			ledgerHref({
+				account_id: [1],
+				counter_account_id: [2, 3],
+				type: ['transfer'],
+				direction: 'out',
+				from: '2026-10-01',
+				to: '2026-10-31'
+			})
+		).toBe(
+			'/ledger?from=2026-10-01&to=2026-10-31&account_id=1&counter_account_id=2&counter_account_id=3&direction=out&type=transfer'
+		);
 		expect(ledgerHref({})).toBe('/ledger');
 	});
 

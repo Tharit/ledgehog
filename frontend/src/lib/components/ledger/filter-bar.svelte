@@ -16,6 +16,7 @@
 		resolveTag
 	} from '#lib/theme/resolve.js';
 	import type { EntryFilter } from '#lib/types/domain.js';
+	import AccountChip from './account-chip.svelte';
 	import AmountChip, { type AmountPatch } from './amount-chip.svelte';
 	import DateChip from './date-chip.svelte';
 	import OptionsChip, { type ChipOption } from './options-chip.svelte';
@@ -94,6 +95,13 @@
 		hint: REVIEW_FLAG_INFO[flag].sentence,
 		flag
 	}));
+	// the account chip also holds the counter-account: "Giro → Cash" when both are set
+	const accountLabel = $derived.by(() => {
+		const account = parts.find((part) => part.key === 'account')?.label;
+		const counter = parts.find((part) => part.key === 'counter_account')?.label;
+		if (account && counter) return `${account} → ${counter.replace('Counter-account: ', '')}`;
+		return account ?? counter ?? 'All accounts';
+	});
 	// the category chip also holds the type: a type is shown in the category column
 	const categoryLabel = $derived.by(() => {
 		const category = parts.find((part) => part.key === 'category')?.label;
@@ -171,13 +179,12 @@
 		{locale}
 		onchange={(from, to) => update({ from, to })}
 	/>
-	<OptionsChip
-		label={label('account', 'All accounts')}
-		heading="Accounts"
+	<AccountChip
+		label={accountLabel}
 		options={accountOptions}
-		selected={filter.account_id}
-		emptyText="No accounts yet"
-		onchange={(account_id) => update({ account_id })}
+		account={filter.account_id}
+		counter={filter.counter_account_id}
+		onchange={update}
 	/>
 	<OptionsChip
 		label={categoryLabel}

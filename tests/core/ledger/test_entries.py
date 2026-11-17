@@ -147,6 +147,51 @@ def test_account_or_within_dimension(db_conn: Connection, acct: int):
     assert sorted_ids(db_conn, account_ids=(b,)) == [eb]
 
 
+def _legs(conn: Connection, acct: int) -> dict[str, int]:
+    """Giro's legs to B and to C, B's leg back to Giro, a flow, and Giro's leg with no counter-account."""
+    b, c = seed.account(conn, "B"), seed.account(conn, "C")
+    legs = {
+        "to_b": seed.entry(conn, acct, amount=-100, type="transfer"),
+        "to_c": seed.entry(conn, acct, amount=-200, type="transfer"),
+        "from_b": seed.entry(conn, b, amount=-300, type="transfer"),
+        "flow": seed.entry(conn, acct, amount=-400),
+        "bare": seed.entry(conn, acct, amount=-500, type="transfer"),
+    }
+    for leg, counter in (("to_b", b), ("to_c", c), ("from_b", acct)):
+        conn.execute(
+            text("UPDATE ledger_entry SET counter_account_id = :c WHERE id = :i"),
+            {"c": counter, "i": legs[leg]},
+        )
+    return {**legs, "b": b, "c": c}
+
+
+def test_counter_account_selects_only_the_legs_with_it(db_conn: Connection, acct: int):
+    x = _legs(db_conn, acct)
+    assert sorted_ids(db_conn, counter_account_ids=(x["b"],)) == [x["to_b"]]
+    assert sorted_ids(db_conn, counter_account_ids=(x["c"],)) == [x["to_c"]]
+    assert sorted_ids(db_conn, counter_account_ids=(acct,)) == [x["from_b"]]
+
+
+def test_counter_account_values_are_alternatives_and_an_entry_without_one_matches_none(
+    db_conn: Connection, acct: int
+):
+    x = _legs(db_conn, acct)
+    got = sorted_ids(db_conn, counter_account_ids=(x["b"], x["c"], acct))
+    assert got == sorted([x["to_b"], x["to_c"], x["from_b"]])
+    assert x["flow"] not in got and x["bare"] not in got
+
+
+def test_counter_account_combines_with_account_type_and_direction(db_conn: Connection, acct: int):
+    x = _legs(db_conn, acct)
+    b = x["b"]
+    assert sorted_ids(db_conn, counter_account_ids=(b,), account_ids=(acct,)) == [x["to_b"]]
+    assert sorted_ids(db_conn, counter_account_ids=(acct,), account_ids=(acct,)) == []
+    assert sorted_ids(db_conn, counter_account_ids=(acct,), account_ids=(b,)) == [x["from_b"]]
+    assert sorted_ids(db_conn, counter_account_ids=(b,), types=("transfer",), direction="out") == [x["to_b"]]
+    assert sorted_ids(db_conn, counter_account_ids=(b,), types=("flow",)) == []
+    assert sorted_ids(db_conn, counter_account_ids=(b,), direction="in") == []
+
+
 def test_payee_or(db_conn: Connection, acct: int):
     p1, p2, p3 = (seed.payee(db_conn, n) for n in ("P1", "P2", "P3"))
     e1, e2, _e3 = (seed.entry(db_conn, acct, payee_id=p) for p in (p1, p2, p3))

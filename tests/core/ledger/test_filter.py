@@ -55,6 +55,12 @@ def test_currency_is_three_capitals():
         assert bad(currency=value).parameter == "currency"
 
 
+def test_counter_account_ids_are_positive_ids():
+    assert bad(counter_account_ids=(1, 0)).parameter == "counter_account_id"
+    assert bad(counter_account_ids=(-1,)).parameter == "counter_account_id"
+    assert not LedgerFilter(counter_account_ids=(1,)).is_empty
+
+
 def test_direction_is_in_or_out():
     assert bad(direction="sideways").parameter == "direction"
     LedgerFilter(direction="in")

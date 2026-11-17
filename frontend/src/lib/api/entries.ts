@@ -14,6 +14,7 @@ export function filterQuery(filter: EntryFilter): Query {
 		from: filter.from,
 		to: filter.to,
 		account_id: filter.account_id,
+		counter_account_id: filter.counter_account_id,
 		category_id: filter.category_id,
 		category_descendants: filter.category_descendants ? undefined : false,
 		uncategorised: filter.uncategorised ? true : undefined,

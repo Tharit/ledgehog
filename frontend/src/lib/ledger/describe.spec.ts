@@ -34,6 +34,14 @@ describe('describeFilter', () => {
 		expect(describe_({ account_id: [99] })[0].label).toBe('Account 99');
 	});
 
+	it('names the counter-account apart from the account', () => {
+		expect(describe_({ counter_account_id: [2] })).toEqual([
+			{ key: 'counter_account', label: 'Counter-account: Visa' }
+		]);
+		expect(describe_({ counter_account_id: [1, 2] })[0].label).toBe('Counter-account: 2 accounts');
+		expect(describe_({ counter_account_id: [99] })[0].label).toBe('Counter-account: Account 99');
+	});
+
 	it('names tags, payees and categories', () => {
 		expect(describe_({ tag_id: [7] })[0]).toEqual({ key: 'tag', label: 'Lisbon trip' });
 		expect(describe_({ tag_id: [7, 8] })[0].label).toBe('2 tags');

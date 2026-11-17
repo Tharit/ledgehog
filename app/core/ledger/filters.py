@@ -38,6 +38,7 @@ class LedgerFilter:
     date_from: date | None = None  # inclusive
     date_to: date | None = None  # inclusive
     account_ids: tuple[int, ...] = ()
+    counter_account_ids: tuple[int, ...] = ()  # transfer legs whose counter-account is any of them
     category_ids: tuple[int, ...] = ()
     category_descendants: bool = True  # a parent includes its descendants
     uncategorised: bool = False  # flows and untyped entries with no category; OR-ed with category_ids
@@ -54,6 +55,7 @@ class LedgerFilter:
     def __post_init__(self) -> None:
         for param, ids in (
             ("account_id", self.account_ids),
+            ("counter_account_id", self.counter_account_ids),
             ("category_id", self.category_ids),
             ("payee_id", self.payee_ids),
             ("tag_id", self.tag_ids),

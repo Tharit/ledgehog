@@ -30,6 +30,7 @@ function last(): [string, RequestInit] {
 
 const empty: EntryFilter = {
 	account_id: [],
+	counter_account_id: [],
 	category_id: [],
 	category_descendants: true,
 	uncategorised: false,

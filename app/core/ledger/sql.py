@@ -89,6 +89,9 @@ def compose(flt: LedgerFilter) -> Composed:
         where.append(le.c.booked_on <= flt.date_to)
     if flt.account_ids:
         where.append(le.c.account_id.in_(flt.account_ids))
+    if flt.counter_account_ids:
+        # an entry with no counter-account compares NULL and matches none
+        where.append(le.c.counter_account_id.in_(flt.counter_account_ids))
     if flt.payee_ids:
         where.append(le.c.payee_id.in_(flt.payee_ids))
     if flt.category_ids or flt.uncategorised:

@@ -158,6 +158,32 @@ def test_each_dimension_over_http(anna: TestClient, api_engine: Engine, acct: in
     assert entry_ids(anna, flag=["unclassified", "waiting"], type="flow") == []
 
 
+def test_counter_account_over_http(anna: TestClient, api_engine: Engine, acct: int):
+    with api_engine.begin() as conn:
+        b, c = seed.account(conn, "B"), seed.account(conn, "C")
+        to_b = seed.entry(conn, acct, amount=-100, type="transfer")
+        to_c = seed.entry(conn, acct, amount=-200, type="transfer")
+        back = seed.entry(conn, b, amount=-300, type="transfer")
+        bare = seed.entry(conn, acct, amount=-500, type="transfer")
+        flow = seed.entry(conn, acct, amount=-400)
+        for leg, counter in ((to_b, b), (to_c, c), (back, acct)):
+            conn.execute(
+                text("UPDATE ledger_entry SET counter_account_id = :c WHERE id = :i"),
+                {"c": counter, "i": leg},
+            )
+    assert entry_ids(anna, counter_account_id=b) == [to_b]
+    assert sorted(entry_ids(anna, counter_account_id=[b, c])) == sorted([to_b, to_c])
+    assert entry_ids(anna, counter_account_id=[b, c], account_id=acct, type="transfer", direction="out") == [
+        to_c,
+        to_b,
+    ]
+    assert entry_ids(anna, counter_account_id=acct, account_id=acct) == []
+    assert bare not in entry_ids(anna, counter_account_id=[b, c, acct]) and flow not in entry_ids(
+        anna, counter_account_id=[b, c, acct]
+    )
+    assert sorted(entry_ids(anna, counter_account_id=[b, c, acct])) == sorted([to_b, to_c, back])
+
+
 def test_uncategorised_over_http(anna: TestClient, api_engine: Engine, acct: int):
     with api_engine.begin() as conn:
         c = seed.category(conn, "Food")
@@ -225,7 +251,7 @@ def test_limit_and_offset_bounds(anna: TestClient, params: dict[str, Any]):
     assert_envelope(anna.get(URL, params=params), 422, "validation_error")
 
 
-@pytest.mark.parametrize("name", ["account_id", "category_id", "payee_id", "tag_id"])
+@pytest.mark.parametrize("name", ["account_id", "counter_account_id", "category_id", "payee_id", "tag_id"])
 @pytest.mark.parametrize("bad", [0, -1, 2**63, 10**20, "x"])
 def test_every_id_parameter_is_bounded(anna: TestClient, name: str, bad: Any):
     err = assert_envelope(anna.get(URL, params={name: bad}), 422, "validation_error")

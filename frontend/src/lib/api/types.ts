@@ -155,6 +155,8 @@ export type EntryFilter = {
 	/** inclusive */
 	to?: IsoDate;
 	account_id: number[];
+	/** the transfer legs whose counter-account it is */
+	counter_account_id: number[];
 	category_id: number[];
 	/** a category includes its descendants unless this is false */
 	category_descendants: boolean;

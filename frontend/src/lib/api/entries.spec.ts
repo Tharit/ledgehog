@@ -18,6 +18,7 @@ function lastUrl(): string {
 
 const empty: EntryFilter = {
 	account_id: [],
+	counter_account_id: [],
 	category_id: [],
 	category_descendants: true,
 	uncategorised: false,
@@ -49,6 +50,7 @@ describe('exportUrl', () => {
 			...empty,
 			from: '2026-10-01',
 			account_id: [2, 1],
+			counter_account_id: [3],
 			flag: ['waiting'],
 			q: ' bakery ',
 			uncategorised: true
@@ -56,7 +58,7 @@ describe('exportUrl', () => {
 		const query = exportUrl(filter).split('?')[1];
 		expect(exportUrl(filter)).toMatch(/^\/api\/ledger\/entries\/export\?/);
 		expect(query).toBe(
-			'from=2026-10-01&account_id=2&account_id=1&uncategorised=true&q=bakery&flag=waiting'
+			'from=2026-10-01&account_id=2&account_id=1&counter_account_id=3&uncategorised=true&q=bakery&flag=waiting'
 		);
 		expect(query).not.toMatch(/limit|offset/);
 	});
@@ -79,12 +81,14 @@ describe('listEntries', () => {
 			from: '2026-10-01',
 			to: '2026-10-31',
 			account_id: [2, 1],
+			counter_account_id: [4, 5],
 			tag_id: [7],
 			flag: ['unconfirmed', 'waiting'],
 			type: ['flow']
 		});
 		expect(lastUrl()).toBe(
-			'/api/ledger/entries?from=2026-10-01&to=2026-10-31&account_id=2&account_id=1&tag_id=7' +
+			'/api/ledger/entries?from=2026-10-01&to=2026-10-31&account_id=2&account_id=1' +
+				'&counter_account_id=4&counter_account_id=5&tag_id=7' +
 				'&type=flow&flag=unconfirmed&flag=waiting&limit=100'
 		);
 	});

@@ -123,6 +123,94 @@ describe('FilterBar: chips', () => {
 	});
 });
 
+describe('FilterBar: the counter-account section of the account chip', () => {
+	it('is folded while no counter-account is set, and opens on click', async () => {
+		bar();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'All accounts' }));
+		const toggle = await screen.findByRole('button', { name: 'Counter-account' });
+		expect(toggle).toHaveAttribute('aria-expanded', 'false');
+		expect(screen.getAllByRole('checkbox')).toHaveLength(2);
+		expect(screen.getByText('transfers only')).toBeInTheDocument();
+
+		await fireEvent.click(toggle);
+
+		expect(toggle).toHaveAttribute('aria-expanded', 'true');
+		expect(screen.getAllByRole('checkbox')).toHaveLength(4);
+		expect(screen.getByRole('list', { name: 'Counter-account' })).toBeInTheDocument();
+	});
+
+	it('arrives open with the counter-account ticked', async () => {
+		bar({ counter_account_id: [2] });
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Counter-account: Cash' }));
+		const list = within(await screen.findByRole('list', { name: 'Counter-account' }));
+
+		expect(screen.getByRole('button', { name: 'Counter-account' })).toHaveAttribute(
+			'aria-expanded',
+			'true'
+		);
+		expect(list.getByRole('checkbox', { name: 'Cash' })).toBeChecked();
+		expect(list.getByRole('checkbox', { name: 'Giro' })).not.toBeChecked();
+	});
+
+	it('adds and removes a counter-account in the filter', async () => {
+		const { onchange } = bar({ counter_account_id: [2] });
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Counter-account: Cash' }));
+		const list = within(await screen.findByRole('list', { name: 'Counter-account' }));
+		await fireEvent.click(list.getByRole('checkbox', { name: 'Giro' }));
+		expect(onchange).toHaveBeenLastCalledWith({ ...emptyFilter(), counter_account_id: [2, 1] });
+
+		await fireEvent.click(list.getByRole('checkbox', { name: 'Cash' }));
+		expect(onchange).toHaveBeenLastCalledWith({ ...emptyFilter(), counter_account_id: [] });
+	});
+
+	it('labels the chip by what is set', () => {
+		const { unmount } = bar({ account_id: [1] });
+		expect(screen.getByRole('button', { name: 'Giro' })).toBeInTheDocument();
+		unmount();
+
+		const second = bar({ counter_account_id: [2] });
+		expect(screen.getByRole('button', { name: 'Counter-account: Cash' })).toBeInTheDocument();
+		second.unmount();
+
+		bar({ account_id: [1], counter_account_id: [2] });
+		expect(screen.getByRole('button', { name: 'Giro → Cash' })).toBeInTheDocument();
+	});
+
+	it('clears both sections', async () => {
+		const { onchange } = bar({ account_id: [1], counter_account_id: [2] });
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Giro → Cash' }));
+		await screen.findByRole('list', { name: 'Account' });
+		// the popover is portalled after the bar, so its Clear is the last one
+		await fireEvent.click(screen.getAllByRole('button', { name: 'Clear' }).at(-1)!);
+
+		expect(onchange).toHaveBeenCalledWith({
+			...emptyFilter(),
+			account_id: [],
+			counter_account_id: []
+		});
+	});
+
+	it('searches both lists', async () => {
+		const many = buildLookups({
+			accounts: Array.from({ length: 9 }, (_, i) =>
+				account({ id: i + 1, name: i === 0 ? 'Cash' : `Bank ${i}` })
+			)
+		});
+		bar({ counter_account_id: [2] }, { lookups: many });
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Counter-account: Bank 1' }));
+		await fireEvent.input(await screen.findByRole('searchbox', { name: 'Search accounts' }), {
+			target: { value: 'cash' }
+		});
+
+		expect(screen.getAllByRole('checkbox')).toHaveLength(2);
+	});
+});
+
 describe('FilterBar: the lead tile of an option', () => {
 	const tileOf = (row: HTMLElement) => row.querySelector<HTMLElement>('span[style*="--tile-fg"]');
 

@@ -6,7 +6,16 @@ import { REVIEW_FLAG_INFO } from './review.js';
 import { ENTRY_TYPE_INFO } from './types.js';
 
 export type FilterKey =
-	'date' | 'account' | 'category' | 'payee' | 'tag' | 'amount' | 'flag' | 'type' | 'text';
+	| 'date'
+	| 'account'
+	| 'counter_account'
+	| 'category'
+	| 'payee'
+	| 'tag'
+	| 'amount'
+	| 'flag'
+	| 'type'
+	| 'text';
 
 export type FilterPart = { key: FilterKey; label: string };
 
@@ -50,6 +59,11 @@ export function describeFilter(
 
 	if (filter.account_id.length) {
 		add('account', named(filter.account_id, lookups.accounts, 'Account', 'accounts'));
+	}
+
+	if (filter.counter_account_id.length) {
+		const names = named(filter.counter_account_id, lookups.accounts, 'Account', 'accounts');
+		add('counter_account', `Counter-account: ${names}`);
 	}
 
 	if (filter.category_id.length || filter.uncategorised) {

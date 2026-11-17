@@ -23,6 +23,7 @@ describe('emptyFilter and isEmpty', () => {
 	it('any dimension makes it non-empty', () => {
 		expect(isEmpty({ ...emptyFilter(), q: 'rewe' })).toBe(false);
 		expect(isEmpty({ ...emptyFilter(), account_id: [1] })).toBe(false);
+		expect(isEmpty({ ...emptyFilter(), counter_account_id: [1] })).toBe(false);
 		expect(isEmpty({ ...emptyFilter(), uncategorised: true })).toBe(false);
 		expect(isEmpty({ ...emptyFilter(), flag: ['waiting'] })).toBe(false);
 	});
@@ -38,6 +39,12 @@ describe('toSearchParams', () => {
 	it('uses the API names, repeated for arrays', () => {
 		expect(url({ from: '2026-10-01', to: '2026-10-31', account_id: [1, 2], tag_id: [9] })).toBe(
 			'from=2026-10-01&to=2026-10-31&account_id=1&account_id=2&tag_id=9'
+		);
+	});
+
+	it('writes the counter-accounts after the accounts, repeated', () => {
+		expect(url({ account_id: [1], counter_account_id: [3, 2, 3] })).toBe(
+			'account_id=1&counter_account_id=2&counter_account_id=3'
 		);
 	});
 
@@ -92,6 +99,7 @@ describe('fromSearchParams', () => {
 			from: '2026-10-01',
 			to: '2026-10-11',
 			account_id: [1, 4],
+			counter_account_id: [2, 6],
 			category_id: [7],
 			category_descendants: false,
 			uncategorised: true,
@@ -116,6 +124,12 @@ describe('fromSearchParams', () => {
 			q: 'a b'
 		});
 		expect(fromSearchParams('account_id=2')).toEqual({ ...emptyFilter(), account_id: [2] });
+		expect(
+			fromSearchParams('counter_account_id=5&counter_account_id=x&counter_account_id=3')
+		).toEqual({
+			...emptyFilter(),
+			counter_account_id: [3, 5]
+		});
 	});
 
 	it('is stable: reading a canonical URL and writing it again gives the same URL', () => {
