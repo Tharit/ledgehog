@@ -1004,7 +1004,7 @@ an advisory lock per affected account, in id order (architecture §5.2).
 Rejected: the global post-import lock for every edit, which queues edits
 behind a running phase; and accepting the staleness as self-healing.
 
-## D99 There is no batch confirmation — *partly superseded by D129 and D133*
+## D99 There is no batch confirmation — *partly superseded by D129, D133 and D274*
 
 Supersedes D67 and D57's batch provisions. A batch makes sense only for
 entries with the same proposed values from the same evidence, and confirming
@@ -4224,3 +4224,13 @@ ux/views/review-queue.md; ux/patterns.md §4.1, §10; architecture §4.1, §6.5.
 - **The counterparty is the counterparty name of the anchor entry's source,** compared ignoring case and repeated spaces and labelled as its first unit spells it. Not the payee: payees are proposals that change under review, so a unit would move between bands as it is decided.
 - **Counterparties with one unit, and units without one, share one last "Other" band:** a band earns its place only where there is a batch. Bands are ordered by count, largest first, then by name.
 - **The cut is the server's** so every page is complete and Load more only appends. Rejected: *cutting the loaded rows in the client* (incomplete groups, and rows inserted under the cursor as pages arrive); *loading the whole section* (the queue pages for a reason).
+
+## D274 Units can be committed as seen from the queue's rows, several at once
+
+spec.md §6; architecture.md §6.5; ux/patterns.md §5; ux/views/review-queue.md.
+
+- **Units can be committed from the queue's rows, ticked one by one** (user, 2026-11-21). D99's objection was to confirming without looking; a row ticked is a unit looked at, in the per-row layout D99 itself allowed, and the counterparty cut makes that layout useful.
+- **As seen, not as current:** each unit is previewed afresh and committed only if its values equal what its row showed; a changed basis is not a change. Rejected: *committing the row's values regardless* (writes a proposal superseded meanwhile); *a server-side batch endpoint* (unneeded — the client loops over the panel's own commit).
+- **Not a transaction:** one failure doesn't stop the rest; failures are cleared, marked and counted.
+- **Eligibility:** the pending section; units a commit would confirm; not those the model is still looking at. Multi-entry units have one checkbox on their first row.
+- **A band's checkbox only on counterparty bands:** ticking a day or month isn't a batch of alike units. `x` ticks; `Ctrl/⌘ + Enter` commits the ticked units with the panel closed (one key, one meaning).

@@ -267,7 +267,7 @@ A starting set, to be revisited after real use:
 | `Enter` | open the row: the unit panel for an entry; on a derived entry a quiet notice, "Computed from a balance record and the entries up to it — fix the entries, or the record if it's wrong" |
 | `Enter` in a form | submits a form dialog or an in-place edit; never submits a draft editor or confirms a decision dialog (§11.2) |
 | `Esc` | closes the innermost open surface (popover, dialog, panel), discarding its draft; a panel whose draft has changes asks first |
-| `Ctrl/⌘ + Enter` | commit the panel as previewed |
+| `Ctrl/⌘ + Enter` | commit the panel as previewed; in the review queue with the panel closed, the ticked units |
 | `Tab` / `Shift + Tab` | move between fields of the panel |
 | `/` | focus the filter bar's text box |
 | `t` | tag the row under the cursor |
@@ -309,9 +309,10 @@ cancelling the draft leaves the tag, which can be deleted in the tag settings.
 Re-resolve (`r`) applies to the whole unit as a draft edit that
 Cancel undoes, with "Reset to proposal" on each field.
 
-The cursor is the selection; there is no multi-select, for interpretation
-because there is no batch confirmation (spec §6), and for tagging because a
-filter's result is tagged through the filter. That is a visible action of the
+The cursor is the selection, with one exception: the review queue's
+checkboxes, which select units to commit as seen
+(`ux/views/review-queue.md`). There is no other multi-select; a filter's
+result is tagged through the filter. That is a visible action of the
 filter bar, "Tag all…", never a key: it is unavailable, with its reason as
 tooltip, while the list loads, when the filter restricts nothing and when
 there is nothing to tag. It opens a dialog that shows the preview of

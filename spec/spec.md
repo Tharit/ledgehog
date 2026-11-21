@@ -2916,9 +2916,11 @@ Rules:
 - **Confirming** requires:
   - a complete interpretation (§3.4) — a type and, for a flow, a category;
   - for a transfer, its pair (I22).
-- **Units are confirmed one at a time.** There is no batch confirmation: a
-  group of units cannot be confirmed without looking at each, and seeing each
-  is the point of review. A unit whose keys are all standing arrives
+- **Units are confirmed as seen.** A unit is confirmed from the panel, or from
+  the review queue's rows, where the user ticks each unit they have looked at
+  and commits the ticked ones together (`ux/views/review-queue.md`). Each is
+  still committed on its own, and only with the values its row showed; nothing
+  confirms a unit no one has seen. A unit whose keys are all standing arrives
   confirmed, because a human already decided its values — in a rule, or
   earlier in this unit (§5.9).
 - **Nothing automatic returns a reviewed entry to review** (I20), except a

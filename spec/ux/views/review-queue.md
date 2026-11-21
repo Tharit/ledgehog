@@ -73,6 +73,29 @@ merchant gives the other twenty-nine a proposal by the time the cursor reaches
 them. The queue itself stays as it was fetched for the session (architecture
 §6.5).
 
+**Units can be committed as seen, several at once.** In the pending section each
+unit has a checkbox, on its first row, in a narrow first column without a
+header. It is enabled where a commit would confirm what the row shows: a
+complete interpretation (a flow with its category, a transfer with its pair)
+and no answer of the model still to come. Elsewhere it is disabled, with the
+reason as tooltip. The other two sections have none. `x` ticks or clears the
+unit under the cursor. A counterparty band's checkbox ticks or clears its
+enabled units, and shows as mixed when some are ticked.
+
+While units are ticked, a footer sticks to the bottom of the section: "5 units
+selected", Commit and Clear. `Ctrl/⌘ + Enter` with the panel closed commits
+them. They are committed one after the other, each on its own, as the panel
+would: each is previewed afresh and committed only if its values (type,
+category, counter-account, payee, description) are those its row showed. A
+changed basis ("2 of 2" where it said "1 of 1") is not a change.
+
+A unit that changed, or that the server refuses, is not committed: it is
+cleared and marked, the reason in its tooltip, to be opened and seen anew. The
+footer then says how many were and were not committed. Committed units are
+marked resolved in place, as after the panel (`patterns.md` §7). A refresh, or
+a change of filter or cut, clears the ticks.
+
+
 **Sections.** The queue is the units not confirmed (`spec.md` §6), each in one
 section, with the count per section. Each section is a card, its title the section's
 name and count (`design.md` §5); an empty one is its title and a line saying

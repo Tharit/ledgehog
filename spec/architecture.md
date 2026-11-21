@@ -2268,9 +2268,10 @@ date, then anchor entry id, the pending section by counterparty where the view
 asks (`ux/views/review-queue.md`); grouping by more than the counterparty is
 open until real units have been seen. An account
 filter, in the address, narrows the queue to the units with an entry on any
-chosen account; the Review item's count is never filtered. Each unit is
-committed with one keystroke, which moves to the next. There is no batch
-confirmation; units decided entirely by pass 0 and rules arrive confirmed once
+chosen account; the Review item's count is never filtered. Each unit is committed with one keystroke, which moves to the next, or ticked
+in the list and committed with others. Each is still one commit of one unit,
+refused where its values moved since its row showed them
+(`ux/views/review-queue.md`). Units decided entirely by pass 0 and rules arrive confirmed once
 complete, and enter the queue only while they wait for a partner (`spec.md`
 §5.9, §6). Keyboard-first; the bindings are a cross-view convention, decided
 once for every view.
