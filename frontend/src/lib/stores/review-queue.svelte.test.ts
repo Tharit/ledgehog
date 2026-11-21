@@ -457,14 +457,36 @@ describe('ReviewQueueStore: units committed as seen', () => {
 				store.selectionReason(flow(1, { category_id: null, review_flags: ['unclassified'] }))
 			).toBe('No category yet');
 			expect(
-				store.selectionReason({
-					...flow(1),
-					state: { confirmed: false, reasons: ['unpaired_transfer'] }
-				})
+				store.selectionReason(
+					flow(1, { type: 'transfer', category_id: null, counterpart_entry_id: null })
+				)
 			).toBe('Transfer not paired');
-			expect(
-				store.selectionReason({ ...flow(1), state: { confirmed: false, reasons: ['incomplete'] } })
-			).toBe('Not complete yet');
+		});
+
+		it('follows the rows a patch writes: a category that completes a unit enables it', async () => {
+			const bare = (id: number) =>
+				flow(id, { category_id: null, review_flags: ['unclassified'], derivation: {} });
+			const store = await loaded([bare(1), flow(2)]);
+			// the unit's state still says incomplete: only its rows are read
+			store.units[0].state.reasons = ['incomplete'];
+			expect(store.selectionReason(store.units[0])).toBe('No category yet');
+			store.patchAffected({
+				entries: [entry({ id: 1, unit_key: 1, category_id: 10, review_flags: ['unconfirmed'] })]
+			});
+			expect(store.selectionReason(store.units[0])).toBeNull();
+			expect(store.select([store.units[0]], true)).toBeNull();
+			expect(store.selected.has(1)).toBe(true);
+		});
+
+		it('follows the rows a patch writes: a unit made incomplete is disabled and unticked', async () => {
+			const store = await loaded([flow(1), flow(2)]);
+			store.select(store.units, true);
+			expect([...store.selected.keys()]).toEqual([1, 2]);
+			store.patchAffected({
+				entries: [entry({ id: 1, unit_key: 1, category_id: null, review_flags: ['unclassified'] })]
+			});
+			expect(store.selectionReason(store.units[0])).toBe('No category yet');
+			expect([...store.selected.keys()]).toEqual([2]);
 		});
 
 		it('does not take a unit twice, nor one committed already', async () => {

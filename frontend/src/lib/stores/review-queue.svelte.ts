@@ -359,6 +359,22 @@ export class ReviewQueueStore {
 			units: patchUnitEntries(section.units, out.entries)
 		}));
 		this.marks = out.marks;
+		this.#dropIneligible();
+	}
+
+	/**
+	 * A patch can make a ticked unit ineligible (its rows now lack a category, its pair is gone):
+	 * it is unticked silently, as its checkbox is disabled; the batch must not commit what the row
+	 * no longer shows as complete.
+	 */
+	#dropIneligible(): void {
+		if (this.selected.size === 0) return;
+		const next = copyOf(this.selected);
+		for (const [anchor] of this.selected) {
+			const now = this.units.find((u) => u.anchor_entry_id === anchor);
+			if (now && this.selectionReason(now) !== null) next.delete(anchor);
+		}
+		if (next.size !== this.selected.size) this.selected = next;
 	}
 
 	/** The cursor visited these entries: their marks fade. */

@@ -8,29 +8,31 @@ import type { Unit, UnitPreview } from './types.js';
 export const MODEL_LOOKING = 'The model is still looking';
 export const NOT_CLASSIFIED = 'No category yet';
 export const NOT_PAIRED = 'Transfer not paired';
-export const NOT_COMPLETE = 'Not complete yet';
 export const ALREADY_COMMITTED = 'Already committed';
 
 /**
  * Why a commit would not confirm what the row shows, or null where it would: a complete
  * interpretation (a flow with its category, a transfer with its pair) and no answer of the model
  * still to come. `committed`: the unit was committed already (its rows are marked resolved).
+ *
+ * Judged from the entries alone (their flags and pairing), never from `unit.state`: a patch
+ * (patterns §7) rewrites a unit's entries but not its state, and eligibility must follow the rows
+ * as they are shown. A category a proposal fills is a value on the entry (`unclassified` is "no
+ * category", not "no decided category"), so it counts: a commit would confirm what the row shows.
  */
 export function selectionReason(unit: Unit, committed = false): string | null {
 	if (committed) return ALREADY_COMMITTED;
 	if (unit.entries.some((e) => e.model_pending)) return MODEL_LOOKING;
 	const flags = unit.entries.flatMap((e) => e.review_flags);
-	const reasons = unit.state.reasons;
-	if (flags.includes('unclassified')) return NOT_CLASSIFIED;
+	if (flags.includes('unclassified') || unit.entries.some((e) => e.type === null)) {
+		return NOT_CLASSIFIED;
+	}
 	if (
 		flags.includes('unmatched_transfer') ||
 		flags.includes('waiting') ||
-		reasons.some(
-			(r) => r === 'unpaired_transfer' || r === 'unmatched_transfer' || r === 'waiting_for_partner'
-		)
+		unit.entries.some((e) => e.type === 'transfer' && e.counterpart_entry_id === null)
 	)
 		return NOT_PAIRED;
-	if (reasons.includes('incomplete')) return NOT_COMPLETE;
 	return null;
 }
 
