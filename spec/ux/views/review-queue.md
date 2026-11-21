@@ -64,8 +64,8 @@ so.
 - **Pending review** — the units that have what they need and await a
   decision.
 - **Needs an account** — unmatched legs whose counter-account does not exist
-  (`spec.md` §5.7), grouped by the currency they need, a subgroup row per
-  currency with its add action; this and the waiting section's grouping by account are
+  (`spec.md` §5.7), grouped by the currency they need, a band row per currency
+  with its add action; this and the waiting section's grouping by account are
   the queue's only defined groupings. Pending review is cut by month and day
   as the ledger list is (`patterns.md` §4.1); the other two sections hold few
   rows and are cut only by their currency or account, their rows keeping the
@@ -90,7 +90,7 @@ so.
   arrive (`spec.md` §6): a partner leg, which cannot be confirmed until
   paired. Waiting is a hint; the unit stays editable. The section is grouped
   by the account waited for, as the needs-an-account section is by currency:
-  each subgroup row gives the reason once — "Waiting for <account>, synced
+  each band row gives the reason once — "Waiting for <account>, synced
   through <date>", or "…, not synced yet" for an account never fetched.
 
 **Unpaired legs show their offers** (`spec.md` §5.7) — unpaired legs and

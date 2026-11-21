@@ -153,15 +153,16 @@ one of two kinds:
   one, the total row (`patterns.md` §4.1) in the same tint along its bottom. A
   list in groups is one card per group, its title the group's; a group is a
   card where it has columns or a total of its own. A cut within one list that
-  keeps its columns is a band among the rows, at most two deep. A **subgroup
-  row** — a month, a currency, an account waited for — is tinted
+  keeps its columns is a band among the rows, at most two deep. A list cut
+  twice draws its outer cut (a month) as a **subgroup row**: tinted
   `surface-muted` as the header row, its label in `text` in the section
-  heading's size, an action at the right where it has one. Within it, a **day
-  row** gives the date of the rows beneath it ("Tue, Nov 17", with the year
-  where it is not the current one), in a lighter tint of `surface-muted`, its
-  label in the labels' size and weight (§4) in `text-muted`. Both stick
-  beneath the header row while their rows are in view, the day row beneath its
-  subgroup row, and each is pushed out by the next. Neither carries a sum.
+  heading's size. Its inner cut (a day: "Tue, Nov 17", with the year where it
+  is not the current one) and the only cut of a list cut once (a currency, an
+  account waited for) are a **band row**: a lighter tint of `surface-muted`,
+  its label in the labels' size and weight (§4) in `text-muted`. Either has an
+  action at the right where it has one. Both stick beneath the header row
+  while their rows are in view, a band row beneath its subgroup row, and each
+  is pushed out by the next. Neither carries a sum.
 
 Facts about the page's subject (an account's balance, a document's total) are
 a row of figure cards under the header, as on the Overview. The row is

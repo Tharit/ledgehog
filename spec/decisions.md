@@ -4207,3 +4207,10 @@ ux/design.md §5; ux/patterns.md §4.1; ux/views/review-queue.md.
 - **Subgroup rows are tinted `surface-muted`** as the header row, in the section heading's size, so a band reads as a band; the day row is a lighter tint in the labels' size. Bands are at most two deep.
 - **Tags sit at the right end of the description cell** (user, 2026-11-21), at most two and "+N", the text giving way to them first and they then clipping. This takes a column out of the row.
 - **Columns are as wide as what they hold,** the description taking the rest; where the row is too narrow, the widest columns give way first down to a common width. The open question of which columns give way first is closed (patterns §10).
+
+## D272 A band's look follows the depth of the cut; a transfer's arrow its direction
+
+ux/design.md §5; ux/patterns.md §4.1; ux/views/review-queue.md.
+
+- **The subgroup row is only the outer cut of a two-level cut** (user, 2026-11-21). A single-level cut (a currency, an account waited for) and an inner cut (a day) are band rows: the large band was too loud without bands under it. The "day row" is renamed band row.
+- **A transfer's arrow follows the amount's sign** (user, 2026-11-21): "← Cash" where it arrives, "→ Cash" where it leaves; zero keeps "→". The partner tooltip and icon are unchanged.

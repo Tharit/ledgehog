@@ -85,14 +85,15 @@ says so; those are revisited after the first month of use, not per view.
 ### 4.1 Rows
 
 An entry row shows, in this order: date, account (always in the ledger list; a
-view of one account may leave it out), category or the transfer's destination
-("→ Cash"), payee, description with the entry's tags at its right end, the
-review badges (§4.2) and the amount. A list cut by day (below) leaves the date
-to its day rows. In the description cell the text gives way to the tags: it is
-cut short first, then the tags are clipped at the cell's edge. A row shows at
-most two tags, then "+N". Derived entries (opening, valuation, reconciliation)
-render in the same row shape with their type in place of a category and no
-review affordances (spec §3.9).
+view of one account may leave it out), category or the transfer's other
+account, its arrow giving the direction ("→ Cash" where the amount leaves, "←
+Cash" where it arrives), payee, description with the entry's tags at its right
+end, the review badges (§4.2) and the amount. A list cut by day (below) leaves
+the date to the bands of its days. In the description cell the text gives way
+to the tags: it is cut short first, then the tags are clipped at the cell's
+edge. A row shows at most two tags, then "+N". Derived entries (opening,
+valuation, reconciliation) render in the same row shape with their type in
+place of a category and no review affordances (spec §3.9).
 
 **Columns are as wide as what they hold.** The amount and the review badges
 take the width of their widest cell among the rows held. Account, category and
@@ -158,7 +159,7 @@ when it is in view.
 
 **The ledger list and the review queue's pending section are cut by day.**
 Their rows are in date order, so they are cut into months, each a subgroup row
-("November 2026"), and days, each a day row (`design.md` §5). A unit is drawn
+("November 2026"), and days, each a band row (`design.md` §5). A unit is drawn
 under the day of its first entry. The unit panel lists few rows and keeps its
 date column.
 
@@ -417,9 +418,10 @@ row; a resolved row stays in place, marked (§7).
 ## 9. Empty and absent values
 
 - **Absent is not zero, and not blank.** An unset category renders as
-  "Unclassified", a missing counter-account as "→ ?" with "needs an account in
-  *currency*" where the spec derives it (spec §5.7), a balance without records
-  as "not anchored" (spec §3.11), a value without a rate as "unvalued" (§2).
+  "Unclassified", a missing counter-account as "→ ?" or "← ?" with "needs an
+  account in *currency*" where the spec derives it (spec §5.7), a balance
+  without records as "not anchored" (spec §3.11), a value without a rate as
+  "unvalued" (§2).
 - **Empty states explain the next step**: an empty review queue says so and
   links to the ledger; an account with no data says how it is fed (sync, file,
   by hand).
