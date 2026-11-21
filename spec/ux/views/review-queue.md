@@ -11,7 +11,8 @@ are `spec.md` §5.7 and §6; the contracts are `architecture.md` §4.1 and §6.5
 (below), and within each section units are ordered by booked date, then by
 anchor entry id. Most units are recurring — the same proposed values from the
 same evidence — and each is committed with one keystroke that moves to the
-next. The pending section can instead be cut by counterparty (below). A unit
+next. The pending section is cut by counterparty, or by date where the user
+chooses (below). A unit
 appears once, with all its entries. Units decided entirely by own accounts and
 rules arrive confirmed once complete (`spec.md` §5.9), and appear only in the
 waiting bucket while a partner is still to come: a recurring unit leaves the
@@ -40,8 +41,9 @@ review, and the type and flags are what the sections already show.
 
 **Pending review is cut by date or by counterparty.** Beside the Account
 chip, a segmented control, "By date" or "By counterparty", chooses how the
-pending section is cut. It is in the address with the filter, "By date" where
-the address says nothing, and changing it fetches the queue again.
+pending section is cut. It is in the address with the filter, "By
+counterparty" where the address says nothing, and changing it fetches the
+queue again.
 
 By date, the section is cut by month and day (`patterns.md` §4.1). By
 counterparty, it is cut once: a band row per counterparty (`design.md` §5),

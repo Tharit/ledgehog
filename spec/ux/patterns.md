@@ -158,8 +158,8 @@ works when a filter hides the partner; the partner's own row is highlighted
 when it is in view.
 
 **The ledger list and the review queue's pending section are cut by day.** The
-pending section can be cut by counterparty instead
-(`ux/views/review-queue.md`). Their rows are in date order, so they are cut
+pending section is cut so only where the user chooses "By date"; by default it
+is cut by counterparty (`ux/views/review-queue.md`). Their rows are in date order, so they are cut
 into months, each a subgroup row ("November 2026"), and days, each a band row
 (`design.md` §5). A unit is drawn under the day of its first entry. The unit
 panel lists few rows and keeps its date column.

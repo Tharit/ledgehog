@@ -4234,3 +4234,9 @@ spec.md §6; architecture.md §6.5; ux/patterns.md §5; ux/views/review-queue.md
 - **Not a transaction:** one failure doesn't stop the rest; failures are cleared, marked and counted.
 - **Eligibility:** the pending section; units a commit would confirm; not those the model is still looking at. Multi-entry units have one checkbox on their first row.
 - **A band's checkbox only on counterparty bands:** ticking a day or month isn't a batch of alike units. `x` ticks; `Ctrl/⌘ + Enter` commits the ticked units with the panel closed (one key, one meaning).
+
+## D275 "By counterparty" is the review queue's default
+
+ux/views/review-queue.md; ux/patterns.md §4.1.
+
+- **"By counterparty" is the review queue's default** (user, 2026-11-21). With units committed as seen several at once (D274), that layout is where the queue is worked through fastest. "By date" is now the choice the address records (`?cut=date`); the API's own default stays `date`, the view asks for its cut.
