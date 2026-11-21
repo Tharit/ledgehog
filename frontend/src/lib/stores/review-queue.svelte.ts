@@ -21,7 +21,7 @@ import {
 	type SectionKind,
 	type Unit
 } from '#lib/units/types.js';
-import type { QueueCut } from '#lib/units/queue-cut.js';
+import { DEFAULT_CUT, type QueueCut } from '#lib/units/queue-cut.js';
 import { unitReadsRules } from '#lib/units/panel.svelte.js';
 import {
 	appendUnits,
@@ -106,8 +106,8 @@ export class ReviewQueueStore {
 		return this.applyView(ids, this.cut);
 	}
 
-	/** how the pending section is cut; the page keeps it in the address */
-	cut = $state<QueueCut>('date');
+	/** how the pending section is cut (default: by counterparty, D275); the page keeps it in the address */
+	cut = $state<QueueCut>(DEFAULT_CUT);
 
 	/** The address says which accounts and which cut: fetch again when either differs from what is
 	 * held (or nothing was fetched yet). */

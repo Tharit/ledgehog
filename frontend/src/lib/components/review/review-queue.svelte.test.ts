@@ -56,7 +56,8 @@ async function shown(
 ) {
 	vi.mocked(getQueue).mockResolvedValue({ ...queue(sections), ...extra });
 	const store = new ReviewQueueStore();
-	await store.load();
+	// most of these tests are about the month and day rows; the default cut is counterparty (D275)
+	await store.applyView([], 'date');
 	render(ReviewQueue, { props: { store, lookups, locale: 'en' } });
 	return store;
 }
@@ -328,7 +329,7 @@ describe('ReviewQueue', () => {
 			section: 'pending_review',
 			cursor: 'c1',
 			accountIds: [],
-			cut: 'date'
+			cut: 'counterparty'
 		});
 		expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull();
 	});
@@ -856,7 +857,7 @@ describe('ReviewQueue cut by counterparty', () => {
 	it('keeps by-date unchanged: month and day rows, no date column', async () => {
 		vi.mocked(getQueue).mockResolvedValue(queue({ pending_review: [flow(1, 'a')] }));
 		const store = new ReviewQueueStore();
-		await store.load();
+		await store.applyView([], 'date');
 		render(ReviewQueue, { props: { store, lookups, locale: 'en' } });
 
 		expect(pendingCard().querySelector('[data-month]')).not.toBeNull();

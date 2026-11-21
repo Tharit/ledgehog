@@ -24,7 +24,7 @@ export type QueueOptions = {
 	cursor?: string;
 	/** narrow to the units with an entry on any of these accounts (none: the whole queue) */
 	accountIds?: readonly number[];
-	/** how the pending section is cut and ordered (default: by date); a cursor belongs to its cut */
+	/** how the pending section is cut and ordered (the API's own default: by date; the review view always sends its cut); a cursor belongs to its cut */
 	cut?: 'date' | 'counterparty';
 	signal?: AbortSignal;
 };
@@ -44,7 +44,7 @@ export function getQueue({
 			section,
 			cursor,
 			account_id: [...accountIds],
-			cut: cut === 'date' ? undefined : cut
+			cut
 		},
 		signal
 	});

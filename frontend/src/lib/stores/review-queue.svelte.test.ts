@@ -54,7 +54,7 @@ describe('ReviewQueueStore account filter', () => {
 			section: 'pending_review',
 			cursor: 'c1',
 			accountIds: [2, 3],
-			cut: 'date'
+			cut: 'counterparty'
 		});
 
 		const calls = vi.mocked(getQueue).mock.calls.length;
@@ -198,7 +198,7 @@ describe('ReviewQueueStore', () => {
 			section: 'pending_review',
 			cursor: 'c1',
 			accountIds: [],
-			cut: 'date'
+			cut: 'counterparty'
 		});
 		const pending = store.sections[0];
 		expect(pending.units.map((u) => u.anchor_entry_id)).toEqual([1, 2, 3, 4]);

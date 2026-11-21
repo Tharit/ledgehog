@@ -43,21 +43,28 @@ describe('getUnit', () => {
 describe('getQueue', () => {
 	it('asks for the first page of every section with the default limit', async () => {
 		await getQueue();
-		expect(lastUrl()).toBe('/api/units/queue?limit=50');
+		expect(lastUrl()).toBe('/api/units/queue?limit=50&cut=date');
+	});
+
+	it('sends the cut it is given, date explicitly', async () => {
+		await getQueue({ cut: 'counterparty' });
+		expect(lastUrl()).toBe('/api/units/queue?limit=50&cut=counterparty');
+		await getQueue({ cut: 'date' });
+		expect(lastUrl()).toBe('/api/units/queue?limit=50&cut=date');
 	});
 
 	it('continues one section after a cursor', async () => {
 		await getQueue({ section: 'waiting', cursor: 'abc', limit: 20 });
-		expect(lastUrl()).toBe('/api/units/queue?limit=20&section=waiting&cursor=abc');
+		expect(lastUrl()).toBe('/api/units/queue?limit=20&section=waiting&cursor=abc&cut=date');
 	});
 });
 
 describe('getQueue with an account filter', () => {
 	it('repeats account_id, and sends none for the whole queue', async () => {
 		await getQueue({ accountIds: [3, 5] });
-		expect(lastUrl()).toBe('/api/units/queue?limit=50&account_id=3&account_id=5');
+		expect(lastUrl()).toBe('/api/units/queue?limit=50&account_id=3&account_id=5&cut=date');
 		await getQueue({ accountIds: [] });
-		expect(lastUrl()).toBe('/api/units/queue?limit=50');
+		expect(lastUrl()).toBe('/api/units/queue?limit=50&cut=date');
 	});
 });
 
