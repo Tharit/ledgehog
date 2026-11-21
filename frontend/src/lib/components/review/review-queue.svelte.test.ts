@@ -330,6 +330,82 @@ describe('ReviewQueue', () => {
 	});
 });
 
+describe('ReviewQueue: the pending section is cut by month and day', () => {
+	const on = (id: number, booked_on: string, text = `Unit ${id}`) => flow(id, text, { booked_on });
+	const dated = () => ({
+		pending_review: [
+			on(1, '2026-11-20'),
+			on(2, '2026-11-20'),
+			on(3, '2026-11-02'),
+			on(4, '2026-10-30'),
+			// a split drawn under the day of its first entry, whole
+			unit({
+				anchor_entry_id: 5,
+				entries: [
+					entry({ id: 5, unit_key: 5, booked_on: '2026-10-30', review_flags: ['unconfirmed'] }),
+					entry({ id: 6, unit_key: 5, booked_on: '2026-10-29', review_flags: ['unconfirmed'] })
+				]
+			})
+		],
+		needs_account: [
+			unit({ ...flow(7, 'Out 7', { booked_on: '2026-11-15' }), needs_account: { currency: 'USD' } })
+		]
+	});
+
+	it('has month and day rows and no date column, no sums', async () => {
+		await shown(dated());
+
+		const grid = screen.getByRole('grid', { name: 'Pending review' });
+		expect(within(grid).queryByRole('columnheader', { name: 'Date' })).toBeNull();
+		const months = [...grid.querySelectorAll('[data-slot="month-row"]')].map(
+			(r) => r.querySelector('[data-slot="subgroup-label"]')!.textContent
+		);
+		expect(months).toEqual(['November 2026', 'October 2026']);
+		const days = [...grid.querySelectorAll('[data-slot="day-label"]')].map((d) => d.textContent);
+		expect(days).toHaveLength(3);
+		const november = grid.querySelector('[data-month="2026-11"]')!;
+		expect(november.querySelectorAll('[data-day]')).toHaveLength(2);
+		expect(
+			november.querySelector('[data-day="2026-11/2026-11-20"]')!.querySelectorAll('[data-unit]')
+		).toHaveLength(2);
+		// the split sits whole under the day of its first entry
+		const october = grid.querySelector('[data-day="2026-10/2026-10-30"]')!;
+		expect(october.querySelectorAll('[data-unit="5"] [data-entry-id]')).toHaveLength(2);
+		expect(grid.querySelectorAll('[data-col="date"]')).toHaveLength(0);
+	});
+
+	it('the other sections keep the date column, without day rows', async () => {
+		await shown(dated());
+
+		const grid = screen.getByRole('grid', { name: 'Needs an account' });
+		expect(within(grid).getByRole('columnheader', { name: 'Date' })).toBeInTheDocument();
+		expect(grid.querySelectorAll('[data-col="date"]').length).toBeGreaterThan(0);
+		expect(grid.querySelector('[data-slot="day-label"]')).toBeNull();
+	});
+
+	it('the cursor and Enter run over the units across the bands, in the order drawn', async () => {
+		const store = await shown(dated());
+
+		const drawn = [...document.querySelectorAll('[data-section="pending_review"] [data-unit]')].map(
+			(n) => Number(n.getAttribute('data-unit'))
+		);
+		expect(drawn).toEqual([1, 2, 3, 4, 5]);
+		for (let i = 0; i < 3; i++) await key('j');
+		const cursor = () =>
+			document
+				.querySelector('[data-section="pending_review"] [aria-selected="true"]')!
+				.closest('[data-unit]')!
+				.getAttribute('data-unit');
+		expect(cursor()).toBe('3'); // across the day band into the next
+		await key('j');
+		await key('j');
+		expect(cursor()).toBe('5'); // across the month band
+		await key('Enter');
+		expect(vi.mocked(unitPanel.open)).toHaveBeenCalledWith(5, expect.anything());
+		expect(store.units.map((u) => u.anchor_entry_id)).toEqual([1, 2, 3, 4, 5, 7]);
+	});
+});
+
 describe('ReviewQueue: marks after a commit', () => {
 	const again = (id: number, text: string, flags: string[] = ['unconfirmed']) =>
 		entry({
@@ -544,6 +620,7 @@ describe('ReviewQueue: needs an account and waiting', () => {
 		// a subgroup row among the rows of one card, not a heading, not a card of its own
 		const usd = document.querySelector('[data-group="USD"]') as HTMLElement;
 		expect(usd).toHaveAttribute('role', 'row');
+		expect(usd).toHaveClass('sticky'); // beneath the header row while its units are in view
 		expect(
 			usd.closest('[data-section="needs_account"]')!.querySelectorAll('[role="grid"]')
 		).toHaveLength(1);

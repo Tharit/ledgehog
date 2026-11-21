@@ -1,5 +1,7 @@
 <script lang="ts">
 	import ActionButton from '#lib/components/common/action-button.svelte';
+	import { ColumnSizer } from '#lib/components/ledger/column-sizer.svelte.js';
+	import { COLUMNS, MEASURABLE, gridTemplate } from '#lib/components/ledger/columns.js';
 	import EntryRow from '#lib/components/ledger/entry-row.svelte';
 	import type { Lookups } from '#lib/ledger/lookups.js';
 	import { BOOKING_FIXED, differenceOf, draftErrorText } from '#lib/units/problems.js';
@@ -45,6 +47,16 @@
 	const showCurrency = $derived(
 		new Set(groups.flatMap((g) => g.items.map((c) => c.row.amount.currency))).size > 1
 	);
+
+	// the consequence rows keep their date column and are sized by what they hold, one set of widths
+	// for all the groups (patterns §4.1); the static template stands in until measured
+	const sizer = new ColumnSizer(() => COLUMNS);
+	const template = $derived(sizer.template ?? gridTemplate(COLUMNS));
+	$effect(() => {
+		void groups;
+		void showCurrency;
+		sizer.remeasure();
+	});
 
 	function baseOf(id: number) {
 		return flow.draft?.knownEntry(id) ?? flow.unit?.entries.find((e) => e.id === id) ?? null;
@@ -118,11 +130,12 @@
 			<h3 class="text-xs font-medium text-muted-foreground">
 				{group.title} ({group.items.length})
 			</h3>
-			<div role="grid" aria-label={group.title}>
+			<div role="grid" aria-label={group.title} class={MEASURABLE} {@attach sizer.attach}>
 				{#each group.items as item (item.entry_id)}
 					<EntryRow
 						entry={previewRowEntry(item.row, baseOf(item.entry_id))}
 						{lookups}
+						{template}
 						{locale}
 						{showCurrency}
 						onopen={item.entry_id > 0 && item.kind !== 'deleted' && item.kind !== 'created'

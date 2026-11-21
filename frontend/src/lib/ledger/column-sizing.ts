@@ -73,8 +73,18 @@ export function sizeColumns(available: number, columns: readonly SizingColumn[])
  * padding and gaps already taken off). Every track is in px; where all the columns get what they
  * want, the fill column's track is `minmax(px, 1fr)` so it grows with the row between measurings.
  * Tracks are floored to whole px, the fill column taking the rounding leftover when shrinking.
+ *
+ * `keep` names the columns of a grid that has fewer than `columns` (the review queue's pending
+ * section has no date column): the allocation is still made over all of `columns`, so the columns
+ * kept come out as wide as in a grid that has them all, and the fill column takes the width of the
+ * ones dropped, with the `gap` that went with each, so the row stays full.
  */
-export function trackTemplate(available: number, columns: readonly SizingColumn[]): string {
+export function trackTemplate(
+	available: number,
+	columns: readonly SizingColumn[],
+	keep?: readonly string[],
+	gap = 0
+): string {
 	const px = sizeColumns(available, columns).map((w) => Math.floor(w));
 	const fill = columns.findIndex((c) => c.kind === 'fill');
 	const wanted = columns.reduce(
@@ -84,7 +94,14 @@ export function trackTemplate(available: number, columns: readonly SizingColumn[
 	);
 	const fits = wanted <= available;
 	if (!fits && fill >= 0) px[fill] += Math.floor(available - px.reduce((a, b) => a + b, 0));
+	if (keep && fill >= 0) {
+		px[fill] += columns.reduce((sum, c, i) => (keep.includes(c.id) ? sum : sum + px[i] + gap), 0);
+	}
 	return columns
-		.map((c, i) => (c.kind === 'fill' && fits ? `minmax(${px[i]}px, 1fr)` : `${px[i]}px`))
+		.flatMap((c, i) =>
+			keep && !keep.includes(c.id)
+				? []
+				: [c.kind === 'fill' && fits ? `minmax(${px[i]}px, 1fr)` : `${px[i]}px`]
+		)
 		.join(' ');
 }

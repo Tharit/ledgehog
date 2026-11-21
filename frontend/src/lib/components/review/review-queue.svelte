@@ -32,6 +32,7 @@
 	import { accounts as accountDialog } from '#lib/accounts/controller.svelte.js';
 	import Card from '#lib/components/common/card.svelte';
 	import CardTitle from '#lib/components/common/card-title.svelte';
+	import DayRow from '#lib/components/common/day-row.svelte';
 	import SubgroupRow from '#lib/components/common/subgroup-row.svelte';
 	import NoticeLine from '#lib/components/common/notice-line.svelte';
 	import ActionButton from '#lib/components/common/action-button.svelte';
@@ -39,15 +40,25 @@
 	import ErrorState from '#lib/components/common/error-state.svelte';
 	import KeyboardHelp, { type HelpGroup } from '#lib/components/common/keyboard-help.svelte';
 	import EntryRow from '#lib/components/ledger/entry-row.svelte';
+	import { ColumnSizer } from '#lib/components/ledger/column-sizer.svelte.js';
 	import {
 		COLUMNS,
-		GRID_TEMPLATE,
+		LEDGER_COLUMNS,
+		MEASURABLE,
 		ROW_GRID,
-		columnHeader
+		columnHeader,
+		gridTemplate
 	} from '#lib/components/ledger/columns.js';
 	import { changes } from '#lib/stores/changes.svelte.js';
 	import { modelQueueLine } from '#lib/units/model-pending.js';
-	import { columnCurrency, formatCount } from '#lib/format/index.js';
+	import {
+		columnCurrency,
+		formatCount,
+		formatDayLabel,
+		formatMonthYear,
+		todayIso
+	} from '#lib/format/index.js';
+	import { byMonthAndDay, cutBy } from '#lib/ledger/cuts.js';
 	import { ledgerKey, moveCursor } from '#lib/ledger/keys.js';
 	import { UNIT_FRAME, unitTotal } from '#lib/ledger/unit-runs.js';
 	import type { Lookups } from '#lib/ledger/lookups.js';
@@ -66,21 +77,28 @@
 	} from '#lib/units/queue.js';
 	import type { QueueAccountGroup, QueueGroup, Unit } from '#lib/units/types.js';
 	import { cn } from '#lib/utils.js';
+	import type { Column } from '#lib/components/ledger/columns.js';
 
 	// The review queue (views/review-queue.md): three sections (pending review, needs an account,
-	// waiting), each by date, as one flush card each (a title row over the header row), the unit rows beneath; the currency and
-	// waiting groups are subgroup rows among them. A unit is one block: its entries are
-	// joined, both legs of a pair shown. The cursor is on a unit; Enter opens the panel, which then
-	// steps through the queue in this order. The queue is a snapshot: it changes only on request.
+	// waiting), each by date, as one flush card each (a title row over the header row), the unit rows
+	// beneath. The pending section is cut by month and day into sticky bands, as the ledger list is
+	// (design §5), so it has no date column; the currency and waiting groups of the other two are
+	// subgroup rows among their rows, which keep the date column. A unit is one block: its entries
+	// are joined, both legs of a pair shown. The cursor is on a unit; Enter opens the panel, which
+	// then steps through the queue in this order. The queue is a snapshot: it changes only on
+	// request. The columns are as wide as what the rows hold, one set of widths for all sections.
 	let {
 		store,
 		lookups,
 		locale = 'en',
+		today = todayIso('UTC'),
 		onclearfilters
 	}: {
 		store: ReviewQueueStore;
 		lookups: Lookups;
 		locale?: string;
+		/** the household's today: a day row names the year where it is not this one */
+		today?: string;
 		/** the account filter is cleared: offered when the filter shows nothing */
 		onclearfilters?: () => void;
 	} = $props();
@@ -98,10 +116,40 @@
 			]
 		}
 	];
-	const template = GRID_TEMPLATE;
-	// a grid in a flush card: its tinted header and last row follow the card's curve
+	// A grid in a flush card: its tinted header and last row follow the card's curve. The last row
+	// is a few levels down: the last month, its last day, then a row, or a unit's rowgroup and then
+	// its row (the other sections: the last group, then as much).
 	const LAST_ROW =
-		'[&>:last-child]:rounded-b-[11px] [&>:last-child]:border-b-0 [&>:last-child>:last-child]:rounded-b-[11px] [&>:last-child>:last-child]:border-b-0';
+		'[&>:last-child]:rounded-b-[11px] [&>:last-child]:border-b-0 [&>:last-child>:last-child]:rounded-b-[11px] [&>:last-child>:last-child]:border-b-0 [&>:last-child>:last-child>:last-child]:rounded-b-[11px] [&>:last-child>:last-child>:last-child]:border-b-0 [&>:last-child>:last-child>:last-child>:last-child]:rounded-b-[11px] [&>:last-child>:last-child>:last-child>:last-child]:border-b-0';
+
+	// The columns are sized by what the rows of every section hold, and the sections share one set
+	// of widths: the allocation is made over all the columns, and the pending section (no date
+	// column, its day rows carry the date) takes the same tracks without the date's, the description
+	// taking its room. So the columns the sections have in common are equally wide in every card.
+	const sizer = new ColumnSizer(() => COLUMNS);
+	const templateOf = (kind: SectionKind) => {
+		const columns = columnsOf(kind);
+		return (
+			(store.status === 'ready' ? sizer.templateFor(columns) : undefined) ?? gridTemplate(columns)
+		);
+	};
+	const columnsOf = (kind: SectionKind) => (kind === 'pending_review' ? LEDGER_COLUMNS : COLUMNS);
+	// measure again when the rows held change (load more, filter, refresh, patch) or the amounts'
+	// currency is written out
+	$effect(() => {
+		void store.sections;
+		void store.status;
+		void showCurrency;
+		sizer.remeasure();
+	});
+
+	// The sticky stack of a section: the header row (2rem), then in the pending section the month
+	// band (2.25rem) and the day row (1.75rem), in the others the group's subgroup row. Each sticks
+	// beneath the one above; the cursor row scrolls to clear them.
+	const MONTH_TOP = '2rem';
+	const DAY_TOP = '4.25rem';
+	const PENDING_OFFSET = '6.5rem';
+	const GROUP_OFFSET = '4.5rem';
 
 	const units = $derived(store.units);
 	const cursorIndex = $derived(
@@ -160,6 +208,17 @@
 		}
 		return [{ key: kind, ...plain, units: sectionUnits }];
 	}
+
+	// a unit is drawn under the day of its first entry, so a band never splits its frame
+	const dayBands = (sectionUnits: Unit[]) =>
+		cutBy(
+			sectionUnits,
+			byMonthAndDay(
+				(unit) => unit.entries[0].booked_on,
+				(date) => formatMonthYear(date, locale),
+				(date) => formatDayLabel(date, today, locale)
+			)
+		);
 
 	function addAccount(currency: string, event: MouseEvent) {
 		accountDialog.openAdd({
@@ -226,6 +285,38 @@
 
 <svelte:window {onkeydown} />
 
+{#snippet unitBlock(unit: Unit, columns: readonly Column[], template: string)}
+	<div
+		role="rowgroup"
+		data-unit={unit.anchor_entry_id}
+		class={unit.entries.length > 1 ? UNIT_FRAME : undefined}
+	>
+		{#each unit.entries as entry (entry.id)}
+			{@const mark = markOf(store.marks, entry.id)}
+			{@const total = unitTotal(unit.entries)}
+			<EntryRow
+				joined={unit.entries.length > 1}
+				unitTotal={total}
+				modelPending={entry.model_pending}
+				{entry}
+				{lookups}
+				{columns}
+				{template}
+				{locale}
+				{showCurrency}
+				cursor={unit.anchor_entry_id === cursorId}
+				changed={mark !== undefined && !store.marks.resolved.has(entry.id)}
+				changedTitle={mark}
+				resolved={store.marks.resolved.has(entry.id)}
+				confirmed={store.marks.confirmed.has(entry.id)}
+				onselect={() => (cursorId = unit.anchor_entry_id)}
+				onopen={() => openUnit(unit)}
+				ontags={() => openUnit(unit)}
+			/>
+		{/each}
+	</div>
+{/snippet}
+
 {#if store.status === 'error' && failure}
 	<ErrorState
 		title={failure.title}
@@ -272,7 +363,7 @@
 								<div
 									role="row"
 									class={cn(ROW_GRID, 'h-8 border-b border-border px-3')}
-									style:grid-template-columns={template}
+									style:grid-template-columns={templateOf(section.kind)}
 									data-skeleton
 								>
 									<div role="gridcell" class="col-span-full">
@@ -289,95 +380,102 @@
 							{info.empty}
 						</p>
 					{:else}
-						<div role="grid" aria-label={info.title} class={LAST_ROW}>
+						{@const columns = columnsOf(section.kind)}
+						{@const template = templateOf(section.kind)}
+						<div
+							role="grid"
+							aria-label={info.title}
+							class={cn(MEASURABLE, LAST_ROW)}
+							style:--sticky-offset={section.kind === 'pending_review'
+								? PENDING_OFFSET
+								: GROUP_OFFSET}
+							{@attach sizer.attach}
+						>
 							<div
 								role="row"
 								class={cn(
 									ROW_GRID,
-									'h-8 border-b border-border bg-muted px-3 text-xs font-medium text-muted-foreground'
+									'sticky top-0 z-10 h-8 border-b border-border bg-muted px-3 text-xs font-medium text-muted-foreground'
 								)}
 								style:grid-template-columns={template}
 							>
-								{#each COLUMNS as column (column.id)}
+								{#each columns as column (column.id)}
 									<div
 										role="columnheader"
-										class={column.align === 'right' ? 'text-right' : undefined}
+										data-col={column.id}
+										class={cn('min-w-0 truncate', column.align === 'right' && 'text-right')}
 									>
 										{#if column.hiddenHeader}<span class="sr-only">{column.header}</span
 											>{:else}{columnHeader(column, columnCode)}{/if}
 									</div>
 								{/each}
 							</div>
-							{#each blocksOf(section.kind, section.units, section.groups, section.accountGroups) as block (block.key)}
-								{#if block.group}
-									{@const currency = block.group.currency}
-									<SubgroupRow
-										label={groupHeading(block.group.count, currency, locale)}
-										data-group={currency}
-									>
-										{#snippet action()}
-											<ActionButton
-												variant="outline"
-												onclick={(event: MouseEvent) => addAccount(currency, event)}
-											>
-												Add account
-											</ActionButton>
-										{/snippet}
-										{#if store.accountsAdded.includes(currency)}
-											<NoticeLine
-												notice={{
-													text: completableNotice(block.group.count, locale),
-													error: false
-												}}
-											>
-												{#snippet action()}
-													<ActionButton
-														variant="link"
-														class="h-auto p-0"
-														onclick={() => store.load()}
-													>
-														Refresh
-													</ActionButton>
-												{/snippet}
-											</NoticeLine>
-										{/if}
-									</SubgroupRow>
-								{:else if block.waitingGroup}
-									<SubgroupRow
-										label={waitingReason(block.waitingGroup, lookups, locale)}
-										data-group-account={block.waitingGroup.account_id}
-									/>
-								{/if}
-								{#each block.units as unit (unit.anchor_entry_id)}
-									<div
-										role="rowgroup"
-										data-unit={unit.anchor_entry_id}
-										class={unit.entries.length > 1 ? UNIT_FRAME : undefined}
-									>
-										{#each unit.entries as entry (entry.id)}
-											{@const mark = markOf(store.marks, entry.id)}
-											{@const total = unitTotal(unit.entries)}
-											<EntryRow
-												joined={unit.entries.length > 1}
-												unitTotal={total}
-												modelPending={entry.model_pending}
-												{entry}
-												{lookups}
-												{locale}
-												{showCurrency}
-												cursor={unit.anchor_entry_id === cursorId}
-												changed={mark !== undefined && !store.marks.resolved.has(entry.id)}
-												changedTitle={mark}
-												resolved={store.marks.resolved.has(entry.id)}
-												confirmed={store.marks.confirmed.has(entry.id)}
-												onselect={() => (cursorId = unit.anchor_entry_id)}
-												onopen={() => openUnit(unit)}
-												ontags={() => openUnit(unit)}
-											/>
+							{#if section.kind === 'pending_review'}
+								{#each dayBands(section.units) as month (month.key)}
+									<!-- each band's rows in their own element: it ends the band's sticking -->
+									<div role="presentation" data-month={month.key}>
+										<SubgroupRow label={month.label} top={MONTH_TOP} data-slot="month-row" />
+										{#each month.bands as day (day.key)}
+											<div role="presentation" data-day={day.key}>
+												<DayRow label={day.label} top={DAY_TOP} />
+												{#each day.items as unit (unit.anchor_entry_id)}
+													{@render unitBlock(unit, columns, template)}
+												{/each}
+											</div>
 										{/each}
 									</div>
 								{/each}
-							{/each}
+							{:else}
+								{#each blocksOf(section.kind, section.units, section.groups, section.accountGroups) as block (block.key)}
+									<!-- the group's rows in their own element: it ends the subgroup row's sticking -->
+									<div role="presentation" data-block={block.key}>
+										{#if block.group}
+											{@const currency = block.group.currency}
+											<SubgroupRow
+												label={groupHeading(block.group.count, currency, locale)}
+												top={MONTH_TOP}
+												data-group={currency}
+											>
+												{#snippet action()}
+													<ActionButton
+														variant="outline"
+														onclick={(event: MouseEvent) => addAccount(currency, event)}
+													>
+														Add account
+													</ActionButton>
+												{/snippet}
+												{#if store.accountsAdded.includes(currency)}
+													<NoticeLine
+														notice={{
+															text: completableNotice(block.group.count, locale),
+															error: false
+														}}
+													>
+														{#snippet action()}
+															<ActionButton
+																variant="link"
+																class="h-auto p-0"
+																onclick={() => store.load()}
+															>
+																Refresh
+															</ActionButton>
+														{/snippet}
+													</NoticeLine>
+												{/if}
+											</SubgroupRow>
+										{:else if block.waitingGroup}
+											<SubgroupRow
+												label={waitingReason(block.waitingGroup, lookups, locale)}
+												top={MONTH_TOP}
+												data-group-account={block.waitingGroup.account_id}
+											/>
+										{/if}
+										{#each block.units as unit (unit.anchor_entry_id)}
+											{@render unitBlock(unit, columns, template)}
+										{/each}
+									</div>
+								{/each}
+							{/if}
 						</div>
 					{/if}
 				</Card>

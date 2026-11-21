@@ -71,4 +71,12 @@ describe('trackTemplate', () => {
 		const px = template.split(' ').map((t) => parseInt(t, 10));
 		expect(px.reduce((a, b) => a + b, 0)).toBe(600);
 	});
+
+	it('for a grid with fewer columns: the shared ones stay as wide, the fill column takes the dropped', () => {
+		const all = cols({ account: 150, payee: 200, description: 300 });
+		// payee dropped: its 200px and one 12px gap go to the description
+		expect(trackTemplate(1000, all, ['account', 'description', 'amount'], 12)).toBe(
+			'150px minmax(750px, 1fr) 112px'
+		);
+	});
 });

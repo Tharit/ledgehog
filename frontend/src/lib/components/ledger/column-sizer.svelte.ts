@@ -11,6 +11,7 @@ import { sizingColumns, type Column } from './columns.js';
 
 const ROW_PADDING = 24; // px-3 on both sides of a row
 const GAP = 12; // gap-x-3 between tracks
+const CONTENT = { childList: true, subtree: true, characterData: true };
 
 export class ColumnSizer {
 	/** the widest cell per column id, px; null until the first measurement */
@@ -24,6 +25,11 @@ export class ColumnSizer {
 	readonly #roots = new Set<HTMLElement>();
 	readonly #observer =
 		typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => this.#resize());
+	// A cell's content can arrive after the rows do (the account names once the lookups are in, tags),
+	// and no state the grid's owner knows of says so: the sizer watches the grids' content itself.
+	// Only the content: the attributes it toggles while measuring are not watched.
+	readonly #mutations =
+		typeof MutationObserver === 'undefined' ? null : new MutationObserver(() => this.remeasure());
 	#version = 0;
 
 	constructor(columns: () => readonly Column[]) {
@@ -31,23 +37,39 @@ export class ColumnSizer {
 	}
 
 	/** the grid-template-columns value; undefined while nothing is measured (use the static one) */
-	readonly template = $derived.by(() => {
+	get template(): string | undefined {
+		return this.templateFor(this.#columns());
+	}
+
+	/**
+	 * The template of a grid that has some of the sizer's columns (`columns`, in their order):
+	 * the allocation is made over all of them, so the columns they have in common come out
+	 * equally wide in every grid, and the fill column takes the rest of the one that has fewer.
+	 */
+	templateFor(columns: readonly Column[]): string | undefined {
+		const all = this.#columns();
 		const measured = this.measured;
-		const columns = this.#columns();
 		if (!measured || this.width <= 0) return undefined;
-		const available = this.width - ROW_PADDING - GAP * (columns.length - 1);
-		return trackTemplate(available, sizingColumns(columns, measured));
-	});
+		const available = this.width - ROW_PADDING - GAP * (all.length - 1);
+		const keep = columns.length < all.length ? columns.map((c) => c.id) : undefined;
+		return trackTemplate(available, sizingColumns(all, measured), keep, GAP);
+	}
 
 	/** An attachment (`{@attach sizer.attach}`): this grid takes part in the measuring. */
 	attach = (root: HTMLElement) => {
 		this.#roots.add(root);
 		this.#observer?.observe(root);
+		this.#mutations?.observe(root, CONTENT);
 		this.#resize();
 		this.remeasure();
 		return () => {
 			this.#roots.delete(root);
 			this.#observer?.unobserve(root);
+			// the observer has one list for all its targets: start it again for those that remain
+			this.#mutations?.disconnect();
+			for (const other of this.#roots) {
+				this.#mutations?.observe(other, CONTENT);
+			}
 			this.#resize();
 		};
 	};

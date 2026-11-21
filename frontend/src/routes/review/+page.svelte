@@ -85,6 +85,7 @@
 		store={queue}
 		lookups={lookupsStore.lookups}
 		{locale}
+		today={todayIso(session.config?.timezone ?? 'UTC')}
 		onclearfilters={() => show([])}
 	/>
 </div>

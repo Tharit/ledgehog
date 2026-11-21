@@ -8,8 +8,8 @@
 	// is a quiet line beneath. It is a full-width row of the surrounding grid, one cell spanning all
 	// its columns. With `top` it sticks beneath the header row (and whatever is above it) while its
 	// rows are in view, so it must be the first child of an element holding just those rows: that
-	// element ends its sticking. It is `min-h-9` (2.25rem) and a sticky one has no `children`, so its
-	// height is known to the day row that sticks beneath it.
+	// element ends its sticking. It is `min-h-9` (2.25rem); a sticky one that a day row sticks beneath
+	// (the month) has no `children`, so its height is known to that day row.
 	let {
 		label,
 		action,
