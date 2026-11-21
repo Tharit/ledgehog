@@ -1535,6 +1535,48 @@
         "title": "CorrectBody",
         "type": "object"
       },
+      "CounterpartyGroupOut": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "other": {
+            "title": "Other",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "count",
+          "other"
+        ],
+        "title": "CounterpartyGroupOut",
+        "type": "object"
+      },
       "CreateBody": {
         "additionalProperties": false,
         "properties": {
@@ -5137,6 +5179,13 @@
             "title": "Account Groups",
             "type": "array"
           },
+          "counterparty_groups": {
+            "items": {
+              "$ref": "#/components/schemas/CounterpartyGroupOut"
+            },
+            "title": "Counterparty Groups",
+            "type": "array"
+          },
           "groups": {
             "items": {
               "$ref": "#/components/schemas/CurrencyGroupOut"
@@ -5182,7 +5231,8 @@
           "units",
           "next_cursor",
           "groups",
-          "account_groups"
+          "account_groups",
+          "counterparty_groups"
         ],
         "title": "QueueSectionOut",
         "type": "object"
@@ -8664,6 +8714,17 @@
                 "type": "null"
               }
             ]
+          },
+          "counterparty_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Counterparty Key"
           },
           "entries": {
             "items": {
@@ -16145,7 +16206,7 @@
     },
     "/api/units/queue": {
       "get": {
-        "description": "The review queue: the first page of each section, or the page after `cursor` of one `section`.\n`account_id` (repeatable) narrows it to the units with an entry on any of those accounts.",
+        "description": "The review queue: the first page of each section, or the page after `cursor` of one `section`.\n`account_id` (repeatable) narrows it to the units with an entry on any of those accounts.\n`cut=counterparty` orders the pending section by counterparty group (count, then name, `other` last; then\nbooked date, anchor) and returns its `counterparty_groups`; a cursor belongs to the cut that issued it.",
         "operationId": "get_review_queue",
         "parameters": [
           {
@@ -16218,6 +16279,20 @@
                 }
               ],
               "title": "Account Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cut",
+            "required": false,
+            "schema": {
+              "default": "date",
+              "enum": [
+                "date",
+                "counterparty"
+              ],
+              "title": "Cut",
+              "type": "string"
             }
           }
         ],

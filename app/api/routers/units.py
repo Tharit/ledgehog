@@ -77,6 +77,13 @@ class AccountGroupOut(BaseModel):
     count: int  # units (not legs) waiting for the account, over the whole section
 
 
+class CounterpartyGroupOut(BaseModel):
+    key: str | None  # the normalised counterparty name (lower-cased, spaces collapsed); null for `other`
+    label: str | None  # the name as the group's first unit spells it; null for `other`
+    count: int  # units in the group, over the whole section
+    other: bool  # the last group: counterparties with one unit, and units whose source names none
+
+
 class UnitBookingOut(BaseModel):
     """The unit holds a booking (spec §5.8): the kind of its source. A document's booking is reviewed like
     any other; a transfer booking is the counter-leg of a charge on a clearance account, in the unit of its
@@ -97,6 +104,8 @@ class UnitOut(BaseModel):
     # the unit holds a booking: a booking's structure is its source's, so the panel offers no partner,
     # convert or split control on its entries
     booking: UnitBookingOut | None = None
+    # `pending_review` cut by counterparty only: the `key` of the unit's counterparty group (null: `other`)
+    counterparty_key: str | None = None
 
     @staticmethod
     def of(view: UnitView, model_pending: frozenset[int] = frozenset()) -> UnitOut:
@@ -105,6 +114,7 @@ class UnitOut(BaseModel):
             unit_key=view.unit_key,
             state=UnitStateOut.of(view.state),
             entries=[EntryOut.of(e, model_pending) for e in view.entries],
+            counterparty_key=view.counterparty_key,
             booking=None
             if view.booking is None
             else UnitBookingOut(kind=cast(Literal["document", "transfer"], view.booking)),
@@ -125,6 +135,9 @@ class QueueSectionOut(BaseModel):
     groups: list[CurrencyGroupOut]  # `needs_account` only: units per required currency, by code; else []
     # `waiting` only: units per account waited for, in the accounts' own order; else []
     account_groups: list[AccountGroupOut]
+    # `pending_review` with `cut=counterparty` only: all groups of the section in order (largest first, then
+    # by key, `other` last), each with its whole-section count; else []. A page continues the last group.
+    counterparty_groups: list[CounterpartyGroupOut]
 
     @staticmethod
     def of(section: QueueSection, model_pending: frozenset[int] = frozenset()) -> QueueSectionOut:
@@ -137,6 +150,10 @@ class QueueSectionOut(BaseModel):
             account_groups=[
                 AccountGroupOut(account_id=g.account_id, synced_through=g.synced_through, count=g.count)
                 for g in section.account_groups
+            ],
+            counterparty_groups=[
+                CounterpartyGroupOut(key=g.key, label=g.label, count=g.count, other=g.other)
+                for g in section.counterparty_groups
             ],
         )
 
@@ -161,9 +178,12 @@ def get_review_queue(
     section: SectionKind | None = None,
     cursor: Token | None = None,
     account_id: Ids = None,
+    cut: Literal["date", "counterparty"] = "date",
 ) -> ReviewQueueOut:
     """The review queue: the first page of each section, or the page after `cursor` of one `section`.
-    `account_id` (repeatable) narrows it to the units with an entry on any of those accounts."""
+    `account_id` (repeatable) narrows it to the units with an entry on any of those accounts.
+    `cut=counterparty` orders the pending section by counterparty group (count, then name, `other` last; then
+    booked date, anchor) and returns its `counterparty_groups`; a cursor belongs to the cut that issued it."""
     if cursor is not None and section is None:
         raise ApiError(
             422,
@@ -173,7 +193,7 @@ def get_review_queue(
         )
     with engine.connect() as conn:
         queue = review_queue(
-            conn, limit=limit, section=section, cursor=cursor, account_ids=tuple(account_id or ())
+            conn, limit=limit, section=section, cursor=cursor, account_ids=tuple(account_id or ()), cut=cut
         )
     pending = model_pending_of(request)
     return ReviewQueueOut(

@@ -1213,6 +1213,8 @@ export interface paths {
          * Get Review Queue
          * @description The review queue: the first page of each section, or the page after `cursor` of one `section`.
          *     `account_id` (repeatable) narrows it to the units with an entry on any of those accounts.
+         *     `cut=counterparty` orders the pending section by counterparty group (count, then name, `other` last; then
+         *     booked date, anchor) and returns its `counterparty_groups`; a cursor belongs to the cut that issued it.
          */
         get: operations["get_review_queue"];
         put?: never;
@@ -1732,6 +1734,17 @@ export interface components {
             balance: components["schemas"]["Money"];
             /** Balance On */
             balance_on?: string | null;
+        };
+        /** CounterpartyGroupOut */
+        CounterpartyGroupOut: {
+            /** Count */
+            count: number;
+            /** Key */
+            key: string | null;
+            /** Label */
+            label: string | null;
+            /** Other */
+            other: boolean;
         };
         /** CreateBody */
         CreateBody: {
@@ -2774,6 +2787,8 @@ export interface components {
         QueueSectionOut: {
             /** Account Groups */
             account_groups: components["schemas"]["AccountGroupOut"][];
+            /** Counterparty Groups */
+            counterparty_groups: components["schemas"]["CounterpartyGroupOut"][];
             /** Groups */
             groups: components["schemas"]["CurrencyGroupOut"][];
             /**
@@ -3931,6 +3946,8 @@ export interface components {
             /** Anchor Entry Id */
             anchor_entry_id: number;
             booking?: components["schemas"]["UnitBookingOut"] | null;
+            /** Counterparty Key */
+            counterparty_key?: string | null;
             /** Entries */
             entries: components["schemas"]["EntryOut"][];
             needs_account?: components["schemas"]["NeedsAccountOut"] | null;
@@ -8361,6 +8378,7 @@ export interface operations {
                 section?: ("pending_review" | "needs_account" | "waiting") | null;
                 cursor?: string | null;
                 account_id?: number[] | null;
+                cut?: "date" | "counterparty";
             };
             header?: never;
             path?: never;

@@ -11,12 +11,22 @@ currency rule of `core/resolution/accounts.py`, restated in SQL and covered by t
 `waiting` when any entry carries the `waiting` flag, else `pending_review`. Each is ordered by the date of
 the unit's anchor entry (its lowest id), then the anchor id: a total order, so a keyset cursor
 `(booked_on, anchor)` stays valid when units come and go while the client pages.
+
+The pending section can instead be cut by counterparty (`cut="counterparty"`, `ux/views/review-queue.md`): a
+unit's counterparty is the counterparty name of its anchor entry's source, lower-cased with whitespace
+collapsed and trimmed. A counterparty with more than one unit in the section (after the account filter) is a
+group, labelled as its first unit (by booked date, then anchor) spells it; the rest, and units whose source
+names none, form one last "Other" group. Groups are ordered by count (largest first), then by key, "Other"
+last; within a group by booked date, then anchor: a total order again, and its cursor carries
+`(other, -count, key, booked_on, anchor)`. The groups are the server's, whole-section, so a page continues the
+last band or starts the next. A cursor of one cut is not valid for the other.
 """
 
 from __future__ import annotations
 
 import base64
 import binascii
+import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
@@ -32,6 +42,7 @@ from app.core.units.state import UnitState, leg_states_of_flags, unit_state
 
 SectionKind = Literal["pending_review", "needs_account", "waiting"]
 SECTIONS: tuple[SectionKind, ...] = ("pending_review", "needs_account", "waiting")
+QueueCut = Literal["date", "counterparty"]
 DEFAULT_LIMIT = 100
 MAX_LIMIT = 500
 
@@ -60,6 +71,16 @@ class UnitView:
     waiting: WaitingFor | None = None  # queue only: what a unit in `waiting` waits for (a partner)
     # the unit holds a booking (spec §5.8): the kind of its source, `document` or `transfer`
     booking: str | None = None
+    # queue only, pending review cut by counterparty: the key of the unit's group (None: the "Other" group)
+    counterparty_key: str | None = None
+
+
+@dataclass(frozen=True)
+class CounterpartyGroup:
+    key: str | None  # the normalised counterparty name; None for the "Other" group
+    label: str | None  # the name as the group's first unit spells it; None for "Other"
+    count: int  # units in the section in the group
+    other: bool  # the last group: single-unit counterparties and units without one
 
 
 @dataclass(frozen=True)
@@ -83,6 +104,8 @@ class QueueSection:
     next_cursor: str | None
     groups: tuple[CurrencyGroup, ...] = ()  # `needs_account` only: per currency, over the whole section
     account_groups: tuple[AccountGroup, ...] = ()  # `waiting` only: per account waited for, whole section
+    # `pending_review` cut by counterparty only: the groups in order, over the whole section
+    counterparty_groups: tuple[CounterpartyGroup, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -107,6 +130,7 @@ def _view(
     rows: Sequence[EntryRow],
     needs_account: str | None = None,
     waiting: WaitingFor | None = None,
+    counterparty_key: str | None = None,
 ) -> UnitView:
     ordered = tuple(sorted(rows, key=lambda r: r.id))
     return UnitView(
@@ -120,6 +144,7 @@ def _view(
         needs_account=needs_account,
         waiting=waiting,
         booking=next((r.booking[0] for r in ordered if r.booking is not None), None),
+        counterparty_key=counterparty_key,
     )
 
 
@@ -182,6 +207,54 @@ _QUEUE_PAGE = text(
              LIMIT :limit) AS p
       LEFT JOIN v_account_coverage AS cv ON cv.account_id = p.wait_account
      ORDER BY p.booked_on, p.anchor
+    """
+)
+
+# The pending section cut by counterparty. `cp` is its units with the normalised counterparty name of the
+# anchor's source (empty or null: none); a name with more than one unit is a group (`gkey`), the rest are
+# "Other" (`gkey` null). `o` is 1 for Other, `neg` the negated group count, `g` the key ('' for Other): the
+# section's sort key is (o, neg, g, booked_on, anchor).
+_COUNTERPARTY_CTE = r"""
+    , cp AS (
+        SELECT q.unit_key, q.anchor, q.currency, q.wait_account, e.booked_on, st.counterparty_name AS raw,
+               nullif(btrim(regexp_replace(lower(st.counterparty_name), '\s+', ' ', 'g')), '') AS key
+          FROM q JOIN ledger_entry AS e ON e.id = q.anchor
+          JOIN source_transaction AS st ON st.id = e.source_transaction_id
+         WHERE q.section = 'pending_review'),
+      cnt AS (SELECT key, count(*) AS n FROM cp WHERE key IS NOT NULL GROUP BY key),
+      ranked AS (
+        SELECT cp.unit_key, cp.anchor, cp.currency, cp.wait_account, cp.booked_on, cp.raw,
+               CASE WHEN c.n > 1 THEN cp.key END AS gkey,
+               CASE WHEN c.n > 1 THEN 0 ELSE 1 END AS o,
+               CASE WHEN c.n > 1 THEN -c.n ELSE 0 END AS neg,
+               CASE WHEN c.n > 1 THEN cp.key ELSE '' END AS g
+          FROM cp LEFT JOIN cnt AS c ON c.key = cp.key)
+"""
+
+_COUNTERPARTY_PAGE = text(
+    _SECTIONED_SQL
+    + _COUNTERPARTY_CTE
+    + """
+    SELECT t.unit_key, t.anchor, t.booked_on, t.total, t.currency, t.wait_account, t.gkey, t.o, t.neg, t.g,
+           CAST(NULL AS date) AS synced_through
+      FROM (SELECT r.*, count(*) OVER () AS total FROM ranked AS r) AS t
+     WHERE (CAST(:after_o AS int) IS NULL
+            OR (t.o, t.neg, t.g, t.booked_on, t.anchor)
+               > (CAST(:after_o AS int), CAST(:after_neg AS int), CAST(:after_g AS text),
+                  CAST(:after_on AS date), CAST(:after_anchor AS bigint)))
+     ORDER BY t.o, t.neg, t.g, t.booked_on, t.anchor
+     LIMIT :limit
+    """
+)
+
+_COUNTERPARTY_GROUPS = text(
+    _SECTIONED_SQL
+    + _COUNTERPARTY_CTE
+    + """
+    SELECT r.gkey, (array_agg(r.raw ORDER BY r.booked_on, r.anchor))[1] AS label, count(*) AS n
+      FROM ranked AS r
+     GROUP BY r.gkey, r.o, r.neg, r.g
+     ORDER BY r.o, r.neg, r.g
     """
 )
 
@@ -250,6 +323,23 @@ def decode_cursor(token: str) -> tuple[date, int]:
         raise InvalidCursor("cursor") from exc
 
 
+def encode_counterparty_cursor(o: int, neg: int, g: str, booked_on: date, anchor: int) -> str:
+    raw = "c2:" + json.dumps([o, neg, g, booked_on.isoformat(), anchor])
+    return base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
+
+
+def decode_counterparty_cursor(token: str) -> tuple[int, int, str, date, int]:
+    try:
+        raw = base64.urlsafe_b64decode(token + "=" * (-len(token) % 4)).decode()
+        tag, _, body = raw.partition(":")
+        o, neg, g, day, anchor = json.loads(body)
+        if tag != "c2" or not isinstance(g, str) or o not in (0, 1):
+            raise ValueError(raw)
+        return int(o), int(neg), g, date.fromisoformat(day), int(anchor)
+    except (ValueError, TypeError, binascii.Error, UnicodeDecodeError) as exc:
+        raise InvalidCursor("cursor") from exc
+
+
 def _binds(conn: Connection, accounts: tuple[int, ...]) -> dict[str, object]:
     """The binds of the sectioned queries: the standing passes and the accounts the queue is narrowed to
     (none: the whole queue)."""
@@ -257,19 +347,43 @@ def _binds(conn: Connection, accounts: tuple[int, ...]) -> dict[str, object]:
 
 
 def _section(
-    conn: Connection, kind: SectionKind, *, limit: int, cursor: str | None, accounts: tuple[int, ...]
+    conn: Connection,
+    kind: SectionKind,
+    *,
+    limit: int,
+    cursor: str | None,
+    accounts: tuple[int, ...],
+    cut: QueueCut = "date",
 ) -> QueueSection:
-    after_on, after_anchor = decode_cursor(cursor) if cursor else (None, 0)
-    rows = conn.execute(
-        _QUEUE_PAGE,
-        {
-            **_binds(conn, accounts),
-            "section": kind,
-            "after_on": after_on,
-            "after_anchor": after_anchor,
-            "limit": limit + 1,
-        },
-    ).all()
+    by_counterparty = cut == "counterparty" and kind == "pending_review"
+    if by_counterparty:
+        c_o, c_neg, c_g, after_on, after_anchor = (
+            decode_counterparty_cursor(cursor) if cursor else (None, 0, "", None, 0)
+        )
+        rows = conn.execute(
+            _COUNTERPARTY_PAGE,
+            {
+                **_binds(conn, accounts),
+                "after_o": c_o,
+                "after_neg": c_neg,
+                "after_g": c_g,
+                "after_on": after_on,
+                "after_anchor": after_anchor,
+                "limit": limit + 1,
+            },
+        ).all()
+    else:
+        after_on, after_anchor = decode_cursor(cursor) if cursor else (None, 0)
+        rows = conn.execute(
+            _QUEUE_PAGE,
+            {
+                **_binds(conn, accounts),
+                "section": kind,
+                "after_on": after_on,
+                "after_anchor": after_anchor,
+                "limit": limit + 1,
+            },
+        ).all()
     if rows:
         total = int(rows[0].total)
     elif cursor:  # a cursor past the end: the page is empty, the section is not
@@ -290,13 +404,34 @@ def _section(
             AccountGroup(account_id=int(r.account_id), synced_through=r.synced_through, count=int(r.n))
             for r in found
         )
+    counterparty_groups: tuple[CounterpartyGroup, ...] = ()
+    next_cursor: str | None = None
+    if by_counterparty:
+        found = conn.execute(_COUNTERPARTY_GROUPS, _binds(conn, accounts)).all()
+        counterparty_groups = tuple(
+            CounterpartyGroup(
+                key=None if r.gkey is None else str(r.gkey),
+                label=None if r.gkey is None else str(r.label),
+                count=int(r.n),
+                other=r.gkey is None,
+            )
+            for r in found
+        )
+        if more:
+            last = page[-1]
+            next_cursor = encode_counterparty_cursor(
+                int(last.o), int(last.neg), str(last.g), last.booked_on, int(last.anchor)
+            )
+    elif more:
+        next_cursor = encode_cursor(page[-1].booked_on, int(page[-1].anchor))
     return QueueSection(
         kind=kind,
         total=total,
         units=units,
-        next_cursor=encode_cursor(page[-1].booked_on, int(page[-1].anchor)) if more else None,
+        next_cursor=next_cursor,
         groups=groups,
         account_groups=account_groups,
+        counterparty_groups=counterparty_groups,
     )
 
 
@@ -313,7 +448,10 @@ def _units_of_page(conn: Connection, keys: list[int], facts: dict[int, Row[Any]]
         if row.unit_key in by_key:
             by_key[row.unit_key].append(row)
     # the page order is the order of `keys` (the section's order), not of the anchors' ids
-    return tuple(_view(k, by_key[k], *_facts_of(facts[k])) for k in keys)
+    return tuple(
+        _view(k, by_key[k], *_facts_of(facts[k]), counterparty_key=getattr(facts[k], "gkey", None))
+        for k in keys
+    )
 
 
 def _facts_of(row: Row[Any]) -> tuple[str | None, WaitingFor | None]:
@@ -333,13 +471,18 @@ def review_queue(
     section: SectionKind | None = None,
     cursor: str | None = None,
     account_ids: tuple[int, ...] = (),
+    cut: QueueCut = "date",
 ) -> ReviewQueue:
     """The first page of every section, or the page after `cursor` of one `section`. `account_ids` narrows
     the queue to the units with an entry on any of them (none: the whole queue); the sections, their groups
-    and their counts are those of the units left."""
+    and their counts are those of the units left. `cut="counterparty"` orders the pending section by
+    counterparty (module docstring) and gives it its `counterparty_groups`; the other sections keep their
+    order."""
     wanted = SECTIONS if section is None else (section,)
     built = tuple(
-        _section(conn, kind, limit=limit, cursor=cursor if section == kind else None, accounts=account_ids)
+        _section(
+            conn, kind, limit=limit, cursor=cursor if section == kind else None, accounts=account_ids, cut=cut
+        )
         for kind in wanted
     )
     if section is None:

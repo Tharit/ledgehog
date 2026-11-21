@@ -55,6 +55,7 @@ export function section(
 		units,
 		groups: [],
 		account_groups: [],
+		counterparty_groups: [],
 		next_cursor: null,
 		...over
 	};

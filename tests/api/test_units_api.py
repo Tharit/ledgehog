@@ -64,6 +64,7 @@ def test_get_unit_shape_for_a_pair_with_a_split(anna: TestClient, api_engine: En
         "needs_account",
         "waiting",
         "booking",
+        "counterparty_key",
     }
     assert body["needs_account"] is None and body["waiting"] is None
     assert body["booking"] is None
@@ -119,7 +120,8 @@ def test_the_queue_shape_sections_and_order(anna: TestClient, api_engine: Engine
     ]
     pending = body["sections"][0]
     assert (
-        set(pending) == {"kind", "total", "units", "next_cursor", "groups", "account_groups"}
+        set(pending)
+        == {"kind", "total", "units", "next_cursor", "groups", "account_groups", "counterparty_groups"}
         and pending["next_cursor"] is None
     )
     assert [u["anchor_entry_id"] for u in pending["units"]] == [early, late]
@@ -133,8 +135,13 @@ def test_the_queue_shape_sections_and_order(anna: TestClient, api_engine: Engine
         "needs_account",
         "waiting",
         "booking",
+        "counterparty_key",
     }
-    assert pending["groups"] == [] and pending["units"][0]["needs_account"] is None
+    assert (
+        pending["groups"] == []
+        and pending["counterparty_groups"] == []
+        and pending["units"][0]["needs_account"] is None
+    )
     assert body["sections"][1]["units"] == [] and body["sections"][2]["next_cursor"] is None
 
 
@@ -215,6 +222,7 @@ def test_queue_parameter_errors(anna: TestClient) -> None:
         {"limit": 0},
         {"limit": 501},
         {"section": "nope"},
+        {"cut": "nope"},
         {"cursor": "abc"},  # a cursor needs its section
         {"section": "pending_review", "cursor": "not-a-cursor"},
     ):
@@ -242,6 +250,52 @@ def test_the_queue_takes_repeated_account_ids_and_the_count_none(
     assert body["total"] == 1 and body["sections"][0]["total"] == 1
     assert anna.get(f"{QUEUE}/count", params={"account_id": [world.a]}).json()["count"] == 2
     assert_envelope(anna.get(QUEUE, params={"account_id": "x"}), 422, "validation_error")
+
+
+def test_the_queue_cut_by_counterparty_carries_groups_and_pages(
+    anna: TestClient, api_engine: Engine, world: Bench
+) -> None:
+    def build(b: Bench) -> list[int]:
+        out = []
+        for i, name in enumerate(["Rewe", "REWE", "rewe", "Aldi", "Solo"]):
+            src = make_source(
+                b.conn,
+                b.a,
+                booked_on=date(2026, 1, 1 + i),
+                amount=-100,
+                columns={"counterparty_name": name},
+            )
+            b._each[src] = -100
+            out.append(b.flow(src, done=False))
+        return out
+
+    ids = _make(api_engine, world, build)
+    r = anna.get(QUEUE, params={"cut": "counterparty", "limit": 2})
+    assert r.status_code == 200, r.text
+    pending = r.json()["sections"][0]
+    assert pending["counterparty_groups"] == [
+        {"key": "rewe", "label": "Rewe", "count": 3, "other": False},
+        {"key": None, "label": None, "count": 2, "other": True},
+    ]
+    assert [u["counterparty_key"] for u in pending["units"]] == ["rewe", "rewe"]
+    more = anna.get(
+        QUEUE,
+        params={
+            "cut": "counterparty",
+            "limit": 2,
+            "section": "pending_review",
+            "cursor": pending["next_cursor"],
+        },
+    ).json()["sections"][0]
+    assert [u["anchor_entry_id"] for u in more["units"]] == ids[2:4]
+    assert [u["counterparty_key"] for u in more["units"]] == ["rewe", None]
+    # a date-cut cursor is not valid under the counterparty cut
+    dated = anna.get(QUEUE, params={"limit": 2}).json()["sections"][0]["next_cursor"]
+    assert_envelope(
+        anna.get(QUEUE, params={"cut": "counterparty", "section": "pending_review", "cursor": dated}),
+        422,
+        "validation_error",
+    )
 
 
 def test_queue_count(anna: TestClient, api_engine: Engine, world: Bench) -> None:
