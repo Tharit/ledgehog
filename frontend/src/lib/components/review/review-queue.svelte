@@ -32,7 +32,7 @@
 	import { accounts as accountDialog } from '#lib/accounts/controller.svelte.js';
 	import Card from '#lib/components/common/card.svelte';
 	import CardTitle from '#lib/components/common/card-title.svelte';
-	import DayRow from '#lib/components/common/day-row.svelte';
+	import BandRow from '#lib/components/common/band-row.svelte';
 	import SubgroupRow from '#lib/components/common/subgroup-row.svelte';
 	import NoticeLine from '#lib/components/common/notice-line.svelte';
 	import ActionButton from '#lib/components/common/action-button.svelte';
@@ -83,7 +83,7 @@
 	// waiting), each by date, as one flush card each (a title row over the header row), the unit rows
 	// beneath. The pending section is cut by month and day into sticky bands, as the ledger list is
 	// (design §5), so it has no date column; the currency and waiting groups of the other two are
-	// subgroup rows among their rows, which keep the date column. A unit is one block: its entries
+	// band rows among their rows, which keep the date column. A unit is one block: its entries
 	// are joined, both legs of a pair shown. The cursor is on a unit; Enter opens the panel, which
 	// then steps through the queue in this order. The queue is a snapshot: it changes only on
 	// request. The columns are as wide as what the rows hold, one set of widths for all sections.
@@ -144,12 +144,13 @@
 	});
 
 	// The sticky stack of a section: the header row (2rem), then in the pending section the month
-	// band (2.25rem) and the day row (1.75rem), in the others the group's subgroup row. Each sticks
+	// band (2.25rem) and the day's band row (1.75rem), in the others the group's band row. Each sticks
 	// beneath the one above; the cursor row scrolls to clear them.
-	const MONTH_TOP = '2rem';
+	const HEADER_TOP = '2rem';
+	const MONTH_TOP = HEADER_TOP;
 	const DAY_TOP = '4.25rem';
 	const PENDING_OFFSET = '6.5rem';
-	const GROUP_OFFSET = '4.5rem';
+	const GROUP_OFFSET = '3.75rem';
 
 	const units = $derived(store.units);
 	const cursorIndex = $derived(
@@ -417,7 +418,7 @@
 										<SubgroupRow label={month.label} top={MONTH_TOP} data-slot="month-row" />
 										{#each month.bands as day (day.key)}
 											<div role="presentation" data-day={day.key}>
-												<DayRow label={day.label} top={DAY_TOP} />
+												<BandRow label={day.label} top={DAY_TOP} />
 												{#each day.items as unit (unit.anchor_entry_id)}
 													{@render unitBlock(unit, columns, template)}
 												{/each}
@@ -427,18 +428,19 @@
 								{/each}
 							{:else}
 								{#each blocksOf(section.kind, section.units, section.groups, section.accountGroups) as block (block.key)}
-									<!-- the group's rows in their own element: it ends the subgroup row's sticking -->
+									<!-- the group's rows in their own element: it ends the band row's sticking -->
 									<div role="presentation" data-block={block.key}>
 										{#if block.group}
 											{@const currency = block.group.currency}
-											<SubgroupRow
+											<BandRow
 												label={groupHeading(block.group.count, currency, locale)}
-												top={MONTH_TOP}
+												top={HEADER_TOP}
 												data-group={currency}
 											>
 												{#snippet action()}
 													<ActionButton
 														variant="outline"
+														class="h-6 px-2 text-xs"
 														onclick={(event: MouseEvent) => addAccount(currency, event)}
 													>
 														Add account
@@ -462,11 +464,11 @@
 														{/snippet}
 													</NoticeLine>
 												{/if}
-											</SubgroupRow>
+											</BandRow>
 										{:else if block.waitingGroup}
-											<SubgroupRow
+											<BandRow
 												label={waitingReason(block.waitingGroup, lookups, locale)}
-												top={MONTH_TOP}
+												top={HEADER_TOP}
 												data-group-account={block.waitingGroup.account_id}
 											/>
 										{/if}

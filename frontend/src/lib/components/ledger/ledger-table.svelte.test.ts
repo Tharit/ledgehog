@@ -173,7 +173,7 @@ describe('LedgerTable: cut by month and day', () => {
 			'October 2026',
 			'December 2025'
 		]);
-		expect(texts('[data-slot="day-label"]')).toEqual([
+		expect(texts('[data-slot="band-label"]')).toEqual([
 			'Tue, Nov 17',
 			'Mon, Nov 2',
 			'Fri, Oct 30',
@@ -217,7 +217,7 @@ describe('LedgerTable: cut by month and day', () => {
 			today: '2026-11-21'
 		});
 
-		expect(texts('[data-slot="day-label"]')).toEqual(['Tue, Nov 17', 'Mon, Nov 16']);
+		expect(texts('[data-slot="band-label"]')).toEqual(['Tue, Nov 17', 'Mon, Nov 16']);
 		const unit = document.querySelector('[data-unit="7"]')!;
 		expect(
 			[...unit.querySelectorAll('[data-entry-id]')].map((r) => r.getAttribute('data-entry-id'))
@@ -226,7 +226,7 @@ describe('LedgerTable: cut by month and day', () => {
 			'data-day',
 			expect.stringContaining('2026-11-17')
 		);
-		expect(unit.querySelector('[data-slot="day-label"]')).toBeNull();
+		expect(unit.querySelector('[data-slot="band-label"]')).toBeNull();
 	});
 
 	it('keeps the keyboard cursor moving over rows across the bands', async () => {

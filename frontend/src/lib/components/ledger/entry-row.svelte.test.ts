@@ -245,6 +245,33 @@ describe('EntryRow: tags', () => {
 });
 
 describe('EntryRow: transfers', () => {
+	it.each([
+		[5000, '←'],
+		[-5000, '→'],
+		[0, '→']
+	])('draws the arrow by the amount (%s: %s)', (amount, arrow) => {
+		row({
+			type: 'transfer',
+			counter_account_id: 2,
+			category_id: null,
+			amount: { amount, currency: 'EUR' }
+		});
+
+		const categoryCell = within(screen.getByRole('row')).getAllByRole('gridcell')[cell('category')];
+		expect(categoryCell).toHaveTextContent(arrow);
+		expect(categoryCell).not.toHaveTextContent(arrow === '←' ? '→' : '←');
+	});
+
+	it('shows an absent counter account as "← ?" where the amount arrives', () => {
+		row({
+			type: 'transfer',
+			counter_account_id: null,
+			amount: { amount: 5000, currency: 'EUR' }
+		});
+
+		expect(screen.getByText('← ?')).toHaveAttribute('title', expect.stringContaining('counter'));
+	});
+
 	it('shows the arrow icon and the counter account', () => {
 		row({ type: 'transfer', counter_account_id: 2, category_id: null });
 

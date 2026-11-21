@@ -2,14 +2,14 @@
 	import type { Snippet } from 'svelte';
 	import { cn } from '#lib/utils.js';
 
-	// A subgroup row (design §5): a cut within one list that keeps its columns (a month, a currency,
-	// an account waited for), a band among the rows. Tinted `muted` as the header row, its label in
+	// A subgroup row (design §5): the outer cut of a list cut twice (a month), a band among the
+	// rows; a single cut or an inner one is a band row. Tinted `muted` as the header row, its label in
 	// `foreground` in the section heading's size; `action` (a button) sits at the right, `children`
 	// is a quiet line beneath. It is a full-width row of the surrounding grid, one cell spanning all
 	// its columns. With `top` it sticks beneath the header row (and whatever is above it) while its
 	// rows are in view, so it must be the first child of an element holding just those rows: that
-	// element ends its sticking. It is `min-h-9` (2.25rem); a sticky one that a day row sticks beneath
-	// (the month) has no `children`, so its height is known to that day row.
+	// element ends its sticking. It is `min-h-9` (2.25rem); a sticky one that a band row sticks beneath
+	// (the month) has no `children`, so its height is known to that band row.
 	let {
 		label,
 		action,

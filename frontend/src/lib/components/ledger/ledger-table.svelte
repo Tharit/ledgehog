@@ -7,7 +7,7 @@
 	import KeyboardHelp, { type HelpGroup } from '#lib/components/common/keyboard-help.svelte';
 	import Notice from '#lib/components/common/notice.svelte';
 	import MoneyDisplay from '#lib/components/common/money-display.svelte';
-	import DayRow from '#lib/components/common/day-row.svelte';
+	import BandRow from '#lib/components/common/band-row.svelte';
 	import SubgroupRow from '#lib/components/common/subgroup-row.svelte';
 	import {
 		columnCurrency,
@@ -420,7 +420,7 @@
 							<SubgroupRow label={month.label} top={MONTH_TOP} data-slot="month-row" />
 							{#each month.bands as day (day.key)}
 								<div role="presentation" data-day={day.key}>
-									<DayRow label={day.label} top={DAY_TOP} />
+									<BandRow label={day.label} top={DAY_TOP} />
 									{#each day.items as run (run.entries[0].id)}
 										{@const joined = run.entries.length > 1}
 										{#snippet rows()}

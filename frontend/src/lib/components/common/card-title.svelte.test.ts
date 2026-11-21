@@ -3,7 +3,7 @@ import { createRawSnippet } from 'svelte';
 import { describe, expect, it } from 'vitest';
 import Clock from '@lucide/svelte/icons/clock';
 import CardTitle from './card-title.svelte';
-import DayRow from './day-row.svelte';
+import BandRow from './band-row.svelte';
 import SubgroupRow from './subgroup-row.svelte';
 
 const text = (t: string) => createRawSnippet(() => ({ render: () => `<button>${t}</button>` }));
@@ -53,9 +53,9 @@ describe('SubgroupRow', () => {
 	});
 });
 
-describe('DayRow', () => {
+describe('BandRow', () => {
 	it("is a lighter row with a muted label in the labels' size", () => {
-		const { container } = render(DayRow, { props: { label: 'Tue, Nov 17' } });
+		const { container } = render(BandRow, { props: { label: 'Tue, Nov 17' } });
 		const row = container.firstElementChild!;
 
 		expect(row).toHaveAttribute('role', 'row');
@@ -68,10 +68,29 @@ describe('DayRow', () => {
 	});
 
 	it('sticks at the top it is given', () => {
-		const { container } = render(DayRow, { props: { label: 'Tue, Nov 17', top: '4.25rem' } });
+		const { container } = render(BandRow, { props: { label: 'Tue, Nov 17', top: '4.25rem' } });
 		const row = container.firstElementChild as HTMLElement;
 
 		expect(row).toHaveClass('sticky');
 		expect(row.style.top).toBe('4.25rem');
+	});
+
+	it('carries an action at the right and a line beneath, like a subgroup row', () => {
+		render(BandRow, {
+			props: {
+				label: 'A transfer needs an account in GBP',
+				action: text('Add account'),
+				children: createRawSnippet(() => ({ render: () => '<p>Notice</p>' })),
+				'data-group': 'GBP'
+			}
+		});
+
+		const row = document.querySelector('[data-group="GBP"]')!;
+		expect(row).toHaveAttribute('role', 'row');
+		expect(row.querySelector('[data-slot="band-label"]')).toHaveTextContent(
+			'A transfer needs an account in GBP'
+		);
+		expect(screen.getByRole('button', { name: 'Add account' })).toBeInTheDocument();
+		expect(screen.getByText('Notice')).toBeInTheDocument();
 	});
 });

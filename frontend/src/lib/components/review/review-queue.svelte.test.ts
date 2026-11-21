@@ -361,7 +361,7 @@ describe('ReviewQueue: the pending section is cut by month and day', () => {
 			(r) => r.querySelector('[data-slot="subgroup-label"]')!.textContent
 		);
 		expect(months).toEqual(['November 2026', 'October 2026']);
-		const days = [...grid.querySelectorAll('[data-slot="day-label"]')].map((d) => d.textContent);
+		const days = [...grid.querySelectorAll('[data-slot="band-label"]')].map((d) => d.textContent);
 		expect(days).toHaveLength(3);
 		const november = grid.querySelector('[data-month="2026-11"]')!;
 		expect(november.querySelectorAll('[data-day]')).toHaveLength(2);
@@ -380,7 +380,7 @@ describe('ReviewQueue: the pending section is cut by month and day', () => {
 		const grid = screen.getByRole('grid', { name: 'Needs an account' });
 		expect(within(grid).getByRole('columnheader', { name: 'Date' })).toBeInTheDocument();
 		expect(grid.querySelectorAll('[data-col="date"]').length).toBeGreaterThan(0);
-		expect(grid.querySelector('[data-slot="day-label"]')).toBeNull();
+		expect(grid.querySelector('[data-slot="band-label"]')).toBeNull();
 	});
 
 	it('the cursor and Enter run over the units across the bands, in the order drawn', async () => {
@@ -611,15 +611,16 @@ describe('ReviewQueue: needs an account and waiting', () => {
 		);
 
 		const headings = [...document.querySelectorAll('[data-group]')].map(
-			(h) => h.querySelector('[data-slot="subgroup-label"]')!.textContent
+			(h) => h.querySelector('[data-slot="band-label"]')!.textContent
 		);
 		expect(headings).toEqual([
 			'A transfer needs an account in GBP',
 			'3 transfers need an account in USD'
 		]);
-		// a subgroup row among the rows of one card, not a heading, not a card of its own
+		// a band row among the rows of one card, not a heading, not a card of its own
 		const usd = document.querySelector('[data-group="USD"]') as HTMLElement;
 		expect(usd).toHaveAttribute('role', 'row');
+		expect(usd.querySelector('[data-slot="subgroup-label"]')).toBeNull(); // a band row, not a subgroup row
 		expect(usd).toHaveClass('sticky'); // beneath the header row while its units are in view
 		expect(
 			usd.closest('[data-section="needs_account"]')!.querySelectorAll('[role="grid"]')
@@ -634,7 +635,7 @@ describe('ReviewQueue: needs an account and waiting', () => {
 		expect(screen.getByRole('heading', { name: /Needs an account/ })).toHaveTextContent('(4)');
 	});
 
-	it('steps the cursor over the units only, a subgroup row is never a stop', async () => {
+	it('steps the cursor over the units only, a band row is never a stop', async () => {
 		await showGrouped(
 			groupedQueue(
 				[needing(1, 'GBP'), needing(2, 'USD'), needing(3, 'USD')],
@@ -652,7 +653,7 @@ describe('ReviewQueue: needs an account and waiting', () => {
 
 		await key('j');
 		expect(cursorUnit()).toBe('1');
-		await key('j'); // across the USD subgroup row to the next unit
+		await key('j'); // across the USD band row to the next unit
 		expect(cursorUnit()).toBe('2');
 		await key('j');
 		expect(cursorUnit()).toBe('3');
@@ -732,7 +733,7 @@ describe('ReviewQueue: needs an account and waiting', () => {
 	const waitingFor = (id: number, account_id: number, synced_through: string | null) =>
 		unit({ ...flow(id, `Out ${id}`), waiting: { account_id, synced_through } });
 
-	it('draws the waiting section as one card, a subgroup row per account giving its reason once', async () => {
+	it('draws the waiting section as one card, a band row per account giving its reason once', async () => {
 		vi.mocked(getQueue).mockResolvedValue(
 			waitingQueue(
 				[waitingFor(1, 2, '2026-10-12'), waitingFor(2, 1, null), waitingFor(3, 2, '2026-10-12')],
@@ -747,7 +748,7 @@ describe('ReviewQueue: needs an account and waiting', () => {
 		render(ReviewQueue, { props: { store, lookups, locale: 'en' } });
 
 		const headings = [
-			...document.querySelectorAll('[data-group-account] [data-slot="subgroup-label"]')
+			...document.querySelectorAll('[data-group-account] [data-slot="band-label"]')
 		].map((h) => h.textContent!.trim());
 		expect(headings).toHaveLength(2);
 		expect(headings[0]).toBe('Waiting for Giro, not synced yet');

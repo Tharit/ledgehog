@@ -84,6 +84,8 @@
 	// Derived entries (spec §3.9) take a fixed icon and their type's name in place of a category.
 	const fixed = $derived(isDerivedType(entry.type) ? ENTRY_TYPE_INFO[entry.type!] : undefined);
 	const account = $derived(lookups.accounts.get(entry.account_id));
+	// the transfer's arrow follows the amount: "←" where it arrives, "→" where it leaves (zero keeps "→")
+	const arrow = $derived(entry.amount.amount > 0 ? '←' : '→');
 	const counterAccount = $derived(
 		entry.counter_account_id === null ? undefined : lookups.accounts.get(entry.counter_account_id)
 	);
@@ -192,11 +194,11 @@
 					<DimensionIcon icon={ENTRY_TYPE_INFO.transfer.icon} color="stone" />
 					{#if counterAccount}
 						<span class="flex min-w-0 items-center gap-1">
-							<span aria-hidden="true">&rarr;</span>
+							<span aria-hidden="true">{arrow}</span>
 							<AccountDot name={counterAccount.name} color={resolveAccount(counterAccount).color} />
 						</span>
 					{:else}
-						<AbsentValue label="→ ?" explanation="This transfer needs a counter account" />
+						<AbsentValue label="{arrow} ?" explanation="This transfer needs a counter account" />
 					{/if}
 				{:else if entry.category_id !== null}
 					<DimensionIcon icon={categoryLook.icon} color={categoryLook.color} />
