@@ -277,7 +277,13 @@ GET    /api/units/queue                        the units not confirmed, in
                                                narrows the queue to the units
                                                with an entry on any of those
                                                accounts, with the sections' and
-                                               groups' counts narrowed with it
+                                               groups' counts narrowed with it;
+                                               `cut=counterparty` orders the
+                                               pending section by counterparty
+                                               instead (`ux/views/review-queue.md`),
+                                               and the section then carries its
+                                               counterparty groups, each with its
+                                               count and label
 GET    /api/units/queue/count                  how many units can be acted on
                                                now: `count`, the sum of
                                                `pending_review` and
@@ -2256,17 +2262,18 @@ Nothing is counted.
 
 ### 6.5 Review queue
 
-The interaction model drives the API more than any other screen (§4.1).
-Three sections — pending review, needs an account, waiting — each ordered by
-booked date, then anchor entry id; whether and how to group units by shape
-within a section is open until real units have been seen
-(`ux/views/review-queue.md`). An account filter, in the address, narrows the
-queue to the units with an entry on any chosen account; the Review item's count
-is never filtered. Each unit is committed with one keystroke, which
-moves to the next. There is no batch confirmation; units decided entirely by
-pass 0 and rules arrive confirmed once complete, and enter the queue only
-while they wait for a partner (`spec.md` §5.9, §6). Keyboard-first; the
-bindings are a cross-view convention, decided once for every view.
+The interaction model drives the API more than any other screen (§4.1). Three
+sections — pending review, needs an account, waiting — each ordered by booked
+date, then anchor entry id, the pending section by counterparty where the view
+asks (`ux/views/review-queue.md`); grouping by more than the counterparty is
+open until real units have been seen. An account
+filter, in the address, narrows the queue to the units with an entry on any
+chosen account; the Review item's count is never filtered. Each unit is
+committed with one keystroke, which moves to the next. There is no batch
+confirmation; units decided entirely by pass 0 and rules arrive confirmed once
+complete, and enter the queue only while they wait for a partner (`spec.md`
+§5.9, §6). Keyboard-first; the bindings are a cross-view convention, decided
+once for every view.
 
 Review is per unit (`spec.md` §6): the user opens a unit in the panel, changes
 values, splits, converts or re-pairs as draft edits, sees each

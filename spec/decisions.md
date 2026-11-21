@@ -4214,3 +4214,13 @@ ux/design.md §5; ux/patterns.md §4.1; ux/views/review-queue.md.
 
 - **The subgroup row is only the outer cut of a two-level cut** (user, 2026-11-21). A single-level cut (a currency, an account waited for) and an inner cut (a day) are band rows: the large band was too loud without bands under it. The "day row" is renamed band row.
 - **A transfer's arrow follows the amount's sign** (user, 2026-11-21): "← Cash" where it arrives, "→ Cash" where it leaves; zero keeps "→". The partner tooltip and icon are unchanged.
+
+## D273 The review queue's pending section can be cut by counterparty
+
+ux/views/review-queue.md; ux/patterns.md §4.1, §10; architecture §4.1, §6.5.
+
+- **A switch, "By date" or "By counterparty", sits in the filter bar** (user, 2026-11-21), beside the Account chip, and is in the address with the filter; "By date" is the default and is left out of the address. It changes only the pending section; the other two keep their cuts.
+- **One level: a band row per counterparty with its count,** the date column shown, since the rows are no longer under a day.
+- **The counterparty is the counterparty name of the anchor entry's source,** compared ignoring case and repeated spaces and labelled as its first unit spells it. Not the payee: payees are proposals that change under review, so a unit would move between bands as it is decided.
+- **Counterparties with one unit, and units without one, share one last "Other" band:** a band earns its place only where there is a batch. Bands are ordered by count, largest first, then by name.
+- **The cut is the server's** so every page is complete and Load more only appends. Rejected: *cutting the loaded rows in the client* (incomplete groups, and rows inserted under the cursor as pages arrive); *loading the whole section* (the queue pages for a reason).

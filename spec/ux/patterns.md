@@ -157,11 +157,12 @@ account, date and amount — from a read-only summary the row carries, so it
 works when a filter hides the partner; the partner's own row is highlighted
 when it is in view.
 
-**The ledger list and the review queue's pending section are cut by day.**
-Their rows are in date order, so they are cut into months, each a subgroup row
-("November 2026"), and days, each a band row (`design.md` §5). A unit is drawn
-under the day of its first entry. The unit panel lists few rows and keeps its
-date column.
+**The ledger list and the review queue's pending section are cut by day.** The
+pending section can be cut by counterparty instead
+(`ux/views/review-queue.md`). Their rows are in date order, so they are cut
+into months, each a subgroup row ("November 2026"), and days, each a band row
+(`design.md` §5). A unit is drawn under the day of its first entry. The unit
+panel lists few rows and keeps its date column.
 
 **The ledger list ends in a total row**, in its card beneath the last row: the
 count — "100 of 214 entries" — with "Load more" while rows remain, and the sum
@@ -430,9 +431,8 @@ row; a resolved row stays in place, marked (§7).
 
 - the badge glyphs and the proposal styling of §4.2–§4.3;
 - the key bindings of §5, especially commit and tag, and the panel's;
-- whether and how the review queue groups units by what they share, beyond its
-  three sections (`ux/views/review-queue.md`); open until real units have
-  been seen;
+- whether the review queue groups units by more than their counterparty
+  (`ux/views/review-queue.md`); open until real units have been seen;
 - whether resolved rows in a snapshot collapse after a while (architecture
   §6.5 leaves it to the view);
 - the ledger list's column order (in particular whether the amount comes

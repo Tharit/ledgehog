@@ -7,18 +7,17 @@ are `spec.md` §5.7 and §6; the contracts are `architecture.md` §4.1 and §6.5
 
 ---
 
-**Three sections, each by date.** Pending review, needs an account and
-waiting (below), and within each section units are ordered by booked date,
-then by anchor entry id. Most units are recurring — the same proposed values
-from the same evidence — and each is committed with one keystroke that moves
-to the next. Whether the queue should also group such units, and what makes
-two units alike, is open until the first month of real units has been seen;
-nothing here defines a shape. A unit appears once, with all its entries. Units decided entirely by own
-accounts and rules arrive confirmed once complete (`spec.md` §5.9), and appear
-only in the waiting bucket while a partner is still to come: a recurring unit
-leaves the queue for good once a rule decides it. A charge a rule decides as a
-transfer to a clearance account is complete at once, its counter-leg booked
-with it (`spec.md` §5.7), and never appears.
+**Three sections, each by date.** Pending review, needs an account and waiting
+(below), and within each section units are ordered by booked date, then by
+anchor entry id. Most units are recurring — the same proposed values from the
+same evidence — and each is committed with one keystroke that moves to the
+next. The pending section can instead be cut by counterparty (below). A unit
+appears once, with all its entries. Units decided entirely by own accounts and
+rules arrive confirmed once complete (`spec.md` §5.9), and appear only in the
+waiting bucket while a partner is still to come: a recurring unit leaves the
+queue for good once a rule decides it. A charge a rule decides as a transfer to
+a clearance account is complete at once, its counter-leg booked with it
+(`spec.md` §5.7), and never appears.
 
 **The navigation counts what can be done.** The Review item shows, beside its
 label, how many units are pending review or need an account — not those
@@ -38,6 +37,24 @@ the household's and not one view's. A filter that shows nothing says so and
 offers "Clear filters" (`ux/patterns.md` §11.6). The ledger's other dimensions
 are not offered: category, payee and tags are proposals that change under
 review, and the type and flags are what the sections already show.
+
+**Pending review is cut by date or by counterparty.** Beside the Account
+chip, a segmented control, "By date" or "By counterparty", chooses how the
+pending section is cut. It is in the address with the filter, "By date" where
+the address says nothing, and changing it fetches the queue again.
+
+By date, the section is cut by month and day (`patterns.md` §4.1). By
+counterparty, it is cut once: a band row per counterparty (`design.md` §5),
+with its number of units. The counterparty is the counterparty name of the
+anchor entry's source, compared ignoring case and repeated spaces, and
+labelled as its first unit spells it. A counterparty with one unit in the
+section, and a unit whose source names none, go to one last band, "Other".
+
+Bands are ordered by their count, largest first, then by name. Within a band,
+units are in booked date order, then by anchor entry id, and the date column
+is shown. The cut is the server's, so each page continues the last band or
+starts the next, and Load more only appends. The other two sections keep
+their cuts.
 
 **What the model has not yet answered says so.** A unit the model is still
 looking at is marked on each row the model has not yet answered, one quiet
@@ -67,9 +84,9 @@ so.
   (`spec.md` §5.7), grouped by the currency they need, a band row per currency
   with its add action; this and the waiting section's grouping by account are
   the queue's only defined groupings. Pending review is cut by month and day
-  as the ledger list is (`patterns.md` §4.1); the other two sections hold few
-  rows and are cut only by their currency or account, their rows keeping the
-  date column. A needs-an-account group reads:
+  as the ledger list is (`patterns.md` §4.1), or by counterparty (above); the
+  other two sections hold few rows and are cut only by their currency or
+  account, their rows keeping the date column. A needs-an-account group reads:
 
   ```
   3 transfers need an account in USD          [ Add account ]
@@ -110,10 +127,10 @@ that account as "booked from this charge", and which goes with the leg when
 the draft converts it or names another counter-account. Booking entries are
 never offered as partners.
 
-**Open for the first month.** Whether and how to group units by what they
-share (type, counter-account or payee, category, the evidence behind them),
-whether grouping is wanted beyond the three sections, and how it would be
-drawn: decided only after the queue has been used on real units.
+**Open for the first month.** Whether to group units by more than their
+counterparty (type, counter-account, category, the evidence behind them), and
+whether grouping is wanted beyond the three sections: decided only after the
+queue has been used on real units.
 
 **The panel offers a rule where a rule's value is changed.** Where the draft
 changes a value a rule set — a category, say — the panel offers "Create rule
