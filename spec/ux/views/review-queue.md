@@ -82,8 +82,9 @@ so.
   decision.
 - **Needs an account** — unmatched legs whose counter-account does not exist
   (`spec.md` §5.7), grouped by the currency they need, a band row per currency
-  with its add action; this and the waiting section's grouping by account are
-  the queue's only defined groupings. Pending review is cut by month and day
+  with its add action; this, the waiting section's grouping by account and
+  the pending section's cut by counterparty are the queue's only defined
+  groupings. Pending review is cut by month and day
   as the ledger list is (`patterns.md` §4.1), or by counterparty (above); the
   other two sections hold few rows and are cut only by their currency or
   account, their rows keeping the date column. A needs-an-account group reads:
