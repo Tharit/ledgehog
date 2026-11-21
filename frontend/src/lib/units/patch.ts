@@ -152,3 +152,10 @@ export function markOf(marks: Marks, id: number): string | undefined {
 		marks.consequence.get(id)
 	);
 }
+
+/** Rows a batch commit refused: marked as changed (the ochre bar), the reason as their tooltip. */
+export function markChanged(marks: Marks, ids: readonly number[], reason: string): Marks {
+	const consequence = new Map(marks.consequence);
+	for (const id of ids) consequence.set(id, reason);
+	return { ...marks, consequence };
+}

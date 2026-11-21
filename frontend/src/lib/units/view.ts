@@ -127,7 +127,7 @@ export type EntryView = {
 	removable: boolean;
 };
 
-const STORED_VALUE: Record<FieldName, (e: Entry) => FieldValue> = {
+export const STORED_VALUE: Record<FieldName, (e: Entry) => FieldValue> = {
 	type: (e) => e.type,
 	payee: (e) => e.payee_id,
 	category: (e) => e.category_id,

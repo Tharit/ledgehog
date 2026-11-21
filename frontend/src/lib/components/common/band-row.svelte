@@ -15,6 +15,7 @@
 		label,
 		count,
 		action,
+		leading,
 		children,
 		top,
 		class: className,
@@ -24,6 +25,8 @@
 		/** how many it holds, quiet beside the label, as a section title's count */
 		count?: string;
 		action?: Snippet;
+		/** a control before the label (a checkbox that ticks the band's rows) */
+		leading?: Snippet;
 		children?: Snippet;
 		/** a CSS length: stick this far from the top of the page */
 		top?: string;
@@ -44,6 +47,7 @@
 >
 	<div role="gridcell" class="flex flex-col gap-1 py-0.5">
 		<div class="flex min-h-6 flex-wrap items-center gap-3">
+			{@render leading?.()}
 			<span class="text-xs font-medium text-muted-foreground" data-slot="band-label"
 				>{label}{#if count !== undefined}<span class="font-normal" data-slot="band-count"
 						>{` (${count})`}</span

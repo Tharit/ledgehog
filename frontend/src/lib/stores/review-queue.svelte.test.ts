@@ -1,8 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, getQueue, listRules } from '#lib/api/index.js';
+import { ApiError, commitUnit, getQueue, getUnit, listRules, previewUnit } from '#lib/api/index.js';
 import { entry } from '#lib/ledger/fixtures.js';
 import { rule } from '#lib/rules/fixtures.js';
-import { queue, section, unit } from '#lib/units/fixtures.js';
+import {
+	apiError,
+	committed,
+	fieldOut,
+	preview,
+	queue,
+	section,
+	unit
+} from '#lib/units/fixtures.js';
 import { MARK_RESOLVED } from '#lib/units/patch.js';
 import { ReviewQueueStore } from './review-queue.svelte.js';
 import { ruleNames } from './rule-names.svelte.js';
@@ -10,7 +18,10 @@ import { ruleNames } from './rule-names.svelte.js';
 vi.mock('#lib/api/index.js', async (importOriginal) => ({
 	...(await importOriginal<typeof import('#lib/api/index.js')>()),
 	getQueue: vi.fn(),
-	listRules: vi.fn()
+	listRules: vi.fn(),
+	getUnit: vi.fn(),
+	previewUnit: vi.fn(),
+	commitUnit: vi.fn()
 }));
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -397,5 +408,246 @@ describe('ReviewQueueStore: what the panel does to it', () => {
 
 		expect(await store.source.loadMore!()).toBe(true);
 		expect(store.units.map((u) => u.anchor_entry_id)).toEqual([1, 2]);
+	});
+});
+
+describe('ReviewQueueStore: units committed as seen', () => {
+	const flow = (id: number, over = {}) =>
+		unit({
+			anchor_entry_id: id,
+			entries: [
+				entry({ id, unit_key: id, category_id: 10, review_flags: ['unconfirmed'], ...over })
+			]
+		});
+	const names = { locale: 'en', name: (_f: string, v: unknown) => String(v) };
+
+	async function loaded(units = [flow(1), flow(2), flow(3)], over = {}) {
+		vi.mocked(getQueue).mockResolvedValue({
+			...queue(),
+			sections: [
+				section('pending_review', units, over),
+				section('needs_account', []),
+				section('waiting', [])
+			],
+			total: units.length
+		});
+		const store = new ReviewQueueStore();
+		await store.load();
+		return store;
+	}
+	/** the server as it was: the unit as it is, its preview untouched, its commit confirming */
+	function serve() {
+		vi.mocked(getUnit).mockImplementation(async (id) => flow(id));
+		vi.mocked(previewUnit).mockImplementation(async (draft) =>
+			preview(flow(draft.anchor_entry_id))
+		);
+		vi.mocked(commitUnit).mockImplementation(async (draft) =>
+			committed(flow(draft.anchor_entry_id))
+		);
+	}
+
+	describe('eligibility', () => {
+		it('is a complete interpretation with no answer of the model to come', () => {
+			const store = new ReviewQueueStore();
+			expect(store.selectionReason(flow(1))).toBeNull();
+			expect(store.selectionReason(flow(1, { model_pending: true }))).toBe(
+				'The model is still looking'
+			);
+			expect(
+				store.selectionReason(flow(1, { category_id: null, review_flags: ['unclassified'] }))
+			).toBe('No category yet');
+			expect(
+				store.selectionReason({
+					...flow(1),
+					state: { confirmed: false, reasons: ['unpaired_transfer'] }
+				})
+			).toBe('Transfer not paired');
+			expect(
+				store.selectionReason({ ...flow(1), state: { confirmed: false, reasons: ['incomplete'] } })
+			).toBe('Not complete yet');
+		});
+
+		it('does not take a unit twice, nor one committed already', async () => {
+			const store = await loaded();
+			store.select([store.units[0]], true);
+			store.select([store.units[0]], true);
+			expect(store.selected.size).toBe(1);
+			store.patchAffected({ entries: store.units[1].entries, resolved: [2] });
+			expect(store.select([store.units[1]], true)).toBe('Already committed');
+			expect(store.selected.size).toBe(1);
+		});
+
+		it('ticks the units that can be and says why when none can', async () => {
+			const store = await loaded([flow(1), flow(2, { model_pending: true })]);
+			expect(store.select(store.units, true)).toBeNull();
+			expect([...store.selected.keys()]).toEqual([1]);
+			store.clearSelection();
+			expect(store.select([store.units[1]], true)).toBe('The model is still looking');
+		});
+	});
+
+	describe('the run', () => {
+		it('commits each ticked unit in drawn order as the panel would, and patches the rows', async () => {
+			serve();
+			const store = await loaded();
+			store.select(store.units, true);
+			await store.commitSelected(names);
+
+			expect(vi.mocked(commitUnit).mock.calls.map(([d]) => d.anchor_entry_id)).toEqual([1, 2, 3]);
+			// the panel's commit: the versions the preview named, no draft entry
+			expect(vi.mocked(commitUnit).mock.calls[0][0]).toMatchObject({
+				anchor_entry_id: 1,
+				entries: [],
+				versions: { 1: 1 }
+			});
+			expect([...store.marks.resolved.keys()]).toEqual([1, 2, 3]);
+			expect([...store.marks.confirmed.keys()]).toEqual([1, 2, 3]);
+			expect(store.selected.size).toBe(0);
+			expect(store.progress).toBeNull();
+			expect(store.notice).toBe('3 committed');
+		});
+
+		it('does not commit a unit whose value moved since its row showed it, and says which', async () => {
+			serve();
+			vi.mocked(previewUnit).mockImplementation(async (draft) => {
+				const u = flow(draft.anchor_entry_id);
+				const answer = preview(u);
+				if (u.anchor_entry_id === 2) answer.rows[0].fields.category = fieldOut(11);
+				return answer;
+			});
+			const store = await loaded();
+			store.select(store.units, true);
+			await store.commitSelected(names);
+
+			expect(vi.mocked(commitUnit).mock.calls.map(([d]) => d.anchor_entry_id)).toEqual([1, 3]);
+			expect(store.marks.consequence.get(2)).toBe('Changed since you saw it: category is now 11');
+			expect(store.marks.resolved.has(2)).toBe(false);
+			expect(store.selected.size).toBe(0);
+			expect(store.notice).toBe('2 committed · 1 not committed');
+		});
+
+		it('does not commit a unit whose description moved', async () => {
+			serve();
+			vi.mocked(previewUnit).mockImplementation(async (draft) => {
+				const answer = preview(flow(draft.anchor_entry_id));
+				answer.rows[0].description = 'Something else';
+				return answer;
+			});
+			const store = await loaded([flow(1)]);
+			store.select(store.units, true);
+			await store.commitSelected(names);
+			expect(commitUnit).not.toHaveBeenCalled();
+			expect(store.marks.consequence.get(1)).toBe(
+				'Changed since you saw it: description is now Something else'
+			);
+		});
+
+		it('commits when only the basis moved ("2 of 2" where the row said "1 of 1")', async () => {
+			serve();
+			vi.mocked(previewUnit).mockImplementation(async (draft) => {
+				const answer = preview(flow(draft.anchor_entry_id));
+				answer.rows[0].fields.category = fieldOut(10, {
+					pass: 'history',
+					basis: { agree: 2, of: 2, since: '2026-03-14' }
+				});
+				return answer;
+			});
+			const store = await loaded([flow(1)]);
+			store.select(store.units, true);
+			await store.commitSelected(names);
+			expect(commitUnit).toHaveBeenCalledTimes(1);
+			expect(store.notice).toBe('1 committed');
+		});
+
+		it('reports a refusal of the server and goes on with the rest', async () => {
+			serve();
+			vi.mocked(commitUnit).mockImplementation(async (draft) => {
+				if (draft.anchor_entry_id === 1) throw apiError(409, 'conflict');
+				return committed(flow(draft.anchor_entry_id));
+			});
+			const store = await loaded([flow(1), flow(2)]);
+			store.select(store.units, true);
+			await store.commitSelected(names);
+
+			expect(commitUnit).toHaveBeenCalledTimes(2);
+			expect(store.marks.consequence.get(1)).toBe('The unit changed meanwhile.');
+			expect(store.marks.resolved.has(2)).toBe(true);
+			expect(store.notice).toBe('1 committed · 1 not committed');
+		});
+
+		it('names a refused commit by its problem', async () => {
+			serve();
+			vi.mocked(previewUnit).mockImplementation(async (draft) => ({
+				...preview(flow(draft.anchor_entry_id)),
+				problems: [
+					{ code: 'a', entry_id: null, field: null, detail: {}, suggested_split: null },
+					{ code: 'b', entry_id: null, field: null, detail: {}, suggested_split: null }
+				]
+			}));
+			const store = await loaded([flow(1)]);
+			store.select(store.units, true);
+			await store.commitSelected(names);
+			expect(commitUnit).not.toHaveBeenCalled();
+			expect(store.marks.consequence.get(1)).toBe('2 problems to resolve.');
+		});
+
+		it('says how far it is, and starts no second run', async () => {
+			serve();
+			let release!: () => void;
+			vi.mocked(commitUnit).mockImplementationOnce(async (draft) => {
+				await new Promise<void>((resolve) => (release = resolve));
+				return committed(flow(draft.anchor_entry_id));
+			});
+			const store = await loaded([flow(1), flow(2)]);
+			store.select(store.units, true);
+			const run = store.commitSelected(names);
+			await vi.waitFor(() => expect(store.progress).toEqual({ done: 0, total: 2 }));
+			await store.commitSelected(names);
+			expect(getUnit).toHaveBeenCalledTimes(1);
+			release();
+			await run;
+			expect(commitUnit).toHaveBeenCalledTimes(2);
+		});
+
+		it('is void once the queue is loaded again', async () => {
+			serve();
+			let release!: () => void;
+			vi.mocked(commitUnit).mockImplementationOnce(async (draft) => {
+				await new Promise<void>((resolve) => (release = resolve));
+				return committed(flow(draft.anchor_entry_id));
+			});
+			const store = await loaded([flow(1), flow(2)]);
+			store.select(store.units, true);
+			const run = store.commitSelected(names);
+			await vi.waitFor(() => expect(release).toBeDefined());
+			await store.load();
+			release();
+			await run;
+			expect(commitUnit).toHaveBeenCalledTimes(1);
+			expect(store.notice).toBeNull();
+		});
+	});
+
+	describe('the ticks', () => {
+		it('are cleared by a refresh and a change of cut, and kept by Load more', async () => {
+			const store = await loaded([flow(1), flow(2)], { total: 3, next_cursor: 'c1' });
+			store.select([store.units[0]], true);
+			vi.mocked(getQueue).mockResolvedValue({
+				...queue(),
+				sections: [
+					section('pending_review', [flow(3)]),
+					section('needs_account', []),
+					section('waiting', [])
+				]
+			});
+			await store.loadMore('pending_review');
+			expect([...store.selected.keys()]).toEqual([1]);
+
+			await store.applyView([], 'counterparty');
+			expect(store.selected.size).toBe(0);
+			store.select([store.units[0]], true);
+			await store.load();
+			expect(store.selected.size).toBe(0);
+		});
 	});
 });

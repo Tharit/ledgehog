@@ -4,7 +4,7 @@ import { account, category, entry, payee } from '#lib/ledger/fixtures.js';
 import { buildLookups } from '#lib/ledger/lookups.js';
 import { changes } from '#lib/stores/changes.svelte.js';
 import { ReviewQueueStore } from '#lib/stores/review-queue.svelte.js';
-import { apiError, queue, section, unit } from '#lib/units/fixtures.js';
+import { apiError, committed, preview, queue, section, unit } from '#lib/units/fixtures.js';
 import { unitPanel } from '#lib/units/panel-instance.js';
 import { activeUnitSource } from '#lib/units/sources.js';
 import { accounts as accountDialog } from '#lib/accounts/controller.svelte.js';
@@ -13,7 +13,10 @@ import ReviewQueue from './review-queue.svelte';
 // components never import the API, not even in tests: the mocks come from here
 const api = vi.hoisted(() => ({
 	getQueue: vi.fn(),
-	listRules: vi.fn()
+	listRules: vi.fn(),
+	getUnit: vi.fn(),
+	previewUnit: vi.fn(),
+	commitUnit: vi.fn()
 }));
 vi.mock('#lib/api/index.js', async (importOriginal) => ({
 	...(await importOriginal<typeof import('#lib/api/index.js')>()),
@@ -899,5 +902,182 @@ describe('ReviewQueue cut by counterparty', () => {
 		await key('Enter');
 
 		expect(unitPanel.open).toHaveBeenCalledWith(2, expect.anything());
+	});
+});
+
+describe('ReviewQueue: units committed as seen', () => {
+	const boxes = () => screen.getAllByRole('checkbox') as HTMLInputElement[];
+	const unitBox = (anchor: number) =>
+		document.querySelector<HTMLInputElement>(`[data-unit="${anchor}"] input[type="checkbox"]`);
+
+	const TEXTS: Record<number, string> = { 1: 'REWE', 2: 'Edeka' };
+	function serve() {
+		const same = (id: number) => flow(id, TEXTS[id]);
+		api.getUnit.mockImplementation(async (id: number) => same(id));
+		api.previewUnit.mockImplementation(async (d: { anchor_entry_id: number }) =>
+			preview(same(d.anchor_entry_id))
+		);
+		api.commitUnit.mockImplementation(async (d: { anchor_entry_id: number }) =>
+			committed(same(d.anchor_entry_id))
+		);
+	}
+
+	it("has a checkbox column in the pending section only, on a unit's first row", async () => {
+		await shown({
+			pending_review: [
+				flow(1, 'REWE'),
+				unit({
+					anchor_entry_id: 2,
+					entries: [entry({ id: 2, unit_key: 2 }), entry({ id: 3, unit_key: 2 })]
+				})
+			],
+			waiting: [flow(5, 'Edeka')]
+		});
+		expect(boxes()).toHaveLength(2);
+		expect(unitBox(2)!.closest('[role="row"]')).toHaveAttribute('data-entry-id', '2');
+		expect(
+			document.querySelectorAll('[data-section="waiting"] input[type="checkbox"]')
+		).toHaveLength(0);
+		expect(
+			document.querySelectorAll('[data-section="pending_review"] [data-col="select"]')
+		).toHaveLength(
+			4 // the header and the three rows
+		);
+	});
+
+	it('disables a checkbox where a commit would not confirm, with the reason as tooltip', async () => {
+		await shown({
+			pending_review: [
+				flow(1, 'REWE', { model_pending: true }),
+				flow(2, 'Edeka', { category_id: null, review_flags: ['unclassified'] }),
+				flow(3, 'Aldi')
+			]
+		});
+		expect(unitBox(1)).toBeDisabled();
+		expect(unitBox(1)!.parentElement).toHaveAttribute('title', 'The model is still looking');
+		expect(unitBox(2)).toBeDisabled();
+		expect(unitBox(2)!.parentElement).toHaveAttribute('title', 'No category yet');
+		expect(unitBox(3)).toBeEnabled();
+	});
+
+	it('ticks with the checkbox without opening the panel, and shows the footer with the count', async () => {
+		await shown({ pending_review: [flow(1, 'REWE'), flow(2, 'Edeka')] });
+		expect(document.querySelector('[data-slot="selection-footer"]')).toBeNull();
+
+		await fireEvent.click(unitBox(1)!);
+		expect(unitPanel.open).not.toHaveBeenCalled();
+		const footer = document.querySelector<HTMLElement>('[data-slot="selection-footer"]')!;
+		expect(footer).toHaveTextContent('1 unit selected');
+		await fireEvent.click(unitBox(2)!);
+		expect(footer).toHaveTextContent('2 units selected');
+
+		await fireEvent.click(within(footer).getByRole('button', { name: 'Clear' }));
+		expect(document.querySelector('[data-slot="selection-footer"]')).toBeNull();
+		expect(unitBox(1)!.checked).toBe(false);
+	});
+
+	it('ticks and clears the unit under the cursor with x, and says why it cannot', async () => {
+		const store = await shown({
+			pending_review: [flow(1, 'REWE'), flow(2, 'Edeka', { model_pending: true })]
+		});
+		await key('j');
+		await key('x');
+		expect(unitBox(1)!.checked).toBe(true);
+		await key('x');
+		expect(unitBox(1)!.checked).toBe(false);
+
+		await key('j');
+		await key('x');
+		expect(store.selected.size).toBe(0);
+		expect(store.notice).toBe('The model is still looking');
+	});
+
+	it('has a tri-state checkbox on a counterparty band, none on a day band', async () => {
+		const cp = (id: number, key: string) => ({ ...flow(id, `u${id}`), counterparty_key: key });
+		const store = await shown(
+			{
+				pending_review: [
+					cp(1, 'rewe'),
+					cp(2, 'rewe'),
+					{ ...flow(3, 'u3', { model_pending: true }), counterparty_key: 'rewe' }
+				]
+			},
+			{}
+		);
+		expect(document.querySelectorAll('[data-month] input, [data-day] input')).toHaveLength(3);
+		await store.applyView([], 'counterparty');
+		await waitFor(() => expect(document.querySelector('[data-counterparty]')).not.toBeNull());
+		const band = document.querySelector<HTMLInputElement>(
+			'[data-counterparty="rewe"] [role="row"] input'
+		)!;
+		expect(band.checked).toBe(false);
+
+		await fireEvent.click(unitBox(1)!);
+		await waitFor(() => expect(band.indeterminate).toBe(true));
+
+		await fireEvent.click(band); // ticks the enabled units of the band, not the model's
+		expect([...store.selected.keys()].sort()).toEqual([1, 2]);
+		await waitFor(() => expect(band.checked).toBe(true));
+		expect(band.indeterminate).toBe(false);
+
+		await fireEvent.click(band);
+		expect(store.selected.size).toBe(0);
+	});
+
+	it('commits the ticked units on Ctrl/⌘ + Enter with the panel closed, and says how it went', async () => {
+		serve();
+		const store = await shown({ pending_review: [flow(1, 'REWE'), flow(2, 'Edeka')] });
+		await key('x'); // nothing under the cursor yet
+		await fireEvent.click(unitBox(1)!);
+		await fireEvent.click(unitBox(2)!);
+
+		await fireEvent.keyDown(document.body, { key: 'Enter', ctrlKey: true });
+		await waitFor(() => expect(store.notice).toBe('2 committed'));
+		expect(api.commitUnit).toHaveBeenCalledTimes(2);
+		expect(unitPanel.open).not.toHaveBeenCalled();
+		expect(document.querySelector('[data-slot="selection-footer"]')).toBeNull();
+		expect(document.querySelector('[data-entry-id="1"]')).toHaveAttribute('data-resolved');
+	});
+
+	it('commits with the footer button too', async () => {
+		serve();
+		const store = await shown({ pending_review: [flow(1, 'REWE')] });
+		await fireEvent.click(unitBox(1)!);
+		await fireEvent.click(screen.getByRole('button', { name: 'Commit' }));
+		await waitFor(() => expect(store.notice).toBe('1 committed'));
+	});
+
+	it('leaves Ctrl/⌘ + Enter to the panel while it is open', async () => {
+		serve();
+		const store = await shown({ pending_review: [flow(1, 'REWE')] });
+		await fireEvent.click(unitBox(1)!);
+		(unitPanel as unknown as { isOpen: boolean }).isOpen = true;
+		try {
+			await fireEvent.keyDown(document.body, { key: 'Enter', metaKey: true });
+			expect(api.commitUnit).not.toHaveBeenCalled();
+			expect(store.selected.size).toBe(1);
+		} finally {
+			(unitPanel as unknown as { isOpen: boolean }).isOpen = false;
+		}
+	});
+
+	it('marks a unit that changed, with the reason, and leaves it unticked', async () => {
+		serve();
+		api.previewUnit.mockImplementation(async (d: { anchor_entry_id: number }) => {
+			const answer = preview(flow(d.anchor_entry_id, TEXTS[d.anchor_entry_id]));
+			answer.rows[0].description = 'Changed text';
+			return answer;
+		});
+		const store = await shown({ pending_review: [flow(1, 'REWE')] });
+		await fireEvent.click(unitBox(1)!);
+		await fireEvent.keyDown(document.body, { key: 'Enter', ctrlKey: true });
+		await waitFor(() => expect(store.notice).toBe('0 committed · 1 not committed'));
+		const row = document.querySelector('[data-entry-id="1"]')!;
+		expect(row).toHaveAttribute('data-changed');
+		expect(row).toHaveAttribute(
+			'title',
+			'Changed since you saw it: description is now Changed text'
+		);
+		expect(unitBox(1)!.checked).toBe(false);
 	});
 });

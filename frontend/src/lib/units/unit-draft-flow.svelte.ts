@@ -28,6 +28,7 @@ import {
 	suggestedSplitOf,
 	type ProblemText
 } from './problems.js';
+import { commitRequest, previewRequest } from './commit-request.js';
 import { proposedOffer } from './transfer.js';
 import { effectiveChanged } from './view.js';
 import type {
@@ -647,7 +648,7 @@ export class UnitDraftFlow {
 		const windowDays = this.#window;
 		// a widened window serves one request, unless a pick stands that was offered in it
 		if (!draft.hasPick) this.#window = null;
-		previewUnit(draft.toRequest(), controller.signal, windowDays).then(
+		previewUnit(previewRequest(draft), controller.signal, windowDays).then(
 			(preview) => {
 				if (generation !== this.#generation) return; // a newer request owns the screen
 				// the entries of the unit the preview holds: the draft knows them from now on
@@ -725,7 +726,7 @@ export class UnitDraftFlow {
 		const draft = this.draft;
 		const preview = this.preview;
 		if (!draft || !preview || this.commitReason !== null) return;
-		const request = draft.toRequest(preview.versions);
+		const request = commitRequest(draft, preview);
 		this.committing = true;
 		this.notice = null;
 		let out: UnitCommit;
@@ -894,7 +895,7 @@ function omitKey<V>(record: Readonly<Record<number, V>>, id: number): Record<num
 	return copy;
 }
 
-function problemsOf(error: ApiError): UnitProblem[] {
+export function problemsOf(error: ApiError): UnitProblem[] {
 	const details = error.details as { problems?: unknown } | null;
 	return Array.isArray(details?.problems) ? (details.problems as UnitProblem[]) : [];
 }

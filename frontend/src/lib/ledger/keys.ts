@@ -1,8 +1,8 @@
 // The ledger list's keyboard model (patterns §5), as pure functions so it can be tested without
-// a DOM. The cursor is the selection; there is no multi-select.
+// a DOM. The cursor is the selection; the one exception is the review queue's `x` (tick a unit to commit it as seen).
 
 export type LedgerKey =
-	'up' | 'down' | 'open' | 'escape' | 'search' | 'help' | 'tag' | 'provenance';
+	'up' | 'down' | 'open' | 'escape' | 'search' | 'help' | 'tag' | 'provenance' | 'select';
 
 type KeyEventLike = {
 	key: string;
@@ -17,7 +17,7 @@ type KeyEventLike = {
 const OWNS_KEYS =
 	'input, textarea, select, [contenteditable], [role="dialog"], [data-slot="popover-content"]';
 
-function inFieldOrPanel(target: EventTarget | null | undefined): boolean {
+export function inFieldOrPanel(target: EventTarget | null | undefined): boolean {
 	return (
 		typeof Element !== 'undefined' &&
 		target instanceof Element &&
@@ -48,6 +48,8 @@ export function ledgerKey(event: KeyEventLike): LedgerKey | null {
 			return 'tag';
 		case 'p':
 			return 'provenance';
+		case 'x':
+			return 'select';
 		default:
 			return null;
 	}

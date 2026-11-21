@@ -4,6 +4,7 @@
 </script>
 
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import SplitIcon from '@lucide/svelte/icons/split';
 	import AbsentValue from '#lib/components/common/absent-value.svelte';
@@ -45,6 +46,7 @@
 		unitCursor = false,
 		unitTotal = null,
 		modelPending = false,
+		select,
 		onselect,
 		onopen,
 		ontags
@@ -74,6 +76,8 @@
 		unitTotal?: Money | null;
 		/** the model is still looking at this row's unit: a quiet mark in the badge slot */
 		modelPending?: boolean;
+		/** the content of the select column (a checkbox), on the first row of a unit; others leave it empty */
+		select?: Snippet;
 		onselect?: () => void;
 		/** a click on the row (not on its tags): open the unit panel */
 		onopen?: () => void;
@@ -151,7 +155,7 @@
 	onclick={(event) => {
 		onselect?.();
 		// the tags have their own click (the mouse path for `t`)
-		if (!(event.target instanceof Element && event.target.closest('button'))) onopen?.();
+		if (!(event.target instanceof Element && event.target.closest('button, input'))) onopen?.();
 	}}
 >
 	{#if changed}
@@ -165,7 +169,11 @@
 	{/if}
 
 	{#each columns as column (column.id)}
-		{#if column.id === 'date'}
+		{#if column.id === 'select'}
+			<div role="gridcell" data-col="select" class="flex min-w-0 items-center">
+				{@render select?.()}
+			</div>
+		{:else if column.id === 'date'}
 			<div role="gridcell" data-col="date" class="min-w-0 truncate">
 				<DateDisplay date={entry.booked_on} {locale} />
 			</div>

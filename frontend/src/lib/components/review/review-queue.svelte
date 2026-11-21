@@ -45,6 +45,8 @@
 		COLUMNS,
 		LEDGER_COLUMNS,
 		MEASURABLE,
+		QUEUE_COLUMNS,
+		SELECT_COLUMN,
 		ROW_GRID,
 		columnHeader,
 		gridTemplate
@@ -59,7 +61,7 @@
 		todayIso
 	} from '#lib/format/index.js';
 	import { byMonthAndDay, cutBy, type Cut } from '#lib/ledger/cuts.js';
-	import { ledgerKey, moveCursor } from '#lib/ledger/keys.js';
+	import { inFieldOrPanel, ledgerKey, moveCursor } from '#lib/ledger/keys.js';
 	import { UNIT_FRAME, unitTotal } from '#lib/ledger/unit-runs.js';
 	import type { Lookups } from '#lib/ledger/lookups.js';
 	import type { ReviewQueueStore } from '#lib/stores/review-queue.svelte.js';
@@ -75,6 +77,7 @@
 		unitsOfGroup,
 		waitingReason
 	} from '#lib/units/queue.js';
+	import type { FieldValue } from '#lib/units/draft.js';
 	import type { CounterpartyGroup, QueueAccountGroup, QueueGroup, Unit } from '#lib/units/types.js';
 	import { cn } from '#lib/utils.js';
 	import type { Column } from '#lib/components/ledger/columns.js';
@@ -112,6 +115,8 @@
 			items: [
 				{ keys: '↑ ↓ / k j', description: 'Move the cursor over units' },
 				{ keys: 'Enter', description: 'Open the unit for review' },
+				{ keys: 'x', description: 'Tick or clear the unit, to commit it as seen' },
+				{ keys: 'Ctrl/⌘ + Enter', description: 'Commit the ticked units (panel closed)' },
 				{ keys: 'Esc', description: 'Close this help, leave a field' },
 				{ keys: '?', description: 'Show or hide this help' }
 			]
@@ -127,7 +132,7 @@
 	// of widths: the allocation is made over all the columns, and the pending section (no date
 	// column, its day rows carry the date) takes the same tracks without the date's, the description
 	// taking its room. So the columns the sections have in common are equally wide in every card.
-	const sizer = new ColumnSizer(() => COLUMNS);
+	const sizer = new ColumnSizer(() => QUEUE_COLUMNS);
 	const templateOf = (kind: SectionKind) => {
 		const columns = columnsOf(kind);
 		return (
@@ -137,8 +142,11 @@
 	// the pending section has no date column where it is cut by day (the day rows carry the date);
 	// cut by counterparty it has one, as the other two sections do
 	const byCounterparty = $derived(store.cut === 'counterparty');
+	// and a narrow first column of checkboxes, the pending section's alone
 	const columnsOf = (kind: SectionKind) =>
-		kind === 'pending_review' && !byCounterparty ? LEDGER_COLUMNS : COLUMNS;
+		kind === 'pending_review'
+			? [SELECT_COLUMN, ...(byCounterparty ? COLUMNS : LEDGER_COLUMNS)]
+			: COLUMNS;
 	// measure again when the rows held change (load more, filter, refresh, patch) or the amounts'
 	// currency is written out
 	$effect(() => {
@@ -269,7 +277,56 @@
 		unitPanel.open(unit.anchor_entry_id, container);
 	}
 
+	// ---- committing units as seen (views/review-queue.md) ----
+	const pendingUnits = $derived(
+		store.sections.find((s) => s.kind === 'pending_review')?.units ?? []
+	);
+	const selectedCount = $derived(store.selected.size);
+	const running = $derived(store.progress !== null);
+
+	/** words a changed value: a category's name rather than its id */
+	function valueName(field: string, value: FieldValue): string {
+		if (value === null || value === '') return 'empty';
+		if (field === 'category')
+			return lookups.categories.get(Number(value))?.name ?? `Category ${value}`;
+		if (field === 'payee') return lookups.payees.get(Number(value))?.name ?? `Payee ${value}`;
+		if (field === 'counter_account')
+			return lookups.accounts.get(Number(value))?.name ?? `Account ${value}`;
+		return String(value);
+	}
+	const commitSelected = () => store.commitSelected({ locale, name: valueName });
+
+	function tick(unit: Unit) {
+		cursorId = unit.anchor_entry_id;
+		const reason = store.toggle(unit);
+		if (reason !== null) store.notice = reason;
+	}
+
+	// a band ticks (or clears) the units it holds that can be ticked
+	function bandState(items: readonly Unit[]) {
+		const enabled = items.filter((u) => store.selectionReason(u) === null);
+		const ticked = enabled.filter((u) => store.selected.has(u.anchor_entry_id)).length;
+		return {
+			enabled,
+			disabled: enabled.length === 0,
+			checked: enabled.length > 0 && ticked === enabled.length,
+			mixed: ticked > 0 && ticked < enabled.length
+		};
+	}
+
 	function onkeydown(event: KeyboardEvent) {
+		if (
+			event.key === 'Enter' &&
+			(event.ctrlKey || event.metaKey) &&
+			!event.defaultPrevented &&
+			!unitPanel.isOpen &&
+			selectedCount > 0 &&
+			!inFieldOrPanel(event.target)
+		) {
+			event.preventDefault();
+			void commitSelected();
+			return;
+		}
 		const action = ledgerKey(event);
 		if (action === null) return;
 		switch (action) {
@@ -282,6 +339,12 @@
 				if (cursorIndex >= 0) {
 					event.preventDefault();
 					openUnit(units[cursorIndex]);
+				}
+				break;
+			case 'select':
+				if (cursorIndex >= 0 && pendingUnits.includes(units[cursorIndex])) {
+					event.preventDefault();
+					tick(units[cursorIndex]);
 				}
 				break;
 			case 'escape':
@@ -309,14 +372,57 @@
 
 <svelte:window {onkeydown} />
 
+{#snippet checkbox(unit: Unit)}
+	{@const reason = store.selectionReason(unit)}
+	<!-- a click here ticks, it does not open the panel -->
+	<!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
+	<span
+		class="inline-flex"
+		title={reason ?? undefined}
+		onclick={(event) => event.stopPropagation()}
+	>
+		<input
+			type="checkbox"
+			class="size-4 accent-primary disabled:opacity-40"
+			aria-label={`Select ${unit.entries[0].display_description?.text ?? 'unit'}`}
+			checked={store.selected.has(unit.anchor_entry_id)}
+			disabled={reason !== null}
+			onchange={(event) => {
+				tick(unit);
+				event.currentTarget.blur(); // the keys of the list work again
+			}}
+		/>
+	</span>
+{/snippet}
+
+{#snippet bandBox(label: string, items: readonly Unit[])}
+	{@const state = bandState(items)}
+	<input
+		type="checkbox"
+		class="size-4 accent-primary disabled:opacity-40"
+		aria-label={`Select ${label}`}
+		checked={state.checked}
+		disabled={state.disabled}
+		title={state.disabled ? 'No unit here can be ticked yet' : undefined}
+		{@attach (el: HTMLInputElement) => {
+			el.indeterminate = state.mixed;
+		}}
+		onchange={(event) => {
+			store.select(state.checked ? items : state.enabled, !state.checked);
+			event.currentTarget.blur();
+		}}
+	/>
+{/snippet}
+
 {#snippet unitBlock(unit: Unit, columns: readonly Column[], template: string)}
 	<div
 		role="rowgroup"
 		data-unit={unit.anchor_entry_id}
 		class={unit.entries.length > 1 ? UNIT_FRAME : undefined}
 	>
-		{#each unit.entries as entry (entry.id)}
+		{#each unit.entries as entry, at (entry.id)}
 			{@const mark = markOf(store.marks, entry.id)}
+			{#snippet selectCell()}{@render checkbox(unit)}{/snippet}
 			{@const total = unitTotal(unit.entries)}
 			<EntryRow
 				joined={unit.entries.length > 1}
@@ -333,6 +439,7 @@
 				changedTitle={mark}
 				resolved={store.marks.resolved.has(entry.id)}
 				confirmed={store.marks.confirmed.has(entry.id)}
+				select={at === 0 && columns.includes(SELECT_COLUMN) ? selectCell : undefined}
 				onselect={() => (cursorId = unit.anchor_entry_id)}
 				onopen={() => openUnit(unit)}
 				ontags={() => openUnit(unit)}
@@ -438,7 +545,9 @@
 								{#each counterpartyBands(section.units, section.counterpartyGroups) as band, at (`${band.key}#${at}`)}
 									<!-- the band's rows in their own element: it ends the band's sticking -->
 									<div role="presentation" data-counterparty={band.key}>
-										<BandRow label={band.label} count={band.count} top={HEADER_TOP} />
+										<BandRow label={band.label} count={band.count} top={HEADER_TOP}>
+											{#snippet leading()}{@render bandBox(band.label, band.items)}{/snippet}
+										</BandRow>
 										{#each band.items as unit (unit.anchor_entry_id)}
 											{@render unitBlock(unit, columns, template)}
 										{/each}
@@ -512,6 +621,34 @@
 								{/each}
 							{/if}
 						</div>
+						{#if section.kind === 'pending_review' && selectedCount > 0}
+							<div
+								class="sticky bottom-0 z-20 flex flex-wrap items-center gap-3 border-t border-border bg-card px-3 py-2 text-sm"
+								data-slot="selection-footer"
+							>
+								<span role="status">
+									{#if store.progress}
+										Committing {Math.min(store.progress.done + 1, store.progress.total)} of {store
+											.progress.total}…
+									{:else}
+										{formatCount(selectedCount, locale)}
+										{selectedCount === 1 ? 'unit' : 'units'} selected
+									{/if}
+								</span>
+								<div class="ml-auto flex items-center gap-2">
+									<ActionButton busy={running} busyLabel="Committing…" onclick={commitSelected}>
+										Commit
+									</ActionButton>
+									<ActionButton
+										variant="ghost"
+										disabled={running}
+										onclick={() => store.clearSelection()}
+									>
+										Clear
+									</ActionButton>
+								</div>
+							</div>
+						{/if}
 					{/if}
 				</Card>
 				{#if store.status !== 'loading' && section.units.length > 0}

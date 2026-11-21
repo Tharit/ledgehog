@@ -8,7 +8,7 @@ import { amountHeader } from '#lib/format/index.js';
 import type { SizingColumn } from '#lib/ledger/column-sizing.js';
 
 export type ColumnId =
-	'date' | 'account' | 'category' | 'payee' | 'description' | 'review' | 'amount';
+	'select' | 'date' | 'account' | 'category' | 'payee' | 'description' | 'review' | 'amount';
 
 /**
  * How a column is sized from what its cells hold: `fit` takes its widest cell and never shrinks
@@ -56,6 +56,22 @@ export const COLUMNS: readonly Column[] = [
 	{ id: 'review', header: 'Review', hiddenHeader: true, width: '4.5rem', size: { kind: 'fit' } },
 	{ id: 'amount', header: 'Amount', width: '7rem', align: 'right', size: { kind: 'fit' } }
 ];
+
+/**
+ * The review queue's pending section has a narrow first column of checkboxes, without a header
+ * (views/review-queue.md): the sizer allocates over all of them, so the columns the other sections
+ * share with it stay equally wide.
+ */
+export const SELECT_COLUMN: Column = {
+	id: 'select',
+	header: 'Select',
+	hiddenHeader: true,
+	width: '1rem',
+	size: { kind: 'fit' }
+};
+
+/** every column the review queue's sections draw, for the one sizer they share */
+export const QUEUE_COLUMNS: readonly Column[] = [SELECT_COLUMN, ...COLUMNS];
 
 /** The ledger list's columns: its day rows carry the date (patterns §4.1), so no date column. */
 export const LEDGER_COLUMNS: readonly Column[] = COLUMNS.filter((c) => c.id !== 'date');

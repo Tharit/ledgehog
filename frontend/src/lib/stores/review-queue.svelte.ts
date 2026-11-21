@@ -5,7 +5,10 @@
 // Page-scoped: the page creates one and drops it. No domain computation here.
 
 import { ApiError, getQueue } from '#lib/api/index.js';
-import { clearMarks, applyAffected, noMarks, type Marks } from '#lib/units/patch.js';
+import { clearMarks, applyAffected, markChanged, noMarks, type Marks } from '#lib/units/patch.js';
+import { commitAsSeen, type SeenOptions } from '#lib/units/commit-seen.js';
+import { selectionReason } from '#lib/units/selection.js';
+import { affectedOf } from '#lib/units/unit-draft-flow.svelte.js';
 import { NewDataWatch } from './new-data.svelte.js';
 import { ruleNames } from './rule-names.svelte.js';
 import type { StepDirection, UnitSource } from '#lib/units/sources.js';
@@ -46,6 +49,11 @@ export type SectionState = {
 	loadingMore: boolean;
 	moreError: ApiError | null;
 };
+
+/** The ticks are an immutable snapshot, replaced whole (`$state.raw`): a plain Map is what is meant. */
+function copyOf<K, V>(from?: ReadonlyMap<K, V>): Map<K, V> {
+	return new Map(from);
+}
 
 function asApiError(error: unknown): ApiError {
 	return error instanceof ApiError
@@ -113,6 +121,92 @@ export class ReviewQueueStore {
 		return this.load();
 	}
 
+	/**
+	 * The units ticked for "commit as seen" (views/review-queue.md), by anchor id, each as its rows
+	 * showed it when ticked: what a commit is compared with. Cleared by every load; a page of Load
+	 * more keeps it.
+	 */
+	selected = $state.raw<ReadonlyMap<number, Unit>>(copyOf());
+	/** a run of commits is under way: how far it is */
+	progress = $state.raw<{ done: number; total: number } | null>(null);
+
+	/** Why this unit cannot be ticked, or null where a commit would confirm what its row shows. */
+	selectionReason(unit: Unit): string | null {
+		return selectionReason(
+			unit,
+			unit.entries.some((e) => this.marks.resolved.has(e.id))
+		);
+	}
+
+	/** Tick (`on`) or clear the units that can be; the reason of the first that cannot, if all of them could not. */
+	select(units: readonly Unit[], on: boolean): string | null {
+		const next = copyOf(this.selected);
+		let reason: string | null = null;
+		let changed = false;
+		for (const unit of units) {
+			if (on) {
+				const why = this.selectionReason(unit);
+				if (why !== null) reason ??= why;
+				else if (!next.has(unit.anchor_entry_id)) {
+					next.set(unit.anchor_entry_id, unit);
+					changed = true;
+				}
+			} else if (next.delete(unit.anchor_entry_id)) changed = true;
+		}
+		if (changed) this.selected = next;
+		return changed ? null : reason;
+	}
+
+	/** Tick the unit, or clear it when ticked; the reason where it cannot be ticked. */
+	toggle(unit: Unit): string | null {
+		return this.select([unit], !this.selected.has(unit.anchor_entry_id));
+	}
+
+	clearSelection(): void {
+		if (this.selected.size > 0) this.selected = copyOf();
+	}
+
+	/**
+	 * Commit the ticked units one after the other, each as the panel would, in the order drawn: each
+	 * is read and previewed anew and committed only if its values are those its row showed. Not a
+	 * transaction: a unit that changed or is refused is cleared, marked with the reason and counted,
+	 * and the rest go on. What each commit touched patches the rows at once.
+	 */
+	async commitSelected(options: SeenOptions): Promise<void> {
+		if (this.progress !== null) return;
+		const run = this.units.filter((u) => this.selected.has(u.anchor_entry_id));
+		if (run.length === 0) return;
+		const generation = this.#generation;
+		this.notice = null;
+		let committed = 0;
+		let refused = 0;
+		for (const [at, unit] of run.entries()) {
+			if (generation !== this.#generation) return; // the queue was loaded again: the run is void
+			this.progress = { done: at, total: run.length };
+			const seen = this.selected.get(unit.anchor_entry_id);
+			if (!seen) continue; // cleared meanwhile
+			const result = await commitAsSeen(seen, options);
+			if (generation !== this.#generation) return;
+			if (result.ok) {
+				committed++;
+				this.patchAffected(affectedOf(result.out, unit.anchor_entry_id));
+			} else {
+				refused++;
+				this.marks = markChanged(
+					this.marks,
+					seen.entries.map((e) => e.id),
+					result.reason
+				);
+			}
+			this.select([seen], false);
+		}
+		this.progress = null;
+		this.notice =
+			refused === 0
+				? `${committed} committed`
+				: `${committed} committed · ${refused} not committed`;
+	}
+
 	/** the unit (anchor id) the panel shows: the page puts its cursor there */
 	revealed = $state<number | null>(null);
 
@@ -171,6 +265,9 @@ export class ReviewQueueStore {
 		const generation = ++this.#generation;
 		this.status = 'loading';
 		this.error = null;
+		// a refresh, a filter or a cut: what was ticked is not what will be drawn
+		this.selected = copyOf();
+		this.progress = null;
 		await this.news.prepare();
 		if (generation !== this.#generation) return;
 		try {

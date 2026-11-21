@@ -73,7 +73,7 @@
 	<PageHeader
 		level={1}
 		title="Review"
-		description="Units waiting for a decision: check what was proposed, then commit them one at a time."
+		description="Units waiting for a decision: check what was proposed, then commit them, one by one or the ticked ones together."
 	/>
 
 	<FilterBar
