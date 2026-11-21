@@ -84,6 +84,17 @@ describe('the review page', () => {
 		expect(await screen.findByText('REWE Markt')).toBeInTheDocument();
 	});
 
+	it('has the cut beside the account filter, By date chosen', async () => {
+		vi.mocked(getQueue).mockResolvedValue(queue({ pending_review: [plain(1, 'REWE Markt')] }));
+		render(Page);
+		await screen.findByText('REWE Markt');
+
+		const group = screen.getByRole('group', { name: 'Pending review cut' });
+		expect(group).toHaveTextContent('By dateBy counterparty');
+		expect(screen.getByRole('button', { name: 'By date' })).toHaveAttribute('aria-pressed', 'true');
+		expect(getQueue).toHaveBeenLastCalledWith(expect.objectContaining({ cut: 'date' }));
+	});
+
 	it('says that there is new data, uncounted, when the ledger moved, and refetches only on Refresh', async () => {
 		vi.mocked(getQueue).mockResolvedValue(queue({ pending_review: [plain(1, 'REWE Markt')] }));
 		render(Page);

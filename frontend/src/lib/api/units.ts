@@ -24,6 +24,8 @@ export type QueueOptions = {
 	cursor?: string;
 	/** narrow to the units with an entry on any of these accounts (none: the whole queue) */
 	accountIds?: readonly number[];
+	/** how the pending section is cut and ordered (default: by date); a cursor belongs to its cut */
+	cut?: 'date' | 'counterparty';
 	signal?: AbortSignal;
 };
 
@@ -33,10 +35,17 @@ export function getQueue({
 	limit = QUEUE_PAGE_SIZE,
 	cursor,
 	accountIds = [],
+	cut = 'date',
 	signal
 }: QueueOptions = {}): Promise<ReviewQueue> {
 	return request('GET', '/api/units/queue', {
-		query: { limit, section, cursor, account_id: [...accountIds] },
+		query: {
+			limit,
+			section,
+			cursor,
+			account_id: [...accountIds],
+			cut: cut === 'date' ? undefined : cut
+		},
 		signal
 	});
 }

@@ -12,11 +12,13 @@ import type { StepDirection, UnitSource } from '#lib/units/sources.js';
 import {
 	SECTION_ORDER,
 	type Affected,
+	type CounterpartyGroup,
 	type QueueAccountGroup,
 	type QueueGroup,
 	type SectionKind,
 	type Unit
 } from '#lib/units/types.js';
+import type { QueueCut } from '#lib/units/queue-cut.js';
 import { unitReadsRules } from '#lib/units/panel.svelte.js';
 import {
 	appendUnits,
@@ -37,6 +39,9 @@ export type SectionState = {
 	groups: QueueGroup[];
 	/** waiting only: the units per account waited for, over the whole section, in the server's order */
 	accountGroups: QueueAccountGroup[];
+	/** pending, cut by counterparty only: every group of the whole section, as the FIRST fetch gave
+	 * them (labels and counts do not change on Load more) */
+	counterpartyGroups: CounterpartyGroup[];
 	nextCursor: string | null;
 	loadingMore: boolean;
 	moreError: ApiError | null;
@@ -55,6 +60,7 @@ function emptySections(): SectionState[] {
 		units: [],
 		groups: [],
 		accountGroups: [],
+		counterpartyGroups: [],
 		nextCursor: null,
 		loadingMore: false,
 		moreError: null
@@ -89,11 +95,21 @@ export class ReviewQueueStore {
 	/** The address says which accounts: fetch the queue again when they differ from those held (or it
 	 * was never fetched). The same accounts in the same order are no change. */
 	applyAccounts(ids: readonly number[]): Promise<void> {
+		return this.applyView(ids, this.cut);
+	}
+
+	/** how the pending section is cut; the page keeps it in the address */
+	cut = $state<QueueCut>('date');
+
+	/** The address says which accounts and which cut: fetch again when either differs from what is
+	 * held (or nothing was fetched yet). */
+	applyView(ids: readonly number[], cut: QueueCut): Promise<void> {
 		const same =
 			ids.length === this.accountIds.length && ids.every((id, i) => id === this.accountIds[i]);
-		if (this.#applied && same) return Promise.resolve();
+		if (this.#applied && same && cut === this.cut) return Promise.resolve();
 		this.#applied = true;
 		this.accountIds = ids;
+		this.cut = cut;
 		return this.load();
 	}
 
@@ -158,7 +174,11 @@ export class ReviewQueueStore {
 		await this.news.prepare();
 		if (generation !== this.#generation) return;
 		try {
-			const queue = await getQueue({ accountIds: this.accountIds, signal: controller.signal });
+			const queue = await getQueue({
+				accountIds: this.accountIds,
+				cut: this.cut,
+				signal: controller.signal
+			});
 			if (generation !== this.#generation) return;
 			this.sections = SECTION_ORDER.map((kind) => {
 				const found = queue.sections.find((s) => s.kind === kind);
@@ -170,6 +190,7 @@ export class ReviewQueueStore {
 					units: orderByGroups(found?.units ?? [], groupKeys({ groups, accountGroups })),
 					groups,
 					accountGroups,
+					counterpartyGroups: found?.counterparty_groups ?? [],
 					nextCursor: found?.next_cursor ?? null,
 					loadingMore: false,
 					moreError: null
@@ -198,7 +219,8 @@ export class ReviewQueueStore {
 			const page = await getQueue({
 				section: kind,
 				cursor: section.nextCursor,
-				accountIds: this.accountIds
+				accountIds: this.accountIds,
+				cut: this.cut
 			});
 			if (generation !== this.#generation) return;
 			const found = page.sections.find((s) => s.kind === kind);

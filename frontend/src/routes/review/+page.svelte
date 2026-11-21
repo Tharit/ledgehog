@@ -5,6 +5,8 @@
 	import FilterBar from '#lib/components/ledger/filter-bar.svelte';
 	import { todayIso } from '#lib/format/index.js';
 	import { emptyFilter, fromSearchParams, toSearchParams } from '#lib/ledger/filter.js';
+	import Segmented from '#lib/components/common/segmented.svelte';
+	import { cutFromSearchParams, withCut, type QueueCut } from '#lib/units/queue-cut.js';
 	import { UNIT_PARAM } from '#lib/units/address.js';
 	import { unitPanel } from '#lib/units/panel-instance.js';
 	import NewDataNotice from '#lib/components/common/new-data-notice.svelte';
@@ -15,6 +17,10 @@
 	import { ReviewQueueStore } from '#lib/stores/review-queue.svelte.js';
 	import { session } from '#lib/stores/session.svelte.js';
 
+	const CUT_OPTIONS: { value: QueueCut; label: string }[] = [
+		{ value: 'date', label: 'By date' },
+		{ value: 'counterparty', label: 'By counterparty' }
+	];
 	const queue = new ReviewQueueStore();
 	const locale = $derived(session.config?.locale ?? 'en');
 
@@ -24,11 +30,12 @@
 	// and a change fetches the queue again, as a refresh does.
 	$effect(() => {
 		const accounts = fromSearchParams(page.url.search).account_id;
-		untrack(() => void queue.applyAccounts(accounts));
+		const cut = cutFromSearchParams(page.url.searchParams);
+		untrack(() => void queue.applyView(accounts, cut));
 	});
 
-	async function show(account_id: number[]) {
-		const params = toSearchParams({ ...emptyFilter(), account_id });
+	async function show(account_id: number[], cut: QueueCut = queue.cut) {
+		const params = withCut(toSearchParams({ ...emptyFilter(), account_id }), cut);
 		// the panel's address survives a filter change
 		if (unitPanel.unitId !== null) params.set(UNIT_PARAM, String(unitPanel.unitId));
 		const query = params.toString();
@@ -77,7 +84,16 @@
 		today={todayIso(session.config?.timezone ?? 'UTC')}
 		baseCurrency={session.config?.base_currency ?? 'EUR'}
 		onchange={(next) => show(next.account_id)}
-	/>
+	>
+		{#snippet trailing()}
+			<Segmented
+				label="Pending review cut"
+				options={CUT_OPTIONS}
+				value={queue.cut}
+				onchange={(cut) => show([...queue.accountIds], cut)}
+			/>
+		{/snippet}
+	</FilterBar>
 
 	<NewDataNotice {stale} onrefresh={() => queue.load()} {notice} />
 

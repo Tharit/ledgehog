@@ -58,7 +58,7 @@
 		formatMonthYear,
 		todayIso
 	} from '#lib/format/index.js';
-	import { byMonthAndDay, cutBy } from '#lib/ledger/cuts.js';
+	import { byMonthAndDay, cutBy, type Cut } from '#lib/ledger/cuts.js';
 	import { ledgerKey, moveCursor } from '#lib/ledger/keys.js';
 	import { UNIT_FRAME, unitTotal } from '#lib/ledger/unit-runs.js';
 	import type { Lookups } from '#lib/ledger/lookups.js';
@@ -75,14 +75,15 @@
 		unitsOfGroup,
 		waitingReason
 	} from '#lib/units/queue.js';
-	import type { QueueAccountGroup, QueueGroup, Unit } from '#lib/units/types.js';
+	import type { CounterpartyGroup, QueueAccountGroup, QueueGroup, Unit } from '#lib/units/types.js';
 	import { cn } from '#lib/utils.js';
 	import type { Column } from '#lib/components/ledger/columns.js';
 
 	// The review queue (views/review-queue.md): three sections (pending review, needs an account,
 	// waiting), each by date, as one flush card each (a title row over the header row), the unit rows
 	// beneath. The pending section is cut by month and day into sticky bands, as the ledger list is
-	// (design §5), so it has no date column; the currency and waiting groups of the other two are
+	// (design §5), so it has no date column, or by counterparty into one band per counterparty (then
+	// it has the date column); the currency and waiting groups of the other two are
 	// band rows among their rows, which keep the date column. A unit is one block: its entries
 	// are joined, both legs of a pair shown. The cursor is on a unit; Enter opens the panel, which
 	// then steps through the queue in this order. The queue is a snapshot: it changes only on
@@ -133,12 +134,17 @@
 			(store.status === 'ready' ? sizer.templateFor(columns) : undefined) ?? gridTemplate(columns)
 		);
 	};
-	const columnsOf = (kind: SectionKind) => (kind === 'pending_review' ? LEDGER_COLUMNS : COLUMNS);
+	// the pending section has no date column where it is cut by day (the day rows carry the date);
+	// cut by counterparty it has one, as the other two sections do
+	const byCounterparty = $derived(store.cut === 'counterparty');
+	const columnsOf = (kind: SectionKind) =>
+		kind === 'pending_review' && !byCounterparty ? LEDGER_COLUMNS : COLUMNS;
 	// measure again when the rows held change (load more, filter, refresh, patch) or the amounts'
 	// currency is written out
 	$effect(() => {
 		void store.sections;
 		void store.status;
+		void store.cut;
 		void showCurrency;
 		sizer.remeasure();
 	});
@@ -151,6 +157,7 @@
 	const DAY_TOP = '4.25rem';
 	const PENDING_OFFSET = '6.5rem';
 	const GROUP_OFFSET = '3.75rem';
+	const pendingOffset = $derived(byCounterparty ? GROUP_OFFSET : PENDING_OFFSET);
 
 	const units = $derived(store.units);
 	const cursorIndex = $derived(
@@ -220,6 +227,22 @@
 				(date) => formatDayLabel(date, today, locale)
 			)
 		);
+
+	// Cut by counterparty: a band is a run of units with one `counterparty_key` (none: "Other"). The
+	// label and count are the group's as the first fetch gave them; the server orders the units, so
+	// a page boundary only continues the last band.
+	const OTHER = '::other';
+	const counterpartyBands = (sectionUnits: Unit[], groups: CounterpartyGroup[]) => {
+		const byKey = new Map(groups.map((g) => [g.other ? OTHER : (g.key ?? OTHER), g]));
+		const cut: Cut<Unit> = {
+			key: (unit) => unit.counterparty_key ?? OTHER,
+			label: (unit) => byKey.get(unit.counterparty_key ?? OTHER)?.label ?? 'Other'
+		};
+		return cutBy(sectionUnits, [cut]).map((band) => {
+			const group = byKey.get(band.items[0].counterparty_key ?? OTHER);
+			return { ...band, count: group ? formatCount(group.count, locale) : undefined };
+		});
+	};
 
 	function addAccount(currency: string, event: MouseEvent) {
 		accountDialog.openAdd({
@@ -388,7 +411,7 @@
 							aria-label={info.title}
 							class={cn(MEASURABLE, LAST_ROW)}
 							style:--sticky-offset={section.kind === 'pending_review'
-								? PENDING_OFFSET
+								? pendingOffset
 								: GROUP_OFFSET}
 							{@attach sizer.attach}
 						>
@@ -411,7 +434,17 @@
 									</div>
 								{/each}
 							</div>
-							{#if section.kind === 'pending_review'}
+							{#if section.kind === 'pending_review' && byCounterparty}
+								{#each counterpartyBands(section.units, section.counterpartyGroups) as band, at (`${band.key}#${at}`)}
+									<!-- the band's rows in their own element: it ends the band's sticking -->
+									<div role="presentation" data-counterparty={band.key}>
+										<BandRow label={band.label} count={band.count} top={HEADER_TOP} />
+										{#each band.items as unit (unit.anchor_entry_id)}
+											{@render unitBlock(unit, columns, template)}
+										{/each}
+									</div>
+								{/each}
+							{:else if section.kind === 'pending_review'}
 								{#each dayBands(section.units) as month (month.key)}
 									<!-- each band's rows in their own element: it ends the band's sticking -->
 									<div role="presentation" data-month={month.key}>

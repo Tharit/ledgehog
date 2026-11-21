@@ -13,6 +13,7 @@
 	// `min-h-7` (1.75rem), which it keeps unless it has `children`.
 	let {
 		label,
+		count,
 		action,
 		children,
 		top,
@@ -20,6 +21,8 @@
 		...rest
 	}: {
 		label: string;
+		/** how many it holds, quiet beside the label, as a section title's count */
+		count?: string;
 		action?: Snippet;
 		children?: Snippet;
 		/** a CSS length: stick this far from the top of the page */
@@ -41,7 +44,11 @@
 >
 	<div role="gridcell" class="flex flex-col gap-1 py-0.5">
 		<div class="flex min-h-6 flex-wrap items-center gap-3">
-			<span class="text-xs font-medium text-muted-foreground" data-slot="band-label">{label}</span>
+			<span class="text-xs font-medium text-muted-foreground" data-slot="band-label"
+				>{label}{#if count !== undefined}<span class="font-normal" data-slot="band-count"
+						>{` (${count})`}</span
+					>{/if}</span
+			>
 			{#if action}
 				<div class="ml-auto flex items-center gap-2">{@render action()}</div>
 			{/if}

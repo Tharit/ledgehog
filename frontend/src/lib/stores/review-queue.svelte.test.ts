@@ -42,7 +42,8 @@ describe('ReviewQueueStore account filter', () => {
 		expect(getQueue).toHaveBeenLastCalledWith({
 			section: 'pending_review',
 			cursor: 'c1',
-			accountIds: [2, 3]
+			accountIds: [2, 3],
+			cut: 'date'
 		});
 
 		const calls = vi.mocked(getQueue).mock.calls.length;
@@ -58,6 +59,67 @@ describe('ReviewQueueStore account filter', () => {
 		const store = new ReviewQueueStore();
 		await store.applyAccounts([]);
 		expect(getQueue).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('ReviewQueueStore cut', () => {
+	const group = (key: string | null, label: string | null, count: number, other = false) => ({
+		key,
+		label,
+		count,
+		other
+	});
+
+	it('passes the cut on the first fetch and on Load more, keeps the first groups, fetches again on a change', async () => {
+		const first = group('a', 'Kometa', 3);
+		vi.mocked(getQueue).mockResolvedValueOnce({
+			...queue(),
+			sections: [
+				section('pending_review', [plain(1)], {
+					total: 3,
+					next_cursor: 'c1',
+					counterparty_groups: [first, group(null, null, 1, true)]
+				}),
+				section('needs_account', []),
+				section('waiting', [])
+			],
+			total: 3
+		});
+		const store = new ReviewQueueStore();
+		await store.applyView([], 'counterparty');
+		expect(getQueue).toHaveBeenLastCalledWith(expect.objectContaining({ cut: 'counterparty' }));
+
+		vi.mocked(getQueue).mockResolvedValueOnce({
+			...queue(),
+			sections: [
+				section('pending_review', [plain(1), plain(2)], {
+					total: 3,
+					counterparty_groups: [group('a', 'Relabelled', 9)]
+				}),
+				section('needs_account', []),
+				section('waiting', [])
+			],
+			total: 3
+		});
+		await store.loadMore('pending_review');
+		expect(getQueue).toHaveBeenLastCalledWith({
+			section: 'pending_review',
+			cursor: 'c1',
+			accountIds: [],
+			cut: 'counterparty'
+		});
+		const pending = store.sections[0];
+		expect(pending.units.map((u) => u.anchor_entry_id)).toEqual([1, 2]);
+		expect(pending.counterpartyGroups[0]).toEqual(first);
+		expect(pending.counterpartyGroups).toHaveLength(2);
+
+		const calls = vi.mocked(getQueue).mock.calls.length;
+		await store.applyView([], 'counterparty');
+		expect(getQueue).toHaveBeenCalledTimes(calls);
+		vi.mocked(getQueue).mockResolvedValue(queue({}));
+		await store.applyView([], 'date');
+		expect(getQueue).toHaveBeenCalledTimes(calls + 1);
+		expect(getQueue).toHaveBeenLastCalledWith(expect.objectContaining({ cut: 'date' }));
 	});
 });
 
@@ -124,7 +186,8 @@ describe('ReviewQueueStore', () => {
 		expect(getQueue).toHaveBeenLastCalledWith({
 			section: 'pending_review',
 			cursor: 'c1',
-			accountIds: []
+			accountIds: [],
+			cut: 'date'
 		});
 		const pending = store.sections[0];
 		expect(pending.units.map((u) => u.anchor_entry_id)).toEqual([1, 2, 3, 4]);

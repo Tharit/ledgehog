@@ -324,7 +324,8 @@ describe('ReviewQueue', () => {
 		expect(getQueue).toHaveBeenLastCalledWith({
 			section: 'pending_review',
 			cursor: 'c1',
-			accountIds: []
+			accountIds: [],
+			cut: 'date'
 		});
 		expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull();
 	});
@@ -790,5 +791,113 @@ describe('ReviewQueue with an account filter', () => {
 
 		expect(screen.queryByText('No units match these filters')).toBeNull();
 		expect(screen.getByText('No transfer is missing an account.')).toBeInTheDocument();
+	});
+});
+
+describe('ReviewQueue cut by counterparty', () => {
+	const cpUnit = (id: number, text: string, key: string | null) => ({
+		...flow(id, text),
+		counterparty_key: key
+	});
+	const grp = (key: string | null, label: string | null, count: number, other = false) => ({
+		key,
+		label,
+		count,
+		other
+	});
+	async function byCounterparty(pending: ReturnType<typeof cpUnit>[], extra = {}) {
+		vi.mocked(getQueue).mockResolvedValue(
+			queue(
+				{ pending_review: pending },
+				{
+					sections: queue({ pending_review: pending }).sections.map((s) =>
+						s.kind === 'pending_review'
+							? {
+									...s,
+									counterparty_groups: [
+										grp('kometa', 'Versandhaus Kometa', 12),
+										grp('rewe', 'REWE', 2),
+										grp(null, null, 5, true)
+									],
+									...extra
+								}
+							: s
+					)
+				}
+			)
+		);
+		const store = new ReviewQueueStore();
+		await store.applyView([], 'counterparty');
+		render(ReviewQueue, { props: { store, lookups, locale: 'en' } });
+		return store;
+	}
+	const pendingCard = () => document.querySelector('[data-section="pending_review"]')!;
+
+	it('draws a band per counterparty with its count, Other last, and the date column', async () => {
+		await byCounterparty([
+			cpUnit(1, 'a', 'kometa'),
+			cpUnit(2, 'b', 'kometa'),
+			cpUnit(3, 'c', 'rewe'),
+			cpUnit(4, 'd', null)
+		]);
+
+		const bands = [...pendingCard().querySelectorAll('[data-slot="band-label"]')].map((n) =>
+			n.textContent?.replace(/\s+/g, ' ').trim()
+		);
+		expect(bands).toEqual(['Versandhaus Kometa (12)', 'REWE (2)', 'Other (5)']);
+		expect(pendingCard().querySelector('[data-month]')).toBeNull();
+		expect(pendingCard().querySelector('[role="columnheader"][data-col="date"]')).not.toBeNull();
+		expect(pendingCard().querySelector('[role="grid"]')).toHaveStyle('--sticky-offset: 3.75rem');
+	});
+
+	it('keeps by-date unchanged: month and day rows, no date column', async () => {
+		vi.mocked(getQueue).mockResolvedValue(queue({ pending_review: [flow(1, 'a')] }));
+		const store = new ReviewQueueStore();
+		await store.load();
+		render(ReviewQueue, { props: { store, lookups, locale: 'en' } });
+
+		expect(pendingCard().querySelector('[data-month]')).not.toBeNull();
+		expect(pendingCard().querySelector('[data-col="date"]')).toBeNull();
+	});
+
+	it('continues the last band over a page boundary, without a second band or duplicates', async () => {
+		const store = await byCounterparty([cpUnit(1, 'a', 'kometa'), cpUnit(2, 'b', 'kometa')], {
+			next_cursor: 'c1',
+			total: 4
+		});
+		vi.mocked(getQueue).mockResolvedValue({
+			...queue(),
+			sections: [
+				section(
+					'pending_review',
+					[cpUnit(2, 'b', 'kometa'), cpUnit(3, 'c', 'kometa'), cpUnit(4, 'd', 'rewe')],
+					{
+						total: 4
+					}
+				),
+				section('needs_account', []),
+				section('waiting', [])
+			]
+		});
+		await fireEvent.click(screen.getAllByRole('button', { name: 'Load more' })[0]);
+		await waitFor(() => expect(store.units).toHaveLength(4));
+
+		const bands = [...pendingCard().querySelectorAll('[data-slot="band-label"]')].map((n) =>
+			n.textContent?.replace(/\s+/g, ' ').trim()
+		);
+		expect(bands).toEqual(['Versandhaus Kometa (12)', 'REWE (2)']);
+		expect(
+			[...pendingCard().querySelectorAll('[data-unit]')].map((n) => n.getAttribute('data-unit'))
+		).toEqual(['1', '2', '3', '4']);
+	});
+
+	it('moves the cursor and opens units in the drawn order, across bands', async () => {
+		await byCounterparty([cpUnit(1, 'a', 'kometa'), cpUnit(2, 'b', 'rewe')]);
+
+		await key('j');
+		await key('j');
+		await key('Enter');
+
+		expect(unitPanel.open).toHaveBeenCalledWith(2, expect.anything());
 	});
 });
