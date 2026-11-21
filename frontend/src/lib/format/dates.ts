@@ -118,3 +118,29 @@ export function formatMonth(isoDate: IsoDate, locale = 'en'): string {
 	});
 	return format.format(utcDate(isoDate));
 }
+
+/** The month of a calendar date written out ("November 2026"), for a list's month band. */
+export function formatMonthYear(isoDate: IsoDate, locale = 'en'): string {
+	const format = new Intl.DateTimeFormat(locale, {
+		month: 'long',
+		year: 'numeric',
+		timeZone: 'UTC'
+	});
+	return format.format(utcDate(isoDate));
+}
+
+/**
+ * A calendar date as a day row's label ("Tue, Nov 17"), the year added where it is not the
+ * year of `today` (the household's day), so "Fri, Dec 12, 2025" in 2026.
+ */
+export function formatDayLabel(isoDate: IsoDate, today: IsoDate, locale = 'en'): string {
+	const date = utcDate(isoDate);
+	const format = new Intl.DateTimeFormat(locale, {
+		weekday: 'short',
+		day: 'numeric',
+		month: 'short',
+		year: date.getUTCFullYear() === utcDate(today).getUTCFullYear() ? undefined : 'numeric',
+		timeZone: 'UTC'
+	});
+	return format.format(date);
+}

@@ -22,13 +22,18 @@
 	import { formatDate, formatMoney } from '#lib/format/index.js';
 	import type { Entry, Money } from '#lib/types/domain.js';
 	import { cn } from '#lib/utils.js';
-	import { COLUMNS, GRID_TEMPLATE, ROW_GRID } from './columns.js';
+	import { COLUMNS, ROW_GRID, gridTemplate, type Column } from './columns.js';
 
 	// One entry as a compact row: 32px, one line, a divider below (design §5). The cursor row has
-	// the accent background and a 2px primary bar on its left edge (design §7).
+	// the accent background and a 2px primary bar on its left edge (design §7). The row's columns
+	// are the list's: `columns` (a list cut by day leaves the date to its day rows) and the
+	// measured `template`, the static one before there is any (columns.ts). The tags sit at the
+	// right end of the description cell (patterns §4.1).
 	let {
 		entry,
 		lookups,
+		columns = COLUMNS,
+		template,
 		locale = 'en',
 		showCurrency = false,
 		cursor = false,
@@ -46,6 +51,10 @@
 	}: {
 		entry: Entry;
 		lookups: Lookups;
+		/** the columns this row has, in order; the date goes where the list is cut by day */
+		columns?: readonly Column[];
+		/** the grid-template-columns value of `columns`, measured; the static one when absent */
+		template?: string;
 		locale?: string;
 		showCurrency?: boolean;
 		cursor?: boolean;
@@ -66,9 +75,9 @@
 		/** the model is still looking at this row's unit: a quiet mark in the badge slot */
 		modelPending?: boolean;
 		onselect?: () => void;
-		/** a click on the row (not on its tags cell): open the unit panel */
+		/** a click on the row (not on its tags): open the unit panel */
 		onopen?: () => void;
-		/** a click on the tags cell: the mouse path for the `t` key (patterns §11.3) */
+		/** a click on the tags: the mouse path for the `t` key (patterns §11.3) */
 		ontags?: () => void;
 	} = $props();
 
@@ -131,15 +140,15 @@
 	title={changed || resolved ? changedTitle : undefined}
 	class={cn(
 		ROW_GRID,
-		'group relative h-8 scroll-mt-10 scroll-mb-10 border-b border-border px-3 text-[13px]',
+		'group relative h-8 scroll-mt-[var(--sticky-offset,2.5rem)] scroll-mb-10 border-b border-border px-3 text-[13px]',
 		cursor ? 'bg-accent' : unitCursor ? 'bg-accent/60' : 'hover:bg-row-hover',
 		joined && !cursor && 'group-hover/unit:bg-row-hover',
 		resolved && 'text-muted-foreground'
 	)}
-	style:grid-template-columns={GRID_TEMPLATE}
+	style:grid-template-columns={template ?? gridTemplate(columns)}
 	onclick={(event) => {
 		onselect?.();
-		// the tags cell has its own click (the mouse path for `t`)
+		// the tags have their own click (the mouse path for `t`)
 		if (!(event.target instanceof Element && event.target.closest('button'))) onopen?.();
 	}}
 >
@@ -153,19 +162,29 @@
 		></span>
 	{/if}
 
-	{#each COLUMNS as column (column.id)}
+	{#each columns as column (column.id)}
 		{#if column.id === 'date'}
-			<div role="gridcell" class="min-w-0 truncate">
+			<div role="gridcell" data-col="date" class="min-w-0 truncate">
 				<DateDisplay date={entry.booked_on} {locale} />
 			</div>
 		{:else if column.id === 'account'}
-			<div role="gridcell" class="flex min-w-0 items-center" title={account?.name}>
+			<div
+				role="gridcell"
+				data-col="account"
+				class="flex min-w-0 items-center"
+				title={account?.name}
+			>
 				{#if account}
 					<AccountDot name={account.name} color={resolveAccount(account).color} />
 				{/if}
 			</div>
 		{:else if column.id === 'category'}
-			<div role="gridcell" class="flex min-w-0 items-center gap-2" title={partnerTitle}>
+			<div
+				role="gridcell"
+				data-col="category"
+				class="flex min-w-0 items-center gap-2"
+				title={partnerTitle}
+			>
 				{#if fixed}
 					<DimensionIcon icon={fixed.icon} color="stone" />
 					<span class="truncate">{fixed.name}</span>
@@ -195,6 +214,7 @@
 		{:else if column.id === 'payee'}
 			<div
 				role="gridcell"
+				data-col="payee"
 				class="min-w-0 truncate"
 				title={!fixed ? (payee?.name ?? counterparty) : undefined}
 			>
@@ -206,31 +226,13 @@
 					{/if}
 				{/if}
 			</div>
-		{:else if column.id === 'tags'}
-			<div role="gridcell" class="flex min-w-0 items-center">
-				<!-- not in the tab order: the keyboard path is `t`, handled for the whole list -->
-				<button
-					type="button"
-					tabindex="-1"
-					aria-label="Edit tags"
-					class="flex h-full min-w-0 flex-1 items-center gap-1 text-left"
-					onclick={() => ontags?.()}
-				>
-					<span class="flex min-w-0 items-center gap-1 overflow-hidden">
-						{#each shownTags as tag (tag.id)}
-							<TagChip name={tag.name} color={resolveTag(tag).color} />
-						{/each}
-					</span>
-					{#if hiddenTags.length > 0}
-						<span
-							class="shrink-0 text-xs text-muted-foreground"
-							title={hiddenTags.map((tag) => tag.name).join(', ')}>+{hiddenTags.length}</span
-						>
-					{/if}
-				</button>
-			</div>
 		{:else if column.id === 'description'}
-			<div role="gridcell" class="flex min-w-0 items-center gap-1.5">
+			<!-- the text gives way to the tags: it is cut short first, then the tags clip at the edge -->
+			<div
+				role="gridcell"
+				data-col="description"
+				class="flex min-w-0 items-center gap-1.5 overflow-hidden"
+			>
 				{#if totalTitle}
 					<span
 						data-unit-marker
@@ -251,9 +253,33 @@
 						>{shownDescription.text}</span
 					>
 				{/if}
+				{#if tags.length > 0}
+					<!-- not in the tab order: the keyboard path is `t`, handled for the whole list -->
+					<button
+						type="button"
+						tabindex="-1"
+						aria-label="Edit tags"
+						class="ml-auto flex h-full shrink-0 items-center gap-1 pl-2 text-left"
+						onclick={() => ontags?.()}
+					>
+						{#each shownTags as tag (tag.id)}
+							<TagChip name={tag.name} color={resolveTag(tag).color} />
+						{/each}
+						{#if hiddenTags.length > 0}
+							<span
+								class="shrink-0 text-xs text-muted-foreground"
+								title={hiddenTags.map((tag) => tag.name).join(', ')}>+{hiddenTags.length}</span
+							>
+						{/if}
+					</button>
+				{/if}
 			</div>
 		{:else if column.id === 'review'}
-			<div role="gridcell" class="flex min-w-0 items-center gap-1 overflow-hidden">
+			<div
+				role="gridcell"
+				data-col="review"
+				class="flex min-w-0 items-center gap-1 overflow-hidden"
+			>
 				{#if confirmed}
 					<CheckIcon size={14} strokeWidth={1.75} aria-label="Confirmed" role="img" />
 				{:else if !fixed}
@@ -267,7 +293,7 @@
 			</div>
 		{:else if column.id === 'amount'}
 			<!-- not truncated: an ellipsis would hide digits of an amount -->
-			<div role="gridcell" class="min-w-0">
+			<div role="gridcell" data-col="amount" class="min-w-0">
 				<MoneyDisplay
 					minor={entry.amount.amount}
 					currency={entry.amount.currency}

@@ -2,10 +2,12 @@ import { describe, it, expect } from 'vitest';
 import {
 	formatDate,
 	formatDateRange,
+	formatDayLabel,
 	formatInstant,
 	formatLongDate,
 	formatMonth,
 	formatMonthName,
+	formatMonthYear,
 	formatTime,
 	relativeDay,
 	todayIso
@@ -144,5 +146,32 @@ describe('formatMonth', () => {
 	it('names the month and year, whatever the day', () => {
 		expect(formatMonth('2026-03-31', 'en')).toBe('Mar 2026');
 		expect(formatMonth('2026-03-01', 'en')).toBe('Mar 2026');
+	});
+});
+
+describe('formatMonthYear', () => {
+	it('spells the month out with its year, in the locale', () => {
+		expect(formatMonthYear('2026-11-17', 'en')).toBe('November 2026');
+		expect(formatMonthYear('2026-11-01', 'de')).toBe('November 2026');
+		expect(formatMonthYear('2026-03-31', 'de')).toBe('M\u00e4rz 2026');
+	});
+});
+
+describe('formatDayLabel', () => {
+	it('gives the weekday, month and day, without the year in the current one', () => {
+		expect(formatDayLabel('2026-11-17', '2026-11-21', 'en')).toBe('Tue, Nov 17');
+	});
+
+	it('adds the year where it is not the current one', () => {
+		expect(formatDayLabel('2025-12-12', '2026-01-03', 'en')).toBe('Fri, Dec 12, 2025');
+		expect(formatDayLabel('2027-01-02', '2026-11-21', 'en')).toBe('Sat, Jan 2, 2027');
+	});
+
+	it('does not let a time zone move the day', () => {
+		expect(formatDayLabel('2026-01-01', '2026-06-01', 'en')).toBe('Thu, Jan 1');
+	});
+
+	it('follows the locale', () => {
+		expect(formatDayLabel('2026-11-17', '2026-11-21', 'de')).toBe('Di., 17. Nov.');
 	});
 });

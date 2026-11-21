@@ -7,7 +7,7 @@ import { DERIVED_NOTICE } from '#lib/units/describe.js';
 import { applyAffected, MARK_RESOLVED } from '#lib/units/patch.js';
 import { unitPanel } from '#lib/units/panel-instance.js';
 import { activeUnitSource } from '#lib/units/sources.js';
-import { COLUMNS, GRID_TEMPLATE } from './columns.js';
+import { GRID_TEMPLATE, LEDGER_COLUMNS, gridTemplate } from './columns.js';
 import LedgerTable from './ledger-table.svelte';
 
 vi.mock('#lib/units/panel-instance.js', () => ({ unitPanel: { open: vi.fn() } }));
@@ -141,22 +141,131 @@ describe('LedgerTable: states', () => {
 	});
 });
 
+describe('LedgerTable: cut by month and day', () => {
+	const on = (id: number, booked_on: string, over = {}) =>
+		entry({
+			id,
+			booked_on,
+			description: `E${id}`,
+			display_description: { text: `E${id}`, from: 'description' },
+			...over
+		});
+	const dated = [
+		on(5, '2026-11-17'),
+		on(4, '2026-11-17'),
+		on(3, '2026-11-02'),
+		on(2, '2026-10-30'),
+		on(1, '2025-12-12')
+	];
+	const texts = (selector: string) =>
+		[...document.querySelectorAll(selector)].map((n) => n.textContent?.trim());
+
+	it('draws a month band and a day row, each with its label and no sum', () => {
+		table({
+			entries: dated,
+			total: 5,
+			today: '2026-11-21',
+			sums: [{ amount: -100, currency: 'EUR' }]
+		});
+
+		expect(texts('[data-slot="subgroup-label"]')).toEqual([
+			'November 2026',
+			'October 2026',
+			'December 2025'
+		]);
+		expect(texts('[data-slot="day-label"]')).toEqual([
+			'Tue, Nov 17',
+			'Mon, Nov 2',
+			'Fri, Oct 30',
+			'Fri, Dec 12, 2025'
+		]);
+		const bands = [...document.querySelectorAll('[data-month], [data-day]')];
+		expect(bands.length).toBe(7);
+		for (const row of document.querySelectorAll('[data-month] > [role="row"]:first-child')) {
+			expect(row.querySelector('[data-slot="amount"], .amount')).toBeNull();
+		}
+	});
+
+	it('has no date column, the day row carries the date', () => {
+		table({ entries: dated, total: 5, today: '2026-11-21' });
+
+		expect(screen.queryByRole('columnheader', { name: 'Date' })).toBeNull();
+		expect(screen.queryByText('Nov 17, 2026')).toBeNull();
+		const row = document.querySelector('[data-entry-id="5"]')!;
+		expect(within(row as HTMLElement).getAllByRole('gridcell')).toHaveLength(LEDGER_COLUMNS.length);
+	});
+
+	it('sticks the month band beneath the header row and the day row beneath the month band', () => {
+		table({ entries: dated, total: 5, today: '2026-11-21' });
+
+		const month = document.querySelector<HTMLElement>('[data-month] > [role="row"]')!;
+		const day = document.querySelector<HTMLElement>('[data-day] > [role="row"]')!;
+		expect(month).toHaveClass('sticky');
+		expect(day).toHaveClass('sticky');
+		expect(month.style.top).toBe('2rem');
+		expect(day.style.top).toBe('4.25rem');
+	});
+
+	it('draws a split under the day of its first entry, framed and never cut by a band', () => {
+		table({
+			entries: [
+				on(9, '2026-11-17', { unit_key: 7 }),
+				on(8, '2026-11-16', { unit_key: 7 }),
+				on(7, '2026-11-16')
+			],
+			total: 3,
+			today: '2026-11-21'
+		});
+
+		expect(texts('[data-slot="day-label"]')).toEqual(['Tue, Nov 17', 'Mon, Nov 16']);
+		const unit = document.querySelector('[data-unit="7"]')!;
+		expect(
+			[...unit.querySelectorAll('[data-entry-id]')].map((r) => r.getAttribute('data-entry-id'))
+		).toEqual(['9', '8']);
+		expect(unit.closest('[data-day]')).toHaveAttribute(
+			'data-day',
+			expect.stringContaining('2026-11-17')
+		);
+		expect(unit.querySelector('[data-slot="day-label"]')).toBeNull();
+	});
+
+	it('keeps the keyboard cursor moving over rows across the bands', async () => {
+		table({ entries: dated, total: 5, today: '2026-11-21' });
+
+		await key('ArrowDown');
+		await key('j');
+		await key('j');
+		await key('j');
+
+		expect(document.querySelector('[data-cursor]')).toHaveAttribute('data-entry-id', '2');
+	});
+});
+
 describe('LedgerTable: rows and the footer', () => {
 	it('lists the entries under a header row', () => {
 		table();
 
-		expect(screen.getAllByRole('row')).toHaveLength(4);
+		// the header row, a month band, a day row and the three entries
+		expect(screen.getAllByRole('row')).toHaveLength(6);
 		expect(screen.getByRole('columnheader', { name: 'Description' })).toBeInTheDocument();
 		expect(screen.getByText('Second')).toBeInTheDocument();
 	});
 
-	it('always shows every column, header cells in the order of the column definition', () => {
+	it('shows every column but the date, header cells in the order of the column definition', () => {
 		table({ lookups: buildLookups({ accounts: [account()] }) });
 
 		const headers = screen.getAllByRole('columnheader').map((h) => h.textContent?.trim());
-		expect(headers).toEqual(COLUMNS.map((c) => (c.id === 'amount' ? 'Amount (EUR)' : c.header)));
-		expect(headers[1]).toBe('Account');
-		expect(screen.getAllByRole('row')[0].style.gridTemplateColumns).toBe(GRID_TEMPLATE);
+		expect(headers).toEqual(
+			LEDGER_COLUMNS.map((c) => (c.id === 'amount' ? 'Amount (EUR)' : c.header))
+		);
+		expect(headers).not.toContain('Date');
+		expect(headers).not.toContain('Tags');
+		expect(headers[0]).toBe('Account');
+		// before anything is measured (no layout here) the static template stands in
+		expect(screen.getAllByRole('row')[0].style.gridTemplateColumns).toBe(
+			gridTemplate(LEDGER_COLUMNS)
+		);
+		expect(gridTemplate(LEDGER_COLUMNS)).not.toBe(GRID_TEMPLATE);
 	});
 
 	it('says how many of the matches are shown', () => {
@@ -379,8 +488,10 @@ describe('LedgerTable: the keyboard', () => {
 		expect(unitPanel.open).not.toHaveBeenCalled();
 	});
 
-	it('a click on a row opens it, a click on the tags cell edits tags instead', async () => {
-		table();
+	it('a click on a row opens it, a click on the tags edits tags instead', async () => {
+		table({
+			entries: [three[0], { ...three[1], tag_ids: [30] }, three[2]]
+		});
 
 		await fireEvent.click(screen.getByText('First'));
 		expect(vi.mocked(unitPanel.open).mock.calls.map((c) => c[0])).toEqual([1]);
@@ -597,7 +708,7 @@ describe('LedgerTable: the tag picker (t)', () => {
 		expect(screen.getByRole('option', { name: /Tax/ })).toBeInTheDocument();
 	});
 
-	it('opens from a click on the tags cell, for that row', async () => {
+	it('opens from a click on the tags in the description cell, for that row', async () => {
 		table({
 			entries: [entry({ id: 3, tag_ids: [31] }), entry({ id: 2 })],
 			total: 2,
@@ -779,7 +890,7 @@ describe('LedgerTable: rows changed by the last action', () => {
 	it('marks them, and keeps every row where it is', () => {
 		table({ changedIds: new Set([2]) });
 
-		const rows = screen.getAllByRole('row').slice(1);
+		const rows = screen.getAllByRole('row').filter((r) => r.hasAttribute('data-entry-id'));
 		expect(rows).toHaveLength(3);
 		expect(rows.map((r) => r.getAttribute('data-entry-id'))).toEqual(['3', '2', '1']);
 		const changed = rows.filter((r) => r.hasAttribute('data-changed'));
@@ -791,7 +902,7 @@ describe('LedgerTable: rows changed by the last action', () => {
 	it('marks rows a refresh did not return, with their own tooltip', () => {
 		table({ changedIds: new Set([2]), movedIds: new Set([1]) });
 
-		const rows = screen.getAllByRole('row').slice(1);
+		const rows = screen.getAllByRole('row').filter((r) => r.hasAttribute('data-entry-id'));
 		const title = (id: string) =>
 			rows.find((r) => r.getAttribute('data-entry-id') === id)?.getAttribute('title');
 		expect(title('2')).toBe('changed by your last action');

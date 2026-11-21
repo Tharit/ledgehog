@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import { account, category, entry, payee, tag } from '#lib/ledger/fixtures.js';
 import { buildLookups } from '#lib/ledger/lookups.js';
-import { COLUMNS, GRID_TEMPLATE } from './columns.js';
+import { COLUMNS, GRID_TEMPLATE, LEDGER_COLUMNS, gridTemplate } from './columns.js';
 import EntryRow from './entry-row.svelte';
 
 const lookups = buildLookups({
@@ -56,13 +56,30 @@ describe('EntryRow: a flow entry', () => {
 			'date',
 			'account',
 			'category',
-			'tags',
 			'payee',
 			'description',
 			'review',
 			'amount'
 		]);
 		expect(screen.getByRole('row').style.gridTemplateColumns).toBe(GRID_TEMPLATE);
+	});
+
+	it('leaves out the date where the list is cut by day, and takes the measured template', () => {
+		const template = '90px 80px 100px 300px 40px 90px';
+		row({ payee_id: 20 }, { columns: LEDGER_COLUMNS, template });
+
+		const cells = within(screen.getByRole('row')).getAllByRole('gridcell');
+		expect(cells).toHaveLength(LEDGER_COLUMNS.length);
+		expect(screen.queryByText('Oct 9, 2026')).toBeNull();
+		expect(screen.getByRole('row').style.gridTemplateColumns).toBe(template);
+		expect(gridTemplate(LEDGER_COLUMNS)).not.toBe(GRID_TEMPLATE);
+	});
+
+	it('marks every cell with its column, for the measuring', () => {
+		row({ payee_id: 20 });
+
+		const cells = within(screen.getByRole('row')).getAllByRole('gridcell');
+		expect(cells.map((c) => c.getAttribute('data-col'))).toEqual(COLUMNS.map((c) => c.id));
 	});
 
 	it('gives the description its full text as a tooltip', () => {
@@ -184,13 +201,40 @@ describe('EntryRow: tags', () => {
 		expect(screen.getByText('+1')).toHaveAttribute('title', 'Gift');
 	});
 
-	it('reports a click on the tags cell, the mouse path of the t key', async () => {
+	it('reports a click on the tags, the mouse path of the t key', async () => {
 		const ontags = vi.fn();
-		row({ tag_ids: [] }, { ontags });
+		row({ tag_ids: [30] }, { ontags });
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Edit tags' }));
 
 		expect(ontags).toHaveBeenCalledOnce();
+	});
+
+	it('puts the tags at the right end of the description cell, clipped at its edge', () => {
+		row({ description: 'REWE Markt', tag_ids: [30, 31] });
+
+		const cells = within(screen.getByRole('row')).getAllByRole('gridcell');
+		const description = cells[cell('description')];
+		const button = within(description).getByRole('button', { name: 'Edit tags' });
+		expect(description).toHaveClass('overflow-hidden');
+		expect(description.lastElementChild).toBe(button);
+		expect(button).toHaveClass('ml-auto', 'shrink-0');
+		expect(button).toHaveAttribute('tabindex', '-1');
+		// the text is the part that gives way
+		expect(screen.getByText('REWE Markt')).toHaveClass('min-w-0', 'truncate');
+		expect(within(button).getByText('Tax')).toBeInTheDocument();
+	});
+
+	it('has no tags column', () => {
+		row({ tag_ids: [30] });
+
+		expect(screen.getAllByRole('gridcell')).toHaveLength(COLUMNS.length);
+	});
+
+	it('shows nothing, and offers no hover affordance, when the row has no tags', () => {
+		row({ tag_ids: [] });
+
+		expect(screen.queryByRole('button', { name: 'Edit tags' })).toBeNull();
 	});
 
 	it('skips a tag it has no name for', () => {

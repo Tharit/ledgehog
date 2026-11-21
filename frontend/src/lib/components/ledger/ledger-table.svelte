@@ -7,7 +7,17 @@
 	import KeyboardHelp, { type HelpGroup } from '#lib/components/common/keyboard-help.svelte';
 	import Notice from '#lib/components/common/notice.svelte';
 	import MoneyDisplay from '#lib/components/common/money-display.svelte';
-	import { columnCurrency, formatCount, formatMoney } from '#lib/format/index.js';
+	import DayRow from '#lib/components/common/day-row.svelte';
+	import SubgroupRow from '#lib/components/common/subgroup-row.svelte';
+	import {
+		columnCurrency,
+		formatCount,
+		formatDayLabel,
+		formatMonthYear,
+		formatMoney,
+		todayIso
+	} from '#lib/format/index.js';
+	import { byMonthAndDay, cutBy } from '#lib/ledger/cuts.js';
 	import { describeLoadError } from '#lib/ledger/errors.js';
 	import { DERIVED_NOT_TAGGABLE } from '#lib/ledger/errors.js';
 	import { ledgerKey, moveCursor } from '#lib/ledger/keys.js';
@@ -22,12 +32,15 @@
 	import { neighbourEntry, registerUnitSource } from '#lib/units/sources.js';
 	import type { Affected } from '#lib/units/types.js';
 	import { cn } from '#lib/utils.js';
-	import { COLUMNS, GRID_TEMPLATE, ROW_GRID, columnHeader } from './columns.js';
+	import { ColumnSizer } from './column-sizer.svelte.js';
+	import { LEDGER_COLUMNS, MEASURABLE, ROW_GRID, columnHeader, gridTemplate } from './columns.js';
 	import EntryRow from './entry-row.svelte';
 	import TagPicker from './tag-picker.svelte';
 
 	// The list of entries with its cursor and keyboard model (patterns §5). The list is a snapshot
-	// (patterns §7): it shows what it was given and never changes under the cursor.
+	// (patterns §7): it shows what it was given and never changes under the cursor. It is cut by
+	// month and day into sticky bands (design §5, patterns §4.1), and its columns are as wide as
+	// what the rows hold.
 	let {
 		entries,
 		total,
@@ -38,6 +51,7 @@
 		moreError = null,
 		lookups,
 		locale = 'en',
+		today = todayIso('UTC'),
 		activeFilters = [],
 		changedIds = new Set<number>(),
 		movedIds = new Set<number>(),
@@ -62,6 +76,8 @@
 		moreError?: { code: string; message: string } | null;
 		lookups: Lookups;
 		locale?: string;
+		/** the household's today: a day row names the year where it is not this one */
+		today?: string;
 		/** labels of the active filters, for the "nothing matches" state */
 		activeFilters?: readonly string[];
 		onclearfilters?: () => void;
@@ -92,6 +108,38 @@
 	let container = $state<HTMLElement | null>(null);
 
 	const runs = $derived(unitRuns(entries));
+	// a unit is drawn under the day of its first entry, so a band never splits its frame
+	const bands = $derived(
+		cutBy(
+			runs,
+			byMonthAndDay(
+				(run) => run.entries[0].booked_on,
+				(date) => formatMonthYear(date, locale),
+				(date) => formatDayLabel(date, today, locale)
+			)
+		)
+	);
+
+	// the columns are sized by what the rows hold; the static template stands in until measured
+	const columns = LEDGER_COLUMNS;
+	const sizer = new ColumnSizer(() => columns);
+	const template = $derived(
+		(status === 'ready' ? sizer.template : undefined) ?? gridTemplate(columns)
+	);
+	// measure again when the rows held change (load more, filter, refresh, patch) or the amounts'
+	// currency is written out
+	$effect(() => {
+		void entries;
+		void status;
+		void showCurrency;
+		sizer.remeasure();
+	});
+
+	// The sticky stack: the header row (2rem), the month band (2.25rem), the day row (1.75rem).
+	// Each band sticks beneath the one above it; the cursor row scrolls to clear all three.
+	const MONTH_TOP = '2rem';
+	const DAY_TOP = '4.25rem';
+	const STICKY_OFFSET = '6.5rem';
 	const cursorIndex = $derived(
 		cursorId === null ? -1 : entries.findIndex((e) => e.id === cursorId)
 	);
@@ -255,11 +303,12 @@
 			.join(', ')}`
 	);
 	// The footer takes over the card's bottom edge, so the last row's own bottom rounding and
-	// divider go (the footer's top border is the divider); without it the old rules stay.
+	// divider go (the footer's top border is the divider); without it the old rules stay. The last
+	// row is a few levels down: the last month, its last day, then a row, or a unit's rowgroup and then its row.
 	const LAST_ROW = $derived(
 		showTotals
-			? '[&>:last-child]:border-b-0 [&>:last-child>:last-child]:border-b-0'
-			: '[&>:last-child]:rounded-b-[11px] [&>:last-child]:border-b-0 [&>:last-child>:last-child]:rounded-b-[11px] [&>:last-child>:last-child]:border-b-0'
+			? '[&>:last-child]:border-b-0 [&>:last-child>:last-child]:border-b-0 [&>:last-child>:last-child>:last-child]:border-b-0 [&>:last-child>:last-child>:last-child>:last-child]:border-b-0'
+			: '[&>:last-child]:rounded-b-[11px] [&>:last-child]:border-b-0 [&>:last-child>:last-child]:rounded-b-[11px] [&>:last-child>:last-child]:border-b-0 [&>:last-child>:last-child>:last-child]:rounded-b-[11px] [&>:last-child>:last-child>:last-child]:border-b-0 [&>:last-child>:last-child>:last-child>:last-child]:rounded-b-[11px] [&>:last-child>:last-child>:last-child>:last-child]:border-b-0'
 	);
 
 	// To drop the sticky footer (it stays at the bottom of the view while the list is on screen),
@@ -314,9 +363,11 @@
 				bind:this={container}
 				role="grid"
 				tabindex="-1"
-				class={cn('outline-none', LAST_ROW)}
+				class={cn('outline-none', MEASURABLE, LAST_ROW)}
 				aria-label="Entries"
 				aria-busy={status === 'loading'}
+				style:--sticky-offset={status === 'ready' ? STICKY_OFFSET : undefined}
+				{@attach sizer.attach}
 			>
 				<div
 					role="row"
@@ -324,11 +375,12 @@
 						ROW_GRID,
 						'sticky top-0 z-10 h-8 rounded-t-[11px] border-b border-border bg-muted px-3 text-xs font-medium text-muted-foreground'
 					)}
-					style:grid-template-columns={GRID_TEMPLATE}
+					style:grid-template-columns={template}
 				>
-					{#each COLUMNS as column (column.id)}
+					{#each columns as column (column.id)}
 						<div
 							role="columnheader"
+							data-col={column.id}
 							class={cn('min-w-0 truncate', column.align === 'right' && 'text-right')}
 						>
 							{#if column.hiddenHeader}<span class="sr-only">{column.header}</span
@@ -342,10 +394,10 @@
 						<div
 							role="row"
 							class={cn(ROW_GRID, 'h-8 border-b border-border px-3')}
-							style:grid-template-columns={GRID_TEMPLATE}
+							style:grid-template-columns={template}
 							data-skeleton
 						>
-							{#each COLUMNS as column (column.id)}
+							{#each columns as column (column.id)}
 								<div role="gridcell">
 									{#if column.id === 'description'}
 										<div
@@ -354,7 +406,7 @@
 										></div>
 									{:else if column.id === 'amount'}
 										<div class="ml-auto h-3 w-14 animate-pulse rounded bg-muted"></div>
-									{:else if column.id !== 'tags' && column.id !== 'review'}
+									{:else if column.id !== 'review'}
 										<div class="h-3 w-2/3 animate-pulse rounded bg-muted"></div>
 									{/if}
 								</div>
@@ -362,44 +414,59 @@
 						</div>
 					{/each}
 				{:else}
-					{#each runs as run (run.entries[0].id)}
-						{@const joined = run.entries.length > 1}
-						{#snippet rows()}
-							{#each run.entries as entry (entry.id)}
-								{@const mark = markOf(marks, entry.id)}
-								<EntryRow
-									{entry}
-									{lookups}
-									{locale}
-									{showCurrency}
-									modelPending={entry.model_pending}
-									cursor={entry.id === cursorId}
-									{joined}
-									unitCursor={joined &&
-										entry.id !== cursorId &&
-										run.entries.some((e) => e.id === cursorId)}
-									unitTotal={run.total}
-									changed={changedIds.has(entry.id) ||
-										movedIds.has(entry.id) ||
-										(mark !== undefined && !marks.resolved.has(entry.id))}
-									changedTitle={mark ??
-										(changedIds.has(entry.id) ? CHANGED_BY_YOU : CHANGED_ELSEWHERE)}
-									resolved={marks.resolved.has(entry.id)}
-									confirmed={marks.confirmed.has(entry.id)}
-									onselect={() => (cursorId = entry.id)}
-									onopen={() => openUnit(entry.id)}
-									ontags={() => {
-										cursorId = entry.id;
-										openPicker();
-									}}
-								/>
+					{#each bands as month (month.key)}
+						<!-- each band's rows in their own element: it ends the band's sticking -->
+						<div role="presentation" data-month={month.key}>
+							<SubgroupRow label={month.label} top={MONTH_TOP} data-slot="month-row" />
+							{#each month.bands as day (day.key)}
+								<div role="presentation" data-day={day.key}>
+									<DayRow label={day.label} top={DAY_TOP} />
+									{#each day.items as run (run.entries[0].id)}
+										{@const joined = run.entries.length > 1}
+										{#snippet rows()}
+											{#each run.entries as entry (entry.id)}
+												{@const mark = markOf(marks, entry.id)}
+												<EntryRow
+													{entry}
+													{lookups}
+													{columns}
+													{template}
+													{locale}
+													{showCurrency}
+													modelPending={entry.model_pending}
+													cursor={entry.id === cursorId}
+													{joined}
+													unitCursor={joined &&
+														entry.id !== cursorId &&
+														run.entries.some((e) => e.id === cursorId)}
+													unitTotal={run.total}
+													changed={changedIds.has(entry.id) ||
+														movedIds.has(entry.id) ||
+														(mark !== undefined && !marks.resolved.has(entry.id))}
+													changedTitle={mark ??
+														(changedIds.has(entry.id) ? CHANGED_BY_YOU : CHANGED_ELSEWHERE)}
+													resolved={marks.resolved.has(entry.id)}
+													confirmed={marks.confirmed.has(entry.id)}
+													onselect={() => (cursorId = entry.id)}
+													onopen={() => openUnit(entry.id)}
+													ontags={() => {
+														cursorId = entry.id;
+														openPicker();
+													}}
+												/>
+											{/each}
+										{/snippet}
+										{#if joined}
+											<div role="rowgroup" data-unit={run.key} class={UNIT_FRAME}>
+												{@render rows()}
+											</div>
+										{:else}
+											{@render rows()}
+										{/if}
+									{/each}
+								</div>
 							{/each}
-						{/snippet}
-						{#if joined}
-							<div role="rowgroup" data-unit={run.key} class={UNIT_FRAME}>{@render rows()}</div>
-						{:else}
-							{@render rows()}
-						{/if}
+						</div>
 					{/each}
 				{/if}
 			</div>

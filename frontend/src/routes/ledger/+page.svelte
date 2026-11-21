@@ -139,6 +139,7 @@
 		moreError={ledger.moreError}
 		lookups={ledger.lookups}
 		locale={ledger.locale}
+		today={ledger.today}
 		activeFilters={ledger.activeFilters}
 		onclearfilters={() => show(emptyFilter())}
 		onretry={() => ledger.reload()}

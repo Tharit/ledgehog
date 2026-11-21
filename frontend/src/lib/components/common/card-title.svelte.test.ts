@@ -3,6 +3,7 @@ import { createRawSnippet } from 'svelte';
 import { describe, expect, it } from 'vitest';
 import Clock from '@lucide/svelte/icons/clock';
 import CardTitle from './card-title.svelte';
+import DayRow from './day-row.svelte';
 import SubgroupRow from './subgroup-row.svelte';
 
 const text = (t: string) => createRawSnippet(() => ({ render: () => `<button>${t}</button>` }));
@@ -32,14 +33,45 @@ describe('CardTitle', () => {
 });
 
 describe('SubgroupRow', () => {
-	it('is one full-width row with a muted label and an action at the right', () => {
+	it('is one full-width tinted row with a heading-sized label and an action at the right', () => {
 		const { container } = render(SubgroupRow, { props: { label: 'USD', action: text('Add') } });
 		const row = container.firstElementChild!;
 
 		expect(row).toHaveAttribute('role', 'row');
-		expect(row).not.toHaveClass('bg-muted');
+		expect(row).toHaveClass('bg-muted');
 		expect(row.querySelectorAll('[role="gridcell"]')).toHaveLength(1);
-		expect(screen.getByText('USD')).toHaveClass('text-xs', 'font-medium', 'text-muted-foreground');
+		expect(screen.getByText('USD')).toHaveClass('text-base', 'font-semibold', 'text-foreground');
 		expect(screen.getByRole('button', { name: 'Add' })).toBeInTheDocument();
+	});
+
+	it('sticks beneath what is above it only when given a top', () => {
+		const { container } = render(SubgroupRow, { props: { label: 'November 2026', top: '2rem' } });
+		const row = container.firstElementChild as HTMLElement;
+
+		expect(row).toHaveClass('sticky');
+		expect(row.style.top).toBe('2rem');
+	});
+});
+
+describe('DayRow', () => {
+	it("is a lighter row with a muted label in the labels' size", () => {
+		const { container } = render(DayRow, { props: { label: 'Tue, Nov 17' } });
+		const row = container.firstElementChild!;
+
+		expect(row).toHaveAttribute('role', 'row');
+		expect(row).not.toHaveClass('sticky');
+		expect(screen.getByText('Tue, Nov 17')).toHaveClass(
+			'text-xs',
+			'font-medium',
+			'text-muted-foreground'
+		);
+	});
+
+	it('sticks at the top it is given', () => {
+		const { container } = render(DayRow, { props: { label: 'Tue, Nov 17', top: '4.25rem' } });
+		const row = container.firstElementChild as HTMLElement;
+
+		expect(row).toHaveClass('sticky');
+		expect(row.style.top).toBe('4.25rem');
 	});
 });
