@@ -86,10 +86,22 @@ says so; those are revisited after the first month of use, not per view.
 
 An entry row shows, in this order: date, account (always in the ledger list; a
 view of one account may leave it out), category or the transfer's destination
-("→ Cash"), tags, payee, description (the one column that takes the remaining
-width), the review badges (§4.2) and the amount. Derived entries (opening,
-valuation, reconciliation) render in the same row shape with their type in
-place of a category and no review affordances (spec §3.9).
+("→ Cash"), payee, description with the entry's tags at its right end, the
+review badges (§4.2) and the amount. A list cut by day (below) leaves the date
+to its day rows. In the description cell the text gives way to the tags: it is
+cut short first, then the tags are clipped at the cell's edge. A row shows at
+most two tags, then "+N". Derived entries (opening, valuation, reconciliation)
+render in the same row shape with their type in place of a category and no
+review affordances (spec §3.9).
+
+**Columns are as wide as what they hold.** The amount and the review badges
+take the width of their widest cell among the rows held. Account, category and
+payee take theirs up to a cap, and the description takes the rest. Where the
+row is too narrow, the widest columns give way first, down to one common
+width, none below its minimum (4.5rem; the description 8rem). The widths are
+measured again when the rows held change (Load more, a filter, a refresh) or
+the list is resized. The review queue's sections share one set of widths for
+the columns they have in common.
 
 **The origin tag** says who authored a row's source transaction, from its
 `origin` (spec §5.6): a small muted tag, "Imported", "Entered" or "Booked".
@@ -143,6 +155,12 @@ total, so a split is recognisable from any of its rows. A transfer leg shows its
 account, date and amount — from a read-only summary the row carries, so it
 works when a filter hides the partner; the partner's own row is highlighted
 when it is in view.
+
+**The ledger list and the review queue's pending section are cut by day.**
+Their rows are in date order, so they are cut into months, each a subgroup row
+("November 2026"), and days, each a day row (`design.md` §5). A unit is drawn
+under the day of its first entry. The unit panel lists few rows and keeps its
+date column.
 
 **The ledger list ends in a total row**, in its card beneath the last row: the
 count — "100 of 214 entries" — with "Load more" while rows remain, and the sum
@@ -415,9 +433,8 @@ row; a resolved row stays in place, marked (§7).
   been seen;
 - whether resolved rows in a snapshot collapse after a while (architecture
   §6.5 leaves it to the view);
-- the ledger list's columns: their order (in particular whether the amount
-  comes before the description) and which columns give way first at a narrow
-  width (the prototype's table simply overflows);
+- the ledger list's column order (in particular whether the amount comes
+  before the description);
 - whether the ledger list shows the account's facts (§4.4) when one account is
   filtered; the prototype leaves them to the account view;
 - where a quiet notice appears (the prototype reserves one line under the

@@ -4198,3 +4198,12 @@ ux/views/review-queue.md; architecture §4.1, §6.5; ux/patterns.md §7.
 - **A unit matches by any of its entries,** so a transfer between two accounts shows under either. Accepted: an unpaired leg toward a filtered account shows only under its own account; most such legs are waiting and complete on their own. Rejected: *matching counter-accounts too* (a second rule for a transient state).
 - **The account chip alone.** Category, payee and tags are proposals that change under review, the type and flags repeat the sections, and an amount needs a currency. Rejected: *the full filter bar*.
 - **The counts of the navigation and the Overview are never filtered**: they count the household's work, which a view does not change.
+
+## D271 The ledger list is cut by day, and its columns are sized by content
+
+ux/design.md §5; ux/patterns.md §4.1; ux/views/review-queue.md.
+
+- **The ledger list and the review queue's pending section are cut by month and day** (user, 2026-11-21): a subgroup row per month and a day row per day, both sticky beneath the header row, neither with a sum. The date column goes, the day row carries it. A unit sits under the day of its first entry. The other review sections and the unit panel keep their date column: they hold few rows.
+- **Subgroup rows are tinted `surface-muted`** as the header row, in the section heading's size, so a band reads as a band; the day row is a lighter tint in the labels' size. Bands are at most two deep.
+- **Tags sit at the right end of the description cell** (user, 2026-11-21), at most two and "+N", the text giving way to them first and they then clipping. This takes a column out of the row.
+- **Columns are as wide as what they hold,** the description taking the rest; where the row is too narrow, the widest columns give way first down to a common width. The open question of which columns give way first is closed (patterns §10).
