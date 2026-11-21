@@ -213,7 +213,12 @@ _QUEUE_PAGE = text(
 # The pending section cut by counterparty. `cp` is its units with the normalised counterparty name of the
 # anchor's source (empty or null: none); a name with more than one unit is a group (`gkey`), the rest are
 # "Other" (`gkey` null). `o` is 1 for Other, `neg` the negated group count, `g` the key ('' for Other): the
-# section's sort key is (o, neg, g, booked_on, anchor).
+# section's sort key is (o, neg, g, booked_on, anchor). A page after a cursor first finishes the cursor's own
+# group, found by its key (`pri` 0), whatever its count is now, then goes on with the groups after the
+# cursor's position (`pri` 1). Commits between pages change the counts, so the order of the rest can shift:
+# a group that dropped may come up again (its units are held by the client, which de-duplicates by unit), one
+# whose units moved to Other or that grew by new data may be passed over; the "New data - Refresh" notice
+# covers the latter. The groups list of a later page is the current one; the client keeps the first page's.
 _COUNTERPARTY_CTE = r"""
     , cp AS (
         SELECT q.unit_key, q.anchor, q.currency, q.wait_account, e.booked_on, st.counterparty_name AS raw,
@@ -237,12 +242,16 @@ _COUNTERPARTY_PAGE = text(
     + """
     SELECT t.unit_key, t.anchor, t.booked_on, t.total, t.currency, t.wait_account, t.gkey, t.o, t.neg, t.g,
            CAST(NULL AS date) AS synced_through
-      FROM (SELECT r.*, count(*) OVER () AS total FROM ranked AS r) AS t
-     WHERE (CAST(:after_o AS int) IS NULL
-            OR (t.o, t.neg, t.g, t.booked_on, t.anchor)
-               > (CAST(:after_o AS int), CAST(:after_neg AS int), CAST(:after_g AS text),
-                  CAST(:after_on AS date), CAST(:after_anchor AS bigint)))
-     ORDER BY t.o, t.neg, t.g, t.booked_on, t.anchor
+      FROM (SELECT r.*, count(*) OVER () AS total,
+                   CASE WHEN CAST(:after_o AS int) IS NOT NULL
+                         AND r.o = CAST(:after_o AS int) AND r.g = CAST(:after_g AS text)
+                        THEN 0 ELSE 1 END AS pri
+              FROM ranked AS r) AS t
+     WHERE CAST(:after_o AS int) IS NULL
+        OR (t.pri = 0 AND (t.booked_on, t.anchor) > (CAST(:after_on AS date), CAST(:after_anchor AS bigint)))
+        OR (t.pri = 1 AND (t.o, t.neg, t.g) > (CAST(:after_o AS int), CAST(:after_neg AS int),
+                                               CAST(:after_g AS text)))
+     ORDER BY t.pri, t.o, t.neg, t.g, t.booked_on, t.anchor
      LIMIT :limit
     """
 )

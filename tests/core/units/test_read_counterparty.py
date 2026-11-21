@@ -7,7 +7,7 @@ from datetime import date
 from typing import Any
 
 import pytest
-from sqlalchemy import Connection
+from sqlalchemy import Connection, text
 
 from app.core.units.read import InvalidCursor, review_queue
 from tests.core.units.helpers import Bench
@@ -139,3 +139,53 @@ def test_a_cursor_of_one_cut_is_not_valid_for_the_other(db_conn: Connection, ben
         review_queue(db_conn, section="pending_review", cursor=by_date, cut="counterparty")
     with pytest.raises(InvalidCursor):
         review_queue(db_conn, section="pending_review", cursor=by_cp)
+
+
+def _confirm(bench: Bench, anchors: list[int]) -> None:
+    """Commit units: the entries get their category, so the units leave the pending section."""
+    bench.conn.execute(
+        text("UPDATE ledger_entry SET category_id = :c WHERE id = ANY(:ids)"),
+        {"c": bench.cat, "ids": anchors},
+    )
+
+
+def _next(db_conn: Connection, cursor: str, limit: int) -> Any:
+    return review_queue(
+        db_conn, cut="counterparty", limit=limit, section="pending_review", cursor=cursor
+    ).sections[0]
+
+
+def test_commits_between_pages_do_not_split_the_band_the_cursor_is_in(
+    db_conn: Connection, bench: Bench
+) -> None:
+    a = [_unit(bench, "A", day=d) for d in range(1, 13)]  # 12
+    b = [_unit(bench, "B", day=d) for d in range(1, 12)]  # 11
+    c = [_unit(bench, "C", day=d) for d in range(1, 11)]  # 10
+    s1 = _pending(db_conn, limit=4)
+    assert [u.anchor_entry_id for u in s1.units] == a[:4] and s1.next_cursor
+    _confirm(bench, a[4:7])  # A: 12 -> 9, now below B and C
+    s2 = _next(db_conn, s1.next_cursor, 20)
+    # the rest of A first, then B and C in their order; nothing skipped, A is not split
+    assert [u.anchor_entry_id for u in s2.units] == [*a[7:], *b, *c[:4]] and s2.next_cursor
+    assert [u.counterparty_key for u in s2.units] == ["a"] * 5 + ["b"] * 11 + ["c"] * 4
+    s3 = _next(db_conn, s2.next_cursor, 20)
+    # C's tail; then A, whose count dropped below C's after it was passed, comes up again: every unit of it is
+    # already held by the client, which de-duplicates by unit
+    got = [u.anchor_entry_id for u in s3.units]
+    assert got[:6] == c[4:] and s3.next_cursor is None
+    assert set(got[6:]) == {*a[:4], *a[7:]} and set(got[6:]) <= {*a, *b, *c}
+
+
+def test_a_group_shrinking_to_one_after_it_was_passed_does_not_break_paging(
+    db_conn: Connection, bench: Bench
+) -> None:
+    a = [_unit(bench, "A", day=d) for d in (1, 2, 3)]
+    b = [_unit(bench, "B", day=d) for d in (4, 5)]
+    s1 = _pending(db_conn, limit=2)
+    assert [u.anchor_entry_id for u in s1.units] == a[:2] and s1.next_cursor
+    _confirm(bench, a[:2])  # A: 3 -> 1, it is Other now
+    _confirm(bench, [b[0]])  # B: 2 -> 1, Other too
+    s2 = _next(db_conn, s1.next_cursor, 5)
+    assert [u.anchor_entry_id for u in s2.units] == [a[2], b[1]]
+    assert s2.next_cursor is None
+    assert [g.other for g in s2.counterparty_groups] == [True]
