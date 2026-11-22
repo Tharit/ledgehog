@@ -69,9 +69,10 @@ _FIELDS = (
     "refunded, whatever it is paid with or refunded to: store credit, gift cards and an account balance "
     "bear on the total only. Where the source shows no price for an article but the sum paid or refunded "
     "for it alone, that sum is its amount). "
-    "Each item also has short: the kind of article and what sets it apart, in two to five words of the "
-    "source's language, without brand, size, colour or marketing words; for shipping, fees, taxes and "
-    "discounts, its name."
+    "Each item also has short: the article as a person would call it, in two to six words of the "
+    "source's language: its brand, where the source names one, and the kind of article, with its title or "
+    "model where that is what identifies it; without sizes, colours, search keywords or claims; for "
+    "shipping, fees, taxes and discounts, its name."
 )
 _SHARED = (
     "Extract the purchase or payment data of the source, whatever kind of document it is: an order "

@@ -120,6 +120,8 @@ def test_the_text_request_carries_the_strict_schema_the_effort_and_the_timeouts(
     assert "never invent" in system["content"].lower() and "do not classify" in system["content"].lower()
     assert "never the seller of an article" in system["content"] and "Verkauf durch" in system["content"]
     assert "Each item also has short:" in system["content"] and "orders null" in system["content"]
+    assert "its brand, where the source names one" in system["content"]
+    assert "without sizes, colours, search keywords or claims" in system["content"]
     assert "each is read as shown, never added to another" in system["content"]
     assert "bear on the total only" in system["content"] and "that sum is its amount" in system["content"]
     assert user == {"role": "user", "content": "Order 1\t10,50"}
@@ -176,6 +178,8 @@ def test_the_vision_request_has_images_and_no_schema_no_effort_and_room_to_think
         assert key in system["content"]
     assert "never the seller of an article" in system["content"]
     assert "bear on the total only" in system["content"] and "that sum is its amount" in system["content"]
+    assert "its brand, where the source names one" in system["content"]
+    assert "without sizes, colours, search keywords or claims" in system["content"]
     assert "no code fences" in system["content"]
     images = [p["image_url"]["url"] for p in user["content"] if p["type"] == "image_url"]
     assert len(images) == 2
