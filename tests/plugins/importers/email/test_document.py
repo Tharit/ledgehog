@@ -358,6 +358,11 @@ def test_a_refund_entirely_to_store_credit_is_a_document_of_total_zero():
     assert d.source_id == "message:inner@shop" and d.reference == "305-8171480-9164354"
 
 
+def test_a_refund_of_total_zero_whose_only_line_is_zero_is_incomplete():
+    items = [{"name": "Thing", "quantity": 1, "amount": 0.0}]
+    assert build(answer(refund=True, total=0, items=items)) == Skipped("incomplete")
+
+
 def test_a_refund_to_the_payment_method_has_positive_signs():
     d = doc(answer(refund=True, total=15.47, items=[{"name": "Thing", "quantity": 1, "amount": 15.47}]))
     assert d.total_minor == 1547 and amounts(d) == [1547]
