@@ -558,6 +558,29 @@ def test_the_earlier_document_of_one_key_wins_and_the_later_counts_as_same_order
     assert delivery.importer_stats["same_order"] == 1 and delivery.importer_stats["documents"] == 2
 
 
+def test_an_inner_message_counts_documents_where_one_is_delivered_and_same_order_where_all_are_dropped():
+    box = FakeMailbox({n: (accepted(n), ARRIVED) for n in (1, 2, 3)})
+    answers = iter([["100", "101"], ["101", "100"], ["101", "102"]])
+    rig = Rig(box)
+    rig.extractor.reply = lambda t, p: Extraction({"merchant": "A", "orders": next(answers)}, "text")
+    delivery = rig.run()
+    assert [(d.source_id, d.raw["uid"], d.raw["order"]) for d in delivery.documents] == [
+        ("100", 1, 1),
+        ("101", 1, 2),
+        ("102", 3, 2),
+    ]
+    stats = delivery.importer_stats
+    assert (stats["documents"], stats["same_order"]) == (2, 1)  # uid 1 and 3 deliver; uid 2 is all duplicates
+
+
+def test_a_duplicate_within_one_answer_is_dropped_the_earlier_position_wins():
+    rig = Rig(FakeMailbox({1: (accepted(1), ARRIVED)}))
+    rig.extractor.reply = lambda t, p: Extraction({"merchant": "A", "orders": ["100", "100"]}, "text")
+    delivery = rig.run()
+    assert [d.raw["order"] for d in delivery.documents] == [1]
+    assert (delivery.importer_stats["documents"], delivery.importer_stats["same_order"]) == (1, 0)
+
+
 def test_the_builder_gets_the_context_and_the_currency_lookup_passed_in():
     rig = Rig(FakeMailbox({7: (accepted(1, sent="Mon, 5 Jan 2026 10:00:00 +0000"), ARRIVED)}, uidvalidity=3))
     rig.run()

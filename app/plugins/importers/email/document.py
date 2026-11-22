@@ -1,10 +1,10 @@
-"""From an extraction to a document (spec/plugins/importers/email.md §6): completeness, signs, the provider.
+"""From an extraction to its documents (spec/plugins/importers/email.md §6): completeness, signs, provider.
 
-Deterministic and free of the model: the same extraction gives the same document. A complete document only:
-a total of at least 0, a line of non-zero amount, whole minor units, and what the lines leave of the total no
-larger than the lines themselves. A refund is the same with the opposite signs, keyed by its message. The
-check guards against misreads; what the lines leave is the core's to spread (spec §5.8), so no line is added
-for it.
+Deterministic and free of the model: the same extraction gives the same documents, one per order of the
+answer. Complete documents only: each order a total of at least 0, a line of non-zero amount, whole minor
+units, and what the lines leave of the total no larger than the lines themselves; one order that fails skips
+the whole answer. A refund is the same with the opposite signs, keyed by its message. The check guards
+against misreads; what the lines leave is the core's to spread (spec §5.8), so no line is added for it.
 """
 
 from __future__ import annotations
@@ -14,7 +14,6 @@ import re
 import unicodedata
 from collections.abc import Callable, Mapping
 from decimal import Decimal, localcontext
-from typing import Any
 
 from app.core.plugins.importer import IncomingDocument, IncomingDocumentLine
 from app.plugins.importers.email.extractor import (
@@ -128,19 +127,23 @@ def _minor(value: Decimal, exponent: int) -> int | None:
         return int(scaled)
 
 
-def _amounts(
-    answer: Mapping[str, Any], exponent: int
-) -> tuple[int, list[tuple[str, int, Decimal | None]]] | None:
-    """(total, [(name, amount, quantity)]) in minor units, or None where it is incomplete: a total of at least
-    0, at least one line, every line named and amounted, everything in whole minor units."""
-    total_value = _decimal(answer.get("total"))
-    items = answer.get("items")
+Line = tuple[str, str, int, Decimal | None]  # (description, name, amount, quantity)
+
+
+def _amounts(order: object, exponent: int) -> tuple[int, list[Line]] | None:
+    """(total, [(description, name, amount, quantity)]) of one order in minor units, or None where it is
+    incomplete: a total of at least 0, at least one line, every line named and amounted, everything in whole
+    minor units. The description is the line's `short` where it has one, else its name."""
+    if not isinstance(order, Mapping):
+        return None
+    total_value = _decimal(order.get("total"))
+    items = order.get("items")
     if total_value is None or total_value < 0 or not isinstance(items, list) or not items:
         return None
     total = _minor(total_value, exponent)
     if total is None:
         return None
-    lines: list[tuple[str, int, Decimal | None]] = []
+    lines: list[Line] = []
     for item in items:
         name = item.get("name") if isinstance(item, Mapping) else None
         if not isinstance(name, str) or not collapse(name):
@@ -149,7 +152,9 @@ def _amounts(
         amount = None if amount_value is None else _minor(amount_value, exponent)
         if amount is None:
             return None
-        lines.append((collapse(name), amount, _decimal(item.get("quantity"))))
+        short = item.get("short")
+        description = collapse(short) if isinstance(short, str) else ""
+        lines.append((description or collapse(name), collapse(name), amount, _decimal(item.get("quantity"))))
     return total, lines
 
 
@@ -160,15 +165,15 @@ def _as_quantity(quantity: Decimal | None) -> int | None:
     return int(quantity)
 
 
-def _line_amounts(total: int, lines: list[tuple[str, int, Decimal | None]]) -> list[int] | None:
+def _line_amounts(total: int, lines: list[Line]) -> list[int] | None:
     """The amounts the lines carry: as given, unless those do not sum to the total and each times its quantity
     (none taken as 1), each still a whole number of minor units, does. None where the lines are not complete:
     no line of non-zero amount, or what they leave of the total (|total - sum|) larger than the sum of their
     magnitudes."""
-    amounts = [amount for _, amount, _ in lines]
+    amounts = [amount for _, _, amount, _ in lines]
     if sum(amounts) != total:
         products: list[int] = []
-        for _, amount, quantity in lines:
+        for _, _, amount, quantity in lines:
             product = _minor(Decimal(amount) * (quantity if quantity is not None else 1), 0)
             if product is None:
                 break  # not a whole number of minor units
@@ -190,7 +195,7 @@ class EmailDocumentBuilder:
 
     def build(
         self, extraction: Extraction, context: MessageContext, *, minor_units_of: Callable[[str], int]
-    ) -> IncomingDocument | Skipped:
+    ) -> tuple[IncomingDocument, ...] | Skipped:
         answer = extraction.answer
         refund = answer.get("refund") is True
         currency = answer.get("currency")
@@ -203,43 +208,64 @@ class EmailDocumentBuilder:
             exponent = minor_units_of(code)
         except KeyError:
             return Skipped(UNKNOWN_CURRENCY)
-        parsed = _amounts(answer, exponent)
-        if parsed is None:
+        orders = answer.get("orders")
+        if not isinstance(orders, list) or not orders:
             return Skipped(INCOMPLETE)
-        total, lines = parsed
-        amounts = _line_amounts(total, lines)
-        if amounts is None:
-            return Skipped(INCOMPLETE)
+        checked: list[tuple[str, int, list[Line], list[int]]] = []  # (order number, total, lines, amounts)
+        for order in orders:
+            parsed = _amounts(order, exponent)
+            amounts = None if parsed is None else _line_amounts(parsed[0], parsed[1])
+            if parsed is None or amounts is None:
+                return Skipped(INCOMPLETE)  # one misread order puts the whole answer in doubt
+            order_id = order.get("order_id")
+            checked.append(
+                (collapse(order_id) if isinstance(order_id, str) else "", parsed[0], parsed[1], amounts)
+            )
         merchant = answer.get("merchant")
         provider = canonical_provider(merchant) if isinstance(merchant, str) else ""
         if not isinstance(merchant, str) or not provider:
             return Skipped(NO_MERCHANT)
-        order_id = answer.get("order_id")
-        order = collapse(order_id) if isinstance(order_id, str) else ""
         subject = strip_subject_markers(collapse(context.subject)) if context.subject else ""
-        return IncomingDocument(
-            provider=provider,
-            source_id=f"message:{context.identity}" if refund or not order else order,
-            reference=order or None,
-            occurred_on=context.date,
-            total_minor=total if refund else -total,
-            currency=code,
-            merchant_name=collapse(merchant)[:MERCHANT_NAME_MAX] or None,
-            title=subject[:TITLE_MAX] or None,
-            lines=tuple(
-                IncomingDocumentLine(name, amount if refund else -amount, _as_quantity(quantity))
-                for (name, _, quantity), amount in zip(lines, amounts, strict=True)
-                if amount != 0
-            ),
-            raw={
-                "message_id": context.identity,
-                "outer_message_id": context.outer_identity,
-                "uid": context.uid,
-                "uidvalidity": context.uidvalidity,
-                "date": context.date.isoformat(),
-                "source": extraction.source,
-                "pdf": extraction.pdf,
-                "extraction": dict(answer),
-                "model": extraction.model,
-            },
-        )
+        by_message = sum(
+            1 for number, *_ in checked if refund or not number
+        )  # the documents keyed by message
+        documents: list[IncomingDocument] = []
+        for position, (number, total, lines, amounts) in enumerate(checked, start=1):
+            if not refund and number:
+                source_id = number
+            elif by_message > 1:
+                source_id = f"message:{context.identity}#{position}"
+            else:
+                source_id = f"message:{context.identity}"
+            documents.append(
+                IncomingDocument(
+                    provider=provider,
+                    source_id=source_id,
+                    reference=number or None,
+                    occurred_on=context.date,
+                    total_minor=total if refund else -total,
+                    currency=code,
+                    merchant_name=collapse(merchant)[:MERCHANT_NAME_MAX] or None,
+                    title=subject[:TITLE_MAX] or None,
+                    lines=tuple(
+                        IncomingDocumentLine(
+                            description, amount if refund else -amount, _as_quantity(quantity)
+                        )
+                        for (description, _, _, quantity), amount in zip(lines, amounts, strict=True)
+                        if amount != 0
+                    ),
+                    raw={
+                        "message_id": context.identity,
+                        "outer_message_id": context.outer_identity,
+                        "uid": context.uid,
+                        "uidvalidity": context.uidvalidity,
+                        "date": context.date.isoformat(),
+                        "source": extraction.source,
+                        "pdf": extraction.pdf,
+                        "extraction": dict(answer),
+                        "order": position,
+                        "model": extraction.model,
+                    },
+                )
+            )
+        return tuple(documents)

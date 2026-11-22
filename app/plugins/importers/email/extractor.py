@@ -1,9 +1,9 @@
 """The interface between the mailbox side and the extraction side (spec/plugins/importers/email.md §5, §6).
 
 The mailbox side hands an inner message's text and PDFs to an `Extractor`, which answers with what the model
-extracted or a reason it was skipped; a `DocumentBuilder` turns an extraction into a document (completeness,
-provider, signs) or a reason it is not one. Both are given to the importer, so the fetch is tested end to end
-without a model.
+extracted or a reason it was skipped; a `DocumentBuilder` turns an extraction into its documents, one per
+order (completeness, provider, signs), or a reason it yields none. Both are given to the importer, so the
+fetch is tested end to end without a model.
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ SKIP_REASONS: frozenset[str] = frozenset(STAT_KEYS) - {DOCUMENTS, SAME_ORDER}
 
 @dataclass(frozen=True, slots=True)
 class Skipped:
-    """The inner message yields no document; `reason` is one of the `importer_stats` keys."""
+    """The inner message yields no documents; `reason` is one of the `importer_stats` keys."""
 
     reason: str
 
@@ -80,10 +80,10 @@ class Extractor(Protocol):
         *,
         accept: Callable[[Extraction], bool] = lambda extraction: True,
     ) -> Extraction | Skipped:
-        """Ask the model, text first: where the text yields no document, each PDF in turn (§5).
+        """Ask the model, text first: where the text yields no documents, each PDF in turn (§5).
 
         `text` is the converted body (None where it has none, or it was too long to send); `pdfs` its PDFs,
-        at most three. `accept` says whether an extraction yields a document (the builder's verdict); the
+        at most three. `accept` says whether an extraction yields documents (the builder's verdict); the
         first accepted one is returned. Where none is, the first extraction that was read is returned, for
         the builder to name why it is no document, else `Skipped` for `no_content`, `pdf_not_read`,
         `unreadable` or `model_refused`. Raises `AttemptFailed` or `SourceUnavailable` (§8)."""
@@ -106,7 +106,8 @@ class MessageContext:
 class DocumentBuilder(Protocol):
     def build(
         self, extraction: Extraction, context: MessageContext, *, minor_units_of: Callable[[str], int]
-    ) -> IncomingDocument | Skipped:
-        """Completeness, provider and signs (§6): the document, or `unknown_currency`, `incomplete`
-        or `no_merchant`. `minor_units_of` raises `KeyError` for a currency it does not know."""
+    ) -> tuple[IncomingDocument, ...] | Skipped:
+        """Completeness, provider and signs (§6): one document per order of the answer, in order, or
+        `unknown_currency`, `incomplete` or `no_merchant` for the whole answer.
+        `minor_units_of` raises `KeyError` for a currency it does not know."""
         ...

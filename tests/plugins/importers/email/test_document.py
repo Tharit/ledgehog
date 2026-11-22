@@ -29,25 +29,29 @@ CONTEXT = MessageContext(
 )
 
 
+ORDER_KEYS = ("order_id", "total", "items")
+
+
 def answer(**over: Any) -> dict[str, Any]:
-    base: dict[str, Any] = {
-        "merchant": "Shop",
+    """A one-order answer: `order_id`, `total` and `items` go to the order, the rest to the answer; `orders`
+    replaces the list."""
+    order: dict[str, Any] = {
         "order_id": "A-1",
         "total": 30.0,
-        "currency": "EUR",
-        "refund": False,
         "items": [
-            {"name": "Thing", "quantity": 2, "amount": 20.0},
-            {"name": "Shipping", "quantity": None, "amount": 10.0},
+            {"name": "Thing", "short": "Thing", "quantity": 2, "amount": 20.0},
+            {"name": "Shipping", "short": "Shipping", "quantity": None, "amount": 10.0},
         ],
     }
+    order.update({k: over.pop(k) for k in ORDER_KEYS if k in over})
+    base: dict[str, Any] = {"merchant": "Shop", "currency": "EUR", "refund": False, "orders": [order]}
     base.update(over)
     return base
 
 
 def build(
     a: dict[str, Any], context: MessageContext = CONTEXT, source: str = "text"
-) -> IncomingDocument | Skipped:
+) -> tuple[IncomingDocument, ...] | Skipped:
     return EmailDocumentBuilder().build(
         Extraction(a, source, "r.pdf" if source == "pdf" else None, "m-1"),  # type: ignore[arg-type]
         context,
@@ -55,10 +59,15 @@ def build(
     )
 
 
-def doc(a: dict[str, Any]) -> IncomingDocument:
+def docs(a: dict[str, Any]) -> tuple[IncomingDocument, ...]:
     result = build(a)
-    assert isinstance(result, IncomingDocument), result
+    assert not isinstance(result, Skipped), result
     return result
+
+
+def doc(a: dict[str, Any]) -> IncomingDocument:
+    [d] = docs(a)
+    return d
 
 
 def amounts(d: IncomingDocument) -> list[int]:
@@ -85,8 +94,8 @@ def test_a_complete_answer_is_a_document_in_ledger_signs():
 def test_raw_holds_ids_date_path_and_the_validated_extraction_not_the_message():
     a = answer()
     result = build(a, source="pdf")
-    assert isinstance(result, IncomingDocument)
-    assert result.raw == {
+    assert not isinstance(result, Skipped)
+    assert result[0].raw == {
         "message_id": "inner@shop",
         "outer_message_id": "outer@family",
         "uid": 7,
@@ -95,9 +104,10 @@ def test_raw_holds_ids_date_path_and_the_validated_extraction_not_the_message():
         "source": "pdf",
         "pdf": "r.pdf",
         "extraction": a,
+        "order": 1,
         "model": "m-1",
     }
-    json.dumps(result.raw)  # stored as JSON
+    json.dumps(result[0].raw)  # stored as JSON
 
 
 def test_a_discount_becomes_a_positive_line_and_a_zero_line_is_dropped():
@@ -143,8 +153,8 @@ def test_title_and_merchant_name_are_cut_and_the_title_may_be_absent():
     assert doc(answer(merchant=long)).provider == "x" * 100
     from dataclasses import replace
 
-    assert len(build(answer(), replace(CONTEXT, subject=long)).title or "") == 200  # type: ignore[union-attr]
-    assert build(answer(), replace(CONTEXT, subject=None)).title is None  # type: ignore[union-attr]
+    assert len(doc_with(replace(CONTEXT, subject=long)).title or "") == 200
+    assert doc_with(replace(CONTEXT, subject=None)).title is None
 
 
 def test_reference_is_the_order_id_collapsed_else_none():
@@ -155,12 +165,16 @@ def test_reference_is_the_order_id_collapsed_else_none():
         assert (d.reference, d.source_id) == (None, "message:inner@shop")
 
 
+def doc_with(context: MessageContext) -> IncomingDocument:
+    result = build(answer(), context)
+    assert not isinstance(result, Skipped), result
+    return result[0]
+
+
 def _title(subject: str | None) -> str | None:
     from dataclasses import replace
 
-    result = build(answer(), replace(CONTEXT, subject=subject))
-    assert isinstance(result, IncomingDocument), result
-    return result.title
+    return doc_with(replace(CONTEXT, subject=subject)).title
 
 
 @pytest.mark.parametrize(
@@ -264,6 +278,9 @@ def test_lines_that_are_all_zero_are_not_a_document():
 @pytest.mark.parametrize(
     "a",
     [
+        answer(orders=None),
+        answer(orders=[]),
+        answer(orders=["x"]),
         answer(total=None),
         answer(total=-30.0),
         answer(items=None),
@@ -364,6 +381,7 @@ def test_an_order_whose_lines_exceed_the_total_is_delivered():
 def test_the_checks_run_in_the_order_of_the_spec():
     assert build(answer(currency="XXX", total=None)) == Skipped("unknown_currency")
     assert build(answer(total=None, merchant=None)) == Skipped("incomplete")
+    assert build(answer(orders=[], merchant=None)) == Skipped("incomplete")
 
 
 @pytest.mark.parametrize("merchant", [None, "", "   ", "GmbH", "Ltd.", ".", 5])
@@ -412,3 +430,79 @@ def test_the_provider_is_the_merchant_canonicalised_case_kept(merchant: str, pro
 
 def test_the_provider_is_at_most_100_characters():
     assert len(canonical_provider("a" * 150)) == 100
+
+
+# ---- several orders, short names --------------------------------------------------------------------
+
+
+def order(order_id: str | None, amount: float, name: str = "Thing", **item: Any) -> dict[str, Any]:
+    line = {"name": name, "short": name, "quantity": 1, "amount": amount, **item}
+    return {"order_id": order_id, "total": amount, "items": [line]}
+
+
+def test_each_order_is_a_document_with_its_own_key_total_lines_and_position():
+    first, second = docs(answer(orders=[order("A-1", 10.0, "One"), order("A-2", 20.0, "Two")]))
+    assert (first.source_id, first.reference, first.total_minor, first.raw["order"]) == (
+        "A-1",
+        "A-1",
+        -1000,
+        1,
+    )
+    assert (second.source_id, second.reference, second.total_minor, second.raw["order"]) == (
+        "A-2",
+        "A-2",
+        -2000,
+        2,
+    )
+    assert [ln.description for ln in first.lines] == ["One"] and [ln.description for ln in second.lines] == [
+        "Two"
+    ]
+    assert first.raw["extraction"] == second.raw["extraction"]  # the whole validated answer, in each
+    assert len(first.raw["extraction"]["orders"]) == 2
+
+
+def test_one_failing_order_skips_the_whole_inner_message():
+    bad = {"order_id": "A-2", "total": None, "items": order("x", 5.0)["items"]}
+    assert build(answer(orders=[order("A-1", 10.0), bad])) == Skipped("incomplete")
+    assert build(answer(orders=[order("A-1", 10.0), {**order("A-2", 12.0), "total": 24.01}])) == Skipped(
+        "incomplete"
+    )
+    assert build(answer(orders=[bad, order("A-1", 10.0)])) == Skipped("incomplete")
+
+
+def test_orders_without_a_number_are_keyed_by_message_and_position():
+    ds = docs(answer(orders=[order(None, 10.0), order("A-2", 20.0), order("", 30.0)]))
+    assert [d.source_id for d in ds] == ["message:inner@shop#1", "A-2", "message:inner@shop#3"]
+    assert [d.reference for d in ds] == [None, "A-2", None]
+
+
+def test_a_single_order_keyed_by_message_has_no_position_suffix():
+    assert [d.source_id for d in docs(answer(orders=[order(None, 10.0), order("A-2", 20.0)]))] == [
+        "message:inner@shop",
+        "A-2",
+    ]
+
+
+def test_every_refund_is_keyed_by_message_and_position_where_there_are_several():
+    ds = docs(answer(refund=True, orders=[order("A-1", 10.0), order("A-2", 20.0)]))
+    assert [(d.source_id, d.reference, d.total_minor) for d in ds] == [
+        ("message:inner@shop#1", "A-1", 1000),
+        ("message:inner@shop#2", "A-2", 2000),
+    ]
+
+
+def test_a_line_is_described_by_its_short_name_trimmed_and_collapsed_else_its_name():
+    items = [
+        {"name": "Brand Pro 3000 black 64 GB", "short": "  Phone   case ", "quantity": 1, "amount": 10.0},
+        {"name": "  Express   shipping ", "short": "", "quantity": 1, "amount": 5.0},
+        {"name": "Fee", "short": "   ", "quantity": 1, "amount": 2.0},
+        {"name": "Tax", "quantity": 1, "amount": 1.0},  # no short at all
+        {"name": "Gift", "short": None, "quantity": 1, "amount": 1.0},
+    ]
+    d = doc(answer(total=19.0, items=items))
+    assert [ln.description for ln in d.lines] == ["Phone case", "Express shipping", "Fee", "Tax", "Gift"]
+
+
+def test_a_line_must_still_have_a_name_whatever_its_short():
+    items = [{"name": "  ", "short": "Thing", "quantity": 1, "amount": 30.0}]
+    assert build(answer(items=items)) == Skipped("incomplete")

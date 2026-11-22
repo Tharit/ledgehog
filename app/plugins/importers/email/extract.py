@@ -44,28 +44,37 @@ REFUSED_STATUSES = frozenset({400, 413, 422})  # the model refuses this one requ
 UNAVAILABLE_STATUSES = frozenset({401, 403, 404, 429})  # the model cannot be used at all
 
 _FIELDS = (
-    "merchant is the seller, as the source names it. "
-    "order_id is the order, invoice or booking number. "
-    "total is the money that changes hands: what the customer pays in total, shipping, fees and taxes "
-    "included, or for a refund what is paid back to the customer's payment method; a positive number with a "
-    "dot as decimal separator. "
-    "Store credit, gift cards and an account balance are not money: what is paid with them, or refunded to "
-    "them, is not part of the total, so a refund made entirely to store credit or an account balance has "
-    "total 0. "
-    "currency is the total's ISO 4217 code. "
+    "merchant is the shop the customer ordered from, as the source names it: where the order is placed on a "
+    "marketplace, the marketplace, never the seller of an article (a seller named as 'sold by' or 'Verkauf "
+    "durch'). "
+    "currency is the totals' ISO 4217 code. "
     "refund is true where the amount is returned to the customer or no longer charged (a refund, a credit "
     "note, a cancellation), else false. "
-    "items lists the lines the source shows: each article (for a refund, each article refunded), shipping, "
-    "fees, taxes added on top, and discounts, vouchers and credits the source lists, as negative amounts. "
+    "orders lists each order, invoice or booking the source confirms, in the order shown (a source that "
+    "confirms one has one; for a refund, each order refunded); each is read as shown, never added to "
+    "another. "
+    "Each order has order_id (its order, invoice or booking number), "
+    "total (the money that changes hands for it: what the customer pays for it in total, shipping, fees and "
+    "taxes included, or for a refund what is paid back to the customer's payment method; a positive number "
+    "with a dot as decimal separator. "
+    "Store credit, gift cards and an account balance are not money: what is paid with them, or refunded to "
+    "them, is not part of the total, so a refund made entirely to store credit or an account balance has "
+    "total 0) "
+    "and items (the lines the source shows for it: each article (for a refund, each article refunded), "
+    "shipping, fees, taxes added on top, and discounts, vouchers and credits the source lists, as negative "
+    "amounts. "
     "The items need not add up to the total: list them as the source shows them, and never add a line to "
     "make them add up. Each item has name (the line's description), quantity (as shown) and amount: the "
-    "line's total (quantity times unit price), never the unit price."
+    "line's total (quantity times unit price), never the unit price). "
+    "Each item also has short: the kind of article and what sets it apart, in two to five words of the "
+    "source's language, without brand, size, colour or marketing words; for shipping, fees, taxes and "
+    "discounts, its name."
 )
 _SHARED = (
     "Extract the purchase or payment data of the source, whatever kind of document it is: an order "
     "confirmation, an invoice, a rental agreement, a refund. Extract, do not classify: do not judge what the "
     "document is; "
-    "where it states no purchase or payment, set every field to null (refund false, items null). "
+    "where it states no purchase or payment, set every field to null (refund false, orders null). "
     + _FIELDS
     + " Use null for what the source does not say. Never invent values."
 )
@@ -77,33 +86,45 @@ TEXT_INSTRUCTION = (
 VISION_INSTRUCTION = (
     "You are given the page images of a document attached to an email, in page order. "
     + _SHARED
-    + " The JSON object has exactly these keys: merchant (string or null), order_id (string or null), total "
-    "(number or null), currency (string or null), refund (true or false), items (array or null) of objects "
-    "with name (string), quantity (number or null) and amount (number or null). "
+    + " The JSON object has exactly these keys: merchant (string or null), currency (string or null), refund "
+    "(true or false), orders (array or null) of objects with order_id (string or null), total (number or "
+    "null) and items (array or null) of objects with name (string), short (string), quantity (number or "
+    "null) and amount (number or null). "
     "Answer with the JSON object only, no code fences or other text."
 )
 
 _NUMBER = {"type": ["number", "null"]}
 _STRING = {"type": ["string", "null"]}
+_ITEM: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "name": {"type": "string"},
+        "short": {"type": "string"},
+        "quantity": _NUMBER,
+        "amount": _NUMBER,
+    },
+    "required": ["name", "short", "quantity", "amount"],
+    "additionalProperties": False,
+}
+_ORDER: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "order_id": _STRING,
+        "total": _NUMBER,
+        "items": {"type": ["array", "null"], "items": _ITEM},
+    },
+    "required": ["order_id", "total", "items"],
+    "additionalProperties": False,
+}
 ANSWER_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
         "merchant": _STRING,
-        "order_id": _STRING,
-        "total": _NUMBER,
         "currency": _STRING,
         "refund": {"type": "boolean"},
-        "items": {
-            "type": ["array", "null"],
-            "items": {
-                "type": "object",
-                "properties": {"name": {"type": "string"}, "quantity": _NUMBER, "amount": _NUMBER},
-                "required": ["name", "quantity", "amount"],
-                "additionalProperties": False,
-            },
-        },
+        "orders": {"type": ["array", "null"], "items": _ORDER},
     },
-    "required": ["merchant", "order_id", "total", "currency", "refund", "items"],
+    "required": ["merchant", "currency", "refund", "orders"],
     "additionalProperties": False,
 }
 
@@ -139,9 +160,48 @@ def _number(value: object) -> bool:
     return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
 
 
+def _validated_item(item: object) -> dict[str, Any] | None:
+    if not isinstance(item, dict) or not isinstance(item.get("name"), str):
+        return None
+    quantity, amount = item.get("quantity"), item.get("amount")
+    for number in (quantity, amount):
+        if number is not None and not _number(number):
+            return None
+    short = item.get("short")  # a missing or non-string short is absent: the line falls back to its name
+    return {
+        "name": item["name"],
+        "short": short if isinstance(short, str) else None,
+        "quantity": quantity,
+        "amount": amount,
+    }
+
+
+def _validated_order(order: object) -> dict[str, Any] | None:
+    if not isinstance(order, dict):
+        return None
+    order_id = order.get("order_id")
+    if isinstance(order_id, int) and not isinstance(order_id, bool):
+        order_id = str(order_id)  # a number the model did not quote
+    if order_id is not None and not isinstance(order_id, str):
+        return None
+    total = order.get("total")
+    if total is not None and not _number(total):
+        return None
+    items = order.get("items")
+    if items is not None:
+        if not isinstance(items, list):
+            return None
+        checked = [_validated_item(item) for item in items]
+        if any(item is None for item in checked):
+            return None
+        items = checked
+    return {"order_id": order_id, "total": total, "items": items}
+
+
 def validate_answer(data: object) -> dict[str, Any] | None:
     """The answer in the shape of §5, or None where it is not of that shape. A missing key is null (`refund`:
-    false), so a model that leaves out what it has not got is not refused; a wrong type is no answer."""
+    false), so a model that leaves out what it has not got is not refused; a wrong type is no answer. An
+    item's `short` that is missing or no string is null: the line is named by its `name`, the answer stays."""
     if not isinstance(data, dict):
         return None
     out: dict[str, Any] = {}
@@ -150,35 +210,19 @@ def validate_answer(data: object) -> dict[str, Any] | None:
         if value is not None and not isinstance(value, str):
             return None
         out[key] = value
-    order_id = data.get("order_id")
-    if isinstance(order_id, int) and not isinstance(order_id, bool):
-        order_id = str(order_id)  # a number the model did not quote
-    if order_id is not None and not isinstance(order_id, str):
-        return None
-    out["order_id"] = order_id
-    total = data.get("total")
-    if total is not None and not _number(total):
-        return None
-    out["total"] = total
     refund = data.get("refund", False)
     if not isinstance(refund, bool):
         return None
     out["refund"] = refund
-    items = data.get("items")
-    if items is not None:
-        if not isinstance(items, list):
+    orders = data.get("orders")
+    if orders is not None:
+        if not isinstance(orders, list):
             return None
-        checked: list[dict[str, Any]] = []
-        for item in items:
-            if not isinstance(item, dict) or not isinstance(item.get("name"), str):
-                return None
-            quantity, amount = item.get("quantity"), item.get("amount")
-            for number in (quantity, amount):
-                if number is not None and not _number(number):
-                    return None
-            checked.append({"name": item["name"], "quantity": quantity, "amount": amount})
-        items = checked
-    out["items"] = items
+        checked = [_validated_order(order) for order in orders]
+        if any(order is None for order in checked):
+            return None
+        orders = checked
+    out["orders"] = orders
     return out
 
 

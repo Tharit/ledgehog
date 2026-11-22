@@ -220,26 +220,31 @@ class StubExtractor:
 
 @dataclass
 class StubBuilder:
-    """A document per extraction: provider from `merchant`, `source_id` from `order_id` else the message."""
+    """A document per order id of `orders` (else per extraction): provider from `merchant`, `source_id` the
+    order id, else the message."""
 
     seen: list[MessageContext] = field(default_factory=list)
     minor_units: list[Callable[[str], int]] = field(default_factory=list)
 
     def build(
         self, extraction: Extraction, context: MessageContext, *, minor_units_of: Callable[[str], int]
-    ) -> IncomingDocument | Skipped:
+    ) -> tuple[IncomingDocument, ...] | Skipped:
         self.seen.append(context)
         self.minor_units.append(minor_units_of)
         a = extraction.answer
-        return IncomingDocument(
-            provider=str(a["merchant"]),
-            source_id=str(a.get("order_id") or f"message:{context.identity}"),
-            occurred_on=context.date,
-            total_minor=-100,
-            currency="EUR",
-            raw={"uid": context.uid},
-            title=context.subject,
-            lines=(IncomingDocumentLine("Item", -100, 1),),
+        ids = a.get("orders") or [a.get("order_id")]
+        return tuple(
+            IncomingDocument(
+                provider=str(a["merchant"]),
+                source_id=str(order_id or f"message:{context.identity}"),
+                occurred_on=context.date,
+                total_minor=-100,
+                currency="EUR",
+                raw={"uid": context.uid, "order": position},
+                title=context.subject,
+                lines=(IncomingDocumentLine("Item", -100, 1),),
+            )
+            for position, order_id in enumerate(ids, start=1)
         )
 
 

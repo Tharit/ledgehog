@@ -36,6 +36,19 @@ RECEIPT = (
 ARRIVED = date(2026, 1, 6)
 
 
+def order(order_id: str | None, total: float, *names: str) -> dict[str, Any]:
+    """An order of the answer: one line per name, the whole total on the first (the rest at 1.0 each)."""
+    items = [
+        {"name": f"{name} long name", "short": name, "quantity": 1, "amount": total if i == 0 else 1.0}
+        for i, name in enumerate(names or ("Thing",))
+    ]
+    return {"order_id": order_id, "total": total, "items": items}
+
+
+def answer(*orders: dict[str, Any], **over: Any) -> dict[str, Any]:
+    return {**ANSWER, "orders": list(orders), **over}
+
+
 def message(n: int, **kw: Any):  # type: ignore[no-untyped-def]
     kw.setdefault("html", RECEIPT)
     kw.setdefault("subject", f"Order {n}")
@@ -70,9 +83,7 @@ class Rig:
 
 
 def test_a_forwarded_receipt_becomes_a_document_with_its_counts_and_position():
-    rig = Rig(
-        Endpoint({**ANSWER, "total": 30.0, "items": [{"name": "Thing", "quantity": 1, "amount": 30.0}]})
-    )
+    rig = Rig(Endpoint(answer(order("A-1", 30.0))))
     rig.mailbox.add(1, message(1), ARRIVED)
     delivery = rig.run()
     [doc] = delivery.documents
@@ -106,27 +117,16 @@ def test_the_importer_names_no_provider():
 
 def test_each_outcome_is_counted_once():
     texts = {
-        1: {
-            **ANSWER,
-            "total": 30.0,
-            "items": [{"name": "Thing", "quantity": 1, "amount": 30.0}],
-        },  # a document
-        3: {**ANSWER, "order_id": "A-3", "currency": "XXX"},
-        4: {**ANSWER, "order_id": "A-4", "items": None},
-        5: {
-            **ANSWER,
-            "order_id": "A-5",
-            "merchant": None,
-            "total": 30.0,
-            "items": [{"name": "t", "quantity": 1, "amount": 30.0}],
-        },
+        1: answer(order("A-1", 30.0)),  # a document
+        3: answer(order("A-3", 30.0), currency="XXX"),
+        4: answer({"order_id": "A-4", "total": 30.0, "items": None}),
+        5: answer(order("A-5", 30.0), merchant=None),
         6: "not json",
-        7: {
-            **ANSWER,
-            "order_id": "A-1",
-            "total": 30.0,
-            "items": [{"name": "Thing", "quantity": 1, "amount": 30.0}],
-        },
+        7: answer(order("A-1", 30.0)),  # the same order again
+        9: answer(order("B-1", 10.0), order("B-2", 20.0)),  # two orders, one count
+        10: answer(order("C-1", 10.0), {"order_id": "C-2", "total": None, "items": None}),
+        11: answer(order("B-1", 10.0), order("B-2", 20.0)),  # all duplicates
+        12: answer(),  # no order
     }
     endpoint = Endpoint()
     endpoint.replies = [texts[n] for n in sorted(texts)]
@@ -136,10 +136,10 @@ def test_each_outcome_is_counted_once():
     rig.mailbox.add(8, make_message(sender="spam@x.example"), ARRIVED)
     stats = rig.run().importer_stats
     assert {k: v for k, v in stats.items() if v} == {
-        "documents": 1,
-        "same_order": 1,
+        "documents": 2,
+        "same_order": 2,
         "unknown_currency": 1,
-        "incomplete": 1,
+        "incomplete": 3,
         "no_merchant": 1,
         "unreadable": 1,
         "not_accepted": 1,
@@ -147,12 +147,8 @@ def test_each_outcome_is_counted_once():
 
 
 def test_an_order_and_its_refund_in_one_delivery_are_both_delivered():
-    one = [{"name": "Thing", "quantity": 1, "amount": 30.0}]
     endpoint = Endpoint()
-    endpoint.replies = [
-        {**ANSWER, "total": 30.0, "items": one},
-        {**ANSWER, "total": 30.0, "items": one, "refund": True},
-    ]
+    endpoint.replies = [answer(order("A-1", 30.0)), answer(order("A-1", 30.0), refund=True)]
     rig = Rig(endpoint)
     rig.mailbox.add(1, message(1), ARRIVED)
     rig.mailbox.add(2, message(2), ARRIVED)
@@ -161,9 +157,57 @@ def test_an_order_and_its_refund_in_one_delivery_are_both_delivered():
     assert delivery.importer_stats["documents"] == 2 and delivery.importer_stats["same_order"] == 0
 
 
+def test_a_mail_confirming_several_orders_is_one_message_and_several_documents():
+    rig = Rig(Endpoint(answer(order("A-1", 10.0, "Cable"), order("A-2", 20.0, "Lamp", "Bulb"))))
+    rig.mailbox.add(1, message(1), ARRIVED)
+    delivery = rig.run()
+    first, second = delivery.documents
+    assert (first.source_id, first.total_minor, first.raw["order"]) == ("A-1", -1000, 1)
+    assert (second.source_id, second.total_minor, second.raw["order"]) == ("A-2", -2000, 2)
+    assert [ln.description for ln in second.lines] == ["Lamp", "Bulb"]  # the short names
+    assert first.raw["message_id"] == second.raw["message_id"] and len(first.raw["extraction"]["orders"]) == 2
+    stats = {k: v for k, v in delivery.importer_stats.items() if v}
+    assert stats == {"documents": 1}
+
+
+def test_one_incomplete_order_makes_the_inner_message_incomplete_and_delivers_none_of_them():
+    bad = {
+        "order_id": "A-2",
+        "total": 5.0,
+        "items": [{"name": "x", "short": "x", "quantity": 1, "amount": None}],
+    }
+    rig = Rig(Endpoint(answer(order("A-1", 10.0), bad)))
+    rig.mailbox.add(1, message(1), ARRIVED)
+    delivery = rig.run()
+    assert delivery.documents == ()
+    assert {k: v for k, v in delivery.importer_stats.items() if v} == {"incomplete": 1}
+
+
+def test_orders_without_ids_and_a_refund_are_keyed_by_message_and_position():
+    endpoint = Endpoint()
+    endpoint.replies = [
+        answer(order(None, 10.0), order(None, 20.0)),
+        answer(order("R-1", 10.0), order("R-2", 20.0), refund=True),
+    ]
+    rig = Rig(endpoint)
+    rig.mailbox.add(1, message(1), ARRIVED)
+    rig.mailbox.add(2, message(2), ARRIVED)
+    keys = [d.source_id for d in rig.run().documents]
+    assert keys == ["message:o1@shop#1", "message:o1@shop#2", "message:o2@shop#1", "message:o2@shop#2"]
+
+
+def test_the_requests_ask_for_the_marketplace_orders_and_short_names():
+    rig = Rig(Endpoint(answer(order("A-1", 30.0))))
+    rig.mailbox.add(1, message(1), ARRIVED)
+    rig.run()
+    system = rig.text.body()["messages"][0]["content"]
+    assert "never the seller of an article" in system and "Each item also has short:" in system
+    assert "orders lists each order, invoice or booking" in system
+
+
 def test_a_pdf_is_read_by_the_vision_model_where_the_text_yields_no_document():
-    text = Endpoint({**ANSWER, "total": None, "items": None})
-    vision = Endpoint({**ANSWER, "total": 30.0, "items": [{"name": "Thing", "quantity": 1, "amount": 30.0}]})
+    text = Endpoint({**ANSWER, "orders": None})
+    vision = Endpoint(answer(order("A-1", 30.0)))
     rig = Rig(text, vision)
     rig.mailbox.add(1, message(1, pdfs=[("terms.pdf", "application", "pdf")]), ARRIVED)
     delivery = rig.run()
@@ -174,7 +218,7 @@ def test_a_pdf_is_read_by_the_vision_model_where_the_text_yields_no_document():
 
 
 def test_without_the_vision_model_such_a_message_counts_as_pdf_not_read():
-    rig = Rig(Endpoint({**ANSWER, "total": None, "items": None}))
+    rig = Rig(Endpoint({**ANSWER, "orders": None}))
     rig.mailbox.add(1, message(1, pdfs=[("terms.pdf", "application", "pdf")]), ARRIVED)
     delivery = rig.run()
     assert delivery.documents == () and delivery.importer_stats["pdf_not_read"] == 1
@@ -218,7 +262,7 @@ def test_a_text_too_long_to_send_without_a_pdf_is_too_large_and_never_asked():
 
 def test_no_log_record_carries_an_address_a_subject_a_reply_or_a_key(caplog: pytest.LogCaptureFixture):
     caplog.set_level("DEBUG")
-    endpoint = Endpoint({**ANSWER, "merchant": "Secret Merchant", "order_id": "SECRET-ORDER"})
+    endpoint = Endpoint(answer(order("SECRET-ORDER", 30.0), merchant="Secret Merchant"))
     rig = Rig(endpoint)
     rig.mailbox.add(1, message(1, subject="Secret subject"), ARRIVED)
     rig.mailbox.add(2, message(2, subject="Another secret"), ARRIVED)

@@ -24,11 +24,15 @@ from app.plugins.importers.email.message import PdfPart
 
 ANSWER = {
     "merchant": "Shop",
-    "order_id": "A-1",
-    "total": 10.5,
     "currency": "EUR",
     "refund": False,
-    "items": [{"name": "Thing", "quantity": 1, "amount": 10.5}],
+    "orders": [
+        {
+            "order_id": "A-1",
+            "total": 10.5,
+            "items": [{"name": "Thing", "short": "Thing", "quantity": 1, "amount": 10.5}],
+        }
+    ],
 }
 PNG = b"\x89PNG\r\n\x1a\nfake"
 
@@ -114,6 +118,9 @@ def test_the_text_request_carries_the_strict_schema_the_effort_and_the_timeouts(
     system, user = body["messages"]
     assert system["role"] == "system" and "^" in system["content"] and "tab" in system["content"]
     assert "never invent" in system["content"].lower() and "do not classify" in system["content"].lower()
+    assert "never the seller of an article" in system["content"] and "Verkauf durch" in system["content"]
+    assert "Each item also has short:" in system["content"] and "orders null" in system["content"]
+    assert "each is read as shown, never added to another" in system["content"]
     assert user == {"role": "user", "content": "Order 1\t10,50"}
     assert request.extensions["timeout"] == {"connect": 10.0, "read": 120.0, "write": 120.0, "pool": 120.0}
 
@@ -132,9 +139,17 @@ def test_the_vision_request_sends_its_own_effort_only_when_set():
 
 def test_the_schema_holds_exactly_the_fields_of_the_spec_and_no_date_or_receipt_flag():
     props = ANSWER_SCHEMA["properties"]
-    assert set(props) == {"merchant", "order_id", "total", "currency", "refund", "items"}
+    assert set(props) == {"merchant", "currency", "refund", "orders"}
     assert set(ANSWER_SCHEMA["required"]) == set(props)
-    assert set(props["items"]["items"]["properties"]) == {"name", "quantity", "amount"}
+    order = props["orders"]["items"]
+    assert set(order["properties"]) == {"order_id", "total", "items"}
+    assert set(order["required"]) == set(order["properties"])
+    item = order["properties"]["items"]["items"]
+    assert set(item["properties"]) == {"name", "short", "quantity", "amount"}
+    assert set(item["required"]) == set(item["properties"])
+    assert item["properties"]["short"] == {"type": "string"}
+    for schema in (ANSWER_SCHEMA, order, item):
+        assert schema["additionalProperties"] is False
 
 
 def test_the_vision_request_has_images_and_no_schema_no_effort_and_room_to_think():
@@ -153,8 +168,12 @@ def test_the_vision_request_has_images_and_no_schema_no_effort_and_room_to_think
     assert "response_format" not in body and "reasoning_effort" not in body
     assert (body["model"], body["temperature"], body["max_tokens"]) == ("vision-1", 0, 8192)
     system, user = body["messages"]
-    for key in ("merchant", "order_id", "total", "currency", "refund", "items", "quantity", "amount"):
+    for key in (
+        "merchant", "currency", "refund", "orders", "order_id", "total", "items", "name", "short", "quantity",
+        "amount",
+    ):  # fmt: skip
         assert key in system["content"]
+    assert "never the seller of an article" in system["content"]
     assert "no code fences" in system["content"]
     images = [p["image_url"]["url"] for p in user["content"] if p["type"] == "image_url"]
     assert len(images) == 2
@@ -198,16 +217,20 @@ def test_a_reply_is_parsed_tolerantly(content: str):
         "{broken",
         "[1, 2]",
         json.dumps("a string"),
-        {**ANSWER, "total": "10.50"},  # a number as text
-        {**ANSWER, "total": True},
         {**ANSWER, "refund": "no"},
         {**ANSWER, "merchant": 7},
-        {**ANSWER, "items": "none"},
-        {**ANSWER, "items": [{"name": None, "quantity": 1, "amount": 1}]},
-        {**ANSWER, "items": [{"name": "x", "quantity": "1", "amount": 1}]},
-        {**ANSWER, "items": [{"name": "x", "quantity": 1, "amount": "1"}]},
-        {**ANSWER, "items": ["x"]},
-        '{"total": NaN}',
+        {**ANSWER, "orders": "none"},
+        {**ANSWER, "orders": ["x"]},
+        {**ANSWER, "orders": [{"order_id": "A", "total": "10.50", "items": None}]},  # a number as text
+        {**ANSWER, "orders": [{"order_id": "A", "total": True, "items": None}]},
+        {**ANSWER, "orders": [{"order_id": 1.5, "total": 1, "items": None}]},
+        {**ANSWER, "orders": [{"order_id": "A", "total": 1, "items": "none"}]},
+        {**ANSWER, "orders": [{"order_id": "A", "total": 1, "items": [{"name": None, "amount": 1}]}]},
+        {**ANSWER, "orders": [{"order_id": "A", "total": 1, "items": [{"name": "x", "quantity": "1"}]}]},
+        {**ANSWER, "orders": [{"order_id": "A", "total": 1, "items": [{"name": "x", "amount": "1"}]}]},
+        {**ANSWER, "orders": [{"order_id": "A", "total": 1, "items": ["x"]}]},
+        {**ANSWER, "orders": [ANSWER["orders"][0], "x"]},  # type: ignore[index]
+        '{"orders": [{"total": NaN}]}',
     ],
 )
 def test_a_reply_that_is_not_the_shape_is_unreadable(reply: object):
@@ -236,16 +259,33 @@ def test_an_unreadable_reply_is_never_retried():
 
 
 def test_a_missing_key_is_null_and_a_quoted_number_order_id_is_a_string():
-    answer = validate_answer({"merchant": "Shop", "total": 3, "order_id": 12345})
+    answer = validate_answer({"merchant": "Shop", "orders": [{"total": 3, "order_id": 12345}]})
     assert answer == {
         "merchant": "Shop",
-        "order_id": "12345",
-        "total": 3,
         "currency": None,
         "refund": False,
-        "items": None,
+        "orders": [{"order_id": "12345", "total": 3, "items": None}],
     }
-    assert validate_answer({"order_id": 1.5}) is None
+    assert validate_answer({"orders": [{"order_id": 1.5}]}) is None
+    assert validate_answer({}) == {"merchant": None, "currency": None, "refund": False, "orders": None}
+
+
+def test_a_missing_or_non_string_short_is_absent_and_the_answer_stays():
+    def item(**over: object) -> dict[str, object]:
+        return {"name": "Thing", "quantity": 1, "amount": 2, **over}
+
+    items = [item(), item(short=5), item(short=None), item(short=" Case ")]
+    answer = validate_answer({"orders": [{"order_id": "A", "total": 8, "items": items}]})
+    assert answer is not None
+    assert [i["short"] for i in answer["orders"][0]["items"]] == [None, None, None, " Case "]
+
+
+def test_several_orders_are_validated_each():
+    two = {
+        "orders": [{"order_id": "A", "total": 1, "items": None}, {"order_id": "B", "total": 2, "items": []}]
+    }
+    answer = validate_answer(two)
+    assert answer is not None and [o["order_id"] for o in answer["orders"]] == ["A", "B"]
 
 
 # ---- errors -----------------------------------------------------------------------------------------
@@ -322,7 +362,7 @@ def test_an_accepted_text_answer_never_reaches_the_vision_model():
 
 def test_where_the_text_yields_no_document_each_pdf_is_asked_in_turn_until_one_does():
     text, vision = Endpoint(), Endpoint()
-    vision.replies = [{**ANSWER, "total": None}, ANSWER]
+    vision.replies = [{**ANSWER, "orders": None}, ANSWER]
     rendered: list[bytes] = []
 
     def render(data: bytes) -> list[bytes]:
@@ -330,7 +370,7 @@ def test_where_the_text_yields_no_document_each_pdf_is_asked_in_turn_until_one_d
         return [PNG]
 
     def accept(extraction: Extraction) -> bool:
-        return extraction.answer["total"] is not None and extraction.source == "pdf"
+        return extraction.answer["orders"] is not None and extraction.source == "pdf"
 
     result = extractor(text, vision, render=render).extract(
         "x", (*PDFS, PdfPart("c.pdf", b"C")), accept=accept
@@ -352,7 +392,7 @@ def test_without_a_text_answer_the_first_pdf_answer_is_returned_when_none_is_acc
 
 
 def test_without_a_vision_model_a_pdf_is_never_read_and_the_message_counts_as_pdf_not_read():
-    text = Endpoint({**ANSWER, "total": None})
+    text = Endpoint({**ANSWER, "orders": None})
     assert extractor(text).extract("x", PDFS, accept=never) == Skipped("pdf_not_read")
     assert extractor(text).extract(None, PDFS) == Skipped("pdf_not_read")
     # an accepted text answer wins, whatever PDFs there are

@@ -153,7 +153,6 @@ class _Run:
             last_uid = max(last_uid, uid)
             self.progress(done, len(uids))
         self.state.pop("stuck", None)  # the run got past every message
-        self.stats[DOCUMENTS] = len(self.documents)
         log.info("run: %s", ", ".join(f"{k}={v}" for k, v in self.stats.items() if v))
         covered_through = self.run_day - timedelta(days=COVERAGE_LAG_DAYS)
         return DocumentDelivery(
@@ -246,7 +245,7 @@ class _Run:
             subject=subject_of(inner),
         )
 
-        def build(extraction: Extraction) -> IncomingDocument | Skipped:
+        def build(extraction: Extraction) -> tuple[IncomingDocument, ...] | Skipped:
             return self.builder.build(extraction, context, minor_units_of=self.minor_units_of)
 
         try:
@@ -262,12 +261,14 @@ class _Run:
         if isinstance(result, Skipped):
             self.count(uid, result.reason)
             return
-        key = (result.provider, result.source_id)
-        if key in self.documents:  # under `keep` the earlier one by UID, then by order, wins
-            self.count(uid, SAME_ORDER)
-            return
-        self.documents[key] = result
-        log.info("uid %s: document", uid)
+        delivered = 0
+        for document in result:
+            key = (document.provider, document.source_id)
+            if key in self.documents:  # under `keep` the earlier by UID, inner message, position wins
+                continue
+            self.documents[key] = document
+            delivered += 1
+        self.count(uid, DOCUMENTS if delivered else SAME_ORDER)  # once per inner message
 
 
 class EmailImporter:
