@@ -1,7 +1,8 @@
-"""Documents (architecture §4.1, spec §5.8): `GET /api/documents` and `GET /api/documents/{id}`.
+"""Documents (architecture §4.1, spec §5.8): `GET /api/documents`, `GET /api/documents/{id}` and
+`DELETE /api/documents/{id}`.
 
-Reads: no lock, no write, no settle. Money travels as `{"amount": <integer minor units>, "currency":
-<code>}`; a refund document is positive.
+Reads: no lock, no write, no settle; the delete writes and settles. Money travels as `{"amount": <integer
+minor units>, "currency": <code>}`; a refund document is positive.
 """
 
 from __future__ import annotations
@@ -14,7 +15,8 @@ from pydantic import BaseModel, StringConstraints
 
 from app.api.errors import map_error
 from app.api.ids import MAX_ID, PathId
-from app.api.routers.accounts import CurrencyCode, Money
+from app.api.routers.accounts import CurrencyCode, DeleteOut, Money
+from app.api.routers.maintenance import SettleOut
 from app.api.session import CurrentUser, EngineDep
 from app.core.bookings.documents import NotBooked
 from app.core.documents import (
@@ -23,7 +25,9 @@ from app.core.documents import (
     DocumentDetail,
     DocumentFilter,
     DocumentLine,
+    DocumentNotFound,
     DocumentRow,
+    delete_document,
     get_document,
     list_documents,
     provider_names,
@@ -213,13 +217,7 @@ def list_documents_view(
     )
 
 
-class DocumentMissing(LookupError):
-    def __init__(self, document_id: int) -> None:
-        self.document_id = document_id
-        super().__init__(f"document {document_id} does not exist")
-
-
-map_error(DocumentMissing, 404, "not_found")
+map_error(DocumentNotFound, 404, "not_found")
 
 
 @router.get("/{document_id}")
@@ -228,5 +226,12 @@ def get_document_view(document_id: PathId, user: CurrentUser, engine: EngineDep)
     with engine.connect() as conn:
         found = get_document(conn, document_id)
     if found is None:
-        raise DocumentMissing(document_id)
+        raise DocumentNotFound(document_id)
     return DocumentDetailOut.detail(found)
+
+
+@router.delete("/{document_id}")
+def delete_document_view(document_id: PathId, user: CurrentUser, engine: EngineDep) -> DeleteOut:
+    """Delete a document, its lines and (by the settling that follows) its booking; a settling failure is a
+    notice in the 200, as for every write."""
+    return DeleteOut(settle=SettleOut.of(delete_document(engine, document_id)))

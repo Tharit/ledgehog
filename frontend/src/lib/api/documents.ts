@@ -1,6 +1,12 @@
-// Documents (spec §5.8): stored and listed here, never written.
+// Documents (spec §5.8): stored and listed here, deleted one at a time, never otherwise written.
 import { request, type Query } from './http.js';
-import type { DocumentDetail, DocumentFilter, DocumentPage, DocumentProviders } from './types.js';
+import type {
+	DocumentDetail,
+	DocumentFilter,
+	DocumentPage,
+	DocumentProviders,
+	SettleOut
+} from './types.js';
 
 export const DOCUMENT_PAGE_SIZE = 100;
 
@@ -44,4 +50,12 @@ export async function listDocumentProviders(signal?: AbortSignal): Promise<strin
 /** One document with its lines. */
 export function getDocument(id: number, signal?: AbortSignal): Promise<DocumentDetail> {
 	return request('GET', `/api/documents/${id}`, { signal });
+}
+
+/**
+ * Delete a document (spec §5.5): its lines and, by the settling that follows, its booking with the
+ * booking's entries. 404 `not_found` where it is gone.
+ */
+export function deleteDocument(id: number): Promise<{ settle: SettleOut }> {
+	return request('DELETE', `/api/documents/${id}`);
 }

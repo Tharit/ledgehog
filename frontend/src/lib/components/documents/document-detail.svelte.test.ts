@@ -87,4 +87,11 @@ describe('DocumentDetail', () => {
 			screen.getByText('Not booked: before Amazon clearing’s start Sep 30, 2026')
 		).toBeInTheDocument();
 	});
+
+	it('offers Delete…, which asks the page to open the decision', async () => {
+		const ondelete = vi.fn();
+		view(documentDetail(), { ondelete });
+		await fireEvent.click(screen.getByRole('button', { name: 'Delete…' }));
+		expect(ondelete).toHaveBeenCalledOnce();
+	});
 });

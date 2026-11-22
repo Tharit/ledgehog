@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ActionButton from '#lib/components/common/action-button.svelte';
 	import CardRow from '#lib/components/common/card-row.svelte';
 	import Card from '#lib/components/common/card.svelte';
 	import FigureCard from '#lib/components/common/figure-card.svelte';
@@ -9,14 +10,15 @@
 	import { documentTitle, notBookedReason } from './describe.js';
 	import DocumentLines from './document-lines.svelte';
 
-	// One document (view sketch: ux/views/documents.md): its merchant, total and lines, read-only. The
+	// One document (view sketch: ux/views/documents.md): its merchant, total and lines, read-only, and "Delete…" (spec §5.5). The
 	// total is a figure card with the reference and the booking as its rows; the booked entries and
 	// the lines are lists in cards under their headings.
 	let {
 		document,
 		locale = 'en',
 		accounts = new Map(),
-		onopenentry
+		onopenentry,
+		ondelete
 	}: {
 		document: DocumentDetail;
 		locale?: string;
@@ -24,6 +26,8 @@
 		accounts?: ReadonlyMap<number, Account>;
 		/** an entry of the booking was chosen: its unit opens in the review panel */
 		onopenentry?: (entryId: number) => void;
+		/** "Delete…" was chosen: the page opens the decision */
+		ondelete?: () => void;
 	} = $props();
 
 	const booking = $derived(document.booking);
@@ -49,7 +53,11 @@
 		level={1}
 		title={documentTitle(document)}
 		description={`${document.provider} · ${formatDate(document.occurred_on, locale)}`}
-	/>
+	>
+		{#snippet actions()}
+			<ActionButton variant="destructive" onclick={() => ondelete?.()}>Delete…</ActionButton>
+		{/snippet}
+	</PageHeader>
 
 	<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" data-slot="figure-cards">
 		<FigureCard title="Total">

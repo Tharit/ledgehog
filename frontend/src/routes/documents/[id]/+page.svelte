@@ -1,7 +1,9 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
 	import { onDestroy, onMount } from 'svelte';
+	import DeleteDocumentDialog from '#lib/components/documents/delete-document-dialog.svelte';
 	import ErrorState from '#lib/components/common/error-state.svelte';
 	import DocumentDetailView from '#lib/components/documents/document-detail.svelte';
 	import { describeDocumentError } from '#lib/components/documents/describe.js';
@@ -10,6 +12,7 @@
 	import { unitPanel } from '#lib/units/panel-instance.js';
 
 	const detail = new DocumentDetailStore();
+	let deleting = $state(false);
 
 	const documentId = $derived.by(() => {
 		const id = Number(page.params.id);
@@ -55,6 +58,19 @@
 			locale={detail.locale}
 			accounts={lookupsStore.lookups.accounts}
 			onopenentry={(entryId) => unitPanel.open(entryId)}
+			ondelete={() => (deleting = true)}
+		/>
+		<DeleteDocumentDialog
+			open={deleting}
+			document={detail.document}
+			accountName={detail.document.booking
+				? (lookupsStore.lookups.accounts.get(detail.document.booking.account_id)?.name ?? null)
+				: null}
+			onclose={() => (deleting = false)}
+			ondeleted={() => {
+				deleting = false;
+				void goto('/documents');
+			}}
 		/>
 	{:else}
 		<p class="text-sm text-muted-foreground" aria-busy="true">Loading…</p>

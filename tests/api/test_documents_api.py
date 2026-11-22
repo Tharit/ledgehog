@@ -265,3 +265,79 @@ def test_the_provenance_of_a_booking_carries_its_origin_and_where_it_was_booked_
         "reference": body["booking"]["reference"],
         "account_id": None,
     }
+
+
+# ---- delete (spec §5.5) -----------------------------------------------------------------------
+
+
+def _count(conn: Any, sql: str, **p: Any) -> int:
+    return int(conn.execute(text(sql), p).scalar_one())
+
+
+def test_deleting_a_booked_document_removes_it_its_lines_and_its_booking_with_entries_and_tags(
+    anna: TestClient, api_engine: Engine
+) -> None:
+    with api_engine.begin() as conn:
+        d = make_document(conn, "Amazon", total=-1000, on=date(2026, 2, 1))
+        lines(conn, d, ("cable", -400), ("shipping", -600))
+    clearance(api_engine)
+    with api_engine.begin() as conn:
+        entry_ids = [
+            r.id
+            for r in conn.execute(
+                text(
+                    "SELECT e.id FROM ledger_entry e"
+                    " JOIN source_transaction s ON s.id = e.source_transaction_id WHERE s.source_id = :s"
+                ),
+                {"s": f"document:{d}"},
+            )
+        ]
+        assert len(entry_ids) == 2
+        tag = conn.execute(text("INSERT INTO tag (name) VALUES ('t') RETURNING id")).scalar_one()
+        conn.execute(
+            text("INSERT INTO ledger_entry_tag (ledger_entry_id, tag_id) VALUES (:e, :t)"),
+            {"e": entry_ids[0], "t": tag},
+        )
+    r = anna.delete(f"{URL}/{d}")
+    assert r.status_code == 200, r.text
+    assert r.json()["settle"]["error"] is None
+    with api_engine.connect() as conn:
+        assert _count(conn, "SELECT count(*) FROM external_document WHERE id = :i", i=d) == 0
+        assert _count(conn, "SELECT count(*) FROM external_document_line WHERE document_id = :i", i=d) == 0
+        src = "SELECT count(*) FROM source_transaction WHERE source_id = :s"
+        assert _count(conn, src, s=f"document:{d}") == 0
+        assert _count(conn, "SELECT count(*) FROM ledger_entry WHERE id = ANY(:e)", e=entry_ids) == 0
+        tags = "SELECT count(*) FROM ledger_entry_tag WHERE ledger_entry_id = ANY(:e)"
+        assert _count(conn, tags, e=entry_ids) == 0
+    assert anna.get(f"{URL}/{d}").status_code == 404
+
+
+def test_deleting_an_unbooked_document(anna: TestClient, api_engine: Engine) -> None:
+    with api_engine.begin() as conn:
+        d = make_document(conn, "nobody", total=-1000, on=date(2026, 2, 1))
+        lines(conn, d, ("a", -1000))
+    assert anna.delete(f"{URL}/{d}").status_code == 200
+    assert doc_ids(anna) == []
+
+
+def test_deleting_an_unknown_document_is_a_404(anna: TestClient) -> None:
+    assert_envelope(anna.delete(f"{URL}/12345"), 404, "not_found")
+
+
+def test_delete_requires_a_session(client: TestClient) -> None:
+    assert_envelope(client.delete(f"{URL}/1"), 401, "unauthenticated")
+
+
+def test_a_redelivered_document_after_its_deletion_is_stored_anew(
+    anna: TestClient, api_engine: Engine
+) -> None:
+    with api_engine.begin() as conn:
+        d = make_document(conn, "Amazon", total=-1000, on=date(2026, 2, 1))
+        source_id = conn.execute(
+            text("SELECT source_id FROM external_document WHERE id = :i"), {"i": d}
+        ).scalar_one()
+    assert anna.delete(f"{URL}/{d}").status_code == 200
+    with api_engine.begin() as conn:
+        again = make_document(conn, "Amazon", total=-1000, on=date(2026, 2, 1), source_id=source_id)
+    assert again != d
+    assert doc_ids(anna) == [again]

@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { documentQuery, getDocument, listDocumentProviders, listDocuments } from './documents.js';
+import {
+	deleteDocument,
+	documentQuery,
+	getDocument,
+	listDocumentProviders,
+	listDocuments
+} from './documents.js';
 import type { DocumentFilter } from './types.js';
 
 const fetchMock = vi.fn();
@@ -82,5 +88,16 @@ describe('listDocumentProviders', () => {
 		fetchMock.mockImplementation(async () => reply({ providers: ['amazon', 'paypal'] }));
 		expect(await listDocumentProviders()).toEqual(['amazon', 'paypal']);
 		expect(lastUrl()).toBe('/api/documents/providers');
+	});
+});
+
+describe('deleteDocument', () => {
+	it('deletes one document by id', async () => {
+		fetchMock.mockImplementation(async () =>
+			reply({ settle: { touched_entry_ids: [], error: null } })
+		);
+		await deleteDocument(7);
+		expect(lastUrl()).toBe('/api/documents/7');
+		expect(fetchMock.mock.calls.at(-1)?.[1]?.method).toBe('DELETE');
 	});
 });
