@@ -3187,7 +3187,11 @@ filter bar replaces most reports.
 - **Editing documents by hand.** A documents editor: an edit of a document is
   a change of its input, previewed like any edit, and its booking follows it
   (§5.8) — no new mechanism; the document's version detects a conflicting
-  edit, as an entry's does. Planned.
+  edit, as an entry's does. Until then a misread is corrected at its source —
+  the importer fixed and the mail read again after deleting the document
+  (§5.5) — and a misread that reading again does not fix is deleted and its
+  purchase entered by hand on the clearance account (§3.3), split in the
+  review panel. Planned once such misreads recur.
 - **A document's provider from its sender, or by hand.** An importer reading
   mail may map a sender's domain — of the mail, or of the original of a
   forward — to a provider in its settings, so that no model reading decides a
