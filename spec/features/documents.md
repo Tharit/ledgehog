@@ -136,8 +136,9 @@ are exact, and the shift is the price of that.
 How often a document changes is its importer's re-delivery mode
 (`spec.md` §5.5): only an importer that declares `replace` changes a stored
 document, and with it a booking — so only there does the cost above arise;
-one that declares `keep` never does. A document whose total becomes 0, or
-whose currency is no longer its account's, loses its booking: the source
+one that declares `keep` never does. A document whose total becomes 0,
+whose currency is no longer its account's, or that is deleted (`spec.md` §5.5),
+loses its booking: the source
 transaction and its entries are removed, as consequences (`spec.md` §5.6).
 
 ## 4. What settling does
@@ -145,7 +146,7 @@ transaction and its entries are removed, as consequences (`spec.md` §5.6).
 The booking step of settling (`spec.md` §5.8) books every document §1 says
 is to be booked and is not, re-derives every booking whose document changed
 (§3), and removes every booking whose document now has a total of 0 or
-another currency than its account. It
+another currency than its account, or is deleted. It
 writes only bookings, on clearance accounts, and is idempotent: a document
 has at most one booking, by its `source_id`. Nothing else books a document —
 neither its ingest nor a change of an account's providers or start, which

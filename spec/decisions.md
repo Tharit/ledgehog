@@ -4255,3 +4255,12 @@ plugins/importers/email.md §5, §6.
 
 - **The merchant is the shop ordered from, on a marketplace the marketplace** (user, 2026-11-22). Asked for "the seller", the model gave a marketplace seller ("Verkauf durch get2trade") on every run, a provider no clearance account takes. Rejected for now: *mapping sender domains to providers* (planned, §3; it is a safeguard against forged mail, and needs a setting and a form for what a sentence fixes).
 - **A line carries a short name** (user, 2026-11-22). Shop article names are padded with brand, sizes and keywords. The model gives a short name besides the full one; the line and its entry's source text carry the short one, and the full one stays in the stored extraction. Rejected: *both on the document line, the full one as source text* (a database column, an importer-interface field and a display rule; possible later, since the full name is kept); *the short name as the entry's description* (that field is the user's).
+
+## D278 A document can be deleted, one at a time
+
+spec.md §5.5, §5.6, §5.8; features/documents.md §3, §4; ux/views/documents.md.
+
+- **A user deletes a document** (user, 2026-11-22). An email document is kept as first read, so a misread had no correction, and an improved extraction could not replace what an older one stored: the old document blocks its key. Its booking goes as when its total becomes zero; no new mechanism.
+- **Nothing is kept of it:** a deleted document is re-imported when its source delivers it again, as a reverted run's rows are. For the email importer that takes a Reset, which is how mail is re-read with an improved extraction.
+- **One at a time.** Rejected: *deleting an instance's documents on Reset* and *ticking several in the list*. Both are conveniences for a need that is rare once an importer is stable.
+- Editing documents by hand stays planned.

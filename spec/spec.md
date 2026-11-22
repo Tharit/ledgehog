@@ -1462,6 +1462,15 @@ content changes. A changed date, total, currency or set of lines re-derives
 its booking in the same write (§5.8); a change elsewhere in the payload
 changes nothing.
 
+**Deleting a document.** A user may delete a document — a misread its importer
+will not correct, say. Its lines go with it, and its booking with the
+booking's entries and their tags, removed by the settling that ends the
+operation (§5.8); the user is told so before it runs (§6). Nothing of it is
+kept: a later delivery of the same `(provider, source_id)` stores it anew, as
+the next fetch re-imports a reverted run's rows (§5.6). An importer that
+remembers what it has read — the email importer its messages — delivers it
+again only after a Reset.
+
 Consequences:
 
 - **The documents kind has no accounts.** `synced_through` does not apply. The
@@ -1587,7 +1596,7 @@ balance record would otherwise still vouch for them.
 **Document and rate runs are never reverted.** They write in place (§5.5), so
 there is no earlier state to return to; a wrong rate is corrected by the next
 fetch from its source, a wrong document by the next fetch of an importer that
-replaces documents (§5.5).
+replaces documents, or by deleting it (§5.5).
 
 Reverting deletes, in one transaction, the run's source transactions —
 duplicates included — and their entries, applying the removal routine. Rows
@@ -1984,7 +1993,7 @@ the same for both:
   account's start. Removing a provider or moving it to another account leaves
   existing bookings where they are, as a change of the start does (above). A document
   whose own change leaves it unbookable on its account — another currency, a
-  total of zero — loses its booking.
+  total of zero — loses its booking, and so does a document deleted (§5.5).
 - **The booking** is dated on the document's `occurred_on`; its amount is the
   document's total — an order negative, a refund positive — in the account's
   currency. Its counterparty name is the document's provider, and its

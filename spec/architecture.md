@@ -346,6 +346,9 @@ GET    /api/documents/{id}                     a document with its lines, and
                                                source transaction and its
                                                entries, in line order — or
                                                `not_booked`, as in the list
+DELETE /api/documents/{id}                     delete it, its lines and its
+                                               booking (spec §5.5); 404 where
+                                               it is gone
 
   dimensions — created only by explicit user action (spec §5.9)
 GET    /api/ledger/categories

@@ -924,9 +924,9 @@ CREATE INDEX ix_ledger_entry_tag_tag ON ledger_entry_tag (tag_id);
 -- day — an order on the day it was placed (spec §5.5). A document moves no money, so it needs no immutability:
 -- a re-delivered one is updated in place or kept as stored, by its
 -- importer's declared re-delivery mode (`replace` or `keep`) — a property of
--- the importer, not stored here (spec §5.5). A document is never deleted
--- (document runs are never reverted), so its id is a stable key for the
--- booking made from it (source_transaction.source_id `document:<id>`).
+-- the importer, not stored here (spec §5.5). A document is deleted only by a user, its
+-- booking with it (spec §5.5); an id is never reused, so it is a stable key
+-- for the booking made from it (source_transaction.source_id `document:<id>`).
 -- Spec §5.5, §5.8.
 CREATE TABLE external_document (
     id                   bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

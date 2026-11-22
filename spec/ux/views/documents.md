@@ -16,7 +16,7 @@ empty where it names none. The title is the document's own — for the email
 importer the receipt's subject (`plugins/importers/email.md` §6) — falling back
 to "*provider* document" where it has none; the merchant is not repeated, since
 the provider column already carries it canonicalised (`spec.md` §3.3).
-Documents are browsed here; they are never created or edited.
+Documents are browsed here, and deleted one at a time; they are never created or edited.
 The list is a snapshot like the ledger list, with new data as the passive
 notice "New data — Refresh" (`ux/patterns.md` §7).
 
@@ -33,3 +33,8 @@ each entry shows its line's text (`ux/views/review-queue.md`). A document not
 booked shows its reason; where the reason is a missing account, no action is
 offered yet (a "create a clearance account" from here is a later
 convenience).
+The detail offers "Delete…", in the destructive style. Its decision dialog says
+that the document goes and, where it is booked, its booking on *account* with
+all its entries, confirmed ones included; and that its importer may deliver it
+again — the email importer after a Reset. After it, the detail closes and the
+list refreshes.
