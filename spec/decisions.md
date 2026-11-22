@@ -4240,3 +4240,18 @@ spec.md §6; architecture.md §6.5; ux/patterns.md §5; ux/views/review-queue.md
 ux/views/review-queue.md; ux/patterns.md §4.1.
 
 - **"By counterparty" is the review queue's default** (user, 2026-11-21). With units committed as seen several at once (D274), that layout is where the queue is worked through fastest. "By date" is now the choice the address records (`?cut=date`); the API's own default stays `date`, the view asks for its cut.
+
+## D276 The email importer reads every order a mail confirms
+
+plugins/importers/email.md §5, §6, §8.
+
+- **One document per order** (user, 2026-11-22). Amazon confirms a checkout split across sellers as several orders in one mail. The single-order answer had no place for it: depending on the reasoning effort the model summed them, filing everything under the first order number, or gave no total, and the mail was `incomplete`. Each order now carries its own number, which is what reconciling imported orders against the shop's list needs. Rejected: *one document, summed by the model* (a misadded total passes the completeness check silently, and the numbers end up joined in one reference); *one document, summed in code* (reliable, but still one reference for several orders); *one document without an order number* (loses the numbers).
+- **All or nothing per inner message:** a misread order puts the whole answer in doubt, and each inner message is still counted once.
+- **Merchant, currency and refund once per answer:** one mail, one shop. A merchant per order would let a marketplace seller's name become a provider no clearance account takes.
+
+## D277 The email importer names the marketplace and each article briefly
+
+plugins/importers/email.md §5, §6.
+
+- **The merchant is the shop ordered from, on a marketplace the marketplace** (user, 2026-11-22). Asked for "the seller", the model gave a marketplace seller ("Verkauf durch get2trade") on every run, a provider no clearance account takes. Rejected for now: *mapping sender domains to providers* (planned, §3; it is a safeguard against forged mail, and needs a setting and a form for what a sentence fixes).
+- **A line carries a short name** (user, 2026-11-22). Shop article names are padded with brand, sizes and keywords. The model gives a short name besides the full one; the line and its entry's source text carry the short one, and the full one stays in the stored extraction. Rejected: *both on the document line, the full one as source text* (a database column, an importer-interface field and a display rule; possible later, since the full name is kept); *the short name as the entry's description* (that field is the user's).

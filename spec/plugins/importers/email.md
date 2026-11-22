@@ -203,9 +203,9 @@ over the chat-completions protocol of `architecture.md` §5.4: `temperature` 0,
 no streaming, the reasoning effort the configuration names for the text model
 and for the vision model, each where one is named.
 
-**One document per inner message at most, text first.** The text is asked
-first. Where it yields no document (§6), each PDF is asked in turn, if the
-vision model is configured, until one yields a document. Without the vision
+**One answer per inner message, text first.** The text is asked first.
+Where its answer yields no documents (§6), each PDF is asked in turn, if the
+vision model is configured, until one yields them. Without the vision
 model a PDF is never read, and an inner message that yields nothing while it
 has one counts as `pdf_not_read`; one with neither text nor PDF is
 `no_content`.
@@ -213,19 +213,25 @@ has one counts as `pdf_not_read`; one with neither text nor PDF is
 **The model extracts and never classifies.** It is asked for the purchase or
 payment data of whatever it is given — an order confirmation, an invoice, a
 rental agreement — and for null where there is none. The caller decides what
-the answer is (§6). The answer is one object:
+the answer is (§6). The answer is one object, and the orders the source
+confirms are a list in it, each with its own number, total and lines: a mail
+can confirm several orders, each with its own sum (Amazon confirms a checkout
+split across sellers as one order per seller), and each is read as shown,
+never added to another:
 
 | Field | Type | Meaning given to the model |
 |---|---|---|
-| `merchant` | string or null | the seller, as the source names it |
-| `order_id` | string or null | the order, invoice or booking number |
-| `total` | number or null | the money that changes hands: what the customer pays in total — shipping, fees and taxes included — or, for a refund, what is paid back to the customer's payment method; positive, dot as decimal separator. Store credit, gift cards and an account balance are not money: what is paid with them or refunded to them is not in the total, so a refund made entirely to store credit has 0 |
-| `currency` | string or null | the total's ISO 4217 code |
+| `merchant` | string or null | the shop the customer ordered from, as the source names it: on a marketplace, the marketplace, never the seller of an article (one named as 'sold by' or 'Verkauf durch') |
+| `currency` | string or null | the totals' ISO 4217 code |
 | `refund` | boolean | true where the amount is returned to the customer or no longer charged: a refund, a credit note, a cancellation |
-| `items` | array or null | the lines the source shows: each article (for a refund, each article refunded), shipping, fees, taxes added on top, and discounts, vouchers and credits it lists as negative amounts. The lines need not add up to the total, and none is added to make them |
-| `items[].name` | string | the line's description |
-| `items[].quantity` | number or null | the line's quantity, as shown |
-| `items[].amount` | number or null | the line's amount: the line's total, not the unit price |
+| `orders` | array or null | each order, invoice or booking the source confirms, in the order shown (a source that confirms one has one); for a refund, each order refunded |
+| `orders[].order_id` | string or null | its order, invoice or booking number |
+| `orders[].total` | number or null | the money that changes hands for it: what the customer pays for it in total — shipping, fees and taxes included — or, for a refund, what is paid back to the customer's payment method; positive, dot as decimal separator. Store credit, gift cards and an account balance are not money: what is paid with them or refunded to them is not in the total, so a refund made entirely to store credit has 0 |
+| `orders[].items` | array or null | the lines the source shows for it: each article (for a refund, each article refunded), shipping, fees, taxes added on top, and discounts, vouchers and credits it lists as negative amounts. The lines need not add up to the total, and none is added to make them |
+| `orders[].items[].name` | string | the line's description, as the source shows it |
+| `orders[].items[].short` | string | the kind of article and what sets it apart, in two to five words of the source's language, without brand, size, colour or marketing words; for shipping, fees, taxes and discounts, its name |
+| `orders[].items[].quantity` | number or null | the line's quantity, as shown |
+| `orders[].items[].amount` | number or null | the line's amount: the line's total, not the unit price |
 
 The text request carries the system instruction (what is extracted, the
 fields above, that superscript is marked `^` and subscript `_`, that table
@@ -247,16 +253,19 @@ Timeouts: 10 s to connect, 120 s for a text reply, 300 s for a vision reply.
 
 ## 6. From extraction to a document
 
-**A complete document only** (`spec.md` §5.5). The answer is checked in this
-order, and the first check that fails skips the inner message under its count:
+**Complete documents only** (`spec.md` §5.5). Each order of the answer
+becomes one document. The answer is checked in this order, check 2 for each
+of its orders, and the first check that fails skips the inner message, all its
+orders, under its count: an answer that misreads one order is not trusted for
+the others.
 
 1. The currency, trimmed and upper-cased, is three letters A–Z and the
    currency lookup knows it: else `unknown_currency` (a missing currency is
    `incomplete`).
-2. **The lines account for the total**: `incomplete` unless `total` is a
-   number of at least 0, `items` holds at least one line of non-zero amount,
-   every line has a non-empty name and a number for its amount, the total and
-   every amount are whole minor units of the currency (the decimal as
+2. **The lines account for the total**: `incomplete` unless the answer has at
+   least one order and, for each, `total` is a number of at least 0, `items`
+   holds at least one line of non-zero amount, every line has a non-empty name
+   and a number for its amount, the total and every amount are whole minor units of the currency (the decimal as
    written, never a float), and the total differs from the lines' sum by no
    more than the sum of the lines' magnitudes. The lines carry their amounts
    as given, unless those do not sum to the total and each amount times its
@@ -270,20 +279,25 @@ order, and the first check that fails skips the inner message under its count:
    the whole total over too little and categorise it wrongly.
 3. The merchant gives a provider (below): else `no_merchant`.
 
-**The document**, in ledger sign convention (`spec.md` §5.1):
+**The documents**, one per order, in ledger sign convention (`spec.md` §5.1):
 
 | Field | From |
 |---|---|
 | `provider` | the merchant, canonicalised (below) |
-| `source_id` | for an order, its `order_id`, trimmed and whitespace collapsed, where it has one, else `message:<identity>`; for a refund, always `message:<identity>` — the inner message's identity (§4) |
-| `reference` | the `order_id`, trimmed and whitespace collapsed, where the mail names one; else none |
+| `source_id` | for an order, its `order_id`, trimmed and whitespace collapsed, where it has one, else `message:<identity>`; for a refund, always `message:<identity>` — the inner message's identity (§4). Where an inner message gives several documents keyed so, each is `message:<identity>#<n>`, n its order's position in the answer, from 1 |
+| `reference` | the order's `order_id`, trimmed and whitespace collapsed, where the mail names one; else none |
 | `occurred_on` | the inner message's date (§4): an order's is the day it was placed — under `keep` (below) a document is the first complete mail of its order, its confirmation, sent when the order was placed — and a refund's the day it was issued |
-| `total_minor` | the total in minor units, signed: minus the total for an order, a charge; the total for a refund. An order paid entirely with vouchers, gift cards or store credit, and a refund made entirely to store credit, have 0, and are delivered, though not booked (`spec.md` §5.8) |
+| `total_minor` | the order's total in minor units, signed: minus the total for an order, a charge; the total for a refund. An order paid entirely with vouchers, gift cards or store credit, and a refund made entirely to store credit, have 0, and are delivered, though not booked (`spec.md` §5.8) |
 | `currency` | the checked currency |
 | `merchant_name` | the merchant as the model gave it, trimmed, whitespace collapsed, at most 200 characters |
 | `title` | the inner message's subject, its reply and forwarding markers removed (below), at most 200 characters |
-| lines | one per item, in the order given: `description` its name, `amount_minor` its amount signed as the total is — negated for an order, as given for a refund (an order's discount becomes a positive line, which stays an entry of its own, `spec.md` §5.8) — `qty` its quantity where that is a whole number from 1, else none. A line of amount zero is dropped. |
-| `raw` | `{"message_id", "outer_message_id", "uid", "uidvalidity", "date", "source": "text" or "pdf", "pdf": <its file name>, "extraction": <the validated answer as returned>, "model": <the model's name>}`. The message itself stays in the mailbox and is not copied. |
+| lines | one per item of the order, in the order given: `description` its `short`, trimmed and whitespace collapsed, else its `name`; `amount_minor` its amount signed as the total is — negated for an order, as given for a refund (an order's discount becomes a positive line, which stays an entry of its own, `spec.md` §5.8) — `qty` its quantity where that is a whole number from 1, else none. A line of amount zero is dropped. |
+| `raw` | `{"message_id", "outer_message_id", "uid", "uidvalidity", "date", "source": "text" or "pdf", "pdf": <its file name>, "extraction": <the validated answer as returned>, "order": <its order's position in the answer, from 1>, "model": <the model's name>}`. The message itself stays in the mailbox and is not copied. |
+
+**A line is named briefly.** Shops pad an article's name with brand, sizes and
+search keywords; the line, and so its entry's source text (`spec.md` §5.9),
+carries the model's short name. The name as the mail shows it stays in
+`raw.extraction`.
 
 **The subject's markers.** A forward by hand quoted inline is its own inner
 message (§3), so its subject carries what the forwarding client put in front
@@ -318,9 +332,11 @@ derived view, never the same document read again, so the first complete mail
 of an order wins. A refund is keyed by its mail, never by its order: each
 refund mail is a document of its own, and two refunds of one order never
 collide. **Within one delivery** the key
-`(provider, source_id)` is unique (`spec.md` §5.1): where two inner
-messages give the same key, the earlier — by UID, then by order within the
-message — is delivered and the later counts as `same_order`. Across runs, a
+`(provider, source_id)` is unique (`spec.md` §5.1): where two documents
+give the same key, the earlier — by UID, then by inner message, then by
+position in the answer — is delivered and the later is dropped. An inner
+message counts as `documents` where it delivers at least one document, and as
+`same_order` where every one of its documents is dropped so. Across runs, a
 document already stored is kept as it is, and ingest counts the re-delivery
 as kept.
 
@@ -357,10 +373,10 @@ once, under the outcome of its last attempt, in the run's statistics
 `not_accepted`, `not_authenticated`, `already_seen`, `before_start`, `too_large`, `no_content`,
 `pdf_not_read`, `unreadable`, `model_refused`, `gave_up`,
 `unknown_currency`, `incomplete`, `no_merchant`. `incomplete` is every failure
-of §6's checks 1 and 2 but an unknown currency: no currency, no total or a
-negative one, no line of non-zero amount, a line without name or amount, an
-amount in fractions of a minor unit, or lines that account for too little of
-the total. A skipped message is read again only after a Reset.
+of §6's checks 1 and 2 but an unknown currency: no order, no currency, no
+total or a negative one, no line of non-zero amount, a line without name or
+amount, an amount in fractions of a minor unit, or lines that account for too
+little of the total. A skipped message is read again only after a Reset.
 
 An error's message names the rule and may carry the server's or the model's
 status code; never a setting, an address, a subject, any of a message or any of
@@ -393,5 +409,5 @@ and inline, several attached), each with a passing, a failing and no
 address matched against a listed base address and a listed plus address matched
 only by itself, each count of §8, the converter's markers, the subject's reply
 and forwarding markers, the two readings of item amounts, the provider
-canonicalisation, a refund to the payment method, one to store credit, an order whose lines exceed its total and a PDF. A real message never becomes a fixture as it is;
+canonicalisation, a refund to the payment method, one to store credit, an order whose lines exceed its total, a mail confirming several orders, one confirming several of which one is incomplete, and a PDF. A real message never becomes a fixture as it is;
 what it shows becomes a hand-built case.
