@@ -1222,3 +1222,7 @@ Document ingest re-resolves only unconfirmed transactions.
 - **Refunds are not delivered yet.** Keyed by the order id, a refund would collide with its order's document. Parked:
   refunds as positive documents with a key of their own, once real refund mails are seen.
 - **A later mail never changes an order**: [...] a shipping notice, invoice or cancellation is kept out. [...] Given up: cancellations by mail, corrected by an entry on the clearance account.
+
+## D277 The email importer names the marketplace and each article briefly, in part — *superseded by D280*
+
+- **A line carries a short name** (user, 2026-11-22). Shop article names are padded with brand, sizes and keywords. [...]

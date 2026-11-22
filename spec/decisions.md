@@ -4249,12 +4249,12 @@ plugins/importers/email.md §5, §6, §8.
 - **All or nothing per inner message:** a misread order puts the whole answer in doubt, and each inner message is still counted once.
 - **Merchant, currency and refund once per answer:** one mail, one shop. A merchant per order would let a marketplace seller's name become a provider no clearance account takes.
 
-## D277 The email importer names the marketplace and each article briefly
+## D277 The email importer names the marketplace and each article briefly — *partly superseded by D280*
 
 plugins/importers/email.md §5, §6.
 
 - **The merchant is the shop ordered from, on a marketplace the marketplace** (user, 2026-11-22). Asked for "the seller", the model gave a marketplace seller ("Verkauf durch get2trade") on every run, a provider no clearance account takes. Rejected for now: *mapping sender domains to providers* (planned, §3; it is a safeguard against forged mail, and needs a setting and a form for what a sentence fixes).
-- **A line carries a short name** (user, 2026-11-22). Shop article names are padded with brand, sizes and keywords. The model gives a short name besides the full one; the line and its entry's source text carry the short one, and the full one stays in the stored extraction. Rejected: *both on the document line, the full one as source text* (a database column, an importer-interface field and a display rule; possible later, since the full name is kept); *the short name as the entry's description* (that field is the user's).
+- **A line carries a short name** (user, 2026-11-22). Shop article names are padded with sizes, colours and keywords. The model gives a short name besides the full one; the line and its entry's source text carry the short one, and the full one stays in the stored extraction. Rejected: *both on the document line, the full one as source text* (a database column, an importer-interface field and a display rule; possible later, since the full name is kept); *the short name as the entry's description* (that field is the user's).
 
 ## D278 A document can be deleted, one at a time
 
@@ -4270,3 +4270,9 @@ spec.md §5.5, §5.6, §5.8; features/documents.md §3, §4; ux/views/documents.
 plugins/importers/email.md §5.
 
 - **Store credit bears on the total only** (user, 2026-11-22). Amazon refunds to the account balance show no price per article, only the sum refunded. Told that store credit is no money, the model zeroed the line too, or negated it, and a refund with no line of non-zero amount was `incomplete`. A line now carries the article's amount however it was paid or refunded, and where the mail shows no price for it, the sum paid or refunded for it alone. Such a refund is a document of total 0, delivered and not booked (spec §5.8), as before.
+
+## D280 A short name keeps the brand
+
+plugins/importers/email.md §5, §6.
+
+- **The brand stays in a line's short name** (user, 2026-11-22). Told to drop brands, the model reduced "Ravensburger Mein Zuhause" to "Mein Zuhause", which names nothing. A known brand identifies an article and hints its category; an unknown one costs a word and hurts nothing. What goes is the padding: sizes, colours, search keywords, claims. Rejected: *the brand only where it identifies the article* (tested the same, but asks the model a judgement it made the same way every time).

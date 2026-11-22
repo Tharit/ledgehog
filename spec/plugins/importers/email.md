@@ -229,7 +229,7 @@ never added to another:
 | `orders[].total` | number or null | the money that changes hands for it: what the customer pays for it in total — shipping, fees and taxes included — or, for a refund, what is paid back to the customer's payment method; positive, dot as decimal separator. Store credit, gift cards and an account balance are not money: what is paid with them or refunded to them is not in the total, so a refund made entirely to store credit has 0 |
 | `orders[].items` | array or null | the lines the source shows for it: each article (for a refund, each article refunded), shipping, fees, taxes added on top, and discounts, vouchers and credits it lists as negative amounts. The lines need not add up to the total, and none is added to make them |
 | `orders[].items[].name` | string | the line's description, as the source shows it |
-| `orders[].items[].short` | string | the kind of article and what sets it apart, in two to five words of the source's language, without brand, size, colour or marketing words; for shipping, fees, taxes and discounts, its name |
+| `orders[].items[].short` | string | the article as a person would call it, in two to six words of the source's language: its brand, where the source names one, and the kind of article, with its title or model where that is what identifies it; without sizes, colours, search keywords or claims; for shipping, fees, taxes and discounts, its name |
 | `orders[].items[].quantity` | number or null | the line's quantity, as shown |
 | `orders[].items[].amount` | number or null | the line's amount: the line's total, not the unit price; positive for an article, ordered or refunded, whatever it is paid with or refunded to — store credit, gift cards and an account balance bear on the total only. Where the source shows no price for an article but the sum paid or refunded for it alone, that sum is its amount |
 
@@ -294,7 +294,7 @@ the others.
 | lines | one per item of the order, in the order given: `description` its `short`, trimmed and whitespace collapsed, else its `name`; `amount_minor` its amount signed as the total is — negated for an order, as given for a refund (an order's discount becomes a positive line, which stays an entry of its own, `spec.md` §5.8) — `qty` its quantity where that is a whole number from 1, else none. A line of amount zero is dropped. |
 | `raw` | `{"message_id", "outer_message_id", "uid", "uidvalidity", "date", "source": "text" or "pdf", "pdf": <its file name>, "extraction": <the validated answer as returned>, "order": <its order's position in the answer, from 1>, "model": <the model's name>}`. The message itself stays in the mailbox and is not copied. |
 
-**A line is named briefly.** Shops pad an article's name with brand, sizes and
+**A line is named briefly.** Shops pad an article's name with sizes, colours and
 search keywords; the line, and so its entry's source text (`spec.md` §5.9),
 carries the model's short name. The name as the mail shows it stays in
 `raw.extraction`.
