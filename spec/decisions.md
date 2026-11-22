@@ -4264,3 +4264,9 @@ spec.md §5.5, §5.6, §5.8; features/documents.md §3, §4; ux/views/documents.
 - **Nothing is kept of it:** a deleted document is re-imported when its source delivers it again, as a reverted run's rows are. For the email importer that takes a Reset, which is how mail is re-read with an improved extraction.
 - **One at a time.** Rejected: *deleting an instance's documents on Reset* and *ticking several in the list*. Both are conveniences for a need that is rare once an importer is stable.
 - Editing documents by hand stays planned.
+
+## D279 A line's amount ignores what it is paid with
+
+plugins/importers/email.md §5.
+
+- **Store credit bears on the total only** (user, 2026-11-22). Amazon refunds to the account balance show no price per article, only the sum refunded. Told that store credit is no money, the model zeroed the line too, or negated it, and a refund with no line of non-zero amount was `incomplete`. A line now carries the article's amount however it was paid or refunded, and where the mail shows no price for it, the sum paid or refunded for it alone. Such a refund is a document of total 0, delivered and not booked (spec §5.8), as before.

@@ -231,7 +231,7 @@ never added to another:
 | `orders[].items[].name` | string | the line's description, as the source shows it |
 | `orders[].items[].short` | string | the kind of article and what sets it apart, in two to five words of the source's language, without brand, size, colour or marketing words; for shipping, fees, taxes and discounts, its name |
 | `orders[].items[].quantity` | number or null | the line's quantity, as shown |
-| `orders[].items[].amount` | number or null | the line's amount: the line's total, not the unit price |
+| `orders[].items[].amount` | number or null | the line's amount: the line's total, not the unit price; positive for an article, ordered or refunded, whatever it is paid with or refunded to — store credit, gift cards and an account balance bear on the total only. Where the source shows no price for an article but the sum paid or refunded for it alone, that sum is its amount |
 
 The text request carries the system instruction (what is extracted, the
 fields above, that superscript is marked `^` and subscript `_`, that table
